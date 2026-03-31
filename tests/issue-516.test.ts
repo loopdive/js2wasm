@@ -1,10 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 
-function compileCheck(source: string): { success: boolean; validationError?: string; wat?: string; compileErrors?: string[] } {
+function compileCheck(source: string): {
+  success: boolean;
+  validationError?: string;
+  wat?: string;
+  compileErrors?: string[];
+} {
   const result = compile(source);
   if (!result.success) {
-    return { success: false, compileErrors: result.errors.map(e => e.message), wat: result.wat };
+    return { success: false, compileErrors: result.errors.map((e) => e.message), wat: result.wat };
   }
   try {
     new WebAssembly.Module(result.binary);
@@ -28,7 +33,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 describe("Issue #516: struct.new argument count mismatch in class constructors", () => {
   it("basic class", async () => {
     expect(
-      await run(`
+      await run(
+        `
         class Point {
           x: number;
           y: number;
@@ -41,13 +47,16 @@ describe("Issue #516: struct.new argument count mismatch in class constructors",
           const p = new Point(3, 4);
           return p.x + p.y;
         }
-      `, "test"),
+      `,
+        "test",
+      ),
     ).toBe(7);
   });
 
   it("class with only property declarations (no explicit constructor)", async () => {
     expect(
-      await run(`
+      await run(
+        `
         class Counter {
           count: number = 0;
         }
@@ -55,13 +64,16 @@ describe("Issue #516: struct.new argument count mismatch in class constructors",
           const c = new Counter();
           return c.count;
         }
-      `, "test"),
+      `,
+        "test",
+      ),
     ).toBe(0);
   });
 
   it("three-level inheritance chain", async () => {
     expect(
-      await run(`
+      await run(
+        `
         class A {
           a: number;
           constructor(a: number) { this.a = a; }
@@ -84,7 +96,9 @@ describe("Issue #516: struct.new argument count mismatch in class constructors",
           const obj = new C(1, 2, 3);
           return obj.a + obj.b + obj.c;
         }
-      `, "test"),
+      `,
+        "test",
+      ),
     ).toBe(6);
   });
 

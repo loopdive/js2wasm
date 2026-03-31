@@ -46,8 +46,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
       concat: (a: string, b: string) => a + b,
       length: (s: string) => s.length,
       equals: (a: string, b: string) => (a === b ? 1 : 0),
-      substring: (s: string, start: number, end: number) =>
-        s.substring(start, end),
+      substring: (s: string, start: number, end: number) => s.substring(start, end),
       charCodeAt: (s: string, i: number) => s.charCodeAt(i),
     },
     string_constants: buildStringConstants(result.stringPool),
@@ -61,10 +60,7 @@ async function compileToWasm(source: string) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    buildImports(result),
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return instance.exports as Record<string, Function>;
 }
 
@@ -144,9 +140,12 @@ const scannerSource = `
 
 describe("TS Scanner (minimal lexer compiled to Wasm)", () => {
   it("compiles the scanner class without errors", async () => {
-    const result = compile(scannerSource + `
+    const result = compile(
+      scannerSource +
+        `
       export function test(): number { return 1; }
-    `);
+    `,
+    );
     expect(
       result.success,
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
@@ -154,29 +153,37 @@ describe("TS Scanner (minimal lexer compiled to Wasm)", () => {
   });
 
   it("scans a single number token", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function test(): number {
         const s = new Scanner("42");
         return s.scan();
       }
-    `);
+    `,
+    );
     // TokenKind.Number = 1
     expect(exports.test()).toBe(1);
   });
 
   it("scans a plus operator", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function test(): number {
         const s = new Scanner("+");
         return s.scan();
       }
-    `);
+    `,
+    );
     // TokenKind.Plus = 2
     expect(exports.test()).toBe(2);
   });
 
   it("scans parentheses", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function testLParen(): number {
         const s = new Scanner("(");
         return s.scan();
@@ -185,14 +192,17 @@ describe("TS Scanner (minimal lexer compiled to Wasm)", () => {
         const s = new Scanner(")");
         return s.scan();
       }
-    `);
+    `,
+    );
     // TokenKind.LParen = 6, RParen = 7
     expect(exports.testLParen()).toBe(6);
     expect(exports.testRParen()).toBe(7);
   });
 
   it("scans multiple tokens from '3+4'", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function testFirst(): number {
         const s = new Scanner("3+4");
         return s.scan();
@@ -215,15 +225,18 @@ describe("TS Scanner (minimal lexer compiled to Wasm)", () => {
         s.scan(); // 4
         return s.scan();
       }
-    `);
-    expect(exports.testFirst()).toBe(1);   // Number
-    expect(exports.testSecond()).toBe(2);  // Plus
-    expect(exports.testThird()).toBe(1);   // Number
-    expect(exports.testFourth()).toBe(0);  // EOF
+    `,
+    );
+    expect(exports.testFirst()).toBe(1); // Number
+    expect(exports.testSecond()).toBe(2); // Plus
+    expect(exports.testThird()).toBe(1); // Number
+    expect(exports.testFourth()).toBe(0); // EOF
   });
 
   it("scans whitespace-separated tokens", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function testFirst(): number {
         const s = new Scanner("1 + 2");
         return s.scan();
@@ -239,14 +252,17 @@ describe("TS Scanner (minimal lexer compiled to Wasm)", () => {
         s.scan(); // whitespace
         return s.scan();
       }
-    `);
-    expect(exports.testFirst()).toBe(1);   // Number
-    expect(exports.testSecond()).toBe(8);  // Whitespace
-    expect(exports.testThird()).toBe(2);   // Plus
+    `,
+    );
+    expect(exports.testFirst()).toBe(1); // Number
+    expect(exports.testSecond()).toBe(8); // Whitespace
+    expect(exports.testThird()).toBe(2); // Plus
   });
 
   it("counts tokens in an expression", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function countTokens(): number {
         const s = new Scanner("(10+20)*3");
         let count: number = 0;
@@ -257,36 +273,45 @@ describe("TS Scanner (minimal lexer compiled to Wasm)", () => {
         }
         return count;
       }
-    `);
+    `,
+    );
     // "(10+20)*3" => LParen, Number, Plus, Number, RParen, Star, Number = 7 tokens
     expect(exports.countTokens()).toBe(7);
   });
 
   it("tracks position correctly after scanning", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function posAfterScan(): number {
         const s = new Scanner("123+4");
         s.scan(); // scans "123", pos should be 3
         return s.pos;
       }
-    `);
+    `,
+    );
     expect(exports.posAfterScan()).toBe(3);
   });
 
   it("handles multi-digit numbers correctly", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function testMultiDigit(): number {
         const s = new Scanner("99999");
         s.scan();
         return s.pos;
       }
-    `);
+    `,
+    );
     // After scanning "99999", pos should be 5
     expect(exports.testMultiDigit()).toBe(5);
   });
 
   it("scans all operator types", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function scanOps(): number {
         const s = new Scanner("+-*/");
         let sum: number = 0;
@@ -296,24 +321,30 @@ describe("TS Scanner (minimal lexer compiled to Wasm)", () => {
         sum = sum + s.scan(); // Slash=5
         return sum;
       }
-    `);
+    `,
+    );
     // 2+3+4+5 = 14
     expect(exports.scanOps()).toBe(14);
   });
 
   it("returns EOF for empty string", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function testEmpty(): number {
         const s = new Scanner("");
         return s.scan();
       }
-    `);
+    `,
+    );
     // TokenKind.EOF = 0
     expect(exports.testEmpty()).toBe(0);
   });
 
   it("handles a realistic expression: (1 + 2) * 3 - 4 / 2", async () => {
-    const exports = await compileToWasm(scannerSource + `
+    const exports = await compileToWasm(
+      scannerSource +
+        `
       export function countAll(): number {
         const s = new Scanner("(1 + 2) * 3 - 4 / 2");
         let count: number = 0;
@@ -326,7 +357,8 @@ describe("TS Scanner (minimal lexer compiled to Wasm)", () => {
         }
         return count;
       }
-    `);
+    `,
+    );
     // (1+2)*3-4/2 => LParen,1,+,2,RParen,*,3,-,4,/,2 = 11 non-whitespace tokens
     expect(exports.countAll()).toBe(11);
   });

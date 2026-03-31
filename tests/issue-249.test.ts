@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { compileToWasm, assertEquivalent } from "./equivalence/helpers.js";
 
 describe("Issue #249: Miscellaneous runtime fixes", () => {
-
   it("typeof Math constants returns 'number'", async () => {
     await assertEquivalent(
       `
@@ -140,9 +139,7 @@ describe("Issue #249: Miscellaneous runtime fixes", () => {
         return x;
       }
       `,
-      [
-        { fn: "voidAssignment", args: [] },
-      ],
+      [{ fn: "voidAssignment", args: [] }],
     );
   });
 

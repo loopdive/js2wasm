@@ -9,10 +9,7 @@ async function run(source: string): Promise<Record<string, Function>> {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   const imports = buildImports(result.imports, undefined, result.stringPool);
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    imports as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
   return instance.exports as Record<string, Function>;
 }
 
@@ -23,7 +20,7 @@ describe("typeof expression", () => {
       export function testStr(): string { return typeof "hello"; }
       export function testBool(): string { return typeof true; }
     `);
-    expect(result.success, result.errors.map(e => e.message).join("\n")).toBe(true);
+    expect(result.success, result.errors.map((e) => e.message).join("\n")).toBe(true);
     // Should have type-name string constants in the pool
     expect(result.stringPool).toContain("number");
     expect(result.stringPool).toContain("boolean");

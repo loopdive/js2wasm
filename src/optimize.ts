@@ -87,10 +87,7 @@ export interface OptimizeResult {
  * Optimize a Wasm binary using Binaryen.
  * Returns the optimized binary, or the original if optimization is unavailable.
  */
-export function optimizeBinary(
-  binary: Uint8Array,
-  options: OptimizeOptions = {},
-): OptimizeResult {
+export function optimizeBinary(binary: Uint8Array, options: OptimizeOptions = {}): OptimizeResult {
   const level = options.level ?? 3;
   const gc = options.gc !== false;
   const referenceTypes = options.referenceTypes !== false;
@@ -115,7 +112,8 @@ export function optimizeBinary(
   return {
     binary,
     optimized: false,
-    warning: "wasm-opt not available: install the 'binaryen' npm package or add wasm-opt to PATH. Skipping optimization.",
+    warning:
+      "wasm-opt not available: install the 'binaryen' npm package or add wasm-opt to PATH. Skipping optimization.",
   };
 }
 
@@ -200,11 +198,7 @@ function optimizeWithSystemBinary(
   try {
     n.writeFileSync(inputPath, binary);
 
-    const args: string[] = [
-      inputPath,
-      `-O${level}`,
-      "-o", outputPath,
-    ];
+    const args: string[] = [inputPath, `-O${level}`, "-o", outputPath];
 
     if (gc) {
       args.push("--enable-gc");
@@ -225,13 +219,25 @@ function optimizeWithSystemBinary(
     return { binary: new Uint8Array(optimizedBinary), optimized: true };
   } finally {
     // Cleanup temp files
-    try { n.unlinkSync(inputPath); } catch { /* ignore */ }
-    try { n.unlinkSync(outputPath); } catch { /* ignore */ }
-    try { n.unlinkSync(tmpDir); } catch {
+    try {
+      n.unlinkSync(inputPath);
+    } catch {
+      /* ignore */
+    }
+    try {
+      n.unlinkSync(outputPath);
+    } catch {
+      /* ignore */
+    }
+    try {
+      n.unlinkSync(tmpDir);
+    } catch {
       try {
         const fs = require("node:fs");
         fs.rmdirSync(tmpDir);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

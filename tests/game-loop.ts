@@ -11,7 +11,10 @@ import { updateNightLights } from "./scene.js";
 
 export function animate(): void {
   updateScreenSize();
-  if (state.renderer.domElement.clientWidth !== state.screenW || state.renderer.domElement.clientHeight !== state.screenH) {
+  if (
+    state.renderer.domElement.clientWidth !== state.screenW ||
+    state.renderer.domElement.clientHeight !== state.screenH
+  ) {
     state.renderer.setSize(state.screenW, state.screenH);
   }
 
@@ -45,10 +48,7 @@ export function animate(): void {
   if (state.splitTransition) {
     state.splitTransition.elapsed += delta;
     if (state.splitTransition.elapsed >= 2) {
-      state.splitTransition.progress = Math.min(
-        1,
-        state.splitTransition.progress + delta * 2,
-      );
+      state.splitTransition.progress = Math.min(1, state.splitTransition.progress + delta * 2);
     }
   }
 
@@ -100,15 +100,12 @@ export function animate(): void {
 
     const focusTarget = state.splitFullTime >= 3.0 ? 1 : 0;
     const focusSpeed = 1.5;
-    state.focusAmount +=
-      (focusTarget - state.focusAmount) * (1 - Math.exp(-focusSpeed * delta));
-    if (Math.abs(state.focusAmount - focusTarget) < 0.005)
-      state.focusAmount = focusTarget;
+    state.focusAmount += (focusTarget - state.focusAmount) * (1 - Math.exp(-focusSpeed * delta));
+    if (Math.abs(state.focusAmount - focusTarget) < 0.005) state.focusAmount = focusTarget;
 
     if (state.splitTarget === 1) {
       const splitSpeed = 2.5;
-      state.splitAmount +=
-        (1 - state.splitAmount) * (1 - Math.exp(-splitSpeed * delta));
+      state.splitAmount += (1 - state.splitAmount) * (1 - Math.exp(-splitSpeed * delta));
       if (Math.abs(state.splitAmount - 1) < 0.005) state.splitAmount = 1;
     } else {
       if (state.focusAmount <= 0.01) {
@@ -116,8 +113,7 @@ export function animate(): void {
       }
       if (state.mergeWaitTime >= 3.0) {
         const splitSpeed = 2.5;
-        state.splitAmount +=
-          (0 - state.splitAmount) * (1 - Math.exp(-splitSpeed * delta));
+        state.splitAmount += (0 - state.splitAmount) * (1 - Math.exp(-splitSpeed * delta));
         if (Math.abs(state.splitAmount) < 0.005) state.splitAmount = 0;
       }
     }
@@ -150,21 +146,17 @@ export function animate(): void {
     let targetX = lp0.mesh.position.x;
     let targetY = lp0.mesh.position.y;
     if (!lp0.alive && state.deathTime && performance.now() - state.deathTime > 2000) {
-      const alive = state.players.filter(p => p && p.alive);
+      const alive = state.players.filter((p) => p && p.alive);
       if (alive.length > 0) {
-        const best = alive.reduce((a, b) =>
-          b!.position.currentRow > a!.position.currentRow ? b : a
-        );
+        const best = alive.reduce((a, b) => (b!.position.currentRow > a!.position.currentRow ? b : a));
         targetX = best!.mesh.position.x;
         targetY = best!.mesh.position.y;
       }
     }
 
     const camLerp = 1 - Math.pow(0.05, delta);
-    state.sharedCameraTarget.position.x +=
-      (targetX - state.sharedCameraTarget.position.x) * camLerp;
-    state.sharedCameraTarget.position.y +=
-      (targetY - state.sharedCameraTarget.position.y) * camLerp;
+    state.sharedCameraTarget.position.x += (targetX - state.sharedCameraTarget.position.x) * camLerp;
+    state.sharedCameraTarget.position.y += (targetY - state.sharedCameraTarget.position.y) * camLerp;
     state.renderer.setViewport(0, 0, state.screenW, state.screenH);
     state.renderer.clear();
     updateCamera(state.sharedCamera, state.screenW, state.screenH);
@@ -176,20 +168,14 @@ export function animate(): void {
     updateCamera(state.sharedCamera, state.screenW, state.screenH);
 
     if (state.deathTime && !bothLocalAlive) {
-      const aliveLocal = [lp0, lp1].filter(p => p && p.alive);
+      const aliveLocal = [lp0, lp1].filter((p) => p && p.alive);
       const targets = aliveLocal.length > 0 ? aliveLocal : [lp0, lp1].filter(Boolean);
-      const dMidX =
-        targets.reduce((s, p) => s + p!.mesh.position.x, 0) /
-        targets.length;
-      const dMidY =
-        targets.reduce((s, p) => s + p!.mesh.position.y, 0) /
-        targets.length;
+      const dMidX = targets.reduce((s, p) => s + p!.mesh.position.x, 0) / targets.length;
+      const dMidY = targets.reduce((s, p) => s + p!.mesh.position.y, 0) / targets.length;
       if (performance.now() - state.deathTime > 1000) {
         const camLerp = 1 - Math.pow(0.02, delta);
-        state.sharedCameraTarget.position.x +=
-          (dMidX - state.sharedCameraTarget.position.x) * camLerp;
-        state.sharedCameraTarget.position.y +=
-          (dMidY - state.sharedCameraTarget.position.y) * camLerp;
+        state.sharedCameraTarget.position.x += (dMidX - state.sharedCameraTarget.position.x) * camLerp;
+        state.sharedCameraTarget.position.y += (dMidY - state.sharedCameraTarget.position.y) * camLerp;
       }
     }
 
@@ -259,13 +245,8 @@ export function animate(): void {
 
     const vp0 = vps[0];
     if (vp0.width > 1 && vp0.height > 1) {
-      const { width: tfw, height: tfh } = cameraFrustum(
-        targetVps[0].width,
-        targetVps[0].height,
-      );
-      const ps = isLandscape
-        ? tfh / targetVps[0].height
-        : tfw / targetVps[0].width;
+      const { width: tfw, height: tfh } = cameraFrustum(targetVps[0].width, targetVps[0].height);
+      const ps = isLandscape ? tfh / targetVps[0].height : tfw / targetVps[0].width;
       state.renderer.setViewport(vp0.x, vp0.y, vp0.width, vp0.height);
       state.renderer.setScissor(vp0.x, vp0.y, vp0.width, vp0.height);
       updateCamera(state.newcomerCamera, vp0.width, vp0.height, ps);
@@ -276,31 +257,15 @@ export function animate(): void {
     if (isLandscape) {
       const gapX = vp0.x + vp0.width;
       const gapW = vp1.x - gapX;
-      divRect =
-        gapW > 0
-          ? { x: gapX, y: 0, width: gapW, height: state.screenH }
-          : null;
+      divRect = gapW > 0 ? { x: gapX, y: 0, width: gapW, height: state.screenH } : null;
     } else {
       const gapY = vp1.y + vp1.height;
       const gapH = vp0.y - gapY;
-      divRect =
-        gapH > 0
-          ? { x: 0, y: gapY, width: state.screenW, height: gapH }
-          : null;
+      divRect = gapH > 0 ? { x: 0, y: gapY, width: state.screenW, height: gapH } : null;
     }
     if (divRect && divRect.width > 0 && divRect.height > 0) {
-      state.renderer.setViewport(
-        divRect.x,
-        divRect.y,
-        divRect.width,
-        divRect.height,
-      );
-      state.renderer.setScissor(
-        divRect.x,
-        divRect.y,
-        divRect.width,
-        divRect.height,
-      );
+      state.renderer.setViewport(divRect.x, divRect.y, divRect.width, divRect.height);
+      state.renderer.setScissor(divRect.x, divRect.y, divRect.width, divRect.height);
       state.renderer.clear();
       state.renderer.render(state.dividerScene, state.dividerCamera);
     }

@@ -83,88 +83,95 @@ function addSimdStringEquals(mod: WasmModule): void {
     { op: "local.get", index: 1 },
     { op: "i32.load", align: 2, offset: 8 },
     { op: "i32.ne" },
-    { op: "if", blockType: { kind: "empty" }, then: [
-      { op: "i32.const", value: 0 },
-      { op: "return" },
-    ] },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
 
     // i = 0
     { op: "i32.const", value: 0 },
     { op: "local.set", index: i },
 
     // SIMD loop: compare 16 bytes at a time
-    { op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        // if i + 16 > lenA, break to scalar tail
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 16 },
-        { op: "i32.add" },
-        { op: "local.get", index: lenA },
-        { op: "i32.gt_u" },
-        { op: "br_if", depth: 1 },
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            // if i + 16 > lenA, break to scalar tail
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 16 },
+            { op: "i32.add" },
+            { op: "local.get", index: lenA },
+            { op: "i32.gt_u" },
+            { op: "br_if", depth: 1 },
 
-        // vecA = v128.load(a + 12 + i)
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: i },
-        { op: "i32.add" },
-        { op: "v128.load", align: 0, offset: 12 },
+            // vecA = v128.load(a + 12 + i)
+            { op: "local.get", index: 0 },
+            { op: "local.get", index: i },
+            { op: "i32.add" },
+            { op: "v128.load", align: 0, offset: 12 },
 
-        // vecB = v128.load(b + 12 + i)
-        { op: "local.get", index: 1 },
-        { op: "local.get", index: i },
-        { op: "i32.add" },
-        { op: "v128.load", align: 0, offset: 12 },
+            // vecB = v128.load(b + 12 + i)
+            { op: "local.get", index: 1 },
+            { op: "local.get", index: i },
+            { op: "i32.add" },
+            { op: "v128.load", align: 0, offset: 12 },
 
-        // if not all bytes equal, return 0
-        { op: "i8x16.eq" },
-        { op: "i8x16.all_true" },
-        { op: "i32.eqz" },
-        { op: "if", blockType: { kind: "empty" }, then: [
-          { op: "i32.const", value: 0 },
-          { op: "return" },
-        ] },
+            // if not all bytes equal, return 0
+            { op: "i8x16.eq" },
+            { op: "i8x16.all_true" },
+            { op: "i32.eqz" },
+            { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
 
-        // i += 16
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 16 },
-        { op: "i32.add" },
-        { op: "local.set", index: i },
-        { op: "br", depth: 0 },
-      ] },
-    ] },
+            // i += 16
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 16 },
+            { op: "i32.add" },
+            { op: "local.set", index: i },
+            { op: "br", depth: 0 },
+          ],
+        },
+      ],
+    },
 
     // Scalar tail: compare remaining bytes one at a time
-    { op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        // if i >= lenA, break (equal)
-        { op: "local.get", index: i },
-        { op: "local.get", index: lenA },
-        { op: "i32.ge_u" },
-        { op: "br_if", depth: 1 },
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            // if i >= lenA, break (equal)
+            { op: "local.get", index: i },
+            { op: "local.get", index: lenA },
+            { op: "i32.ge_u" },
+            { op: "br_if", depth: 1 },
 
-        // if a[12+i] != b[12+i], return 0
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: i },
-        { op: "i32.add" },
-        { op: "i32.load8_u", align: 0, offset: 12 },
-        { op: "local.get", index: 1 },
-        { op: "local.get", index: i },
-        { op: "i32.add" },
-        { op: "i32.load8_u", align: 0, offset: 12 },
-        { op: "i32.ne" },
-        { op: "if", blockType: { kind: "empty" }, then: [
-          { op: "i32.const", value: 0 },
-          { op: "return" },
-        ] },
+            // if a[12+i] != b[12+i], return 0
+            { op: "local.get", index: 0 },
+            { op: "local.get", index: i },
+            { op: "i32.add" },
+            { op: "i32.load8_u", align: 0, offset: 12 },
+            { op: "local.get", index: 1 },
+            { op: "local.get", index: i },
+            { op: "i32.add" },
+            { op: "i32.load8_u", align: 0, offset: 12 },
+            { op: "i32.ne" },
+            { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
 
-        // i++
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 1 },
-        { op: "i32.add" },
-        { op: "local.set", index: i },
-        { op: "br", depth: 0 },
-      ] },
-    ] },
+            // i++
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: i },
+            { op: "br", depth: 0 },
+          ],
+        },
+      ],
+    },
 
     // All bytes matched
     { op: "i32.const", value: 1 },
@@ -209,7 +216,13 @@ function addSimdStringIndexOf(mod: WasmModule): void {
     { name: "pos", type: { kind: "i32" } },
   ];
 
-  const hLen = 3, nLen = 4, i = 5, j = 6, firstByte = 7, mask = 8, pos = 11;
+  const hLen = 3,
+    nLen = 4,
+    i = 5,
+    j = 6,
+    firstByte = 7,
+    mask = 8,
+    pos = 11;
 
   const body: Instr[] = [
     // hLen = haystack.len
@@ -225,31 +238,32 @@ function addSimdStringIndexOf(mod: WasmModule): void {
     // if nLen == 0, return max(fromIndex, 0) clamped to hLen
     { op: "local.get", index: nLen },
     { op: "i32.eqz" },
-    { op: "if", blockType: { kind: "empty" }, then: [
-      // clamp(fromIndex, 0, hLen)
-      { op: "local.get", index: 2 },
-      { op: "i32.const", value: 0 },
-      { op: "local.get", index: 2 },
-      { op: "i32.const", value: 0 },
-      { op: "i32.gt_s" },
-      { op: "select" },
-      { op: "local.tee", index: i },
-      { op: "local.get", index: hLen },
-      { op: "local.get", index: i },
-      { op: "local.get", index: hLen },
-      { op: "i32.lt_s" },
-      { op: "select" },
-      { op: "return" },
-    ] },
+    {
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        // clamp(fromIndex, 0, hLen)
+        { op: "local.get", index: 2 },
+        { op: "i32.const", value: 0 },
+        { op: "local.get", index: 2 },
+        { op: "i32.const", value: 0 },
+        { op: "i32.gt_s" },
+        { op: "select" },
+        { op: "local.tee", index: i },
+        { op: "local.get", index: hLen },
+        { op: "local.get", index: i },
+        { op: "local.get", index: hLen },
+        { op: "i32.lt_s" },
+        { op: "select" },
+        { op: "return" },
+      ],
+    },
 
     // if nLen > hLen, return -1
     { op: "local.get", index: nLen },
     { op: "local.get", index: hLen },
     { op: "i32.gt_u" },
-    { op: "if", blockType: { kind: "empty" }, then: [
-      { op: "i32.const", value: -1 },
-      { op: "return" },
-    ] },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: -1 }, { op: "return" }] },
 
     // firstByte = needle[0] (first byte of needle data)
     { op: "local.get", index: 1 },
@@ -271,211 +285,264 @@ function addSimdStringIndexOf(mod: WasmModule): void {
     { op: "local.set", index: i },
 
     // SIMD scan loop: check 16 bytes at a time for first-byte matches
-    { op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        // if i + 16 > hLen, break to scalar fallback
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 16 },
-        { op: "i32.add" },
-        { op: "local.get", index: hLen },
-        { op: "i32.gt_u" },
-        { op: "br_if", depth: 1 },
-
-        // if i > hLen - nLen, break to scalar (can't match)
-        { op: "local.get", index: i },
-        { op: "local.get", index: hLen },
-        { op: "local.get", index: nLen },
-        { op: "i32.sub" },
-        { op: "i32.gt_s" },
-        { op: "br_if", depth: 1 },
-
-        // Load 16 bytes from haystack at position i
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: i },
-        { op: "i32.add" },
-        { op: "v128.load", align: 0, offset: 12 },
-
-        // Compare with needleVec (splat of first byte)
-        { op: "local.get", index: 10 }, // needleVec
-        { op: "i8x16.eq" },
-
-        // Get bitmask of matching lanes
-        { op: "i8x16.bitmask" },
-        { op: "local.set", index: mask },
-
-        // If no matches in this chunk, skip ahead 16 bytes
-        { op: "local.get", index: mask },
-        { op: "i32.eqz" },
-        { op: "if", blockType: { kind: "empty" }, then: [
-          { op: "local.get", index: i },
-          { op: "i32.const", value: 16 },
-          { op: "i32.add" },
-          { op: "local.set", index: i },
-          { op: "br", depth: 2 }, // continue SIMD loop
-        ] },
-
-        // Check each matching position in the bitmask
-        { op: "i32.const", value: 0 },
-        { op: "local.set", index: pos },
-        { op: "block", blockType: { kind: "empty" }, body: [
-          { op: "loop", blockType: { kind: "empty" }, body: [
-            // if pos >= 16, break
-            { op: "local.get", index: pos },
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            // if i + 16 > hLen, break to scalar fallback
+            { op: "local.get", index: i },
             { op: "i32.const", value: 16 },
-            { op: "i32.ge_u" },
+            { op: "i32.add" },
+            { op: "local.get", index: hLen },
+            { op: "i32.gt_u" },
             { op: "br_if", depth: 1 },
 
-            // if !(mask & (1 << pos)), skip this position
-            { op: "local.get", index: mask },
-            { op: "i32.const", value: 1 },
-            { op: "local.get", index: pos },
-            { op: "i32.shl" },
-            { op: "i32.and" },
-            { op: "i32.eqz" },
-            { op: "if", blockType: { kind: "empty" }, then: [
-              { op: "local.get", index: pos },
-              { op: "i32.const", value: 1 },
-              { op: "i32.add" },
-              { op: "local.set", index: pos },
-              { op: "br", depth: 2 }, // continue bitmask loop
-            ] },
-
-            // candidate = i + pos; if candidate + nLen > hLen, skip
+            // if i > hLen - nLen, break to scalar (can't match)
             { op: "local.get", index: i },
-            { op: "local.get", index: pos },
-            { op: "i32.add" },
             { op: "local.get", index: hLen },
             { op: "local.get", index: nLen },
             { op: "i32.sub" },
             { op: "i32.gt_s" },
-            { op: "if", blockType: { kind: "empty" }, then: [
-              { op: "local.get", index: pos },
-              { op: "i32.const", value: 1 },
-              { op: "i32.add" },
-              { op: "local.set", index: pos },
-              { op: "br", depth: 2 },
-            ] },
+            { op: "br_if", depth: 1 },
 
-            // Verify full needle match at haystack[i+pos]
-            { op: "i32.const", value: 1 }, // j = 1 (first byte already matched)
-            { op: "local.set", index: j },
-            { op: "block", blockType: { kind: "empty" }, body: [
-              { op: "loop", blockType: { kind: "empty" }, body: [
-                // if j >= nLen, full match found!
-                { op: "local.get", index: j },
-                { op: "local.get", index: nLen },
-                { op: "i32.ge_u" },
-                { op: "if", blockType: { kind: "empty" }, then: [
-                  // return i + pos
-                  { op: "local.get", index: i },
-                  { op: "local.get", index: pos },
-                  { op: "i32.add" },
-                  { op: "return" },
-                ] },
-
-                // if haystack[12 + i + pos + j] != needle[12 + j], mismatch
-                { op: "local.get", index: 0 },
-                { op: "local.get", index: i },
-                { op: "i32.add" },
-                { op: "local.get", index: pos },
-                { op: "i32.add" },
-                { op: "local.get", index: j },
-                { op: "i32.add" },
-                { op: "i32.load8_u", align: 0, offset: 12 },
-
-                { op: "local.get", index: 1 },
-                { op: "local.get", index: j },
-                { op: "i32.add" },
-                { op: "i32.load8_u", align: 0, offset: 12 },
-
-                { op: "i32.ne" },
-                { op: "br_if", depth: 1 }, // break inner verify loop (to block)
-
-                // j++
-                { op: "local.get", index: j },
-                { op: "i32.const", value: 1 },
-                { op: "i32.add" },
-                { op: "local.set", index: j },
-                { op: "br", depth: 0 },
-              ] },
-            ] },
-
-            // pos++
-            { op: "local.get", index: pos },
-            { op: "i32.const", value: 1 },
-            { op: "i32.add" },
-            { op: "local.set", index: pos },
-            { op: "br", depth: 0 },
-          ] },
-        ] },
-
-        // Advance i by 16
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 16 },
-        { op: "i32.add" },
-        { op: "local.set", index: i },
-        { op: "br", depth: 0 },
-      ] },
-    ] },
-
-    // Scalar fallback for remaining bytes
-    { op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        // if i > hLen - nLen, not found
-        { op: "local.get", index: i },
-        { op: "local.get", index: hLen },
-        { op: "local.get", index: nLen },
-        { op: "i32.sub" },
-        { op: "i32.gt_s" },
-        { op: "br_if", depth: 1 },
-
-        // j = 0; inner compare
-        { op: "i32.const", value: 0 },
-        { op: "local.set", index: j },
-        { op: "block", blockType: { kind: "empty" }, body: [
-          { op: "loop", blockType: { kind: "empty" }, body: [
-            // if j >= nLen, match found
-            { op: "local.get", index: j },
-            { op: "local.get", index: nLen },
-            { op: "i32.ge_u" },
-            { op: "if", blockType: { kind: "empty" }, then: [
-              { op: "local.get", index: i },
-              { op: "return" },
-            ] },
-
-            // if haystack[12+i+j] != needle[12+j], break
+            // Load 16 bytes from haystack at position i
             { op: "local.get", index: 0 },
             { op: "local.get", index: i },
             { op: "i32.add" },
-            { op: "local.get", index: j },
-            { op: "i32.add" },
-            { op: "i32.load8_u", align: 0, offset: 12 },
+            { op: "v128.load", align: 0, offset: 12 },
 
-            { op: "local.get", index: 1 },
-            { op: "local.get", index: j },
-            { op: "i32.add" },
-            { op: "i32.load8_u", align: 0, offset: 12 },
+            // Compare with needleVec (splat of first byte)
+            { op: "local.get", index: 10 }, // needleVec
+            { op: "i8x16.eq" },
 
-            { op: "i32.ne" },
+            // Get bitmask of matching lanes
+            { op: "i8x16.bitmask" },
+            { op: "local.set", index: mask },
+
+            // If no matches in this chunk, skip ahead 16 bytes
+            { op: "local.get", index: mask },
+            { op: "i32.eqz" },
+            {
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "local.get", index: i },
+                { op: "i32.const", value: 16 },
+                { op: "i32.add" },
+                { op: "local.set", index: i },
+                { op: "br", depth: 2 }, // continue SIMD loop
+              ],
+            },
+
+            // Check each matching position in the bitmask
+            { op: "i32.const", value: 0 },
+            { op: "local.set", index: pos },
+            {
+              op: "block",
+              blockType: { kind: "empty" },
+              body: [
+                {
+                  op: "loop",
+                  blockType: { kind: "empty" },
+                  body: [
+                    // if pos >= 16, break
+                    { op: "local.get", index: pos },
+                    { op: "i32.const", value: 16 },
+                    { op: "i32.ge_u" },
+                    { op: "br_if", depth: 1 },
+
+                    // if !(mask & (1 << pos)), skip this position
+                    { op: "local.get", index: mask },
+                    { op: "i32.const", value: 1 },
+                    { op: "local.get", index: pos },
+                    { op: "i32.shl" },
+                    { op: "i32.and" },
+                    { op: "i32.eqz" },
+                    {
+                      op: "if",
+                      blockType: { kind: "empty" },
+                      then: [
+                        { op: "local.get", index: pos },
+                        { op: "i32.const", value: 1 },
+                        { op: "i32.add" },
+                        { op: "local.set", index: pos },
+                        { op: "br", depth: 2 }, // continue bitmask loop
+                      ],
+                    },
+
+                    // candidate = i + pos; if candidate + nLen > hLen, skip
+                    { op: "local.get", index: i },
+                    { op: "local.get", index: pos },
+                    { op: "i32.add" },
+                    { op: "local.get", index: hLen },
+                    { op: "local.get", index: nLen },
+                    { op: "i32.sub" },
+                    { op: "i32.gt_s" },
+                    {
+                      op: "if",
+                      blockType: { kind: "empty" },
+                      then: [
+                        { op: "local.get", index: pos },
+                        { op: "i32.const", value: 1 },
+                        { op: "i32.add" },
+                        { op: "local.set", index: pos },
+                        { op: "br", depth: 2 },
+                      ],
+                    },
+
+                    // Verify full needle match at haystack[i+pos]
+                    { op: "i32.const", value: 1 }, // j = 1 (first byte already matched)
+                    { op: "local.set", index: j },
+                    {
+                      op: "block",
+                      blockType: { kind: "empty" },
+                      body: [
+                        {
+                          op: "loop",
+                          blockType: { kind: "empty" },
+                          body: [
+                            // if j >= nLen, full match found!
+                            { op: "local.get", index: j },
+                            { op: "local.get", index: nLen },
+                            { op: "i32.ge_u" },
+                            {
+                              op: "if",
+                              blockType: { kind: "empty" },
+                              then: [
+                                // return i + pos
+                                { op: "local.get", index: i },
+                                { op: "local.get", index: pos },
+                                { op: "i32.add" },
+                                { op: "return" },
+                              ],
+                            },
+
+                            // if haystack[12 + i + pos + j] != needle[12 + j], mismatch
+                            { op: "local.get", index: 0 },
+                            { op: "local.get", index: i },
+                            { op: "i32.add" },
+                            { op: "local.get", index: pos },
+                            { op: "i32.add" },
+                            { op: "local.get", index: j },
+                            { op: "i32.add" },
+                            { op: "i32.load8_u", align: 0, offset: 12 },
+
+                            { op: "local.get", index: 1 },
+                            { op: "local.get", index: j },
+                            { op: "i32.add" },
+                            { op: "i32.load8_u", align: 0, offset: 12 },
+
+                            { op: "i32.ne" },
+                            { op: "br_if", depth: 1 }, // break inner verify loop (to block)
+
+                            // j++
+                            { op: "local.get", index: j },
+                            { op: "i32.const", value: 1 },
+                            { op: "i32.add" },
+                            { op: "local.set", index: j },
+                            { op: "br", depth: 0 },
+                          ],
+                        },
+                      ],
+                    },
+
+                    // pos++
+                    { op: "local.get", index: pos },
+                    { op: "i32.const", value: 1 },
+                    { op: "i32.add" },
+                    { op: "local.set", index: pos },
+                    { op: "br", depth: 0 },
+                  ],
+                },
+              ],
+            },
+
+            // Advance i by 16
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 16 },
+            { op: "i32.add" },
+            { op: "local.set", index: i },
+            { op: "br", depth: 0 },
+          ],
+        },
+      ],
+    },
+
+    // Scalar fallback for remaining bytes
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            // if i > hLen - nLen, not found
+            { op: "local.get", index: i },
+            { op: "local.get", index: hLen },
+            { op: "local.get", index: nLen },
+            { op: "i32.sub" },
+            { op: "i32.gt_s" },
             { op: "br_if", depth: 1 },
 
-            // j++
-            { op: "local.get", index: j },
+            // j = 0; inner compare
+            { op: "i32.const", value: 0 },
+            { op: "local.set", index: j },
+            {
+              op: "block",
+              blockType: { kind: "empty" },
+              body: [
+                {
+                  op: "loop",
+                  blockType: { kind: "empty" },
+                  body: [
+                    // if j >= nLen, match found
+                    { op: "local.get", index: j },
+                    { op: "local.get", index: nLen },
+                    { op: "i32.ge_u" },
+                    { op: "if", blockType: { kind: "empty" }, then: [{ op: "local.get", index: i }, { op: "return" }] },
+
+                    // if haystack[12+i+j] != needle[12+j], break
+                    { op: "local.get", index: 0 },
+                    { op: "local.get", index: i },
+                    { op: "i32.add" },
+                    { op: "local.get", index: j },
+                    { op: "i32.add" },
+                    { op: "i32.load8_u", align: 0, offset: 12 },
+
+                    { op: "local.get", index: 1 },
+                    { op: "local.get", index: j },
+                    { op: "i32.add" },
+                    { op: "i32.load8_u", align: 0, offset: 12 },
+
+                    { op: "i32.ne" },
+                    { op: "br_if", depth: 1 },
+
+                    // j++
+                    { op: "local.get", index: j },
+                    { op: "i32.const", value: 1 },
+                    { op: "i32.add" },
+                    { op: "local.set", index: j },
+                    { op: "br", depth: 0 },
+                  ],
+                },
+              ],
+            },
+
+            // i++
+            { op: "local.get", index: i },
             { op: "i32.const", value: 1 },
             { op: "i32.add" },
-            { op: "local.set", index: j },
+            { op: "local.set", index: i },
             { op: "br", depth: 0 },
-          ] },
-        ] },
-
-        // i++
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 1 },
-        { op: "i32.add" },
-        { op: "local.set", index: i },
-        { op: "br", depth: 0 },
-      ] },
-    ] },
+          ],
+        },
+      ],
+    },
 
     // not found
     { op: "i32.const", value: -1 },
@@ -515,7 +582,9 @@ function addSimdArrayIndexOfI32(mod: WasmModule): void {
     { name: "mask", type: { kind: "i32" } },
   ];
 
-  const len = 2, i = 3, mask = 6;
+  const len = 2,
+    i = 3,
+    mask = 6;
 
   const body: Instr[] = [
     // len = arr.len
@@ -533,112 +602,134 @@ function addSimdArrayIndexOfI32(mod: WasmModule): void {
     { op: "local.set", index: i },
 
     // SIMD loop: compare 4 elements at a time
-    { op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        // if i + 4 > len, break to scalar
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 4 },
-        { op: "i32.add" },
-        { op: "local.get", index: len },
-        { op: "i32.gt_u" },
-        { op: "br_if", depth: 1 },
-
-        // Load 4 elements: v128.load(arr + 16 + i*4)
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 4 },
-        { op: "i32.mul" },
-        { op: "i32.add" },
-        { op: "v128.load", align: 2, offset: 16 },
-
-        // Compare with valVec
-        { op: "local.get", index: 4 }, // valVec
-        { op: "i32x4.eq" },
-
-        // Get bitmask
-        { op: "i32x4.bitmask" },
-        { op: "local.set", index: mask },
-
-        // If any match, find which lane
-        { op: "local.get", index: mask },
-        { op: "i32.const", value: 0 },
-        { op: "i32.ne" },
-        { op: "if", blockType: { kind: "empty" }, then: [
-          // Check lane 0
-          { op: "local.get", index: mask },
-          { op: "i32.const", value: 1 },
-          { op: "i32.and" },
-          { op: "if", blockType: { kind: "empty" }, then: [
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            // if i + 4 > len, break to scalar
             { op: "local.get", index: i },
-            { op: "return" },
-          ] },
-          // Check lane 1
-          { op: "local.get", index: mask },
-          { op: "i32.const", value: 2 },
-          { op: "i32.and" },
-          { op: "if", blockType: { kind: "empty" }, then: [
+            { op: "i32.const", value: 4 },
+            { op: "i32.add" },
+            { op: "local.get", index: len },
+            { op: "i32.gt_u" },
+            { op: "br_if", depth: 1 },
+
+            // Load 4 elements: v128.load(arr + 16 + i*4)
+            { op: "local.get", index: 0 },
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 4 },
+            { op: "i32.mul" },
+            { op: "i32.add" },
+            { op: "v128.load", align: 2, offset: 16 },
+
+            // Compare with valVec
+            { op: "local.get", index: 4 }, // valVec
+            { op: "i32x4.eq" },
+
+            // Get bitmask
+            { op: "i32x4.bitmask" },
+            { op: "local.set", index: mask },
+
+            // If any match, find which lane
+            { op: "local.get", index: mask },
+            { op: "i32.const", value: 0 },
+            { op: "i32.ne" },
+            {
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                // Check lane 0
+                { op: "local.get", index: mask },
+                { op: "i32.const", value: 1 },
+                { op: "i32.and" },
+                { op: "if", blockType: { kind: "empty" }, then: [{ op: "local.get", index: i }, { op: "return" }] },
+                // Check lane 1
+                { op: "local.get", index: mask },
+                { op: "i32.const", value: 2 },
+                { op: "i32.and" },
+                {
+                  op: "if",
+                  blockType: { kind: "empty" },
+                  then: [
+                    { op: "local.get", index: i },
+                    { op: "i32.const", value: 1 },
+                    { op: "i32.add" },
+                    { op: "return" },
+                  ],
+                },
+                // Check lane 2
+                { op: "local.get", index: mask },
+                { op: "i32.const", value: 4 },
+                { op: "i32.and" },
+                {
+                  op: "if",
+                  blockType: { kind: "empty" },
+                  then: [
+                    { op: "local.get", index: i },
+                    { op: "i32.const", value: 2 },
+                    { op: "i32.add" },
+                    { op: "return" },
+                  ],
+                },
+                // Must be lane 3
+                { op: "local.get", index: i },
+                { op: "i32.const", value: 3 },
+                { op: "i32.add" },
+                { op: "return" },
+              ],
+            },
+
+            // i += 4
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 4 },
+            { op: "i32.add" },
+            { op: "local.set", index: i },
+            { op: "br", depth: 0 },
+          ],
+        },
+      ],
+    },
+
+    // Scalar tail
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            // if i >= len, not found
+            { op: "local.get", index: i },
+            { op: "local.get", index: len },
+            { op: "i32.ge_u" },
+            { op: "br_if", depth: 1 },
+
+            // if arr[16 + i*4] == val, return i
+            { op: "local.get", index: 0 },
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 4 },
+            { op: "i32.mul" },
+            { op: "i32.add" },
+            { op: "i32.load", align: 2, offset: 16 },
+            { op: "local.get", index: 1 },
+            { op: "i32.eq" },
+            { op: "if", blockType: { kind: "empty" }, then: [{ op: "local.get", index: i }, { op: "return" }] },
+
+            // i++
             { op: "local.get", index: i },
             { op: "i32.const", value: 1 },
             { op: "i32.add" },
-            { op: "return" },
-          ] },
-          // Check lane 2
-          { op: "local.get", index: mask },
-          { op: "i32.const", value: 4 },
-          { op: "i32.and" },
-          { op: "if", blockType: { kind: "empty" }, then: [
-            { op: "local.get", index: i },
-            { op: "i32.const", value: 2 },
-            { op: "i32.add" },
-            { op: "return" },
-          ] },
-          // Must be lane 3
-          { op: "local.get", index: i },
-          { op: "i32.const", value: 3 },
-          { op: "i32.add" },
-          { op: "return" },
-        ] },
-
-        // i += 4
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 4 },
-        { op: "i32.add" },
-        { op: "local.set", index: i },
-        { op: "br", depth: 0 },
-      ] },
-    ] },
-
-    // Scalar tail
-    { op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        // if i >= len, not found
-        { op: "local.get", index: i },
-        { op: "local.get", index: len },
-        { op: "i32.ge_u" },
-        { op: "br_if", depth: 1 },
-
-        // if arr[16 + i*4] == val, return i
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 4 },
-        { op: "i32.mul" },
-        { op: "i32.add" },
-        { op: "i32.load", align: 2, offset: 16 },
-        { op: "local.get", index: 1 },
-        { op: "i32.eq" },
-        { op: "if", blockType: { kind: "empty" }, then: [
-          { op: "local.get", index: i },
-          { op: "return" },
-        ] },
-
-        // i++
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 1 },
-        { op: "i32.add" },
-        { op: "local.set", index: i },
-        { op: "br", depth: 0 },
-      ] },
-    ] },
+            { op: "local.set", index: i },
+            { op: "br", depth: 0 },
+          ],
+        },
+      ],
+    },
 
     // not found
     { op: "i32.const", value: -1 },
@@ -693,60 +784,76 @@ function addSimdArrayFillI32(mod: WasmModule): void {
     { op: "local.set", index: i },
 
     // SIMD loop: store 4 elements at a time
-    { op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        // if i + 4 > end, break to scalar
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 4 },
-        { op: "i32.add" },
-        { op: "local.get", index: 3 }, // end
-        { op: "i32.gt_u" },
-        { op: "br_if", depth: 1 },
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            // if i + 4 > end, break to scalar
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 4 },
+            { op: "i32.add" },
+            { op: "local.get", index: 3 }, // end
+            { op: "i32.gt_u" },
+            { op: "br_if", depth: 1 },
 
-        // v128.store(arr + 16 + i*4, fillVec)
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 4 },
-        { op: "i32.mul" },
-        { op: "i32.add" },
-        { op: "local.get", index: 5 }, // fillVec
-        { op: "v128.store", align: 2, offset: 16 },
+            // v128.store(arr + 16 + i*4, fillVec)
+            { op: "local.get", index: 0 },
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 4 },
+            { op: "i32.mul" },
+            { op: "i32.add" },
+            { op: "local.get", index: 5 }, // fillVec
+            { op: "v128.store", align: 2, offset: 16 },
 
-        // i += 4
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 4 },
-        { op: "i32.add" },
-        { op: "local.set", index: i },
-        { op: "br", depth: 0 },
-      ] },
-    ] },
+            // i += 4
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 4 },
+            { op: "i32.add" },
+            { op: "local.set", index: i },
+            { op: "br", depth: 0 },
+          ],
+        },
+      ],
+    },
 
     // Scalar tail
-    { op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        // if i >= end, done
-        { op: "local.get", index: i },
-        { op: "local.get", index: 3 }, // end
-        { op: "i32.ge_u" },
-        { op: "br_if", depth: 1 },
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            // if i >= end, done
+            { op: "local.get", index: i },
+            { op: "local.get", index: 3 }, // end
+            { op: "i32.ge_u" },
+            { op: "br_if", depth: 1 },
 
-        // arr[16 + i*4] = val
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 4 },
-        { op: "i32.mul" },
-        { op: "i32.add" },
-        { op: "local.get", index: 1 }, // val
-        { op: "i32.store", align: 2, offset: 16 },
+            // arr[16 + i*4] = val
+            { op: "local.get", index: 0 },
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 4 },
+            { op: "i32.mul" },
+            { op: "i32.add" },
+            { op: "local.get", index: 1 }, // val
+            { op: "i32.store", align: 2, offset: 16 },
 
-        // i++
-        { op: "local.get", index: i },
-        { op: "i32.const", value: 1 },
-        { op: "i32.add" },
-        { op: "local.set", index: i },
-        { op: "br", depth: 0 },
-      ] },
-    ] },
+            // i++
+            { op: "local.get", index: i },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: i },
+            { op: "br", depth: 0 },
+          ],
+        },
+      ],
+    },
   ];
 
   mod.functions.push({

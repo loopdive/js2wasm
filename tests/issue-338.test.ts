@@ -9,12 +9,7 @@
  * 5. Runtime negative tests pass when execution traps
  */
 import { describe, it, expect } from "vitest";
-import {
-  parseMeta,
-  shouldSkip,
-  handleNegativeTest,
-  type Test262Meta,
-} from "./test262-runner.js";
+import { parseMeta, shouldSkip, handleNegativeTest, type Test262Meta } from "./test262-runner.js";
 
 describe("issue #338: negative test support", () => {
   describe("parseMeta extracts negative metadata", () => {

@@ -42,9 +42,7 @@ describe("Dead import and type elimination (#320)", () => {
 
     // Count type definitions - should have exactly 3:
     // concat type, add_type, greet_type (unused string import types eliminated)
-    const typeLines = result.wat.split("\n").filter((l: string) =>
-      l.trim().startsWith("(type")
-    );
+    const typeLines = result.wat.split("\n").filter((l: string) => l.trim().startsWith("(type"));
     // Without elimination we'd have 7 types; with it we should have fewer
     expect(typeLines.length).toBeLessThan(7);
   });

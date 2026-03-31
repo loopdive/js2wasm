@@ -67,7 +67,7 @@ describe("Global index shifting with string constants in try/catch (#429)", () =
       }
     `);
     expect(result.success).toBe(true);
-    expect(result.errors.filter(e => e.severity === "error")).toHaveLength(0);
+    expect(result.errors.filter((e) => e.severity === "error")).toHaveLength(0);
 
     // Instantiate and run - should not throw CompileError
     const { buildImports: rtBuildImports } = await import("../../src/runtime.js");

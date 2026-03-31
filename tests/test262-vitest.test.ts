@@ -25,14 +25,7 @@ async function getCompileMulti() {
   }
   return _compileMulti;
 }
-import {
-  findTestFiles,
-  parseMeta,
-  wrapTest,
-  shouldSkip,
-  classifyError,
-  TEST_CATEGORIES,
-} from "./test262-runner.js";
+import { findTestFiles, parseMeta, wrapTest, shouldSkip, classifyError, TEST_CATEGORIES } from "./test262-runner.js";
 
 /**
  * Extract _FIXTURE.js file references from static import/export statements.
@@ -94,7 +87,14 @@ class WasmExecPool {
     });
   }
 
-  run(binary: Uint8Array | undefined, imports: any[], stringPool: string[], isRuntimeNegative: boolean, timeoutMs: number, cachePath?: string): Promise<any> {
+  run(
+    binary: Uint8Array | undefined,
+    imports: any[],
+    stringPool: string[],
+    isRuntimeNegative: boolean,
+    timeoutMs: number,
+    cachePath?: string,
+  ): Promise<any> {
     this.execCount++;
     if (this.execCount >= this.MAX_EXECS) {
       this.execCount = 0;
@@ -119,10 +119,9 @@ class WasmExecPool {
         this.worker!.postMessage({ id, cachePath, imports, stringPool, isRuntimeNegative });
       } else {
         const binaryBuf = binary!.buffer.slice(binary!.byteOffset, binary!.byteOffset + binary!.byteLength);
-        this.worker!.postMessage(
-          { id, binary: new Uint8Array(binaryBuf), imports, stringPool, isRuntimeNegative },
-          [binaryBuf],
-        );
+        this.worker!.postMessage({ id, binary: new Uint8Array(binaryBuf), imports, stringPool, isRuntimeNegative }, [
+          binaryBuf,
+        ]);
       }
     });
   }
@@ -169,9 +168,21 @@ const CACHE_DIR = join(import.meta.dirname ?? ".", "..", ".test262-cache");
 function buildCompilerHash(): string {
   const h = createHash("md5");
   const root = join(import.meta.dirname ?? ".", "..");
-  try { h.update(readFileSync(join(root, "scripts", "compiler-bundle.mjs"))); } catch { h.update("no-bundle"); }
-  try { h.update(readFileSync(join(import.meta.dirname ?? ".", "test262-runner.ts"))); } catch { h.update("no-runner"); }
-  try { h.update(readFileSync(join(root, "src", "runtime.ts"))); } catch { h.update("no-runtime"); }
+  try {
+    h.update(readFileSync(join(root, "scripts", "compiler-bundle.mjs")));
+  } catch {
+    h.update("no-bundle");
+  }
+  try {
+    h.update(readFileSync(join(import.meta.dirname ?? ".", "test262-runner.ts")));
+  } catch {
+    h.update("no-runner");
+  }
+  try {
+    h.update(readFileSync(join(root, "src", "runtime.ts")));
+  } catch {
+    h.update("no-runtime");
+  }
   return h.digest("hex").slice(0, 12);
 }
 
@@ -183,11 +194,11 @@ const compilerHash = buildCompilerHash();
  */
 function readFromCache(
   wrappedSource: string,
-): { ok: true; result: any; cachePath: string } | { ok: false; error: string; errorCodes?: number[]; timeout?: boolean } | null {
-  const hash = createHash("md5")
-    .update(wrappedSource)
-    .update(compilerHash)
-    .digest("hex");
+):
+  | { ok: true; result: any; cachePath: string }
+  | { ok: false; error: string; errorCodes?: number[]; timeout?: boolean }
+  | null {
+  const hash = createHash("md5").update(wrappedSource).update(compilerHash).digest("hex");
   const wasmCachePath = join(CACHE_DIR, `${hash}.wasm`);
   const metaPath = join(CACHE_DIR, `${hash}.json`);
 
@@ -221,7 +232,8 @@ let flushCount = 0;
 const REPORT_FLUSH_INTERVAL = 500;
 
 const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0 };
-const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> = {};
+const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> =
+  {};
 const errorCategoryCounts: Record<string, number> = {};
 const skipReasonCounts: Record<string, number> = {};
 
@@ -235,8 +247,14 @@ class ConformanceError extends Error {
 // Periodic GC to prevent fork OOM
 const GC_INTERVAL = 200;
 
-function recordResult(file: string, category: string, status: string, error?: string, timing?: { compileMs?: number; execMs?: number }) {
-  const errorCategory = (status === "fail" || status === "compile_error") ? classifyError(error) : undefined;
+function recordResult(
+  file: string,
+  category: string,
+  status: string,
+  error?: string,
+  timing?: { compileMs?: number; execMs?: number },
+) {
+  const errorCategory = status === "fail" || status === "compile_error" ? classifyError(error) : undefined;
 
   const entry = JSON.stringify({
     timestamp: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
@@ -265,7 +283,9 @@ function recordResult(file: string, category: string, status: string, error?: st
 
   flushCount++;
   if (flushCount % 50 === 0) {
-    try { fsyncSync(jsonlFd); } catch {}
+    try {
+      fsyncSync(jsonlFd);
+    } catch {}
   }
   if (flushCount % GC_INTERVAL === 0 && typeof globalThis.gc === "function") {
     globalThis.gc();
@@ -280,7 +300,9 @@ function recordResult(file: string, category: string, status: string, error?: st
       error_categories: { ...errorCategoryCounts },
       skip_reasons: { ...skipReasonCounts },
     };
-    try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
+    try {
+      writeSync(REPORT_PATH, JSON.stringify(report, null, 2));
+    } catch {}
   }
 
   if (status !== "pass") {
@@ -289,8 +311,12 @@ function recordResult(file: string, category: string, status: string, error?: st
 }
 
 afterAll(() => {
-  try { execPool.shutdown(); } catch {}
-  try { closeSync(jsonlFd); } catch {}
+  try {
+    execPool.shutdown();
+  } catch {}
+  try {
+    closeSync(jsonlFd);
+  } catch {}
 
   const report = {
     timestamp: new Date().toISOString(),
@@ -319,7 +345,9 @@ afterAll(() => {
     }
   }
 
-  console.log(`\nTest262: ${summary.total} total — ${summary.pass} pass, ${summary.fail} fail, ${summary.compile_error} CE, ${summary.skip} skip`);
+  console.log(
+    `\nTest262: ${summary.total} total — ${summary.pass} pass, ${summary.fail} fail, ${summary.compile_error} CE, ${summary.skip} skip`,
+  );
 
   // Append to historical index (runs/index.json)
   try {
@@ -371,7 +399,10 @@ function findNthAssert(source: string, retVal: number): string {
   const assertStarts: { line: number; text: string }[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (/\bassert\b/.test(lines[i])) {
-      const text = lines.slice(i, Math.min(i + 3, lines.length)).join(" ").trim();
+      const text = lines
+        .slice(i, Math.min(i + 3, lines.length))
+        .join(" ")
+        .trim();
       assertStarts.push({ line: i + 1, text: text.substring(0, 120) });
     }
   }
@@ -398,230 +429,248 @@ for (const category of TEST_CATEGORIES) {
     for (const filePath of files) {
       const relPath = relative(TEST262_ROOT, filePath);
 
-      it(relPath, async () => {
-        const source = readFileSync(filePath, "utf-8");
-        const meta = parseMeta(source);
+      it(
+        relPath,
+        async () => {
+          const source = readFileSync(filePath, "utf-8");
+          const meta = parseMeta(source);
 
-        // Handle skips
-        const filter = shouldSkip(source, meta, filePath);
-        if (filter.skip) {
-          recordResult(relPath, category, "skip", filter.reason);
-          return;
-        }
-
-        // Wrap test (same as precompiler — must produce identical source for hash match)
-        const { source: wrapped, bodyLineOffset: wrapOffset } = wrapTest(source, meta);
-        const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
-
-        // Multi-file compilation for FIXTURE imports (can't be precompiled)
-        const fixtures = resolveFixtures(source, filePath);
-        let compileResult: { ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string; errorCodes?: number[]; timeout?: boolean };
-
-        if (fixtures.length > 0) {
-          // FIXTURE tests: compile inline (rare, can't be precompiled)
-          try {
-            const vfiles: Record<string, string> = { "./test.ts": wrapped };
-            for (const fixPath of fixtures) {
-              vfiles["./" + relative(dirname(filePath), fixPath)] = readFileSync(fixPath, "utf-8");
-            }
-            const multiCompile = await getCompileMulti();
-            const result = multiCompile(vfiles, "./test.ts", { skipSemanticDiagnostics: true });
-            if (result.success && result.binary.length > 0) {
-              compileResult = { ok: true, binary: result.binary, result: { imports: result.imports, stringPool: result.stringPool, sourceMap: null } };
-            } else {
-              compileResult = { ok: false, error: result.errors.map((e: any) => `L${e.line}:${e.column} ${e.message}`).join("; ") };
-            }
-          } catch (e: any) {
-            compileResult = { ok: false, error: e.message ?? String(e) };
-          }
-        } else {
-          // Normal path: read from pre-compiled cache
-          const cached = readFromCache(wrapped);
-          if (cached === null) {
-            // Cache miss — this shouldn't happen in two-phase mode, but handle gracefully
-            recordResult(relPath, category, "compile_error", "not in precompile cache (run Phase 1 first)");
+          // Handle skips
+          const filter = shouldSkip(source, meta, filePath);
+          if (filter.skip) {
+            recordResult(relPath, category, "skip", filter.reason);
             return;
           }
-          compileResult = cached;
-        }
 
-        // Handle negative parse/early tests
-        if (isNegative) {
-          const earlyErrors = compileResult.ok ? (compileResult.result as any)?.earlyErrorCodes : undefined;
-          if (earlyErrors?.length > 0) {
-            recordResult(relPath, category, "pass");
+          // Wrap test (same as precompiler — must produce identical source for hash match)
+          const { source: wrapped, bodyLineOffset: wrapOffset } = wrapTest(source, meta);
+          const isNegative =
+            meta.negative &&
+            (meta.negative.phase === "parse" ||
+              meta.negative.phase === "early" ||
+              meta.negative.phase === "resolution");
+
+          // Multi-file compilation for FIXTURE imports (can't be precompiled)
+          const fixtures = resolveFixtures(source, filePath);
+          let compileResult:
+            | { ok: true; binary: Uint8Array; result: any; cachePath?: string }
+            | { ok: false; error: string; errorCodes?: number[]; timeout?: boolean };
+
+          if (fixtures.length > 0) {
+            // FIXTURE tests: compile inline (rare, can't be precompiled)
+            try {
+              const vfiles: Record<string, string> = { "./test.ts": wrapped };
+              for (const fixPath of fixtures) {
+                vfiles["./" + relative(dirname(filePath), fixPath)] = readFileSync(fixPath, "utf-8");
+              }
+              const multiCompile = await getCompileMulti();
+              const result = multiCompile(vfiles, "./test.ts", { skipSemanticDiagnostics: true });
+              if (result.success && result.binary.length > 0) {
+                compileResult = {
+                  ok: true,
+                  binary: result.binary,
+                  result: { imports: result.imports, stringPool: result.stringPool, sourceMap: null },
+                };
+              } else {
+                compileResult = {
+                  ok: false,
+                  error: result.errors.map((e: any) => `L${e.line}:${e.column} ${e.message}`).join("; "),
+                };
+              }
+            } catch (e: any) {
+              compileResult = { ok: false, error: e.message ?? String(e) };
+            }
+          } else {
+            // Normal path: read from pre-compiled cache
+            const cached = readFromCache(wrapped);
+            if (cached === null) {
+              // Cache miss — this shouldn't happen in two-phase mode, but handle gracefully
+              recordResult(relPath, category, "compile_error", "not in precompile cache (run Phase 1 first)");
+              return;
+            }
+            compileResult = cached;
+          }
+
+          // Handle negative parse/early tests
+          if (isNegative) {
+            const earlyErrors = compileResult.ok ? (compileResult.result as any)?.earlyErrorCodes : undefined;
+            if (earlyErrors?.length > 0) {
+              recordResult(relPath, category, "pass");
+              return;
+            }
+
+            if (!compileResult.ok) {
+              const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
+              const codes = (compileResult as any).errorCodes as number[] | undefined;
+              const hasEarlyError = codes?.some((c: number) => ES_EARLY_ERRORS.has(c));
+              if (hasEarlyError) {
+                recordResult(relPath, category, "pass");
+              } else {
+                recordResult(relPath, category, "pass");
+              }
+              return;
+            }
+            // Compilation succeeded — try instantiation (Wasm validation may catch errors)
+            try {
+              const binary = compileResult.cachePath ? readFileSync(compileResult.cachePath) : compileResult.binary;
+              const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
+              await WebAssembly.instantiate(binary, imports as any);
+            } catch {
+              recordResult(relPath, category, "pass");
+              return;
+            }
+            const desc = meta.description?.substring(0, 100) ?? "";
+            const info = `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled${desc ? `: ${desc}` : ""}`;
+            recordResult(relPath, category, "fail", info);
             return;
           }
 
           if (!compileResult.ok) {
-            const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
-            const codes = (compileResult as any).errorCodes as number[] | undefined;
-            const hasEarlyError = codes?.some((c: number) => ES_EARLY_ERRORS.has(c));
-            if (hasEarlyError) {
-              recordResult(relPath, category, "pass");
-            } else {
-              recordResult(relPath, category, "pass");
-            }
+            const status = (compileResult as any).timeout ? "compile_timeout" : "compile_error";
+            recordResult(relPath, category, status, adjustErrorLines(compileResult.error, wrapOffset));
             return;
           }
-          // Compilation succeeded — try instantiation (Wasm validation may catch errors)
-          try {
-            const binary = compileResult.cachePath ? readFileSync(compileResult.cachePath) : compileResult.binary;
-            const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
-            await WebAssembly.instantiate(binary, imports as any);
-          } catch {
-            recordResult(relPath, category, "pass"); return;
+
+          // Execute via worker
+          const isRuntimeNegative = meta.negative?.phase === "runtime";
+          const EXEC_TIMEOUT_MS = 10_000;
+          const compileMs = compileResult.result?.compileMs;
+
+          const execStart = performance.now();
+          const workerResult = await execPool.run(
+            compileResult.cachePath ? undefined : compileResult.binary,
+            compileResult.result.imports,
+            compileResult.result.stringPool,
+            isRuntimeNegative,
+            EXEC_TIMEOUT_MS,
+            compileResult.cachePath,
+          );
+          const execMs = performance.now() - execStart;
+          const timing = { compileMs, execMs };
+
+          // Process worker result
+          if (workerResult.timeout) {
+            recordResult(relPath, category, "fail", "runtime timeout (10s)", { compileMs, execMs: EXEC_TIMEOUT_MS });
+            return;
           }
-          const desc = meta.description?.substring(0, 100) ?? "";
-          const info = `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled${desc ? `: ${desc}` : ""}`;
-          recordResult(relPath, category, "fail", info);
-          return;
-        }
 
-        if (!compileResult.ok) {
-          const status = (compileResult as any).timeout ? "compile_timeout" : "compile_error";
-          recordResult(relPath, category, status, adjustErrorLines(compileResult.error, wrapOffset));
-          return;
-        }
+          if (workerResult.instantiateError) {
+            const msg = workerResult.error;
+            const funcMatch = msg.match(/Compiling function #\d+:"(\w+)" failed/);
+            const offsetMatch = msg.match(/@\+(\d+)/);
+            let enriched = msg;
 
-        // Execute via worker
-        const isRuntimeNegative = meta.negative?.phase === "runtime";
-        const EXEC_TIMEOUT_MS = 10_000;
-        const compileMs = compileResult.result?.compileMs;
-
-        const execStart = performance.now();
-        const workerResult = await execPool.run(
-          compileResult.cachePath ? undefined : compileResult.binary,
-          compileResult.result.imports,
-          compileResult.result.stringPool,
-          isRuntimeNegative,
-          EXEC_TIMEOUT_MS,
-          compileResult.cachePath,
-        );
-        const execMs = performance.now() - execStart;
-        const timing = { compileMs, execMs };
-
-        // Process worker result
-        if (workerResult.timeout) {
-          recordResult(relPath, category, "fail", "runtime timeout (10s)", { compileMs, execMs: EXEC_TIMEOUT_MS });
-          return;
-        }
-
-        if (workerResult.instantiateError) {
-          const msg = workerResult.error;
-          const funcMatch = msg.match(/Compiling function #\d+:"(\w+)" failed/);
-          const offsetMatch = msg.match(/@\+(\d+)/);
-          let enriched = msg;
-
-          if (funcMatch) {
-            const fname = funcMatch[1];
-            const lines = source.split("\n");
-            let found = false;
-
-            if (fname !== "test") {
-              for (let i = 0; i < lines.length; i++) {
-                if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
-                  const ctx = lines[i].trim().substring(0, 80);
-                  enriched = `${msg} [in ${fname}() at L${i + 1}: ${ctx}]`;
-                  found = true;
-                  break;
-                }
-              }
-            }
-
-            if (!found && /^__(?:closure|cb|iife|anon)_\d+$/.test(fname)) {
-              const idx = parseInt(fname.split("_").pop()!, 10);
-              let closureCount = 0;
-              for (let i = 0; i < lines.length; i++) {
-                if (/=>|function\s*\(/.test(lines[i])) {
-                  if (closureCount === idx) {
-                    const ctx = lines[i].trim().substring(0, 80);
-                    enriched = `${msg} [closure #${idx} at L${i + 1}: ${ctx}]`;
-                    found = true;
-                    break;
-                  }
-                  closureCount++;
-                }
-              }
-            }
-
-            if (!found && offsetMatch) {
-              enriched = `${msg} [in ${fname}() @+${offsetMatch[1]}]`;
-            } else if (!found) {
-              enriched = `${msg} [in ${fname}()]`;
-            }
-          }
-          recordResult(relPath, category, "compile_error", enriched, timing);
-          return;
-        }
-
-        if (workerResult.noTestExport) {
-          recordResult(relPath, category, "compile_error", "no test export", timing);
-          return;
-        }
-
-        if (workerResult.workerError) {
-          recordResult(relPath, category, "fail", workerResult.error, timing);
-          return;
-        }
-
-        if (!workerResult.ok) {
-          if (workerResult.isException) {
-            let errInfo = workerResult.error;
-            const desc = meta.description?.substring(0, 100) ?? "";
-
-            const fnMatch = errInfo.match(/\[in (\w+)\(\)\]/);
-            if (fnMatch) {
-              const fname = fnMatch[1];
+            if (funcMatch) {
+              const fname = funcMatch[1];
               const lines = source.split("\n");
+              let found = false;
+
               if (fname !== "test") {
                 for (let i = 0; i < lines.length; i++) {
                   if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
                     const ctx = lines[i].trim().substring(0, 80);
-                    errInfo = errInfo.replace(`[in ${fname}()]`, `[in ${fname}() at L${i + 1}: ${ctx}]`);
+                    enriched = `${msg} [in ${fname}() at L${i + 1}: ${ctx}]`;
+                    found = true;
                     break;
                   }
                 }
               }
-            }
 
-            if (/TypeError \(null\/undefined/.test(errInfo)) {
-              recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`, timing);
-            } else {
-              recordResult(relPath, category, "fail", errInfo, timing);
+              if (!found && /^__(?:closure|cb|iife|anon)_\d+$/.test(fname)) {
+                const idx = parseInt(fname.split("_").pop()!, 10);
+                let closureCount = 0;
+                for (let i = 0; i < lines.length; i++) {
+                  if (/=>|function\s*\(/.test(lines[i])) {
+                    if (closureCount === idx) {
+                      const ctx = lines[i].trim().substring(0, 80);
+                      enriched = `${msg} [closure #${idx} at L${i + 1}: ${ctx}]`;
+                      found = true;
+                      break;
+                    }
+                    closureCount++;
+                  }
+                }
+              }
+
+              if (!found && offsetMatch) {
+                enriched = `${msg} [in ${fname}() @+${offsetMatch[1]}]`;
+              } else if (!found) {
+                enriched = `${msg} [in ${fname}()]`;
+              }
             }
-          } else {
-            recordResult(relPath, category, "fail", workerResult.error, timing);
+            recordResult(relPath, category, "compile_error", enriched, timing);
+            return;
           }
-          return;
-        }
 
-        // Success path
-        if (workerResult.runtimeNegativePass) {
-          recordResult(relPath, category, "pass", undefined, timing);
-          return;
-        }
+          if (workerResult.noTestExport) {
+            recordResult(relPath, category, "compile_error", "no test export", timing);
+            return;
+          }
 
-        if (workerResult.runtimeNegativeNoThrow) {
-          recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`, timing);
-          return;
-        }
+          if (workerResult.workerError) {
+            recordResult(relPath, category, "fail", workerResult.error, timing);
+            return;
+          }
 
-        const ret = workerResult.ret;
-        if (ret === 1) {
-          recordResult(relPath, category, "pass", undefined, timing);
-        } else if (ret === -1) {
-          const desc = meta.description?.substring(0, 100) ?? "";
-          const throwsMatch = source.match(/assert\.throws\s*\(\s*(\w+Error)/);
-          const expectedErr = throwsMatch ? throwsMatch[1] : null;
-          let context = desc || "exception in test body";
-          if (expectedErr) context = `expected ${expectedErr} — ${context}`;
-          recordResult(relPath, category, "fail", `returned -1 — ${context}`, timing);
-        } else {
-          const assertInfo = findNthAssert(source, ret);
-          recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`, timing);
-        }
-      }, 90_000);
+          if (!workerResult.ok) {
+            if (workerResult.isException) {
+              let errInfo = workerResult.error;
+              const desc = meta.description?.substring(0, 100) ?? "";
+
+              const fnMatch = errInfo.match(/\[in (\w+)\(\)\]/);
+              if (fnMatch) {
+                const fname = fnMatch[1];
+                const lines = source.split("\n");
+                if (fname !== "test") {
+                  for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
+                      const ctx = lines[i].trim().substring(0, 80);
+                      errInfo = errInfo.replace(`[in ${fname}()]`, `[in ${fname}() at L${i + 1}: ${ctx}]`);
+                      break;
+                    }
+                  }
+                }
+              }
+
+              if (/TypeError \(null\/undefined/.test(errInfo)) {
+                recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`, timing);
+              } else {
+                recordResult(relPath, category, "fail", errInfo, timing);
+              }
+            } else {
+              recordResult(relPath, category, "fail", workerResult.error, timing);
+            }
+            return;
+          }
+
+          // Success path
+          if (workerResult.runtimeNegativePass) {
+            recordResult(relPath, category, "pass", undefined, timing);
+            return;
+          }
+
+          if (workerResult.runtimeNegativeNoThrow) {
+            recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`, timing);
+            return;
+          }
+
+          const ret = workerResult.ret;
+          if (ret === 1) {
+            recordResult(relPath, category, "pass", undefined, timing);
+          } else if (ret === -1) {
+            const desc = meta.description?.substring(0, 100) ?? "";
+            const throwsMatch = source.match(/assert\.throws\s*\(\s*(\w+Error)/);
+            const expectedErr = throwsMatch ? throwsMatch[1] : null;
+            let context = desc || "exception in test body";
+            if (expectedErr) context = `expected ${expectedErr} — ${context}`;
+            recordResult(relPath, category, "fail", `returned -1 — ${context}`, timing);
+          } else {
+            const assertInfo = findNthAssert(source, ret);
+            recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`, timing);
+          }
+        },
+        90_000,
+      );
     }
   });
 }

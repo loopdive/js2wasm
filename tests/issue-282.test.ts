@@ -6,8 +6,7 @@ const jsStringPolyfill = {
   concat: (a: string, b: string) => a + b,
   length: (s: string) => s.length,
   equals: (a: string, b: string) => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number) =>
-    s.substring(start, end),
+  substring: (s: string, start: number, end: number) => s.substring(start, end),
   charCodeAt: (s: string, i: number) => s.charCodeAt(i),
 };
 
@@ -32,11 +31,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
   };
 }
 
-async function run(
-  source: string,
-  fn: string,
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -45,9 +40,7 @@ async function run(
   }
   // Check for codegen errors (e.g. missing string registration)
   if (result.errors.length > 0) {
-    throw new Error(
-      `Codegen errors:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Codegen errors:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
   const imports = buildImports(result);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
@@ -65,9 +58,7 @@ describe("Issue #282: Variable declaration complex initializers", () => {
       `);
       expect(result.success).toBe(true);
       // Ensure no "String literal not registered" errors
-      const strErrors = result.errors.filter((e) =>
-        e.message.includes("String literal not registered"),
-      );
+      const strErrors = result.errors.filter((e) => e.message.includes("String literal not registered"));
       expect(strErrors).toHaveLength(0);
     });
 
@@ -77,9 +68,7 @@ describe("Issue #282: Variable declaration complex initializers", () => {
         export function test(): number { return 42; }
       `);
       expect(result.success).toBe(true);
-      const strErrors = result.errors.filter((e) =>
-        e.message.includes("String literal not registered"),
-      );
+      const strErrors = result.errors.filter((e) => e.message.includes("String literal not registered"));
       expect(strErrors).toHaveLength(0);
     });
 
@@ -89,71 +78,100 @@ describe("Issue #282: Variable declaration complex initializers", () => {
         export function test(): number { return 1; }
       `);
       expect(result.success).toBe(true);
-      expect(
-        result.errors.filter((e) =>
-          e.message.includes("String literal not registered"),
-        ),
-      ).toHaveLength(0);
+      expect(result.errors.filter((e) => e.message.includes("String literal not registered"))).toHaveLength(0);
     });
   });
 
   describe("ternary expression initializers", () => {
     it("const with ternary number initializer", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(x: number): number {
           const a = x > 0 ? 10 : 20;
           return a;
         }
-      `, "test", [5])).toBe(10);
+      `,
+          "test",
+          [5],
+        ),
+      ).toBe(10);
     });
 
     it("const with nested ternary", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(x: number): number {
           const a = x > 10 ? 100 : x > 0 ? 50 : 0;
           return a;
         }
-      `, "test", [5])).toBe(50);
+      `,
+          "test",
+          [5],
+        ),
+      ).toBe(50);
     });
   });
 
   describe("binary expression initializers", () => {
     it("const with arithmetic expression", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(): number {
           const a = 1 + 2 * 3;
           return a;
         }
-      `, "test")).toBe(7);
+      `,
+          "test",
+        ),
+      ).toBe(7);
     });
 
     it("const with logical expression", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(x: number): number {
           const a = x || 42;
           return a;
         }
-      `, "test", [0])).toBe(42);
+      `,
+          "test",
+          [0],
+        ),
+      ).toBe(42);
     });
   });
 
   describe("function expression initializers", () => {
     it("arrow function in variable", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(): number {
           const f = (x: number): number => x * 2;
           return f(21);
         }
-      `, "test")).toBe(42);
+      `,
+          "test",
+        ),
+      ).toBe(42);
     });
 
     it("function expression in variable", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(): number {
           const f = function(x: number): number { return x + 1; };
           return f(41);
         }
-      `, "test")).toBe(42);
+      `,
+          "test",
+        ),
+      ).toBe(42);
     });
 
     it("top-level arrow function", async () => {
@@ -175,7 +193,9 @@ describe("Issue #282: Variable declaration complex initializers", () => {
 
   describe("class expression initializers", () => {
     it("class expression at module level", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         const C = class {
           x: number;
           constructor(x: number) { this.x = x; }
@@ -183,11 +203,16 @@ describe("Issue #282: Variable declaration complex initializers", () => {
         export function test(): number {
           return new C(42).x;
         }
-      `, "test")).toBe(42);
+      `,
+          "test",
+        ),
+      ).toBe(42);
     });
 
     it("class expression inside function", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(): number {
           const C = class {
             x: number;
@@ -195,7 +220,10 @@ describe("Issue #282: Variable declaration complex initializers", () => {
           };
           return new C(42).x;
         }
-      `, "test")).toBe(42);
+      `,
+          "test",
+        ),
+      ).toBe(42);
     });
 
     // Note: class expressions in block scopes (if/else) have a separate
@@ -204,61 +232,89 @@ describe("Issue #282: Variable declaration complex initializers", () => {
 
   describe("multiple variable declarations", () => {
     it("multiple var decls with same type", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(): number {
           var a = 1, b = 2, c = 3;
           return a + b + c;
         }
-      `, "test")).toBe(6);
+      `,
+          "test",
+        ),
+      ).toBe(6);
     });
 
     it("multiple let decls", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(): number {
           let a = 10, b = 20;
           return a + b;
         }
-      `, "test")).toBe(30);
+      `,
+          "test",
+        ),
+      ).toBe(30);
     });
   });
 
   describe("for-loop variable initializers", () => {
     it("simple for-loop var init", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(): number {
           let sum = 0;
           for (var i = 0; i < 5; i++) { sum += i; }
           return sum;
         }
-      `, "test")).toBe(10);
+      `,
+          "test",
+        ),
+      ).toBe(10);
     });
 
     it("complex for-loop init with ternary", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(x: number): number {
           let sum = 0;
           for (var i = x > 0 ? 0 : 5; i < 10; i++) { sum += i; }
           return sum;
         }
-      `, "test", [1])).toBe(45);
+      `,
+          "test",
+          [1],
+        ),
+      ).toBe(45);
     });
   });
 
   describe("call expression initializers", () => {
     it("variable initialized with function call", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         function makeNumber(): number { return 42; }
         export function test(): number {
           const x = makeNumber();
           return x;
         }
-      `, "test")).toBe(42);
+      `,
+          "test",
+        ),
+      ).toBe(42);
     });
   });
 
   describe("new expression initializers", () => {
     it("variable initialized with new", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         class Point {
           x: number;
           y: number;
@@ -268,18 +324,26 @@ describe("Issue #282: Variable declaration complex initializers", () => {
           const p = new Point(10, 20);
           return p.x + p.y;
         }
-      `, "test")).toBe(30);
+      `,
+          "test",
+        ),
+      ).toBe(30);
     });
   });
 
   describe("object literal initializers", () => {
     it("const with object literal", async () => {
-      expect(await run(`
+      expect(
+        await run(
+          `
         export function test(): number {
           const obj = { a: 1, b: 2 };
           return obj.a + obj.b;
         }
-      `, "test")).toBe(3);
+      `,
+          "test",
+        ),
+      ).toBe(3);
     });
   });
 });

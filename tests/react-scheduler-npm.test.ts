@@ -15,11 +15,7 @@ import { buildImports } from "../src/runtime.js";
 // ---------------------------------------------------------------------------
 // Helper: compile + instantiate + call exported function
 // ---------------------------------------------------------------------------
-async function run(
-  source: string,
-  fn: string = "test",
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string = "test", args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -287,12 +283,12 @@ function compare(a, b) {
 // Tests
 // ---------------------------------------------------------------------------
 describe("React Scheduler NPM min-heap", () => {
-
   // === Section 1: TypeScript-annotated port compiles and runs ===
   describe("TypeScript-annotated port (from npm source)", () => {
-
     it("compiles the TypeScript-annotated heap source", () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 export function test(): number { return 1; }
 `;
       const result = compile(source);
@@ -306,7 +302,9 @@ export function test(): number { return 1; }
     });
 
     it("peek on empty heap returns -1", async () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 export function test(): number {
   resetHeap();
   return peekSort();
@@ -316,7 +314,9 @@ export function test(): number {
     });
 
     it("push + peek returns the minimum element", async () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 10));
@@ -329,7 +329,9 @@ export function test(): number {
     });
 
     it("pop returns elements in sorted order", async () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 30));
@@ -350,7 +352,9 @@ export function test(): number {
     });
 
     it("pop on empty heap returns -1", async () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 export function test(): number {
   resetHeap();
   return popSort();
@@ -360,7 +364,9 @@ export function test(): number {
     });
 
     it("tie-breaking by id", async () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(5, 10));
@@ -381,7 +387,9 @@ export function test(): number {
     });
 
     it("mixed push/pop maintains heap invariant", async () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 50));
@@ -410,7 +418,9 @@ export function test(): number {
     });
 
     it("handles 7 elements correctly", async () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 70));
@@ -437,7 +447,9 @@ export function test(): number {
     });
 
     it("simulates React priority levels", async () => {
-      const source = HEAP_TS_SOURCE + `
+      const source =
+        HEAP_TS_SOURCE +
+        `
 // React scheduler priority timeouts (from scheduler source lines 307-320)
 // ImmediatePriority: -1
 // UserBlockingPriority: 250
@@ -490,7 +502,6 @@ export function test(): number {
 
   // === Section 2: Raw JS source from npm with allowJs ===
   describe("raw JS source from npm (allowJs)", () => {
-
     it("attempts to compile the original JS min-heap functions", () => {
       // This tests whether the raw minified JS from the npm package
       // can be parsed and compiled by ts2wasm with allowJs: true.
@@ -501,7 +512,9 @@ export function test(): number {
       //   - `heap.pop()` (Array.pop method)
       //   - Comma operator expressions as statements
       //   - Untyped object property access (a.sortIndex)
-      const source = ORIGINAL_JS_MINHEAP + `
+      const source =
+        ORIGINAL_JS_MINHEAP +
+        `
 export function test() { return 1; }
 `;
       const result = compile(source, { allowJs: true });
@@ -536,7 +549,6 @@ export function test() { return 1; }
 
   // === Section 3: Progressively closer to original JS ===
   describe("progressive JS approximation", () => {
-
     it("compiles ternary-based peek (original pattern)", async () => {
       // Original: function peek(heap) { return 0 === heap.length ? null : heap[0]; }
       // Adapted: use ternary with typed array
@@ -680,7 +692,6 @@ export function test(): number {
 
   // === Section 4: Feature gap analysis ===
   describe("feature gap documentation", () => {
-
     it("documents what works and what is missing for full scheduler compilation", () => {
       // This test documents the gap between the actual npm scheduler source
       // and what ts2wasm can compile today.

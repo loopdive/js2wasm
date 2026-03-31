@@ -8,7 +8,12 @@ import * as fs from "fs";
 async function compileAndValidate(source: string) {
   const result = compile(source);
   if (!result.success) {
-    return { compileSuccess: false, instantiateSuccess: false, error: result.errors.map(e => e.message).join("; "), wat: result.wat };
+    return {
+      compileSuccess: false,
+      instantiateSuccess: false,
+      error: result.errors.map((e) => e.message).join("; "),
+      wat: result.wat,
+    };
   }
   try {
     const imports = buildImports(result.imports, undefined, result.stringPool);
@@ -73,7 +78,8 @@ describe("Issue 559: coerce arithmetic result to externref before call", () => {
 
   // Minimal reproducer: new Number in string arithmetic context
   it("str * new Number in string concat", async () => {
-    const result = await compileAndValidate(wrapTest(`/*---
+    const result = await compileAndValidate(
+      wrapTest(`/*---
 info: test
 es5id: test
 description: test
@@ -81,7 +87,8 @@ description: test
 if ("1" * new Number(1) !== 1) {
   throw new Test262Error('#5: Actual: ' + ("1" * new Number(1)));
 }
-`).source);
+`).source,
+    );
     expect(result.instantiateSuccess, `Wasm validation failed: ${result.error}`).toBe(true);
   });
 });

@@ -4,7 +4,9 @@ import { compile } from "../src/index.js";
 async function run(source: string): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(`Compile failed:\n${result.errors.map(e => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`);
+    throw new Error(
+      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
+    );
   }
   const { instance } = await WebAssembly.instantiate(result.binary, {
     env: { console_log_number: () => {}, console_log_bool: () => {}, console_log_string: () => {} },
@@ -43,7 +45,7 @@ describe("SpreadElement in IIFE and expression positions", () => {
       })(...[10, 20, 30]);
       export function main() { return result; }
     `);
-    const hasSpreadError = result.errors.some(e => e.message.includes("SpreadElement"));
+    const hasSpreadError = result.errors.some((e) => e.message.includes("SpreadElement"));
     expect(hasSpreadError).toBe(false);
   });
 });

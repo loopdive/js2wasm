@@ -116,11 +116,18 @@ function quicksortJS(): number {
   function qsort(a: number[], lo: number, hi: number): void {
     if (lo >= hi) return;
     const pivot = a[Math.floor((lo + hi) / 2)]!;
-    let i = lo, j = hi;
+    let i = lo,
+      j = hi;
     while (i <= j) {
       while (a[i]! < pivot) i++;
       while (a[j]! > pivot) j--;
-      if (i <= j) { const tmp = a[i]!; a[i] = a[j]!; a[j] = tmp; i++; j--; }
+      if (i <= j) {
+        const tmp = a[i]!;
+        a[i] = a[j]!;
+        a[j] = tmp;
+        i++;
+        j--;
+      }
     }
     if (lo < j) qsort(a, lo, j);
     if (i < hi) qsort(a, i, hi);
@@ -133,9 +140,12 @@ function sieveJS(): number {
   const N = 10000;
   const isPrime: number[] = [];
   for (let i = 0; i < N; i++) isPrime.push(1);
-  isPrime[0] = 0; isPrime[1] = 0;
+  isPrime[0] = 0;
+  isPrime[1] = 0;
   for (let i = 2; i * i < N; i++) {
-    if (isPrime[i]) { for (let j = i * i; j < N; j += i) isPrime[j] = 0; }
+    if (isPrime[i]) {
+      for (let j = i * i; j < N; j += i) isPrime[j] = 0;
+    }
   }
   let count = 0;
   for (let i = 0; i < N; i++) if (isPrime[i]) count++;
@@ -215,25 +225,31 @@ async function runPerfSuite(): Promise<PerfBenchResult[]> {
       }
 
       const imports = buildImports(compileResult.imports, {}, compileResult.stringPool);
-      const { instance } = await instantiateWasm(
-        compileResult.binary,
-        imports.env,
-        imports.string_constants,
-      );
+      const { instance } = await instantiateWasm(compileResult.binary, imports.env, imports.string_constants);
       if (imports.setExports) imports.setExports(instance.exports as Record<string, Function>);
 
       const wasmRun = (instance.exports as Record<string, Function>).run as () => number;
-      if (!wasmRun) { console.log(" NO run EXPORT"); continue; }
+      if (!wasmRun) {
+        console.log(" NO run EXPORT");
+        continue;
+      }
 
       // Warmup
-      for (let i = 0; i < WARMUP; i++) { workload.js(); wasmRun(); }
+      for (let i = 0; i < WARMUP; i++) {
+        workload.js();
+        wasmRun();
+      }
 
       // Timed runs
       const jsTimings: number[] = [];
       const wasmTimings: number[] = [];
       for (let i = 0; i < ITERATIONS; i++) {
-        let t = performance.now(); workload.js(); jsTimings.push(performance.now() - t);
-        t = performance.now(); wasmRun(); wasmTimings.push(performance.now() - t);
+        let t = performance.now();
+        workload.js();
+        jsTimings.push(performance.now() - t);
+        t = performance.now();
+        wasmRun();
+        wasmTimings.push(performance.now() - t);
       }
 
       const jsMedian = median(jsTimings);
@@ -250,7 +266,7 @@ async function runPerfSuite(): Promise<PerfBenchResult[]> {
         compileMs,
       });
 
-      const label = speedup >= 1 ? `${speedup.toFixed(2)}x faster` : `${(1/speedup).toFixed(2)}x slower`;
+      const label = speedup >= 1 ? `${speedup.toFixed(2)}x faster` : `${(1 / speedup).toFixed(2)}x slower`;
       console.log(` JS: ${jsMedian.toFixed(3)}ms | Wasm: ${wasmMedian.toFixed(3)}ms | ${label}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -382,7 +398,12 @@ export function test(): number { return 1; }
 `;
 
 // JS min-heap for baseline
-class HeapNode { constructor(public id: number, public sortIndex: number) {} }
+class HeapNode {
+  constructor(
+    public id: number,
+    public sortIndex: number,
+  ) {}
+}
 let jsHeap: (HeapNode | null)[] = [];
 let jsHeapSize = 0;
 
@@ -397,8 +418,13 @@ function jsPush(node: HeapNode): void {
   let index = jsHeapSize - 1;
   while (index > 0) {
     const pi = (index - 1) >> 1;
-    const p = jsHeap[pi]!, n = jsHeap[index]!;
-    if (jsCompare(p, n) > 0) { jsHeap[pi] = n; jsHeap[index] = p; index = pi; } else break;
+    const p = jsHeap[pi]!,
+      n = jsHeap[index]!;
+    if (jsCompare(p, n) > 0) {
+      jsHeap[pi] = n;
+      jsHeap[index] = p;
+      index = pi;
+    } else break;
   }
 }
 
@@ -413,25 +439,42 @@ function jsPopSort(): number {
   let index = 0;
   const half = jsHeapSize >> 1;
   while (index < half) {
-    const li = 2 * (index + 1) - 1, ri = li + 1;
-    const left = jsHeap[li]!, node = jsHeap[index]!;
+    const li = 2 * (index + 1) - 1,
+      ri = li + 1;
+    const left = jsHeap[li]!,
+      node = jsHeap[index]!;
     if (jsCompare(left, node) < 0) {
       if (ri < jsHeapSize) {
         const right = jsHeap[ri]!;
-        if (jsCompare(right, left) < 0) { jsHeap[index] = right; jsHeap[ri] = node; index = ri; }
-        else { jsHeap[index] = left; jsHeap[li] = node; index = li; }
-      } else { jsHeap[index] = left; jsHeap[li] = node; index = li; }
+        if (jsCompare(right, left) < 0) {
+          jsHeap[index] = right;
+          jsHeap[ri] = node;
+          index = ri;
+        } else {
+          jsHeap[index] = left;
+          jsHeap[li] = node;
+          index = li;
+        }
+      } else {
+        jsHeap[index] = left;
+        jsHeap[li] = node;
+        index = li;
+      }
     } else if (ri < jsHeapSize) {
       const right = jsHeap[ri]!;
-      if (jsCompare(right, node) < 0) { jsHeap[index] = right; jsHeap[ri] = node; index = ri; }
-      else break;
+      if (jsCompare(right, node) < 0) {
+        jsHeap[index] = right;
+        jsHeap[ri] = node;
+        index = ri;
+      } else break;
     } else break;
   }
   return val;
 }
 
 function jsInternalBenchmark(n: number, seed: number): number {
-  jsHeap = []; jsHeapSize = 0;
+  jsHeap = [];
+  jsHeapSize = 0;
   let rng = seed;
   for (let i = 0; i < n; i++) {
     rng = (rng * 1103 + 12345) % 100000;
@@ -496,20 +539,22 @@ async function runReactBench(): Promise<ReactBenchResult[]> {
     const wasmAvg = wasmTimes.reduce((a, b) => a + b, 0) / wasmTimes.length;
     const speedup = jsAvg / wasmAvg;
 
-    const label = speedup >= 1 ? `${speedup.toFixed(2)}x faster` : `${(1/speedup).toFixed(2)}x slower`;
+    const label = speedup >= 1 ? `${speedup.toFixed(2)}x faster` : `${(1 / speedup).toFixed(2)}x slower`;
     console.log(`  JS avg: ${jsAvg.toFixed(2)}ms | Wasm avg: ${wasmAvg.toFixed(2)}ms | ${label}`);
     console.log(`  Correctness: ${correct ? "PASS" : "FAIL"}`);
 
-    return [{
-      name: "react-scheduler-minheap",
-      category: "react",
-      jsAvgMs: jsAvg,
-      wasmAvgMs: wasmAvg,
-      speedup,
-      correct,
-      binarySize: result.binary.byteLength,
-      compileMs,
-    }];
+    return [
+      {
+        name: "react-scheduler-minheap",
+        category: "react",
+        jsAvgMs: jsAvg,
+        wasmAvgMs: wasmAvg,
+        speedup,
+        correct,
+        binarySize: result.binary.byteLength,
+        compileMs,
+      },
+    ];
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.log(`  ERROR: ${msg.split("\n")[0]}`);
@@ -573,12 +618,13 @@ async function main() {
     console.log(`  Suite benchmarks: ${report.suites.length} results`);
   }
   if (report.perf) {
-    const faster = report.perf.filter(r => r.speedup >= 1).length;
+    const faster = report.perf.filter((r) => r.speedup >= 1).length;
     console.log(`  Perf benchmarks:  ${report.perf.length} results (${faster} Wasm faster)`);
   }
   if (report.react) {
     for (const r of report.react) {
-      const label = r.speedup >= 1 ? `Wasm ${r.speedup.toFixed(2)}x faster` : `JS ${(1/r.speedup).toFixed(2)}x faster`;
+      const label =
+        r.speedup >= 1 ? `Wasm ${r.speedup.toFixed(2)}x faster` : `JS ${(1 / r.speedup).toFixed(2)}x faster`;
       console.log(`  React scheduler:  ${label}, correct=${r.correct}`);
     }
   }

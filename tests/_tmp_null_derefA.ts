@@ -34,4 +34,4 @@ export function test(): number {
 
 const result = compile(src);
 // Just dump the entire WAT
-process.stdout.write(result.wat || 'NO WAT');
+process.stdout.write(result.wat || "NO WAT");

@@ -28,8 +28,7 @@ async function compileToWasm(source: string) {
   }
   const imports = buildImports(result);
   // Add String.fromCharCode host import (compiler emits String_fromCharCode)
-  (imports.env as Record<string, Function>).String_fromCharCode =
-    (code: number) => String.fromCharCode(code);
+  (imports.env as Record<string, Function>).String_fromCharCode = (code: number) => String.fromCharCode(code);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
   return instance.exports as Record<string, Function>;
 }
@@ -37,10 +36,7 @@ async function compileToWasm(source: string) {
 /**
  * Assert Wasm output matches native JS for each test case.
  */
-async function assertEquivalent(
-  source: string,
-  testCases: { fn: string; args: unknown[]; approx?: boolean }[],
-) {
+async function assertEquivalent(source: string, testCases: { fn: string; args: unknown[]; approx?: boolean }[]) {
   const wasmExports = await compileToWasm(source);
   const jsExports = evaluateAsJs(source);
   for (const { fn, args, approx } of testCases) {
@@ -99,7 +95,8 @@ describe("JWT showcase: base64url decode", () => {
   it("decodes a simple base64url string", async () => {
     // "Hello" in base64url is "SGVsbG8"
     await assertEquivalent(
-      base64Source + `
+      base64Source +
+        `
       export function test(): string {
         return base64UrlDecode("SGVsbG8");
       }
@@ -111,7 +108,8 @@ describe("JWT showcase: base64url decode", () => {
   it("decodes base64url with padding-free input", async () => {
     // "AB" in base64url is "QUI"
     await assertEquivalent(
-      base64Source + `
+      base64Source +
+        `
       export function test(): string {
         return base64UrlDecode("QUI");
       }
@@ -124,7 +122,8 @@ describe("JWT showcase: base64url decode", () => {
     // {"sub":"1234567890","name":"John","iat":1516239022} encoded
     // base64url: eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4iLCJpYXQiOjE1MTYyMzkwMjJ9
     await assertEquivalent(
-      base64Source + `
+      base64Source +
+        `
       export function test(): string {
         return base64UrlDecode("eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4iLCJpYXQiOjE1MTYyMzkwMjJ9");
       }
@@ -302,7 +301,8 @@ describe("JWT showcase: SHA-256", () => {
 
   it("hashes empty string correctly", async () => {
     await assertEquivalent(
-      sha256Source + `
+      sha256Source +
+        `
       export function test(): string {
         return sha256("");
       }
@@ -313,7 +313,8 @@ describe("JWT showcase: SHA-256", () => {
 
   it("hashes 'abc' correctly", async () => {
     await assertEquivalent(
-      sha256Source + `
+      sha256Source +
+        `
       export function test(): string {
         return sha256("abc");
       }
@@ -324,7 +325,8 @@ describe("JWT showcase: SHA-256", () => {
 
   it("hashes a longer message correctly", async () => {
     await assertEquivalent(
-      sha256Source + `
+      sha256Source +
+        `
       export function test(): string {
         return sha256("hello world");
       }
@@ -503,7 +505,8 @@ describe("JWT showcase: HMAC-SHA256", () => {
 
   it("HMAC-SHA256 with known key and message", async () => {
     await assertEquivalent(
-      hmacSource + `
+      hmacSource +
+        `
       export function test(): string {
         return hmacSha256("secret", "hello");
       }
@@ -514,7 +517,8 @@ describe("JWT showcase: HMAC-SHA256", () => {
 
   it("HMAC-SHA256 with JWT-style input", async () => {
     await assertEquivalent(
-      hmacSource + `
+      hmacSource +
+        `
       export function test(): string {
         return hmacSha256("mysecret", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0");
       }
@@ -643,11 +647,13 @@ describe("JWT showcase: token parsing", () => {
   // Payload: {"sub":"1234567890","name":"John","iat":1516239022}
   //   base64url: eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4iLCJpYXQiOjE1MTYyMzkwMjJ9
   // Signature (dummy): SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
-  const testJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4iLCJpYXQiOjE1MTYyMzkwMjJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+  const testJwt =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4iLCJpYXQiOjE1MTYyMzkwMjJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
 
   it("extracts JWT header part", async () => {
     await assertEquivalent(
-      jwtParseSource + `
+      jwtParseSource +
+        `
       export function test(): string {
         return jwtPart("${testJwt}", 0);
       }
@@ -658,7 +664,8 @@ describe("JWT showcase: token parsing", () => {
 
   it("extracts JWT payload part", async () => {
     await assertEquivalent(
-      jwtParseSource + `
+      jwtParseSource +
+        `
       export function test(): string {
         return jwtPart("${testJwt}", 1);
       }
@@ -669,7 +676,8 @@ describe("JWT showcase: token parsing", () => {
 
   it("extracts JWT signature part", async () => {
     await assertEquivalent(
-      jwtParseSource + `
+      jwtParseSource +
+        `
       export function test(): string {
         return jwtPart("${testJwt}", 2);
       }
@@ -680,7 +688,8 @@ describe("JWT showcase: token parsing", () => {
 
   it("decodes JWT header and extracts algorithm", async () => {
     await assertEquivalent(
-      jwtParseSource + `
+      jwtParseSource +
+        `
       export function test(): string {
         const headerB64: string = jwtPart("${testJwt}", 0);
         const headerJson: string = base64UrlDecode(headerB64);
@@ -693,7 +702,8 @@ describe("JWT showcase: token parsing", () => {
 
   it("decodes JWT header and extracts type", async () => {
     await assertEquivalent(
-      jwtParseSource + `
+      jwtParseSource +
+        `
       export function test(): string {
         const headerB64: string = jwtPart("${testJwt}", 0);
         const headerJson: string = base64UrlDecode(headerB64);
@@ -706,7 +716,8 @@ describe("JWT showcase: token parsing", () => {
 
   it("decodes JWT payload and extracts 'sub' claim", async () => {
     await assertEquivalent(
-      jwtParseSource + `
+      jwtParseSource +
+        `
       export function test(): string {
         const payloadB64: string = jwtPart("${testJwt}", 1);
         const payloadJson: string = base64UrlDecode(payloadB64);
@@ -719,7 +730,8 @@ describe("JWT showcase: token parsing", () => {
 
   it("decodes JWT payload and extracts 'name' claim", async () => {
     await assertEquivalent(
-      jwtParseSource + `
+      jwtParseSource +
+        `
       export function test(): string {
         const payloadB64: string = jwtPart("${testJwt}", 1);
         const payloadJson: string = base64UrlDecode(payloadB64);
@@ -732,7 +744,8 @@ describe("JWT showcase: token parsing", () => {
 
   it("decodes JWT payload and extracts 'iat' claim as number", async () => {
     await assertEquivalent(
-      jwtParseSource + `
+      jwtParseSource +
+        `
       export function test(): number {
         const payloadB64: string = jwtPart("${testJwt}", 1);
         const payloadJson: string = base64UrlDecode(payloadB64);
@@ -883,7 +896,8 @@ describe("JWT showcase: full decode + verify integration", () => {
     }
   `;
 
-  const testJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4iLCJpYXQiOjE1MTYyMzkwMjJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+  const testJwt =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4iLCJpYXQiOjE1MTYyMzkwMjJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
 
   it("full decode: extracts algorithm from JWT", async () => {
     const exports = await compileToWasm(fullSource);

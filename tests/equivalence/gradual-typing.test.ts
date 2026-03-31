@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { compileToWasm, evaluateAsJs, assertEquivalent, buildImports, compile, readFileSync, resolve } from "./helpers.js";
+import {
+  compileToWasm,
+  evaluateAsJs,
+  assertEquivalent,
+  buildImports,
+  compile,
+  readFileSync,
+  resolve,
+} from "./helpers.js";
 
 describe("Gradual typing: boxed any (fast mode)", () => {
   /**
@@ -8,9 +16,7 @@ describe("Gradual typing: boxed any (fast mode)", () => {
   async function compileFast(source: string) {
     const result = compile(source, { fast: true });
     if (!result.success) {
-      throw new Error(
-        `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-      );
+      throw new Error(`Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
     }
     const mod = await WebAssembly.compile(result.binary as BufferSource);
     // Use a proxy to auto-stub any missing imports (e.g. __str_from_mem)

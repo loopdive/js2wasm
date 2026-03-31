@@ -40,12 +40,8 @@ export function parseMeta(source: string): Test262Meta {
     const raw = descMatch[1]!.trim();
     if (raw === ">" || raw === "|") {
       // YAML block scalar — grab indented lines that follow
-      const blockMatch = yaml.match(
-        /^description:\s*[>|]\s*\n((?:[ \t]+.+\n?)+)/m,
-      );
-      meta.description = blockMatch
-        ? blockMatch[1]!.replace(/\n\s*/g, " ").trim()
-        : "";
+      const blockMatch = yaml.match(/^description:\s*[>|]\s*\n((?:[ \t]+.+\n?)+)/m);
+      meta.description = blockMatch ? blockMatch[1]!.replace(/\n\s*/g, " ").trim() : "";
     } else {
       meta.description = raw;
     }
@@ -88,9 +84,7 @@ export function parseMeta(source: string): Test262Meta {
 
 // ── Filtering ───────────────────────────────────────────────────────
 
-export type FilterResult =
-  | { skip: true; reason: string }
-  | { skip: false; reason?: undefined };
+export type FilterResult = { skip: true; reason: string } | { skip: false; reason?: undefined };
 
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
@@ -99,11 +93,7 @@ const HANGING_TESTS = new Set([
   "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
 ]);
 
-export function shouldSkip(
-  source: string,
-  meta: Test262Meta,
-  filePath?: string,
-): FilterResult {
+export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
   // Skip FIXTURE files — auxiliary modules for dynamic-import tests that use
   // export syntax TypeScript rejects. They are never standalone tests.
   // findTestFiles already excludes them, but guard here for defense-in-depth.
@@ -164,7 +154,7 @@ export function shouldSkip(
       reason: "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)",
     };
   }
-  if (filePath && /built-ins\/SharedArrayBuffer/.test(filePath) || meta.features?.includes("SharedArrayBuffer")) {
+  if ((filePath && /built-ins\/SharedArrayBuffer/.test(filePath)) || meta.features?.includes("SharedArrayBuffer")) {
     return {
       skip: true,
       reason: "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)",
@@ -254,12 +244,7 @@ function stripThirdArg(code: string, fnName: string): string {
       else if (ch === "]") bracketDepth--;
       else if (ch === "{") braceDepth++;
       else if (ch === "}") braceDepth--;
-      else if (
-        ch === "," &&
-        depth === 1 &&
-        bracketDepth === 0 &&
-        braceDepth === 0
-      ) {
+      else if (ch === "," && depth === 1 && bracketDepth === 0 && braceDepth === 0) {
         commaCount++;
         if (commaCount === 2) secondCommaPos = pos;
       } else if (ch === "'" || ch === '"') {
@@ -458,12 +443,7 @@ function transformAssertThrows(code: string): string {
       else if (ch === "}") braceDepth--;
       else if (ch === "[") bracketDepth++;
       else if (ch === "]") bracketDepth--;
-      else if (
-        ch === "," &&
-        parenDepth === 1 &&
-        braceDepth === 0 &&
-        bracketDepth === 0
-      ) {
+      else if (ch === "," && parenDepth === 1 && braceDepth === 0 && bracketDepth === 0) {
         // Top-level comma — separates arguments (only when not inside braces/brackets)
         args.push(code.slice(currentArgStart, pos).trim());
         currentArgStart = pos + 1;
@@ -488,10 +468,7 @@ function transformAssertThrows(code: string): string {
     let endPos = pos;
     while (
       endPos < code.length &&
-      (code[endPos] === ";" ||
-        code[endPos] === " " ||
-        code[endPos] === "\n" ||
-        code[endPos] === "\r")
+      (code[endPos] === ";" || code[endPos] === " " || code[endPos] === "\n" || code[endPos] === "\r")
     )
       endPos++;
 
@@ -528,15 +505,10 @@ function stripUndefinedThrowGuards(code: string): string {
     }
     const condition = code.slice(ifStart + match[0].length, pos - 1);
     // Check if condition involves undefined comparison
-    if (
-      !/!==?\s*undefined\b/.test(condition) &&
-      !/undefined\s*!==?/.test(condition)
-    )
-      continue;
+    if (!/!==?\s*undefined\b/.test(condition) && !/undefined\s*!==?/.test(condition)) continue;
     // Find the { ... } block after the condition
     let braceStart = pos;
-    while (braceStart < code.length && /\s/.test(code[braceStart]!))
-      braceStart++;
+    while (braceStart < code.length && /\s/.test(code[braceStart]!)) braceStart++;
     if (braceStart >= code.length || code[braceStart] !== "{") continue;
     let bracePos = braceStart + 1;
     let braceDepth = 1;
@@ -567,9 +539,7 @@ function stripUndefinedThrowGuards(code: string): string {
     // If the condition contains a function call (side effect), preserve it
     // e.g. if (__func() !== undefined) { throw ... } → __func();
     let sideEffect = "";
-    const callMatch =
-      condition.match(/^(.+?)\s*!==?\s*undefined\s*$/) ||
-      condition.match(/^undefined\s*!==?\s*(.+)$/);
+    const callMatch = condition.match(/^(.+?)\s*!==?\s*undefined\s*$/) || condition.match(/^undefined\s*!==?\s*(.+)$/);
     if (callMatch && /\(/.test(callMatch[1]!)) {
       sideEffect = callMatch[1]!.trim() + ";\n";
     }
@@ -613,20 +583,13 @@ function resolveUnicodeEscapes(source: string): string {
     } else {
       // Non-string segment: find next string literal or end
       let j = i + 1;
-      while (
-        j < source.length &&
-        source[j] !== '"' &&
-        source[j] !== "'" &&
-        source[j] !== "`"
-      ) {
+      while (j < source.length && source[j] !== '"' && source[j] !== "'" && source[j] !== "`") {
         j++;
       }
       // Replace \uNNNN in this segment
       const segment = source
         .slice(i, j)
-        .replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) =>
-          String.fromCharCode(parseInt(hex, 16)),
-        );
+        .replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) => String.fromCharCode(parseInt(hex, 16)));
       parts.push(segment);
       i = j;
     }
@@ -675,12 +638,7 @@ function stripUndefinedAssert(code: string, fnName: string): string {
       else if (ch === "]") bracketDepth--;
       else if (ch === "{") braceDepth++;
       else if (ch === "}") braceDepth--;
-      else if (
-        ch === "," &&
-        depth === 1 &&
-        bracketDepth === 0 &&
-        braceDepth === 0
-      ) {
+      else if (ch === "," && depth === 1 && bracketDepth === 0 && braceDepth === 0) {
         commaCount++;
         if (commaCount === 1) firstCommaPos = pos;
       } else if (ch === "'" || ch === '"') {
@@ -708,12 +666,7 @@ function stripUndefinedAssert(code: string, fnName: string): string {
         else if (ch === "]") scanBracketDepth--;
         else if (ch === "{") scanBraceDepth++;
         else if (ch === "}") scanBraceDepth--;
-        else if (
-          ch === "," &&
-          scanDepth === 1 &&
-          scanBracketDepth === 0 &&
-          scanBraceDepth === 0
-        ) {
+        else if (ch === "," && scanDepth === 1 && scanBracketDepth === 0 && scanBraceDepth === 0) {
           secondArgEnd = scanPos;
           break;
         } else if (ch === "'" || ch === '"') {
@@ -732,11 +685,7 @@ function stripUndefinedAssert(code: string, fnName: string): string {
         result += code.slice(i, idx);
         let endPos = closeParenPos + 1;
         // Skip optional semicolon and whitespace
-        while (
-          endPos < code.length &&
-          (code[endPos] === ";" || code[endPos] === " ")
-        )
-          endPos++;
+        while (endPos < code.length && (code[endPos] === ";" || code[endPos] === " ")) endPos++;
         result += "/* stripped undefined assert */";
         i = endPos;
         continue;
@@ -769,8 +718,7 @@ function renameYieldOutsideGenerators(source: string): string {
   // If no generator functions (neither `function*` nor `*method()` syntax),
   // just rename all yield identifiers.
   const hasGeneratorFunction = /\bfunction\s*\*/.test(source);
-  const hasGeneratorMethod =
-    /(?:^|[,{;)\s])\s*\*\s*(?:[\w$]+|\[[\s\S]*?\])\s*\(/.test(source);
+  const hasGeneratorMethod = /(?:^|[,{;)\s])\s*\*\s*(?:[\w$]+|\[[\s\S]*?\])\s*\(/.test(source);
   if (!hasGeneratorFunction && !hasGeneratorMethod) {
     return source.replace(/\byield\b/g, "_yield");
   }
@@ -826,10 +774,7 @@ function renameYieldOutsideGenerators(source: string): string {
   // Helper: starting after the function keyword (and optional `*`),
   // find the param start `(` and body start `{`.
   // Returns { paramStart, bodyStart, bodyEnd } or null.
-  function findFunctionExtent(
-    src: string,
-    startIdx: number,
-  ): { paramStart: number; bodyEnd: number } | null {
+  function findFunctionExtent(src: string, startIdx: number): { paramStart: number; bodyEnd: number } | null {
     let i = startIdx;
     // Skip whitespace
     while (i < src.length && /\s/.test(src[i]!)) i++;
@@ -870,12 +815,7 @@ function renameYieldOutsideGenerators(source: string): string {
     const isGen = match[1] === "*";
     const afterKeyword = match.index + match[0].length;
     // For non-generators, check word boundary after 'function'
-    if (
-      !isGen &&
-      afterKeyword < source.length &&
-      /[\w$]/.test(source[afterKeyword]!)
-    )
-      continue;
+    if (!isGen && afterKeyword < source.length && /[\w$]/.test(source[afterKeyword]!)) continue;
     const extent = findFunctionExtent(source, afterKeyword);
     if (!extent) continue;
     // Range covers from param start to body end (so yield in default params is "inside" the function)
@@ -892,9 +832,7 @@ function renameYieldOutsideGenerators(source: string): string {
   let methodMatch: RegExpExecArray | null;
   while ((methodMatch = methodRegex.exec(source)) !== null) {
     // Distinguish from multiply operator: check preceding context
-    const before = source
-      .substring(Math.max(0, methodMatch.index - 20), methodMatch.index)
-      .trimEnd();
+    const before = source.substring(Math.max(0, methodMatch.index - 20), methodMatch.index).trimEnd();
     if (
       !(
         before.endsWith(",") ||
@@ -956,15 +894,10 @@ function renameYieldOutsideGenerators(source: string): string {
       parent.children.push(r);
     }
   }
-  const roots = allFuncs.filter(
-    (r) => !allFuncs.some((c) => c !== r && c.start < r.start && c.end > r.end),
-  );
+  const roots = allFuncs.filter((r) => !allFuncs.some((c) => c !== r && c.start < r.start && c.end > r.end));
 
   // For a given position, find the innermost enclosing function
-  function findInnermostFunc(
-    pos: number,
-    ranges: FuncRange[],
-  ): FuncRange | null {
+  function findInnermostFunc(pos: number, ranges: FuncRange[]): FuncRange | null {
     for (const r of ranges) {
       if (pos >= r.start && pos < r.end) {
         const child = findInnermostFunc(pos, r.children);
@@ -1017,11 +950,7 @@ function stripBalancedCall(source: string, name: string): string {
     if (depth !== 0) continue; // unbalanced — skip
     // Include trailing semicolon and whitespace
     let end = i + 1;
-    while (
-      end < result.length &&
-      (result[end] === ";" || result[end] === " " || result[end] === "\t")
-    )
-      end++;
+    while (end < result.length && (result[end] === ";" || result[end] === " " || result[end] === "\t")) end++;
     // Include trailing newline
     if (end < result.length && result[end] === "\n") end++;
     matches.push({ start: callStart, end });
@@ -1048,8 +977,7 @@ function transformVerifyPropertyCalls(source: string): string {
   const pattern = /\bverifyProperty\s*\(/g;
   let result = source;
   // Collect replacements (from end to start so indices stay valid)
-  const replacements: { start: number; end: number; replacement: string }[] =
-    [];
+  const replacements: { start: number; end: number; replacement: string }[] = [];
   let match;
   while ((match = pattern.exec(result)) !== null) {
     const callStart = match.index;
@@ -1068,11 +996,7 @@ function transformVerifyPropertyCalls(source: string): string {
     const argsStr = result.slice(argsStart, i);
     // Include trailing semicolon, whitespace, newline
     let end = i + 1;
-    while (
-      end < result.length &&
-      (result[end] === ";" || result[end] === " " || result[end] === "\t")
-    )
-      end++;
+    while (end < result.length && (result[end] === ";" || result[end] === " " || result[end] === "\t")) end++;
     if (end < result.length && result[end] === "\n") end++;
 
     // Try to extract obj, name, and value from the descriptor literal.
@@ -1085,9 +1009,7 @@ function transformVerifyPropertyCalls(source: string): string {
       continue;
     }
     const objExpr = argsStr.slice(0, topLevelCommas[0]).trim();
-    const nameExpr = argsStr
-      .slice(topLevelCommas[0] + 1, topLevelCommas[1])
-      .trim();
+    const nameExpr = argsStr.slice(topLevelCommas[0] + 1, topLevelCommas[1]).trim();
     // The rest is the descriptor (and optional options arg)
     const descPart =
       topLevelCommas.length > 2
@@ -1486,10 +1408,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
 
   // Widen switch discriminants from literal types to `number` to avoid
   // TypeScript strict narrowing errors like "Type '1' is not comparable to type '0'"
-  body = body.replace(
-    /\bswitch\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)/g,
-    "switch ($1 as number)",
-  );
+  body = body.replace(/\bswitch\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)/g, "switch ($1 as number)");
   body = body.replace(/\bswitch\s*\(\s*(null)\s*\)/g, "switch ($1 as any)");
 
   // Transform Object.prototype.hasOwnProperty.call(obj, key) → (obj).hasOwnProperty(key)
@@ -1498,10 +1417,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
 
   // Transform Object.prototype.propertyIsEnumerable.call(obj, key) → (obj).hasOwnProperty(key)
   // All own struct fields are enumerable in our model, so propertyIsEnumerable === hasOwnProperty.
-  body = transformPrototypeCall(
-    body,
-    "Object.prototype.propertyIsEnumerable.call",
-  );
+  body = transformPrototypeCall(body, "Object.prototype.propertyIsEnumerable.call");
 
   // Transform obj.propertyIsEnumerable(key) → obj.hasOwnProperty(key)
   // All own struct fields are enumerable in our Wasm model.
@@ -1524,10 +1440,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Previously this was `var x: number = 0;` but that lost undefined identity
   // for nullish operators (??, ??=). Now we just remove the initializer and
   // let the compiler use the default for the inferred type.
-  body = body.replace(
-    /\bvar\s+(\w+)\s*=\s*undefined\s*;/g,
-    "var $1;",
-  );
+  body = body.replace(/\bvar\s+(\w+)\s*=\s*undefined\s*;/g, "var $1;");
   // Strip `if (expr !== undefined) { throw ... }` guards
   body = stripUndefinedThrowGuards(body);
 
@@ -1583,63 +1496,38 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // The expr pattern covers: identifiers, member access chains, bracket access
   // with identifiers/numbers/strings, and method calls (no-arg and single-arg).
   // e.g. obj['prop'], arr[0], foo.bar, log[0].name, fn(), obj.method(), ident[sym]
-  const simpleExprPat =
-    "[\\w.]+(?:\\[[^\\]]*\\])*(?:\\.\\w+(?:\\[[^\\]]*\\])*)*(?:\\([^)]*\\))?";
+  const simpleExprPat = "[\\w.]+(?:\\[[^\\]]*\\])*(?:\\.\\w+(?:\\[[^\\]]*\\])*)*(?:\\([^)]*\\))?";
   body = body.replace(
-    new RegExp(
-      `assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`,
-      "g",
-    ),
+    new RegExp(`assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`, "g"),
     "assert_sameValue_str($1, $2)",
   );
   body = body.replace(
-    new RegExp(
-      `assert_sameValue\\s*\\(\\s*("[^"]*")\\s*,\\s*(${simpleExprPat})\\s*\\)`,
-      "g",
-    ),
+    new RegExp(`assert_sameValue\\s*\\(\\s*("[^"]*")\\s*,\\s*(${simpleExprPat})\\s*\\)`, "g"),
     "assert_sameValue_str($1, $2)",
   );
   body = body.replace(
-    new RegExp(
-      `assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*('[^']*')\\s*\\)`,
-      "g",
-    ),
+    new RegExp(`assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*('[^']*')\\s*\\)`, "g"),
     "assert_sameValue_str($1, $2)",
   );
   body = body.replace(
-    new RegExp(
-      `assert_sameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`,
-      "g",
-    ),
+    new RegExp(`assert_sameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`, "g"),
     "assert_sameValue_str($1, $2)",
   );
   // Also route assert_notSameValue with string literals to assert_notSameValue_str
   body = body.replace(
-    new RegExp(
-      `assert_notSameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`,
-      "g",
-    ),
+    new RegExp(`assert_notSameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`, "g"),
     "assert_notSameValue_str($1, $2)",
   );
   body = body.replace(
-    new RegExp(
-      `assert_notSameValue\\s*\\(\\s*("[^"]*")\\s*,\\s*(${simpleExprPat})\\s*\\)`,
-      "g",
-    ),
+    new RegExp(`assert_notSameValue\\s*\\(\\s*("[^"]*")\\s*,\\s*(${simpleExprPat})\\s*\\)`, "g"),
     "assert_notSameValue_str($1, $2)",
   );
   body = body.replace(
-    new RegExp(
-      `assert_notSameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*('[^']*')\\s*\\)`,
-      "g",
-    ),
+    new RegExp(`assert_notSameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*('[^']*')\\s*\\)`, "g"),
     "assert_notSameValue_str($1, $2)",
   );
   body = body.replace(
-    new RegExp(
-      `assert_notSameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`,
-      "g",
-    ),
+    new RegExp(`assert_notSameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`, "g"),
     "assert_notSameValue_str($1, $2)",
   );
 
@@ -1654,14 +1542,8 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Transform: __expected.index = N; → var __expected_index: number = N;
   // Transform: __expected.input = "S"; → var __expected_input: string = "S";
   // Then replace __expected.index → __expected_index, __expected.input → __expected_input
-  body = body.replace(
-    /__expected\.index\s*=\s*(\d+)\s*;/g,
-    "var __expected_index: number = $1;",
-  );
-  body = body.replace(
-    /__expected\.input\s*=\s*("(?:[^"\\]|\\.)*")\s*;/g,
-    "var __expected_input: string = $1;",
-  );
+  body = body.replace(/__expected\.index\s*=\s*(\d+)\s*;/g, "var __expected_index: number = $1;");
+  body = body.replace(/__expected\.input\s*=\s*("(?:[^"\\]|\\.)*")\s*;/g, "var __expected_input: string = $1;");
   // Replace property accesses with the extracted variables
   body = body.replace(/__expected\.index\b(?!\s*=)/g, "__expected_index");
   body = body.replace(/__expected\.input\b(?!\s*=)/g, "__expected_input");
@@ -1673,20 +1555,11 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   );
   // Route comparisons of bracket-access elements (common in RegExp exec result tests)
   // e.g. assert_sameValue(__executed[index], __expected[index])
-  body = body.replace(
-    /assert_sameValue\s*\(\s*(\w+\[\w+\])\s*,\s*(\w+\[\w+\])\s*\)/g,
-    "assert_sameValue_str($1, $2)",
-  );
+  body = body.replace(/assert_sameValue\s*\(\s*(\w+\[\w+\])\s*,\s*(\w+\[\w+\])\s*\)/g, "assert_sameValue_str($1, $2)");
 
   // Route boolean comparisons to boolean-aware assert
-  body = body.replace(
-    /assert_sameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g,
-    "assert_sameValue_bool($1, $2)",
-  );
-  body = body.replace(
-    /assert_sameValue\s*\(\s*(true|false)\s*,\s*([^)]+?)\s*\)/g,
-    "assert_sameValue_bool($1, $2)",
-  );
+  body = body.replace(/assert_sameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g, "assert_sameValue_bool($1, $2)");
+  body = body.replace(/assert_sameValue\s*\(\s*(true|false)\s*,\s*([^)]+?)\s*\)/g, "assert_sameValue_bool($1, $2)");
   body = body.replace(
     /assert_notSameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g,
     "assert_notSameValue_bool($1, $2)",
@@ -1697,10 +1570,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   );
 
   // Route compareArray assertions through assert_true
-  body = body.replace(
-    /\bassert_true\s*\(\s*compareArray\b/g,
-    "assert_true(compareArray",
-  );
+  body = body.replace(/\bassert_true\s*\(\s*compareArray\b/g, "assert_true(compareArray");
 
   // Conditionally include harness helpers only when used (avoids compile errors
   // from unused string/array functions that confuse the type system)
@@ -1726,11 +1596,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     }
     // Strip verifyCallableProperty, verifyPrimordialProperty, verifyPrimordialCallableProperty
     // — we cannot compile their full semantics (function name/length checks, descriptor introspection)
-    for (const fn of [
-      "verifyCallableProperty",
-      "verifyPrimordialProperty",
-      "verifyPrimordialCallableProperty",
-    ]) {
+    for (const fn of ["verifyCallableProperty", "verifyPrimordialProperty", "verifyPrimordialCallableProperty"]) {
       if (new RegExp(`\\b${fn}\\b`).test(body)) {
         body = stripBalancedCall(body, fn);
       }
@@ -1742,30 +1608,18 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // combinations, so this avoids rebuilding the same large string thousands
   // of times.
   const needsPropertyHelper = includes.includes("propertyHelper.js");
-  const needsFnGlobalObject =
-    includes.includes("fnGlobalObject.js") && /\bfnGlobalObject\b/.test(body);
-  const needsIsConstructor =
-    includes.includes("isConstructor.js") && /\bisConstructor\b/.test(body);
-  const needsDecimalToHex =
-    includes.includes("decimalToHexString.js") &&
-    /\bdecimalToHexString\b/.test(body);
-  const needsNans =
-    includes.includes("nans.js") && /\bdistinctNaNs\b/.test(body);
-  const needsIsNativeFunction =
-    includes.includes("nativeFunctionMatcher.js") &&
-    /\bisNativeFunction\b/.test(body);
+  const needsFnGlobalObject = includes.includes("fnGlobalObject.js") && /\bfnGlobalObject\b/.test(body);
+  const needsIsConstructor = includes.includes("isConstructor.js") && /\bisConstructor\b/.test(body);
+  const needsDecimalToHex = includes.includes("decimalToHexString.js") && /\bdecimalToHexString\b/.test(body);
+  const needsNans = includes.includes("nans.js") && /\bdistinctNaNs\b/.test(body);
+  const needsIsNativeFunction = includes.includes("nativeFunctionMatcher.js") && /\bisNativeFunction\b/.test(body);
   const needsAssertNativeFunction =
-    includes.includes("nativeFunctionMatcher.js") &&
-    /\bassertNativeFunction\b/.test(body);
-  const needsTcoHelper =
-    includes.includes("tcoHelper.js") && /\$MAX_ITERATIONS\b/.test(body);
+    includes.includes("nativeFunctionMatcher.js") && /\bassertNativeFunction\b/.test(body);
+  const needsTcoHelper = includes.includes("tcoHelper.js") && /\$MAX_ITERATIONS\b/.test(body);
   const needsDone = /\$DONE\b/.test(body);
-  const needsAsyncTest =
-    includes.includes("asyncHelpers.js") && /\basyncTest\b/.test(body);
+  const needsAsyncTest = includes.includes("asyncHelpers.js") && /\basyncTest\b/.test(body);
   const needsDoneForAsyncTest = needsAsyncTest && !needsDone;
-  const needsTestTypedArray =
-    includes.includes("testTypedArray.js") &&
-    /testWithTypedArrayConstructors/.test(body);
+  const needsTestTypedArray = includes.includes("testTypedArray.js") && /testWithTypedArrayConstructors/.test(body);
 
   // Build cache key as a bitmask string
   const cacheKey = [
@@ -1826,9 +1680,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   }
   // Find variables used as targets in object destructuring assignments
   // Pattern: { anyProp: ident } = or { anyProp: ident, ... } =
-  for (const m of body.matchAll(
-    /\{\s*(?:[\w\\u]+\s*:\s*(\w+)\s*,?\s*)+\}\s*=/g,
-  )) {
+  for (const m of body.matchAll(/\{\s*(?:[\w\\u]+\s*:\s*(\w+)\s*,?\s*)+\}\s*=/g)) {
     // Re-scan for all prop:ident pairs within the match
     for (const inner of m[0].matchAll(/[\w\\u]+\s*:\s*(\w+)/g)) {
       const v = inner[1]!;
@@ -1840,9 +1692,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
 
   let implicitDecls = "";
   if (implicitVars.size > 0) {
-    implicitDecls = [...implicitVars]
-      .map((v) => `var ${v}: number;`)
-      .join("\n  ");
+    implicitDecls = [...implicitVars].map((v) => `var ${v}: number;`).join("\n  ");
     implicitDecls = "\n  " + implicitDecls;
   }
 
@@ -1853,8 +1703,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   const hoistedVars = new Set<string>();
   // Find var declarations with numeric initializers
   const varDeclPattern = /\bvar\s+(\w+)\s*=\s*(\d+)\s*;/g;
-  const classBodyPattern =
-    /\bclass\s+\w*\s*(?:extends\s+\w+\s*)?\{([\s\S]*?)\n\}/g;
+  const classBodyPattern = /\bclass\s+\w*\s*(?:extends\s+\w+\s*)?\{([\s\S]*?)\n\}/g;
   // Collect all class bodies
   const classBodies: string[] = [];
   for (const cm of body.matchAll(classBodyPattern)) {
@@ -1877,24 +1726,17 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   if (hoistedVars.size > 0) {
     for (const v of hoistedVars) {
       // Extract the initial value from the var declaration
-      const initMatch = bodyForFunc.match(
-        new RegExp(`\\bvar\\s+${v}\\s*=\\s*(\\d+)\\s*;`),
-      );
+      const initMatch = bodyForFunc.match(new RegExp(`\\bvar\\s+${v}\\s*=\\s*(\\d+)\\s*;`));
       const initVal = initMatch ? initMatch[1] : "0";
       hoistedDecls += `let ${v}: number = ${initVal};\n`;
       // Remove the var declaration from the function body
-      bodyForFunc = bodyForFunc.replace(
-        new RegExp(`\\bvar\\s+${v}\\s*=\\s*\\d+\\s*;`),
-        ``,
-      );
+      bodyForFunc = bodyForFunc.replace(new RegExp(`\\bvar\\s+${v}\\s*=\\s*\\d+\\s*;`), ``);
     }
   }
 
   // For onlyStrict tests, add "use strict" so the compiler's strict-mode
   // checks apply (e.g. assignments to arguments/eval, duplicate params).
-  const strictDirective = resolvedMeta.flags?.includes("onlyStrict")
-    ? '"use strict";\n'
-    : "";
+  const strictDirective = resolvedMeta.flags?.includes("onlyStrict") ? '"use strict";\n' : "";
 
   const preBody = `${strictDirective}
 ${preamble}
@@ -2097,9 +1939,7 @@ export async function handleNegativeTest(
     // For onlyStrict tests, add a "use strict" directive so the compiler's
     // strict-mode checks (eval/arguments binding, octal literals, etc.) apply.
     const strippedSource = source.replace(/\/\*---[\s\S]*?---\*\//, "");
-    const strictPrefix = meta.flags?.includes("onlyStrict")
-      ? '"use strict";\n'
-      : "";
+    const strictPrefix = meta.flags?.includes("onlyStrict") ? '"use strict";\n' : "";
     const minimalWrapped = strictPrefix + strippedSource + "\nexport {};\n";
 
     let compileMs = 0;
@@ -2118,10 +1958,7 @@ export async function handleNegativeTest(
         executeMs: 0,
       };
 
-      if (
-        !result.success ||
-        result.errors.some((e) => e.severity === "error")
-      ) {
+      if (!result.success || result.errors.some((e) => e.severity === "error")) {
         // Compilation failed as expected — negative test passes
         return { file: relPath, category, status: "pass", timing };
       }
@@ -2137,11 +1974,7 @@ export async function handleNegativeTest(
       // Compilation succeeded — but this test expected a parse/early error.
       // Try instantiating: if wasm validation rejects it, that also counts.
       try {
-        const imports = buildImports(
-          result.imports,
-          undefined,
-          result.stringPool,
-        );
+        const imports = buildImports(result.imports, undefined, result.stringPool);
         await WebAssembly.instantiate(result.binary, imports);
       } catch {
         // Instantiation failed — counts as expected error
@@ -2276,8 +2109,7 @@ export function lookupSourceMapOffset(
 
 /** Decode a single VLQ segment into an array of numbers */
 function decodeVLQSegment(segment: string): number[] {
-  const BASE64 =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   const values: number[] = [];
   let i = 0;
   while (i < segment.length) {
@@ -2362,9 +2194,7 @@ export async function runTest262File(
   // we should try to compile and check for errors, not skip.
   if (
     meta.negative &&
-    (meta.negative.phase === "parse" ||
-      meta.negative.phase === "early" ||
-      meta.negative.phase === "resolution")
+    (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")
   ) {
     const negResult = await handleNegativeTest(source, meta, relPath, category);
     if (negResult) return negResult;
@@ -2470,10 +2300,7 @@ export async function runTest262File(
     // time and the test expects a ReferenceError, count it as a pass.
     if (isRuntimeNegative) {
       const errMsg = compileErr.message ?? String(compileErr);
-      if (
-        meta.negative!.type === "ReferenceError" &&
-        errMsg.includes("before initialization")
-      ) {
+      if (meta.negative!.type === "ReferenceError" && errMsg.includes("before initialization")) {
         return { file: relPath, category, status: "pass", timing };
       }
       return {
@@ -2504,13 +2331,8 @@ export async function runTest262File(
     if (isRuntimeNegative) {
       // If the compiler detected a TDZ violation (ReferenceError) at compile time
       // and the test expects a ReferenceError, count it as a pass.
-      const errMsgs = result.errors
-        .filter((e) => e.severity === "error")
-        .map((e) => e.message);
-      if (
-        meta.negative!.type === "ReferenceError" &&
-        errMsgs.some((m) => m.includes("before initialization"))
-      ) {
+      const errMsgs = result.errors.filter((e) => e.severity === "error").map((e) => e.message);
+      if (meta.negative!.type === "ReferenceError" && errMsgs.some((m) => m.includes("before initialization"))) {
         return { file: relPath, category, status: "pass", timing };
       }
       return {
@@ -2521,10 +2343,7 @@ export async function runTest262File(
           result.errors
             .filter((e) => e.severity === "error")
             .map((e) => `L${adjustLine(e.line)}:${e.column} ${e.message}`)
-            .join("; ") ||
-          result.errors
-            .map((e) => `L${adjustLine(e.line)}:${e.column} ${e.message}`)
-            .join("; "),
+            .join("; ") || result.errors.map((e) => `L${adjustLine(e.line)}:${e.column} ${e.message}`).join("; "),
         timing,
       };
     }
@@ -2536,10 +2355,7 @@ export async function runTest262File(
         result.errors
           .filter((e) => e.severity === "error")
           .map((e) => `L${adjustLine(e.line)}:${e.column} ${e.message}`)
-          .join("; ") ||
-        result.errors
-          .map((e) => `L${adjustLine(e.line)}:${e.column} ${e.message}`)
-          .join("; "),
+          .join("; ") || result.errors.map((e) => `L${adjustLine(e.line)}:${e.column} ${e.message}`).join("; "),
       timing,
     };
   }
@@ -2636,9 +2452,7 @@ export async function runTest262File(
           // Extract the line containing this assert
           const lineStart = source.lastIndexOf("\n", m.index) + 1;
           const lineEnd = source.indexOf("\n", m.index);
-          const line = source
-            .slice(lineStart, lineEnd === -1 ? undefined : lineEnd)
-            .trim();
+          const line = source.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
           assertCtx = ` | assert #${assertIdx}: ${line.slice(0, 160)}`;
           break;
         }
@@ -2672,38 +2486,22 @@ export async function runTest262File(
     }
 
     // WebAssembly.CompileError during instantiation is a compile error, not a test failure
-    if (
-      err instanceof WebAssembly.CompileError ||
-      err?.constructor?.name === "CompileError"
-    ) {
+    if (err instanceof WebAssembly.CompileError || err?.constructor?.name === "CompileError") {
       return {
         file: relPath,
         category,
         status: "compile_error",
-        error: enrichErrorMessage(
-          err.message,
-          err,
-          result.sourceMap,
-          bodyLineOffset,
-        ),
+        error: enrichErrorMessage(err.message, err, result.sourceMap, bodyLineOffset),
         timing,
       };
     }
     // Traps from unreachable() count as assertion failures
-    if (
-      err?.message?.includes("unreachable") ||
-      err?.message?.includes("wasm")
-    ) {
+    if (err?.message?.includes("unreachable") || err?.message?.includes("wasm")) {
       return {
         file: relPath,
         category,
         status: "fail",
-        error: enrichErrorMessage(
-          err.message,
-          err,
-          result.sourceMap,
-          bodyLineOffset,
-        ),
+        error: enrichErrorMessage(err.message, err, result.sourceMap, bodyLineOffset),
         timing,
       };
     }
@@ -2711,12 +2509,7 @@ export async function runTest262File(
       file: relPath,
       category,
       status: "fail",
-      error: enrichErrorMessage(
-        String(err),
-        err,
-        result.sourceMap,
-        bodyLineOffset,
-      ),
+      error: enrichErrorMessage(String(err), err, result.sourceMap, bodyLineOffset),
       timing,
     };
   }

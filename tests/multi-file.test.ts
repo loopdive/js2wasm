@@ -1,10 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { compileMulti } from "../src/index.js";
 
-async function compileAndRunMulti(
-  files: Record<string, string>,
-  entryFile: string,
-) {
+async function compileAndRunMulti(files: Record<string, string>, entryFile: string) {
   const result = compileMulti(files, entryFile);
   expect(
     result.success,

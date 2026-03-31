@@ -99,9 +99,7 @@ describe("void expression stack safety (#627)", () => {
     `);
     // Should at least compile without "not enough arguments" errors
     if (!result.success) {
-      const hasStackUnderflow = result.errors.some(e =>
-        e.message.includes("not enough arguments on the stack")
-      );
+      const hasStackUnderflow = result.errors.some((e) => e.message.includes("not enough arguments on the stack"));
       expect(hasStackUnderflow).toBe(false);
     }
   });

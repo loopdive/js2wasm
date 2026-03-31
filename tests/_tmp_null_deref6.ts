@@ -44,18 +44,18 @@ if (!result.success) {
 }
 
 // Extract WAT around struct.get
-const wat = result.wat || '';
-const lines = wat.split('\n');
+const wat = result.wat || "";
+const lines = wat.split("\n");
 let found = false;
 for (let i = 0; i < lines.length; i++) {
-  if (lines[i].includes('struct.get') || lines[i].includes('ref.is_null')) {
+  if (lines[i].includes("struct.get") || lines[i].includes("ref.is_null")) {
     // Print context
     const start = Math.max(0, i - 3);
     const end = Math.min(lines.length, i + 4);
     for (let j = start; j < end; j++) {
-      console.log((j === i ? '>>> ' : '    ') + lines[j]);
+      console.log((j === i ? ">>> " : "    ") + lines[j]);
     }
-    console.log('---');
+    console.log("---");
     found = true;
   }
 }

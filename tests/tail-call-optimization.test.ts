@@ -15,9 +15,7 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 function compileWat(source: string): string {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(
-      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
   return result.wat;
 }

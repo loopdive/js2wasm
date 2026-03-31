@@ -19,7 +19,8 @@ async function runFast(source: string, exportName = "test"): Promise<any> {
 
 describe("Issue #268: for-of on strings", () => {
   it("counts characters in a string literal", async () => {
-    expect(await runFast(`
+    expect(
+      await runFast(`
       export function test(): number {
         let count = 0;
         for (const c of "hello") {
@@ -27,11 +28,13 @@ describe("Issue #268: for-of on strings", () => {
         }
         return count;
       }
-    `)).toBe(5);
+    `),
+    ).toBe(5);
   });
 
   it("counts characters in a variable string", async () => {
-    expect(await runFast(`
+    expect(
+      await runFast(`
       export function test(): number {
         const s = "abcdef";
         let count = 0;
@@ -40,11 +43,13 @@ describe("Issue #268: for-of on strings", () => {
         }
         return count;
       }
-    `)).toBe(6);
+    `),
+    ).toBe(6);
   });
 
   it("iterates over empty string", async () => {
-    expect(await runFast(`
+    expect(
+      await runFast(`
       export function test(): number {
         let count = 0;
         for (const c of "") {
@@ -52,11 +57,13 @@ describe("Issue #268: for-of on strings", () => {
         }
         return count;
       }
-    `)).toBe(0);
+    `),
+    ).toBe(0);
   });
 
   it("break works inside for-of on string", async () => {
-    expect(await runFast(`
+    expect(
+      await runFast(`
       export function test(): number {
         let count = 0;
         for (const c of "hello world") {
@@ -65,6 +72,7 @@ describe("Issue #268: for-of on strings", () => {
         }
         return count;
       }
-    `)).toBe(3);
+    `),
+    ).toBe(3);
   });
 });

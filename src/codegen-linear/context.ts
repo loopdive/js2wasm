@@ -1,10 +1,5 @@
 import ts from "typescript";
-import type {
-  Instr,
-  LocalDef,
-  ValType,
-  WasmModule,
-} from "../ir/types.js";
+import type { Instr, LocalDef, ValType, WasmModule } from "../ir/types.js";
 import type { ClassLayout } from "./layout.js";
 
 /** Module-level context for linear-memory codegen */
@@ -67,11 +62,7 @@ export interface LinearFuncContext {
 }
 
 /** Add a local variable to the current function context */
-export function addLocal(
-  fctx: LinearFuncContext,
-  name: string,
-  type: ValType,
-): number {
+export function addLocal(fctx: LinearFuncContext, name: string, type: ValType): number {
   const index = fctx.params.length + fctx.locals.length;
   fctx.locals.push({ name, type });
   fctx.localMap.set(name, index);

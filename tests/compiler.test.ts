@@ -197,9 +197,7 @@ describe("math builtins", () => {
 
 describe("binary encoder", () => {
   it("valid wasm header", () => {
-    const r = compile(
-      `export function id(x: number): number { return x; }`,
-    );
+    const r = compile(`export function id(x: number): number { return x; }`);
     expect(r.binary[0]).toBe(0x00);
     expect(r.binary[1]).toBe(0x61);
     expect(r.binary[2]).toBe(0x73);
@@ -207,9 +205,7 @@ describe("binary encoder", () => {
   });
 
   it("WebAssembly.validate accepts output", () => {
-    const r = compile(
-      `export function add(a: number, b: number): number { return a + b; }`,
-    );
+    const r = compile(`export function add(a: number, b: number): number { return a + b; }`);
     expect(r.success).toBe(true);
     expect(WebAssembly.validate(r.binary)).toBe(true);
   });
@@ -217,9 +213,7 @@ describe("binary encoder", () => {
 
 describe("wat output", () => {
   it("readable", () => {
-    const r = compile(
-      `export function add(a: number, b: number): number { return a + b; }`,
-    );
+    const r = compile(`export function add(a: number, b: number): number { return a + b; }`);
     expect(r.wat).toContain("func");
     expect(r.wat).toContain("f64.add");
     expect(r.wat).toContain("export");

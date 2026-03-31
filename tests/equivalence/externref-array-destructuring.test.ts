@@ -11,8 +11,8 @@ describe("externref array destructuring (#518)", () => {
       }
     `;
     const result = compile(source);
-    const destructErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure") && e.message.includes("not an array")
+    const destructErrors = result.errors.filter(
+      (e) => e.message.includes("Cannot destructure") && e.message.includes("not an array"),
     );
     expect(destructErrors).toEqual([]);
     expect(result.success).toBe(true);
@@ -29,8 +29,8 @@ describe("externref array destructuring (#518)", () => {
       }
     `;
     const result = compile(source);
-    const destructErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure") && e.message.includes("not an array")
+    const destructErrors = result.errors.filter(
+      (e) => e.message.includes("Cannot destructure") && e.message.includes("not an array"),
     );
     expect(destructErrors).toEqual([]);
   });
@@ -45,8 +45,8 @@ describe("externref array destructuring (#518)", () => {
       }
     `;
     const result = compile(source);
-    const destructErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure") && e.message.includes("not an array")
+    const destructErrors = result.errors.filter(
+      (e) => e.message.includes("Cannot destructure") && e.message.includes("not an array"),
     );
     expect(destructErrors).toEqual([]);
   });
@@ -60,9 +60,7 @@ describe("externref array destructuring (#518)", () => {
     `;
     const result = compile(source);
     expect(result.success).toBe(true);
-    const destructErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure")
-    );
+    const destructErrors = result.errors.filter((e) => e.message.includes("Cannot destructure"));
     expect(destructErrors).toEqual([]);
   });
 
@@ -77,8 +75,8 @@ describe("externref array destructuring (#518)", () => {
       }
     `;
     const result = compile(source);
-    const destructErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure") && e.message.includes("not an array")
+    const destructErrors = result.errors.filter(
+      (e) => e.message.includes("Cannot destructure") && e.message.includes("not an array"),
     );
     expect(destructErrors).toEqual([]);
   });

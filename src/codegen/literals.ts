@@ -31,9 +31,7 @@ import {
   destructureParamArray,
   destructureParamObject,
 } from "./index.js";
-import {
-  isVoidType,
-} from "../checker/type-mapper.js";
+import { isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { compileStatement, bodyUsesArguments, emitArgumentsObject } from "./statements.js";
 import { compileExpression, getLine, getCol, VOID_RESULT } from "./shared.js";
@@ -65,7 +63,7 @@ export function ensureComputedPropertyFields(
     const propName = resolvePropertyNameText(ctx, prop);
     if (propName === undefined) continue;
     // Check if this field already exists in the struct
-    if (existingFields.some(f => f.name === propName)) continue;
+    if (existingFields.some((f) => f.name === propName)) continue;
     resolvedProps.push({ name: propName, valueExpr: prop.initializer });
   }
 
@@ -166,10 +164,7 @@ export function compileObjectLiteral(
  * and const variable references.
  * Returns the resolved value (number or string) or undefined if not resolvable.
  */
-export function resolveConstantExpression(
-  ctx: CodegenContext,
-  expr: ts.Expression,
-): number | string | undefined {
+export function resolveConstantExpression(ctx: CodegenContext, expr: ts.Expression): number | string | undefined {
   if (ts.isNumericLiteral(expr)) return Number(expr.text);
 
   // Boolean literals
@@ -225,13 +220,20 @@ export function resolveConstantExpression(
     }
 
     switch (expr.operatorToken.kind) {
-      case ts.SyntaxKind.PlusToken: return left + right;
-      case ts.SyntaxKind.MinusToken: return left - right;
-      case ts.SyntaxKind.AsteriskToken: return left * right;
-      case ts.SyntaxKind.SlashToken: return right !== 0 ? left / right : undefined;
-      case ts.SyntaxKind.PercentToken: return right !== 0 ? left % right : undefined;
-      case ts.SyntaxKind.AsteriskAsteriskToken: return left ** right;
-      default: return undefined;
+      case ts.SyntaxKind.PlusToken:
+        return left + right;
+      case ts.SyntaxKind.MinusToken:
+        return left - right;
+      case ts.SyntaxKind.AsteriskToken:
+        return left * right;
+      case ts.SyntaxKind.SlashToken:
+        return right !== 0 ? left / right : undefined;
+      case ts.SyntaxKind.PercentToken:
+        return right !== 0 ? left % right : undefined;
+      case ts.SyntaxKind.AsteriskAsteriskToken:
+        return left ** right;
+      default:
+        return undefined;
     }
   }
 
@@ -240,9 +242,12 @@ export function resolveConstantExpression(
     const operand = resolveConstantExpression(ctx, expr.operand);
     if (typeof operand !== "number") return undefined;
     switch (expr.operator) {
-      case ts.SyntaxKind.MinusToken: return -operand;
-      case ts.SyntaxKind.PlusToken: return operand;
-      default: return undefined;
+      case ts.SyntaxKind.MinusToken:
+        return -operand;
+      case ts.SyntaxKind.PlusToken:
+        return operand;
+      default:
+        return undefined;
     }
   }
 
@@ -251,7 +256,7 @@ export function resolveConstantExpression(
     const cond = resolveConstantExpression(ctx, expr.condition);
     if (cond === undefined) return undefined;
     // Evaluate truthiness: 0, NaN, "" are falsy; everything else is truthy
-    const isTruthy = typeof cond === "string" ? cond.length > 0 : (cond !== 0 && !isNaN(cond));
+    const isTruthy = typeof cond === "string" ? cond.length > 0 : cond !== 0 && !isNaN(cond);
     return resolveConstantExpression(ctx, isTruthy ? expr.whenTrue : expr.whenFalse);
   }
 
@@ -298,10 +303,7 @@ export function resolveConstantExpression(
  * evaluated at compile time (string literal expressions, const variables, enum members).
  * Returns undefined if the name cannot be statically resolved.
  */
-export function resolvePropertyNameText(
-  ctx: CodegenContext,
-  prop: ts.ObjectLiteralElementLike,
-): string | undefined {
+export function resolvePropertyNameText(ctx: CodegenContext, prop: ts.ObjectLiteralElementLike): string | undefined {
   if (!ts.isPropertyAssignment(prop)) return undefined;
   const name = prop.name;
 
@@ -378,11 +380,7 @@ export function ensureSymbolCounter(ctx: CodegenContext): number {
  * Compile a Symbol() call — returns a unique i32 by incrementing a global counter.
  * The description argument (if any) is evaluated for side effects but discarded.
  */
-export function compileSymbolCall(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  args: readonly ts.Expression[],
-): ValType {
+export function compileSymbolCall(ctx: CodegenContext, fctx: FunctionContext, args: readonly ts.Expression[]): ValType {
   // Evaluate description arg for side effects, then drop it
   if (args.length > 0) {
     const argType = compileExpression(ctx, fctx, args[0]!);
@@ -408,10 +406,7 @@ export function compileSymbolCall(
  * - Const variable references: [key] where const key = "x"
  * - Enum member access: [MyEnum.Key]
  */
-export function resolveComputedKeyExpression(
-  ctx: CodegenContext,
-  expr: ts.Expression,
-): string | undefined {
+export function resolveComputedKeyExpression(ctx: CodegenContext, expr: ts.Expression): string | undefined {
   // Well-known Symbol property access: [Symbol.iterator], [Symbol.toPrimitive], etc.
   // Map these to reserved names like "@@iterator", "@@toPrimitive" at compile time.
   if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
@@ -482,11 +477,12 @@ export function compileWidenedEmptyObject(
     if (ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
       // Register now as a last resort
       // Widen ref to ref_null so struct.new can use ref.null defaults
-      const fields: FieldDef[] = widenedProps.map(wp => ({
+      const fields: FieldDef[] = widenedProps.map((wp) => ({
         name: wp.name,
-        type: wp.type.kind === "ref"
-          ? { kind: "ref_null" as const, typeIdx: (wp.type as { typeIdx: number }).typeIdx }
-          : wp.type,
+        type:
+          wp.type.kind === "ref"
+            ? { kind: "ref_null" as const, typeIdx: (wp.type as { typeIdx: number }).typeIdx }
+            : wp.type,
         mutable: true,
       }));
       typeName = `__anon_${ctx.anonTypeCounter++}`;
@@ -574,16 +570,10 @@ export function compileObjectLiteralForStruct(
 
   for (const field of fields) {
     // First check for an explicit property assignment (identifier, string literal, or computed key)
-    const prop = expr.properties.find(
-      (p) => resolvePropertyNameText(ctx, p) === field.name,
-    );
+    const prop = expr.properties.find((p) => resolvePropertyNameText(ctx, p) === field.name);
     // Also check for shorthand property assignment ({ x, y } where x/y are identifiers)
     const shorthandProp = !prop
-      ? expr.properties.find(
-          (p) =>
-            ts.isShorthandPropertyAssignment(p) &&
-            p.name.text === field.name,
-        )
+      ? expr.properties.find((p) => ts.isShorthandPropertyAssignment(p) && p.name.text === field.name)
       : undefined;
     if (prop && ts.isPropertyAssignment(prop)) {
       // Track closure types for valueOf/toString fields
@@ -624,7 +614,7 @@ export function compileObjectLiteralForStruct(
         // destructuring default-value checks can detect missing properties.
         // f64 uses sNaN sentinel 0x7FF00000DEADC0DE (matches emitDefaultValueCheck #866).
         if (field.type.kind === "f64") {
-          fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+          fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
           fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
         } else if (field.type.kind === "externref") {
           fctx.body.push({ op: "ref.null.extern" });
@@ -646,7 +636,10 @@ export function compileObjectLiteralForStruct(
     if (
       ts.isGetAccessorDeclaration(prop) &&
       prop.name &&
-      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) || ts.isComputedPropertyName(prop.name) || ts.isNumericLiteral(prop.name))
+      (ts.isIdentifier(prop.name) ||
+        ts.isStringLiteral(prop.name) ||
+        ts.isComputedPropertyName(prop.name) ||
+        ts.isNumericLiteral(prop.name))
     ) {
       const propName = resolveAccessorPropName(ctx, prop.name);
       if (propName === undefined) continue;
@@ -731,7 +724,10 @@ export function compileObjectLiteralForStruct(
     if (
       ts.isSetAccessorDeclaration(prop) &&
       prop.name &&
-      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) || ts.isComputedPropertyName(prop.name) || ts.isNumericLiteral(prop.name))
+      (ts.isIdentifier(prop.name) ||
+        ts.isStringLiteral(prop.name) ||
+        ts.isComputedPropertyName(prop.name) ||
+        ts.isNumericLiteral(prop.name))
     ) {
       const propName = resolveAccessorPropName(ctx, prop.name);
       if (propName === undefined) continue;
@@ -847,7 +843,10 @@ export function compileObjectLiteralForStruct(
     if (
       ts.isMethodDeclaration(prop) &&
       prop.name &&
-      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) || ts.isNumericLiteral(prop.name) || ts.isComputedPropertyName(prop.name))
+      (ts.isIdentifier(prop.name) ||
+        ts.isStringLiteral(prop.name) ||
+        ts.isNumericLiteral(prop.name) ||
+        ts.isComputedPropertyName(prop.name))
     ) {
       const methodName = resolveAccessorPropName(ctx, prop.name);
       if (methodName === undefined) continue;
@@ -876,7 +875,9 @@ export function compileObjectLiteralForStruct(
       const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
       const methodResults: ValType[] = isGeneratorMethod
         ? [{ kind: "externref" }]
-        : (retType && !isVoidType(retType) ? [resolveWasmType(ctx, retType)] : []);
+        : retType && !isVoidType(retType)
+          ? [resolveWasmType(ctx, retType)]
+          : [];
 
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
 
@@ -963,7 +964,7 @@ export function compileObjectLiteralForStruct(
       // Object literal methods need an arguments vec struct so that
       // `arguments.length` and `arguments[n]` work at runtime.
       if (prop.body && bodyUsesArguments(prop.body)) {
-        const methodParamTypes = methodFctxParams.slice(1).map(p => p.type); // skip 'this'
+        const methodParamTypes = methodFctxParams.slice(1).map((p) => p.type); // skip 'this'
         emitArgumentsObject(ctx, methodFctx, methodParamTypes, 1); // paramOffset 1 to skip 'this'
       }
 
@@ -1031,7 +1032,6 @@ export function compileObjectLiteralForStruct(
       if (savedFunc) ctx.parentBodiesStack.pop();
       ctx.currentFunc = savedFunc;
     }
-
   }
 
   return { kind: "ref", typeIdx: structTypeIdx };
@@ -1062,7 +1062,7 @@ export function compileTupleLiteral(
       // Missing element — push sentinel value that destructuring recognizes as
       // "absent": sNaN sentinel for f64, ref.null for refs/externref, 0 for i32 (#852, #866).
       if (expectedType.kind === "f64") {
-        fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+        fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
         fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
       } else if (expectedType.kind === "i32") {
         fctx.body.push({ op: "i32.const", value: 0 });
@@ -1097,14 +1097,13 @@ export function compileArrayLiteral(
     let tupleType = ctxTupleType;
     if (expr.elements.length > 1) {
       const ctxElemTypes = getTupleElementTypes(ctx, ctxTupleType);
-      const allSameKind = ctxElemTypes.length > 0 &&
-        ctxElemTypes.every((t) => t.kind === ctxElemTypes[0]!.kind);
+      const allSameKind = ctxElemTypes.length > 0 && ctxElemTypes.every((t) => t.kind === ctxElemTypes[0]!.kind);
       if (allSameKind) {
         const actualType = ctx.checker.getTypeAtLocation(expr);
         if (actualType && isTupleType(actualType)) {
           const actualElemTypes = getTupleElementTypes(ctx, actualType);
-          const actualHeterogeneous = actualElemTypes.length > 1 &&
-            !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
+          const actualHeterogeneous =
+            actualElemTypes.length > 1 && !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
           if (actualHeterogeneous) {
             tupleType = actualType;
           }
@@ -1124,9 +1123,10 @@ export function compileArrayLiteral(
         const typeArgs = ctx.checker.getTypeArguments(ctxType as ts.TypeReference);
         if (typeArgs[0]) {
           const elemWasmType = resolveWasmType(ctx, typeArgs[0]);
-          emptyElemKind = (elemWasmType.kind === "ref" || elemWasmType.kind === "ref_null")
-            ? `ref_${(elemWasmType as { typeIdx: number }).typeIdx}`
-            : elemWasmType.kind;
+          emptyElemKind =
+            elemWasmType.kind === "ref" || elemWasmType.kind === "ref_null"
+              ? `ref_${(elemWasmType as { typeIdx: number }).typeIdx}`
+              : elemWasmType.kind;
         }
       }
     }
@@ -1136,8 +1136,8 @@ export function compileArrayLiteral(
       ctx.errors.push({ message: "Empty array literal: invalid vec type", line: getLine(expr), column: getCol(expr) });
       return null;
     }
-    fctx.body.push({ op: "i32.const", value: 0 });           // length field (field 0)
-    fctx.body.push({ op: "i32.const", value: 0 });           // size for array.new_default
+    fctx.body.push({ op: "i32.const", value: 0 }); // length field (field 0)
+    fctx.body.push({ op: "i32.const", value: 0 }); // size for array.new_default
     fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx }); // data field (field 1)
     fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
     return { kind: "ref_null", typeIdx: vecTypeIdx };
@@ -1163,8 +1163,7 @@ export function compileArrayLiteral(
     const firstElemType = ctx.checker.getTypeAtLocation(firstElem);
     elemWasm = resolveWasmType(ctx, firstElemType);
   }
-  elemKind = (elemWasm.kind === "ref" || elemWasm.kind === "ref_null")
-    ? `ref_${elemWasm.typeIdx}` : elemWasm.kind;
+  elemKind = elemWasm.kind === "ref" || elemWasm.kind === "ref_null" ? `ref_${elemWasm.typeIdx}` : elemWasm.kind;
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
   if (arrTypeIdx < 0) {
@@ -1182,8 +1181,8 @@ export function compileArrayLiteral(
     const tmpData = allocLocal(fctx, `__arr_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
     fctx.body.push({ op: "local.set", index: tmpData });
     fctx.body.push({ op: "i32.const", value: expr.elements.length }); // length field (field 0)
-    fctx.body.push({ op: "local.get", index: tmpData });               // data field (field 1)
-    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });          // wrap in vec struct
+    fctx.body.push({ op: "local.get", index: tmpData }); // data field (field 1)
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
     return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
@@ -1288,7 +1287,7 @@ export function compileArrayLiteral(
 
   // Wrap the result backing array in a vec struct
   // Stack: totalLen (= writeIdx), data ref → struct.new
-  fctx.body.push({ op: "local.get", index: writeIdx });    // length field (field 0)
+  fctx.body.push({ op: "local.get", index: writeIdx }); // length field (field 0)
   fctx.body.push({ op: "local.get", index: resultLocal }); // data field (field 1)
   fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
   return { kind: "ref_null", typeIdx: vecTypeIdx };
@@ -1322,8 +1321,10 @@ export function compileArrayConstructorCall(
     elemWasm = { kind: "f64" };
   }
 
-  const elemKind = (elemWasm.kind === "ref" || elemWasm.kind === "ref_null")
-    ? `ref_${(elemWasm as { typeIdx: number }).typeIdx}` : elemWasm.kind;
+  const elemKind =
+    elemWasm.kind === "ref" || elemWasm.kind === "ref_null"
+      ? `ref_${(elemWasm as { typeIdx: number }).typeIdx}`
+      : elemWasm.kind;
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
   if (arrTypeIdx < 0) {
@@ -1333,8 +1334,8 @@ export function compileArrayConstructorCall(
 
   if (args.length === 0) {
     // Array() → empty array
-    fctx.body.push({ op: "i32.const", value: 0 });           // length = 0
-    fctx.body.push({ op: "i32.const", value: 0 });           // size for array.new_default
+    fctx.body.push({ op: "i32.const", value: 0 }); // length = 0
+    fctx.body.push({ op: "i32.const", value: 0 }); // size for array.new_default
     fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
     fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
     return { kind: "ref_null", typeIdx: vecTypeIdx };

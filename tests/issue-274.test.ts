@@ -41,7 +41,7 @@ describe("Issue #274: Property access on function type", () => {
     const result = compile(source);
     expect(result.success).toBe(true);
     // Verify no compile errors about property access
-    const propErrors = result.errors.filter(e => e.message.includes("Cannot access property"));
+    const propErrors = result.errors.filter((e) => e.message.includes("Cannot access property"));
     expect(propErrors).toHaveLength(0);
   });
 
@@ -101,7 +101,7 @@ describe("Issue #274: Property access on function type", () => {
     `;
     const result = compile(source);
     // Should compile without "Cannot access property 'name'" error
-    const propErrors = result.errors.filter(e => e.message.includes("Cannot access property 'name'"));
+    const propErrors = result.errors.filter((e) => e.message.includes("Cannot access property 'name'"));
     expect(propErrors).toHaveLength(0);
   });
 });

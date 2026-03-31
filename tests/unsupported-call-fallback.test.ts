@@ -41,9 +41,7 @@ describe("Unsupported call expression fallback (#621)", () => {
       export function test(): number { return 1; }
     `);
     // Should compile without "Unsupported call expression" errors
-    const unsupported = result.errors.filter(
-      (e: any) => e.message?.includes("Unsupported call expression")
-    );
+    const unsupported = result.errors.filter((e: any) => e.message?.includes("Unsupported call expression"));
     expect(unsupported).toHaveLength(0);
   });
 
@@ -56,9 +54,7 @@ describe("Unsupported call expression fallback (#621)", () => {
       export function test(): number { return 1; }
     `);
     // Should compile without "Unsupported call expression" errors
-    const unsupported = result.errors.filter(
-      (e: any) => e.message?.includes("Unsupported call expression")
-    );
+    const unsupported = result.errors.filter((e: any) => e.message?.includes("Unsupported call expression"));
     expect(unsupported).toHaveLength(0);
   });
 
@@ -69,9 +65,7 @@ describe("Unsupported call expression fallback (#621)", () => {
       let r = outer()();
       export function test(): number { return 1; }
     `);
-    const unsupported = result.errors.filter(
-      (e: any) => e.message?.includes("Unsupported call expression")
-    );
+    const unsupported = result.errors.filter((e: any) => e.message?.includes("Unsupported call expression"));
     expect(unsupported).toHaveLength(0);
   });
 
@@ -82,9 +76,7 @@ describe("Unsupported call expression fallback (#621)", () => {
       arr.sort(cmp);
       export function test(): number { return 1; }
     `);
-    const unsupported = result.errors.filter(
-      (e: any) => e.message?.includes("Unsupported call expression")
-    );
+    const unsupported = result.errors.filter((e: any) => e.message?.includes("Unsupported call expression"));
     expect(unsupported).toHaveLength(0);
   });
 
@@ -95,9 +87,7 @@ describe("Unsupported call expression fallback (#621)", () => {
       let r = obj[1 + 1]();
       export function test(): number { return 1; }
     `);
-    const unsupported = result.errors.filter(
-      (e: any) => e.message?.includes("Unsupported call expression")
-    );
+    const unsupported = result.errors.filter((e: any) => e.message?.includes("Unsupported call expression"));
     expect(unsupported).toHaveLength(0);
   });
 });

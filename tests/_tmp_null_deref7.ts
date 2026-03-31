@@ -46,14 +46,16 @@ const imports: any = { env: {} };
 if (result.imports) {
   for (const [name, imp] of Object.entries(result.imports)) {
     if (!imports.env[name]) {
-      if (name === '__unbox_number') imports.env[name] = (v: unknown) => Number(v);
-      else if (name === '__box_number') imports.env[name] = (v: number) => v;
-      else if (name === '__extern_length') imports.env[name] = (v: any) => v?.length ?? 0;
+      if (name === "__unbox_number") imports.env[name] = (v: unknown) => Number(v);
+      else if (name === "__box_number") imports.env[name] = (v: number) => v;
+      else if (name === "__extern_length") imports.env[name] = (v: any) => v?.length ?? 0;
       else imports.env[name] = (...args: any[]) => {};
     }
   }
 }
 
-WebAssembly.instantiate(result.binary, imports).then(({ instance }) => {
-  console.log("Result:", (instance.exports as any).test());
-}).catch((e: any) => console.log("Runtime error:", e.message));
+WebAssembly.instantiate(result.binary, imports)
+  .then(({ instance }) => {
+    console.log("Result:", (instance.exports as any).test());
+  })
+  .catch((e: any) => console.log("Runtime error:", e.message));

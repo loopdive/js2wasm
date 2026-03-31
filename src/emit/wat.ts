@@ -25,7 +25,10 @@ function computeInlineableTypes(mod: WasmModule): Set<number> {
   const nonFuncRef = new Set<number>();
 
   const bump = (idx: number) => refCount.set(idx, (refCount.get(idx) ?? 0) + 1);
-  const markNonFunc = (idx: number) => { bump(idx); nonFuncRef.add(idx); };
+  const markNonFunc = (idx: number) => {
+    bump(idx);
+    nonFuncRef.add(idx);
+  };
 
   // --- Imports ---
   for (const imp of mod.imports) {
@@ -54,11 +57,7 @@ function computeInlineableTypes(mod: WasmModule): Set<number> {
   const inlineable = new Set<number>();
   for (let i = 0; i < mod.types.length; i++) {
     const t = mod.types[i]!;
-    if (
-      t.kind === "func" &&
-      (refCount.get(i) ?? 0) === 1 &&
-      !nonFuncRef.has(i)
-    ) {
+    if (t.kind === "func" && (refCount.get(i) ?? 0) === 1 && !nonFuncRef.has(i)) {
       inlineable.add(i);
     }
   }
@@ -83,11 +82,16 @@ export function escapeWatString(s: string): string {
   let out = "";
   for (let i = 0; i < s.length; i++) {
     const ch = s.charCodeAt(i);
-    if (ch === 0x5c) out += "\\\\";        // backslash
-    else if (ch === 0x22) out += '\\"';     // double-quote
-    else if (ch === 0x0a) out += "\\n";     // newline
-    else if (ch === 0x0d) out += "\\r";     // carriage return
-    else if (ch === 0x09) out += "\\t";     // tab
+    if (ch === 0x5c)
+      out += "\\\\"; // backslash
+    else if (ch === 0x22)
+      out += '\\"'; // double-quote
+    else if (ch === 0x0a)
+      out += "\\n"; // newline
+    else if (ch === 0x0d)
+      out += "\\r"; // carriage return
+    else if (ch === 0x09)
+      out += "\\t"; // tab
     else if (ch < 0x20 || ch === 0x7f) {
       // Other control characters — emit as \xx hex escape
       out += "\\" + ch.toString(16).padStart(2, "0");
@@ -121,27 +125,19 @@ export function emitWat(mod: WasmModule): string {
         : imp.desc.kind === "global"
           ? `(global $${imp.name} ${imp.desc.mutable ? `(mut ${formatValType(imp.desc.type)})` : formatValType(imp.desc.type)})`
           : `(table ${imp.desc.min} ${imp.desc.max ?? ""} ${imp.desc.elementType})`;
-    lines.push(
-      `${indent(1)}(import "${escapeWatString(imp.module)}" "${escapeWatString(imp.name)}" ${desc})`,
-    );
+    lines.push(`${indent(1)}(import "${escapeWatString(imp.module)}" "${escapeWatString(imp.name)}" ${desc})`);
   }
 
   // Globals
   for (const g of mod.globals) {
-    const mutStr = g.mutable
-      ? `(mut ${formatValType(g.type)})`
-      : formatValType(g.type);
+    const mutStr = g.mutable ? `(mut ${formatValType(g.type)})` : formatValType(g.type);
     const initStr = g.init.map((i) => formatInstr(i, 0)).join(" ");
-    lines.push(
-      `${indent(1)}(global $${g.name} ${mutStr} (${initStr}))`,
-    );
+    lines.push(`${indent(1)}(global $${g.name} ${mutStr} (${initStr}))`);
   }
 
   // Tables
   for (const t of mod.tables) {
-    lines.push(
-      `${indent(1)}(table ${t.min} ${t.max !== undefined ? t.max : ""} ${t.elementType})`,
-    );
+    lines.push(`${indent(1)}(table ${t.min} ${t.max !== undefined ? t.max : ""} ${t.elementType})`);
   }
 
   // Memories
@@ -159,17 +155,13 @@ export function emitWat(mod: WasmModule): string {
   for (const elem of mod.elements) {
     const offsetStr = elem.offset.map((i) => formatInstr(i, 0)).join(" ");
     const funcStr = elem.funcIndices.join(" ");
-    lines.push(
-      `${indent(1)}(elem (offset ${offsetStr}) func ${funcStr})`,
-    );
+    lines.push(`${indent(1)}(elem (offset ${offsetStr}) func ${funcStr})`);
   }
 
   // Declarative element segment for ref.func targets
   if (mod.declaredFuncRefs.length > 0) {
     const funcStr = mod.declaredFuncRefs.join(" ");
-    lines.push(
-      `${indent(1)}(elem declare func ${funcStr})`,
-    );
+    lines.push(`${indent(1)}(elem declare func ${funcStr})`);
   }
 
   // Tags
@@ -179,9 +171,7 @@ export function emitWat(mod: WasmModule): string {
   }
 
   // Functions
-  const numImportFuncs = mod.imports.filter(
-    (i) => i.desc.kind === "func",
-  ).length;
+  const numImportFuncs = mod.imports.filter((i) => i.desc.kind === "func").length;
 
   for (let i = 0; i < mod.functions.length; i++) {
     const f = mod.functions[i]!;
@@ -190,9 +180,7 @@ export function emitWat(mod: WasmModule): string {
 
   // Exports
   for (const exp of mod.exports) {
-    lines.push(
-      `${indent(1)}(export "${escapeWatString(exp.name)}" (${exp.desc.kind} ${exp.desc.index}))`,
-    );
+    lines.push(`${indent(1)}(export "${escapeWatString(exp.name)}" (${exp.desc.kind} ${exp.desc.index}))`);
   }
 
   // Data segments (active, for linear memory)
@@ -201,9 +189,7 @@ export function emitWat(mod: WasmModule): string {
       const hexBytes = Array.from(seg.bytes)
         .map((b) => `\\${b.toString(16).padStart(2, "0")}`)
         .join("");
-      lines.push(
-        `${indent(1)}(data (i32.const ${seg.offset}) "${hexBytes}")`,
-      );
+      lines.push(`${indent(1)}(data (i32.const ${seg.offset}) "${hexBytes}")`);
     }
   }
 
@@ -219,9 +205,7 @@ function formatTypeDef(t: TypeDef, idx: number): string {
       return `(type $${t.name || `type${idx}`} (func${params ? ` (param ${params})` : ""}${results ? ` (result ${results})` : ""}))`;
     }
     case "struct": {
-      const fields = t.fields
-        .map((f) => formatFieldDef(f))
-        .join(" ");
+      const fields = t.fields.map((f) => formatFieldDef(f)).join(" ");
       if (t.superTypeIdx !== undefined) {
         const finalStr = t.final ? " final" : "";
         const superStr = t.superTypeIdx >= 0 ? ` $type${t.superTypeIdx}` : "";
@@ -232,14 +216,11 @@ function formatTypeDef(t: TypeDef, idx: number): string {
     case "array":
       return `(type $${t.name} (array ${t.mutable ? "(mut " : ""}${formatStorageType(t.element)}${t.mutable ? ")" : ""}))`;
     case "rec": {
-      const inner = t.types
-        .map((sub, i) => `    ${formatTypeDef(sub, idx + i)}`)
-        .join("\n");
+      const inner = t.types.map((sub, i) => `    ${formatTypeDef(sub, idx + i)}`).join("\n");
       return `(rec\n${inner}\n  )`;
     }
     case "sub": {
-      const superStr =
-        t.superType !== null ? ` $type${t.superType}` : "";
+      const superStr = t.superType !== null ? ` $type${t.superType}` : "";
       const innerType = formatTypeDef(t.type, idx);
       return `(type $${t.name} (sub${superStr} ${innerType.replace(/^\(type \$\S+ /, "").replace(/\)$/, "")}))`;
     }
@@ -290,12 +271,7 @@ function formatValType(t: ValType): string {
   }
 }
 
-function formatFunction(
-  f: WasmFunction,
-  _globalIdx: number,
-  mod: WasmModule,
-  inlineableTypes: Set<number>,
-): string {
+function formatFunction(f: WasmFunction, _globalIdx: number, mod: WasmModule, inlineableTypes: Set<number>): string {
   const lines: string[] = [];
 
   // If the function's type is single-use, inline the signature instead of referencing the type
@@ -332,23 +308,17 @@ function formatInstrIndented(instr: Instr, depth: number): string {
   switch (instr.op) {
     case "block": {
       const bt = formatBlockType(instr.blockType);
-      const inner = instr.body
-        .map((i) => formatInstrIndented(i, depth + 1))
-        .join("\n");
+      const inner = instr.body.map((i) => formatInstrIndented(i, depth + 1)).join("\n");
       return `${pad}(block${bt}\n${inner}\n${pad})`;
     }
     case "loop": {
       const bt = formatBlockType(instr.blockType);
-      const inner = instr.body
-        .map((i) => formatInstrIndented(i, depth + 1))
-        .join("\n");
+      const inner = instr.body.map((i) => formatInstrIndented(i, depth + 1)).join("\n");
       return `${pad}(loop${bt}\n${inner}\n${pad})`;
     }
     case "if": {
       const bt = formatBlockType(instr.blockType);
-      const thenStr = instr.then
-        .map((i) => formatInstrIndented(i, depth + 1))
-        .join("\n");
+      const thenStr = instr.then.map((i) => formatInstrIndented(i, depth + 1)).join("\n");
       const hasElse = instr.else && instr.else.length > 0;
       const needsElse = hasElse || instr.blockType.kind === "val";
       if (needsElse) {
@@ -490,7 +460,7 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `${instr.op} offset=${instr.offset} align=${1 << instr.align}`;
     // SIMD v128 instructions
     case "v128.const": {
-      const hexParts = Array.from(instr.bytes).map(b => `0x${b.toString(16).padStart(2, "0")}`);
+      const hexParts = Array.from(instr.bytes).map((b) => `0x${b.toString(16).padStart(2, "0")}`);
       return `v128.const i8x16 ${hexParts.join(" ")}`;
     }
     case "v128.load":

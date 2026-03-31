@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { compileToWasm, evaluateAsJs, assertEquivalent, buildImports, compile, readFileSync, resolve } from "./helpers.js";
+import {
+  compileToWasm,
+  evaluateAsJs,
+  assertEquivalent,
+  buildImports,
+  compile,
+  readFileSync,
+  resolve,
+} from "./helpers.js";
 
 describe("Arguments object in nested functions (#211)", () => {
   it("arguments.length in nested function", async () => {
@@ -133,7 +141,6 @@ describe("Arguments object in nested functions (#211)", () => {
     );
   });
 
-
   it("do-while with break", async () => {
     await assertEquivalent(
       `
@@ -219,7 +226,6 @@ describe("Arguments object in nested functions (#211)", () => {
       [{ fn: "test", args: [] }],
     );
   });
-
 
   // Issue #200: JSON.stringify/parse with various argument types
   it("JSON.stringify with number", async () => {
@@ -714,5 +720,4 @@ describe("Arguments object in nested functions (#211)", () => {
     `);
     expect(exports.test()).toBeNaN();
   });
-
 });

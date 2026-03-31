@@ -158,8 +158,15 @@ describe("full playground DEFAULT_SOURCE", () => {
         style: { cssText: "", background: "" },
         textContent: "",
         children: [],
-        appendChild: (child: any) => { el.children.push(child); return child; },
-        removeChild: (child: any) => { const i = el.children.indexOf(child); if (i >= 0) el.children.splice(i, 1); return child; },
+        appendChild: (child: any) => {
+          el.children.push(child);
+          return child;
+        },
+        removeChild: (child: any) => {
+          const i = el.children.indexOf(child);
+          if (i >= 0) el.children.splice(i, 1);
+          return child;
+        },
         setAttribute: () => {},
         addEventListener: () => {},
         getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
@@ -245,11 +252,10 @@ describe("full playground DEFAULT_SOURCE", () => {
         // For DOM methods, return a function that returns a mock element
         return (...args: unknown[]) => {
           // Common DOM methods that return elements
-          if (typeof prop === "string" && (
-            prop.includes("createElement") ||
-            prop.includes("getElementById") ||
-            prop.includes("querySelector")
-          )) {
+          if (
+            typeof prop === "string" &&
+            (prop.includes("createElement") || prop.includes("getElementById") || prop.includes("querySelector"))
+          ) {
             return mockElement();
           }
           return undefined;

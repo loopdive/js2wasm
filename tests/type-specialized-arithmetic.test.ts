@@ -72,44 +72,63 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
     },
   });
 
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    proxyImports as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, proxyImports as WebAssembly.Imports);
   return (instance.exports as any)[fn](...args);
 }
 
 describe("Type-specialized arithmetic: skip AnyValue for known types (#597)", () => {
   it("both operands number: subtraction uses direct f64", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       function calc(a: number, b: number): number { return a - b; }
       export function main(): number { return calc(10, 3); }
-    `, "main")).toBe(7);
+    `,
+        "main",
+      ),
+    ).toBe(7);
   });
 
   it("both operands number: multiplication", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       function calc(a: number, b: number): number { return a * b; }
       export function main(): number { return calc(6, 7); }
-    `, "main")).toBe(42);
+    `,
+        "main",
+      ),
+    ).toBe(42);
   });
 
   it("both operands number: division", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       function calc(a: number, b: number): number { return a / b; }
       export function main(): number { return calc(15, 3); }
-    `, "main")).toBe(5);
+    `,
+        "main",
+      ),
+    ).toBe(5);
   });
 
   it("both operands number: modulus", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       function calc(a: number, b: number): number { return a % b; }
       export function main(): number { return calc(17, 5); }
-    `, "main")).toBe(2);
+    `,
+        "main",
+      ),
+    ).toBe(2);
   });
 
   it("both operands number: comparisons", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: number = 5;
         const b: number = 10;
@@ -120,51 +139,76 @@ describe("Type-specialized arithmetic: skip AnyValue for known types (#597)", ()
         if (b >= a) result += 8;
         return result;
       }
-    `, "main")).toBe(15);
+    `,
+        "main",
+      ),
+    ).toBe(15);
   });
 
   it("any-typed operands: subtraction via numeric path (not AnyValue)", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 20;
         const b: any = 8;
         return a - b;
       }
-    `, "main")).toBe(12);
+    `,
+        "main",
+      ),
+    ).toBe(12);
   });
 
   it("any-typed operands: multiplication via numeric path", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 6;
         const b: any = 7;
         return a * b;
       }
-    `, "main")).toBe(42);
+    `,
+        "main",
+      ),
+    ).toBe(42);
   });
 
   it("any-typed operands: division via numeric path", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 100;
         const b: any = 4;
         return a / b;
       }
-    `, "main")).toBe(25);
+    `,
+        "main",
+      ),
+    ).toBe(25);
   });
 
   it("any-typed operands: modulus via numeric path", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 17;
         const b: any = 5;
         return a % b;
       }
-    `, "main")).toBe(2);
+    `,
+        "main",
+      ),
+    ).toBe(2);
   });
 
   it("any-typed operands: comparison operators", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 3;
         const b: any = 7;
@@ -175,11 +219,16 @@ describe("Type-specialized arithmetic: skip AnyValue for known types (#597)", ()
         if (b >= a) result += 8;
         return result;
       }
-    `, "main")).toBe(15);
+    `,
+        "main",
+      ),
+    ).toBe(15);
   });
 
   it("any-typed operands: bitwise operators", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 255;
         const b: any = 15;
@@ -188,48 +237,71 @@ describe("Type-specialized arithmetic: skip AnyValue for known types (#597)", ()
         const xor = a ^ b;
         return and + or + xor;
       }
-    `, "main")).toBe(15 + 255 + 240);
+    `,
+        "main",
+      ),
+    ).toBe(15 + 255 + 240);
   });
 
   it("any-typed operands: shift operators", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 8;
         const shl = a << 2;
         const shr = a >> 1;
         return shl + shr;
       }
-    `, "main")).toBe(36);
+    `,
+        "main",
+      ),
+    ).toBe(36);
   });
 
   it("any-typed: addition still works (via AnyValue for string safety)", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 10;
         const b: any = 20;
         return a + b;
       }
-    `, "main")).toBe(30);
+    `,
+        "main",
+      ),
+    ).toBe(30);
   });
 
   it("any-typed operands: exponentiation", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 2;
         const b: any = 10;
         return a ** b;
       }
-    `, "main")).toBe(1024);
+    `,
+        "main",
+      ),
+    ).toBe(1024);
   });
 
   it("chained arithmetic with any-typed operands", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function main(): number {
         const a: any = 10;
         const b: any = 3;
         const c: any = 2;
         return a - b * c;
       }
-    `, "main")).toBe(4);
+    `,
+        "main",
+      ),
+    ).toBe(4);
   });
 });

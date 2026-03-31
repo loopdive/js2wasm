@@ -69,27 +69,15 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
   },
   {
     name: "Global functions",
-    prefixes: [
-      "built-ins/isFinite",
-      "built-ins/isNaN",
-      "built-ins/parseFloat",
-      "built-ins/parseInt",
-    ],
+    prefixes: ["built-ins/isFinite", "built-ins/isNaN", "built-ins/parseFloat", "built-ins/parseInt"],
   },
   {
     name: "Classes",
-    prefixes: [
-      "language/statements/class",
-      "language/expressions/class",
-    ],
+    prefixes: ["language/statements/class", "language/expressions/class"],
   },
   {
     name: "Functions",
-    prefixes: [
-      "language/statements/function",
-      "language/expressions/function",
-      "language/expressions/arrow-function",
-    ],
+    prefixes: ["language/statements/function", "language/expressions/function", "language/expressions/arrow-function"],
   },
   {
     name: "Async / Await",
@@ -103,18 +91,11 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
   },
   {
     name: "Generators",
-    prefixes: [
-      "language/statements/generators",
-      "language/expressions/generators",
-      "language/expressions/yield",
-    ],
+    prefixes: ["language/statements/generators", "language/expressions/generators", "language/expressions/yield"],
   },
   {
     name: "Assignment & destructuring",
-    prefixes: [
-      "language/expressions/assignment",
-      "language/destructuring",
-    ],
+    prefixes: ["language/expressions/assignment", "language/destructuring"],
   },
   {
     name: "Loops (for, for-of, for-in, while, do-while)",
@@ -145,10 +126,7 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
   },
   {
     name: "Template literals",
-    prefixes: [
-      "language/expressions/template-literal",
-      "language/expressions/tagged-template",
-    ],
+    prefixes: ["language/expressions/template-literal", "language/expressions/tagged-template"],
   },
   {
     name: "Arithmetic operators",
@@ -213,9 +191,7 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
   },
   {
     name: "Optional chaining & nullish coalescing",
-    prefixes: [
-      "language/expressions/optional-chaining",
-    ],
+    prefixes: ["language/expressions/optional-chaining"],
   },
   {
     name: "Conditional (ternary)",
@@ -254,10 +230,7 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
   },
   {
     name: "new / new.target",
-    prefixes: [
-      "language/expressions/new",
-      "language/expressions/new.target",
-    ],
+    prefixes: ["language/expressions/new", "language/expressions/new.target"],
   },
   {
     name: "typeof / void / delete / in / instanceof",
@@ -285,12 +258,18 @@ function statusFromRate(passRate: number): string {
 
 function statusEmoji(status: string): string {
   switch (status) {
-    case "Full": return "🟢";
-    case "Mostly": return "🟡";
-    case "Partial": return "🟠";
-    case "Basic": return "🔴";
-    case "Planned": return "⬜";
-    default: return "";
+    case "Full":
+      return "🟢";
+    case "Mostly":
+      return "🟡";
+    case "Partial":
+      return "🟠";
+    case "Basic":
+      return "🔴";
+    case "Planned":
+      return "⬜";
+    default:
+      return "";
   }
 }
 
@@ -343,9 +322,7 @@ function generateCoverageTable(results: TestResult[]): string {
     let compileError = 0;
 
     for (const result of results) {
-      const matches = mapping.prefixes.some((prefix) =>
-        result.category.startsWith(prefix)
-      );
+      const matches = mapping.prefixes.some((prefix) => result.category.startsWith(prefix));
       if (!matches) continue;
 
       switch (result.status) {
@@ -388,9 +365,7 @@ function generateCoverageTable(results: TestResult[]): string {
 
   for (const row of rows) {
     const pct = row.total > 0 ? Math.round(row.rate * 100) : 0;
-    lines.push(
-      `| ${row.name} | ${statusEmoji(row.status)} ${row.status} | ${row.pass} | ${row.total} | ${pct}% |`
-    );
+    lines.push(`| ${row.name} | ${statusEmoji(row.status)} ${row.status} | ${row.pass} | ${row.total} | ${pct}% |`);
   }
 
   // Summary row
@@ -408,13 +383,24 @@ function generateCoverageTable(results: TestResult[]): string {
 // ---------------------------------------------------------------------------
 
 function generateSummary(results: TestResult[]): string {
-  let pass = 0, fail = 0, skip = 0, compileError = 0;
+  let pass = 0,
+    fail = 0,
+    skip = 0,
+    compileError = 0;
   for (const r of results) {
     switch (r.status) {
-      case "pass": pass++; break;
-      case "fail": fail++; break;
-      case "skip": skip++; break;
-      case "compile_error": compileError++; break;
+      case "pass":
+        pass++;
+        break;
+      case "fail":
+        fail++;
+        break;
+      case "skip":
+        skip++;
+        break;
+      case "compile_error":
+        compileError++;
+        break;
     }
   }
   const total = results.length;
@@ -449,7 +435,7 @@ function generateBenchmarkTable(): string | null {
 
   try {
     const data = JSON.parse(readFileSync(LATEST_PATH, "utf-8"));
-    const entries: BenchmarkEntry[] = Array.isArray(data) ? data : data.benchmarks ?? data.results ?? [];
+    const entries: BenchmarkEntry[] = Array.isArray(data) ? data : (data.benchmarks ?? data.results ?? []);
 
     if (entries.length === 0) return null;
 
@@ -474,12 +460,7 @@ function generateBenchmarkTable(): string | null {
 // Patch README between marker comments
 // ---------------------------------------------------------------------------
 
-function patchBetweenMarkers(
-  content: string,
-  startMarker: string,
-  endMarker: string,
-  replacement: string
-): string {
+function patchBetweenMarkers(content: string, startMarker: string, endMarker: string, replacement: string): string {
   const startIdx = content.indexOf(startMarker);
   const endIdx = content.indexOf(endMarker);
 
@@ -542,11 +523,7 @@ function ensureMarkers(content: string): string {
       const before = content.slice(0, insertAt);
       const after = content.slice(insertAt);
       content =
-        before +
-        "\n\n### Benchmarks\n\n" +
-        "<!-- AUTO:BENCHMARKS:START -->\n" +
-        "<!-- AUTO:BENCHMARKS:END -->" +
-        after;
+        before + "\n\n### Benchmarks\n\n" + "<!-- AUTO:BENCHMARKS:START -->\n" + "<!-- AUTO:BENCHMARKS:END -->" + after;
     }
   }
 
@@ -593,12 +570,7 @@ function main() {
   readme = ensureMarkers(readme);
 
   // Patch coverage
-  readme = patchBetweenMarkers(
-    readme,
-    "<!-- AUTO:COVERAGE:START -->",
-    "<!-- AUTO:COVERAGE:END -->",
-    coverageContent
-  );
+  readme = patchBetweenMarkers(readme, "<!-- AUTO:COVERAGE:START -->", "<!-- AUTO:COVERAGE:END -->", coverageContent);
 
   // Patch benchmarks
   if (benchmarkTable) {
@@ -606,14 +578,14 @@ function main() {
       readme,
       "<!-- AUTO:BENCHMARKS:START -->",
       "<!-- AUTO:BENCHMARKS:END -->",
-      benchmarkTable
+      benchmarkTable,
     );
   } else {
     readme = patchBetweenMarkers(
       readme,
       "<!-- AUTO:BENCHMARKS:START -->",
       "<!-- AUTO:BENCHMARKS:END -->",
-      "_No benchmark data available. Run benchmarks to populate this section._"
+      "_No benchmark data available. Run benchmarks to populate this section._",
     );
   }
 

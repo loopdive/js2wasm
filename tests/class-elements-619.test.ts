@@ -14,7 +14,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("Issue #619: class element handlers", () => {
   it("class with field declarations and initializers", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Foo {
         x: number = 42;
         y: number = 10;
@@ -23,12 +24,15 @@ describe("Issue #619: class element handlers", () => {
         const f = new Foo();
         return f.x + f.y;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(52);
   });
 
   it("class with private fields", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Counter {
         #count: number = 0;
         increment() { this.#count++; }
@@ -41,12 +45,15 @@ describe("Issue #619: class element handlers", () => {
         c.increment();
         return c.getCount();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(3);
   });
 
   it("class with semicolon class elements", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class MyClass {
         x: number = 10;
         ;
@@ -58,12 +65,15 @@ describe("Issue #619: class element handlers", () => {
         const m = new MyClass();
         return m.getSum();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(30);
   });
 
   it("class with field initializers using expressions", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Config {
         a: number = 1 + 2;
         b: number = 10 * 3;
@@ -72,12 +82,15 @@ describe("Issue #619: class element handlers", () => {
         const c = new Config();
         return c.a + c.b;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(33);
   });
 
   it("class with property declaration no initializer", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Point {
         x: number;
         y: number;
@@ -90,12 +103,15 @@ describe("Issue #619: class element handlers", () => {
         const p = new Point(3, 4);
         return p.x + p.y;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(7);
   });
 
   it("class with static and instance fields", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Foo {
         static defaultValue: number = 99;
         value: number;
@@ -110,7 +126,9 @@ describe("Issue #619: class element handlers", () => {
         const f = new Foo(1);
         return f.getWithDefault();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(100);
   });
 });

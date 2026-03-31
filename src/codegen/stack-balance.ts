@@ -24,15 +24,7 @@
  * pushes/pops through a linear instruction sequence, plus type inference
  * for the last value-producing instruction to detect type mismatches.
  */
-import type {
-  Instr,
-  WasmModule,
-  WasmFunction,
-  BlockType,
-  FuncTypeDef,
-  TypeDef,
-  ValType,
-} from "../ir/types.js";
+import type { Instr, WasmModule, WasmFunction, BlockType, FuncTypeDef, TypeDef, ValType } from "../ir/types.js";
 
 /** Sentinel: the instruction sequence is unreachable (after return/br/throw/unreachable). */
 const UNREACHABLE = -999;
@@ -41,8 +33,15 @@ const UNREACHABLE = -999;
  * Check if an instruction is a terminator (makes subsequent code unreachable).
  */
 function isTerminator(op: string): boolean {
-  return op === "return" || op === "return_call" || op === "return_call_ref" ||
-         op === "br" || op === "throw" || op === "rethrow" || op === "unreachable";
+  return (
+    op === "return" ||
+    op === "return_call" ||
+    op === "return_call_ref" ||
+    op === "br" ||
+    op === "throw" ||
+    op === "rethrow" ||
+    op === "unreachable"
+  );
 }
 
 /**
@@ -65,7 +64,8 @@ function eliminateDeadCode(body: Instr[]): number {
       removed += eliminateDeadCode(blockInstr.body);
     } else if (instr.op === "try") {
       const tryInstr = instr as {
-        op: "try"; body: Instr[];
+        op: "try";
+        body: Instr[];
         catches: Array<{ body: Instr[] }>;
         catchAll?: Instr[];
       };
@@ -125,46 +125,90 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
   const op = instr.op;
 
   // Terminators -- make subsequent code unreachable
-  if (op === "return" || op === "return_call" || op === "return_call_ref" ||
-      op === "br" || op === "throw" || op === "rethrow" || op === "unreachable") {
+  if (
+    op === "return" ||
+    op === "return_call" ||
+    op === "return_call_ref" ||
+    op === "br" ||
+    op === "throw" ||
+    op === "rethrow" ||
+    op === "unreachable"
+  ) {
     return UNREACHABLE;
   }
 
   // Push 1 value
-  if (op === "i32.const" || op === "i64.const" || op === "f64.const" || op === "f32.const" ||
-      op === "v128.const" ||
-      op === "local.get" || op === "global.get" ||
-      op === "ref.null" || op === "ref.null.extern" || op === "ref.null.eq" ||
-      op === "ref.null.func" || op === "ref.func" ||
-      op === "memory.size") {
+  if (
+    op === "i32.const" ||
+    op === "i64.const" ||
+    op === "f64.const" ||
+    op === "f32.const" ||
+    op === "v128.const" ||
+    op === "local.get" ||
+    op === "global.get" ||
+    op === "ref.null" ||
+    op === "ref.null.extern" ||
+    op === "ref.null.eq" ||
+    op === "ref.null.func" ||
+    op === "ref.func" ||
+    op === "memory.size"
+  ) {
     return 1;
   }
 
   // Push 1, pop 1 (net 0)
-  if (op === "local.tee" || op === "ref.as_non_null" || op === "ref.cast" ||
-      op === "ref.cast_null" ||
-      op === "ref.test" || op === "ref.is_null" ||
-      op === "i32.eqz" || op === "i64.eqz" ||
-      op === "i32.clz" ||
-      op === "f64.neg" || op === "f64.abs" || op === "f64.floor" || op === "f64.ceil" ||
-      op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
-      op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
-      op === "f64.promote_f32" || op === "f32.demote_f64" ||
-      op === "f64.reinterpret_i64" || op === "i64.reinterpret_f64" ||
-      op === "i32.trunc_sat_f64_s" || op === "i32.trunc_sat_f64_u" ||
-      op === "i32.trunc_f64_s" ||
-      op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
-      op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
-      op === "i32.wrap_i64" ||
-      op === "any.convert_extern" || op === "extern.convert_any" ||
-      op === "array.len" || op === "memory.grow" ||
-      op === "v128.not" || op === "v128.any_true" ||
-      op === "i8x16.splat" || op === "i16x8.splat" || op === "i32x4.splat" ||
-      op === "i64x2.splat" || op === "f32x4.splat" || op === "f64x2.splat" ||
-      op === "i8x16.all_true" || op === "i8x16.bitmask" ||
-      op === "i16x8.all_true" || op === "i16x8.bitmask" ||
-      op === "i32x4.all_true" || op === "i32x4.bitmask" ||
-      op === "nop") {
+  if (
+    op === "local.tee" ||
+    op === "ref.as_non_null" ||
+    op === "ref.cast" ||
+    op === "ref.cast_null" ||
+    op === "ref.test" ||
+    op === "ref.is_null" ||
+    op === "i32.eqz" ||
+    op === "i64.eqz" ||
+    op === "i32.clz" ||
+    op === "f64.neg" ||
+    op === "f64.abs" ||
+    op === "f64.floor" ||
+    op === "f64.ceil" ||
+    op === "f64.trunc" ||
+    op === "f64.nearest" ||
+    op === "f64.sqrt" ||
+    op === "f64.convert_i32_s" ||
+    op === "f64.convert_i32_u" ||
+    op === "f64.convert_i64_s" ||
+    op === "f64.promote_f32" ||
+    op === "f32.demote_f64" ||
+    op === "f64.reinterpret_i64" ||
+    op === "i64.reinterpret_f64" ||
+    op === "i32.trunc_sat_f64_s" ||
+    op === "i32.trunc_sat_f64_u" ||
+    op === "i32.trunc_f64_s" ||
+    op === "i64.trunc_sat_f64_s" ||
+    op === "i64.trunc_f64_s" ||
+    op === "i64.extend_i32_s" ||
+    op === "i64.extend_i32_u" ||
+    op === "i32.wrap_i64" ||
+    op === "any.convert_extern" ||
+    op === "extern.convert_any" ||
+    op === "array.len" ||
+    op === "memory.grow" ||
+    op === "v128.not" ||
+    op === "v128.any_true" ||
+    op === "i8x16.splat" ||
+    op === "i16x8.splat" ||
+    op === "i32x4.splat" ||
+    op === "i64x2.splat" ||
+    op === "f32x4.splat" ||
+    op === "f64x2.splat" ||
+    op === "i8x16.all_true" ||
+    op === "i8x16.bitmask" ||
+    op === "i16x8.all_true" ||
+    op === "i16x8.bitmask" ||
+    op === "i32x4.all_true" ||
+    op === "i32x4.bitmask" ||
+    op === "nop"
+  ) {
     return 0;
   }
 
@@ -174,24 +218,62 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
   }
 
   // Pop 2, push 1 (net -1)
-  if (op === "i32.add" || op === "i32.sub" || op === "i32.mul" ||
-      op === "i32.div_s" || op === "i32.div_u" || op === "i32.rem_s" || op === "i32.rem_u" ||
-      op === "i32.and" || op === "i32.or" || op === "i32.xor" ||
-      op === "i32.shl" || op === "i32.shr_s" || op === "i32.shr_u" ||
-      op === "i32.eq" || op === "i32.ne" ||
-      op === "i32.lt_s" || op === "i32.le_s" || op === "i32.gt_s" || op === "i32.ge_s" ||
-      op === "i32.lt_u" || op === "i32.le_u" || op === "i32.gt_u" || op === "i32.ge_u" ||
-      op === "i64.add" || op === "i64.sub" || op === "i64.mul" ||
-      op === "i64.div_s" || op === "i64.rem_s" ||
-      op === "i64.and" || op === "i64.or" || op === "i64.xor" ||
-      op === "i64.shl" || op === "i64.shr_s" || op === "i64.shr_u" ||
-      op === "i64.eq" || op === "i64.ne" ||
-      op === "i64.lt_s" || op === "i64.le_s" || op === "i64.gt_s" || op === "i64.ge_s" ||
-      op === "f64.add" || op === "f64.sub" || op === "f64.mul" || op === "f64.div" ||
-      op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
-      op === "f64.gt" || op === "f64.ge" ||
-      op === "f64.copysign" || op === "f64.min" || op === "f64.max" ||
-      op === "ref.eq") {
+  if (
+    op === "i32.add" ||
+    op === "i32.sub" ||
+    op === "i32.mul" ||
+    op === "i32.div_s" ||
+    op === "i32.div_u" ||
+    op === "i32.rem_s" ||
+    op === "i32.rem_u" ||
+    op === "i32.and" ||
+    op === "i32.or" ||
+    op === "i32.xor" ||
+    op === "i32.shl" ||
+    op === "i32.shr_s" ||
+    op === "i32.shr_u" ||
+    op === "i32.eq" ||
+    op === "i32.ne" ||
+    op === "i32.lt_s" ||
+    op === "i32.le_s" ||
+    op === "i32.gt_s" ||
+    op === "i32.ge_s" ||
+    op === "i32.lt_u" ||
+    op === "i32.le_u" ||
+    op === "i32.gt_u" ||
+    op === "i32.ge_u" ||
+    op === "i64.add" ||
+    op === "i64.sub" ||
+    op === "i64.mul" ||
+    op === "i64.div_s" ||
+    op === "i64.rem_s" ||
+    op === "i64.and" ||
+    op === "i64.or" ||
+    op === "i64.xor" ||
+    op === "i64.shl" ||
+    op === "i64.shr_s" ||
+    op === "i64.shr_u" ||
+    op === "i64.eq" ||
+    op === "i64.ne" ||
+    op === "i64.lt_s" ||
+    op === "i64.le_s" ||
+    op === "i64.gt_s" ||
+    op === "i64.ge_s" ||
+    op === "f64.add" ||
+    op === "f64.sub" ||
+    op === "f64.mul" ||
+    op === "f64.div" ||
+    op === "f64.eq" ||
+    op === "f64.ne" ||
+    op === "f64.lt" ||
+    op === "f64.le" ||
+    op === "f64.gt" ||
+    op === "f64.ge" ||
+    op === "f64.copysign" ||
+    op === "f64.min" ||
+    op === "f64.max" ||
+    op === "ref.eq"
+  ) {
     return -1;
   }
 
@@ -206,7 +288,7 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
     const typeIdx = (instr as any).typeIdx;
     const t = types[typeIdx];
     if (t && t.kind === "struct") {
-      return -(t.fields.length) + 1;
+      return -t.fields.length + 1;
     }
     return 0; // fallback
   }
@@ -291,9 +373,14 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
   }
 
   // Memory loads: pop 1 (address), push 1 (value) -- net 0
-  if (op.endsWith(".load") || op.includes(".load8") || op.includes(".load16") ||
-      op.includes(".load32_zero") || op.includes(".load64_zero") ||
-      op.includes("_splat")) {
+  if (
+    op.endsWith(".load") ||
+    op.includes(".load8") ||
+    op.includes(".load16") ||
+    op.includes(".load32_zero") ||
+    op.includes(".load64_zero") ||
+    op.includes("_splat")
+  ) {
     return 0;
   }
 
@@ -303,11 +390,26 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
   }
 
   // SIMD binary ops: pop 2, push 1 (net -1)
-  if ((op.startsWith("i8x16.") || op.startsWith("i16x8.") || op.startsWith("i32x4.") ||
-       op.startsWith("i64x2.") || op.startsWith("f32x4.") || op.startsWith("f64x2.")) &&
-      (op.includes(".add") || op.includes(".sub") || op.includes(".mul") || op.includes(".div") ||
-       op.includes(".eq") || op.includes(".ne") || op.includes(".lt") || op.includes(".gt") ||
-       op.includes(".min") || op.includes(".max") || op.includes(".shl") || op.includes(".shr"))) {
+  if (
+    (op.startsWith("i8x16.") ||
+      op.startsWith("i16x8.") ||
+      op.startsWith("i32x4.") ||
+      op.startsWith("i64x2.") ||
+      op.startsWith("f32x4.") ||
+      op.startsWith("f64x2.")) &&
+    (op.includes(".add") ||
+      op.includes(".sub") ||
+      op.includes(".mul") ||
+      op.includes(".div") ||
+      op.includes(".eq") ||
+      op.includes(".ne") ||
+      op.includes(".lt") ||
+      op.includes(".gt") ||
+      op.includes(".min") ||
+      op.includes(".max") ||
+      op.includes(".shl") ||
+      op.includes(".shr"))
+  ) {
     return -1;
   }
 
@@ -377,36 +479,86 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
     if (op === "drop" || op === "local.set" || op === "global.set") continue;
 
     // f64 producers
-    if (op === "f64.const" || op === "f64.add" || op === "f64.sub" || op === "f64.mul" ||
-        op === "f64.div" || op === "f64.neg" || op === "f64.abs" || op === "f64.floor" ||
-        op === "f64.ceil" || op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
-        op === "f64.copysign" || op === "f64.min" || op === "f64.max" ||
-        op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
-        op === "f64.promote_f32" || op === "f64.reinterpret_i64") {
+    if (
+      op === "f64.const" ||
+      op === "f64.add" ||
+      op === "f64.sub" ||
+      op === "f64.mul" ||
+      op === "f64.div" ||
+      op === "f64.neg" ||
+      op === "f64.abs" ||
+      op === "f64.floor" ||
+      op === "f64.ceil" ||
+      op === "f64.trunc" ||
+      op === "f64.nearest" ||
+      op === "f64.sqrt" ||
+      op === "f64.copysign" ||
+      op === "f64.min" ||
+      op === "f64.max" ||
+      op === "f64.convert_i32_s" ||
+      op === "f64.convert_i32_u" ||
+      op === "f64.convert_i64_s" ||
+      op === "f64.promote_f32" ||
+      op === "f64.reinterpret_i64"
+    ) {
       return "f64";
     }
 
     // i32 producers
-    if (op === "i32.const" || op === "i32.add" || op === "i32.sub" || op === "i32.mul" ||
-        op === "i32.and" || op === "i32.or" || op === "i32.xor" ||
-        op === "i32.eqz" || op === "i32.eq" || op === "i32.ne" ||
-        op === "i32.lt_s" || op === "i32.le_s" || op === "i32.gt_s" || op === "i32.ge_s" ||
-        op === "i32.shl" || op === "i32.shr_s" || op === "i32.shr_u" ||
-        op === "i32.trunc_sat_f64_s" || op === "i32.trunc_f64_s" ||
-        op === "ref.is_null" || op === "ref.test" || op === "ref.eq" ||
-        op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
-        op === "f64.gt" || op === "f64.ge" ||
-        op === "i64.eqz" || op === "i64.eq" || op === "i64.ne") {
+    if (
+      op === "i32.const" ||
+      op === "i32.add" ||
+      op === "i32.sub" ||
+      op === "i32.mul" ||
+      op === "i32.and" ||
+      op === "i32.or" ||
+      op === "i32.xor" ||
+      op === "i32.eqz" ||
+      op === "i32.eq" ||
+      op === "i32.ne" ||
+      op === "i32.lt_s" ||
+      op === "i32.le_s" ||
+      op === "i32.gt_s" ||
+      op === "i32.ge_s" ||
+      op === "i32.shl" ||
+      op === "i32.shr_s" ||
+      op === "i32.shr_u" ||
+      op === "i32.trunc_sat_f64_s" ||
+      op === "i32.trunc_f64_s" ||
+      op === "ref.is_null" ||
+      op === "ref.test" ||
+      op === "ref.eq" ||
+      op === "f64.eq" ||
+      op === "f64.ne" ||
+      op === "f64.lt" ||
+      op === "f64.le" ||
+      op === "f64.gt" ||
+      op === "f64.ge" ||
+      op === "i64.eqz" ||
+      op === "i64.eq" ||
+      op === "i64.ne"
+    ) {
       return "i32";
     }
 
     // i64 producers
-    if (op === "i64.const" || op === "i64.add" || op === "i64.sub" || op === "i64.mul" ||
-        op === "i64.and" || op === "i64.or" || op === "i64.xor" ||
-        op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
-        op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
-        op === "i64.shl" || op === "i64.shr_s" || op === "i64.shr_u" ||
-        op === "i64.reinterpret_f64") {
+    if (
+      op === "i64.const" ||
+      op === "i64.add" ||
+      op === "i64.sub" ||
+      op === "i64.mul" ||
+      op === "i64.and" ||
+      op === "i64.or" ||
+      op === "i64.xor" ||
+      op === "i64.extend_i32_s" ||
+      op === "i64.extend_i32_u" ||
+      op === "i64.trunc_sat_f64_s" ||
+      op === "i64.trunc_f64_s" ||
+      op === "i64.shl" ||
+      op === "i64.shr_s" ||
+      op === "i64.shr_u" ||
+      op === "i64.reinterpret_f64"
+    ) {
       return "i64";
     }
 
@@ -417,10 +569,16 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
 
     // ref producers (GC refs) -- only include ops that ALWAYS produce ref types
     // Note: struct.get and array.get are excluded because they can return f64/i32/etc
-    if (op === "struct.new" || op === "array.new" ||
-        op === "array.new_default" || op === "array.new_fixed" ||
-        op === "ref.cast" || op === "ref.cast_null" || op === "ref.as_non_null" ||
-        op === "any.convert_extern") {
+    if (
+      op === "struct.new" ||
+      op === "array.new" ||
+      op === "array.new_default" ||
+      op === "array.new_fixed" ||
+      op === "ref.cast" ||
+      op === "ref.cast_null" ||
+      op === "ref.as_non_null" ||
+      op === "any.convert_extern"
+    ) {
       return "ref";
     }
 
@@ -462,10 +620,14 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
     if (op === "call") {
       const funcIdx = (instr as any).funcIdx;
       const sig = sigs.get(funcIdx);
-      if (sig && sig.resultType && (
-        sig.resultType === "f64" || sig.resultType === "i32" || sig.resultType === "i64" ||
-        sig.resultType === "externref"
-      )) {
+      if (
+        sig &&
+        sig.resultType &&
+        (sig.resultType === "f64" ||
+          sig.resultType === "i32" ||
+          sig.resultType === "i64" ||
+          sig.resultType === "externref")
+      ) {
         return sig.resultType;
       }
       return null;
@@ -516,12 +678,7 @@ function typesCompatible(produced: string, expected: ValType): boolean {
  * Insert type coercion instructions at the end of a branch body to match the expected type.
  * Returns the number of fixups applied.
  */
-function fixBranchType(
-  body: Instr[],
-  blockType: BlockType,
-  types: TypeDef[],
-  sigs: FuncSigInfo,
-): number {
+function fixBranchType(body: Instr[], blockType: BlockType, types: TypeDef[], sigs: FuncSigInfo): number {
   if (blockType.kind !== "val") return 0;
   const expectedType = blockType.type;
 
@@ -534,9 +691,11 @@ function fixBranchType(
 
   // ref/anyref → externref: insert extern.convert_any
   // Guard: extern.convert_any takes anyref, NOT externref — skip if already externref
-  if ((expectedType.kind === "externref" || expectedType.kind === "ref_extern") &&
-      produced !== "externref" &&
-      (produced === "ref" || produced === "eqref" || produced === "funcref" || produced === "anyref")) {
+  if (
+    (expectedType.kind === "externref" || expectedType.kind === "ref_extern") &&
+    produced !== "externref" &&
+    (produced === "ref" || produced === "eqref" || produced === "funcref" || produced === "anyref")
+  ) {
     body.push({ op: "extern.convert_any" } as Instr);
     return 1;
   }
@@ -616,13 +775,7 @@ function fixBranchType(
  * Mutates the body array in place.
  * Returns the number of fixups applied.
  */
-function fixBranch(
-  body: Instr[],
-  expected: number,
-  types: TypeDef[],
-  sigs: FuncSigInfo,
-  blockType: BlockType,
-): number {
+function fixBranch(body: Instr[], expected: number, types: TypeDef[], sigs: FuncSigInfo, blockType: BlockType): number {
   const actual = sequenceDelta(body, types, sigs);
   if (actual === UNREACHABLE) return 0; // unreachable branch -- validator accepts anything
 
@@ -781,16 +934,28 @@ function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array
  */
 function valTypeCategory(vt: ValType): string | undefined {
   switch (vt.kind) {
-    case "f64": return "f64";
-    case "i32": return "i32";
-    case "i64": return "i64";
-    case "f32": return "f32";
-    case "externref": case "ref_extern": return "externref";
-    case "ref": case "ref_null": return "ref";
-    case "funcref": return "funcref";
-    case "eqref": return "eqref";
-    case "anyref": return "anyref";
-    default: return undefined;
+    case "f64":
+      return "f64";
+    case "i32":
+      return "i32";
+    case "i64":
+      return "i64";
+    case "f32":
+      return "f32";
+    case "externref":
+    case "ref_extern":
+      return "externref";
+    case "ref":
+    case "ref_null":
+      return "ref";
+    case "funcref":
+      return "funcref";
+    case "eqref":
+      return "eqref";
+    case "anyref":
+      return "anyref";
+    default:
+      return undefined;
   }
 }
 
@@ -872,30 +1037,68 @@ function inferInstrType(
     const idx = (instr as any).index as number;
     return globalTypes[idx] ?? null;
   }
-  if (op === "f64.const" || op === "f64.add" || op === "f64.sub" || op === "f64.mul" ||
-      op === "f64.div" || op === "f64.neg" || op === "f64.abs" || op === "f64.floor" ||
-      op === "f64.ceil" || op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
-      op === "f64.copysign" || op === "f64.min" || op === "f64.max" ||
-      op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
-      op === "f64.promote_f32" || op === "f64.reinterpret_i64") {
+  if (
+    op === "f64.const" ||
+    op === "f64.add" ||
+    op === "f64.sub" ||
+    op === "f64.mul" ||
+    op === "f64.div" ||
+    op === "f64.neg" ||
+    op === "f64.abs" ||
+    op === "f64.floor" ||
+    op === "f64.ceil" ||
+    op === "f64.trunc" ||
+    op === "f64.nearest" ||
+    op === "f64.sqrt" ||
+    op === "f64.copysign" ||
+    op === "f64.min" ||
+    op === "f64.max" ||
+    op === "f64.convert_i32_s" ||
+    op === "f64.convert_i32_u" ||
+    op === "f64.convert_i64_s" ||
+    op === "f64.promote_f32" ||
+    op === "f64.reinterpret_i64"
+  ) {
     return { kind: "f64" };
   }
-  if (op === "i32.const" || op === "i32.add" || op === "i32.sub" || op === "i32.mul" ||
-      op === "i32.and" || op === "i32.or" || op === "i32.xor" ||
-      op === "i32.eqz" || op === "i32.eq" || op === "i32.ne" ||
-      op === "i32.lt_s" || op === "i32.le_s" || op === "i32.gt_s" || op === "i32.ge_s" ||
-      op === "i32.shl" || op === "i32.shr_s" || op === "i32.shr_u" ||
-      op === "i32.trunc_sat_f64_s" || op === "i32.trunc_f64_s" ||
-      op === "i32.wrap_i64" ||
-      op === "ref.is_null" || op === "ref.test" || op === "ref.eq" ||
-      op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
-      op === "f64.gt" || op === "f64.ge" ||
-      op === "i64.eqz" || op === "i64.eq" || op === "i64.ne" ||
-      op === "array.len") {
+  if (
+    op === "i32.const" ||
+    op === "i32.add" ||
+    op === "i32.sub" ||
+    op === "i32.mul" ||
+    op === "i32.and" ||
+    op === "i32.or" ||
+    op === "i32.xor" ||
+    op === "i32.eqz" ||
+    op === "i32.eq" ||
+    op === "i32.ne" ||
+    op === "i32.lt_s" ||
+    op === "i32.le_s" ||
+    op === "i32.gt_s" ||
+    op === "i32.ge_s" ||
+    op === "i32.shl" ||
+    op === "i32.shr_s" ||
+    op === "i32.shr_u" ||
+    op === "i32.trunc_sat_f64_s" ||
+    op === "i32.trunc_f64_s" ||
+    op === "i32.wrap_i64" ||
+    op === "ref.is_null" ||
+    op === "ref.test" ||
+    op === "ref.eq" ||
+    op === "f64.eq" ||
+    op === "f64.ne" ||
+    op === "f64.lt" ||
+    op === "f64.le" ||
+    op === "f64.gt" ||
+    op === "f64.ge" ||
+    op === "i64.eqz" ||
+    op === "i64.eq" ||
+    op === "i64.ne" ||
+    op === "array.len"
+  ) {
     return { kind: "i32" };
   }
-  if (op === "i64.const" || op === "i64.extend_i32_s" || op === "i64.trunc_sat_f64_s" ||
-      op === "i64.reinterpret_f64") {
+  if (op === "i64.const" || op === "i64.extend_i32_s" || op === "i64.trunc_sat_f64_s" || op === "i64.reinterpret_f64") {
     return { kind: "i64" };
   }
   if (op === "ref.null.extern" || op === "extern.convert_any") {
@@ -987,8 +1190,10 @@ function callArgCoercionInstrs(
 ): Instr[] {
   // Same type — no coercion
   if (actual.kind === expected.kind) {
-    if ((actual.kind === "ref" || actual.kind === "ref_null") &&
-        (expected.kind === "ref" || expected.kind === "ref_null")) {
+    if (
+      (actual.kind === "ref" || actual.kind === "ref_null") &&
+      (expected.kind === "ref" || expected.kind === "ref_null")
+    ) {
       const actualIdx = (actual as any).typeIdx;
       const expectedIdx = (expected as any).typeIdx;
       if (actualIdx === expectedIdx) return [];
@@ -1005,8 +1210,10 @@ function callArgCoercionInstrs(
   // ref/ref_null → externref: extern.convert_any (lossless, always safe)
   // Note: actual is already guarded to be ref/ref_null/anyref/eqref (never externref)
   // by the actualIsExternref early-return above.
-  if ((actual.kind === "ref" || actual.kind === "ref_null" || actual.kind === "anyref" || actual.kind === "eqref") &&
-      (expected.kind === "externref" || expected.kind === "ref_extern")) {
+  if (
+    (actual.kind === "ref" || actual.kind === "ref_null" || actual.kind === "anyref" || actual.kind === "eqref") &&
+    (expected.kind === "externref" || expected.kind === "ref_extern")
+  ) {
     return [{ op: "extern.convert_any" } as Instr];
   }
 
@@ -1017,18 +1224,12 @@ function callArgCoercionInstrs(
 
   // i32 → externref: f64.convert_i32_s + __box_number
   if (actual.kind === "i32" && expected.kind === "externref" && boxNumberIdx !== null) {
-    return [
-      { op: "f64.convert_i32_s" } as Instr,
-      { op: "call", funcIdx: boxNumberIdx } as unknown as Instr,
-    ];
+    return [{ op: "f64.convert_i32_s" } as Instr, { op: "call", funcIdx: boxNumberIdx } as unknown as Instr];
   }
 
   // i64 → externref: f64.convert_i64_s + __box_number
   if (actual.kind === "i64" && expected.kind === "externref" && boxNumberIdx !== null) {
-    return [
-      { op: "f64.convert_i64_s" } as unknown as Instr,
-      { op: "call", funcIdx: boxNumberIdx } as unknown as Instr,
-    ];
+    return [{ op: "f64.convert_i64_s" } as unknown as Instr, { op: "call", funcIdx: boxNumberIdx } as unknown as Instr];
   }
 
   // externref → f64: __unbox_number
@@ -1038,10 +1239,7 @@ function callArgCoercionInstrs(
 
   // ref/ref_null → f64: extern.convert_any + __unbox_number
   if ((actual.kind === "ref" || actual.kind === "ref_null") && expected.kind === "f64" && unboxNumberIdx !== null) {
-    return [
-      { op: "extern.convert_any" } as Instr,
-      { op: "call", funcIdx: unboxNumberIdx } as unknown as Instr,
-    ];
+    return [{ op: "extern.convert_any" } as Instr, { op: "call", funcIdx: unboxNumberIdx } as unknown as Instr];
   }
 
   // i64 → i32: i32.wrap_i64
@@ -1068,10 +1266,7 @@ function callArgCoercionInstrs(
   if (actualIsExternref && (expected.kind === "ref" || expected.kind === "ref_null")) {
     const typeIdx = (expected as any).typeIdx;
     if (typeIdx !== undefined) {
-      return [
-        { op: "any.convert_extern" } as Instr,
-        { op: "ref.cast_null", typeIdx } as Instr,
-      ];
+      return [{ op: "any.convert_extern" } as Instr, { op: "ref.cast_null", typeIdx } as Instr];
     }
   }
 
@@ -1086,10 +1281,7 @@ function callArgCoercionInstrs(
 
   // externref → i32: __unbox_number + i32.trunc_sat_f64_s
   if (actualIsExternref && expected.kind === "i32" && unboxNumberIdx !== null) {
-    return [
-      { op: "call", funcIdx: unboxNumberIdx } as unknown as Instr,
-      { op: "i32.trunc_sat_f64_s" } as Instr,
-    ];
+    return [{ op: "call", funcIdx: unboxNumberIdx } as unknown as Instr, { op: "i32.trunc_sat_f64_s" } as Instr];
   }
 
   return [];
@@ -1123,20 +1315,86 @@ function fixCallArgTypesInBody(
   for (const instr of body) {
     if (instr.op === "if") {
       const ifInstr = instr as any;
-      if (ifInstr.then) fixups += fixCallArgTypesInBody(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
-      if (ifInstr.else) fixups += fixCallArgTypesInBody(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (ifInstr.then)
+        fixups += fixCallArgTypesInBody(
+          ifInstr.then,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
+      if (ifInstr.else)
+        fixups += fixCallArgTypesInBody(
+          ifInstr.else,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
     } else if (instr.op === "block" || instr.op === "loop") {
       const blockInstr = instr as any;
-      if (blockInstr.body) fixups += fixCallArgTypesInBody(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (blockInstr.body)
+        fixups += fixCallArgTypesInBody(
+          blockInstr.body,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
     } else if (instr.op === "try") {
       const tryInstr = instr as any;
-      if (tryInstr.body) fixups += fixCallArgTypesInBody(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (tryInstr.body)
+        fixups += fixCallArgTypesInBody(
+          tryInstr.body,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
       if (tryInstr.catches) {
         for (const c of tryInstr.catches) {
-          if (c.body) fixups += fixCallArgTypesInBody(c.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+          if (c.body)
+            fixups += fixCallArgTypesInBody(
+              c.body,
+              localTypes,
+              globalTypes,
+              types,
+              mod,
+              numImports,
+              sigs,
+              boxNumberIdx,
+              unboxNumberIdx,
+            );
         }
       }
-      if (tryInstr.catchAll) fixups += fixCallArgTypesInBody(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (tryInstr.catchAll)
+        fixups += fixCallArgTypesInBody(
+          tryInstr.catchAll,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
     }
   }
 
@@ -1149,46 +1407,120 @@ function fixCallArgTypesInBody(
   // Complex cases (nested blocks, if expressions) are skipped to avoid
   // breaking stack balance.
   const SIMPLE_PRODUCERS = new Set([
-    "local.get", "global.get", "local.tee",
-    "struct.new", "ref.null", "struct.get", "array.get",
-    "array.get_s", "array.get_u",
-    "call", "ref.cast", "ref.cast_null", "ref.as_non_null",
-    "array.new_default", "array.new", "array.new_fixed",
+    "local.get",
+    "global.get",
+    "local.tee",
+    "struct.new",
+    "ref.null",
+    "struct.get",
+    "array.get",
+    "array.get_s",
+    "array.get_u",
+    "call",
+    "ref.cast",
+    "ref.cast_null",
+    "ref.as_non_null",
+    "array.new_default",
+    "array.new",
+    "array.new_fixed",
     // f64/f32 constants — safe, never used as array/struct indices
-    "f64.const", "f32.const",
+    "f64.const",
+    "f32.const",
     // Ref producers — safe, rarely used as sub-expression inputs
-    "ref.null.extern", "ref.null.eq", "ref.null.func", "ref.func",
+    "ref.null.extern",
+    "ref.null.eq",
+    "ref.null.func",
+    "ref.func",
     // i32/i64 constants — safe when directly before call
-    "i32.const", "i64.const",
+    "i32.const",
+    "i64.const",
     // i32 arithmetic/comparison — these produce i32 results
-    "i32.add", "i32.sub", "i32.mul", "i32.div_s", "i32.div_u",
-    "i32.rem_s", "i32.rem_u",
-    "i32.and", "i32.or", "i32.xor",
-    "i32.shl", "i32.shr_s", "i32.shr_u",
-    "i32.eq", "i32.ne",
-    "i32.lt_s", "i32.le_s", "i32.gt_s", "i32.ge_s",
-    "i32.lt_u", "i32.le_u", "i32.gt_u", "i32.ge_u",
-    "i32.eqz", "i32.clz", "i32.wrap_i64",
-    "i32.trunc_sat_f64_s", "i32.trunc_sat_f64_u", "i32.trunc_f64_s",
+    "i32.add",
+    "i32.sub",
+    "i32.mul",
+    "i32.div_s",
+    "i32.div_u",
+    "i32.rem_s",
+    "i32.rem_u",
+    "i32.and",
+    "i32.or",
+    "i32.xor",
+    "i32.shl",
+    "i32.shr_s",
+    "i32.shr_u",
+    "i32.eq",
+    "i32.ne",
+    "i32.lt_s",
+    "i32.le_s",
+    "i32.gt_s",
+    "i32.ge_s",
+    "i32.lt_u",
+    "i32.le_u",
+    "i32.gt_u",
+    "i32.ge_u",
+    "i32.eqz",
+    "i32.clz",
+    "i32.wrap_i64",
+    "i32.trunc_sat_f64_s",
+    "i32.trunc_sat_f64_u",
+    "i32.trunc_f64_s",
     // i64 arithmetic — these produce i64 results
-    "i64.add", "i64.sub", "i64.mul", "i64.div_s", "i64.rem_s",
-    "i64.and", "i64.or", "i64.xor",
-    "i64.shl", "i64.shr_s", "i64.shr_u",
-    "i64.eq", "i64.ne",
-    "i64.lt_s", "i64.le_s", "i64.gt_s", "i64.ge_s",
-    "i64.eqz", "i64.extend_i32_s", "i64.extend_i32_u",
-    "i64.trunc_sat_f64_s", "i64.trunc_f64_s",
+    "i64.add",
+    "i64.sub",
+    "i64.mul",
+    "i64.div_s",
+    "i64.rem_s",
+    "i64.and",
+    "i64.or",
+    "i64.xor",
+    "i64.shl",
+    "i64.shr_s",
+    "i64.shr_u",
+    "i64.eq",
+    "i64.ne",
+    "i64.lt_s",
+    "i64.le_s",
+    "i64.gt_s",
+    "i64.ge_s",
+    "i64.eqz",
+    "i64.extend_i32_s",
+    "i64.extend_i32_u",
+    "i64.trunc_sat_f64_s",
+    "i64.trunc_f64_s",
     // f64 arithmetic — these produce f64 results
-    "f64.add", "f64.sub", "f64.mul", "f64.div",
-    "f64.neg", "f64.abs", "f64.floor", "f64.ceil", "f64.trunc",
-    "f64.nearest", "f64.sqrt", "f64.copysign", "f64.min", "f64.max",
-    "f64.convert_i32_s", "f64.convert_i32_u", "f64.convert_i64_s",
-    "f64.promote_f32", "f64.reinterpret_i64", "i64.reinterpret_f64",
-    "f64.eq", "f64.ne", "f64.lt", "f64.le", "f64.gt", "f64.ge",
+    "f64.add",
+    "f64.sub",
+    "f64.mul",
+    "f64.div",
+    "f64.neg",
+    "f64.abs",
+    "f64.floor",
+    "f64.ceil",
+    "f64.trunc",
+    "f64.nearest",
+    "f64.sqrt",
+    "f64.copysign",
+    "f64.min",
+    "f64.max",
+    "f64.convert_i32_s",
+    "f64.convert_i32_u",
+    "f64.convert_i64_s",
+    "f64.promote_f32",
+    "f64.reinterpret_i64",
+    "i64.reinterpret_f64",
+    "f64.eq",
+    "f64.ne",
+    "f64.lt",
+    "f64.le",
+    "f64.gt",
+    "f64.ge",
     // Other type-producing ops
-    "ref.is_null", "ref.test", "ref.eq",
+    "ref.is_null",
+    "ref.test",
+    "ref.eq",
     "array.len",
-    "any.convert_extern", "extern.convert_any",
+    "any.convert_extern",
+    "extern.convert_any",
   ]);
 
   for (let ci = 0; ci < body.length; ci++) {
@@ -1226,10 +1558,21 @@ function fixCallArgTypesInBody(
 
       // Stop at control flow boundaries — don't try to trace through
       // blocks, ifs, loops, or try statements
-      if (op === "if" || op === "block" || op === "loop" || op === "try" ||
-          op === "end" || op === "br" || op === "br_if" || op === "br_table" ||
-          op === "return" || op === "throw" || op === "unreachable" ||
-          op === "return_call" || op === "return_call_ref") {
+      if (
+        op === "if" ||
+        op === "block" ||
+        op === "loop" ||
+        op === "try" ||
+        op === "end" ||
+        op === "br" ||
+        op === "br_if" ||
+        op === "br_table" ||
+        op === "return" ||
+        op === "throw" ||
+        op === "unreachable" ||
+        op === "return_call" ||
+        op === "return_call_ref"
+      ) {
         break;
       }
 
@@ -1240,7 +1583,8 @@ function fixCallArgTypesInBody(
       // "simple producers" with delta >= 1 are the straightforward case.
       // But ops like i32.xor (pop 2, push 1, net -1) also produce a value
       // that becomes a call argument — we handle those too.
-      const producesValue = SIMPLE_PRODUCERS.has(op) && inferInstrType(instr, localTypes, globalTypes, types, mod, numImports) !== null;
+      const producesValue =
+        SIMPLE_PRODUCERS.has(op) && inferInstrType(instr, localTypes, globalTypes, types, mod, numImports) !== null;
 
       if (producesValue && argOffset >= 0) {
         // Check if there are pass-through transformers between this
@@ -1268,8 +1612,7 @@ function fixCallArgTypesInBody(
             // proven-safe ref→externref coercion (extern.convert_any) in
             // that case; other coercions are restricted to positions before
             // any consumer has been traversed.
-            const isSafeRefToExtern = coercion.length === 1 &&
-              (coercion[0] as any).op === "extern.convert_any";
+            const isSafeRefToExtern = coercion.length === 1 && (coercion[0] as any).op === "extern.convert_any";
             if (!inSubExpr || isSafeRefToExtern) {
               insertions.push({ afterPos: insertPos, instrs: coercion });
             }
@@ -1488,8 +1831,15 @@ function updateTypeStack(
   const op = instr.op;
 
   // Terminators: clear the stack (unreachable code follows)
-  if (op === "return" || op === "return_call" || op === "return_call_ref" ||
-      op === "br" || op === "throw" || op === "rethrow" || op === "unreachable") {
+  if (
+    op === "return" ||
+    op === "return_call" ||
+    op === "return_call_ref" ||
+    op === "br" ||
+    op === "throw" ||
+    op === "rethrow" ||
+    op === "unreachable"
+  ) {
     stack.length = 0;
     return;
   }
@@ -1505,10 +1855,22 @@ function updateTypeStack(
     stack.push(globalTypes[idx] ?? null);
     return;
   }
-  if (op === "f64.const") { stack.push({ kind: "f64" }); return; }
-  if (op === "f32.const") { stack.push({ kind: "f32" } as ValType); return; }
-  if (op === "i32.const") { stack.push({ kind: "i32" }); return; }
-  if (op === "i64.const") { stack.push({ kind: "i64" }); return; }
+  if (op === "f64.const") {
+    stack.push({ kind: "f64" });
+    return;
+  }
+  if (op === "f32.const") {
+    stack.push({ kind: "f32" } as ValType);
+    return;
+  }
+  if (op === "i32.const") {
+    stack.push({ kind: "i32" });
+    return;
+  }
+  if (op === "i64.const") {
+    stack.push({ kind: "i64" });
+    return;
+  }
   if (op === "ref.null") {
     const typeIdx = (instr as any).typeIdx as number;
     stack.push({ kind: "ref_null", typeIdx } as ValType);
@@ -1518,11 +1880,26 @@ function updateTypeStack(
     stack.push({ kind: "externref" } as ValType);
     return;
   }
-  if (op === "ref.null.eq") { stack.push({ kind: "eqref" } as ValType); return; }
-  if (op === "ref.null.func") { stack.push({ kind: "funcref" } as ValType); return; }
-  if (op === "ref.func") { stack.push({ kind: "funcref" } as ValType); return; }
-  if (op === "v128.const") { stack.push(null); return; } // v128 type, push unknown
-  if (op === "memory.size") { stack.push({ kind: "i32" }); return; }
+  if (op === "ref.null.eq") {
+    stack.push({ kind: "eqref" } as ValType);
+    return;
+  }
+  if (op === "ref.null.func") {
+    stack.push({ kind: "funcref" } as ValType);
+    return;
+  }
+  if (op === "ref.func") {
+    stack.push({ kind: "funcref" } as ValType);
+    return;
+  }
+  if (op === "v128.const") {
+    stack.push(null);
+    return;
+  } // v128 type, push unknown
+  if (op === "memory.size") {
+    stack.push({ kind: "i32" });
+    return;
+  }
 
   // Pop 1, push 0
   if (op === "drop" || op === "local.set" || op === "global.set") {
@@ -1561,18 +1938,36 @@ function updateTypeStack(
     stack.push({ kind: "ref_null", typeIdx } as ValType);
     return;
   }
-  if (op === "ref.is_null" || op === "ref.test" || op === "i32.eqz" || op === "i64.eqz" ||
-      op === "i32.clz" || op === "i32.wrap_i64" ||
-      op === "i32.trunc_sat_f64_s" || op === "i32.trunc_sat_f64_u" || op === "i32.trunc_f64_s" ||
-      op === "array.len") {
+  if (
+    op === "ref.is_null" ||
+    op === "ref.test" ||
+    op === "i32.eqz" ||
+    op === "i64.eqz" ||
+    op === "i32.clz" ||
+    op === "i32.wrap_i64" ||
+    op === "i32.trunc_sat_f64_s" ||
+    op === "i32.trunc_sat_f64_u" ||
+    op === "i32.trunc_f64_s" ||
+    op === "array.len"
+  ) {
     stack.pop();
     stack.push({ kind: "i32" });
     return;
   }
-  if (op === "f64.neg" || op === "f64.abs" || op === "f64.floor" || op === "f64.ceil" ||
-      op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
-      op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
-      op === "f64.promote_f32" || op === "f64.reinterpret_i64") {
+  if (
+    op === "f64.neg" ||
+    op === "f64.abs" ||
+    op === "f64.floor" ||
+    op === "f64.ceil" ||
+    op === "f64.trunc" ||
+    op === "f64.nearest" ||
+    op === "f64.sqrt" ||
+    op === "f64.convert_i32_s" ||
+    op === "f64.convert_i32_u" ||
+    op === "f64.convert_i64_s" ||
+    op === "f64.promote_f32" ||
+    op === "f64.reinterpret_i64"
+  ) {
     stack.pop();
     stack.push({ kind: "f64" });
     return;
@@ -1582,42 +1977,92 @@ function updateTypeStack(
     stack.push({ kind: "f32" } as ValType);
     return;
   }
-  if (op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
-      op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
-      op === "i64.reinterpret_f64") {
+  if (
+    op === "i64.extend_i32_s" ||
+    op === "i64.extend_i32_u" ||
+    op === "i64.trunc_sat_f64_s" ||
+    op === "i64.trunc_f64_s" ||
+    op === "i64.reinterpret_f64"
+  ) {
     stack.pop();
     stack.push({ kind: "i64" });
     return;
   }
 
   // Pop 2, push 1
-  if (op === "i32.add" || op === "i32.sub" || op === "i32.mul" ||
-      op === "i32.div_s" || op === "i32.div_u" || op === "i32.rem_s" || op === "i32.rem_u" ||
-      op === "i32.and" || op === "i32.or" || op === "i32.xor" ||
-      op === "i32.shl" || op === "i32.shr_s" || op === "i32.shr_u" ||
-      op === "i32.eq" || op === "i32.ne" ||
-      op === "i32.lt_s" || op === "i32.le_s" || op === "i32.gt_s" || op === "i32.ge_s" ||
-      op === "i32.lt_u" || op === "i32.le_u" || op === "i32.gt_u" || op === "i32.ge_u" ||
-      op === "ref.eq" ||
-      op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
-      op === "f64.gt" || op === "f64.ge" ||
-      op === "i64.eqz" || op === "i64.eq" || op === "i64.ne") {
-    stack.pop(); stack.pop();
+  if (
+    op === "i32.add" ||
+    op === "i32.sub" ||
+    op === "i32.mul" ||
+    op === "i32.div_s" ||
+    op === "i32.div_u" ||
+    op === "i32.rem_s" ||
+    op === "i32.rem_u" ||
+    op === "i32.and" ||
+    op === "i32.or" ||
+    op === "i32.xor" ||
+    op === "i32.shl" ||
+    op === "i32.shr_s" ||
+    op === "i32.shr_u" ||
+    op === "i32.eq" ||
+    op === "i32.ne" ||
+    op === "i32.lt_s" ||
+    op === "i32.le_s" ||
+    op === "i32.gt_s" ||
+    op === "i32.ge_s" ||
+    op === "i32.lt_u" ||
+    op === "i32.le_u" ||
+    op === "i32.gt_u" ||
+    op === "i32.ge_u" ||
+    op === "ref.eq" ||
+    op === "f64.eq" ||
+    op === "f64.ne" ||
+    op === "f64.lt" ||
+    op === "f64.le" ||
+    op === "f64.gt" ||
+    op === "f64.ge" ||
+    op === "i64.eqz" ||
+    op === "i64.eq" ||
+    op === "i64.ne"
+  ) {
+    stack.pop();
+    stack.pop();
     stack.push({ kind: "i32" });
     return;
   }
-  if (op === "i64.add" || op === "i64.sub" || op === "i64.mul" ||
-      op === "i64.div_s" || op === "i64.rem_s" ||
-      op === "i64.and" || op === "i64.or" || op === "i64.xor" ||
-      op === "i64.shl" || op === "i64.shr_s" || op === "i64.shr_u" ||
-      op === "i64.lt_s" || op === "i64.le_s" || op === "i64.gt_s" || op === "i64.ge_s") {
-    stack.pop(); stack.pop();
+  if (
+    op === "i64.add" ||
+    op === "i64.sub" ||
+    op === "i64.mul" ||
+    op === "i64.div_s" ||
+    op === "i64.rem_s" ||
+    op === "i64.and" ||
+    op === "i64.or" ||
+    op === "i64.xor" ||
+    op === "i64.shl" ||
+    op === "i64.shr_s" ||
+    op === "i64.shr_u" ||
+    op === "i64.lt_s" ||
+    op === "i64.le_s" ||
+    op === "i64.gt_s" ||
+    op === "i64.ge_s"
+  ) {
+    stack.pop();
+    stack.pop();
     stack.push({ kind: "i64" });
     return;
   }
-  if (op === "f64.add" || op === "f64.sub" || op === "f64.mul" || op === "f64.div" ||
-      op === "f64.copysign" || op === "f64.min" || op === "f64.max") {
-    stack.pop(); stack.pop();
+  if (
+    op === "f64.add" ||
+    op === "f64.sub" ||
+    op === "f64.mul" ||
+    op === "f64.div" ||
+    op === "f64.copysign" ||
+    op === "f64.min" ||
+    op === "f64.max"
+  ) {
+    stack.pop();
+    stack.pop();
     stack.push({ kind: "f64" });
     return;
   }
@@ -1647,13 +2092,15 @@ function updateTypeStack(
 
   // struct.set: pop 2 (struct ref + value), push 0
   if (op === "struct.set") {
-    stack.pop(); stack.pop();
+    stack.pop();
+    stack.pop();
     return;
   }
 
   // array.get/get_s/get_u: pop 2 (array + index), push 1 (element type)
   if (op === "array.get" || op === "array.get_s" || op === "array.get_u") {
-    stack.pop(); stack.pop();
+    stack.pop();
+    stack.pop();
     const typeIdx = (instr as any).typeIdx as number;
     const td = types[typeIdx];
     if (td?.kind === "array") {
@@ -1666,13 +2113,16 @@ function updateTypeStack(
 
   // array.set: pop 3
   if (op === "array.set") {
-    stack.pop(); stack.pop(); stack.pop();
+    stack.pop();
+    stack.pop();
+    stack.pop();
     return;
   }
 
   // array.new: pop 2, push 1
   if (op === "array.new") {
-    stack.pop(); stack.pop();
+    stack.pop();
+    stack.pop();
     const typeIdx = (instr as any).typeIdx as number;
     stack.push({ kind: "ref", typeIdx } as ValType);
     return;
@@ -1696,8 +2146,14 @@ function updateTypeStack(
   }
 
   // array.copy: pop 5, array.fill: pop 4
-  if (op === "array.copy") { for (let i = 0; i < 5; i++) stack.pop(); return; }
-  if (op === "array.fill") { for (let i = 0; i < 4; i++) stack.pop(); return; }
+  if (op === "array.copy") {
+    for (let i = 0; i < 5; i++) stack.pop();
+    return;
+  }
+  if (op === "array.fill") {
+    for (let i = 0; i < 4; i++) stack.pop();
+    return;
+  }
 
   // call: pop params, push results
   if (op === "call") {
@@ -1841,13 +2297,43 @@ export function stackBalance(mod: WasmModule): number {
     eliminateDeadCode(func.body);
 
     // Fix local.set type mismatches (e.g., f64 → externref, ref → externref)
-    totalFixups += fixLocalSetCoercion(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+    totalFixups += fixLocalSetCoercion(
+      func.body,
+      localTypes,
+      globalTypes,
+      mod.types,
+      mod,
+      numImports,
+      sigs,
+      boxNumberIdx,
+      unboxNumberIdx,
+    );
 
     // Fix call argument type mismatches before other fixups
-    totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+    totalFixups += fixCallArgTypesInBody(
+      func.body,
+      localTypes,
+      globalTypes,
+      mod.types,
+      mod,
+      numImports,
+      sigs,
+      boxNumberIdx,
+      unboxNumberIdx,
+    );
 
     // Fix struct.new field type mismatches (forward type-stack simulation)
-    totalFixups += fixStructNewFieldCoercion(func, mod.types, mod, numImports, sigs, localTypes, globalTypes, boxNumberIdx, unboxNumberIdx);
+    totalFixups += fixStructNewFieldCoercion(
+      func,
+      mod.types,
+      mod,
+      numImports,
+      sigs,
+      localTypes,
+      globalTypes,
+      boxNumberIdx,
+      unboxNumberIdx,
+    );
 
     // Fix nested structured blocks
     totalFixups += fixBody(func.body, mod.types, sigs, tags);
@@ -1857,11 +2343,12 @@ export function stackBalance(mod: WasmModule): number {
     if (ft) {
       const expectedResults = ft.results.length;
       // Build a synthetic block type for the function body
-      const funcBlockType: BlockType = expectedResults === 0
-        ? { kind: "empty" }
-        : expectedResults === 1
-          ? { kind: "val", type: ft.results[0]! }
-          : { kind: "type", typeIdx: func.typeIdx };
+      const funcBlockType: BlockType =
+        expectedResults === 0
+          ? { kind: "empty" }
+          : expectedResults === 1
+            ? { kind: "val", type: ft.results[0]! }
+            : { kind: "type", typeIdx: func.typeIdx };
       totalFixups += fixBranch(func.body, expectedResults, mod.types, sigs, funcBlockType);
     }
   }
@@ -1896,20 +2383,86 @@ function fixLocalSetCoercion(
   for (const instr of body) {
     if (instr.op === "if") {
       const ifInstr = instr as any;
-      if (ifInstr.then) fixups += fixLocalSetCoercion(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
-      if (ifInstr.else) fixups += fixLocalSetCoercion(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (ifInstr.then)
+        fixups += fixLocalSetCoercion(
+          ifInstr.then,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
+      if (ifInstr.else)
+        fixups += fixLocalSetCoercion(
+          ifInstr.else,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
     } else if (instr.op === "block" || instr.op === "loop") {
       const blockInstr = instr as any;
-      if (blockInstr.body) fixups += fixLocalSetCoercion(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (blockInstr.body)
+        fixups += fixLocalSetCoercion(
+          blockInstr.body,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
     } else if (instr.op === "try") {
       const tryInstr = instr as any;
-      if (tryInstr.body) fixups += fixLocalSetCoercion(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (tryInstr.body)
+        fixups += fixLocalSetCoercion(
+          tryInstr.body,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
       if (tryInstr.catches) {
         for (const c of tryInstr.catches) {
-          if (c.body) fixups += fixLocalSetCoercion(c.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+          if (c.body)
+            fixups += fixLocalSetCoercion(
+              c.body,
+              localTypes,
+              globalTypes,
+              types,
+              mod,
+              numImports,
+              sigs,
+              boxNumberIdx,
+              unboxNumberIdx,
+            );
         }
       }
-      if (tryInstr.catchAll) fixups += fixLocalSetCoercion(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (tryInstr.catchAll)
+        fixups += fixLocalSetCoercion(
+          tryInstr.catchAll,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
     }
   }
 

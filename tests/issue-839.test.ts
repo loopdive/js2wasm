@@ -20,25 +20,33 @@ function expectValid(name: string, source: string) {
 }
 
 describe("Issue #839: static private method calls via this", () => {
-  expectValid("static private method via this (sub-pattern 1: stack args)", `
+  expectValid(
+    "static private method via this (sub-pattern 1: stack args)",
+    `
     var C = class {
       static async *m() { return 42; }
       static #dollar(value: number): number { return value; }
       static getDollar(value: number): number { return this.#dollar(value); }
     }
     export function test(): number { return 1; }
-  `);
+  `,
+  );
 
-  expectValid("static async private method via this (sub-pattern 2: type mismatch)", `
+  expectValid(
+    "static async private method via this (sub-pattern 2: type mismatch)",
+    `
     var C = class {
       *m() { return 42; }
       static async #dollar(value: number): Promise<number> { return value; }
       static async getDollar(value: number): Promise<number> { return this.#dollar(value); }
     }
     export function test(): number { return 1; }
-  `);
+  `,
+  );
 
-  expectValid("two static private methods", `
+  expectValid(
+    "two static private methods",
+    `
     var C = class {
       static async *m() { return 42; }
       static #x(value: number): number { return value / 2; }
@@ -47,9 +55,12 @@ describe("Issue #839: static private method calls via this", () => {
       static getY(value: number): number { return this.#y(value); }
     }
     export function test(): number { return 1; }
-  `);
+  `,
+  );
 
-  expectValid("non-return position private static call", `
+  expectValid(
+    "non-return position private static call",
+    `
     var C = class {
       static #dollar(value: number): number { return value; }
       static getDollar(value: number): number {
@@ -58,9 +69,12 @@ describe("Issue #839: static private method calls via this", () => {
       }
     }
     export function test(): number { return 1; }
-  `);
+  `,
+  );
 
-  expectValid("instance private method call", `
+  expectValid(
+    "instance private method call",
+    `
     class C {
       #value: number;
       constructor(v: number) { this.#value = v; }
@@ -68,5 +82,6 @@ describe("Issue #839: static private method calls via this", () => {
       getValue(): number { return this.#getVal(); }
     }
     export function test(): number { return 1; }
-  `);
+  `,
+  );
 });

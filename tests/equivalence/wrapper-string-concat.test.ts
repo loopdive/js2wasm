@@ -93,10 +93,10 @@ function buildImports(result: any) {
   }
   const jsString = {
     concat: (a: string, b: string) => (a || "") + (b || ""),
-    length: (s: string) => s ? s.length : 0,
-    equals: (a: string, b: string) => a === b ? 1 : 0,
-    substring: (s: string, start: number, end: number) => s ? s.substring(start, end) : "",
-    charCodeAt: (s: string, i: number) => s ? s.charCodeAt(i) : 0,
+    length: (s: string) => (s ? s.length : 0),
+    equals: (a: string, b: string) => (a === b ? 1 : 0),
+    substring: (s: string, start: number, end: number) => (s ? s.substring(start, end) : ""),
+    charCodeAt: (s: string, i: number) => (s ? s.charCodeAt(i) : 0),
   };
   return { env, string_constants: stringConstants, "wasm:js-string": jsString };
 }

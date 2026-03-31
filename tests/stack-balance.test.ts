@@ -6,8 +6,7 @@ const jsStringPolyfill = {
   concat: (a: string, b: string) => a + b,
   length: (s: string) => s.length,
   equals: (a: string, b: string) => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number) =>
-    s.substring(start, end),
+  substring: (s: string, start: number, end: number) => s.substring(start, end),
   charCodeAt: (s: string, i: number) => s.charCodeAt(i),
 };
 
@@ -22,7 +21,9 @@ function buildImports(result: ReturnType<typeof compile>): WebAssembly.Imports {
     __unbox_boolean: (v: unknown) => (v ? 1 : 0),
     __is_truthy: (v: unknown) => (v ? 1 : 0),
     __extern_get: (obj: any, key: any) => (obj == null ? undefined : obj[key]),
-    __extern_set: (obj: any, key: any, val: any) => { if (obj != null) obj[key] = val; },
+    __extern_set: (obj: any, key: any, val: any) => {
+      if (obj != null) obj[key] = val;
+    },
     __extern_length: (obj: any) => (obj == null ? 0 : obj.length),
     parseFloat: (s: any) => parseFloat(String(s)),
     number_toString: (v: number) => String(v),
@@ -39,7 +40,7 @@ function buildImports(result: ReturnType<typeof compile>): WebAssembly.Imports {
 async function compileAndRun(source: string): Promise<any> {
   const result = compile(source, { filename: "test.ts" });
   if (!result.success) {
-    throw new Error("Compile error: " + result.errors.map(e => e.message).join("; "));
+    throw new Error("Compile error: " + result.errors.map((e) => e.message).join("; "));
   }
   const mod = await WebAssembly.compile(result.binary);
   const instance = await WebAssembly.instantiate(mod, buildImports(result));

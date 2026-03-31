@@ -5,9 +5,7 @@ import { buildImports } from "../src/runtime.js";
 async function compileAndRun(source: string) {
   const result = compile(source, { fileName: "test.ts" });
   if (!result.binary || result.binary.length === 0) {
-    throw new Error(
-      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
@@ -31,9 +29,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return 0;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -61,9 +57,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return sum;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -101,9 +95,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return inner();
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -206,9 +198,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return r;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -251,9 +241,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return 0;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -278,9 +266,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return i;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -293,9 +279,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return y;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -310,9 +294,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return z;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -327,9 +309,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return inside;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -345,9 +325,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return switchResult;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 
@@ -361,9 +339,7 @@ describe("issue-146: unknown identifier errors from scope/hoisting issues", () =
         return iterCount;
       }
     `);
-    const unknownIdErrors = result.errors.filter((e) =>
-      e.message.includes("Unknown identifier"),
-    );
+    const unknownIdErrors = result.errors.filter((e) => e.message.includes("Unknown identifier"));
     expect(unknownIdErrors).toEqual([]);
   });
 });

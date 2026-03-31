@@ -17,11 +17,7 @@ import { buildImports } from "../src/runtime.js";
 // ---------------------------------------------------------------------------
 // Helper: compile + instantiate + call exported function
 // ---------------------------------------------------------------------------
-async function run(
-  source: string,
-  fn: string = "test",
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string = "test", args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -239,7 +235,9 @@ function resetHeap(): void {
 // ---------------------------------------------------------------------------
 describe("React scheduler min-heap compiled to Wasm", () => {
   it("compiles the min-heap source without errors", () => {
-    const source = SCHEDULER_HEAP_SOURCE + `
+    const source =
+      SCHEDULER_HEAP_SOURCE +
+      `
 export function test(): number { return 1; }
 `;
     const result = compile(source);
@@ -253,7 +251,9 @@ export function test(): number { return 1; }
   });
 
   it("peek on empty heap returns -1 sentinel", async () => {
-    const source = SCHEDULER_HEAP_SOURCE + `
+    const source =
+      SCHEDULER_HEAP_SOURCE +
+      `
 export function test(): number {
   resetHeap();
   return peekSort();
@@ -263,7 +263,9 @@ export function test(): number {
   });
 
   it("push + peek returns the minimum element", async () => {
-    const source = SCHEDULER_HEAP_SOURCE + `
+    const source =
+      SCHEDULER_HEAP_SOURCE +
+      `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 10));
@@ -276,7 +278,9 @@ export function test(): number {
   });
 
   it("pop returns elements in priority order", async () => {
-    const source = SCHEDULER_HEAP_SOURCE + `
+    const source =
+      SCHEDULER_HEAP_SOURCE +
+      `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 30));
@@ -299,7 +303,9 @@ export function test(): number {
   });
 
   it("pop on empty heap returns -1 sentinel", async () => {
-    const source = SCHEDULER_HEAP_SOURCE + `
+    const source =
+      SCHEDULER_HEAP_SOURCE +
+      `
 export function test(): number {
   resetHeap();
   return popSort();
@@ -309,7 +315,9 @@ export function test(): number {
   });
 
   it("handles tie-breaking by id", async () => {
-    const source = SCHEDULER_HEAP_SOURCE + `
+    const source =
+      SCHEDULER_HEAP_SOURCE +
+      `
 export function test(): number {
   resetHeap();
   // Same sortIndex, different ids -- should break ties by id (lower first)
@@ -333,7 +341,9 @@ export function test(): number {
   });
 
   it("mixed push/pop maintains heap invariant", async () => {
-    const source = SCHEDULER_HEAP_SOURCE + `
+    const source =
+      SCHEDULER_HEAP_SOURCE +
+      `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 50));
@@ -369,7 +379,9 @@ export function test(): number {
   });
 
   it("simulates React priority levels with the heap", async () => {
-    const source = SCHEDULER_HEAP_SOURCE + `
+    const source =
+      SCHEDULER_HEAP_SOURCE +
+      `
 // React priority constants
 const ImmediatePriority = 1;
 const UserBlockingPriority = 2;

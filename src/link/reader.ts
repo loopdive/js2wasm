@@ -173,10 +173,7 @@ const SECTION_TAG = 13;
 class ByteReader {
   public pos: number;
   public readonly data: Uint8Array;
-  constructor(
-    data: Uint8Array,
-    offset = 0,
-  ) {
+  constructor(data: Uint8Array, offset = 0) {
     this.data = data;
     this.pos = offset;
   }
@@ -194,9 +191,7 @@ class ByteReader {
 
   bytes(n: number): Uint8Array {
     if (this.pos + n > this.data.length) {
-      throw new Error(
-        `Unexpected end of data: need ${n} bytes at offset ${this.pos}`,
-      );
+      throw new Error(`Unexpected end of data: need ${n} bytes at offset ${this.pos}`);
     }
     const slice = this.data.slice(this.pos, this.pos + n);
     this.pos += n;
@@ -247,23 +242,13 @@ export function parseObject(name: string, bytes: Uint8Array): ParsedObject {
 
   // Verify magic number
   const magic = r.bytes(4);
-  if (
-    magic[0] !== 0x00 ||
-    magic[1] !== 0x61 ||
-    magic[2] !== 0x73 ||
-    magic[3] !== 0x6d
-  ) {
+  if (magic[0] !== 0x00 || magic[1] !== 0x61 || magic[2] !== 0x73 || magic[3] !== 0x6d) {
     throw new Error(`Invalid wasm magic in "${name}"`);
   }
 
   // Verify version
   const version = r.bytes(4);
-  if (
-    version[0] !== 0x01 ||
-    version[1] !== 0x00 ||
-    version[2] !== 0x00 ||
-    version[3] !== 0x00
-  ) {
+  if (version[0] !== 0x01 || version[1] !== 0x00 || version[2] !== 0x00 || version[3] !== 0x00) {
     throw new Error(`Unsupported wasm version in "${name}"`);
   }
 
@@ -347,11 +332,7 @@ export function parseObject(name: string, bytes: Uint8Array): ParsedObject {
 
 // ── Section parsers ───────────────────────────────────────────────
 
-function parseCustomSection(
-  r: ByteReader,
-  end: number,
-  obj: ParsedObject,
-): void {
+function parseCustomSection(r: ByteReader, end: number, obj: ParsedObject): void {
   const nameStart = r.pos;
   const sectionName = r.name();
 
@@ -365,11 +346,7 @@ function parseCustomSection(
   }
 }
 
-function parseTypeSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseTypeSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const form = r.byte(); // 0x60 = func type
@@ -390,11 +367,7 @@ function parseTypeSection(
   }
 }
 
-function parseImportSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseImportSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const module = r.name();
@@ -441,22 +414,14 @@ function parseImportSection(
   }
 }
 
-function parseFunctionSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseFunctionSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     obj.functions.push({ typeIdx: r.u32() });
   }
 }
 
-function parseTableSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseTableSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const elementType = r.byte();
@@ -467,11 +432,7 @@ function parseTableSection(
   }
 }
 
-function parseMemorySection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseMemorySection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const hasMax = r.byte();
@@ -481,11 +442,7 @@ function parseMemorySection(
   }
 }
 
-function parseGlobalSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseGlobalSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const type = r.byte();
@@ -500,11 +457,7 @@ function parseGlobalSection(
   }
 }
 
-function parseExportSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseExportSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const name = r.name();
@@ -514,11 +467,7 @@ function parseExportSection(
   }
 }
 
-function parseElementSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseElementSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const flags = r.u32();
@@ -550,11 +499,7 @@ function parseElementSection(
   }
 }
 
-function parseCodeSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseCodeSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const bodySize = r.u32();
@@ -577,11 +522,7 @@ function parseCodeSection(
   }
 }
 
-function parseTagSection(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseTagSection(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const attribute = r.byte();
@@ -592,11 +533,7 @@ function parseTagSection(
 
 // ── Linking section parser ────────────────────────────────────────
 
-function parseLinkingSection(
-  r: ByteReader,
-  end: number,
-  obj: ParsedObject,
-): void {
+function parseLinkingSection(r: ByteReader, end: number, obj: ParsedObject): void {
   const version = r.u32();
   if (version !== 2) {
     throw new Error(`Unsupported linking section version: ${version}`);
@@ -616,11 +553,7 @@ function parseLinkingSection(
   }
 }
 
-function parseSymbolTable(
-  r: ByteReader,
-  _end: number,
-  obj: ParsedObject,
-): void {
+function parseSymbolTable(r: ByteReader, _end: number, obj: ParsedObject): void {
   const count = r.u32();
   for (let i = 0; i < count; i++) {
     const kind = r.byte();
@@ -635,10 +568,7 @@ function parseSymbolTable(
       case SYMTAB_EVENT:
       case SYMTAB_TABLE: {
         index = r.u32();
-        if (
-          !(flags & SYMBOL_UNDEFINED) ||
-          flags & SYMBOL_EXPLICIT_NAME
-        ) {
+        if (!(flags & SYMBOL_UNDEFINED) || flags & SYMBOL_EXPLICIT_NAME) {
           name = r.name();
         }
         break;
@@ -666,12 +596,7 @@ function parseSymbolTable(
 
 // ── Relocation section parser ─────────────────────────────────────
 
-function parseRelocSection(
-  r: ByteReader,
-  end: number,
-  sectionName: string,
-  obj: ParsedObject,
-): void {
+function parseRelocSection(r: ByteReader, end: number, sectionName: string, obj: ParsedObject): void {
   const targetSection = r.u32(); // section index this reloc applies to
   const count = r.u32();
   const entries: RelocEntry[] = [];

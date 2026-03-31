@@ -3,7 +3,8 @@ import { compile } from "../src/index.js";
 
 describe("linear-memory classes", { timeout: 30_000 }, () => {
   it("compiles class construction and field access", async () => {
-    const result = compile(`
+    const result = compile(
+      `
       class Point {
         x: number;
         y: number;
@@ -20,7 +21,9 @@ describe("linear-memory classes", { timeout: 30_000 }, () => {
         const p = new Point(px, py);
         return p.y;
       }
-    `, { target: "linear" });
+    `,
+      { target: "linear" },
+    );
     expect(result.success).toBe(true);
     const { instance } = await WebAssembly.instantiate(result.binary);
     const { getX, getY } = instance.exports as any;
@@ -29,7 +32,8 @@ describe("linear-memory classes", { timeout: 30_000 }, () => {
   });
 
   it("compiles class methods", async () => {
-    const result = compile(`
+    const result = compile(
+      `
       class Counter {
         value: number;
         constructor(init: number) {
@@ -48,14 +52,17 @@ describe("linear-memory classes", { timeout: 30_000 }, () => {
         c.increment();
         return c.get();
       }
-    `, { target: "linear" });
+    `,
+      { target: "linear" },
+    );
     expect(result.success).toBe(true);
     const { instance } = await WebAssembly.instantiate(result.binary);
     expect((instance.exports as any).test()).toBe(12);
   });
 
   it("compiles string literals and equality", async () => {
-    const result = compile(`
+    const result = compile(
+      `
       export function test(): number {
         const a = "hello";
         const b = "hello";
@@ -66,7 +73,9 @@ describe("linear-memory classes", { timeout: 30_000 }, () => {
         }
         return 2;
       }
-    `, { target: "linear" });
+    `,
+      { target: "linear" },
+    );
     expect(result.success).toBe(true);
     const { instance } = await WebAssembly.instantiate(result.binary);
     expect((instance.exports as any).test()).toBe(1);

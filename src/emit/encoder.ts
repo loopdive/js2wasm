@@ -25,10 +25,7 @@ export class WasmEncoder {
     while (more) {
       let b = value & 0x7f;
       value >>= 7;
-      if (
-        (value === 0 && (b & 0x40) === 0) ||
-        (value === -1 && (b & 0x40) !== 0)
-      ) {
+      if ((value === 0 && (b & 0x40) === 0) || (value === -1 && (b & 0x40) !== 0)) {
         more = false;
       } else {
         b |= 0x80;
@@ -44,10 +41,7 @@ export class WasmEncoder {
     while (more) {
       let b = Number(value & 0x7fn);
       value >>= 7n;
-      if (
-        (value === 0n && (b & 0x40) === 0) ||
-        (value === -1n && (b & 0x40) !== 0)
-      ) {
+      if ((value === 0n && (b & 0x40) === 0) || (value === -1n && (b & 0x40) !== 0)) {
         more = false;
       } else {
         b |= 0x80;
@@ -94,10 +88,7 @@ export class WasmEncoder {
   }
 
   /** Vector: u32 count + items */
-  vector<T>(
-    items: T[],
-    encode: (item: T, enc: WasmEncoder) => void,
-  ): void {
+  vector<T>(items: T[], encode: (item: T, enc: WasmEncoder) => void): void {
     this.u32(items.length);
     for (const item of items) encode(item, this);
   }

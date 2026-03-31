@@ -2,11 +2,7 @@ import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
 
-async function run(
-  source: string,
-  fn: string,
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -183,7 +179,7 @@ describe("JSON parser in Wasm (classes, string methods, recursive descent, array
     expect(result).toBe(-7);
   });
 
-  it("parses a string: \"hello\"", async () => {
+  it('parses a string: "hello"', async () => {
     const result = await run(parserSource, "parseString");
     expect(result).toBe("hello");
   });

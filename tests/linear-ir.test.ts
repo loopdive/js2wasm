@@ -3,7 +3,10 @@ import { emitBinary } from "../src/emit/binary.js";
 import type { WasmModule, Instr } from "../src/ir/types.js";
 import { createEmptyModule } from "../src/ir/types.js";
 
-function buildModuleWithBody(body: Instr[], opts?: { paramType?: "i32" | "f64"; resultType?: "i32" | "f64"; memories?: { min: number }[] }): WasmModule {
+function buildModuleWithBody(
+  body: Instr[],
+  opts?: { paramType?: "i32" | "f64"; resultType?: "i32" | "f64"; memories?: { min: number }[] },
+): WasmModule {
   const paramKind = opts?.paramType ?? "i32";
   const resultKind = opts?.resultType ?? "i32";
   const mod = createEmptyModule();
@@ -22,17 +25,20 @@ function buildModuleWithBody(body: Instr[], opts?: { paramType?: "i32" | "f64"; 
 
 describe("linear-memory IR instructions", () => {
   it("emits i32.load and i32.store", async () => {
-    const mod = buildModuleWithBody([
-      // Store value+1 at address, then load it back
-      { op: "local.get", index: 0 },        // addr
-      { op: "local.get", index: 0 },        // addr
-      { op: "i32.load", align: 2, offset: 0 },
-      { op: "i32.const", value: 1 },
-      { op: "i32.add" },
-      { op: "i32.store", align: 2, offset: 0 },
-      { op: "local.get", index: 0 },        // addr
-      { op: "i32.load", align: 2, offset: 0 },
-    ], { memories: [{ min: 1 }] });
+    const mod = buildModuleWithBody(
+      [
+        // Store value+1 at address, then load it back
+        { op: "local.get", index: 0 }, // addr
+        { op: "local.get", index: 0 }, // addr
+        { op: "i32.load", align: 2, offset: 0 },
+        { op: "i32.const", value: 1 },
+        { op: "i32.add" },
+        { op: "i32.store", align: 2, offset: 0 },
+        { op: "local.get", index: 0 }, // addr
+        { op: "i32.load", align: 2, offset: 0 },
+      ],
+      { memories: [{ min: 1 }] },
+    );
     const binary = emitBinary(mod);
     expect(binary.length).toBeGreaterThan(8);
     const { instance } = await WebAssembly.instantiate(binary);
@@ -42,13 +48,16 @@ describe("linear-memory IR instructions", () => {
   });
 
   it("emits i32.load8_u and i32.store8", async () => {
-    const mod = buildModuleWithBody([
-      { op: "local.get", index: 0 },
-      { op: "i32.const", value: 0xff },
-      { op: "i32.store8", align: 0, offset: 0 },
-      { op: "local.get", index: 0 },
-      { op: "i32.load8_u", align: 0, offset: 0 },
-    ], { memories: [{ min: 1 }] });
+    const mod = buildModuleWithBody(
+      [
+        { op: "local.get", index: 0 },
+        { op: "i32.const", value: 0xff },
+        { op: "i32.store8", align: 0, offset: 0 },
+        { op: "local.get", index: 0 },
+        { op: "i32.load8_u", align: 0, offset: 0 },
+      ],
+      { memories: [{ min: 1 }] },
+    );
     const binary = emitBinary(mod);
     const { instance } = await WebAssembly.instantiate(binary);
     expect((instance.exports as any).test(0)).toBe(255);
@@ -66,11 +75,7 @@ describe("linear-memory IR instructions", () => {
   });
 
   it("emits i32.lt_u", async () => {
-    const mod = buildModuleWithBody([
-      { op: "local.get", index: 0 },
-      { op: "i32.const", value: 5 },
-      { op: "i32.lt_u" },
-    ]);
+    const mod = buildModuleWithBody([{ op: "local.get", index: 0 }, { op: "i32.const", value: 5 }, { op: "i32.lt_u" }]);
     const binary = emitBinary(mod);
     const { instance } = await WebAssembly.instantiate(binary);
     expect((instance.exports as any).test(3)).toBe(1);
@@ -79,14 +84,17 @@ describe("linear-memory IR instructions", () => {
   });
 
   it("emits i32.load with non-zero offset", async () => {
-    const mod = buildModuleWithBody([
-      // Store 42 at addr+4, then load from addr+4
-      { op: "local.get", index: 0 },
-      { op: "i32.const", value: 42 },
-      { op: "i32.store", align: 2, offset: 4 },
-      { op: "local.get", index: 0 },
-      { op: "i32.load", align: 2, offset: 4 },
-    ], { memories: [{ min: 1 }] });
+    const mod = buildModuleWithBody(
+      [
+        // Store 42 at addr+4, then load from addr+4
+        { op: "local.get", index: 0 },
+        { op: "i32.const", value: 42 },
+        { op: "i32.store", align: 2, offset: 4 },
+        { op: "local.get", index: 0 },
+        { op: "i32.load", align: 2, offset: 4 },
+      ],
+      { memories: [{ min: 1 }] },
+    );
     const binary = emitBinary(mod);
     const { instance } = await WebAssembly.instantiate(binary);
     expect((instance.exports as any).test(0)).toBe(42);
@@ -110,7 +118,8 @@ describe("linear-memory IR instructions", () => {
       const sectionId = binary[pos]!;
       pos++;
       // Read section size (LEB128)
-      let size = 0, shift = 0;
+      let size = 0,
+        shift = 0;
       while (true) {
         const b = binary[pos]!;
         size |= (b & 0x7f) << shift;

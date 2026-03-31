@@ -21,12 +21,7 @@ interface NestedNamespaceInfo {
  * - `import { a, b } from "mod"` → `declare function a(...): any;` or `declare const a: any;`
  */
 export function preprocessImports(source: string): string {
-  const sf = ts.createSourceFile(
-    "__preprocess__.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const sf = ts.createSourceFile("__preprocess__.ts", source, ts.ScriptTarget.Latest, true);
 
   // Step 1: Find all imports
   const nsImports = new Map<string, { start: number; end: number }>();
@@ -126,14 +121,9 @@ export function preprocessImports(source: string): string {
     return map.get(subNs)!;
   }
 
-  function tryResolveQualifiedName(
-    typeRef: ts.TypeReferenceNode,
-  ): { ns: string; className: string } | null {
+  function tryResolveQualifiedName(typeRef: ts.TypeReferenceNode): { ns: string; className: string } | null {
     if (ts.isQualifiedName(typeRef.typeName)) {
-      if (
-        ts.isIdentifier(typeRef.typeName.left) &&
-        nsImports.has(typeRef.typeName.left.text)
-      ) {
+      if (ts.isIdentifier(typeRef.typeName.left) && nsImports.has(typeRef.typeName.left.text)) {
         return {
           ns: typeRef.typeName.left.text,
           className: typeRef.typeName.right.text,
@@ -145,14 +135,8 @@ export function preprocessImports(source: string): string {
 
   function visit(node: ts.Node) {
     // new X.Y(args...)
-    if (
-      ts.isNewExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression)
-    ) {
-      if (
-        ts.isIdentifier(node.expression.expression) &&
-        nsImports.has(node.expression.expression.text)
-      ) {
+    if (ts.isNewExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      if (ts.isIdentifier(node.expression.expression) && nsImports.has(node.expression.expression.text)) {
         const ns = node.expression.expression.text;
         const cls = getOrCreateClass(ns, node.expression.name.text);
         cls.constructorArgCounts.push(node.arguments?.length ?? 0);
@@ -166,10 +150,7 @@ export function preprocessImports(source: string): string {
       ts.isPropertyAccessExpression(node.expression.expression)
     ) {
       const outer = node.expression.expression;
-      if (
-        ts.isIdentifier(outer.expression) &&
-        nsImports.has(outer.expression.text)
-      ) {
+      if (ts.isIdentifier(outer.expression) && nsImports.has(outer.expression.text)) {
         const ns = outer.expression.text;
         const subNsName = outer.name.text;
         const methodName = node.expression.name.text;
@@ -207,11 +188,7 @@ export function preprocessImports(source: string): string {
     }
 
     // Variable declaration with type X.Y
-    if (
-      ts.isVariableDeclaration(node) &&
-      node.type &&
-      ts.isTypeReferenceNode(node.type)
-    ) {
+    if (ts.isVariableDeclaration(node) && node.type && ts.isTypeReferenceNode(node.type)) {
       const info = tryResolveQualifiedName(node.type);
       if (info && ts.isIdentifier(node.name)) {
         getOrCreateClass(info.ns, info.className);
@@ -220,11 +197,7 @@ export function preprocessImports(source: string): string {
     }
 
     // Return type X.Y on function declarations
-    if (
-      ts.isFunctionDeclaration(node) &&
-      node.type &&
-      ts.isTypeReferenceNode(node.type)
-    ) {
+    if (ts.isFunctionDeclaration(node) && node.type && ts.isTypeReferenceNode(node.type)) {
       const info = tryResolveQualifiedName(node.type);
       if (info) {
         getOrCreateClass(info.ns, info.className);
@@ -238,17 +211,10 @@ export function preprocessImports(source: string): string {
         const cls = getOrCreateClass(varInfo.ns, varInfo.className);
         const memberName = node.name.text;
 
-        if (
-          node.parent &&
-          ts.isCallExpression(node.parent) &&
-          node.parent.expression === node
-        ) {
+        if (node.parent && ts.isCallExpression(node.parent) && node.parent.expression === node) {
           // Method call
           const existing = cls.methods.get(memberName) ?? 0;
-          cls.methods.set(
-            memberName,
-            Math.max(existing, node.parent.arguments.length),
-          );
+          cls.methods.set(memberName, Math.max(existing, node.parent.arguments.length));
         } else {
           // Property access (read or write)
           cls.properties.add(memberName);
@@ -257,10 +223,7 @@ export function preprocessImports(source: string): string {
     }
 
     // Track calls to named/default imported identifiers: func(args...)
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression)
-    ) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const name = node.expression.text;
       calledAsFunction.add(name);
       const existing = maxCallArgs.get(name) ?? 0;
@@ -297,10 +260,7 @@ export function preprocessImports(source: string): string {
 
       const maxCtorArgs = Math.max(0, ...usage.constructorArgCounts);
       if (maxCtorArgs > 0) {
-        const params = Array.from(
-          { length: maxCtorArgs },
-          (_, i) => `a${i}: any`,
-        ).join(", ");
+        const params = Array.from({ length: maxCtorArgs }, (_, i) => `a${i}: any`).join(", ");
         declare += `    constructor(${params});\n`;
       } else {
         declare += `    constructor(...args: any[]);\n`;
@@ -311,10 +271,7 @@ export function preprocessImports(source: string): string {
       }
 
       for (const [method, argCount] of usage.methods) {
-        const params = Array.from(
-          { length: argCount },
-          (_, i) => `a${i}: any`,
-        ).join(", ");
+        const params = Array.from({ length: argCount }, (_, i) => `a${i}: any`).join(", ");
         declare += `    ${method}(${params}): any;\n`;
       }
 
@@ -331,10 +288,7 @@ export function preprocessImports(source: string): string {
         declare += `    const ${prop}: any;\n`;
       }
       for (const [method, argCount] of info.methods) {
-        const params = Array.from(
-          { length: argCount },
-          (_, i) => `a${i}: any`,
-        ).join(", ");
+        const params = Array.from({ length: argCount }, (_, i) => `a${i}: any`).join(", ");
         declare += `    function ${method}(${params}): any;\n`;
       }
       declare += `  }\n`;
@@ -351,10 +305,7 @@ export function preprocessImports(source: string): string {
     if (imp.defaultName && !definedNames.has(imp.defaultName)) {
       if (calledAsFunction.has(imp.defaultName)) {
         const argCount = maxCallArgs.get(imp.defaultName) ?? 0;
-        const params = Array.from(
-          { length: argCount },
-          (_, i) => `a${i}: any`,
-        ).join(", ");
+        const params = Array.from({ length: argCount }, (_, i) => `a${i}: any`).join(", ");
         lines.push(`declare function ${imp.defaultName}(${params}): any;`);
       } else {
         lines.push(`declare const ${imp.defaultName}: any;`);
@@ -368,10 +319,7 @@ export function preprocessImports(source: string): string {
 
         if (calledAsFunction.has(name)) {
           const argCount = maxCallArgs.get(name) ?? 0;
-          const params = Array.from(
-            { length: argCount },
-            (_, i) => `a${i}: any`,
-          ).join(", ");
+          const params = Array.from({ length: argCount }, (_, i) => `a${i}: any`).join(", ");
           lines.push(`declare function ${name}(${params}): any;`);
         } else {
           lines.push(`declare const ${name}: any;`);

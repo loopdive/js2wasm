@@ -15,17 +15,20 @@ async function run(source: string, fn: string = "test", args: unknown[] = []): P
 describe("issue-368: global/arrow this reference", () => {
   it("this in module scope is undefined", async () => {
     // In strict mode (module code), `this` is undefined
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const x: any = this;
         if (x === undefined) return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("this in arrow function inside method captures method this", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       class Obj {
         x: number;
         constructor() { this.x = 42; }
@@ -37,11 +40,13 @@ describe("issue-368: global/arrow this reference", () => {
       export function test(): number {
         return new Obj().getX();
       }
-    `)).toBe(42);
+    `),
+    ).toBe(42);
   });
 
   it("this in arrow function inside method - mutation", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       class Counter {
         val: number;
         constructor() { this.val = 0; }
@@ -55,11 +60,13 @@ describe("issue-368: global/arrow this reference", () => {
       export function test(): number {
         return new Counter().increment();
       }
-    `)).toBe(2);
+    `),
+    ).toBe(2);
   });
 
   it("this in nested arrow functions captures from method", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       class Obj {
         x: number;
         constructor() { this.x = 10; }
@@ -74,17 +81,20 @@ describe("issue-368: global/arrow this reference", () => {
       export function test(): number {
         return new Obj().getX();
       }
-    `)).toBe(10);
+    `),
+    ).toBe(10);
   });
 
   it("this in top-level function is undefined", async () => {
     // In strict mode, `this` in a regular function call is undefined
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const x: any = this;
         if (x === undefined) return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 });

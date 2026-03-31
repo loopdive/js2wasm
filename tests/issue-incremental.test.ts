@@ -9,18 +9,14 @@ describe("Incremental Language Service Compiler", () => {
   });
 
   it("compiles a simple function", () => {
-    const result = compiler.compile(
-      "export function add(a: number, b: number): number { return a + b; }",
-    );
+    const result = compiler.compile("export function add(a: number, b: number): number { return a + b; }");
     expect(result.success).toBe(true);
     expect(result.binary.length).toBeGreaterThan(0);
     expect(result.errors.filter((e) => e.severity === "error")).toHaveLength(0);
   });
 
   it("compiles a second function (reusing cached libs)", () => {
-    const result = compiler.compile(
-      "export function mul(a: number, b: number): number { return a * b; }",
-    );
+    const result = compiler.compile("export function mul(a: number, b: number): number { return a * b; }");
     expect(result.success).toBe(true);
     expect(result.binary.length).toBeGreaterThan(0);
   });
@@ -31,9 +27,7 @@ describe("Incremental Language Service Compiler", () => {
     const times: number[] = [];
     for (let i = 0; i < iterations; i++) {
       const t0 = performance.now();
-      compiler.compile(
-        `export function fn${i}(x: number): number { return x * ${i}; }`,
-      );
+      compiler.compile(`export function fn${i}(x: number): number { return x * ${i}; }`);
       times.push(performance.now() - t0);
     }
     // Last few should be fast
@@ -43,9 +37,7 @@ describe("Incremental Language Service Compiler", () => {
   });
 
   it("produces valid Wasm that can be instantiated", async () => {
-    const result = compiler.compile(
-      "export function double(n: number): number { return n * 2; }",
-    );
+    const result = compiler.compile("export function double(n: number): number { return n * 2; }");
     expect(result.success).toBe(true);
     const imports = buildImports(result.imports, undefined, result.stringPool);
     const { instance } = await WebAssembly.instantiate(result.binary, imports);
@@ -54,8 +46,7 @@ describe("Incremental Language Service Compiler", () => {
   });
 
   it("produces same results as non-incremental compile", () => {
-    const source =
-      "export function add(a: number, b: number): number { return a + b; }";
+    const source = "export function add(a: number, b: number): number { return a + b; }";
     const incResult = compiler.compile(source);
     const stdResult = compile(source);
 
@@ -76,10 +67,9 @@ describe("Incremental Language Service Compiler", () => {
   });
 
   it("handles skipSemanticDiagnostics option", () => {
-    const result = compiler.compile(
-      "export function test(): number { const x: string = 42; return x; }",
-      { skipSemanticDiagnostics: true },
-    );
+    const result = compiler.compile("export function test(): number { const x: string = 42; return x; }", {
+      skipSemanticDiagnostics: true,
+    });
     // With skipped semantics, type errors become warnings or are absent
     expect(result).toBeDefined();
   });

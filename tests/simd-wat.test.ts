@@ -153,75 +153,85 @@ describe("SIMD binary roundtrip", () => {
       { op: "i32.const", value: 0 },
       { op: "local.set", index: 3 },
 
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          // if i + 16 > len, break to scalar tail
-          { op: "local.get", index: 3 },
-          { op: "i32.const", value: 16 },
-          { op: "i32.add" },
-          { op: "local.get", index: 2 },
-          { op: "i32.gt_u" },
-          { op: "br_if", depth: 1 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i + 16 > len, break to scalar tail
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 16 },
+              { op: "i32.add" },
+              { op: "local.get", index: 2 },
+              { op: "i32.gt_u" },
+              { op: "br_if", depth: 1 },
 
-          // v128.load(ptr_a + i) == v128.load(ptr_b + i)?
-          { op: "local.get", index: 0 },
-          { op: "local.get", index: 3 },
-          { op: "i32.add" },
-          { op: "v128.load", align: 0, offset: 0 },
+              // v128.load(ptr_a + i) == v128.load(ptr_b + i)?
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: 3 },
+              { op: "i32.add" },
+              { op: "v128.load", align: 0, offset: 0 },
 
-          { op: "local.get", index: 1 },
-          { op: "local.get", index: 3 },
-          { op: "i32.add" },
-          { op: "v128.load", align: 0, offset: 0 },
+              { op: "local.get", index: 1 },
+              { op: "local.get", index: 3 },
+              { op: "i32.add" },
+              { op: "v128.load", align: 0, offset: 0 },
 
-          { op: "i8x16.eq" } as Instr,
-          { op: "i8x16.all_true" } as Instr,
-          { op: "i32.eqz" },
-          { op: "if", blockType: { kind: "empty" }, then: [
-            { op: "i32.const", value: 0 },
-            { op: "return" },
-          ] },
+              { op: "i8x16.eq" } as Instr,
+              { op: "i8x16.all_true" } as Instr,
+              { op: "i32.eqz" },
+              { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
 
-          // i += 16
-          { op: "local.get", index: 3 },
-          { op: "i32.const", value: 16 },
-          { op: "i32.add" },
-          { op: "local.set", index: 3 },
-          { op: "br", depth: 0 },
-        ] },
-      ] },
+              // i += 16
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 16 },
+              { op: "i32.add" },
+              { op: "local.set", index: 3 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
 
       // Scalar tail: byte-by-byte
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 2 },
-          { op: "i32.ge_u" },
-          { op: "br_if", depth: 1 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 2 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
 
-          { op: "local.get", index: 0 },
-          { op: "local.get", index: 3 },
-          { op: "i32.add" },
-          { op: "i32.load8_u", align: 0, offset: 0 },
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: 3 },
+              { op: "i32.add" },
+              { op: "i32.load8_u", align: 0, offset: 0 },
 
-          { op: "local.get", index: 1 },
-          { op: "local.get", index: 3 },
-          { op: "i32.add" },
-          { op: "i32.load8_u", align: 0, offset: 0 },
+              { op: "local.get", index: 1 },
+              { op: "local.get", index: 3 },
+              { op: "i32.add" },
+              { op: "i32.load8_u", align: 0, offset: 0 },
 
-          { op: "i32.ne" },
-          { op: "if", blockType: { kind: "empty" }, then: [
-            { op: "i32.const", value: 0 },
-            { op: "return" },
-          ] },
+              { op: "i32.ne" },
+              { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
 
-          { op: "local.get", index: 3 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 3 },
-          { op: "br", depth: 0 },
-        ] },
-      ] },
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 3 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
 
       // All equal
       { op: "i32.const", value: 1 },
@@ -254,7 +264,7 @@ describe("SIMD binary roundtrip", () => {
     expect(memcmp(0, 256, testData.length)).toBe(1);
 
     // Modify one byte and check inequality
-    view[260] = 0xFF;
+    view[260] = 0xff;
     expect(memcmp(0, 256, testData.length)).toBe(0);
 
     // Empty comparison should return equal
@@ -266,7 +276,7 @@ describe("SIMD binary roundtrip", () => {
     expect(memcmp(512, 528, 16)).toBe(1);
 
     // Modify last byte of 16-byte block
-    view[543] = 0xFF;
+    view[543] = 0xff;
     expect(memcmp(512, 528, 16)).toBe(0);
   });
 });

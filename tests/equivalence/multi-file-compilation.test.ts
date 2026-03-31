@@ -8,10 +8,7 @@ import { tmpdir } from "node:os";
 /**
  * Compile multiple virtual files and run the entry file's exports.
  */
-async function compileAndRunMulti(
-  files: Record<string, string>,
-  entryFile: string,
-) {
+async function compileAndRunMulti(files: Record<string, string>, entryFile: string) {
   const result = compileMulti(files, entryFile);
   expect(
     result.success,

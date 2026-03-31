@@ -10,7 +10,7 @@ import { buildImports } from "../src/runtime.ts";
 async function compileAndRun(source: string): Promise<number> {
   const result = compile(source, { fileName: "test.ts" });
   if (!result.success) {
-    throw new Error(`Compilation failed: ${result.errors.map(e => e.message).join("; ")}`);
+    throw new Error(`Compilation failed: ${result.errors.map((e) => e.message).join("; ")}`);
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);

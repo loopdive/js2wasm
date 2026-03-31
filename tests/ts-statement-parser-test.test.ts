@@ -46,8 +46,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
       concat: (a: string, b: string) => a + b,
       length: (s: string) => s.length,
       equals: (a: string, b: string) => (a === b ? 1 : 0),
-      substring: (s: string, start: number, end: number) =>
-        s.substring(start, end),
+      substring: (s: string, start: number, end: number) => s.substring(start, end),
       charCodeAt: (s: string, i: number) => s.charCodeAt(i),
     },
     string_constants: buildStringConstants(result.stringPool),
@@ -61,10 +60,7 @@ async function compileToWasm(source: string) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    buildImports(result),
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return instance.exports as Record<string, Function>;
 }
 
@@ -118,9 +114,12 @@ const varEnvSource = `
 
 describe("TS Statement Parser - Part A: Variable Environment", () => {
   it("compiles variable environment without errors", async () => {
-    const result = compile(varEnvSource + `
+    const result = compile(
+      varEnvSource +
+        `
       export function test(): number { return 1; }
-    `);
+    `,
+    );
     expect(
       result.success,
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
@@ -128,18 +127,23 @@ describe("TS Statement Parser - Part A: Variable Environment", () => {
   });
 
   it("set and get a variable", async () => {
-    const exports = await compileToWasm(varEnvSource + `
+    const exports = await compileToWasm(
+      varEnvSource +
+        `
       export function test(): number {
         resetVars();
         setVar(42, 100);
         return getVar(42);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(100);
   });
 
   it("set and get multiple variables", async () => {
-    const exports = await compileToWasm(varEnvSource + `
+    const exports = await compileToWasm(
+      varEnvSource +
+        `
       export function test(): number {
         resetVars();
         setVar(1, 10);
@@ -147,29 +151,36 @@ describe("TS Statement Parser - Part A: Variable Environment", () => {
         setVar(3, 30);
         return getVar(1) + getVar(2) + getVar(3);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(60);
   });
 
   it("overwrite a variable", async () => {
-    const exports = await compileToWasm(varEnvSource + `
+    const exports = await compileToWasm(
+      varEnvSource +
+        `
       export function test(): number {
         resetVars();
         setVar(1, 10);
         setVar(1, 99);
         return getVar(1);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(99);
   });
 
   it("missing variable returns 0", async () => {
-    const exports = await compileToWasm(varEnvSource + `
+    const exports = await compileToWasm(
+      varEnvSource +
+        `
       export function test(): number {
         resetVars();
         return getVar(999);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(0);
   });
 });
@@ -341,9 +352,12 @@ const extScannerSource = `
 
 describe("TS Statement Parser - Part B: Extended Scanner", () => {
   it("compiles extended scanner without errors", async () => {
-    const result = compile(extScannerSource + `
+    const result = compile(
+      extScannerSource +
+        `
       export function test(): number { return 1; }
-    `);
+    `,
+    );
     expect(
       result.success,
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
@@ -351,17 +365,22 @@ describe("TS Statement Parser - Part B: Extended Scanner", () => {
   });
 
   it("scans identifiers", async () => {
-    const exports = await compileToWasm(extScannerSource + `
+    const exports = await compileToWasm(
+      extScannerSource +
+        `
       export function test(): number {
         let s: Scanner = new Scanner("abc");
         return s.scan();
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(11); // Identifier
   });
 
   it("scans comparison operators: ==, !=, >=, <=", async () => {
-    const exports = await compileToWasm(extScannerSource + `
+    const exports = await compileToWasm(
+      extScannerSource +
+        `
       export function testEqEq(): number {
         let s: Scanner = new Scanner("==");
         return s.scan();
@@ -378,15 +397,18 @@ describe("TS Statement Parser - Part B: Extended Scanner", () => {
         let s: Scanner = new Scanner("<=");
         return s.scan();
       }
-    `);
-    expect(exports.testEqEq()).toBe(16);  // EqualsEquals
+    `,
+    );
+    expect(exports.testEqEq()).toBe(16); // EqualsEquals
     expect(exports.testNotEq()).toBe(17); // NotEquals
-    expect(exports.testGtEq()).toBe(18);  // GreaterEq
-    expect(exports.testLtEq()).toBe(19);  // LessEq
+    expect(exports.testGtEq()).toBe(18); // GreaterEq
+    expect(exports.testLtEq()).toBe(19); // LessEq
   });
 
   it("scans braces and semicolons", async () => {
-    const exports = await compileToWasm(extScannerSource + `
+    const exports = await compileToWasm(
+      extScannerSource +
+        `
       export function testLBrace(): number {
         let s: Scanner = new Scanner("{");
         return s.scan();
@@ -399,14 +421,17 @@ describe("TS Statement Parser - Part B: Extended Scanner", () => {
         let s: Scanner = new Scanner(";");
         return s.scan();
       }
-    `);
-    expect(exports.testLBrace()).toBe(12);   // LBrace
-    expect(exports.testRBrace()).toBe(13);   // RBrace
+    `,
+    );
+    expect(exports.testLBrace()).toBe(12); // LBrace
+    expect(exports.testRBrace()).toBe(13); // RBrace
     expect(exports.testSemicolon()).toBe(9); // Semicolon
   });
 
   it("scans a statement-like expression: x = 10;", async () => {
-    const exports = await compileToWasm(extScannerSource + `
+    const exports = await compileToWasm(
+      extScannerSource +
+        `
       export function countTokens(): number {
         let s: Scanner = new Scanner("x = 10;");
         let count: number = 0;
@@ -419,13 +444,16 @@ describe("TS Statement Parser - Part B: Extended Scanner", () => {
         }
         return count;
       }
-    `);
+    `,
+    );
     // x, =, 10, ; = 4 non-whitespace tokens
     expect(exports.countTokens()).toBe(4);
   });
 
   it("identifier hash is consistent", async () => {
-    const exports = await compileToWasm(extScannerSource + `
+    const exports = await compileToWasm(
+      extScannerSource +
+        `
       export function test(): number {
         let s1: Scanner = new Scanner("abc");
         s1.scan();
@@ -436,7 +464,8 @@ describe("TS Statement Parser - Part B: Extended Scanner", () => {
         if (h1 === h2) return 1;
         return 0;
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(1);
   });
 });
@@ -446,7 +475,10 @@ describe("TS Statement Parser - Part B: Extended Scanner", () => {
 // This is the key milestone: control flow (if/else, while) combined with
 // variable assignment and expression evaluation.
 
-const stmtInterpreterSource = varEnvSource + extScannerSource + `
+const stmtInterpreterSource =
+  varEnvSource +
+  extScannerSource +
+  `
   // ---- AST node pool (flat array) ----
   let nodes: number[] = [];
   let nextSlot: number = 0;
@@ -672,13 +704,16 @@ const stmtInterpreterSource = varEnvSource + extScannerSource + `
 
 describe("TS Statement Parser - Part C: Statement Interpreter", () => {
   it("compiles statement interpreter without errors", async () => {
-    const result = compile(stmtInterpreterSource + `
+    const result = compile(
+      stmtInterpreterSource +
+        `
       export function test(): number { return 1; }
-    `);
+    `,
+    );
     if (!result.success) {
       const errors = result.errors.slice(0, 10);
       console.log("First errors:");
-      errors.forEach(e => console.log(`  L${e.line}: ${e.message}`));
+      errors.forEach((e) => console.log(`  L${e.line}: ${e.message}`));
     }
     expect(
       result.success,
@@ -687,7 +722,9 @@ describe("TS Statement Parser - Part C: Statement Interpreter", () => {
   });
 
   it("interprets simple assignment: x = 42", async () => {
-    const exports = await compileToWasm(stmtInterpreterSource + `
+    const exports = await compileToWasm(
+      stmtInterpreterSource +
+        `
       export function test(): number {
         resetVars();
         iScanner = new Scanner("x = 42;");
@@ -699,13 +736,16 @@ describe("TS Statement Parser - Part C: Statement Interpreter", () => {
         interpStatement();
         return getVar(hashOf("x"));
       }
-    `);
+    `,
+    );
     // Need to figure out what hash "x" produces - just check it's 120 (ASCII for 'x')
     expect(exports.test()).toBe(42);
   });
 
   it("interprets multiple assignments", async () => {
-    const exports = await compileToWasm(stmtInterpreterSource + `
+    const exports = await compileToWasm(
+      stmtInterpreterSource +
+        `
       export function test(): number {
         resetVars();
         iScanner = new Scanner("a = 10; b = 20; c = 30;");
@@ -719,12 +759,15 @@ describe("TS Statement Parser - Part C: Statement Interpreter", () => {
         interpStatement();
         return getVar(hashOf("a")) + getVar(hashOf("b")) + getVar(hashOf("c"));
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(60);
   });
 
   it("interprets expression with variable reference: a = 10; b = a + 5", async () => {
-    const exports = await compileToWasm(stmtInterpreterSource + `
+    const exports = await compileToWasm(
+      stmtInterpreterSource +
+        `
       export function test(): number {
         resetVars();
         iScanner = new Scanner("a = 10; b = a + 5;");
@@ -737,12 +780,15 @@ describe("TS Statement Parser - Part C: Statement Interpreter", () => {
         interpStatement();
         return getVar(hashOf("b"));
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(15);
   });
 
   it("interprets variable reassignment: x = 10; x = x + 5", async () => {
-    const exports = await compileToWasm(stmtInterpreterSource + `
+    const exports = await compileToWasm(
+      stmtInterpreterSource +
+        `
       export function test(): number {
         resetVars();
         iScanner = new Scanner("x = 10; x = x + 5;");
@@ -755,12 +801,15 @@ describe("TS Statement Parser - Part C: Statement Interpreter", () => {
         interpStatement();
         return getVar(hashOf("x"));
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(15);
   });
 
   it("interprets block: { a = 1; b = 2; }", async () => {
-    const exports = await compileToWasm(stmtInterpreterSource + `
+    const exports = await compileToWasm(
+      stmtInterpreterSource +
+        `
       export function test(): number {
         resetVars();
         iScanner = new Scanner("{ a = 1; b = 2; }");
@@ -772,7 +821,8 @@ describe("TS Statement Parser - Part C: Statement Interpreter", () => {
         interpStatement();
         return getVar(hashOf("a")) + getVar(hashOf("b"));
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(3);
   });
 });
@@ -782,7 +832,9 @@ describe("TS Statement Parser - Part C: Statement Interpreter", () => {
 
 describe("TS Statement Parser - Part D: Comparison Operations", () => {
   it("compiles and evaluates comparison functions", async () => {
-    const exports = await compileToWasm(extScannerSource + `
+    const exports = await compileToWasm(
+      extScannerSource +
+        `
       function compareTest(a: number, b: number): number {
         if (a > b) return 1;
         if (a < b) return 2;
@@ -793,7 +845,8 @@ describe("TS Statement Parser - Part D: Comparison Operations", () => {
       export function testGreater(): number { return compareTest(10, 5); }
       export function testLess(): number { return compareTest(5, 10); }
       export function testEqual(): number { return compareTest(7, 7); }
-    `);
+    `,
+    );
     expect(exports.testGreater()).toBe(1);
     expect(exports.testLess()).toBe(2);
     expect(exports.testEqual()).toBe(3);
@@ -806,7 +859,9 @@ describe("TS Statement Parser - Part D: Comparison Operations", () => {
 
 describe("TS Statement Parser - Part E: Complex computation via var environment", () => {
   it("computes fibonacci via variable environment", async () => {
-    const exports = await compileToWasm(varEnvSource + `
+    const exports = await compileToWasm(
+      varEnvSource +
+        `
       function fib(n: number): number {
         resetVars();
         setVar(1, 0);  // a = 0
@@ -827,7 +882,8 @@ describe("TS Statement Parser - Part E: Complex computation via var environment"
       export function fib1(): number { return fib(1); }
       export function fib5(): number { return fib(5); }
       export function fib10(): number { return fib(10); }
-    `);
+    `,
+    );
     expect(exports.fib0()).toBe(0);
     expect(exports.fib1()).toBe(1);
     expect(exports.fib5()).toBe(5);
@@ -835,7 +891,9 @@ describe("TS Statement Parser - Part E: Complex computation via var environment"
   });
 
   it("computes GCD via variable environment", async () => {
-    const exports = await compileToWasm(varEnvSource + `
+    const exports = await compileToWasm(
+      varEnvSource +
+        `
       function gcd(a: number, b: number): number {
         while (b !== 0) {
           // Modulus via repeated subtraction (f64 division is not integer)
@@ -850,7 +908,8 @@ describe("TS Statement Parser - Part E: Complex computation via var environment"
       }
 
       export function testGcd(): number { return gcd(48, 18); }
-    `);
+    `,
+    );
     expect(exports.testGcd()).toBe(6);
   });
 });

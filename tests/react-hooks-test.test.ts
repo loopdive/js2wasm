@@ -46,8 +46,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
       concat: (a: string, b: string) => a + b,
       length: (s: string) => s.length,
       equals: (a: string, b: string) => (a === b ? 1 : 0),
-      substring: (s: string, start: number, end: number) =>
-        s.substring(start, end),
+      substring: (s: string, start: number, end: number) => s.substring(start, end),
       charCodeAt: (s: string, i: number) => s.charCodeAt(i),
     },
     string_constants: buildStringConstants(result.stringPool),
@@ -61,10 +60,7 @@ async function compileToWasm(source: string) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    buildImports(result),
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return instance.exports as Record<string, Function>;
 }
 

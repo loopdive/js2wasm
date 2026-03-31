@@ -52,9 +52,7 @@ describe("source map generation (unit)", () => {
   });
 
   it("includes sourcesContent when provided", () => {
-    const entries: SourceMapEntry[] = [
-      { wasmOffset: 10, sourcePos: { file: "test.ts", line: 0, column: 0 } },
-    ];
+    const entries: SourceMapEntry[] = [{ wasmOffset: 10, sourcePos: { file: "test.ts", line: 0, column: 0 } }];
 
     const content = new Map([["test.ts", "const x = 1;"]]);
     const sourceMap = generateSourceMap(entries, content);
@@ -106,10 +104,7 @@ describe("source map generation (unit)", () => {
 
 describe("source map integration", () => {
   it("generates source map when option is enabled", () => {
-    const result = compile(
-      `export function add(a: number, b: number): number { return a + b; }`,
-      { sourceMap: true },
-    );
+    const result = compile(`export function add(a: number, b: number): number { return a + b; }`, { sourceMap: true });
 
     expect(result.success).toBe(true);
     expect(result.sourceMap).toBeDefined();
@@ -121,19 +116,17 @@ describe("source map integration", () => {
   });
 
   it("does not generate source map when option is not set", () => {
-    const result = compile(
-      `export function add(a: number, b: number): number { return a + b; }`,
-    );
+    const result = compile(`export function add(a: number, b: number): number { return a + b; }`);
 
     expect(result.success).toBe(true);
     expect(result.sourceMap).toBeUndefined();
   });
 
   it("source map contains correct source file name", () => {
-    const result = compile(
-      `export function add(a: number, b: number): number { return a + b; }`,
-      { sourceMap: true, moduleName: "mymodule.ts" },
-    );
+    const result = compile(`export function add(a: number, b: number): number { return a + b; }`, {
+      sourceMap: true,
+      moduleName: "mymodule.ts",
+    });
 
     expect(result.success).toBe(true);
     const sourceMap = JSON.parse(result.sourceMap!) as SourceMapV3;
@@ -141,10 +134,7 @@ describe("source map integration", () => {
   });
 
   it("source map has valid mappings that decode", () => {
-    const result = compile(
-      `export function add(a: number, b: number): number { return a + b; }`,
-      { sourceMap: true },
-    );
+    const result = compile(`export function add(a: number, b: number): number { return a + b; }`, { sourceMap: true });
 
     expect(result.success).toBe(true);
     const sourceMap = JSON.parse(result.sourceMap!) as SourceMapV3;
@@ -180,10 +170,10 @@ describe("source map integration", () => {
   });
 
   it("binary contains sourceMappingURL custom section when sourceMap enabled", () => {
-    const result = compile(
-      `export function foo(): number { return 1; }`,
-      { sourceMap: true, sourceMapUrl: "test.wasm.map" },
-    );
+    const result = compile(`export function foo(): number { return 1; }`, {
+      sourceMap: true,
+      sourceMapUrl: "test.wasm.map",
+    });
 
     expect(result.success).toBe(true);
 
@@ -196,10 +186,7 @@ describe("source map integration", () => {
   });
 
   it("binary is still valid wasm when sourceMap is enabled", async () => {
-    const result = compile(
-      `export function add(a: number, b: number): number { return a + b; }`,
-      { sourceMap: true },
-    );
+    const result = compile(`export function add(a: number, b: number): number { return a + b; }`, { sourceMap: true });
 
     expect(result.success).toBe(true);
 
@@ -214,12 +201,9 @@ describe("source map integration", () => {
   });
 
   it("source map line numbers point to valid source locations", () => {
-    const source = [
-      "export function compute(x: number): number {",
-      "  const y = x * 2;",
-      "  return y + 1;",
-      "}",
-    ].join("\n");
+    const source = ["export function compute(x: number): number {", "  const y = x * 2;", "  return y + 1;", "}"].join(
+      "\n",
+    );
 
     const result = compile(source, { sourceMap: true });
     expect(result.success).toBe(true);

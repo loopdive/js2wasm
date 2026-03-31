@@ -4,13 +4,19 @@
  */
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal, resolveWasmType, addUnionImports, parseRegExpLiteral, isAnyValue, ensureAnyHelpers, addImport, addFuncType } from "./index.js";
 import {
-  isNumberType,
-  isBooleanType,
-  isStringType,
-  isSymbolType,
-} from "../checker/type-mapper.js";
+  allocLocal,
+  allocTempLocal,
+  releaseTempLocal,
+  resolveWasmType,
+  addUnionImports,
+  parseRegExpLiteral,
+  isAnyValue,
+  ensureAnyHelpers,
+  addImport,
+  addFuncType,
+} from "./index.js";
+import { isNumberType, isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
@@ -66,12 +72,19 @@ export function compileDeleteExpression(
 
   // Unwrap parenthesized/type-assertion wrappers to find the underlying expression
   let inner: ts.Expression = operand;
-  while (ts.isParenthesizedExpression(inner) || ts.isAsExpression(inner) ||
-         ts.isNonNullExpression(inner) || ts.isTypeAssertionExpression(inner)) {
-    inner = ts.isParenthesizedExpression(inner) ? inner.expression :
-            ts.isAsExpression(inner) ? inner.expression :
-            ts.isNonNullExpression(inner) ? inner.expression :
-            (inner as ts.TypeAssertion).expression;
+  while (
+    ts.isParenthesizedExpression(inner) ||
+    ts.isAsExpression(inner) ||
+    ts.isNonNullExpression(inner) ||
+    ts.isTypeAssertionExpression(inner)
+  ) {
+    inner = ts.isParenthesizedExpression(inner)
+      ? inner.expression
+      : ts.isAsExpression(inner)
+        ? inner.expression
+        : ts.isNonNullExpression(inner)
+          ? inner.expression
+          : (inner as ts.TypeAssertion).expression;
   }
 
   if (ts.isIdentifier(inner)) {
@@ -147,11 +160,7 @@ export function compileDeleteExpression(
  * Compile a RegExp literal (e.g. /\d+/g) by desugaring it to new RegExp(pattern, flags).
  * The pattern and flags strings are loaded from the string pool, then RegExp_new is called.
  */
-export function compileRegExpLiteral(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  expr: ts.Expression,
-): ValType | null {
+export function compileRegExpLiteral(ctx: CodegenContext, fctx: FunctionContext, expr: ts.Expression): ValType | null {
   const { pattern, flags } = parseRegExpLiteral(expr.getText());
 
   // Load pattern string
@@ -209,10 +218,7 @@ function collectInstanceOfTags(ctx: CodegenContext, className: string): number[]
  * Resolve the class name from the right operand of an instanceof expression.
  * Handles identifiers, class expressions, and arbitrary expressions via the type checker.
  */
-function resolveInstanceOfClassName(
-  ctx: CodegenContext,
-  rightExpr: ts.Expression,
-): string | undefined {
+function resolveInstanceOfClassName(ctx: CodegenContext, rightExpr: ts.Expression): string | undefined {
   // Direct identifier: `x instanceof Foo`
   if (ts.isIdentifier(rightExpr)) {
     const name = rightExpr.text;
@@ -317,9 +323,7 @@ export function compileInstanceOf(
     fctx.body.push({ op: "local.set", index: anyLocalIdx });
 
     // Build the "then" branch: value is NOT a struct of the right root type -> false
-    const thenBody: Instr[] = [
-      { op: "i32.const", value: 0 },
-    ];
+    const thenBody: Instr[] = [{ op: "i32.const", value: 0 }];
 
     // Build the "else" branch: value IS a struct -> read __tag and compare
     const elseBody: Instr[] = [
@@ -354,8 +358,8 @@ export function compileInstanceOf(
     fctx.body.push({
       op: "if",
       blockType: { kind: "val", type: { kind: "i32" } },
-      then: elseBody,   // ref.test passed -> check tag
-      else: thenBody,    // ref.test failed -> false
+      then: elseBody, // ref.test passed -> check tag
+      else: thenBody, // ref.test failed -> false
     });
     releaseTempLocal(fctx, anyLocalIdx);
 
@@ -400,9 +404,7 @@ export function compileInstanceOf(
     fctx.body.push({ op: "local.set", index: refLocalIdx });
 
     // Build the "then" branch (null case -> false)
-    const thenBody: Instr[] = [
-      { op: "i32.const", value: 0 },
-    ];
+    const thenBody: Instr[] = [{ op: "i32.const", value: 0 }];
 
     // Build the "else" branch (non-null case -> guard with ref.test then read tag)
     // Use ref.test to avoid trapping on wrong struct type (illegal cast)
@@ -437,7 +439,7 @@ export function compileInstanceOf(
         op: "if",
         blockType: { kind: "val", type: { kind: "i32" } },
         then: tagCheckBody,
-        else: [{ op: "i32.const", value: 0 }],  // wrong struct type → false
+        else: [{ op: "i32.const", value: 0 }], // wrong struct type → false
       } as Instr,
     ];
 
@@ -549,9 +551,11 @@ export function compileTypeofExpression(
   const operand = expr.expression;
 
   // typeof Math.<constant> -> "number", typeof Math.<method> -> "function"
-  if (ts.isPropertyAccessExpression(operand) &&
-      ts.isIdentifier(operand.expression) &&
-      operand.expression.text === "Math") {
+  if (
+    ts.isPropertyAccessExpression(operand) &&
+    ts.isIdentifier(operand.expression) &&
+    operand.expression.text === "Math"
+  ) {
     const mathConstants = new Set(["PI", "E", "LN2", "LN10", "SQRT2", "SQRT1_2", "LOG2E", "LOG10E"]);
     if (mathConstants.has(operand.name.text)) {
       return compileStringLiteral(ctx, fctx, "number");
@@ -560,16 +564,20 @@ export function compileTypeofExpression(
   }
 
   // typeof import.meta -> "object"
-  if (ts.isMetaProperty(operand) &&
-      operand.keywordToken === ts.SyntaxKind.ImportKeyword &&
-      operand.name.text === "meta") {
+  if (
+    ts.isMetaProperty(operand) &&
+    operand.keywordToken === ts.SyntaxKind.ImportKeyword &&
+    operand.name.text === "meta"
+  ) {
     return compileStringLiteral(ctx, fctx, "object");
   }
 
   // typeof new.target -> "function" inside constructors, "undefined" outside
-  if (ts.isMetaProperty(operand) &&
-      operand.keywordToken === ts.SyntaxKind.NewKeyword &&
-      operand.name.text === "target") {
+  if (
+    ts.isMetaProperty(operand) &&
+    operand.keywordToken === ts.SyntaxKind.NewKeyword &&
+    operand.name.text === "target"
+  ) {
     if (fctx.isConstructor) {
       return compileStringLiteral(ctx, fctx, "function");
     } else {
@@ -632,12 +640,8 @@ export function compileTypeofComparison(
   expr: ts.BinaryExpression,
 ): ValType | null {
   const op = expr.operatorToken.kind;
-  const isEq =
-    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
-    op === ts.SyntaxKind.EqualsEqualsToken;
-  const isNeq =
-    op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
-    op === ts.SyntaxKind.ExclamationEqualsToken;
+  const isEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken || op === ts.SyntaxKind.EqualsEqualsToken;
+  const isNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsToken;
   if (!isEq && !isNeq) return null;
 
   // Detect typeof on left or right
@@ -660,9 +664,11 @@ export function compileTypeofComparison(
   const tsType = ctx.checker.getTypeAtLocation(operand);
   let staticTypeof: string | null = null;
   // Math.<constant> -> "number", Math.<method> -> "function"
-  if (ts.isPropertyAccessExpression(operand) &&
-      ts.isIdentifier(operand.expression) &&
-      operand.expression.text === "Math") {
+  if (
+    ts.isPropertyAccessExpression(operand) &&
+    ts.isIdentifier(operand.expression) &&
+    operand.expression.text === "Math"
+  ) {
     const mathConstants = new Set(["PI", "E", "LN2", "LN10", "SQRT2", "SQRT1_2", "LOG2E", "LOG10E"]);
     staticTypeof = mathConstants.has(operand.name.text) ? "number" : "function";
   } else {
@@ -670,7 +676,7 @@ export function compileTypeofComparison(
   }
   if (staticTypeof !== null) {
     const matches = staticTypeof === stringLiteral;
-    const result = isEq ? (matches ? 1 : 0) : (matches ? 0 : 1);
+    const result = isEq ? (matches ? 1 : 0) : matches ? 0 : 1;
     fctx.body.push({ op: "i32.const", value: result });
     return { kind: "i32" };
   }
@@ -682,9 +688,11 @@ export function compileTypeofComparison(
     ensureAnyHelpers(ctx);
     // Map the string literal to tag check(s)
     let tagChecks: number[] | null = null;
-    if (stringLiteral === "number") tagChecks = [2, 3]; // i32 or f64
+    if (stringLiteral === "number")
+      tagChecks = [2, 3]; // i32 or f64
     else if (stringLiteral === "boolean") tagChecks = [4];
-    else if (stringLiteral === "string") tagChecks = [5, 6]; // externref string or gcref string
+    else if (stringLiteral === "string")
+      tagChecks = [5, 6]; // externref string or gcref string
     else if (stringLiteral === "undefined") tagChecks = [1];
     else if (stringLiteral === "object") tagChecks = [0]; // null -> "object"
 

@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 
 describe("Issue #380: Unknown variable/function in test scope", () => {
-
   it("unknown identifier compiles gracefully (returns externref)", () => {
     const result = compile(`
       export function test(): number {
@@ -25,24 +24,30 @@ describe("Issue #380: Unknown variable/function in test scope", () => {
   });
 
   it("multiple unknown globals in same function compile", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function test() {
         var a = unknownGlobal1;
         var b = unknownGlobal2;
         var c = unknownGlobal3;
         return 42;
       }
-    `, { allowJs: true, fileName: "input.js" });
+    `,
+      { allowJs: true, fileName: "input.js" },
+    );
     expect(result.success).toBe(true);
   });
 
   it("unknown variable in compound assignment compiles gracefully (JS mode)", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function test() {
         var x = unknownGlobal;
         return 42;
       }
-    `, { allowJs: true, fileName: "input.js" });
+    `,
+      { allowJs: true, fileName: "input.js" },
+    );
     expect(result.success).toBe(true);
   });
 
@@ -57,7 +62,8 @@ describe("Issue #380: Unknown variable/function in test scope", () => {
   });
 
   it("nested unknown identifiers compile gracefully", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function test() {
         var x = myGlobalA;
         var y = myGlobalB;
@@ -65,7 +71,9 @@ describe("Issue #380: Unknown variable/function in test scope", () => {
         var w = myGlobalD;
         return 42;
       }
-    `, { allowJs: true, fileName: "input.js" });
+    `,
+      { allowJs: true, fileName: "input.js" },
+    );
     expect(result.success).toBe(true);
   });
 

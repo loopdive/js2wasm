@@ -24,9 +24,7 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 function getWat(source: string): string {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(
-      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
   return result.wat;
 }
@@ -34,7 +32,7 @@ function getWat(source: string): string {
 /** Find the (func $name ...) line in WAT and return the signature portion */
 function getFuncSignature(wat: string, funcName: string): string | undefined {
   const lines = wat.split("\n");
-  return lines.find(l => l.includes(`(func $${funcName} `));
+  return lines.find((l) => l.includes(`(func $${funcName} `));
 }
 
 describe("typed export signatures (#598)", () => {
@@ -78,34 +76,58 @@ describe("typed export signatures (#598)", () => {
   });
 
   it("exported number function is callable from JS with concrete values", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function add(a: number, b: number): number {
         return a + b;
       }
-    `, "add", [3, 4])).toBe(7);
+    `,
+        "add",
+        [3, 4],
+      ),
+    ).toBe(7);
   });
 
   it("exported boolean function works with JS booleans", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function negate(a: boolean): boolean {
         return !a;
       }
-    `, "negate", [1])).toBe(0);
+    `,
+        "negate",
+        [1],
+      ),
+    ).toBe(0);
 
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function negate(a: boolean): boolean {
         return !a;
       }
-    `, "negate", [0])).toBe(1);
+    `,
+        "negate",
+        [0],
+      ),
+    ).toBe(1);
   });
 
   it("mixed number params with module-level globals still use f64", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       const offset = 10;
       export function addOffset(a: number, b: number): number {
         return a + b + offset;
       }
-    `, "addOffset", [3, 4])).toBe(17);
+    `,
+        "addOffset",
+        [3, 4],
+      ),
+    ).toBe(17);
   });
 
   it("number function with optional param uses f64", () => {
@@ -146,10 +168,16 @@ describe("typed export signatures (#598)", () => {
   });
 
   it("multi-param function with all numbers computes correctly", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function compute(a: number, b: number, c: number): number {
         return a * b + c;
       }
-    `, "compute", [3, 4, 5])).toBe(17);
+    `,
+        "compute",
+        [3, 4, 5],
+      ),
+    ).toBe(17);
   });
 });

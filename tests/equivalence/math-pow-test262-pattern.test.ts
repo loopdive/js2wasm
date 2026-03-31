@@ -4,9 +4,9 @@ import { buildImports } from "./helpers.js";
 
 async function compileAndRun(source: string): Promise<number> {
   const result = compile(source, { fileName: "test.ts" });
-  const errors = result.errors.filter(e => e.severity === "error");
+  const errors = result.errors.filter((e) => e.severity === "error");
   if (errors.length > 0) {
-    throw new Error("Compile errors: " + errors.map(e => e.message).join("; "));
+    throw new Error("Compile errors: " + errors.map((e) => e.message).join("; "));
   }
   expect(result.success).toBe(true);
   const imports = buildImports(result);

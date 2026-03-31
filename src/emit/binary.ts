@@ -42,9 +42,7 @@ export function emitBinaryWithSourceMap(mod: WasmModule): EmitResult {
   enc.bytes([0x00, 0x61, 0x73, 0x6d]); // \0asm
   enc.bytes([0x01, 0x00, 0x00, 0x00]); // version 1
 
-  const numImportFuncs = mod.imports.filter(
-    (i) => i.desc.kind === "func",
-  ).length;
+  const numImportFuncs = mod.imports.filter((i) => i.desc.kind === "func").length;
 
   // Type section
   if (mod.types.length > 0) {
@@ -447,9 +445,7 @@ export function encodeImport(imp: Import, enc: WasmEncoder): void {
       break;
     case "table":
       enc.byte(0x01);
-      enc.byte(
-        imp.desc.elementType === "funcref" ? TYPE.funcref : TYPE.externref,
-      );
+      enc.byte(imp.desc.elementType === "funcref" ? TYPE.funcref : TYPE.externref);
       if (imp.desc.max !== undefined) {
         enc.byte(0x01);
         enc.u32(imp.desc.min);
@@ -479,11 +475,7 @@ export function encodeGlobal(g: GlobalDef, enc: WasmEncoder): void {
   enc.byte(OP.end);
 }
 
-export function encodeExport(
-  exp: WasmExport,
-  enc: WasmEncoder,
-  _numImportFuncs: number,
-): void {
+export function encodeExport(exp: WasmExport, enc: WasmEncoder, _numImportFuncs: number): void {
   enc.name(exp.name);
   const kindByte =
     exp.desc.kind === "func"
@@ -540,10 +532,7 @@ export function groupLocals(locals: { type: ValType }[]): LocalGroup[] {
 
 function valTypeEq(a: ValType, b: ValType): boolean {
   if (a.kind !== b.kind) return false;
-  if (
-    (a.kind === "ref" || a.kind === "ref_null") &&
-    (b.kind === "ref" || b.kind === "ref_null")
-  ) {
+  if ((a.kind === "ref" || a.kind === "ref_null") && (b.kind === "ref" || b.kind === "ref_null")) {
     return a.typeIdx === b.typeIdx;
   }
   return true;

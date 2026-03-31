@@ -12,7 +12,7 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
   const result = compile(source);
   if (!result.success) {
     throw new Error(
-      `Compile failed:\n${result.errors.map(e => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
+      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
   const { instance } = await WebAssembly.instantiate(result.binary, { env: {} });
@@ -21,35 +21,52 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("unified collector (#592)", () => {
   it("compiles program with Math.abs (inline wasm)", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function test(): number {
         return Math.abs(-5);
       }
-    `, "test")).toBe(5);
+    `,
+        "test",
+      ),
+    ).toBe(5);
   });
 
   it("compiles program with exponentiation operator (Math.pow)", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function test(): number {
         return 2 ** 10;
       }
-    `, "test")).toBe(1024);
+    `,
+        "test",
+      ),
+    ).toBe(1024);
   });
 
   it("compiles program with arrow function (callback collector)", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       function apply(f: (x: number) => number, val: number): number {
         return f(val);
       }
       export function test(): number {
         return apply((x) => x * 2, 21);
       }
-    `, "test")).toBe(42);
+    `,
+        "test",
+      ),
+    ).toBe(42);
   });
 
   it("compiles program with basic arithmetic and locals", async () => {
     // No strings — just exercises basic compilation pipeline
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function test(): number {
         let sum = 0;
         for (let i = 0; i < 5; i++) {
@@ -57,12 +74,17 @@ describe("unified collector (#592)", () => {
         }
         return sum;
       }
-    `, "test")).toBe(10);
+    `,
+        "test",
+      ),
+    ).toBe(10);
   });
 
   it("compiles program with multiple features combined", async () => {
     // Exercises: string literals, Math, binary operators, callbacks
-    expect(await run(`
+    expect(
+      await run(
+        `
       function square(x: number): number {
         return x * x;
       }
@@ -71,36 +93,55 @@ describe("unified collector (#592)", () => {
         const b = square(a);
         return b + 1;
       }
-    `, "test")).toBe(10);
+    `,
+        "test",
+      ),
+    ).toBe(10);
   });
 
   it("compiles program with Math.floor and Math.ceil (inline wasm)", async () => {
-    const floor = await run(`
+    const floor = await run(
+      `
       export function test(): number {
         return Math.floor(3.7);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(floor).toBe(3);
 
-    const ceil = await run(`
+    const ceil = await run(
+      `
       export function test(): number {
         return Math.ceil(3.2);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(ceil).toBe(4);
   });
 
   it("compiles program with Math.min and Math.max", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function test(): number {
         return Math.min(10, 3);
       }
-    `, "test")).toBe(3);
+    `,
+        "test",
+      ),
+    ).toBe(3);
 
-    expect(await run(`
+    expect(
+      await run(
+        `
       export function test(): number {
         return Math.max(10, 3);
       }
-    `, "test")).toBe(10);
+    `,
+        "test",
+      ),
+    ).toBe(10);
   });
 });
