@@ -103,7 +103,7 @@ echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
 # 1 fork, nproc-1 compiler threads, GC every 200 tests keeps memory flat.
 # No chunking loop needed — vitest runs all chunk files in one fork.
 cd "$WT_DIR"
-npx vitest run tests/test262-chunk*.test.ts \
+npx vitest run tests/test262-vitest.test.ts \
   --reporter=verbose \
   "$@" 2>&1 | tee /tmp/test262-vitest-run.log
 # Generate report.json from JSONL (atomic — no fork race condition)
