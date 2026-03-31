@@ -1110,10 +1110,12 @@ export function emitNestedBindingDefault(
       });
     }
   } else if (valueType.kind === "f64") {
-    // f64 sentinel: NaN means undefined
+    // Check for sNaN sentinel (0x7FF00000DEADC0DE) — NOT generic NaN.
+    // This distinguishes missing/undefined from explicit NaN arguments (#866).
     fctx.body.push({ op: "local.get", index: nestedLocal });
-    fctx.body.push({ op: "local.get", index: nestedLocal });
-    fctx.body.push({ op: "f64.ne" } as Instr); // NaN != NaN is true
+    fctx.body.push({ op: "i64.reinterpret_f64" } as unknown as Instr);
+    fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+    fctx.body.push({ op: "i64.eq" });
     const defaultInstrs = collectInstrs(fctx, () => {
       compileExpression(ctx, fctx, initializer, valueType);
       fctx.body.push({ op: "local.set", index: nestedLocal });
@@ -1185,8 +1187,11 @@ export function emitDefaultValueCheck(
   } else if (fieldType.kind === "f64") {
     const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
     fctx.body.push({ op: "local.tee", index: tmpField });
-    fctx.body.push({ op: "local.get", index: tmpField });
-    fctx.body.push({ op: "f64.ne" });
+    // Check for sNaN sentinel (0x7FF00000DEADC0DE) — NOT generic NaN.
+    // This distinguishes missing/undefined from explicit NaN arguments (#866).
+    fctx.body.push({ op: "i64.reinterpret_f64" } as unknown as Instr);
+    fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+    fctx.body.push({ op: "i64.eq" });
     const thenInstrs = collectInstrs(fctx, () => {
       compileExpression(ctx, fctx, initializer, hintType);
       fctx.body.push({ op: "local.set", index: localIdx } as Instr);
@@ -2844,6 +2849,61 @@ function compileStringDestructuring(
   }
 }
 
+/**
+ * Check if a direct call can be safely converted to return_call.
+ * return_call requires the callee's return type to match the caller's.
+ */
+function canTailCall(ctx: CodegenContext, fctx: FunctionContext, calleeIdx: number): boolean {
+  let calleeTypeIdx: number | undefined;
+  if (calleeIdx < ctx.numImportFuncs) {
+    // Import function
+    const imp = ctx.mod.imports[calleeIdx];
+    if (imp?.desc.kind === "func") calleeTypeIdx = imp.desc.typeIdx;
+  } else {
+    // Local function
+    const localIdx = calleeIdx - ctx.numImportFuncs;
+    const func = ctx.mod.functions[localIdx];
+    if (func) calleeTypeIdx = func.typeIdx;
+  }
+  if (calleeTypeIdx === undefined) return false;
+  const typeDef = ctx.mod.types[calleeTypeIdx];
+  if (!typeDef || typeDef.kind !== "func") return false;
+
+  // Compare callee results with caller return type
+  const calleeResults = typeDef.results;
+  if (!fctx.returnType) {
+    // Caller is void — callee must also return nothing
+    return calleeResults.length === 0;
+  }
+  // Caller has a return type — callee must return exactly one matching type
+  if (calleeResults.length !== 1) return false;
+  const calleeRet = calleeResults[0]!;
+  const callerRet = fctx.returnType;
+  // Exact kind match (we allow ref subtyping — same kind is sufficient)
+  if (calleeRet.kind === callerRet.kind) return true;
+  // ref/ref_null are compatible for return purposes
+  if ((calleeRet.kind === "ref" || calleeRet.kind === "ref_null") &&
+      (callerRet.kind === "ref" || callerRet.kind === "ref_null")) return true;
+  return false;
+}
+
+/**
+ * Check if a call_ref with a given type index can be safely converted to return_call_ref.
+ */
+function canTailCallRef(ctx: CodegenContext, fctx: FunctionContext, typeIdx: number): boolean {
+  const typeDef = ctx.mod.types[typeIdx];
+  if (!typeDef || typeDef.kind !== "func") return false;
+  const calleeResults = typeDef.results;
+  if (!fctx.returnType) return calleeResults.length === 0;
+  if (calleeResults.length !== 1) return false;
+  const calleeRet = calleeResults[0]!;
+  const callerRet = fctx.returnType;
+  if (calleeRet.kind === callerRet.kind) return true;
+  if ((calleeRet.kind === "ref" || calleeRet.kind === "ref_null") &&
+      (callerRet.kind === "ref" || callerRet.kind === "ref_null")) return true;
+  return false;
+}
+
 function compileReturnStatement(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -2934,14 +2994,28 @@ function compileReturnStatement(
   // Tail call optimization: if the last instruction is a call or call_ref,
   // replace it with return_call / return_call_ref to eliminate stack growth
   // for recursive and tail-position calls.
+  // Guard: only apply when the callee's return type matches the caller's,
+  // otherwise return_call produces a type mismatch (e.g., class constructors
+  // calling methods with different return types — #839).
+  // Tail call optimization: if the last instruction is a call or call_ref,
+  // replace it with return_call / return_call_ref to eliminate stack growth
+  // for recursive and tail-position calls.
+  // Guard: only apply when the callee's return type matches the caller's,
+  // otherwise return_call produces a type mismatch (#839).
   const lastInstr = fctx.body[fctx.body.length - 1];
   if (lastInstr && lastInstr.op === "call") {
-    (lastInstr as any).op = "return_call";
-    return; // return_call implicitly returns — no need for explicit return
+    const calleeIdx = (lastInstr as any).funcIdx as number;
+    if (canTailCall(ctx, fctx, calleeIdx)) {
+      (lastInstr as any).op = "return_call";
+      return; // return_call implicitly returns — no need for explicit return
+    }
   }
   if (lastInstr && lastInstr.op === "call_ref") {
-    (lastInstr as any).op = "return_call_ref";
-    return; // return_call_ref implicitly returns — no need for explicit return
+    const typeIdx = (lastInstr as any).typeIdx as number | undefined;
+    if (typeIdx !== undefined && canTailCallRef(ctx, fctx, typeIdx)) {
+      (lastInstr as any).op = "return_call_ref";
+      return;
+    }
   }
 
   fctx.body.push({ op: "return" });

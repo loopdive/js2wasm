@@ -1981,7 +1981,12 @@ export function pushParamSentinel(fctx: FunctionContext, type: ValType, ctx?: Co
 export function defaultValueInstrs(vt: ValType): Instr[] {
   switch (vt.kind) {
     case "f64":
-      return [{ op: "f64.const", value: NaN } as Instr];
+      // Use sNaN sentinel so destructuring default checks (which compare against
+      // 0x7FF00000DEADC0DE) correctly trigger for out-of-bounds elements (#866)
+      return [
+        { op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr,
+        { op: "f64.reinterpret_i64" } as unknown as Instr,
+      ];
     case "f32":
       return [{ op: "f32.const", value: 0 } as Instr];
     case "i32":
@@ -2002,8 +2007,11 @@ export function defaultValueInstrs(vt: ValType): Instr[] {
     case "funcref":
       return [{ op: "ref.null.func" }];
     default:
-      // Fallback: f64 NaN (most arrays are f64 in this compiler)
-      return [{ op: "f64.const", value: NaN } as Instr];
+      // Fallback: sNaN sentinel (most arrays are f64 in this compiler)
+      return [
+        { op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr,
+        { op: "f64.reinterpret_i64" } as unknown as Instr,
+      ];
   }
 }
 
