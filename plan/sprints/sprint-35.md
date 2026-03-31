@@ -1,8 +1,8 @@
-# Sprint 33
+# Sprint 35
 
-**Date**: 2026-03-29 (forward planning)
+**Date**: TBD (after sprint-34 completes)
 **Goal**: Tackle #822 (biggest CE), push toward 45% pass rate (~21,640 pass needed)
-**Baseline**: TBD (sprint 32 final numbers)
+**Baseline**: TBD (sprint-34 final numbers)
 
 ## Team
 
@@ -45,13 +45,13 @@
 
 ## Preliminary task queue
 
-Exact queue depends on sprint 32 results and architect specs. Tentative:
+Exact queue depends on sprint 34 results and architect specs. Tentative:
 
 | Task | Issue | Impact | Dev | Notes |
 |------|-------|--------|-----|-------|
 | #1 | #822 | 907 CE | dev-1 | Needs fresh architect spec |
 | #2 | #855 | 210 FAIL | dev-2 | Needs architect spec |
-| #3 | #845 or #849 | 340/200 | dev-3 | Sprint 32 spillover |
+| #3 | #845 or #849 | 340/200 | dev-3 | Sprint 34 spillover |
 | #4 | #864 | 45 FAIL | dev-2 (after #2) | Easy, quick win |
 | #5 | #841 + #836 + #843 + #842 | 73 CE | dev-1 (after #1) | Bundle easy CE fixes |
 | #6 | #853 | 58 FAIL | dev-3 (after #3) | Opaque objects |
@@ -62,7 +62,7 @@ Exact queue depends on sprint 32 results and architect specs. Tentative:
 |----------|------------------|
 | #822 (if architect succeeds) | ~500-700 |
 | #855 | ~100 |
-| Sprint 32 spillover | ~350 |
+| Sprint 34 spillover | ~350 |
 | Easy CE bundle | ~73 |
 | #864 + #853 | ~100 |
 | **Total potential** | **~1,100-1,300** |
@@ -71,8 +71,8 @@ Exact queue depends on sprint 32 results and architect specs. Tentative:
 
 From sprint 31 baseline of 18,599:
 - Sprint 31 in-progress: ~+755 → ~19,354 (40.2%)
-- Sprint 32 committed: ~+486 → ~19,840 (41.3%)
-- Sprint 33 target: ~+1,100 → ~20,940 (43.5%)
+- Sprint 34 committed: ~+486 → ~19,840 (41.3%)
+- Sprint 35 target: ~+1,100 → ~20,940 (43.5%)
 
 To reach 45% (21,640): need ~700 more beyond sprint 33. Sprint 34 candidates: #797 (property descriptors, ~5,000 FAIL), #799 (prototype chain, ~2,500 FAIL) — these are the high-leverage items after the CE backlog is cleared.
 
