@@ -103,7 +103,7 @@ echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
 cd "$WT_DIR"
 # vitest exits 1 when any test fails — which is EVERY test262 run (conformance tests).
 # Check for actual crashes by looking at the report file, not the exit code.
-npx vitest run tests/test262-vitest.test.ts \
+npx vitest run tests/test262-chunk*.test.ts \
   --reporter=verbose \
   "$@" 2>&1 | tee /tmp/test262-vitest-run.log
 # Consider completed if the report was written (vitest's afterAll hook ran)

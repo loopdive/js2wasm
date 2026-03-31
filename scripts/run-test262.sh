@@ -23,7 +23,7 @@ log ""
 > /workspace/benchmarks/results/test262-results.jsonl
 log "=== VITEST ==="
 START=$(date +%s)
-npx vitest run tests/test262-vitest.test.ts >> "$LOGFILE" 2>&1
+npx vitest run tests/test262-chunk*.test.ts >> "$LOGFILE" 2>&1
 END=$(date +%s)
 log "Vitest took $((END - START))s"
 
