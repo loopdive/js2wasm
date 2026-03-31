@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./playground/image.png" alt="ts2wasm" width="300" />
+  <img src="./jswasmlogo.png" alt="ts2wasm" width="300" />
 </p>
 
 # ts2wasm Typescript to WebAssembly Compiler
@@ -172,46 +172,46 @@ ts2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformanc
 
 ### ECMAScript Standard Features Not Yet Supported
 
-| Standard | Feature | Status | Tests |
-|----------|---------|--------|------:|
-| ES5 | `with` statement | Strict mode only — incompatible with static compilation | 560 |
-| ES5 | Octal escape sequences | Forbidden in strict/module mode | 16 |
-| ES5 | Sloppy mode behaviors | ts2wasm compiles in strict mode exclusively | 8 |
-| ES2015 | Multi-module `import` | Single-file compilation; basic multi-file via `compileMulti()` | 783 |
-| ES2015 | Proxy | Partial — basic traps work, not all handler methods | — |
-| ES2015 | Full `arguments` object | Partial — basic access works, `arguments.callee` not supported | — |
-| ES2017 | SharedArrayBuffer / Atomics | Requires shared Wasm memory (not yet available in WasmGC) | 460 |
-| ES2020 | Dynamic `import()` | No runtime module loader | 432 |
-| ES2020 | BigInt64Array / BigUint64Array | Not yet implemented | 28 |
-| ES2025 | Temporal API | Not yet implemented | 4,376 |
-| ES2025 | Set methods (union, intersection, etc.) | Not yet implemented | 186 |
+| Standard | Feature                                 | Status                                                         | Tests |
+| -------- | --------------------------------------- | -------------------------------------------------------------- | ----: |
+| ES5      | `with` statement                        | Strict mode only — incompatible with static compilation        |   560 |
+| ES5      | Octal escape sequences                  | Forbidden in strict/module mode                                |    16 |
+| ES5      | Sloppy mode behaviors                   | ts2wasm compiles in strict mode exclusively                    |     8 |
+| ES2015   | Multi-module `import`                   | Single-file compilation; basic multi-file via `compileMulti()` |   783 |
+| ES2015   | Proxy                                   | Partial — basic traps work, not all handler methods            |     — |
+| ES2015   | Full `arguments` object                 | Partial — basic access works, `arguments.callee` not supported |     — |
+| ES2017   | SharedArrayBuffer / Atomics             | Requires shared Wasm memory (not yet available in WasmGC)      |   460 |
+| ES2020   | Dynamic `import()`                      | No runtime module loader                                       |   432 |
+| ES2020   | BigInt64Array / BigUint64Array          | Not yet implemented                                            |    28 |
+| ES2025   | Temporal API                            | Not yet implemented                                            | 4,376 |
+| ES2025   | Set methods (union, intersection, etc.) | Not yet implemented                                            |   186 |
 
 ### ECMAScript Proposals (Not Yet Standardized)
 
-| Stage | Feature | Tests |
-|-------|---------|------:|
-| Stage 3 | Source phase imports | 211 |
-| Stage 3 | Import defer | 210 |
-| Stage 3 | Map/WeakMap upsert (getOrInsert) | 72 |
+| Stage   | Feature                          | Tests |
+| ------- | -------------------------------- | ----: |
+| Stage 3 | Source phase imports             |   211 |
+| Stage 3 | Import defer                     |   210 |
+| Stage 3 | Map/WeakMap upsert (getOrInsert) |    72 |
 
 ### Toolchain Limitations
 
-| Limitation | Impact | Issue |
-|-----------|--------|-------|
+| Limitation                                                        | Impact           | Issue                            |
+| ----------------------------------------------------------------- | ---------------- | -------------------------------- |
 | TypeScript 5.x parser does not support Unicode 16.0.0 identifiers | 82 tests skipped | [#832](plan/issues/ready/832.md) |
 
 ### Common Failure Patterns
 
 The remaining 62% of test262 failures fall into these categories:
 
-| Pattern | Affected tests | Description |
-|---------|---------------:|-------------|
-| Assertion failures | ~10,350 | Built-in method edge cases, spec-mandated error types, or property attributes that differ from the spec |
-| Type errors | ~6,130 | Missing or incorrect type coercions at runtime, especially for untyped/dynamic code patterns |
-| Property descriptor model | ~1,260 | `Object.defineProperty`, `Object.getOwnPropertyDescriptor`, and related descriptor operations are incomplete |
-| Null dereference | ~1,080 | Prototype chain lookups that reach null before finding the expected property |
-| Compile errors | ~1,880 | Syntax or type patterns the compiler does not yet handle |
-| Promise/async edge cases | ~210 | Microtask scheduling differences between Wasm and native JS engines |
+| Pattern                   | Affected tests | Description                                                                                                  |
+| ------------------------- | -------------: | ------------------------------------------------------------------------------------------------------------ |
+| Assertion failures        |        ~10,350 | Built-in method edge cases, spec-mandated error types, or property attributes that differ from the spec      |
+| Type errors               |         ~6,130 | Missing or incorrect type coercions at runtime, especially for untyped/dynamic code patterns                 |
+| Property descriptor model |         ~1,260 | `Object.defineProperty`, `Object.getOwnPropertyDescriptor`, and related descriptor operations are incomplete |
+| Null dereference          |         ~1,080 | Prototype chain lookups that reach null before finding the expected property                                 |
+| Compile errors            |         ~1,880 | Syntax or type patterns the compiler does not yet handle                                                     |
+| Promise/async edge cases  |           ~210 | Microtask scheduling differences between Wasm and native JS engines                                          |
 
 ### Conformance Trend
 
@@ -220,28 +220,30 @@ Conformance is improving with each release. The full test262 conformance report 
 ### Benchmarks
 
 <!-- AUTO:BENCHMARKS:START -->
+
 _No benchmark data available. Run benchmarks to populate this section._
+
 <!-- AUTO:BENCHMARKS:END -->
 
 ## JS Host Dependencies
 
 Compiled modules currently require a JS host to provide certain imports. The goal is pure Wasm with no JS dependency (see [#682](plan/issues/ready/682.md)), but these host imports remain:
 
-| Category | Imports | Status | Tracking |
-|----------|---------|--------|----------|
-| **String ops** | `wasm:js-string`, native i16 arrays, or UTF-8 | `wasm:js-string` builtins (native in V8), WasmGC i16 arrays (standalone), or UTF-8 i8 arrays (Component Model) — not a host dependency | `--nativeStrings` flag |
-| **Property access** | `__extern_get`, `__extern_set`, `__extern_length` | Fallback for untyped objects | — |
-| **Math** | `Math.*` methods (sin, cos, sqrt, etc.) | Wasm has no math stdlib | — |
-| **Console** | `console.log`, `console.warn`, `console.error` | I/O requires host | WASI `fd_write` alt |
-| **RegExp** | `RegExp_new`, `.test()`, `.exec()` | Needs Wasm regex engine | [#682](plan/issues/ready/682.md) |
-| **Generators** | `__create_generator`, `__gen_next`, etc. | Host-delegated iterator protocol | [#681](plan/issues/ready/681.md) |
-| **Iterators** | `__iterator`, `__iterator_next`, `__iterator_done`, `__iterator_value` | Host-delegated iteration | [#681](plan/issues/ready/681.md) |
-| **Promises** | `Promise_all`, `Promise_race`, `Promise_new`, `Promise_then`, etc. | Async requires host event loop | — |
-| **JSON** | `JSON_stringify`, `JSON_parse` | Needs Wasm JSON parser | — |
-| **typeof** | `__typeof` | Runtime type tag for externref | — |
-| **parseInt/parseFloat** | `parseInt`, `parseFloat` | String→number parsing | — |
-| **Extern classes** | `Map_new`, `Set_new`, `RegExp_new`, `Date_new`, etc. | Constructor delegation | Per-class |
-| **Boxing** | `__box_number` | f64→externref conversion | — |
+| Category                | Imports                                                                | Status                                                                                                                                 | Tracking                         |
+| ----------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| **String ops**          | `wasm:js-string`, native i16 arrays, or UTF-8                          | `wasm:js-string` builtins (native in V8), WasmGC i16 arrays (standalone), or UTF-8 i8 arrays (Component Model) — not a host dependency | `--nativeStrings` flag           |
+| **Property access**     | `__extern_get`, `__extern_set`, `__extern_length`                      | Fallback for untyped objects                                                                                                           | —                                |
+| **Math**                | `Math.*` methods (sin, cos, sqrt, etc.)                                | Wasm has no math stdlib                                                                                                                | —                                |
+| **Console**             | `console.log`, `console.warn`, `console.error`                         | I/O requires host                                                                                                                      | WASI `fd_write` alt              |
+| **RegExp**              | `RegExp_new`, `.test()`, `.exec()`                                     | Needs Wasm regex engine                                                                                                                | [#682](plan/issues/ready/682.md) |
+| **Generators**          | `__create_generator`, `__gen_next`, etc.                               | Host-delegated iterator protocol                                                                                                       | [#681](plan/issues/ready/681.md) |
+| **Iterators**           | `__iterator`, `__iterator_next`, `__iterator_done`, `__iterator_value` | Host-delegated iteration                                                                                                               | [#681](plan/issues/ready/681.md) |
+| **Promises**            | `Promise_all`, `Promise_race`, `Promise_new`, `Promise_then`, etc.     | Async requires host event loop                                                                                                         | —                                |
+| **JSON**                | `JSON_stringify`, `JSON_parse`                                         | Needs Wasm JSON parser                                                                                                                 | —                                |
+| **typeof**              | `__typeof`                                                             | Runtime type tag for externref                                                                                                         | —                                |
+| **parseInt/parseFloat** | `parseInt`, `parseFloat`                                               | String→number parsing                                                                                                                  | —                                |
+| **Extern classes**      | `Map_new`, `Set_new`, `RegExp_new`, `Date_new`, etc.                   | Constructor delegation                                                                                                                 | Per-class                        |
+| **Boxing**              | `__box_number`                                                         | f64→externref conversion                                                                                                               | —                                |
 
 Use `--target wasi` to emit WASI imports (`fd_write`, `proc_exit`) instead of JS host for I/O.
 Use `--nativeStrings` to use WasmGC i16 arrays instead of `wasm:js-string`.
