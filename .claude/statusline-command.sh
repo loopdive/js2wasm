@@ -20,9 +20,9 @@ elif [ -n "$vitesting" ]; then
     total=$(wc -l < "$jsonl" 2>/dev/null || echo 0)
     if [ "$total" -gt 0 ]; then
       pct=$((total * 100 / 48088))
-      test_mb=$(ps aux | grep '[v]itest' | awk '{sum+=$6} END {printf "%.1f", sum/1024}')
-      free_mb=$(free -m | awk '/Mem/{printf "%.1f", $7/1024}')
-      printf ' \033[00;33m⟳t262:%s%% p:%s tests:%sGB free:%sGB\033[00m' "$pct" "$pass" "$test_mb" "$free_mb"
+      test_mb=$(ps aux | grep '[v]itest' | awk '{sum+=$6} END {printf "%d", sum/1024}')
+      free_mb=$(free -m | awk '/Mem/{print $7}')
+      printf ' \033[00;33m⟳t262:%s%% p:%s t:%sMB free:%sMB\033[00m' "$pct" "$pass" "$test_mb" "$free_mb"
     else
       printf ' \033[00;33m⟳t262:0%%\033[00m'
     fi
