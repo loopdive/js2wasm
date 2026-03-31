@@ -4,6 +4,23 @@
 **Goal**: Re-apply sprint-31 fixes without regressions. Test262 between EVERY merge.
 **Baseline**: 15,246 pass / 48,174 total (31.7%) — honest baseline, no cache, negative test bug fixed
 
+## Resumption State (2026-04-01)
+
+- Sprint 31 is resumed from `main` at commit `bd26b5f5`.
+- Current verified full-suite result on `main`: `15,160 / 48,174` pass (report timestamp `2026-04-01T01:07:29+02:00`).
+- The earlier macOS `compile_timeout` storm was a runner bug, not a compiler regression:
+  - `scripts/compiler-pool.ts` did not dispatch already-queued jobs when a worker first became ready.
+  - `scripts/run-test262-vitest.sh` also needed macOS-safe lock/worktree/esbuild handling.
+- With the runner fixed, full `test:262` runs are now usable again on macOS and Sprint 31 can continue from a trustworthy baseline.
+- Already landed on `main` during the Sprint 31 redo:
+  - `#894` done
+  - `#895` done
+  - `#839` done
+  - `#866` done
+  - `#876` done
+  - `#877` done
+- Next compiler-facing item to pick up: `#854`.
+
 ## Learnings from Sprint 31
 
 ### What went wrong
@@ -24,6 +41,8 @@
 | Order | Issue | Risk | Impact | Notes |
 |-------|-------|------|--------|-------|
 | 0 | #891 | Low | Infra | Apply test262 learnings (fork pool, memory isolation) to equiv tests — unblocks team scaling |
+| 0a | #894 | Low | Infra | macOS runner portability, explicit esbuild dep, native install parity |
+| 0b | #895 | Critical | Infra | CompilerPool ready/dispatch race causing fake 30s timeouts |
 | 1 | #839 | Low | 40 CE | Tail call guard — isolated to statements.ts |
 | 2 | #866 | Low | 71 FAIL | sNaN sentinel — isolated changes |
 | 3 | #854 | Low | 32 FAIL | WasmGC iterable — runtime.ts only |
@@ -56,16 +75,19 @@ For EACH issue:
 
 | Order | Issue | Pre-merge pass | Post-merge pass | Delta | Status |
 |-------|-------|---------------|----------------|-------|--------|
-| 1 | #839 | 18,599 | | | |
-| 2 | #866 | | | | |
-| 3 | #854 | | | | |
-| 4 | #822 A | | | | |
-| 5 | #822 C | | | | |
-| 6 | #851 | | | | |
-| 7 | #822 B | | | | |
-| 8 | #828 | | | | |
-| 9 | #826 | | | | |
-| 10 | #862 | | | | |
-| 11 | #876 | | | | |
-| 12 | #877 | | | | |
-| 13 | #868 | | | | |
+| 0 | #891 | not rerun in this session | not rerun in this session | n/a | pending / likely superseded by direct runner fixes |
+| 0a | #894 | runner unusable on macOS | full run starts | n/a | done |
+| 0b | #895 | widespread fake 30s timeouts | isolated repros pass; full run completes | n/a | done |
+| 1 | #839 | 15,246 | merged earlier | n/a | done |
+| 2 | #866 | 15,246 | merged earlier | n/a | done |
+| 3 | #854 | 15,160 | | | next |
+| 4 | #822 A | | | | pending |
+| 5 | #822 C | | | | pending |
+| 6 | #851 | | | | pending |
+| 7 | #822 B | | | | pending |
+| 8 | #828 | | | | pending |
+| 9 | #826 | | | | pending |
+| 10 | #862 | | | | pending |
+| 11 | #876 | merged earlier | merged earlier | n/a | done |
+| 12 | #877 | merged earlier | merged earlier | n/a | done |
+| 13 | #868 | | | | pending |

@@ -102,6 +102,8 @@ Issues where built-in method implementations are missing, incomplete, or incorre
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
 | [824](../ready/824.md) | High | Compilation timeouts (10s limit) | **548 CE** | Ready |
+| [894](../done/894.md) | High | test262 runner macOS portability / explicit esbuild dependency | Runner usable on macOS | Done |
+| [895](../done/895.md) | **CRITICAL** | CompilerPool queued-job dispatch bug causing fake 30s compile timeouts | Restored real test262 execution | Done |
 | [858](../ready/858.md) | Medium | Worker/timeout exits and eval-code null deref | **182 FAIL** | Ready (also in Runtime) |
 | [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX | Ready |
 | [696](../ready/696.md) | High | Classify "other fail" runtime errors | 4,649 FAIL | Ready |
