@@ -118,6 +118,8 @@
 | 117 | 2026-03-11 | String comparison support in test262 harness                                                      | Sprint 2   |
 | 118 | 2026-03-11 | compareArray.js test262 harness include                                                           | Sprint 2   |
 | 119 | 2026-03-11 | assert.throws support in test262 harness                                                          | Sprint 2   |
+| 894 | 2026-04-01 | test262 runner fails on macOS due to Linux assumptions and missing direct esbuild dependency     | Sprint 31  |
+| 895 | 2026-04-01 | CompilerPool fails to dispatch queued jobs when first worker becomes ready                        | Sprint 31  |
 | 120 | 2026-03-11 | undefined/void 0 comparison support                                                               | Sprint 2   |
 | 122 | 2026-03-11 | arguments object                                                                                  | Sprint 2   |
 | 126 | 2026-03-11 | valueOf/toString coercion                                                                         | Sprint 2   |
