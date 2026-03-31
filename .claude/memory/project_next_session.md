@@ -1,60 +1,41 @@
 ---
 name: project_next_session
-description: 2026-03-27 session — 27 commits, 16 issues, test262 13,289 pass / 36,828 total (fresh run)
+description: Session state: 15,246 pass, honest baseline after exception tag fix
 type: project
 ---
 
-## Final state (2026-03-27 ~15:30 UTC)
+## Final state (2026-03-31)
 
-**Git:** main at f63415b6, pushed
-**Test262:** 13,289 pass / 36,828 total (fresh complete run with worker threads)
-- Previous stale cache: 15,197 pass / 49,881 total
-- Difference explained: unblocked ~4,000 previously-skipped tests (class/elements, String/prototype) which mostly fail, lowering pass count but increasing test coverage
-- 4 runtime timeouts (properly handled by worker thread pool)
-- Error categories: assertion_fail 9,259, type_error 3,730, wasm_compile 2,904
+**Git:** main at 465be3eb
+**Test262:** 15,246 pass / 48,174 total (31.7%) — honest baseline, no cache, no inflated negative tests
 
-## 27 commits this session
+### Why the number dropped from 18,284
+1. Sprint-31 fixes were reverted (accounted for ~2,100 pass loss)
+2. Old runner bug: both if/else branches in negative test handling said "pass" — inflated count by ~900
+3. This is the **true baseline** — old numbers were wrong
 
-### Compiler fixes (16 issues)
-- #789 — Null guard only throws TypeError for genuinely null refs
-- #815 — Removed fixStructNewUnderflow that corrupted struct fields
-- #816 — Removed String/prototype skip filter (1,073 tests re-enabled)
-- #793 — Removed class/elements hang workaround (~3,000 tests unblocked)
-- #761 — Implemented rest elements in 5 destructuring paths
-- #701 — Recursion depth guard for resolveWasmType
-- #737 — Emit JS undefined (not null) for missing args/uninit vars
-- #733 — RangeError validation + invalid drop fix
-- #736 — 12 new SyntaxError early error checks
-- #778 — Guard ref.cast with ref.test to prevent illegal cast traps
-- #763 — RegExp exec/match/replace/split host imports
-- #766 — Symbol.iterator protocol + const-in-for-of fix
-- #675 — Dynamic import argument evaluation
-- #323 — Arrow functions inherit enclosing arguments object
-- Computed property names in object literals/classes/destructuring
-- Global index stale ref + finally-stack inlining (rescued patches)
+### Test infrastructure (unified fork architecture, #889)
+- 16 chunk files, 1 vitest fork, CompilerPool with 9 child_process.fork workers
+- Each fork compiles AND executes tests (unified mode)
+- Peak 113MB per worker, ~1.7GB total, 15GB+ available
+- Results now written to timestamped files (`test262-results-YYYYMMDD-HHMMSS.jsonl`)
+- Shell script passes `RUN_TIMESTAMP` env var; code generates its own if not set
 
-### Test infrastructure (6)
-- #696 — Classify test262 runtime errors into 14 categories
-- #638 — Reverse typeIdxToStructName map (O(N)→O(1))
-- Compiler pool: 1 worker per fork, worker restart every 500 compilations
-- Worker thread Wasm execution pool (replaces direct testFn() + watchdog hack)
-- Runtime bundle build for wasm-exec-worker
-- Debug logging for compiler pool timeout
+### Speed issue (20 min vs 8 min)
+- Script ran chunks sequentially (for loop), 16 × startup overhead
+- Fixed: now runs all chunks in one vitest invocation
+- Expected: ~8 min with parallel chunk execution
 
-### Tests (5)
-- #767 — Equivalence tests for RegExp, Promise, Proxy, WeakMap/WeakSet (5 files)
-- #686 — Closure capture type preservation verification
-- 51 additional equivalence tests (8 files)
-- Multiple issue-specific test files (11 files)
+### Error categories (current)
+- type_error: 9,835 (biggest)
+- assertion_fail: 8,195
+- other: 3,121
+- null_deref: 1,799
+- wasm_compile: 1,169
+- negative_test_fail: 914
+- illegal_cast: 920
 
-## Key architecture changes
-- Test execution now in worker thread — hangs properly terminated after 10s
-- Persistent wasm-exec worker pool (not per-test spawn)
-- Compiler worker restarts every 500 compilations
-- class/elements and String/prototype tests now run (previously skipped)
-
-## Still open
-- ~44 issues in plan/issues/ready/
-- assertion_fail (9,259) is the largest failure category — wrong values from type coercion/property access
-- type_error (3,730) — likely null guard or method dispatch issues
-- compile_error (3,495) — unsupported patterns
+### Sprint-31 redo still pending
+- Branches `issue-839-redo` and `issue-866-redo` ready
+- Issues #826 and #862 need architect-guided redesign
+- Sprint 32 (STF presentability): issues #883-#888
