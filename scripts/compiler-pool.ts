@@ -95,6 +95,7 @@ export class CompilerPool {
       if (msg.type === "ready") {
         state.ready = true;
         this.readyCount++;
+        this.dispatch();
         if (this.readyCount === this.size && this.readyResolve) {
           this.readyResolve();
         }

@@ -8,29 +8,108 @@
 
 set -e
 
-MAIN_DIR="/workspace"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MAIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOCKFILE="/tmp/ts2wasm-test262.lock"
+LOCKDIR="/tmp/ts2wasm-test262.lockdir"
 RESULTS_DIR="$MAIN_DIR/benchmarks/results"
 RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
+resolve_esbuild() {
+  if [ -n "${ESBUILD_BIN:-}" ] && [ -x "${ESBUILD_BIN:-}" ]; then
+    echo "$ESBUILD_BIN"
+    return 0
+  fi
+  if command -v esbuild >/dev/null 2>&1; then
+    command -v esbuild
+    return 0
+  fi
+  if [ -x "$MAIN_DIR/node_modules/.bin/esbuild" ]; then
+    echo "$MAIN_DIR/node_modules/.bin/esbuild"
+    return 0
+  fi
+  local candidate
+  candidate=$(find "$MAIN_DIR/node_modules/.pnpm" -path '*/node_modules/esbuild/bin/esbuild' -type f 2>/dev/null | head -n 1)
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    echo "$candidate"
+    return 0
+  fi
+  return 1
+}
+
+cleanup_lock() {
+  if [ -d "$LOCKDIR" ]; then
+    rm -rf "$LOCKDIR"
+  fi
+}
+
+cleanup_worktree() {
+  if [ "${USE_WORKTREE:-0}" != "1" ]; then
+    return
+  fi
+  echo "Cleaning up worktree..."
+  cd "$MAIN_DIR"
+  git worktree remove --force "$WT_DIR" 2>/dev/null || rm -rf "$WT_DIR"
+}
+
+cleanup() {
+  if [ -n "${MONITOR_PID:-}" ]; then
+    kill "$MONITOR_PID" 2>/dev/null || true
+    wait "$MONITOR_PID" 2>/dev/null || true
+  fi
+  if [ -n "${WT_DIR:-}" ] && [ -e "${WT_DIR:-}" ]; then
+    cleanup_worktree
+  fi
+  cleanup_lock
+}
+
+trap cleanup EXIT
+
 # ── Exclusive lock — only one test262 run at a time ──────────────
-exec 200>"$LOCKFILE"
-if ! flock -n 200; then
-  echo "ERROR: Another test262 run is in progress (lock held: $LOCKFILE)"
-  echo "Wait for it to finish or kill the process holding the lock."
-  exit 1
+if command -v flock >/dev/null 2>&1; then
+  exec 200>"$LOCKFILE"
+  if ! flock -n 200; then
+    echo "ERROR: Another test262 run is in progress (lock held: $LOCKFILE)"
+    echo "Wait for it to finish or kill the process holding the lock."
+    exit 1
+  fi
+else
+  if mkdir "$LOCKDIR" 2>/dev/null; then
+    echo "$$" > "$LOCKFILE"
+  else
+    LOCK_PID=""
+    if [ -f "$LOCKFILE" ]; then
+      LOCK_PID="$(cat "$LOCKFILE" 2>/dev/null || true)"
+    fi
+    if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+      echo "ERROR: Another test262 run is in progress (pid $LOCK_PID)"
+      echo "Wait for it to finish or remove the stale lock: $LOCKDIR"
+      exit 1
+    fi
+    rm -rf "$LOCKDIR"
+    rm -f "$LOCKFILE"
+    mkdir "$LOCKDIR"
+    echo "$$" > "$LOCKFILE"
+  fi
 fi
 echo "Lock acquired (PID $$)"
 
 # ── Create isolated worktree ─────────────────────────────────────
 WT_DIR="/tmp/ts2wasm-vitest-$$"
+USE_WORKTREE=1
 echo "Creating worktree at $WT_DIR ..."
-git -C "$MAIN_DIR" worktree add "$WT_DIR" HEAD --detach --quiet 2>/dev/null
+if ! git -C "$MAIN_DIR" worktree add "$WT_DIR" HEAD --detach --quiet 2>/dev/null; then
+  echo "Worktree creation failed; falling back to current workspace"
+  WT_DIR="$MAIN_DIR"
+  USE_WORKTREE=0
+fi
 
 # Symlink heavy directories to avoid duplication
-rm -rf "$WT_DIR/node_modules" "$WT_DIR/test262"
-ln -s "$MAIN_DIR/node_modules" "$WT_DIR/node_modules"
-ln -s "$MAIN_DIR/test262" "$WT_DIR/test262"
+if [ "$USE_WORKTREE" = "1" ]; then
+  rm -rf "$WT_DIR/node_modules" "$WT_DIR/test262"
+  ln -s "$MAIN_DIR/node_modules" "$WT_DIR/node_modules"
+  ln -s "$MAIN_DIR/test262" "$WT_DIR/test262"
+fi
 
 # Verify symlinks
 if [ ! -d "$WT_DIR/test262/test" ]; then
@@ -41,14 +120,21 @@ echo "test262 symlink OK ($(ls "$WT_DIR/test262/test/" | wc -l) dirs)"
 
 # Share the disk cache
 mkdir -p "$MAIN_DIR/.test262-cache"
-ln -sf "$MAIN_DIR/.test262-cache" "$WT_DIR/.test262-cache"
+if [ "$USE_WORKTREE" = "1" ]; then
+  ln -sf "$MAIN_DIR/.test262-cache" "$WT_DIR/.test262-cache"
+fi
 
 # ── Build compiler bundle FROM THE WORKTREE (not /workspace) ─────
 echo "Building compiler bundle in worktree..."
 cd "$WT_DIR"
-npx esbuild src/index.ts --bundle --platform=node --format=esm \
+ESBUILD_BIN="$(resolve_esbuild || true)"
+if [ -z "$ESBUILD_BIN" ]; then
+  echo "ERROR: esbuild not found (checked PATH, node_modules/.bin, pnpm store)"
+  exit 1
+fi
+"$ESBUILD_BIN" src/index.ts --bundle --platform=node --format=esm \
   --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
-npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
+"$ESBUILD_BIN" src/runtime.ts --bundle --platform=node --format=esm \
   --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
 
 # ── Prepare result files ─────────────────────────────────────────
@@ -57,8 +143,10 @@ npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
 export RUN_TIMESTAMP
 
 # Symlink worktree results dir to main workspace (results survive cleanup)
-rm -rf "$WT_DIR/benchmarks/results"
-ln -s "$RESULTS_DIR" "$WT_DIR/benchmarks/results"
+if [ "$USE_WORKTREE" = "1" ]; then
+  rm -rf "$WT_DIR/benchmarks/results"
+  ln -s "$RESULTS_DIR" "$WT_DIR/benchmarks/results"
+fi
 
 echo "Run ID: $RUN_TIMESTAMP"
 echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
@@ -66,32 +154,37 @@ echo "Running vitest (unified compile+execute in fork pool)..."
 
 # ── Start memory monitor ─────────────────────────────────────────
 MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
-(
-  echo "{\"event\":\"monitor_start\",\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$(free -m | awk '/Mem/{print $7}')}" >> "$MONITOR_LOG"
-  while true; do
-    if ! ps aux | grep -q '[v]itest'; then
-      echo "{\"event\":\"monitor_end\",\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$(free -m | awk '/Mem/{print $7}')}" >> "$MONITOR_LOG"
-      break
-    fi
-    AVAIL=$(free -m | awk '/Mem/{print $7}')
-    USED=$(free -m | awk '/Mem/{print $3}')
-    PROCS=""
-    FIRST=true
-    for pid in $(ps aux | grep '[v]itest' | awk '{print $2}'); do
-      PEAK=$(grep VmHWM /proc/$pid/status 2>/dev/null | awk '{print $2}')
-      RSS=$(grep VmRSS /proc/$pid/status 2>/dev/null | awk '{print $2}')
-      NAME=$(ps -p $pid -o comm= 2>/dev/null)
-      if [ -n "$PEAK" ] && [ "$PEAK" -gt 10000 ]; then
-        if [ "$FIRST" = true ]; then FIRST=false; else PROCS="$PROCS,"; fi
-        PROCS="$PROCS{\"pid\":$pid,\"name\":\"$NAME\",\"rss_mb\":$((RSS/1024)),\"peak_mb\":$((PEAK/1024))}"
+MONITOR_PID=""
+if command -v free >/dev/null 2>&1 && [ -d /proc ]; then
+  (
+    echo "{\"event\":\"monitor_start\",\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$(free -m | awk '/Mem/{print $7}')}" >> "$MONITOR_LOG"
+    while true; do
+      if ! ps aux | grep -q '[v]itest'; then
+        echo "{\"event\":\"monitor_end\",\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$(free -m | awk '/Mem/{print $7}')}" >> "$MONITOR_LOG"
+        break
       fi
+      AVAIL=$(free -m | awk '/Mem/{print $7}')
+      USED=$(free -m | awk '/Mem/{print $3}')
+      PROCS=""
+      FIRST=true
+      for pid in $(ps aux | grep '[v]itest' | awk '{print $2}'); do
+        PEAK=$(grep VmHWM /proc/$pid/status 2>/dev/null | awk '{print $2}')
+        RSS=$(grep VmRSS /proc/$pid/status 2>/dev/null | awk '{print $2}')
+        NAME=$(ps -p $pid -o comm= 2>/dev/null)
+        if [ -n "$PEAK" ] && [ "$PEAK" -gt 10000 ]; then
+          if [ "$FIRST" = true ]; then FIRST=false; else PROCS="$PROCS,"; fi
+          PROCS="$PROCS{\"pid\":$pid,\"name\":\"$NAME\",\"rss_mb\":$((RSS/1024)),\"peak_mb\":$((PEAK/1024))}"
+        fi
+      done
+      echo "{\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$AVAIL,\"used_mb\":$USED,\"vitest\":[$PROCS]}" >> "$MONITOR_LOG"
+      sleep 10
     done
-    echo "{\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$AVAIL,\"used_mb\":$USED,\"vitest\":[$PROCS]}" >> "$MONITOR_LOG"
-    sleep 10
-  done
-) &
-MONITOR_PID=$!
-echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
+  ) &
+  MONITOR_PID=$!
+  echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
+else
+  echo "Memory monitor skipped: unsupported platform"
+fi
 
 # ── Run vitest chunk-by-chunk FROM THE WORKTREE ─────────────────
 # 1 fork per chunk, fork dies between chunks → memory fully freed.
@@ -169,9 +262,11 @@ print('Report: %d pass / %d total (%.1f%%)' % (s['pass'], s['total'], s['pass']/
 fi
 
 # ── Stop memory monitor ──────────────────────────────────────────
-kill $MONITOR_PID 2>/dev/null
-wait $MONITOR_PID 2>/dev/null
-echo "Memory monitor stopped"
+if [ -n "$MONITOR_PID" ]; then
+  kill "$MONITOR_PID" 2>/dev/null || true
+  wait "$MONITOR_PID" 2>/dev/null || true
+  echo "Memory monitor stopped"
+fi
 
 # ── Summarize peak memory ────────────────────────────────────────
 if [ -f "$MONITOR_LOG" ]; then
@@ -236,9 +331,4 @@ else
 fi
 
 # ── Cleanup ──────────────────────────────────────────────────────
-echo "Cleaning up worktree..."
-cd "$MAIN_DIR"
-git worktree remove --force "$WT_DIR" 2>/dev/null || rm -rf "$WT_DIR"
-
-# Lock released automatically when script exits (fd 200 closes)
 echo "Done."
