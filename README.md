@@ -61,20 +61,24 @@ export function main(): void {
 }
 ```
 
-renders this in the browser:
-
-![Screenshot](./screenshot.png)
+![Playground](./playground.png)
 
 The module analyzer shows the size of the WebAssembly binary and the WAT text for the compiled module.
 
 ![Module Analyzer](./treemap.png)
+
+## Try it
+
+**[Live Playground →](https://js2wasm.loopdive.com)** — compile and run TypeScript as WebAssembly in your browser. No install needed.
+
+The default example is a booking calendar with date picker and price grid — rendered entirely by WebAssembly. The host browser provides DOM APIs via imports; all logic, layout, and event handling runs inside the Wasm sandbox.
 
 ## Quickstart
 
 ```bash
 pnpm install
 pnpm test        # 195 tests
-pnpm dev         # Start playground
+pnpm dev         # Start playground locally
 ```
 
 ## CLI
@@ -141,7 +145,7 @@ Returns only the WAT text (debug).
 
 ## ES Conformance
 
-js2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformance suite](https://github.com/nicolo-ribaudo/tc39-proposal-test262) (38%). Conformance is improving with each release.
+js2wasm passes **17,265 / 48,088** tests from the [ECMAScript test262 conformance suite](https://github.com/tc39/test262) (35.9%). Conformance is improving with each sprint — see the [live dashboard](https://js2wasm.loopdive.com/dashboard/) for the latest numbers and trend charts.
 
 ### What Works Well
 
