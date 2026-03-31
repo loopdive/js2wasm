@@ -106,9 +106,13 @@ const RESULTS_DIR = join(
   "results",
 );
 mkdirSync(RESULTS_DIR, { recursive: true });
-const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 
-// Open results JSONL in append mode — each fork appends independently
+// Timestamped filename — env var from run-test262-vitest.sh, or generate one
+const RUN_TIMESTAMP = process.env.RUN_TIMESTAMP
+  || new Date().toISOString().replace(/[-:T]/g, "").replace(/\..+/, "").slice(0, 15);
+const JSONL_PATH = join(RESULTS_DIR, `test262-results-${RUN_TIMESTAMP}.jsonl`);
+
+// Open results JSONL — each chunk appends independently
 const jsonlFd = openSync(JSONL_PATH, "a");
 let flushCount = 0;
 
