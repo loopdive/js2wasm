@@ -9,12 +9,12 @@ AOT compiler that compiles Javascript directly to WebAssembly with the GC propos
 Runs entirely in the browser – no server, no build step for user code.
 
 ```
-TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8Array) → WebAssembly.instantiate()
+JS/TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8Array) → WebAssembly.instantiate()
 ```
 
 ## Why js2wasm?
 
-TypeScript normally transpiles to JavaScript, which requires a JS engine to run and provides no sandboxing between modules – any module can access globals, the filesystem, the network, or mutate shared state. js2wasm compiles TypeScript directly to WebAssembly instead, which unlocks features that regular TS/JS does not have:
+TypeScript normally transpiles to JavaScript, which requires a JS engine to run and provides no sandboxing between modules – any module can access globals, the filesystem, the network, or mutate shared state. js2wasm compiles TypeScript directly to WebAssembly instead, which unlocks features that regular JS/TS does not have:
 
 - **Run untrusted TypeScript safely in-process** – a Wasm module runs in a sandboxed linear memory with no access to the host filesystem, network, or globals unless explicitly imported. No need to spin up a separate isolate or subprocess. This helps limit the blast radius of security vulnerabilities and supply chain attacks.
 - **No runtime embedding required** – Run TypeScript in environments without a JS engine like embedded systems, Wasm-only runtimes (wasmtime, wasmer, wazero), or any host that speaks Wasm but not JavaScript. because js2wasm targets Wasm GC, the engine manages memory and garbage collection natively. There is no runtime, allocator, or standard library bundled into the output. Compiled modules are in the range of a few hundred bytes to a few kilobytes – smaller than what virtually any other language can achieve when compiling to Wasm. This makes tiny ESM style modules practical.
@@ -253,7 +253,7 @@ Use `--nativeStrings` to use WasmGC i16 arrays instead of `wasm:js-string`.
 ```
 ┌──────────────────────── Browser ─────────────────────────┐
 │                                                           │
-│  TS Source (String)                                       │
+│  JS/TS Source (String)                                    │
 │       │                                                   │
 │       ▼                                                   │
 │  ┌──────────────────────────────┐                         │
@@ -314,10 +314,10 @@ js2wasm/
 │   ├── wasm-treemap.ts       # Binary size treemap visualization
 │   └── wasm-treemap.html     # Standalone treemap page
 └── tests/
-    ├── compiler.test.ts      # End-to-end: TS → binary → execution
+    ├── compiler.test.ts      # End-to-end: JS/TS → binary → execution
     ├── binary.test.ts        # Binary encoder unit tests
     ├── codegen.test.ts       # Codegen unit tests
-    ├── equivalence.test.ts   # TS ↔ Wasm output equivalence
+    ├── equivalence.test.ts   # JS/TS ↔ Wasm output equivalence
     ├── strings.test.ts       # String/externref tests
     ├── arrays-enums.test.ts  # Array + enum tests
     ├── anon-struct.test.ts   # Anonymous object type tests
