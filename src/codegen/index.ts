@@ -951,6 +951,19 @@ export interface FunctionContext {
    * into the outer locals.
    */
   pendingCallbackWritebacks?: Instr[];
+  /**
+   * Mapped arguments info for non-strict functions with simple parameters (#849).
+   * When set, parameter assignments must sync to the arguments backing array,
+   * and arguments element writes must sync back to the parameter locals.
+   */
+  mappedArgsInfo?: {
+    argsLocalIdx: number;    // local index of the "arguments" vec struct
+    arrTypeIdx: number;      // backing array type index
+    vecTypeIdx: number;      // vec struct type index
+    paramCount: number;      // number of mapped parameters (not including captures)
+    paramOffset: number;     // local index of first real param (captures precede)
+    paramTypes: ValType[];   // types of mapped parameters (for coercion)
+  };
 }
 
 /**
@@ -14501,12 +14514,13 @@ function compileFunctionBody(
   // Use externref elements so that all parameter types (numbers, strings, objects)
   // are preserved — matching the closure version in closures.ts (#771).
   if (decl.body && bodyUsesArguments(decl.body)) {
-    // Ensure __box_number is available for boxing numeric params to externref
+    // Ensure __box_number and __unbox_number are available for mapped arguments sync
     const hasNumericParam = params.some(
       (p) => p.type.kind === "f64" || p.type.kind === "i32",
     );
     if (hasNumericParam) {
       ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+      ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
       flushLateImportShifts(ctx, fctx);
     }
 
@@ -14517,6 +14531,24 @@ function compileFunctionBody(
 
     const argsLocal = allocLocal(fctx, "arguments", vecRef);
     const arrTmp = allocLocal(fctx, "__args_arr_tmp", { kind: "ref", typeIdx: arrTypeIdx });
+
+    // Check if all params are simple identifiers (not destructuring patterns).
+    // Mapped arguments only applies to simple parameter lists in non-strict mode.
+    const allSimpleParams = decl.parameters.every(
+      (p) => ts.isIdentifier(p.name) && !p.dotDotDotToken,
+    );
+
+    // Set up mapped arguments info for param ↔ arguments sync (#849)
+    if (allSimpleParams && params.length > 0) {
+      fctx.mappedArgsInfo = {
+        argsLocalIdx: argsLocal,
+        arrTypeIdx,
+        vecTypeIdx,
+        paramCount: params.length,
+        paramOffset: 0,
+        paramTypes: params.map((p) => p.type),
+      };
+    }
 
     // Create backing array from parameters: push each param coerced to externref
     for (let i = 0; i < params.length; i++) {

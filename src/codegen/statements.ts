@@ -7320,14 +7320,25 @@ export function emitArgumentsObject(
   const argsLocal = allocLocal(fctx, "arguments", vecRef);
   const arrTmp = allocLocal(fctx, "__args_arr_tmp", { kind: "ref", typeIdx: ati });
 
-  // Ensure __box_number is available if we have any f64/i32 params to box
+  // Ensure __box_number and __unbox_number are available for mapped arguments sync
   const hasNumericParams = paramTypes.some(
     (pt) => pt.kind === "f64" || pt.kind === "i32",
   );
   if (hasNumericParams) {
     ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+    ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
     flushLateImportShifts(ctx, fctx);
   }
+
+  // Set up mapped arguments info for param ↔ arguments bidirectional sync (#849)
+  fctx.mappedArgsInfo = {
+    argsLocalIdx: argsLocal,
+    arrTypeIdx: ati,
+    vecTypeIdx: vti,
+    paramCount: numArgs,
+    paramOffset,
+    paramTypes: paramTypes.slice(),
+  };
 
   // Push each param coerced to externref
   for (let i = 0; i < numArgs; i++) {

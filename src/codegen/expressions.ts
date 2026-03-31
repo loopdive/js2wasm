@@ -2114,6 +2114,122 @@ export function compileNullishCoalescing(
   return unifiedType;
 }
 
+/**
+ * Emit code to sync a parameter local's value into the mapped arguments array (#849).
+ * Called after local.tee for parameter assignments in functions with mapped arguments.
+ * The expression result is on the stack; we save it, do the sync, then restore it.
+ */
+function emitMappedArgParamSync(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramIdx: number,
+  resultType: ValType,
+): void {
+  const info = fctx.mappedArgsInfo;
+  if (!info) return;
+  // Check if this local index corresponds to a mapped parameter
+  const argIndex = paramIdx - info.paramOffset;
+  if (argIndex < 0 || argIndex >= info.paramCount) return;
+
+  // Save the expression result (currently on stack from local.tee)
+  const tmp = allocLocal(fctx, `__arg_sync_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmp });
+
+  // Build coercion instructions for param → externref
+  const paramType = info.paramTypes[argIndex]!;
+  const coerceInstrs: Instr[] = [];
+  if (paramType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      coerceInstrs.push({ op: "call", funcIdx: boxIdx } as unknown as Instr);
+    }
+  } else if (paramType.kind === "i32") {
+    coerceInstrs.push({ op: "f64.convert_i32_s" } as unknown as Instr);
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      coerceInstrs.push({ op: "call", funcIdx: boxIdx } as unknown as Instr);
+    }
+  } else if (paramType.kind === "ref" || paramType.kind === "ref_null") {
+    coerceInstrs.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+  // externref: no coercion needed
+
+  // Sync param value to arguments backing array (null-guarded)
+  fctx.body.push({ op: "local.get", index: info.argsLocalIdx });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [] as Instr[],
+    else: [
+      { op: "local.get", index: info.argsLocalIdx } as Instr,
+      { op: "struct.get", typeIdx: info.vecTypeIdx, fieldIdx: 1 } as Instr,
+      { op: "i32.const", value: argIndex } as Instr,
+      { op: "local.get", index: paramIdx } as Instr,
+      ...coerceInstrs,
+      { op: "array.set", typeIdx: info.arrTypeIdx } as Instr,
+    ],
+  });
+
+  // Restore expression result
+  fctx.body.push({ op: "local.get", index: tmp });
+}
+
+/**
+ * Emit code to sync an arguments element write back to the parameter local (#849).
+ * Called after array.set in compileElementAssignment when target is the arguments object.
+ */
+function emitMappedArgReverseSync(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  idxLocal: number,
+  valLocal: number,
+): void {
+  const info = fctx.mappedArgsInfo;
+  if (!info) return;
+
+  // For each mapped parameter, check if the index matches and sync
+  for (let i = 0; i < info.paramCount; i++) {
+    const paramType = info.paramTypes[i]!;
+    const localIdx = i + info.paramOffset;
+
+    // Build instructions to convert externref value to param type
+    const convertInstrs: Instr[] = [];
+    convertInstrs.push({ op: "local.get", index: valLocal } as Instr);
+    if (paramType.kind === "f64") {
+      const unboxIdx = ctx.funcMap.get("__unbox_number");
+      if (unboxIdx !== undefined) {
+        convertInstrs.push({ op: "call", funcIdx: unboxIdx } as unknown as Instr);
+      }
+    } else if (paramType.kind === "i32") {
+      const unboxIdx = ctx.funcMap.get("__unbox_number");
+      if (unboxIdx !== undefined) {
+        convertInstrs.push({ op: "call", funcIdx: unboxIdx } as unknown as Instr);
+      }
+      convertInstrs.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+    } else if (paramType.kind === "ref" || paramType.kind === "ref_null") {
+      convertInstrs.push({ op: "any.convert_extern" } as unknown as Instr);
+      if (paramType.kind === "ref") {
+        convertInstrs.push({ op: "ref.cast", typeIdx: (paramType as any).typeIdx } as unknown as Instr);
+      }
+    }
+    // externref → externref: just local.get valLocal (already in convertInstrs)
+
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "i32.const", value: i });
+    fctx.body.push({ op: "i32.eq" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        ...convertInstrs,
+        { op: "local.set", index: localIdx } as Instr,
+      ],
+      else: [] as Instr[],
+    });
+  }
+}
+
 export function compileAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -2273,12 +2389,15 @@ export function compileAssignment(
           // emitting an invalid local.tee with mismatched types.
           updateLocalType(fctx, localIdx, resultType);
           fctx.body.push({ op: "local.tee", index: localIdx });
+          emitMappedArgParamSync(ctx, fctx, localIdx, resultType);
           return resultType;
         }
         fctx.body.push({ op: "local.tee", index: localIdx });
+        emitMappedArgParamSync(ctx, fctx, localIdx, effectiveLocalType);
         return effectiveLocalType;
       }
       fctx.body.push({ op: "local.tee", index: localIdx });
+      emitMappedArgParamSync(ctx, fctx, localIdx, resultType);
       return resultType;
     }
     // Check captured globals
@@ -4401,6 +4520,15 @@ function compileElementAssignment(
         { op: "struct.set", typeIdx, fieldIdx: 0 },
       ],
     });
+    // Mapped arguments reverse sync: arguments[i] = X → update param local (#849)
+    if (
+      fctx.mappedArgsInfo &&
+      ts.isIdentifier(target.expression) &&
+      target.expression.text === "arguments"
+    ) {
+      emitMappedArgReverseSync(ctx, fctx, idxLocal, valLocal);
+    }
+
     // Return the assigned value (assignment expression result)
     fctx.body.push({ op: "local.get", index: valLocal });
     return elemValResult;
@@ -6053,9 +6181,11 @@ export function compileCompoundAssignment(
   if (needsLocalCoerce) {
     coerceType(ctx, fctx, { kind: "f64" }, localType);
     fctx.body.push({ op: "local.tee", index: localIdx });
+    emitMappedArgParamSync(ctx, fctx, localIdx, localType);
     return localType;
   }
   fctx.body.push({ op: "local.tee", index: localIdx });
+  emitMappedArgParamSync(ctx, fctx, localIdx, { kind: "f64" });
   return { kind: "f64" };
 }
 
@@ -7701,11 +7831,11 @@ function compilePrefixUnary(
           }
           const localType = getLocalType(fctx, idx);
           if (localType?.kind === "i32") {
-            // Use i32 ops for i32 locals (both fast mode and i32-inferred loop counters)
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "i32.const", value: 1 });
             fctx.body.push({ op: "i32.add" });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitMappedArgParamSync(ctx, fctx, idx, { kind: "i32" });
             return { kind: "i32" };
           }
           if (localType?.kind === "externref") {
@@ -7719,9 +7849,9 @@ function compilePrefixUnary(
               funcIdx: ctx.funcMap.get("__box_number")!,
             });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitMappedArgParamSync(ctx, fctx, idx, { kind: "externref" });
             return { kind: "externref" };
           }
-          // ref/ref_null: struct/array reference — coerce via valueOf, then add 1
           if (localType?.kind === "ref" || localType?.kind === "ref_null") {
             fctx.body.push({ op: "local.get", index: idx });
             coerceType(ctx, fctx, localType!, { kind: "f64" });
@@ -7729,18 +7859,19 @@ function compilePrefixUnary(
             fctx.body.push({ op: "f64.add" });
             return { kind: "f64" };
           }
-          // i64 (BigInt): use i64 arithmetic for prefix ++ (#816)
           if (localType?.kind === "i64") {
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "i64.const", value: 1n });
             fctx.body.push({ op: "i64.add" });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitMappedArgParamSync(ctx, fctx, idx, { kind: "i64" });
             return { kind: "i64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: "f64.add" });
           fctx.body.push({ op: "local.tee", index: idx });
+          emitMappedArgParamSync(ctx, fctx, idx, { kind: "f64" });
           return { kind: "f64" };
         }
         // Check module globals for prefix ++
@@ -7923,11 +8054,11 @@ function compilePrefixUnary(
           }
           const localType = getLocalType(fctx, idx);
           if (localType?.kind === "i32") {
-            // Use i32 ops for i32 locals (both fast mode and i32-inferred loop counters)
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "i32.const", value: 1 });
             fctx.body.push({ op: arithOpI32 });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitMappedArgParamSync(ctx, fctx, idx, { kind: "i32" });
             return { kind: "i32" };
           }
           if (localType?.kind === "externref") {
@@ -7941,9 +8072,9 @@ function compilePrefixUnary(
               funcIdx: ctx.funcMap.get("__box_number")!,
             });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitMappedArgParamSync(ctx, fctx, idx, { kind: "externref" });
             return { kind: "externref" };
           }
-          // ref/ref_null: struct/array reference — coerce via valueOf, then sub 1
           if (localType?.kind === "ref" || localType?.kind === "ref_null") {
             fctx.body.push({ op: "local.get", index: idx });
             coerceType(ctx, fctx, localType!, { kind: "f64" });
@@ -7951,18 +8082,19 @@ function compilePrefixUnary(
             fctx.body.push({ op: arithOp });
             return { kind: "f64" };
           }
-          // i64 (BigInt): use i64 arithmetic for prefix -- (#816)
           if (localType?.kind === "i64") {
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "i64.const", value: 1n });
             fctx.body.push({ op: isIncrement ? "i64.add" : "i64.sub" } as unknown as Instr);
             fctx.body.push({ op: "local.tee", index: idx });
+            emitMappedArgParamSync(ctx, fctx, idx, { kind: "i64" });
             return { kind: "i64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: arithOp });
           fctx.body.push({ op: "local.tee", index: idx });
+          emitMappedArgParamSync(ctx, fctx, idx, { kind: "f64" });
           return { kind: "f64" };
         }
         // Check module globals for prefix --
@@ -8267,17 +8399,16 @@ function compilePostfixUnary(
 
     const localType = getLocalType(fctx, idx);
     if (localType?.kind === "i32") {
-      // Use i32 ops for i32 locals (both fast mode and i32-inferred loop counters)
       fctx.body.push({ op: "local.get", index: idx });
       fctx.body.push({ op: "local.get", index: idx });
       fctx.body.push({ op: "i32.const", value: 1 });
       fctx.body.push({ op: arithOpI32 });
       fctx.body.push({ op: "local.set", index: idx });
+      emitMappedArgParamSync(ctx, fctx, idx, { kind: "i32" });
       return { kind: "i32" };
     }
 
     if (localType?.kind === "externref") {
-      // Postfix on externref: return old value (unboxed), store incremented (boxed)
       fctx.body.push({ op: "local.get", index: idx });
       emitSafeExternrefToF64(ctx, fctx);
       const tmpOld = allocLocal(fctx, `__postfix_old_${fctx.locals.length}`, {
@@ -8290,23 +8421,23 @@ function compilePostfixUnary(
       fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
       fctx.body.push({ op: "local.set", index: idx });
       fctx.body.push({ op: "local.get", index: tmpOld });
+      emitMappedArgParamSync(ctx, fctx, idx, { kind: "f64" });
       return { kind: "f64" };
     }
 
-    // ref/ref_null: struct/array reference — coerce via valueOf, postfix returns old numeric value
     if (localType?.kind === "ref" || localType?.kind === "ref_null") {
       fctx.body.push({ op: "local.get", index: idx });
       coerceType(ctx, fctx, localType!, { kind: "f64" });
       return { kind: "f64" };
     }
 
-    // i64 (BigInt): use i64 arithmetic for postfix ++/-- (#816)
     if (localType?.kind === "i64") {
       fctx.body.push({ op: "local.get", index: idx });
       fctx.body.push({ op: "local.get", index: idx });
       fctx.body.push({ op: "i64.const", value: 1n });
       fctx.body.push({ op: isIncrement ? "i64.add" : "i64.sub" } as unknown as Instr);
       fctx.body.push({ op: "local.set", index: idx });
+      emitMappedArgParamSync(ctx, fctx, idx, { kind: "i64" });
       return { kind: "i64" };
     }
 
@@ -8315,6 +8446,7 @@ function compilePostfixUnary(
     fctx.body.push({ op: "f64.const", value: 1 });
     fctx.body.push({ op: arithOp });
     fctx.body.push({ op: "local.set", index: idx });
+    emitMappedArgParamSync(ctx, fctx, idx, { kind: "f64" });
     return { kind: "f64" };
   }
 
@@ -16130,6 +16262,22 @@ function compileNewFunctionExpression(
       kind: "ref",
       typeIdx: ati,
     });
+
+    // Ensure __unbox_number is available for reverse sync
+    if (hasNumericFormal) {
+      ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+      flushLateImportShifts(ctx, liftedFctx);
+    }
+
+    // Set up mapped arguments info (#849) — params start at index 1 (skip __self)
+    liftedFctx.mappedArgsInfo = {
+      argsLocalIdx: argsLocal,
+      arrTypeIdx: ati,
+      vecTypeIdx: vti,
+      paramCount: numArgs,
+      paramOffset: 1, // skip __self capture param
+      paramTypes: formalParams.slice(),
+    };
 
     // Push each param coerced to externref
     for (let i = 0; i < numArgs; i++) {
