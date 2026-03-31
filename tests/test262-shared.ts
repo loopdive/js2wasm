@@ -27,6 +27,7 @@ import {
   lookupSourceMapOffset,
   parseMeta,
   shouldSkip,
+  TEST_CATEGORIES,
   wrapTest,
 } from "./test262-runner.js";
 
@@ -622,10 +623,11 @@ function findNthAssert(source: string, retVal: number): string {
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 
 /**
- * Register vitest describe/it blocks for the given test262 categories.
- * Called by each chunk file with its subset of categories.
+ * Register vitest describe/it blocks for this chunk's share of tests.
+ * Round-robins individual test files across chunks for even distribution
+ * (categories vary wildly in size — Array has thousands, Infinity has ~10).
  */
-export function runTest262Categories(categories: string[]) {
+export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
   // afterAll for this chunk — writes partial results to JSONL (already appended per-test)
   // and writes report.json (last chunk to finish wins — all data is in JSONL anyway)
   afterAll(() => {
@@ -719,11 +721,26 @@ export function runTest262Categories(categories: string[]) {
     }
   });
 
-  // Register test cases for each category
-  for (const category of categories) {
-    const files = findTestFiles(category);
-    if (files.length === 0) continue;
+  // Build full test list, then round-robin across chunks
+  // This ensures even distribution regardless of category sizes
+  const allTests: { category: string; filePath: string }[] = [];
+  for (const category of TEST_CATEGORIES) {
+    for (const filePath of findTestFiles(category)) {
+      allTests.push({ category, filePath });
+    }
+  }
 
+  // Group this chunk's tests by category for describe() blocks
+  const myTests = allTests.filter((_, i) => i % totalChunks === chunkIndex);
+  const byCategory = new Map<string, string[]>();
+  for (const { category, filePath } of myTests) {
+    let arr = byCategory.get(category);
+    if (!arr) { arr = []; byCategory.set(category, arr); }
+    arr.push(filePath);
+  }
+
+  // Register test cases for each category
+  for (const [category, files] of byCategory) {
     describe(`test262: ${category}`, () => {
       for (const filePath of files) {
         const relPath = relative(TEST262_ROOT, filePath);
