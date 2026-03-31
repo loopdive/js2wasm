@@ -1,3 +1,3 @@
-/** Test262 chunk 2/8 — round-robin by individual test for even distribution. */
+/** Test262 fork 2/2 — round-robin by individual test for even distribution. */
 import { runTest262Chunk } from "./test262-shared.js";
-runTest262Chunk(1, 8);
+runTest262Chunk(1, 2);

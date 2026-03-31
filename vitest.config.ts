@@ -6,8 +6,9 @@ export default defineConfig({
     pool: 'forks',
     poolOptions: {
       forks: {
-        // 8 chunk files = up to 8 forks for parallel test262 execution
-        maxForks: parseInt(process.env.TEST262_WORKERS || '8', 10),
+        // 2 forks × 2 compiler threads each — balances parallelism vs memory
+        // Each fork compiles + executes its share; forks die and free memory.
+        maxForks: parseInt(process.env.TEST262_WORKERS || '2', 10),
         execArgv: ['--max-old-space-size=2048'],
       },
     },
