@@ -99,13 +99,24 @@ MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
 MONITOR_PID=$!
 echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
 
-# ── Run vitest FROM THE WORKTREE ─────────────────────────────────
+# ── Run vitest chunk-by-chunk FROM THE WORKTREE ─────────────────
+# 1 fork per chunk, fork dies between chunks → memory fully freed.
+# Fork uses nproc compiler threads for max CPU utilization.
 cd "$WT_DIR"
-# vitest exits 1 when any test fails — which is EVERY test262 run (conformance tests).
-# Check for actual crashes by looking at the report file, not the exit code.
-npx vitest run tests/test262-chunk*.test.ts \
-  --reporter=verbose \
-  "$@" 2>&1 | tee /tmp/test262-vitest-run.log
+CHUNKS=$(ls tests/test262-chunk*.test.ts 2>/dev/null | sort)
+CHUNK_COUNT=$(echo "$CHUNKS" | wc -l)
+CURRENT=0
+> /tmp/test262-vitest-run.log
+
+for chunk in $CHUNKS; do
+  CURRENT=$((CURRENT + 1))
+  echo ""
+  echo "=== Chunk $CURRENT/$CHUNK_COUNT: $(basename $chunk) ==="
+  npx vitest run "$chunk" \
+    --reporter=verbose \
+    "$@" 2>&1 | tee -a /tmp/test262-vitest-run.log
+  echo "Chunk $CURRENT/$CHUNK_COUNT done."
+done
 # Generate report.json from JSONL (atomic — no fork race condition)
 JSONL_FILE="$RESULTS_DIR/test262-results.jsonl"
 REPORT_FILE="$RESULTS_DIR/test262-report.json"
