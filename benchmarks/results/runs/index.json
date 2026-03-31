@@ -835,7 +835,7 @@
     "skip": 6580,
     "total": 48088,
     "gitHash": "08cc4778",
-    "note": "clean baseline — cache disabled, conformance count (not vitest count)"
+    "note": "clean baseline \u2014 cache disabled, conformance count (not vitest count)"
   },
   {
     "timestamp": "2026-03-31T01:24:13.763Z",
@@ -916,5 +916,13 @@
     "total": 6011,
     "gitHash": "4be8d50d",
     "chunk": true
+  },
+  {
+    "timestamp": "20260331-192021",
+    "pass": 15246,
+    "fail": 24668,
+    "ce": 1653,
+    "skip": 6580,
+    "total": 48174
   }
 ]

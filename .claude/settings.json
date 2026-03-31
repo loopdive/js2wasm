@@ -64,16 +64,6 @@
         ]
       },
       {
-        "matcher": "SendMessage",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/pre-shutdown.sh",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "matcher": "Agent",
         "hooks": [
           {
