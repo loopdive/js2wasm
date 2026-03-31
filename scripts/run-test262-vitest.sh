@@ -65,19 +65,18 @@ ln -s "$RESULTS_DIR" "$WT_DIR/benchmarks/results"
 
 echo "Run ID: $RUN_TIMESTAMP"
 echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
-echo "Running vitest..."
 
-# ── Phase 1: Pre-compile all tests to disk cache ─────────────────
+# ── Phase 1: Pre-compile all tests to disk cache ────────────────
 echo ""
-echo "=== Phase 1: Compiling all tests ==="
+echo "=== Phase 1: Pre-compiling all tests ==="
 PHASE1_START=$(date +%s)
 npx tsx scripts/precompile-tests.ts
 PHASE1_END=$(date +%s)
-echo "Phase 1 done in $((PHASE1_END - PHASE1_START))s"
+echo "Phase 1 completed in $((PHASE1_END - PHASE1_START))s"
 echo ""
 
-# ── Phase 2: Execute pre-compiled tests via vitest ───────────────
-echo "=== Phase 2: Executing pre-compiled tests ==="
+# ── Phase 2: Execute pre-compiled tests via vitest ──────────────
+echo "=== Phase 2: Executing tests ==="
 
 # ── Start memory monitor ─────────────────────────────────────────
 MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
@@ -185,7 +184,7 @@ with open('$REPORT_FILE', 'w') as f:
     json.dump(report, f, indent=2)
 
 s = report['summary']
-print(f'Report: {s[\"pass\"]} pass / {s[\"total\"]} total ({s[\"pass\"]/s[\"total\"]*100:.1f}%)')
+print('Report: %d pass / %d total (%.1f%%)' % (s['pass'], s['total'], s['pass']/s['total']*100))
 " && COMPLETED=true
 fi
 
@@ -234,6 +233,30 @@ if [ "$COMPLETED" = true ]; then
 
   # Append to historical index
   if [ -f "$RUN_REPORT" ]; then
+    RUNS_DIR="$MAIN_DIR/runs"
+    mkdir -p "$RUNS_DIR"
+    INDEX_FILE="$RUNS_DIR/index.json"
+    if [ ! -f "$INDEX_FILE" ]; then echo '[]' > "$INDEX_FILE"; fi
+    python3 -c "
+import json, sys
+with open('$RUN_REPORT') as f: report = json.load(f)
+entry = {
+    'timestamp': '$RUN_TIMESTAMP',
+    'pass': report['summary']['pass'],
+    'fail': report['summary']['fail'],
+    'compile_error': report['summary'].get('compile_error', 0),
+    'total': report['summary']['total'],
+}
+with open('$INDEX_FILE') as f: idx = json.load(f)
+idx.append(entry)
+with open('$INDEX_FILE', 'w') as f: json.dump(idx, f, indent=2)
+print('Appended to index: %d pass / %d total' % (entry['pass'], entry['total']))
+" 2>/dev/null || echo "Warning: failed to update historical index"
+  fi
+else
+  echo "INCOMPLETE: Report generation failed or no results."
+  echo "Check /tmp/test262-vitest-run.log for errors."
+fi
 
 # ── Cleanup ──────────────────────────────────────────────────────
 echo "Cleaning up worktree..."

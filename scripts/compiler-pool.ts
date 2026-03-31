@@ -1,16 +1,16 @@
 /**
- * Compiler pool — manages persistent compiler workers for test262.
- * Workers keep warm ts.Program instances, avoiding 50ms+ lib re-parse per test.
+ * Compiler pool — manages persistent compiler processes for test262.
+ * Uses child_process.fork (separate OS processes) instead of worker threads.
+ * When a process exits, the OS reclaims ALL its memory (RSS, JIT code, etc.),
+ * unlike worker threads where terminated isolate memory fragments the process.
  *
  * Usage:
  *   const pool = new CompilerPool(4);
- *   await pool.ready();
  *   const result = await pool.compile(source);
  *   pool.shutdown();
  */
-import { Worker } from "worker_threads";
+import { fork, type ChildProcess } from "child_process";
 import { join } from "path";
-import { cpus } from "os";
 
 export interface PoolCompileResult {
   ok: true;
@@ -34,65 +34,75 @@ interface PendingJob {
   resolve: (result: PoolResult) => void;
 }
 
-interface WorkerState {
-  worker: Worker;
+interface ForkState {
+  proc: ChildProcess;
   busy: boolean;
   ready: boolean;
 }
 
 export class CompilerPool {
-  private workers: WorkerState[] = [];
+  private forks: ForkState[] = [];
   private pending = new Map<number, PendingJob>();
   private queue: Array<{ id: number; source: string; sourceMapUrl?: string; resolve: (r: PoolResult) => void }> = [];
   private nextId = 0;
   private readyResolve: (() => void) | null = null;
   private readyCount = 0;
+  private workerPath: string;
 
   constructor(private size = 4) {
-    const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
-
+    this.workerPath = join(import.meta.dirname ?? __dirname, "compiler-fork-worker.mjs");
     for (let i = 0; i < size; i++) {
-      const worker = new Worker(workerPath, {
-        resourceLimits: { maxOldGenerationSizeMb: 1024 },
-      });
-
-      const state: WorkerState = { worker, busy: false, ready: false };
-      this.workers.push(state);
-
-      worker.on("message", (msg: any) => {
-        if (msg.type === "ready") {
-          state.ready = true;
-          this.readyCount++;
-          if (this.readyCount === this.size && this.readyResolve) {
-            this.readyResolve();
-          }
-          return;
-        }
-
-        // Compilation result
-        const job = this.pending.get(msg.id);
-        if (job) {
-          this.pending.delete(msg.id);
-          state.busy = false;
-          job.resolve(msg as PoolResult);
-          this.dispatch();
-        }
-      });
-
-      worker.on("error", (err) => {
-        console.error(`Compiler worker ${i} error:`, err.message);
-        state.busy = false;
-        state.ready = false;
-      });
-      // Respawn worker when it exits (e.g. after MAX_COMPILATIONS)
-      worker.on("exit", () => {
-        if (!state.ready && !state.busy) return; // already handled
-        this.respawnWorker(state);
-      });
+      this.forks.push(this.createFork());
     }
   }
 
-  /** Wait for all workers to be ready */
+  private createFork(): ForkState {
+    const proc = fork(this.workerPath, [], {
+      stdio: ["pipe", "pipe", "pipe", "ipc"],
+      execArgv: ["--expose-gc", "--max-old-space-size=512"],
+    });
+
+    const state: ForkState = { proc, busy: false, ready: false };
+
+    proc.on("message", (msg: any) => {
+      if (msg.type === "ready") {
+        state.ready = true;
+        this.readyCount++;
+        if (this.readyCount === this.size && this.readyResolve) {
+          this.readyResolve();
+        }
+        return;
+      }
+
+      // Binary arrives as base64 over IPC — decode it
+      if (msg.ok && msg.binary) {
+        msg.binary = new Uint8Array(Buffer.from(msg.binary, "base64"));
+      }
+
+      const job = this.pending.get(msg.id);
+      if (job) {
+        this.pending.delete(msg.id);
+        state.busy = false;
+        job.resolve(msg as PoolResult);
+        this.dispatch();
+      }
+    });
+
+    proc.on("error", (err) => {
+      console.error(`Compiler fork error:`, err.message);
+      state.busy = false;
+      state.ready = false;
+    });
+
+    proc.on("exit", () => {
+      if (!state.ready && !state.busy) return;
+      this.respawnFork(state);
+    });
+
+    return state;
+  }
+
+  /** Wait for all forks to be ready */
   ready(): Promise<void> {
     if (this.readyCount === this.size) return Promise.resolve();
     return new Promise((resolve) => {
@@ -100,25 +110,22 @@ export class CompilerPool {
     });
   }
 
-  /** Compile source — queues if all workers busy. Times out after 30s. */
+  /** Compile source — queues if all forks busy. */
   compile(source: string, timeoutMs = 10_000, _fullDiag?: boolean, sourceMapUrl?: string, label?: string): Promise<PoolResult> {
     return new Promise((resolve) => {
       const id = this.nextId++;
       const timer = setTimeout(() => {
-        // Compilation hung — resolve with error, kill and respawn the worker
-        console.error(`[compiler-pool] TIMEOUT: compilation exceeded ${timeoutMs/1000}s${label ? ` [${label}]` : ""}, killing worker`);
+        console.error(`[compiler-pool] TIMEOUT: compilation exceeded ${timeoutMs / 1000}s${label ? ` [${label}]` : ""}, killing worker`);
         this.pending.delete(id);
-        resolve({ ok: false, error: `compilation timeout (${timeoutMs/1000}s)`, compileMs: timeoutMs });
-        // Find and restart the stuck worker
-        const stuck = this.workers.find(w => w.busy);
+        resolve({ ok: false, error: `compilation timeout (${timeoutMs / 1000}s)`, compileMs: timeoutMs });
+        const stuck = this.forks.find(w => w.busy);
         if (stuck) {
           stuck.busy = false;
           stuck.ready = false;
-          stuck.worker.terminate().catch(() => {});
-          this.respawnWorker(stuck);
+          stuck.proc.kill("SIGKILL");
+          this.respawnFork(stuck);
         }
       }, timeoutMs);
-      // Keep timer ref'd so the process stays alive until it fires
       this.queue.push({ id, source, sourceMapUrl, resolve: (r: PoolResult) => { clearTimeout(timer); resolve(r); } });
       this.dispatch();
     });
@@ -126,27 +133,32 @@ export class CompilerPool {
 
   private dispatch() {
     while (this.queue.length > 0) {
-      const freeWorker = this.workers.find((w) => w.ready && !w.busy);
-      if (!freeWorker) break;
+      const free = this.forks.find((f) => f.ready && !f.busy);
+      if (!free) break;
 
       const job = this.queue.shift()!;
-      freeWorker.busy = true;
+      free.busy = true;
       this.pending.set(job.id, { id: job.id, resolve: job.resolve });
-      freeWorker.worker.postMessage({ id: job.id, source: job.source, sourceMapUrl: job.sourceMapUrl });
+      free.proc.send({ id: job.id, source: job.source, sourceMapUrl: job.sourceMapUrl });
     }
   }
 
-  /** Respawn a dead/stuck worker */
-  private respawnWorker(state: WorkerState) {
-    const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
+  /** Respawn a dead/stuck fork — OS reclaims all memory from the old process */
+  private respawnFork(state: ForkState) {
     state.busy = false;
     state.ready = false;
-    state.worker = new Worker(workerPath, { resourceLimits: { maxOldGenerationSizeMb: 1024 } });
-    state.worker.on("message", (msg: any) => {
+    const newState = this.createFork();
+    state.proc = newState.proc;
+    // Re-wire handlers on the state object (it's in the forks array)
+    state.proc.removeAllListeners();
+    state.proc.on("message", (msg: any) => {
       if (msg.type === "ready") {
         state.ready = true;
         this.dispatch();
         return;
+      }
+      if (msg.ok && msg.binary) {
+        msg.binary = new Uint8Array(Buffer.from(msg.binary, "base64"));
       }
       const job = this.pending.get(msg.id);
       if (job) {
@@ -156,21 +168,21 @@ export class CompilerPool {
         this.dispatch();
       }
     });
-    state.worker.on("error", (err) => {
-      console.error(`Compiler worker respawned after error:`, err.message);
+    state.proc.on("error", (err) => {
+      console.error(`Compiler fork respawned after error:`, err.message);
       state.busy = false;
       state.ready = false;
     });
-    state.worker.on("exit", () => {
+    state.proc.on("exit", () => {
       if (!state.ready && !state.busy) return;
-      this.respawnWorker(state);
+      this.respawnFork(state);
     });
   }
 
-  /** Shut down all workers */
+  /** Shut down all forks — OS reclaims all memory */
   shutdown() {
-    for (const { worker } of this.workers) {
-      worker.terminate();
+    for (const { proc } of this.forks) {
+      proc.kill("SIGTERM");
     }
   }
 }
