@@ -99,21 +99,15 @@ MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
 MONITOR_PID=$!
 echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
 
-# ── Run vitest in shards FROM THE WORKTREE ───────────────────────
+# ── Run vitest FROM THE WORKTREE ─────────────────────────────────
+# 3 forks × 4 compiler threads = 12 parallel compilations
+# vitest --shard doesn't work (only 1 test file, 48K tests inside it)
+# Instead: 3 forks distribute the 48K it() calls across processes
 cd "$WT_DIR"
-SHARDS=${TEST262_SHARDS:-3}
-echo "Running $SHARDS shards (3 forks × 4 compiler threads per fork)..."
-> /tmp/test262-vitest-run.log
-
-for i in $(seq 1 $SHARDS); do
-  echo ""
-  echo "=== Shard $i/$SHARDS ==="
-  npx vitest run tests/test262-vitest.test.ts \
-    --shard=$i/$SHARDS \
-    --reporter=verbose \
-    "$@" 2>&1 | tee -a /tmp/test262-vitest-run.log
-  echo "Shard $i/$SHARDS done."
-done
+echo "Running with 3 forks × 4 compiler threads..."
+npx vitest run tests/test262-vitest.test.ts \
+  --reporter=verbose \
+  "$@" 2>&1 | tee /tmp/test262-vitest-run.log
 
 # Consider completed if the report was written (vitest's afterAll hook ran)
 COMPLETED=false
