@@ -452,9 +452,11 @@ function recordResult(file: string, category: string, status: string, error?: st
     try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
   }
 
-  // Fail the vitest test for non-passing results (compile_timeout is expected, not a test failure)
-  if (status !== "pass" && status !== "skip" && status !== "compile_timeout") {
-    throw new ConformanceError(status, error);
+  // Only conformance "pass" counts as vitest pass.
+  // Everything else (fail, compile_error, skip, compile_timeout) throws
+  // so vitest's pass count matches the conformance pass count exactly.
+  if (status !== "pass") {
+    throw new ConformanceError(status, error || status);
   }
 }
 
