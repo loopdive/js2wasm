@@ -6,7 +6,7 @@ import { compile } from "./index.js";
 const args = process.argv.slice(2);
 
 if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
-  console.log(`Usage: ts2wasm <input.ts> [options]
+  console.log(`Usage: js2wasm <input.ts> [options]
 
 Compile a TypeScript file to WebAssembly (GC proposal).
 

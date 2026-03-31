@@ -12,7 +12,7 @@ All agents run as **teammates** in a single team (not subagents). This enables d
 
 ## Memory Budget
 
-- **Container**: `--memory=14g --memory-swap=28g` (14GB RAM + 14GB swap)
+- **Container**: `--memory=16g --memory-swap=32g` (16GB RAM + 16GB swap)
 - **NODE_OPTIONS**: `--max-old-space-size=3072`
 - **Test262**: default 2 workers during dev (~5.5GB). After dev batch completes, use 3 workers (`TEST262_WORKERS=3`) for faster measurement (~9GB, no devs running). Pool workers capped at 1GB each.
 - **Dev agents**: ~2.5GB each
@@ -42,7 +42,7 @@ The **Tech Lead runs all tests directly** in background — no tester teammate. 
 Use `TeamCreate` to create the team, then spawn roles:
 
 ```
-TeamCreate: "ts2wasm"
+TeamCreate: "js2wasm"
   - developer × 2 max (agent def: .claude/agents/developer.md, isolation: worktree)
   - product-owner on demand (agent def: .claude/agents/product-owner.md)
   - NO tester — TTL runs tests directly

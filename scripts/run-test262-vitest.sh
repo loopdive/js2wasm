@@ -51,55 +51,188 @@ npx esbuild src/index.ts --bundle --platform=node --format=esm \
 npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
   --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
 
-# ── Prepare timestamped result files ─────────────────────────────
-RUN_JSONL="$RESULTS_DIR/test262-run-${RUN_TIMESTAMP}.jsonl"
-RUN_REPORT="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
+# ── Prepare result files ─────────────────────────────────────────
+# Vitest writes to timestamped test262-results-YYYYMMDD-HHMMSS.jsonl directly.
+# RUN_TIMESTAMP env var tells test262-shared.ts which filename to use.
+export RUN_TIMESTAMP
 
-# Point worktree results dir at main workspace
+# Symlink worktree results dir to main workspace (results survive cleanup)
 rm -rf "$WT_DIR/benchmarks/results"
-mkdir -p "$WT_DIR/benchmarks/results"
-
-# Vitest writes to these paths — we'll move them after
-> "$WT_DIR/benchmarks/results/test262-results.jsonl"
+ln -s "$RESULTS_DIR" "$WT_DIR/benchmarks/results"
 
 echo "Run ID: $RUN_TIMESTAMP"
 echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
-echo "Running vitest..."
+echo "Running vitest (unified compile+execute in fork pool)..."
 
-# ── Also build bundle in worktree for vitest to use ──────────────
-# (vitest runs from worktree, workers load compiler-bundle.mjs from there)
+# ── Start memory monitor ─────────────────────────────────────────
+MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
+(
+  echo "{\"event\":\"monitor_start\",\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$(free -m | awk '/Mem/{print $7}')}" >> "$MONITOR_LOG"
+  while true; do
+    if ! ps aux | grep -q '[v]itest'; then
+      echo "{\"event\":\"monitor_end\",\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$(free -m | awk '/Mem/{print $7}')}" >> "$MONITOR_LOG"
+      break
+    fi
+    AVAIL=$(free -m | awk '/Mem/{print $7}')
+    USED=$(free -m | awk '/Mem/{print $3}')
+    PROCS=""
+    FIRST=true
+    for pid in $(ps aux | grep '[v]itest' | awk '{print $2}'); do
+      PEAK=$(grep VmHWM /proc/$pid/status 2>/dev/null | awk '{print $2}')
+      RSS=$(grep VmRSS /proc/$pid/status 2>/dev/null | awk '{print $2}')
+      NAME=$(ps -p $pid -o comm= 2>/dev/null)
+      if [ -n "$PEAK" ] && [ "$PEAK" -gt 10000 ]; then
+        if [ "$FIRST" = true ]; then FIRST=false; else PROCS="$PROCS,"; fi
+        PROCS="$PROCS{\"pid\":$pid,\"name\":\"$NAME\",\"rss_mb\":$((RSS/1024)),\"peak_mb\":$((PEAK/1024))}"
+      fi
+    done
+    echo "{\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$AVAIL,\"used_mb\":$USED,\"vitest\":[$PROCS]}" >> "$MONITOR_LOG"
+    sleep 10
+  done
+) &
+MONITOR_PID=$!
+echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
 
-# ── Run vitest FROM THE WORKTREE ─────────────────────────────────
+# ── Run vitest chunk-by-chunk FROM THE WORKTREE ─────────────────
+# 1 fork per chunk, fork dies between chunks → memory fully freed.
+# Fork uses nproc compiler threads for max CPU utilization.
 cd "$WT_DIR"
+CHUNKS=$(ls tests/test262-chunk*.test.ts 2>/dev/null | sort)
+> /tmp/test262-vitest-run.log
+
+if [ -n "$CHUNKS" ]; then
+  # Run all chunk files in a single vitest invocation — vitest parallelizes across forks
+  CHUNK_COUNT=$(echo "$CHUNKS" | wc -l)
+  echo "Running $CHUNK_COUNT chunk files in one vitest invocation..."
+  npx vitest run tests/test262-chunk*.test.ts \
+    --reporter=verbose \
+    "$@" 2>&1 | tee /tmp/test262-vitest-run.log || true
+else
+  # Single file mode: run the monolithic test file
+  echo "Running single test file..."
+  npx vitest run tests/test262-vitest.test.ts \
+    --reporter=verbose \
+    "$@" 2>&1 | tee /tmp/test262-vitest-run.log || true
+fi
+# Generate report.json from JSONL (atomic — no fork race condition)
+JSONL_FILE="$RESULTS_DIR/test262-results-${RUN_TIMESTAMP}.jsonl"
+REPORT_FILE="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
 COMPLETED=false
-npx vitest run tests/test262-vitest.test.ts \
-  --reporter=verbose \
-  "$@" 2>&1 | tee /tmp/test262-vitest-run.log && COMPLETED=true
+if [ -f "$JSONL_FILE" ] && [ -s "$JSONL_FILE" ]; then
+  python3 -c "
+import json
+from collections import Counter
+
+statuses = Counter()
+cats = {}
+errors = Counter()
+skips = Counter()
+
+with open('$JSONL_FILE') as f:
+    for line in f:
+        r = json.loads(line)
+        s = r['status']
+        statuses[s] += 1
+        cat = r.get('category', 'unknown')
+        if cat not in cats:
+            cats[cat] = {'pass': 0, 'fail': 0, 'compile_error': 0, 'skip': 0, 'total': 0}
+        cats[cat][s] = cats[cat].get(s, 0) + 1
+        cats[cat]['total'] += 1
+        if r.get('error_category'):
+            errors[r['error_category']] += 1
+        if s == 'skip' and r.get('error'):
+            skips[r['error']] += 1
+
+report = {
+    'timestamp': '$(date -Iseconds)',
+    'summary': {
+        'total': sum(statuses.values()),
+        'pass': statuses.get('pass', 0),
+        'fail': statuses.get('fail', 0),
+        'compile_error': statuses.get('compile_error', 0),
+        'compile_timeout': statuses.get('compile_timeout', 0),
+        'skip': statuses.get('skip', 0),
+        'compilable': statuses.get('pass', 0) + statuses.get('fail', 0),
+        'stale': 0,
+    },
+    'categories': [{'name': n, **c} for n, c in sorted(cats.items())],
+    'error_categories': dict(errors),
+    'skip_reasons': dict(skips),
+}
+
+with open('$REPORT_FILE', 'w') as f:
+    json.dump(report, f, indent=2)
+
+s = report['summary']
+print('Report: %d pass / %d total (%.1f%%)' % (s['pass'], s['total'], s['pass']/s['total']*100))
+" && COMPLETED=true
+fi
+
+# ── Stop memory monitor ──────────────────────────────────────────
+kill $MONITOR_PID 2>/dev/null
+wait $MONITOR_PID 2>/dev/null
+echo "Memory monitor stopped"
+
+# ── Summarize peak memory ────────────────────────────────────────
+if [ -f "$MONITOR_LOG" ]; then
+  PEAK_RSS=$(python3 -c "
+import json
+peak = 0
+with open('$MONITOR_LOG') as f:
+    for line in f:
+        d = json.loads(line)
+        for v in d.get('vitest', []):
+            if v.get('peak_mb', 0) > peak: peak = v['peak_mb']
+print(peak)
+" 2>/dev/null || echo "?")
+  echo "Peak vitest memory: ${PEAK_RSS}MB"
+fi
 
 # ── Handle results ───────────────────────────────────────────────
 echo ""
 
-# Copy timestamped results
-cp "$WT_DIR/benchmarks/results/test262-results.jsonl" "$RUN_JSONL" 2>/dev/null
-cp "$WT_DIR/benchmarks/results/test262-report.json" "$RUN_REPORT" 2>/dev/null
+# Files are already timestamped (vitest writes to test262-results-${RUN_TIMESTAMP}.jsonl)
+RUN_REPORT="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
+RUN_JSONL="$RESULTS_DIR/test262-results-${RUN_TIMESTAMP}.jsonl"
 
 if [ "$COMPLETED" = true ]; then
-  # Only update symlinks on successful completion
-  ln -sf "$(basename "$RUN_JSONL")" "$RESULTS_DIR/test262-results.jsonl"
+  # Update symlinks to point to latest timestamped files
   ln -sf "$(basename "$RUN_REPORT")" "$RESULTS_DIR/test262-report.json"
+  ln -sf "$(basename "$RUN_JSONL")" "$RESULTS_DIR/test262-results.jsonl"
+
+  PASS=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
+  TOTAL=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
+  echo "COMPLETED: $PASS pass / $TOTAL total"
+  echo "Report:  $RUN_REPORT"
+  echo "Results: $RUN_JSONL"
+  echo "Symlinks updated."
 
   # Append to historical index
   if [ -f "$RUN_REPORT" ]; then
-    PASS=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
-    TOTAL=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
-    echo "COMPLETED: $PASS pass / $TOTAL total"
-    echo "Results: $RUN_JSONL"
-    echo "Report:  $RUN_REPORT"
-    echo "Symlinks updated to this run."
+    RUNS_DIR="$RESULTS_DIR/runs"
+    mkdir -p "$RUNS_DIR"
+    INDEX_FILE="$RUNS_DIR/index.json"
+    if [ ! -f "$INDEX_FILE" ]; then echo '[]' > "$INDEX_FILE"; fi
+    python3 -c "
+import json, sys
+with open('$RUN_REPORT') as f: report = json.load(f)
+entry = {
+    'timestamp': '$RUN_TIMESTAMP',
+    'pass': report['summary']['pass'],
+    'fail': report['summary']['fail'],
+    'ce': report['summary'].get('compile_error', 0),
+    'skip': report['summary'].get('skip', 0),
+    'total': report['summary']['total'],
+}
+with open('$INDEX_FILE') as f: idx = json.load(f)
+idx.append(entry)
+with open('$INDEX_FILE', 'w') as f: json.dump(idx, f, indent=2)
+print('Appended to index: %d pass / %d total' % (entry['pass'], entry['total']))
+" 2>/dev/null || echo "Warning: failed to update historical index"
   fi
 else
-  echo "INCOMPLETE: vitest exited with error. Symlinks NOT updated."
-  echo "Partial results saved to: $RUN_JSONL"
+  echo "INCOMPLETE: Report generation failed or no results."
+  echo "Check /tmp/test262-vitest-run.log for errors."
 fi
 
 # ── Cleanup ──────────────────────────────────────────────────────
