@@ -67,8 +67,17 @@ echo "Run ID: $RUN_TIMESTAMP"
 echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
 echo "Running vitest..."
 
-# ── Also build bundle in worktree for vitest to use ──────────────
-# (vitest runs from worktree, workers load compiler-bundle.mjs from there)
+# ── Phase 1: Pre-compile all tests to disk cache ─────────────────
+echo ""
+echo "=== Phase 1: Compiling all tests ==="
+PHASE1_START=$(date +%s)
+npx tsx scripts/precompile-tests.ts
+PHASE1_END=$(date +%s)
+echo "Phase 1 done in $((PHASE1_END - PHASE1_START))s"
+echo ""
+
+# ── Phase 2: Execute pre-compiled tests via vitest ───────────────
+echo "=== Phase 2: Executing pre-compiled tests ==="
 
 # ── Start memory monitor ─────────────────────────────────────────
 MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
