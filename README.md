@@ -6,7 +6,9 @@
 
 AOT compiler that compiles Javascript directly to WebAssembly with the GC proposal.
 
-Runs entirely in the browser – no server, no build step for user code.
+The goal of this project is to compile existing Javascript code to WebAssembly efficiently in terms of performance and module size without requiring to ship a JS runtime with it. This allows to run Javscript code in places where shipping a JS runtime in the module is prohibitively slow and heavy (embedded, serverless) and also aims to provide an opportunity for module based intra process sandboxing to reduce the blast radius if a module turns out to be adversarial by limiting its permissions to a deny by default security model with Object Capabilities (OCap) to contain supply chain attacks.
+
+The compiler itself is based on Typescript 6 and needs a JS runtime to compile JS or TS to .wasm which can also be done in the browser or locally with Node.js.
 
 ```
 JS/TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8Array) → WebAssembly.instantiate()
