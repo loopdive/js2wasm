@@ -2470,11 +2470,6 @@ function compileOnly() {
   const compileTime = performance.now() - t0;
 
   lastResult = result;
-  (window as any).__ts2wasmCompileDebug = {
-    success: result.success,
-    errors: result.errors,
-    imports: result.imports.map((imp) => ({ name: imp.name, intent: imp.intent })),
-  };
 
   if (result.binary && result.binary.length > 0) {
     treemap.loadBinary(result.binary);
@@ -2594,102 +2589,6 @@ function buildEnv(
     globalThis: sandboxGlobal,
   });
   const env = imports.env;
-  (window as any).__ts2wasmRunDebug = {
-    ...(window as any).__ts2wasmRunDebug,
-    envHas: {
-      global_document: typeof env.global_document === "function",
-      Document_get_body: typeof env.Document_get_body === "function",
-      Document_createElement: typeof env.Document_createElement === "function",
-      Node_appendChild: typeof env.Node_appendChild === "function",
-      __extern_get: typeof env.__extern_get === "function",
-    },
-  };
-
-  if (env.global_document) {
-    const original = env.global_document;
-    env.global_document = () => {
-      const value = original();
-      log("[import] global_document()");
-      return value;
-    };
-  }
-
-  if (env.Document_get_body) {
-    const original = env.Document_get_body;
-    env.Document_get_body = (self: unknown) => {
-      log("[import] Document_get_body(self)");
-      const value = original(self as any);
-      log("[import] Document_get_body -> value");
-      return value;
-    };
-  }
-
-  if (env.Document_createElement) {
-    const original = env.Document_createElement;
-    env.Document_createElement = (self: unknown, tagName: unknown, options?: unknown) => {
-      const value = original(self as any, tagName as any, options as any);
-      const dbg = ((window as any).__ts2wasmRunDebug ??= {});
-      const created = (dbg.createdElements ??= []);
-      if (created.length < 20) {
-        created.push(String(tagName));
-      }
-      return value;
-    };
-  }
-
-  if (env.Node_appendChild) {
-    const original = env.Node_appendChild;
-    env.Node_appendChild = (self: unknown, child: unknown) => {
-      const dbg = ((window as any).__ts2wasmRunDebug ??= {});
-      const appends = (dbg.appendCalls ??= []);
-      if (appends.length < 20) {
-        const selfEl = self as HTMLElement | null | undefined;
-        const childEl = child as HTMLElement | null | undefined;
-        appends.push({
-          selfTag: selfEl?.tagName ?? null,
-          selfId: selfEl?.id ?? null,
-          childTag: childEl?.tagName ?? null,
-          childId: childEl?.id ?? null,
-          beforeChildren: selfEl?.childElementCount ?? null,
-        });
-      }
-      const value = original(self as any, child as any);
-      if (appends.length > 0) {
-        const last = appends[appends.length - 1];
-        last.afterChildren = (self as HTMLElement | null | undefined)?.childElementCount ?? null;
-      }
-      return value;
-    };
-  }
-
-  const summarizeArg = (value: unknown): unknown => {
-    if (value instanceof HTMLElement) {
-      return { tag: value.tagName, id: value.id, children: value.childElementCount };
-    }
-    if (value instanceof Node) {
-      return { node: value.nodeName };
-    }
-    if (value && typeof value === "object") {
-      return { type: (value as any).constructor?.name ?? "Object" };
-    }
-    return value;
-  };
-
-  for (const [name, original] of Object.entries(env)) {
-    if (typeof original !== "function") continue;
-    env[name] = (...args: unknown[]) => {
-      const dbg = ((window as any).__ts2wasmRunDebug ??= {});
-      const trace = (dbg.importTrace ??= []);
-      trace.push({
-        name,
-        args: args.slice(0, 3).map(summarizeArg),
-      });
-      if (trace.length > 120) {
-        trace.shift();
-      }
-      return original(...args);
-    };
-  }
 
   // Override console_log variants to redirect to the playground's console panel
   env.console_log_number = (v: number) => log(String(v));
@@ -2736,13 +2635,6 @@ async function runOnly() {
   }
 
   const usesDom = detectDomUsage(result);
-  (window as any).__ts2wasmRunDebug = {
-    ...(window as any).__ts2wasmRunDebug,
-    usesDom,
-    synthesizedMainCandidate: !hasExportedMain(result),
-    previewConnected: previewPanel.isConnected,
-    previewChildCount: previewPanel.childElementCount,
-  };
   const logs: string[] = [];
 
   const { env, setExports } = buildEnv(
@@ -2760,53 +2652,18 @@ async function runOnly() {
       result.binary as BufferSource,
       env,
     );
-    console.log(`[ts2wasm] wasm:js-string → ${nativeBuiltins ? "native builtins" : "JS polyfill"}`);
 
     wasmExports = instance.exports as Record<string, any>;
     setExports(wasmExports as Record<string, Function>);
-    (window as any).__ts2wasmRunDebug = {
-      ...(window as any).__ts2wasmRunDebug,
-      exportKeys: Object.keys(wasmExports),
-      hasMain: typeof wasmExports.main === "function",
-    };
     if (typeof wasmExports.main === "function") {
       if (synthesizedMain) {
-        logs.push("[run] synthesized exported main() to execute top-level statements");
+        logs.push("Executed top-level statements via synthesized exported main().");
       }
-      logs.push("[run] before main()");
-      consolePre.textContent = logs.join("\n");
-      (window as any).__ts2wasmRunDebug = {
-        ...(window as any).__ts2wasmRunDebug,
-        beforeMain: {
-          previewConnected: previewPanel.isConnected,
-          previewChildCount: previewPanel.childElementCount,
-          previewHtmlLength: previewPanel.innerHTML.length,
-        },
-      };
-      console.log("[ts2wasm] before main()", {
-        previewConnected: previewPanel.isConnected,
-        previewChildCount: previewPanel.childElementCount,
-        previewHtmlLength: previewPanel.innerHTML.length,
-      });
       const returnValue = wasmExports.main();
-      logs.push("[run] after main()");
-      (window as any).__ts2wasmRunDebug = {
-        ...(window as any).__ts2wasmRunDebug,
-        afterMain: {
-          previewConnected: previewPanel.isConnected,
-          previewChildCount: previewPanel.childElementCount,
-          previewHtmlLength: previewPanel.innerHTML.length,
-        },
-      };
-      console.log("[ts2wasm] after main()", {
-        previewConnected: previewPanel.isConnected,
-        previewChildCount: previewPanel.childElementCount,
-        previewHtmlLength: previewPanel.innerHTML.length,
-      });
       if (returnValue !== undefined) logs.push(`→ ${returnValue}`);
     } else {
-      logs.push("[run] no exported main()");
-      logs.push("[run] top-level statements are not auto-executed by the playground");
+      logs.push("No exported main().");
+      logs.push("Top-level statements are not auto-executed by the playground.");
     }
 
     consolePre.textContent = logs.join("\n");
@@ -2823,10 +2680,6 @@ async function runOnly() {
       autoCycleTimer = setInterval(() => nd(), 8000);
     }
   } catch (e) {
-    (window as any).__ts2wasmRunDebug = {
-      ...(window as any).__ts2wasmRunDebug,
-      error: String(e),
-    };
     let msg: string;
     if (e instanceof WebAssembly.Exception) {
       // Extract exception payload via __exn_tag export
@@ -2863,7 +2716,6 @@ async function runOnly() {
       }
     }
     errorsPre.textContent = `Runtime: ${msg}`;
-    console.error("[ts2wasm] runOnly() failed", e);
     showOutputPanel("errors");
   }
 }

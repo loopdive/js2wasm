@@ -1454,11 +1454,6 @@ export function buildImports(
         try {
           return original.apply(this, args);
         } catch (e) {
-          console.error(`[ts2wasm] host import failed: ${imp.name}`, {
-            intent: imp.intent,
-            args,
-            error: e,
-          });
           lastCaughtException = e;
           throw e;
         } finally {
@@ -1498,10 +1493,9 @@ export async function instantiateWasm(
   binary: BufferSource,
   env: Record<string, Function>,
   stringConstants?: Record<string, WebAssembly.Global>,
-  options?: { preferJsStringPolyfill?: boolean },
 ): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
   const sc = stringConstants ?? {};
-  if (JS_STRINGS_NATIVE_BUILTIN && !options?.preferJsStringPolyfill) {
+  if (JS_STRINGS_NATIVE_BUILTIN) {
     try {
       const { instance } = await (WebAssembly.instantiate as Function)(
         binary,

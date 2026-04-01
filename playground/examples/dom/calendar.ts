@@ -37,37 +37,12 @@ function dimOf(y: number, m: number): number {
   return 31;
 }
 
-// Sakamoto's day-of-week: returns 0=Mon..6=Sun
-function fdowOffset(m: number): number {
-  if (m === 0) return 0;
-  if (m === 1) return 3;
-  if (m === 2) return 2;
-  if (m === 3) return 5;
-  if (m === 4) return 0;
-  if (m === 5) return 3;
-  if (m === 6) return 5;
-  if (m === 7) return 1;
-  if (m === 8) return 4;
-  if (m === 9) return 6;
-  if (m === 10) return 2;
-  return 4;
-}
-
 function fdow(y: number, m: number): number {
+  const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
   let yr = y;
   if (m < 2) yr = yr - 1;
-  const d = (yr + (yr / 4 | 0) - (yr / 100 | 0) + (yr / 400 | 0) + fdowOffset(m) + 1) % 7;
+  const d = (yr + (yr / 4 | 0) - (yr / 100 | 0) + (yr / 400 | 0) + t[m] + 1) % 7;
   return (d + 6) % 7;
-}
-
-function dayName(i: number): string {
-  if (i === 0) return "MON";
-  if (i === 1) return "TUE";
-  if (i === 2) return "WED";
-  if (i === 3) return "THU";
-  if (i === 4) return "FRI";
-  if (i === 5) return "SAT";
-  return "SUN";
 }
 
 // Deterministic price 100-950
@@ -235,12 +210,13 @@ export function main(): void {
   hdr.appendChild(yearEl);
   wrap.appendChild(hdr);
 
+  const dayNames = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
   const wh = el("div",
     "display:grid;grid-template-columns:repeat(7,1fr);" +
     "text-align:center;font-size:0.6rem;color:#666;margin-bottom:4px");
   for (let i = 0; i < 7; i++) {
     const c = el("div", "padding:2px");
-    c.textContent = dayName(i);
+    c.textContent = dayNames[i];
     wh.appendChild(c);
   }
   wrap.appendChild(wh);
@@ -254,7 +230,7 @@ export function main(): void {
     "text-align:center;font-size:0.6rem;color:#666;margin-top:4px");
   for (let i = 0; i < 7; i++) {
     const c = el("div", "padding:2px");
-    c.textContent = dayName(i);
+    c.textContent = dayNames[i];
     wh2.appendChild(c);
   }
   wrap.appendChild(wh2);

@@ -1264,7 +1264,7 @@
       }
 
       function pct(n, d) {
-        return d > 0 ? Math.round((n / d) * 100) : 0;
+        return d > 0 ? Math.round((n / d) * 1000) / 10 : 0;
       }
       function fmt(ms) {
         if (ms < 0.001) return "<0.001ms";
@@ -1553,13 +1553,13 @@
         const legacyToggle = el("label", { className: "filter-toggle" });
         const legacyCheckbox = el("input", { type: "checkbox", checked: "checked" });
         legacyToggle.appendChild(legacyCheckbox);
-        legacyToggle.appendChild(el("span", null, "Include Annex B"));
+        legacyToggle.appendChild(el("span", null, "legacy"));
         controlsHost.appendChild(legacyToggle);
 
         const proposalToggle = el("label", { className: "filter-toggle" });
         const proposalCheckbox = el("input", { type: "checkbox" });
         proposalToggle.appendChild(proposalCheckbox);
-        proposalToggle.appendChild(el("span", null, "Include Proposals"));
+        proposalToggle.appendChild(el("span", null, "proposals"));
         controlsHost.appendChild(proposalToggle);
 
         function renderSummaryCard() {
