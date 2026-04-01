@@ -67,7 +67,7 @@ export function main(): void {
 
 ## Try it
 
-**[Live Playground →](https://js2wasm.loopdive.com)** — compile and run TypeScript as WebAssembly in your browser. No install needed.
+**[Live Playground →](https://loopdive.github.io/js2wasm/)** — compile and run TypeScript as WebAssembly in your browser. No install needed.
 
 The playground was built for dogfooding and analysis during development. It provides:
 
@@ -152,7 +152,7 @@ Returns only the WAT text (debug).
 
 ## ES Conformance
 
-js2wasm passes **15,159 / 42,934** tests in the default official test262 scope (35.3%), or **15,159 / 48,174** across the full suite including proposals (31.5%). Conformance is improving with each sprint — see the [live dashboard](https://js2wasm.loopdive.com/dashboard/) for the latest numbers and trend charts.
+js2wasm passes **15,159 / 42,934** tests in the default official test262 scope (35.3%), or **15,159 / 48,174** across the full suite including proposals (31.5%). Conformance is improving with each sprint — see the [live dashboard](https://loopdive.github.io/js2wasm/dashboard/) for the latest numbers and trend charts.
 
 ### What Works Well
 

@@ -32,6 +32,7 @@
     "typecheck": "tsc --noEmit",
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "vite build playground",
+    "build:pages": "node dashboard/build-data.js && pnpm run build:playground && node scripts/build-pages.js",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push"
   },
   "dependencies": {
