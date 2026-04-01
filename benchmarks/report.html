@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ts2wasm — Conformance &amp; Performance Report</title>
+    <title>js2wasm — ECMAScript conformance</title>
     <style>
       :root {
         --bg: #0d1117;
@@ -24,9 +24,7 @@
         box-sizing: border-box;
       }
       body {
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
-          sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
         background: var(--bg);
         color: var(--text);
         line-height: 1.5;
@@ -35,9 +33,22 @@
         margin: 0 auto;
       }
       h1 {
-        font-size: 1.75rem;
+        font-size: 2.625rem;
         font-weight: 600;
         margin-bottom: 0.25rem;
+      }
+      .brand {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.2rem;
+        margin-bottom: 0.25rem;
+      }
+      .brand-logo {
+        height: 150px;
+        object-fit: contain;
+        margin-left: -50px;
+        margin-bottom: -20px;
       }
       h2 {
         font-size: 1.25rem;
@@ -56,11 +67,22 @@
         font-size: 0.875rem;
         margin-bottom: 2rem;
       }
+      .timestamp {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        font-variant-numeric: tabular-nums;
+      }
       .summary {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        grid-template-columns: 1fr;
         gap: 1rem;
         margin-bottom: 2rem;
+        position: relative;
+      }
+      .summary-meta {
+        position: absolute;
+        right: 0;
+        bottom: -1.5rem;
       }
       .card {
         background: var(--surface);
@@ -82,6 +104,234 @@
       .card .pct {
         font-size: 0.875rem;
         color: var(--text-muted);
+      }
+      .gauge-card {
+        display: grid;
+        grid-template-columns: 1fr;
+        justify-items: center;
+        min-height: 220px;
+        overflow: visible;
+      }
+      @media (max-width: 900px) {
+        .gauge-card {
+          grid-template-columns: 1fr;
+        }
+      }
+      .gauge-orbit {
+        position: relative;
+        width: min(100%, 380px);
+        height: 340px;
+        margin: 0 auto;
+      }
+      .gauge-wrap {
+        position: relative;
+        display: grid;
+        place-items: center;
+        margin: 0 auto;
+        width: 250px;
+        aspect-ratio: 1 / 1;
+        border-radius: 50%;
+        background: conic-gradient(
+          var(--pass) 0deg var(--gauge-pass-end),
+          rgba(248, 81, 73, 0.18) var(--gauge-pass-end) var(--gauge-fail-end),
+          rgba(210, 153, 34, 0.18) var(--gauge-fail-end) var(--gauge-error-end),
+          rgba(139, 148, 158, 0.14) var(--gauge-error-end) 360deg
+        );
+      }
+      .gauge-wrap::before {
+        content: "";
+        position: absolute;
+        inset: 22px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+      }
+      .gauge-center {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        transform: translateY(8px);
+      }
+      .gauge-center .gauge-value {
+        font-size: 2.5rem;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .gauge-center .gauge-caption {
+        margin-top: 0.35rem;
+        display: grid;
+        gap: 0.05rem;
+        justify-items: center;
+        color: var(--text-muted);
+      }
+      .gauge-center .gauge-caption-main {
+        font-size: 0.86rem;
+        letter-spacing: 0.08em;
+      }
+      .gauge-center .gauge-caption-sub {
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+      }
+      .gauge-core {
+        position: absolute;
+        inset: 45px 0 0;
+        display: grid;
+        place-items: center;
+      }
+      .gauge-copy {
+        display: none;
+      }
+      .orbit-stat {
+        position: absolute;
+        display: grid;
+        gap: 0.15rem;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        width: 120px;
+        transform: translate(-50%, -50%);
+      }
+      .orbit-connector {
+        position: absolute;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.18);
+        transform-origin: left center;
+        pointer-events: none;
+      }
+      .orbit-stat .orbit-value {
+        font-size: 1rem;
+        font-weight: 700;
+      }
+      .orbit-stat .orbit-label {
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .edition-timeline-section {
+        margin: -0.35rem 0 2rem;
+      }
+      .edition-track {
+        position: relative;
+        height: 92px;
+      }
+      .edition-timeline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 31px;
+        display: flex;
+        height: 14px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .edition-segment {
+        position: relative;
+        min-width: 10px;
+        background: rgba(248, 81, 73, 0.12);
+      }
+      .edition-segment + .edition-segment::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .edition-segment::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: var(--segment-fill);
+        background: var(--pass);
+      }
+      .edition-scale {
+        position: absolute;
+        inset: 0 1px;
+      }
+      .edition-scale-label {
+        position: relative;
+        font-size: 0.68rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+      .edition-scale-marker {
+        position: absolute;
+        transform: translateX(-50%);
+        pointer-events: none;
+      }
+      .edition-scale-line {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 1px;
+        height: 10px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+      .edition-scale-marker.above {
+        top: 0;
+      }
+      .edition-scale-marker.above .edition-scale-line {
+        top: 21px;
+      }
+      .edition-scale-marker.below {
+        top: 0;
+      }
+      .edition-scale-marker.below .edition-scale-line {
+        top: 45px;
+      }
+      .edition-scale-marker.above .edition-scale-label {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .edition-scale-marker.below .edition-scale-label {
+        position: absolute;
+        top: 58px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .edition-scale-label::before {
+        content: "";
+        display: none;
+      }
+      .edition-legend-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.7rem 1rem;
+        margin-top: 0.8rem;
+      }
+      .edition-legend-item {
+        display: grid;
+        gap: 0.12rem;
+        min-width: 0;
+      }
+      .edition-legend-name {
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .edition-legend-rate {
+        color: var(--pass);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        text-align: left;
+      }
+      .edition-legend-ratio {
+        color: var(--text);
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
       }
       .cat-table {
         width: 100%;
@@ -395,8 +645,11 @@
     </style>
   </head>
   <body>
-    <h1>ts2wasm</h1>
-    <div class="subtitle">ECMAScript conformance &amp; performance report</div>
+    <div class="brand">
+      <img class="brand-logo" id="brand-logo" alt="js2wasm logo" />
+      <h1>js2wasm</h1>
+    </div>
+    <div class="subtitle">ECMAScript conformance (test 262 test suite)</div>
     <div id="app"><div class="no-data">Loading report data…</div></div>
 
     <script>
@@ -404,6 +657,17 @@
       const BENCH_JSON = "results/latest.json";
       const HISTORY_JSON = "results/history.json";
       const RESULTS_JSONL = "results/test262-results.jsonl";
+      const BASE_PATH = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
+
+      function assetPath(path) {
+        if (!BASE_PATH) return `/${path}`;
+        return `${BASE_PATH}/${path}`;
+      }
+
+      const brandLogo = document.getElementById("brand-logo");
+      if (brandLogo) {
+        brandLogo.src = "/jswasmlogo.png";
+      }
 
       // If the report.json is empty/corrupt, rebuild it from the JSONL on the fly
       async function loadReportWithFallback() {
@@ -425,8 +689,7 @@
           const cats = {};
           const skipReasons = {};
           const buildSummary = (counter) => ({
-            total:
-              counter.pass + counter.fail + counter.compile_error + counter.skip,
+            total: counter.pass + counter.fail + counter.compile_error + counter.skip,
             pass: counter.pass,
             fail: counter.fail,
             compile_error: counter.compile_error,
@@ -480,14 +743,9 @@
             official_summary: buildSummary(officialCounts),
             full_summary: buildSummary(counts),
             scope_summaries: Object.fromEntries(
-              Object.entries(scopeSummaries).map(([name, counter]) => [
-                name,
-                buildSummary(counter),
-              ]),
+              Object.entries(scopeSummaries).map(([name, counter]) => [name, buildSummary(counter)]),
             ),
-            categories: Object.values(cats).sort((a, b) =>
-              a.name.localeCompare(b.name),
-            ),
+            categories: Object.values(cats).sort((a, b) => a.name.localeCompare(b.name)),
             skip_reasons: skipReasons,
           };
         } catch {
@@ -512,6 +770,213 @@
             filesByCategory.get(cat).push(entry);
           }
           return filesByCategory;
+        } catch {
+          return null;
+        }
+      }
+
+      function makeCounts() {
+        return { pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0, total: 0 };
+      }
+
+      function classifyEdition(file, scope) {
+        if (!file || scope === "proposal") return null;
+        if (scope === "annex_b" || file.includes("/annexB/")) return "LEGACY";
+
+        const rules = [
+          [
+            "ES2024",
+            [
+              "Object/groupBy",
+              "Map/groupBy",
+              "Promise/withResolvers",
+              "ArrayBuffer/prototype/transfer",
+              "ArrayBuffer/prototype/resizable",
+              "ArrayBuffer/prototype/resize",
+              "resizable-buffer",
+              "growable-sharedarraybuffer",
+            ],
+          ],
+          [
+            "ES2023",
+            ["/toSorted/", "/toReversed/", "/toSpliced/", "/findLast/", "/findLastIndex/", "/with/", "/hashbang/"],
+          ],
+          [
+            "ES2022",
+            [
+              "/at/",
+              "/Object/hasOwn/",
+              "/static-init",
+              "/static-block",
+              "/private-",
+              "/class-fields/",
+              "/Error/cause/",
+              "/match-indices/",
+            ],
+          ],
+          [
+            "ES2021",
+            [
+              "WeakRef",
+              "FinalizationRegistry",
+              "/Promise/any/",
+              "/replaceAll/",
+              "logical-assignment",
+              "numeric-separator-literal",
+            ],
+          ],
+          [
+            "ES2020",
+            [
+              "optional-chaining",
+              "/coalesce/",
+              "dynamic-import",
+              "import.meta",
+              "BigInt",
+              "globalThis",
+              "/matchAll/",
+              "/allSettled/",
+            ],
+          ],
+          [
+            "ES2019",
+            [
+              "optional-catch-binding",
+              "/flat/",
+              "/flatMap/",
+              "/fromEntries/",
+              "/trimStart/",
+              "/trimEnd/",
+              "Symbol/prototype/description",
+              "json-superset",
+            ],
+          ],
+          [
+            "ES2018",
+            [
+              "async-generator",
+              "for-await-of",
+              "async-iteration",
+              "regexp-dotall",
+              "lookbehind",
+              "named-groups",
+              "/Promise/prototype/finally/",
+              "object-rest",
+              "object-spread",
+            ],
+          ],
+          [
+            "ES2017",
+            [
+              "async-function",
+              "SharedArrayBuffer",
+              "/Atomics/",
+              "/Object/values/",
+              "/Object/entries/",
+              "/padStart/",
+              "/padEnd/",
+            ],
+          ],
+          ["ES2016", ["/includes/", "exponentiation"]],
+          [
+            "ES2015",
+            [
+              "block-scope",
+              "computed-property-names",
+              "rest-parameters",
+              "/module-code/",
+              "/import/",
+              "/export/",
+              "/class/",
+              "template-literal",
+              "for-of",
+              "destructuring",
+              "Map/",
+              "Set/",
+              "WeakMap/",
+              "WeakSet/",
+              "Promise/",
+              "Proxy/",
+              "Reflect/",
+              "Symbol/",
+              "TypedArray",
+              "ArrayBuffer",
+              "DataView",
+              "Generator",
+              "arrow-function",
+              "new.target",
+              "/super/",
+            ],
+          ],
+          [
+            "ES5",
+            [
+              "/strict-mode/",
+              "/JSON/",
+              "/Object/keys/",
+              "/Object/create/",
+              "/Object/defineProperty/",
+              "/Object/getOwnPropertyDescriptor/",
+              "/Object/preventExtensions/",
+              "/Object/seal/",
+              "/Object/freeze/",
+              "/Array/isArray/",
+              "/String/prototype/trim/",
+              "/Date/prototype/toISOString/",
+              "/Function/prototype/bind/",
+              "getter",
+              "reserved-words",
+              "property-definitions",
+            ],
+          ],
+        ];
+
+        for (const [edition, patterns] of rules) {
+          if (patterns.some((pattern) => file.includes(pattern))) return edition;
+        }
+
+        return "ES3";
+      }
+
+      async function loadEditionSummaries() {
+        try {
+          const resp = await fetch(RESULTS_JSONL);
+          if (!resp.ok) return null;
+          const text = await resp.text();
+          const byEdition = new Map();
+          for (const line of text.split("\n")) {
+            if (!line.trim()) continue;
+            const entry = JSON.parse(line);
+            if (entry.scope_official === false || entry.scope === "proposal") continue;
+            const edition = classifyEdition(entry.file, entry.scope);
+            if (!edition) continue;
+            if (!byEdition.has(edition)) byEdition.set(edition, makeCounts());
+            const counts = byEdition.get(edition);
+            counts.total++;
+            counts[entry.status] = (counts[entry.status] || 0) + 1;
+          }
+          const order = [
+            "LEGACY",
+            "ES3",
+            "ES5",
+            "ES2015",
+            "ES2016",
+            "ES2017",
+            "ES2018",
+            "ES2019",
+            "ES2020",
+            "ES2021",
+            "ES2022",
+            "ES2023",
+            "ES2024",
+          ];
+          return order
+            .filter((edition) => byEdition.has(edition))
+            .map((edition) => ({
+              edition,
+              ...byEdition.get(edition),
+              rate: pct(byEdition.get(edition).pass, byEdition.get(edition).total),
+            }));
         } catch {
           return null;
         }
@@ -565,6 +1030,87 @@
         return cat;
       }
 
+      function renderEditionCoverage(rows, container) {
+        if (!rows || rows.length === 0) return;
+        container.appendChild(el("div", { className: "label" }, "ECMAScript Editions"));
+        const weights = {
+          LEGACY: 4,
+          ES3: 10,
+          ES5: 6,
+          ES2015: 1,
+          ES2016: 1,
+          ES2017: 1,
+          ES2018: 1,
+          ES2019: 1,
+          ES2020: 1,
+          ES2021: 1,
+          ES2022: 1,
+          ES2023: 1,
+          ES2024: 1,
+        };
+        const track = el("div", { className: "edition-track" });
+        const timeline = el("div", { className: "edition-timeline" });
+        const scale = el("div", { className: "edition-scale" });
+        const legend = el("div", { className: "edition-legend-grid" });
+        const scaleLabelFor = (edition) => (/^ES20\d{2}$/.test(edition) ? edition.slice(2) : edition);
+        const totalWeight = rows.reduce((sum, row) => sum + (weights[row.edition] || 1), 0);
+        let cumulativeWeight = 0;
+        rows.forEach((row, index) => {
+          const weight = String(weights[row.edition] || 1);
+          const numericWeight = weights[row.edition] || 1;
+          const segment = el("div", { className: "edition-segment" });
+          segment.style.flex = weight;
+          segment.style.setProperty("--segment-fill", `${row.rate}%`);
+          timeline.appendChild(segment);
+
+          cumulativeWeight += numericWeight;
+          const marker = el(
+            "div",
+            {
+              className: "edition-scale-marker " + (index % 2 === 0 ? "below" : "above"),
+              style: {
+                left: `${(cumulativeWeight / totalWeight) * 100}%`,
+              },
+            },
+            el("div", { className: "edition-scale-line" }),
+            el("div", { className: "edition-scale-label" }, scaleLabelFor(row.edition)),
+          );
+          scale.appendChild(marker);
+
+          legend.appendChild(
+            el(
+              "div",
+              { className: "edition-legend-item" },
+              el("div", { className: "edition-legend-name" }, row.edition),
+              el("div", { className: "edition-legend-rate" }, `${row.rate}%`),
+              el(
+                "div",
+                { className: "edition-legend-ratio" },
+                `${row.pass.toLocaleString()} / ${row.total.toLocaleString()}`,
+              ),
+            ),
+          );
+        });
+        track.appendChild(timeline);
+        track.appendChild(scale);
+        container.appendChild(track);
+        container.appendChild(legend);
+      }
+
+      function isProposalSkipReason(reason) {
+        if (!reason) return false;
+        const normalized = String(reason).toLowerCase();
+        return (
+          normalized.includes("proposal") ||
+          normalized.includes("temporal") ||
+          normalized.includes("import defer") ||
+          normalized.includes("source phase imports") ||
+          normalized.includes("set methods") ||
+          normalized.includes("map/weakmap upsert") ||
+          normalized.includes("staging")
+        );
+      }
+
       function escapeHtml(str) {
         if (typeof str !== "string") return str;
         return str
@@ -596,15 +1142,11 @@
           (errText.match(/assert #\d+ at L\d+:\s*(.+)/) ||
             errText.match(/assert #\d+:\s*(.+)/) ||
             errText.match(/first assert:\s*(.+)/));
-        const searchText = assertMatch
-          ? assertMatch[1].trim().substring(0, 60)
-          : null;
+        const searchText = assertMatch ? assertMatch[1].trim().substring(0, 60) : null;
         // Line numbers from errors refer to the WRAPPED source (preamble + test body).
         // The preamble is ~25-35 lines, so subtract an estimate to get the original line.
         const rawLineNo = lineMatch ? parseInt(lineMatch[1], 10) : 0;
-        const normalized = filePath.startsWith("test/")
-          ? filePath
-          : "test/" + filePath;
+        const normalized = filePath.startsWith("test/") ? filePath : "test/" + filePath;
 
         if (!rawLineNo && !searchText) return placeholder;
 
@@ -651,12 +1193,7 @@
           const cached = _srcCache.get(job.normalized);
           if (cached !== undefined) {
             if (cached) {
-              const ln = findBestLine(
-                cached,
-                job.rawLineNo,
-                job.errText,
-                job.searchText,
-              );
+              const ln = findBestLine(cached, job.rawLineNo, job.errText, job.searchText);
               if (ln) renderSrcContext(cached, ln, job.placeholder);
             }
             continue;
@@ -669,12 +1206,7 @@
             })
             .then((t) => {
               _srcCache.set(job.normalized, t);
-              const ln = findBestLine(
-                t,
-                job.rawLineNo,
-                job.errText,
-                job.searchText,
-              );
+              const ln = findBestLine(t, job.rawLineNo, job.errText, job.searchText);
               if (ln) renderSrcContext(t, ln, job.placeholder);
             })
             .catch(() => {
@@ -745,8 +1277,7 @@
         const e = document.createElement(tag);
         if (attrs)
           for (const [k, v] of Object.entries(attrs)) {
-            if (k === "style" && typeof v === "object")
-              Object.assign(e.style, v);
+            if (k === "style" && typeof v === "object") Object.assign(e.style, v);
             else if (k === "className") e.className = v;
             else e.setAttribute(k, v);
           }
@@ -786,12 +1317,7 @@
             className: "legend-dot",
             style: { background: color },
           });
-          const item = el(
-            "div",
-            { className: "legend-item" },
-            dot,
-            " " + label,
-          );
+          const item = el("div", { className: "legend-item" }, dot, " " + label);
           legend.appendChild(item);
         }
         return legend;
@@ -800,13 +1326,108 @@
       function makeCard(label, value, colorVar, subtext) {
         const card = el("div", { className: "card" });
         card.appendChild(el("div", { className: "label" }, label));
-        const valEl = el(
-          "div",
-          { className: "value", style: { color: colorVar || "inherit" } },
-          String(value),
-        );
+        const valEl = el("div", { className: "value", style: { color: colorVar || "inherit" } }, String(value));
         card.appendChild(valEl);
         if (subtext) card.appendChild(el("div", { className: "pct" }, subtext));
+        return card;
+      }
+
+      function makeGaugeCard(pass, total, percent) {
+        const card = el("div", { className: "gauge-card" });
+        const totalSafe = Math.max(total, 1);
+        const passDeg = (pass / totalSafe) * 360;
+        const failCount = window.__reportSummaryFail || 0;
+        const errorCount = window.__reportSummaryError || 0;
+        const skipCount = window.__reportSummarySkip || 0;
+        const failDeg = passDeg + (failCount / totalSafe) * 360;
+        const errorDeg = failDeg + (errorCount / totalSafe) * 360;
+        card.style.setProperty("--gauge-pass-end", `${passDeg}deg`);
+        card.style.setProperty("--gauge-fail-end", `${failDeg}deg`);
+        card.style.setProperty("--gauge-error-end", `${errorDeg}deg`);
+
+        const centerX = 190;
+        const centerY = 193;
+        const orbitPoint = (angleFromTop, radius) => {
+          const rad = ((angleFromTop - 90) * Math.PI) / 180;
+          return {
+            x: centerX + Math.cos(rad) * radius,
+            y: centerY + Math.sin(rad) * radius,
+            rad,
+          };
+        };
+        const makeOrbitStat = (className, value, label, color, angleFromTop, labelRadius) => {
+          const labelPoint = orbitPoint(angleFromTop, labelRadius);
+          const lineStart = orbitPoint(angleFromTop, 126);
+          const dx = labelPoint.x - lineStart.x;
+          const dy = labelPoint.y - lineStart.y;
+          const lineLength = Math.max(Math.sqrt(dx * dx + dy * dy) - 34, 0);
+          return [
+            el("div", {
+              className: "orbit-connector",
+              style: {
+                left: `${lineStart.x}px`,
+                top: `${lineStart.y}px`,
+                width: `${lineLength}px`,
+                transform: `rotate(${angleFromTop - 90}deg)`,
+              },
+            }),
+            el(
+              "div",
+              {
+                className: `orbit-stat ${className}`,
+                style: {
+                  left: `${labelPoint.x}px`,
+                  top: `${labelPoint.y}px`,
+                },
+              },
+              el("div", { className: "orbit-value", style: { color } }, value),
+              el("div", { className: "orbit-label" }, label),
+            ),
+          ];
+        };
+
+        const gauge = el(
+          "div",
+          { className: "gauge-orbit" },
+          ...makeOrbitStat("pass", pass.toLocaleString(), "Passed", "var(--pass)", passDeg / 2, 184),
+          ...makeOrbitStat("failed", failCount.toLocaleString(), "Failed", "var(--fail)", (passDeg + failDeg) / 2, 194),
+          ...makeOrbitStat(
+            "error",
+            errorCount.toLocaleString(),
+            "Compile Errors",
+            "var(--error)",
+            (failDeg + errorDeg) / 2,
+            180,
+          ),
+          ...makeOrbitStat(
+            "unsupported",
+            skipCount.toLocaleString(),
+            "Unsupported",
+            "var(--text-muted)",
+            (errorDeg + 360) / 2,
+            214,
+          ),
+          el(
+            "div",
+            { className: "gauge-core" },
+            el(
+              "div",
+              { className: "gauge-wrap" },
+              el(
+                "div",
+                { className: "gauge-center" },
+                el("div", { className: "gauge-value", style: { color: "var(--pass)" } }, percent.toFixed(1) + "%"),
+                el(
+                  "div",
+                  { className: "gauge-caption" },
+                  el("div", { className: "gauge-caption-main" }, "ECMAScript"),
+                  el("div", { className: "gauge-caption-sub" }, "conformance"),
+                ),
+              ),
+            ),
+          ),
+        );
+        card.appendChild(gauge);
         return card;
       }
 
@@ -835,9 +1456,7 @@
             return;
           }
           const files = map.get(catName) || [];
-          const filtered = statusFilter
-            ? files.filter((f) => f.status === statusFilter)
-            : files;
+          const filtered = statusFilter ? files.filter((f) => f.status === statusFilter) : files;
           if (filtered.length === 0) {
             content.textContent = "No matching files.";
             return;
@@ -845,9 +1464,7 @@
           content.textContent = "";
           // Sort: compile_error first, then fail, then pass
           const order = { compile_error: 0, fail: 1, pass: 2, skip: 3 };
-          filtered.sort(
-            (a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4),
-          );
+          filtered.sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4));
           for (const f of filtered) {
             const fname = f.file.replace("test/", "");
             const safeFname = escapeHtml(fname);
@@ -864,16 +1481,10 @@
               el(
                 "span",
                 { className: statusCls, style: { flexShrink: "0" } },
-                f.status === "pass"
-                  ? "\u2713"
-                  : f.status === "fail"
-                    ? "\u2717"
-                    : "\u26A0",
+                f.status === "pass" ? "\u2713" : f.status === "fail" ? "\u2717" : "\u26A0",
               ),
             );
-            hdr.appendChild(
-              el("span", { className: "detail-fname" }, safeFname),
-            );
+            hdr.appendChild(el("span", { className: "detail-fname" }, safeFname));
             fileEl.appendChild(hdr);
             if (f.error) {
               const errDiv = el("div", { className: "detail-err" }, f.error);
@@ -887,94 +1498,54 @@
 
       function renderConformance(data, container) {
         const s = data.summary;
-        const full = data.full_summary || data.summary;
-        const passRate = pct(s.pass, s.pass + s.fail);
+        const passRate = pct(s.pass, s.total);
+        window.__reportSummaryFail = s.fail;
+        window.__reportSummaryError = s.compile_error;
+        window.__reportSummarySkip = s.skip;
 
-        container.appendChild(el("h2", null, "Test262 Conformance"));
-
-        // --- Timestamp ---
+        let summaryStamp = null;
         if (data.timestamp) {
-          container.appendChild(
-            el("div", { className: "timestamp", style: "margin-bottom:16px" },
-              "Last run: " + new Date(data.timestamp).toLocaleString()),
-          );
+          const dt = new Date(data.timestamp);
+          const stamp = `${dt.toLocaleDateString("de-DE", { day: "numeric", month: "numeric", year: "2-digit" })}, ${dt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`;
+          summaryStamp = el("div", { className: "summary-meta" }, el("div", { className: "timestamp" }, stamp));
         }
 
-        // --- Summary cards (clickable as status filters) ---
         const summary = el("div", { className: "summary" });
-
-        const totalCard = makeCard(
-          "Official Scope",
-          s.total.toLocaleString(),
-          undefined,
-          "standard + Annex B, no proposals",
-        );
-        summary.appendChild(totalCard);
-
-        if (full && full.total !== s.total) {
-          summary.appendChild(
-            makeCard(
-              "Full Suite",
-              full.total.toLocaleString(),
-              undefined,
-              "including proposals",
-            ),
-          );
-        }
-
-        const statusCards = {
-          pass: makeCard(
-            "Passed",
-            s.pass,
-            "var(--pass)",
-            passRate + "% of compilable",
-          ),
-          fail: makeCard("Failed", s.fail, s.fail ? "var(--fail)" : "inherit"),
-          compile_error: makeCard(
-            "Compile Errors",
-            s.compile_error,
-            "var(--error)",
-          ),
-          skip: makeCard(
-            "Skipped",
-            s.skip.toLocaleString(),
-            "var(--text-muted)",
-            "unsupported features",
-          ),
-        };
+        const gaugeCard = makeGaugeCard(s.pass, s.total, passRate);
+        summary.appendChild(gaugeCard);
+        if (summaryStamp) summary.appendChild(summaryStamp);
 
         // Stale results indicator
         if (s.stale > 0) {
-          const staleCard = makeCard(
-            "Stale",
-            s.stale.toLocaleString(),
-            "var(--text-muted)",
-            "from previous runs",
-          );
+          const staleCard = makeCard("Stale", s.stale.toLocaleString(), "var(--text-muted)", "from previous runs");
           staleCard.style.borderColor = "var(--error)";
           staleCard.style.borderStyle = "dashed";
           summary.appendChild(staleCard);
         }
 
-        let activeStatusFilter = null;
+        const editionSection = el("div", {
+          className: "edition-timeline-section",
+        });
+
+        loadEditionSummaries().then((rows) => {
+          editionSection.innerHTML = "";
+          if (!rows || rows.length === 0) {
+            editionSection.appendChild(el("div", { className: "pct" }, "No edition data available."));
+            return;
+          }
+          renderEditionCoverage(rows, editionSection);
+        });
 
         function applyFilters() {
           const query = searchInput.value.toLowerCase().trim();
-          // Remove any open detail rows
           tbody.querySelectorAll(".detail-row").forEach((r) => r.remove());
 
           for (const [group, { groupRow, catRows }] of rowsByGroup) {
             let groupVisible = false;
             for (const { row, cat } of catRows) {
               const nameMatch =
-                !query ||
-                cat.name.toLowerCase().includes(query) ||
-                shortName(cat.name).toLowerCase().includes(query);
-              let statusMatch = true;
-              if (activeStatusFilter) {
-                statusMatch = cat[activeStatusFilter] > 0;
-              }
-              const visible = nameMatch && statusMatch;
+                !query || cat.name.toLowerCase().includes(query) || shortName(cat.name).toLowerCase().includes(query);
+              const visible = nameMatch;
               row.style.display = visible ? "" : "none";
               if (visible) groupVisible = true;
             }
@@ -982,238 +1553,45 @@
           }
         }
 
-        // Detail panel for showing all files matching a status filter
-        const detailPanel = el("div", {
-          id: "status-detail-panel",
-          style: { display: "none", marginBottom: "1.5rem" },
-        });
-
-        for (const [status, card] of Object.entries(statusCards)) {
-          card.classList.add("filter-card");
-          card.addEventListener("click", () => {
-            if (activeStatusFilter === status) {
-              activeStatusFilter = null;
-              card.classList.remove("active");
-              detailPanel.style.display = "none";
-            } else {
-              for (const c of Object.values(statusCards))
-                c.classList.remove("active");
-              activeStatusFilter = status;
-              card.classList.add("active");
-              showStatusDetail(status);
-            }
-            applyFilters();
-          });
-          summary.appendChild(card);
-        }
-
-        async function showStatusDetail(status) {
-          detailPanel.style.display = "block";
-          detailPanel.innerHTML = "";
-          const header = el("div", {
-            style: {
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "0.5rem",
-            },
-          });
-          const statusLabel =
-            status === "compile_error"
-              ? "Compile Errors"
-              : status === "pass"
-                ? "Passed"
-                : status === "fail"
-                  ? "Failed"
-                  : "Skipped";
-          const statusColor =
-            status === "pass"
-              ? "var(--pass)"
-              : status === "fail"
-                ? "var(--fail)"
-                : status === "compile_error"
-                  ? "var(--error)"
-                  : "var(--text-muted)";
-          header.appendChild(
-            el(
-              "h3",
-              { style: { color: statusColor, margin: "0" } },
-              statusLabel + " — All Files",
-            ),
-          );
-          const closeBtn = el(
-            "span",
-            {
-              className: "clickable",
-              style: { color: "var(--text-muted)", fontSize: "0.875rem" },
-            },
-            "[close]",
-          );
-          closeBtn.addEventListener("click", () => {
-            activeStatusFilter = null;
-            for (const c of Object.values(statusCards))
-              c.classList.remove("active");
-            detailPanel.style.display = "none";
-            applyFilters();
-          });
-          header.appendChild(closeBtn);
-          detailPanel.appendChild(header);
-
-          const searchRow = el("div", { style: { marginBottom: "0.5rem" } });
-          const detailSearch = el("input", {
-            className: "search-box",
-            type: "text",
-            placeholder: "Filter files...",
-            style: { width: "100%" },
-          });
-          searchRow.appendChild(detailSearch);
-          detailPanel.appendChild(searchRow);
-
-          const content = el("div", {
-            className: "detail-content",
-            style: { maxHeight: "500px" },
-          });
-          content.textContent = "Loading file data...";
-          detailPanel.appendChild(content);
-
-          const map = await loadFileResults();
-          if (!map) {
-            content.textContent = "No file-level data available.";
-            return;
-          }
-
-          const allFiles = [];
-          for (const [cat, files] of map) {
-            for (const f of files) {
-              if (f.status === status) allFiles.push(f);
-            }
-          }
-          allFiles.sort((a, b) => {
-            if (a.error && !b.error) return -1;
-            if (!a.error && b.error) return 1;
-            return (a.file || "").localeCompare(b.file || "");
-          });
-
-          function renderFiles(filter) {
-            content.textContent = "";
-            const q = (filter || "").toLowerCase();
-            let shown = 0;
-            for (const f of allFiles) {
-              const fname = (f.file || "").replace("test/", "");
-              const err = f.error || f.reason || "";
-              if (
-                q &&
-                !fname.toLowerCase().includes(q) &&
-                !err.toLowerCase().includes(q)
-              )
-                continue;
-              const fileEl = el("div", { className: "detail-file" });
-              const statusCls =
-                f.status === "pass"
-                  ? "detail-status-pass"
-                  : f.status === "fail"
-                    ? "detail-status-fail"
-                    : "detail-status-err";
-              const icon =
-                f.status === "pass"
-                  ? "\u2713"
-                  : f.status === "fail"
-                    ? "\u2717"
-                    : f.status === "skip"
-                      ? "\u23ED"
-                      : "\u26A0";
-              const headerRow = el("div", { className: "detail-file-header" });
-              headerRow.appendChild(
-                el(
-                  "span",
-                  { className: statusCls, style: { flexShrink: "0" } },
-                  icon,
-                ),
-              );
-              headerRow.appendChild(
-                el("span", { className: "detail-fname" }, fname),
-              );
-              fileEl.appendChild(headerRow);
-              if (err) {
-                const errDiv = el("div", { className: "detail-err" }, err);
-                fileEl.appendChild(errDiv);
-                fileEl.appendChild(
-                  fetchSourceLines(f.file || "test/" + fname, err),
-                );
-              }
-              content.appendChild(fileEl);
-              shown++;
-              if (shown >= 2000) {
-                content.appendChild(
-                  el(
-                    "div",
-                    {
-                      style: {
-                        color: "var(--text-muted)",
-                        padding: "0.5rem 0",
-                      },
-                    },
-                    "... " +
-                      (allFiles.length - shown) +
-                      " more files (refine search to see all)",
-                  ),
-                );
-                break;
-              }
-            }
-            if (shown === 0) content.textContent = "No matching files.";
-          }
-
-          renderFiles("");
-          detailSearch.addEventListener("input", () =>
-            renderFiles(detailSearch.value),
-          );
-        }
-
         container.appendChild(summary);
-        container.appendChild(detailPanel);
-
-        container.appendChild(
-          makeBar(
-            pct(s.pass, s.total),
-            pct(s.fail, s.total),
-            pct(s.compile_error, s.total),
-            "overall-bar",
-          ),
-        );
-
-        container.appendChild(
-          makeLegend([
-            ["Pass", "var(--pass)"],
-            ["Fail", "var(--fail)"],
-            ["Compile Error", "var(--error)"],
-            ["Skip", "var(--bar-bg)"],
-          ]),
-        );
+        container.appendChild(editionSection);
 
         // --- Unsupported features (skip reasons) ---
         if (data.skip_reasons) {
-          const skipEntries = Object.entries(data.skip_reasons).sort((a, b) => b[1] - a[1]);
+          const skipEntries = Object.entries(data.skip_reasons)
+            .filter(([reason]) => !isProposalSkipReason(reason))
+            .sort((a, b) => b[1] - a[1]);
           if (skipEntries.length > 0) {
-            const skipSection = el("div", { className: "section" });
+            const skipSection = el("div", {
+              style: { marginBottom: "24px" },
+            });
             skipSection.appendChild(el("h3", null, "Unsupported Features (Skipped Tests)"));
-            const skipTable = el("table");
+            skipSection.appendChild(
+              el(
+                "div",
+                {
+                  className: "pct",
+                  style: { marginBottom: "0.75rem" },
+                },
+                "Non-proposal skip reasons in the official scope.",
+              ),
+            );
+            const skipTable = el("table", { className: "cat-table" });
             const skipHead = el("thead");
             const skipHR = el("tr");
             skipHR.appendChild(el("th", null, "Feature / Reason"));
-            skipHR.appendChild(el("th", { style: "text-align:right" }, "Tests Skipped"));
+            skipHR.appendChild(el("th", { className: "num" }, "Tests Skipped"));
             skipHead.appendChild(skipHR);
             skipTable.appendChild(skipHead);
             const skipBody = el("tbody");
             for (const [reason, count] of skipEntries) {
               const row = el("tr");
               row.appendChild(el("td", null, reason));
-              row.appendChild(el("td", { style: "text-align:right; font-variant-numeric:tabular-nums" }, count.toLocaleString()));
+              row.appendChild(el("td", { className: "num" }, count.toLocaleString()));
               skipBody.appendChild(row);
             }
             skipTable.appendChild(skipBody);
             skipSection.appendChild(skipTable);
-            skipSection.style.marginBottom = "24px";
             container.appendChild(skipSection);
           }
         }
@@ -1248,9 +1626,7 @@
           ["Rate", "num"],
           ["Distribution", ""],
         ]) {
-          headerRow.appendChild(
-            el("th", cls ? { className: cls } : null, text),
-          );
+          headerRow.appendChild(el("th", cls ? { className: cls } : null, text));
         }
         thead.appendChild(headerRow);
         table.appendChild(thead);
@@ -1270,19 +1646,10 @@
 
         for (const [group, cats] of groups) {
           const gPass = cats.reduce((a, c) => a + c.pass, 0);
-          const gTotal = cats.reduce(
-            (a, c) => a + c.pass + c.fail + c.skip + c.compile_error,
-            0,
-          );
+          const gTotal = cats.reduce((a, c) => a + c.pass + c.fail + c.skip + c.compile_error, 0);
 
           const groupRow = el("tr", { className: "group-header" });
-          groupRow.appendChild(
-            el(
-              "td",
-              { colspan: "7" },
-              group + " (" + gPass + " pass / " + gTotal + " total)",
-            ),
-          );
+          groupRow.appendChild(el("td", { colspan: "7" }, group + " (" + gPass + " pass / " + gTotal + " total)"));
           tbody.appendChild(groupRow);
 
           const catRows = [];
@@ -1293,14 +1660,8 @@
             const catPct = pct(cat.pass, compilable);
 
             const row = el("tr");
-            const nameCell = el(
-              "td",
-              { className: "cat-name clickable" },
-              shortName(cat.name),
-            );
-            nameCell.addEventListener("click", () =>
-              toggleDetail(row, cat.name, null),
-            );
+            const nameCell = el("td", { className: "cat-name clickable" }, shortName(cat.name));
+            nameCell.addEventListener("click", () => toggleDetail(row, cat.name, null));
             row.appendChild(nameCell);
 
             const passCell = el(
@@ -1340,9 +1701,7 @@
               {
                 className: "num" + (cat.compile_error ? " clickable" : ""),
                 style: {
-                  color: cat.compile_error
-                    ? "var(--error)"
-                    : "var(--text-muted)",
+                  color: cat.compile_error ? "var(--error)" : "var(--text-muted)",
                 },
               },
               String(cat.compile_error),
@@ -1354,29 +1713,11 @@
               });
             row.appendChild(errCell);
 
-            row.appendChild(
-              el(
-                "td",
-                { className: "num", style: { color: "var(--text-muted)" } },
-                String(cat.skip),
-              ),
-            );
-            row.appendChild(
-              el(
-                "td",
-                { className: "num" },
-                compilable > 0 ? catPct + "%" : "\u2014",
-              ),
-            );
+            row.appendChild(el("td", { className: "num", style: { color: "var(--text-muted)" } }, String(cat.skip)));
+            row.appendChild(el("td", { className: "num" }, compilable > 0 ? catPct + "%" : "\u2014"));
 
             const barCell = el("td", { style: { width: "120px" } });
-            barCell.appendChild(
-              makeBar(
-                pct(cat.pass, total),
-                pct(cat.fail, total),
-                pct(cat.compile_error, total),
-              ),
-            );
+            barCell.appendChild(makeBar(pct(cat.pass, total), pct(cat.fail, total), pct(cat.compile_error, total)));
             row.appendChild(barCell);
 
             tbody.appendChild(row);
@@ -1401,13 +1742,7 @@
           const map = await loadFileResults();
           loadingEl.remove();
           if (!map) {
-            container.appendChild(
-              el(
-                "div",
-                { className: "no-data" },
-                "No file-level data for error patterns",
-              ),
-            );
+            container.appendChild(el("div", { className: "no-data" }, "No file-level data for error patterns"));
             return;
           }
 
@@ -1429,19 +1764,15 @@
               if (semi > 0) key = key.substring(0, semi).trim();
               if (key.length > 120) key = key.substring(0, 120) + "...";
 
-              if (!patterns.has(key))
-                patterns.set(key, { count: 0, status: f.status, files: [] });
+              if (!patterns.has(key)) patterns.set(key, { count: 0, status: f.status, files: [] });
               const p = patterns.get(key);
               p.count++;
-              if (p.files.length < 50)
-                p.files.push({ file: f.file, error: err });
+              if (p.files.length < 50) p.files.push({ file: f.file, error: err });
             }
           }
 
           // Sort by count descending
-          const sorted = [...patterns.entries()].sort(
-            (a, b) => b[1].count - a[1].count,
-          );
+          const sorted = [...patterns.entries()].sort((a, b) => b[1].count - a[1].count);
           if (sorted.length === 0) return;
 
           container.appendChild(el("h2", null, "Error Patterns"));
@@ -1449,10 +1780,7 @@
             el(
               "div",
               { className: "subtitle" },
-              sorted.length +
-                " distinct patterns across " +
-                sorted.reduce((a, [, v]) => a + v.count, 0) +
-                " errors",
+              sorted.length + " distinct patterns across " + sorted.reduce((a, [, v]) => a + v.count, 0) + " errors",
             ),
           );
 
@@ -1478,10 +1806,7 @@
               "span",
               {
                 style: {
-                  background:
-                    data.status === "compile_error"
-                      ? "var(--error)"
-                      : "var(--fail)",
+                  background: data.status === "compile_error" ? "var(--error)" : "var(--fail)",
                   color: "var(--bg)",
                   fontWeight: "700",
                   fontSize: "0.75rem",
@@ -1539,9 +1864,7 @@
               const fhdr = el("div", { className: "detail-file-header" });
               const lineMatch = f.error.match(/L(\d+):(\d+)\s/);
               const lineInfo = lineMatch ? ":" + lineMatch[1] : "";
-              fhdr.appendChild(
-                el("span", { className: "detail-fname" }, fname + lineInfo),
-              );
+              fhdr.appendChild(el("span", { className: "detail-fname" }, fname + lineInfo));
               fileEntry.appendChild(fhdr);
 
               // Source context placeholder
@@ -1627,18 +1950,12 @@
         };
 
         for (const [group, benchmarks] of benchGroups) {
-          container.appendChild(
-            el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)),
-          );
+          container.appendChild(el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)));
           const grid = el("div", { className: "bench-grid" });
 
           for (const { name, strats } of benchmarks) {
             const card = el("div", { className: "bench-card" });
-            const nameEl = el(
-              "div",
-              { className: "bench-name" },
-              name.split("/")[1],
-            );
+            const nameEl = el("div", { className: "bench-name" }, name.split("/")[1]);
 
             // Speedup info
             const js = strats["js"];
@@ -1665,8 +1982,7 @@
             card.appendChild(nameEl);
 
             let localMax = 0;
-            for (const b of Object.values(strats))
-              if (b.medianMs > localMax) localMax = b.medianMs;
+            for (const b of Object.values(strats)) if (b.medianMs > localMax) localMax = b.medianMs;
             if (localMax === 0) localMax = 1;
 
             for (const strategy of ["js", "host-call", "gc-native"]) {
@@ -1675,9 +1991,7 @@
               const barW = Math.max(1, (b.medianMs / localMax) * 100);
 
               const row = el("div", { className: "bench-row" });
-              row.appendChild(
-                el("span", { className: "bench-label" }, strategy),
-              );
+              row.appendChild(el("span", { className: "bench-label" }, strategy));
 
               const barBg = el("div", { className: "bench-bar-bg" });
               barBg.appendChild(
@@ -1691,9 +2005,7 @@
               );
               row.appendChild(barBg);
 
-              row.appendChild(
-                el("span", { className: "bench-time" }, fmt(b.medianMs)),
-              );
+              row.appendChild(el("span", { className: "bench-time" }, fmt(b.medianMs)));
               card.appendChild(row);
             }
 
@@ -1714,13 +2026,7 @@
         if (!history || history.length < 2) return;
 
         container.appendChild(el("h2", null, "Performance Trends"));
-        container.appendChild(
-          el(
-            "div",
-            { className: "subtitle" },
-            history.length + " benchmark runs",
-          ),
-        );
+        container.appendChild(el("div", { className: "subtitle" }, history.length + " benchmark runs"));
         container.appendChild(
           makeLegend([
             ["JavaScript", STRAT_COLORS.js],
@@ -1744,9 +2050,7 @@
         }
 
         for (const [group, names] of benchGroups) {
-          container.appendChild(
-            el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)),
-          );
+          container.appendChild(el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)));
           const grid = el("div", { className: "trend-grid" });
 
           for (const name of names) {
@@ -1795,11 +2099,8 @@
             globalMin = Math.max(0, globalMin - range * 0.1);
             globalMax = globalMax + range * 0.1;
 
-            const xScale = (idx) =>
-              PAD + (idx / (history.length - 1)) * (W - 2 * PAD);
-            const yScale = (ms) =>
-              PAD +
-              (1 - (ms - globalMin) / (globalMax - globalMin)) * (H - 2 * PAD);
+            const xScale = (idx) => PAD + (idx / (history.length - 1)) * (W - 2 * PAD);
+            const yScale = (ms) => PAD + (1 - (ms - globalMin) / (globalMax - globalMin)) * (H - 2 * PAD);
 
             // Draw lines for each strategy
             for (const [strat, pts] of Object.entries(stratData)) {
@@ -1836,11 +2137,7 @@
             card.appendChild(svg);
 
             // Show delta for the primary strategy (host-call preferred, then gc-native, then js)
-            const primaryStrat = stratData["host-call"]
-              ? "host-call"
-              : stratData["gc-native"]
-                ? "gc-native"
-                : "js";
+            const primaryStrat = stratData["host-call"] ? "host-call" : stratData["gc-native"] ? "gc-native" : "js";
             const pts = stratData[primaryStrat];
             if (pts && pts.length >= 2) {
               const first = pts[0].ms;
@@ -1849,24 +2146,13 @@
               const meta = el("div", { className: "trend-meta" });
 
               const firstDate = history[pts[0].idx].timestamp.split("T")[0];
-              const lastDate =
-                history[pts[pts.length - 1].idx].timestamp.split("T")[0];
-              meta.appendChild(
-                el("span", null, firstDate + " \u2192 " + lastDate),
-              );
+              const lastDate = history[pts[pts.length - 1].idx].timestamp.split("T")[0];
+              meta.appendChild(el("span", null, firstDate + " \u2192 " + lastDate));
 
-              const deltaClass =
-                delta < -5 ? "improved" : delta > 5 ? "regressed" : "neutral";
-              const deltaText =
-                delta > 0
-                  ? "+" + delta.toFixed(0) + "%"
-                  : delta.toFixed(0) + "%";
+              const deltaClass = delta < -5 ? "improved" : delta > 5 ? "regressed" : "neutral";
+              const deltaText = delta > 0 ? "+" + delta.toFixed(0) + "%" : delta.toFixed(0) + "%";
               meta.appendChild(
-                el(
-                  "span",
-                  { className: "trend-delta " + deltaClass },
-                  deltaText + " (" + primaryStrat + ")",
-                ),
+                el("span", { className: "trend-delta " + deltaClass }, deltaText + " (" + primaryStrat + ")"),
               );
 
               card.appendChild(meta);
@@ -1891,11 +2177,7 @@
           renderConformance(conformance, app);
         } else {
           app.appendChild(
-            el(
-              "div",
-              { className: "no-data" },
-              "No test262 report found. Run: npx vitest run tests/test262.test.ts",
-            ),
+            el("div", { className: "no-data" }, "No test262 report found. Run: npx vitest run tests/test262.test.ts"),
           );
         }
 

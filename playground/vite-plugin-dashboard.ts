@@ -94,16 +94,15 @@ function loadRuns(): any[] {
   if (!existsSync(runsPath)) return [];
   try {
     const all = JSON.parse(readFileSync(runsPath, "utf-8")) as any[];
-    // Before Mar 20: smaller suite (~23K), keep all runs > 20K
-    // After Mar 19: suite expanded to ~48K, filter out partial/crashed runs (< 90% of max)
-    let maxTotal = 0;
+    // Before Mar 20: smaller suite (~23K), keep all runs > 20K.
+    // After the suite expansion, keep only full conformance runs and exclude
+    // tiny crash artifacts, but do not require totals to stay near the old
+    // proposal-inclusive 48K size because official-scope runs are lower.
     return all.filter((r: any) => {
       const ts = r.timestamp || "";
-      const isEarly = ts < "2026-03-20";
-      if (isEarly) return r.total >= 20000;
-      if (r.total > maxTotal) maxTotal = r.total;
-      return r.total >= maxTotal * 0.9;
-    });
+      if (ts < "2026-03-20") return r.total >= 20000;
+      return r.total >= 40000;
+    }).sort((a: any, b: any) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")));
   } catch {
     return [];
   }
