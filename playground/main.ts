@@ -861,6 +861,9 @@ const t262FilesCache = new Map<string, string[]>();
 let staticT262Files: Record<string, string[]> | null = null;
 let staticT262FileResults: Record<string, T262FileResult[]> | null = null;
 let staticEquivTests: { name: string; source: string }[] | null = null;
+const prefersStaticPlaygroundData =
+  location.protocol === "https:"
+  || (location.hostname !== "localhost" && location.hostname !== "127.0.0.1");
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
@@ -912,9 +915,11 @@ const t262FileResultsCache = new Map<string, T262FileResult[]>();
 
 async function t262LoadReport(): Promise<T262Report | null> {
   if (t262Report) return t262Report;
-  const data =
-    await fetchJson<T262Report | { error: string }>("/api/test262-results")
-    ?? await fetchJson<T262Report>("benchmarks/results/test262-report.json");
+  const data = prefersStaticPlaygroundData
+    ? await fetchJson<T262Report>("benchmarks/results/test262-report.json")
+      ?? await fetchJson<T262Report | { error: string }>("/api/test262-results")
+    : await fetchJson<T262Report | { error: string }>("/api/test262-results")
+      ?? await fetchJson<T262Report>("benchmarks/results/test262-report.json");
   if (!data || "error" in data) return null;
   if (!data.summary || data.summary.total === 0) return null;
   t262Report = data as T262Report;
@@ -923,15 +928,20 @@ async function t262LoadReport(): Promise<T262Report | null> {
 
 async function t262LoadFileResults(category: string): Promise<T262FileResult[]> {
   if (t262FileResultsCache.has(category)) return t262FileResultsCache.get(category)!;
-  const apiData = await fetchJson<T262FileResult[]>(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
-  if (apiData) {
-    t262FileResultsCache.set(category, apiData);
-    return apiData;
+  let data: T262FileResult[] | null = null;
+  if (!prefersStaticPlaygroundData) {
+    data = await fetchJson<T262FileResult[]>(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
   }
-  const staticResults = await loadStaticT262FileResults();
-  const data = staticResults[category] ?? [];
-  t262FileResultsCache.set(category, data);
-  return data;
+  if (!data) {
+    const staticResults = await loadStaticT262FileResults();
+    data = staticResults[category] ?? null;
+  }
+  if (!data && prefersStaticPlaygroundData) {
+    data = await fetchJson<T262FileResult[]>(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
+  }
+  const resolved = data ?? [];
+  t262FileResultsCache.set(category, resolved);
+  return resolved;
 }
 
 function t262GetCategoryStats(catName: string): { pass: number; fail: number; skip: number; compile_error: number } | null {
@@ -962,25 +972,45 @@ let t262Loading = false;
 
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
-  const data =
-    await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")
-    ?? await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json");
+  const data = prefersStaticPlaygroundData
+    ? await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json")
+      ?? await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")
+    : await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")
+      ?? await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json");
   t262Index = data?.categories ?? [];
   return t262Index;
 }
 
 async function t262LoadFiles(category: string): Promise<string[]> {
   if (t262FilesCache.has(category)) return t262FilesCache.get(category)!;
-  const apiData = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
-  const files = apiData ?? (await loadStaticT262Files())[category] ?? [];
-  t262FilesCache.set(category, files);
-  return files;
+  let files: string[] | null = null;
+  if (!prefersStaticPlaygroundData) {
+    files = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
+  }
+  if (!files) {
+    files = (await loadStaticT262Files())[category] ?? null;
+  }
+  if (!files && prefersStaticPlaygroundData) {
+    files = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
+  }
+  const resolved = files ?? [];
+  t262FilesCache.set(category, resolved);
+  return resolved;
 }
 
 async function t262LoadFile(path: string): Promise<string> {
-  const apiData = await fetchText(`/api/test262-file?path=${encodeURIComponent(path)}`);
-  if (apiData !== null) return apiData;
-  return (await fetchText(`test262/test/${path}`)) ?? "";
+  if (!prefersStaticPlaygroundData) {
+    const apiData = await fetchText(`/api/test262-file?path=${encodeURIComponent(path)}`);
+    if (apiData !== null) return apiData;
+  }
+  const normalizedPath = path.startsWith("test/") ? path : `test/${path}`;
+  const staticData = await fetchText(`test262/${normalizedPath}`);
+  if (staticData !== null) return staticData;
+  if (prefersStaticPlaygroundData) {
+    const apiData = await fetchText(`/api/test262-file?path=${encodeURIComponent(path)}`);
+    if (apiData !== null) return apiData;
+  }
+  return "";
 }
 
 interface EquivTest { name: string; index: number; }
@@ -988,21 +1018,34 @@ let equivIndex: EquivTest[] | null = null;
 
 async function loadEquivIndex(): Promise<EquivTest[]> {
   if (equivIndex) return equivIndex;
-  const apiData = await fetchJson<EquivTest[]>("/api/equiv-index");
-  if (apiData) {
-    equivIndex = apiData;
-    return equivIndex;
+  let data: EquivTest[] | null = null;
+  if (!prefersStaticPlaygroundData) {
+    data = await fetchJson<EquivTest[]>("/api/equiv-index");
   }
-  const staticTests = await loadStaticEquivTests();
-  equivIndex = staticTests.map((t, index) => ({ name: t.name, index }));
+  if (!data) {
+    const staticTests = await loadStaticEquivTests();
+    data = staticTests.map((t, index) => ({ name: t.name, index }));
+  }
+  if ((!data || data.length === 0) && prefersStaticPlaygroundData) {
+    data = await fetchJson<EquivTest[]>("/api/equiv-index");
+  }
+  equivIndex = data ?? [];
   return equivIndex;
 }
 
 async function loadEquivSource(idx: number): Promise<string> {
-  const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
-  if (apiData !== null) return apiData;
+  if (!prefersStaticPlaygroundData) {
+    const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
+    if (apiData !== null) return apiData;
+  }
   const staticTests = await loadStaticEquivTests();
-  return staticTests[idx]?.source ?? "";
+  const source = staticTests[idx]?.source;
+  if (source != null) return source;
+  if (prefersStaticPlaygroundData) {
+    const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
+    if (apiData !== null) return apiData;
+  }
+  return "";
 }
 
 function t262FileName(fullPath: string): string {
@@ -2761,4 +2804,6 @@ resetLayoutBtn.addEventListener("click", () => layout.resetLayout());
 
 // Auto-compile and run on page load
 compileOnly();
-runOnly();
+requestAnimationFrame(() => {
+  void runOnly();
+});
