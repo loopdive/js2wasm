@@ -17,6 +17,7 @@ import { join, extname } from "node:path";
 
 const PORT = parseInt(process.argv[2] ?? "8080", 10);
 const ROOT = join(import.meta.dirname ?? __dirname, "..");
+const PUBLIC_ROOT = join(ROOT, "public");
 
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -43,17 +44,19 @@ const server = createServer((req, res) => {
     return;
   }
 
+  const publicFilePath = join(PUBLIC_ROOT, url);
   const filePath = join(ROOT, url);
+  const resolvedPath = existsSync(publicFilePath) ? publicFilePath : filePath;
 
-  if (!existsSync(filePath)) {
+  if (!existsSync(resolvedPath)) {
     res.writeHead(404);
     res.end("Not found: " + url);
     return;
   }
 
   try {
-    const data = readFileSync(filePath);
-    const ext = extname(filePath);
+    const data = readFileSync(resolvedPath);
+    const ext = extname(resolvedPath);
     res.writeHead(200, {
       "Content-Type": MIME[ext] ?? "application/octet-stream",
       "Access-Control-Allow-Origin": "*",

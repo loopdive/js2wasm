@@ -4,6 +4,7 @@ import { dashboardPlugin } from "./vite-plugin-dashboard.js";
 
 export default defineConfig({
   base: "./",
+  publicDir: "../public",
   plugins: [test262Plugin(), dashboardPlugin()],
   server: {
     fs: {

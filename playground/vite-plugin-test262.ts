@@ -2,6 +2,8 @@ import type { Plugin } from "vite";
 import { readdirSync, readFileSync, existsSync, statSync, realpathSync } from "fs";
 import { join, relative, resolve, normalize } from "path";
 
+const projectRoot = resolve(__dirname, "..");
+const publicRoot = join(projectRoot, "public");
 const TEST_CATEGORIES = [
   "built-ins/Math/abs", "built-ins/Math/ceil", "built-ins/Math/floor",
   "built-ins/Math/round", "built-ins/Math/trunc", "built-ins/Math/sign",
@@ -218,7 +220,10 @@ export function test262Plugin(): Plugin {
         // Serve static files from project root (benchmarks/, test262/)
         // MUST return 404 for missing files to prevent vite SPA fallback returning HTML
         if (url.pathname.startsWith("/benchmarks/") || url.pathname.startsWith("/test262/")) {
-          const filePath = normalize(join(projectRoot, url.pathname));
+          const publicPath = normalize(join(publicRoot, url.pathname));
+          const filePath = normalize(
+            existsSync(publicPath) ? publicPath : join(projectRoot, url.pathname),
+          );
           if (!filePath.startsWith(projectRoot)) {
             res.statusCode = 403;
             res.end("Forbidden");
