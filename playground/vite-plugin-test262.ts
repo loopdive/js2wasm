@@ -167,25 +167,29 @@ export function test262Plugin(): Plugin {
 
   function getEquivTests(): { name: string; source: string }[] {
     if (cachedEquivTests) return cachedEquivTests;
-    const testFile = join(projectRoot, "tests", "equivalence.test.ts");
-    if (!existsSync(testFile)) return [];
-    const content = readFileSync(testFile, "utf-8");
     const tests: { name: string; source: string }[] = [];
-    // Match it("name", async () => { ... compileToWasm(`...`) or assertEquivalent(`...`)
+    const testFiles = [
+      join(projectRoot, "tests", "ts-wasm-equivalence.test.ts"),
+      ...collectFiles(join(projectRoot, "tests", "equivalence")).filter((file) => file.endsWith(".test.ts")),
+    ].filter((file, index, all) => existsSync(file) && all.indexOf(file) === index);
+
     const itRegex = /it\("([^"]+)"[\s\S]*?(?:compileToWasm|assertEquivalent)\(\s*`([\s\S]*?)`/g;
-    let match;
-    while ((match = itRegex.exec(content)) !== null) {
-      const name = match[1];
-      let source = match[2];
-      // Dedent: find minimum indentation and remove it
-      const lines = source.split("\n");
-      const nonEmpty = lines.filter(l => l.trim().length > 0);
-      if (nonEmpty.length > 0) {
-        const minIndent = Math.min(...nonEmpty.map(l => l.match(/^(\s*)/)?.[1].length ?? 0));
-        source = lines.map(l => l.slice(minIndent)).join("\n").trim();
+    for (const testFile of testFiles) {
+      const content = readFileSync(testFile, "utf-8");
+      let match;
+      while ((match = itRegex.exec(content)) !== null) {
+        const name = match[1];
+        let source = match[2];
+        const lines = source.split("\n");
+        const nonEmpty = lines.filter((l) => l.trim().length > 0);
+        if (nonEmpty.length > 0) {
+          const minIndent = Math.min(...nonEmpty.map((l) => l.match(/^(\s*)/)?.[1].length ?? 0));
+          source = lines.map((l) => l.slice(minIndent)).join("\n").trim();
+        }
+        tests.push({ name, source });
       }
-      tests.push({ name, source });
     }
+
     cachedEquivTests = tests;
     return tests;
   }
