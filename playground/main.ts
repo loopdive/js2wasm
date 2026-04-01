@@ -6,12 +6,14 @@ import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as ts from "typescript";
 import "./ts-lib-files.js";
-import { compile } from "../src/index.js";
+import { compile, compileMulti } from "../src/index.js";
+import { optimizeBinaryAsync } from "../src/optimize.js";
 import { buildImports, buildStringConstants, instantiateWasm } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
 import { LayoutManager, clearSavedLayout } from "./layout.js";
 import DEFAULT_SOURCE from "./examples/dom/calendar.ts?raw";
+import BENCH_HELPERS_SOURCE from "./examples/benchmarks/helpers.ts?raw";
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -910,6 +912,7 @@ interface T262Report {
   categories: { name: string; pass: number; fail: number; skip: number; compile_error: number }[];
 }
 interface T262FileResult { file: string; status: string; error?: string; }
+type SuiteSummary = T262Report["summary"];
 interface T262TrendRun {
   timestamp: string;
   pass: number;
@@ -996,7 +999,7 @@ function t262PassRateColor(pct: number): string {
   return "#f44336";
 }
 
-function buildT262SummaryHtml(summary: T262Report["summary"]): string {
+function buildSuiteSummaryHtml(summary: SuiteSummary): string {
   const total = summary.total;
   const passP = total > 0 ? (summary.pass / total * 100) : 0;
   const failP = total > 0 ? (summary.fail / total * 100) : 0;
@@ -1021,14 +1024,18 @@ function buildT262SummaryHtml(summary: T262Report["summary"]): string {
   `;
 }
 
+function buildT262SummaryHtml(summary: T262Report["summary"]): string {
+  return buildSuiteSummaryHtml(summary);
+}
+
 function buildEquivSummaryHtml(total: number): string {
-  return `
-    <div class="t262-suite-summary t262-suite-summary-compact">
-      <div class="t262-stats-text">
-        <strong>${total.toLocaleString()}</strong> js2wasm unit tests
-      </div>
-    </div>
-  `;
+  return buildSuiteSummaryHtml({
+    total,
+    pass: total,
+    fail: 0,
+    compile_error: 0,
+    skip: 0,
+  });
 }
 const t262ExpandedCats = new Set<string>();
 let t262Filter = "";
@@ -1149,6 +1156,138 @@ interface T262TreeNode {
   categories: T262CategorySummary[];  // leaf categories at this node
 }
 
+interface BenchmarkExample {
+  name: string;
+  path: string;
+  title: string;
+  description: string;
+  benchmarkFunction: string;
+}
+
+interface BenchmarkSidebarResult {
+  wasmUs: number;
+  jsUs: number;
+  deltaPct: number;
+}
+
+const benchmarkExamples: BenchmarkExample[] = [
+  {
+    name: "fib.ts",
+    path: "examples/benchmarks/fib.ts",
+    title: "fib(30)",
+    description: "Recursive — pure i32/f64 math, no host calls",
+    benchmarkFunction: "bench_fib",
+  },
+  {
+    name: "loop.ts",
+    path: "examples/benchmarks/loop.ts",
+    title: "Loop: sum 1..1M",
+    description: "Tight numeric loop, no allocations",
+    benchmarkFunction: "bench_loop",
+  },
+  {
+    name: "dom.ts",
+    path: "examples/benchmarks/dom.ts",
+    title: "DOM: 100 elements",
+    description: "Host boundary — createElement + appendChild",
+    benchmarkFunction: "bench_dom",
+  },
+  {
+    name: "string.ts",
+    path: "examples/benchmarks/string.ts",
+    title: "String: concat 1k",
+    description: "wasm:js-string concat per iteration",
+    benchmarkFunction: "bench_string",
+  },
+  {
+    name: "array.ts",
+    path: "examples/benchmarks/array.ts",
+    title: "Array: fill+sum 10k",
+    description: "Wasm GC array — push / get loop",
+    benchmarkFunction: "bench_array",
+  },
+  {
+    name: "style.ts",
+    path: "examples/benchmarks/style.ts",
+    title: "Style: 100 updates",
+    description: "Host boundary — style.background per iteration",
+    benchmarkFunction: "bench_style",
+  },
+];
+const benchmarkSidebarResults = new Map<string, BenchmarkSidebarResult>();
+
+function isBenchmarkProjectPath(path: string | null): boolean {
+  return !!path && (path === "examples/benchmarks.ts" || path.startsWith("examples/benchmarks/"));
+}
+
+function usesBenchmarkHelpers(source: string): boolean {
+  return /^\s*import\s+\{[^}]+\}\s+from\s+["']\.\/(?:benchmarks\/)?helpers\.ts["'];?\s*$/m.test(source);
+}
+
+function buildCompileResultForEditorSource(source: string) {
+  if (!isBenchmarkProjectPath(t262ActivePath) && !usesBenchmarkHelpers(source)) {
+    return compile(source);
+  }
+  const entryPath = isBenchmarkProjectPath(t262ActivePath)
+    ? t262ActivePath!
+    : (source.includes("bench_") ? "examples/benchmarks.ts" : "example.ts");
+  return compileMulti({
+    [entryPath]: source,
+    "examples/benchmarks/helpers.ts": BENCH_HELPERS_SOURCE,
+  }, entryPath);
+}
+
+function buildBenchmarkRuntimeJs(source: string): string {
+  const strippedSource = source
+    .replace(/^\s*import\s+\{[^}]+\}\s+from\s+["']\.\/(?:benchmarks\/)?helpers\.ts["'];?\s*$/gm, "")
+    .replace(/^\s*import\s+["'][^"']+["'];?\s*$/gm, "")
+    .trim();
+  return `${BENCH_HELPERS_SOURCE}\n${strippedSource}`;
+}
+
+async function loadBenchmarkJsFunctions(
+  source: string,
+  benchNames: string[],
+): Promise<{ funcs: Record<string, Function>; dispose: () => void }> {
+  const helperJs = ts.transpileModule(BENCH_HELPERS_SOURCE, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+    },
+  }).outputText;
+  const helperUrl = URL.createObjectURL(new Blob([helperJs], { type: "text/javascript" }));
+  const transpiledEntry = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+    },
+  }).outputText;
+  const entryJs = transpiledEntry.replace(
+    /(["'])(?:\.\/helpers\.ts|\.\/benchmarks\/helpers\.ts|\/examples\/benchmarks\/helpers\.ts|examples\/benchmarks\/helpers\.ts)\1/g,
+    `"${helperUrl}"`,
+  );
+  const entryUrl = URL.createObjectURL(new Blob([entryJs], { type: "text/javascript" }));
+  try {
+    const mod = await import(/* @vite-ignore */ entryUrl);
+    const funcs = Object.fromEntries(
+      benchNames
+        .filter((name) => typeof mod[name] === "function")
+        .map((name) => [name, mod[name] as Function]),
+    );
+    return {
+      funcs,
+      dispose: () => {
+        URL.revokeObjectURL(entryUrl);
+        URL.revokeObjectURL(helperUrl);
+      },
+    };
+  } catch (err) {
+    URL.revokeObjectURL(entryUrl);
+    URL.revokeObjectURL(helperUrl);
+    throw err;
+  }
+}
+
 function t262BuildTree(cats: T262CategorySummary[]): T262TreeNode {
   const root: T262TreeNode = { name: "", fullPath: "", children: new Map(), categories: [] };
   for (const cat of cats) {
@@ -1198,6 +1337,48 @@ async function t262Render() {
       inputFile.model.setValue(content);
       t262SetActive(ex.path);
       updateTabLabel("ts-source", ex.name);
+      compileOnly();
+      t262Loading = false;
+    });
+    parent.appendChild(entry);
+  }
+
+  function renderBenchmarkFile(bench: BenchmarkExample, parent: HTMLElement) {
+    const entry = document.createElement("div");
+    entry.className = "t262-file" + (t262ActivePath === bench.path ? " active" : "");
+    entry.dataset.path = bench.path;
+    entry.title = bench.description;
+    const titleEl = document.createElement("div");
+    titleEl.className = "bench-file-name";
+    titleEl.textContent = bench.name;
+    entry.appendChild(titleEl);
+    const result = benchmarkSidebarResults.get(bench.path);
+    if (result) {
+      const meter = document.createElement("div");
+      meter.className = "bench-result";
+      const clamped = Math.max(-100, Math.min(100, result.deltaPct));
+      const fillWidth = Math.min(Math.abs(clamped), 100) / 2;
+      const fill = document.createElement("div");
+      fill.className = `bench-result-fill ${clamped >= 0 ? "bench-result-faster" : "bench-result-slower"}`;
+      fill.style.width = `${fillWidth}%`;
+      if (clamped >= 0) fill.style.left = "50%";
+      else fill.style.left = `${50 - fillWidth}%`;
+      meter.appendChild(fill);
+      const label = document.createElement("div");
+      label.className = `bench-result-label ${clamped >= 0 ? "bench-result-faster" : "bench-result-slower"}`;
+      const signed = `${result.deltaPct >= 0 ? "+" : ""}${result.deltaPct.toFixed(0)}%`;
+      label.textContent = `${signed} vs JS`;
+      entry.appendChild(meter);
+      entry.appendChild(label);
+    }
+    entry.addEventListener("click", async () => {
+      const resp = await fetch(bench.path);
+      const content = await resp.text();
+      t262Loading = true;
+      sessionStorage.removeItem(STORAGE_KEY);
+      inputFile.model.setValue(content);
+      t262SetActive(bench.path);
+      updateTabLabel("ts-source", bench.name);
       compileOnly();
       t262Loading = false;
     });
@@ -1456,15 +1637,26 @@ async function t262Render() {
   }
 
   // ── BENCHMARKS section ──
-  const benchFile = { name: "benchmarks.ts", path: "examples/benchmarks.ts" };
-  const benchMatches = !filter || "benchmarks".includes(filter);
-  if (benchMatches) {
+  const benchMatches = benchmarkExamples.filter((bench) =>
+    !filter
+    || "benchmark suite".includes(filter)
+    || bench.name.toLowerCase().includes(filter)
+    || bench.title.toLowerCase().includes(filter)
+    || bench.description.toLowerCase().includes(filter),
+  );
+  if (benchMatches.length > 0) {
     const benchHeader = document.createElement("div");
     benchHeader.className = "t262-section-header";
     benchHeader.textContent = "BENCHMARKS";
     listEl.appendChild(benchHeader);
 
-    renderExampleFile(benchFile, listEl);
+    await renderTopFolder("js2wasm Benchmark Suite", "__benchmarks__", listEl, (container) => {
+      const filesEl = document.createElement("div");
+      filesEl.className = "t262-files";
+      filesEl.style.paddingLeft = "22px";
+      for (const bench of benchMatches) renderBenchmarkFile(bench, filesEl);
+      container.appendChild(filesEl);
+    });
   }
 }
 
@@ -2516,7 +2708,7 @@ function compileOnly() {
   }
 
   const t0 = performance.now();
-  const result = compile(source);
+  const result = buildCompileResultForEditorSource(source);
   const compileTime = performance.now() - t0;
 
   lastResult = result;
@@ -2671,7 +2863,7 @@ async function runOnly() {
     const source = inputFile.model.getValue();
     if (!hasTopLevelMainDeclaration(source)) {
       const runtimeSource = `${source}\n\nexport function main(): void {}\n`;
-      const runtimeResult = compile(runtimeSource);
+      const runtimeResult = buildCompileResultForEditorSource(runtimeSource);
       if (!runtimeResult.success) {
         errorsPre.textContent = runtimeResult.errors
           .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
@@ -2828,9 +3020,18 @@ async function runBenchmark() {
   log("Setting up WASM…");
   await yield_();
 
+  log("Optimizing WASM with Binaryen…");
+  await yield_();
+  const optResult = await optimizeBinaryAsync(lastResult.binary, { level: 3 });
+  if (optResult.optimized) {
+    log("Binaryen optimization applied.");
+  } else if (optResult.warning) {
+    log(`Binaryen unavailable: ${optResult.warning}`);
+  }
+
   const { env: wasmEnv, setExports } = buildEnv(lastResult, () => {});
   const { instance, nativeBuiltins } = await instantiateWasm(
-    lastResult.binary as BufferSource,
+    optResult.binary as BufferSource,
     wasmEnv,
     buildStringConstants(lastResult.stringPool),
   );
@@ -2854,13 +3055,7 @@ async function runBenchmark() {
   await yield_();
 
   const source = inputFile.model.getValue();
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      target: ts.ScriptTarget.ESNext,
-      module: ts.ModuleKind.ESNext,
-    },
-  });
-  const cleanJs = transpiled.outputText.replace(/^export /gm, "");
+  const moduleBenchmark = isBenchmarkProjectPath(t262ActivePath) || usesBenchmarkHelpers(source);
 
   // Ensure a preview-panel element exists for DOM benchmarks (JS side)
   let tempPreview: HTMLElement | null = null;
@@ -2871,16 +3066,29 @@ async function runBenchmark() {
     document.body.appendChild(tempPreview);
   }
 
-  // NOTE: new Function() is intentional here — we evaluate the user's transpiled
-  // benchmark source to get JS reference functions for WASM-vs-JS comparison.
   let jsFuncs: Record<string, Function>;
+  let disposeJsModule = () => {};
   try {
-    const returnExpr = "return {" + benchNames.join(",") + "};";
-    const factory = new Function(cleanJs + "\n" + returnExpr); // eslint-disable-line no-new-func
-    jsFuncs = factory();
+    if (moduleBenchmark) {
+      const loaded = await loadBenchmarkJsFunctions(source, benchNames);
+      jsFuncs = loaded.funcs;
+      disposeJsModule = loaded.dispose;
+    } else {
+      const transpiled = ts.transpileModule(source, {
+        compilerOptions: {
+          target: ts.ScriptTarget.ESNext,
+          module: ts.ModuleKind.ESNext,
+        },
+      });
+      const cleanJs = transpiled.outputText.replace(/^export /gm, "");
+      const returnExpr = "return {" + benchNames.join(",") + "};";
+      const factory = new Function(cleanJs + "\n" + returnExpr); // eslint-disable-line no-new-func
+      jsFuncs = factory();
+    }
   } catch (e) {
     log(`Failed to create JS functions: ${e}`);
     tempPreview?.remove();
+    disposeJsModule();
     benchBtn.disabled = false;
     return;
   }
@@ -2945,6 +3153,21 @@ async function runBenchmark() {
   }
 
   tempPreview?.remove();
+  disposeJsModule();
+
+  benchmarkSidebarResults.clear();
+  for (const r of results) {
+    const bench = benchmarkExamples.find((example) => example.benchmarkFunction === `bench_${r.name}`);
+    if (!bench) continue;
+    benchmarkSidebarResults.set(bench.path, {
+      wasmUs: r.wasmUs,
+      jsUs: r.jsUs,
+      deltaPct: ((r.jsUs / r.wasmUs) - 1) * 100,
+    });
+  }
+  if (t262Loaded) {
+    t262Render();
+  }
 
   // ── Format results table ──
   const nameW = Math.max(10, ...results.map((r) => r.name.length));

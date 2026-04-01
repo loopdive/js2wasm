@@ -547,6 +547,46 @@
         color: #7c9dfc;
         background: #1a1a3a;
       }
+      .bench-file-name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bench-result {
+        position: relative;
+        height: 6px;
+        margin-top: 4px;
+        border-radius: 999px;
+        background:
+          linear-gradient(
+            to right,
+            rgba(248, 81, 73, 0.12) 0%,
+            rgba(248, 81, 73, 0.12) 49.5%,
+            rgba(255, 255, 255, 0.12) 49.5%,
+            rgba(255, 255, 255, 0.12) 50.5%,
+            rgba(63, 185, 80, 0.12) 50.5%,
+            rgba(63, 185, 80, 0.12) 100%
+          );
+        overflow: hidden;
+      }
+      .bench-result-fill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 999px;
+      }
+      .bench-result-faster {
+        background: var(--pass);
+      }
+      .bench-result-slower {
+        background: var(--fail);
+      }
+      .bench-result-label {
+        margin-top: 3px;
+        font-size: 10px;
+        line-height: 1.2;
+        color: #777;
+      }
       .t262-section-header {
         font-size: 0.65rem;
         font-weight: bold;
