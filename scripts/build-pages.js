@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -8,6 +8,7 @@ const PLAYGROUND_DIST = join(ROOT, "playground-dist");
 const PAGES_DIST = join(ROOT, "pages-dist");
 const DASHBOARD_DIR = join(ROOT, "dashboard");
 const BENCHMARKS_RESULTS_DIR = join(ROOT, "benchmarks", "results");
+const RUNS_DIR = join(BENCHMARKS_RESULTS_DIR, "runs");
 
 function ensureExists(path) {
   if (!existsSync(path)) {
@@ -36,6 +37,27 @@ function copyFileIfExists(source, destination) {
   return true;
 }
 
+function latestMatchingFile(dir, suffix) {
+  if (!existsSync(dir)) return null;
+  const matches = readdirSync(dir)
+    .filter((name) => name.endsWith(suffix))
+    .sort();
+  if (matches.length === 0) return null;
+  return join(dir, matches[matches.length - 1]);
+}
+
+function copyPreferredFile(primarySource, fallbackSource, destination) {
+  if (existsSync(primarySource)) {
+    copyFile(primarySource, destination);
+    return;
+  }
+  if (fallbackSource && existsSync(fallbackSource)) {
+    copyFile(fallbackSource, destination);
+    return;
+  }
+  throw new Error(`Required path does not exist: ${primarySource}`);
+}
+
 ensureExists(PLAYGROUND_DIST);
 ensureExists(join(DASHBOARD_DIR, "index.html"));
 ensureExists(join(DASHBOARD_DIR, "data"));
@@ -56,12 +78,14 @@ copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"
 // Add the benchmark data files fetched by the public report pages.
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "history.json"), join(PAGES_DIST, "benchmarks", "results", "history.json"));
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "latest.json"), join(PAGES_DIST, "benchmarks", "results", "latest.json"));
-copyFile(
+copyPreferredFile(
   join(BENCHMARKS_RESULTS_DIR, "test262-report.json"),
+  latestMatchingFile(RUNS_DIR, "-report.json"),
   join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
 );
-copyFile(
+copyPreferredFile(
   join(BENCHMARKS_RESULTS_DIR, "test262-results.jsonl"),
+  latestMatchingFile(RUNS_DIR, "-results.jsonl"),
   join(PAGES_DIST, "benchmarks", "results", "test262-results.jsonl"),
 );
 copyFile(
