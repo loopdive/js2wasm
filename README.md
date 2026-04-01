@@ -152,7 +152,7 @@ Returns only the WAT text (debug).
 
 ## ES Conformance
 
-js2wasm passes **17,265 / 48,088** tests from the [ECMAScript test262 conformance suite](https://github.com/tc39/test262) (35.9%). Conformance is improving with each sprint — see the [live dashboard](https://js2wasm.loopdive.com/dashboard/) for the latest numbers and trend charts.
+js2wasm passes **15,159 / 42,934** tests in the default official test262 scope (35.3%), or **15,159 / 48,174** across the full suite including proposals (31.5%). Conformance is improving with each sprint — see the [live dashboard](https://js2wasm.loopdive.com/dashboard/) for the latest numbers and trend charts.
 
 ### What Works Well
 
@@ -194,7 +194,7 @@ js2wasm passes **17,265 / 48,088** tests from the [ECMAScript test262 conformanc
 | ES2017   | SharedArrayBuffer / Atomics             | Requires shared Wasm memory (not yet available in WasmGC)      |   460 |
 | ES2020   | Dynamic `import()`                      | No runtime module loader                                       |   432 |
 | ES2020   | BigInt64Array / BigUint64Array          | Not yet implemented                                            |    28 |
-| ES2025   | Temporal API                            | Not yet implemented                                            | 4,376 |
+| ES2025   | Temporal API                            | Not yet implemented                                            | 4,383 |
 | ES2025   | Set methods (union, intersection, etc.) | Not yet implemented                                            |   186 |
 
 ### ECMAScript Proposals (Not Yet Standardized)
