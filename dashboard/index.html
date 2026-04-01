@@ -346,23 +346,6 @@
   .kanban-col-body::-webkit-scrollbar { width: 4px; }
   .kanban-col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  /* Info notice */
-  .info-notice {
-    background: rgba(107, 138, 255, 0.08);
-    border: 1px solid rgba(107, 138, 255, 0.2);
-    border-radius: var(--radius);
-    padding: 12px 16px;
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-bottom: 24px;
-  }
-
-  .info-notice code {
-    background: var(--surface-2);
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-size: 11px;
-  }
 </style>
 </head>
 <body>
@@ -374,11 +357,6 @@
     <div id="sprint-label">—</div>
   </div>
 </header>
-
-<div class="info-notice" id="data-notice" style="display:none">
-  Data loaded from local project files. To refresh, reload the page.
-  Serve with <code>npx serve dashboard/</code> for fetch-based loading, or open directly for embedded data.
-</div>
 
 <!-- Metric cards -->
 <div class="metrics-row" id="metrics-row">
@@ -889,8 +867,6 @@ async function main() {
       return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="${s.name}: ${s.issueCount || 0} issues"></div>`;
     }).join('');
   }
-
-  document.getElementById('data-notice').style.display = 'block';
 }
 
 // ── Run on load ──
