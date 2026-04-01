@@ -30,6 +30,12 @@ function copyDirectory(source, destination) {
   });
 }
 
+function copyFileIfExists(source, destination) {
+  if (!existsSync(source)) return false;
+  copyFile(source, destination);
+  return true;
+}
+
 ensureExists(PLAYGROUND_DIST);
 ensureExists(join(DASHBOARD_DIR, "index.html"));
 ensureExists(join(DASHBOARD_DIR, "data"));
@@ -48,8 +54,8 @@ copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "dashboard", "data")
 copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"));
 
 // Add the benchmark data files fetched by the public report pages.
-copyFile(join(BENCHMARKS_RESULTS_DIR, "history.json"), join(PAGES_DIST, "benchmarks", "results", "history.json"));
-copyFile(join(BENCHMARKS_RESULTS_DIR, "latest.json"), join(PAGES_DIST, "benchmarks", "results", "latest.json"));
+copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "history.json"), join(PAGES_DIST, "benchmarks", "results", "history.json"));
+copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "latest.json"), join(PAGES_DIST, "benchmarks", "results", "latest.json"));
 copyFile(
   join(BENCHMARKS_RESULTS_DIR, "test262-report.json"),
   join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
