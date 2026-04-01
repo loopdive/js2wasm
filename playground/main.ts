@@ -909,20 +909,50 @@ interface T262Report {
   categories: { name: string; pass: number; fail: number; skip: number; compile_error: number }[];
 }
 interface T262FileResult { file: string; status: string; error?: string; }
+interface T262TrendRun {
+  timestamp: string;
+  pass: number;
+  fail: number;
+  ce: number;
+  skip: number;
+  total: number;
+}
 
 let t262Report: T262Report | null = null;
 const t262FileResultsCache = new Map<string, T262FileResult[]>();
 
+async function loadLatestT262Summary(): Promise<T262Report["summary"] | null> {
+  const runs = await fetchJson<T262TrendRun[]>("benchmarks/results/runs/index.json");
+  const latest = runs?.[runs.length - 1];
+  if (!latest || latest.total === 0) return null;
+  return {
+    total: latest.total,
+    pass: latest.pass,
+    fail: latest.fail,
+    skip: latest.skip,
+    compile_error: latest.ce,
+  };
+}
+
 async function t262LoadReport(): Promise<T262Report | null> {
   if (t262Report) return t262Report;
+  const latestSummary = prefersStaticPlaygroundData
+    ? await loadLatestT262Summary()
+    : null;
   const data = prefersStaticPlaygroundData
     ? await fetchJson<T262Report>("benchmarks/results/test262-report.json")
       ?? await fetchJson<T262Report | { error: string }>("/api/test262-results")
     : await fetchJson<T262Report | { error: string }>("/api/test262-results")
       ?? await fetchJson<T262Report>("benchmarks/results/test262-report.json");
-  if (!data || "error" in data) return null;
-  if (!data.summary || data.summary.total === 0) return null;
-  t262Report = data as T262Report;
+  if ((!data || "error" in data) && !latestSummary) return null;
+  const report = !data || "error" in data
+    ? { summary: latestSummary!, categories: [] }
+    : {
+      ...(data as T262Report),
+      summary: latestSummary ?? (data as T262Report).summary,
+    };
+  if (!report.summary || report.summary.total === 0) return null;
+  t262Report = report;
   return t262Report;
 }
 
