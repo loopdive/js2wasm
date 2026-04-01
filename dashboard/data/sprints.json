@@ -1,9 +1,72 @@
 [
   {
+    "name": "velocity template",
+    "date": "",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0
+  },
+  {
     "name": "sprint 1",
     "date": "2026-03-11 (morning)",
     "baseline": "550 pass (100% of compilable tests at the time)",
     "result": "1,509 pass / ~23,000 total",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 2",
+    "date": "2026-03-11 (afternoon)",
+    "baseline": "1,509 pass",
+    "result": "~1,509+ pass (merged same day as Sprint 1)",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 3",
+    "date": "2026-03-11 (evening)",
+    "baseline": "~1,509 pass",
+    "result": "merged same session, incremental improvements",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 4",
+    "date": "2026-03-11 to 2026-03-12",
+    "baseline": "~1,509 pass",
+    "result": "incremental (same multi-day session)",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 5",
+    "date": "2026-03-12",
+    "baseline": "building on Sprint 4",
+    "result": "incremental improvements in runtime correctness",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 6",
+    "date": "2026-03-13",
+    "baseline": "building on Sprint 5",
+    "result": "significant test262 category expansion",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 7",
+    "date": "2026-03-13 (continued)",
+    "baseline": "building on Sprint 6",
+    "result": "~6,366 pass (first test262 run recorded at end of day)",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 8",
+    "date": "2026-03-16",
+    "baseline": "~6,366 pass (from 2026-03-18 run, likely lower on 03-16)",
+    "result": "incremental (no test262 run recorded this day)",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 9",
+    "date": "2026-03-17",
+    "baseline": "building on Sprint 8",
+    "result": "no test262 run recorded for this date",
     "issueCount": 0
   },
   {
@@ -77,13 +140,6 @@
     "issueCount": 0
   },
   {
-    "name": "sprint 2",
-    "date": "2026-03-11 (afternoon)",
-    "baseline": "1,509 pass",
-    "result": "~1,509+ pass (merged same day as Sprint 1)",
-    "issueCount": 0
-  },
-  {
     "name": "sprint 20",
     "date": "2026-03-24",
     "baseline": "15,997 pass / 49,642 total",
@@ -154,13 +210,6 @@
     "issueCount": 0
   },
   {
-    "name": "sprint 3",
-    "date": "2026-03-11 (evening)",
-    "baseline": "~1,509 pass",
-    "result": "merged same session, incremental improvements",
-    "issueCount": 0
-  },
-  {
     "name": "sprint 30",
     "date": "2026-03-29",
     "baseline": "18,284 pass / 48,088 total (38.0%)",
@@ -176,79 +225,44 @@
   },
   {
     "name": "sprint 31",
-    "date": "2026-03-29 (evening)",
-    "baseline": "18,599 pass / 48,088 total (38.7%)",
-    "result": "(pending)",
-    "issueCount": 5
+    "date": "2026-03-30",
+    "baseline": "15,246 pass / 48,174 total (31.7%) — honest baseline, no cache, negative test bug fixed",
+    "result": "",
+    "issueCount": 0
   },
   {
     "name": "sprint 32 planning",
+    "date": "2026-03-31",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 32",
+    "date": "2026-03-31",
+    "baseline": "17,252 pass / 48,088 total (35.9%) — clean baseline, cache disabled, isolated worktree build",
+    "result": "",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 34 planning",
     "date": "2026-03-29",
     "baseline": "18,599 pass / 48,088 total (38.7%) — sprint 31 still in progress",
     "result": "",
     "issueCount": 0
   },
   {
-    "name": "sprint 32",
-    "date": "2026-03-29 (planned while sprint 31 finishes)",
-    "baseline": "TBD (sprint 31 final numbers)",
-    "result": "(pending)",
-    "issueCount": 0
-  },
-  {
-    "name": "sprint 33",
-    "date": "2026-03-29 (forward planning)",
-    "baseline": "TBD (sprint 32 final numbers)",
-    "result": "(pending)",
-    "issueCount": 0
-  },
-  {
-    "name": "sprint 4",
-    "date": "2026-03-11 to 2026-03-12",
-    "baseline": "~1,509 pass",
-    "result": "incremental (same multi-day session)",
-    "issueCount": 0
-  },
-  {
-    "name": "sprint 5",
-    "date": "2026-03-12",
-    "baseline": "building on Sprint 4",
-    "result": "incremental improvements in runtime correctness",
-    "issueCount": 0
-  },
-  {
-    "name": "sprint 6",
-    "date": "2026-03-13",
-    "baseline": "building on Sprint 5",
-    "result": "significant test262 category expansion",
-    "issueCount": 0
-  },
-  {
-    "name": "sprint 7",
-    "date": "2026-03-13 (continued)",
-    "baseline": "building on Sprint 6",
-    "result": "~6,366 pass (first test262 run recorded at end of day)",
-    "issueCount": 0
-  },
-  {
-    "name": "sprint 8",
-    "date": "2026-03-16",
-    "baseline": "~6,366 pass (from 2026-03-18 run, likely lower on 03-16)",
-    "result": "incremental (no test262 run recorded this day)",
-    "issueCount": 0
-  },
-  {
-    "name": "sprint 9",
-    "date": "2026-03-17",
-    "baseline": "building on Sprint 8",
-    "result": "no test262 run recorded for this date",
-    "issueCount": 0
-  },
-  {
-    "name": "velocity template",
-    "date": "",
-    "baseline": "",
+    "name": "sprint 34",
+    "date": "TBD (after sprint-33 completes)",
+    "baseline": "TBD (sprint-33 result)",
     "result": "",
+    "issueCount": 0
+  },
+  {
+    "name": "sprint 35",
+    "date": "TBD (after sprint-34 completes)",
+    "baseline": "TBD (sprint-34 final numbers)",
+    "result": "(pending)",
     "issueCount": 0
   }
 ]

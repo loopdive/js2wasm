@@ -382,7 +382,7 @@
 
 <!-- Metric cards -->
 <div class="metrics-row" id="metrics-row">
-  <div class="metric-card"><div class="label">Test262 Pass Rate</div><div class="value accent" id="m-passrate">—</div><div class="sub" id="m-passrate-sub"></div></div>
+  <div class="metric-card"><div class="label">Official Test262 Pass Rate</div><div class="value accent" id="m-passrate">—</div><div class="sub" id="m-passrate-sub"></div></div>
   <div class="metric-card"><div class="label">Issues Done</div><div class="value green" id="m-done">—</div><div class="sub" id="m-done-sub"></div></div>
   <div class="metric-card"><div class="label">Issues Ready</div><div class="value yellow" id="m-ready">—</div><div class="sub" id="m-ready-sub"></div></div>
   <div class="metric-card"><div class="label">Blocked</div><div class="value red" id="m-blocked">—</div><div class="sub" id="m-blocked-sub"></div></div>
@@ -416,7 +416,7 @@
 <!-- Charts row -->
 <div class="grid-2">
   <div class="panel">
-    <h2>Test262 Pass Rate Trend</h2>
+    <h2>Official Test262 Pass Rate Trend</h2>
     <div class="chart-container">
       <canvas id="chart-passrate"></canvas>
     </div>
@@ -754,7 +754,7 @@ async function main() {
     const passRate = ((latest.pass / latest.total) * 100).toFixed(1);
     document.getElementById('m-passrate').textContent = passRate + '%';
     document.getElementById('m-passrate-sub').textContent =
-      `${latest.pass.toLocaleString()} / ${latest.total.toLocaleString()} tests`;
+      `${latest.pass.toLocaleString()} / ${latest.total.toLocaleString()} tests (standard + Annex B)`;
 
     document.getElementById('m-ce').textContent = latest.ce.toLocaleString();
     document.getElementById('m-ce').className = 'value ' + (latest.ce > 2000 ? 'red' : latest.ce > 500 ? 'yellow' : 'green');

@@ -87,15 +87,15 @@ const runsPath = join(ROOT, 'benchmarks/results/runs/index.json');
 let runs = [];
 if (existsSync(runsPath)) {
   const all = JSON.parse(readFileSync(runsPath, 'utf-8'));
-  // Before Mar 20: smaller suite, keep all > 20K
-  // After Mar 19: filter partial runs (< 90% of max total seen)
-  let maxTotal = 0;
+  // Before Mar 20: smaller suite, keep all > 20K.
+  // After the suite expansion, keep only full conformance runs and exclude
+  // tiny crash artifacts, but do not require totals to stay near the old
+  // proposal-inclusive 48K size because official-scope runs are lower.
   runs = all.filter(r => {
     const ts = r.timestamp || "";
     if (ts < "2026-03-20") return r.total >= 20000;
-    if (r.total > maxTotal) maxTotal = r.total;
-    return r.total >= maxTotal * 0.9;
-  });
+    return r.total >= 40000;
+  }).sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
 }
 // Copy runs to data/ for the dashboard to fetch
 writeFileSync(join(OUT, 'runs.json'), JSON.stringify(runs));
