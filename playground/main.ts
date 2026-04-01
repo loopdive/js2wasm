@@ -826,6 +826,7 @@ const downloadWatBtn = document.getElementById("download-wat") as HTMLButtonElem
 const downloadWasmBtn = document.getElementById("download-wasm") as HTMLButtonElement;
 const benchBtn = document.getElementById("bench") as HTMLButtonElement;
 const resetLayoutBtn = document.getElementById("reset-layout") as HTMLButtonElement;
+const toggleSidebarBtn = document.getElementById("toggle-sidebar") as HTMLButtonElement;
 
 // Create output panel elements programmatically (mounted by layout system)
 const consolePre = document.createElement("pre");
@@ -847,7 +848,6 @@ const test262Panel = document.createElement("div");
 test262Panel.id = "test262-panel";
 test262Panel.innerHTML = `
   <div class="t262-browser">
-    <div class="t262-stats-bar" id="t262-stats-bar" style="display:none"></div>
     <div class="t262-search-wrap">
       <input class="t262-search" type="text" placeholder="Filter tests..." />
     </div>
@@ -995,6 +995,41 @@ function t262PassRateColor(pct: number): string {
   if (pct >= 50) return "#ff9800";
   return "#f44336";
 }
+
+function buildT262SummaryHtml(summary: T262Report["summary"]): string {
+  const total = summary.total;
+  const passP = total > 0 ? (summary.pass / total * 100) : 0;
+  const failP = total > 0 ? (summary.fail / total * 100) : 0;
+  const ceP = total > 0 ? (summary.compile_error / total * 100) : 0;
+  const skipP = total > 0 ? (summary.skip / total * 100) : 0;
+  return `
+    <div class="t262-suite-summary">
+      <div class="t262-stats-segments">
+        <div class="t262-seg-pass" style="width:${passP}%"></div>
+        <div class="t262-seg-fail" style="width:${failP}%"></div>
+        <div class="t262-seg-ce" style="width:${ceP}%"></div>
+        <div class="t262-seg-skip" style="width:${skipP}%"></div>
+      </div>
+      <div class="t262-stats-text">
+        <strong>${summary.pass.toLocaleString()}</strong> pass /
+        <strong>${total.toLocaleString()}</strong> total
+        (${passP.toFixed(1)}%)
+        &mdash;
+        ${summary.fail.toLocaleString()} fail, ${summary.compile_error.toLocaleString()} CE, ${summary.skip.toLocaleString()} skip
+      </div>
+    </div>
+  `;
+}
+
+function buildEquivSummaryHtml(total: number): string {
+  return `
+    <div class="t262-suite-summary t262-suite-summary-compact">
+      <div class="t262-stats-text">
+        <strong>${total.toLocaleString()}</strong> js2wasm unit tests
+      </div>
+    </div>
+  `;
+}
 const t262ExpandedCats = new Set<string>();
 let t262Filter = "";
 let t262Debounce: ReturnType<typeof setTimeout> | null = null;
@@ -1141,33 +1176,6 @@ async function t262Render() {
 
   // Load test262 results report
   const report = await t262LoadReport();
-  const statsBar = test262Panel.querySelector("#t262-stats-bar") as HTMLElement;
-  if (report && statsBar) {
-    const s = report.summary;
-    const total = s.total;
-    const passP = total > 0 ? (s.pass / total * 100) : 0;
-    const failP = total > 0 ? (s.fail / total * 100) : 0;
-    const ceP = total > 0 ? (s.compile_error / total * 100) : 0;
-    const skipP = total > 0 ? (s.skip / total * 100) : 0;
-    statsBar.style.display = "";
-    statsBar.innerHTML = `
-      <div class="t262-stats-segments">
-        <div class="t262-seg-pass" style="width:${passP}%"></div>
-        <div class="t262-seg-fail" style="width:${failP}%"></div>
-        <div class="t262-seg-ce" style="width:${ceP}%"></div>
-        <div class="t262-seg-skip" style="width:${skipP}%"></div>
-      </div>
-      <div class="t262-stats-text">
-        <strong>${s.pass.toLocaleString()}</strong> pass /
-        <strong>${total.toLocaleString()}</strong> total
-        (${passP.toFixed(1)}%)
-        &mdash;
-        ${s.fail} fail, ${s.compile_error} CE, ${s.skip} skip
-      </div>
-    `;
-  } else if (statsBar) {
-    statsBar.style.display = "none";
-  }
 
   const filter = t262Filter.toLowerCase();
 
@@ -1372,6 +1380,7 @@ async function t262Render() {
   async function renderTopFolder(
     name: string, folderKey: string, parent: HTMLElement,
     renderContents: (container: HTMLElement) => void | Promise<void>,
+    summaryHtml?: string,
   ) {
     if (filter && !name.toLowerCase().includes(filter)) {
       // Still render if contents might match — caller handles filtering
@@ -1382,7 +1391,13 @@ async function t262Render() {
 
     const headerEl = document.createElement("div");
     headerEl.className = "t262-cat-header";
-    headerEl.innerHTML = `<span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${name}</span>`;
+    headerEl.innerHTML = `
+      <div class="t262-top-header">
+        <span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span>
+        <span class="t262-cat-name">${name}</span>
+      </div>
+      ${summaryHtml ?? ""}
+    `;
     headerEl.addEventListener("click", async () => {
       if (t262ExpandedFolders.has(folderKey)) t262ExpandedFolders.delete(folderKey);
       else t262ExpandedFolders.add(folderKey);
@@ -1427,7 +1442,7 @@ async function t262Render() {
         filesEl.appendChild(fileEl);
       }
       container.appendChild(filesEl);
-    });
+    }, buildEquivSummaryHtml(equivTests.length));
   }
 
   // ── test262 folder ──
@@ -1437,7 +1452,7 @@ async function t262Render() {
   if (t262Matches) {
     await renderTopFolder("ECMAScript Test Suite", "__test262__", listEl, async (container) => {
       await renderNode(tree, container, 1);
-    });
+    }, report ? buildT262SummaryHtml(report.summary) : "");
   }
 
   // ── BENCHMARKS section ──
@@ -1592,6 +1607,20 @@ layout.onLayoutChanged = () => {
 const allTabIds = new Set(Object.keys(tabDefs));
 const savedLayout = LayoutManager.loadLayout(allTabIds);
 layout.init(savedLayout ?? undefined);
+
+function syncSidebarToggleButton(): void {
+  toggleSidebarBtn.setAttribute(
+    "aria-pressed",
+    layout.hasPanel("sidebar-left") ? "true" : "false",
+  );
+}
+
+function toggleSidebar(): void {
+  layout.toggleSidebar();
+  syncSidebarToggleButton();
+}
+
+syncSidebarToggleButton();
 
 // ─── Tab size labels ─────────────────────────────────────────────────────
 
@@ -1978,6 +2007,8 @@ function detectDomUsage(result: ReturnType<typeof compile>): boolean {
 
 function generateModularOutput(result: ReturnType<typeof compile>): string {
   const dts = result.dts ?? "";
+  const helper = (result.importsHelper ?? "").trim();
+  const needsDeps = /\bcreateImports\s*\(\s*deps\s*\)/.test(helper);
   // Parse "export declare function name(params): ret;" into JSDoc-annotated exports
   const exportLines = [
     ...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm),
@@ -1998,12 +2029,31 @@ function generateModularOutput(result: ReturnType<typeof compile>): string {
   const exports =
     exportLines.length > 0
       ? exportLines.join("\n\n")
-      : `export default _exports;`;
+      : `export default instance.exports;`;
 
-  return `import { compileAndInstantiate } from "ts2wasm";
-import _source from "./example.ts?raw";
+  const importsCall = needsDeps
+    ? "createImports(/* host deps */)"
+    : "createImports()";
 
-const _exports = await compileAndInstantiate(_source);
+  return `${helper || `export function createImports() {\n  return { env: {} };\n}`}
+
+import { compile } from "ts2wasm";
+import source from "./example.ts?raw";
+
+const result = compile(source);
+
+if (!result.success) {
+  throw new Error(
+    result.errors.map((e) => \`L\${e.line}:\${e.column} [\${e.severity}] \${e.message}\`).join("\\n"),
+  );
+}
+
+const imports = ${importsCall};
+const { instance } = await WebAssembly.instantiate(
+  result.binary,
+  imports,
+  { builtins: ["js-string"], importedStringConstants: "string_constants" },
+);
 
 ${exports}
 `;
@@ -2926,6 +2976,7 @@ runBtn.addEventListener("click", runOnly);
 benchBtn.addEventListener("click", runBenchmark);
 downloadWatBtn.addEventListener("click", downloadWat);
 downloadWasmBtn.addEventListener("click", downloadWasm);
+toggleSidebarBtn.addEventListener("click", toggleSidebar);
 resetLayoutBtn.addEventListener("click", () => {
   clearSavedLayout();
   sessionStorage.removeItem(STORAGE_KEY);
@@ -2937,6 +2988,14 @@ resetLayoutBtn.addEventListener("click", () => {
   layout.resetLayout();
   clearSavedLayout();
   compileOnly();
+  syncSidebarToggleButton();
+});
+
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "b") {
+    event.preventDefault();
+    toggleSidebar();
+  }
 });
 
 // Auto-compile and run on page load

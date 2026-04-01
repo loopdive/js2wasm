@@ -37,6 +37,20 @@ function extractTitle(text) {
   return m ? m[1].trim() : 'Untitled';
 }
 
+function extractSprintNumber(name) {
+  const match = String(name).match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function extractIssueIds(text) {
+  const ids = new Set();
+  const queueSection = text.match(/## Task queue[\s\S]*?(?=\n## |\s*$)/i)?.[0] ?? text;
+  for (const match of queueSection.matchAll(/#(\d{2,4})\b/g)) {
+    ids.add(parseInt(match[1], 10));
+  }
+  return [...ids].sort((a, b) => a - b);
+}
+
 // ── Load issues ──────────────────────────────────────────────
 function loadIssuesFromDir(dir) {
   if (!existsSync(dir)) return [];
@@ -128,7 +142,9 @@ if (existsSync(sprintsDir)) {
     // Count merged issues
     const mergedCount = (text.match(/\*\*Merged\*\*/gi) || []).length;
 
-    sprints.push({ name, date, baseline, result, issueCount: mergedCount });
+    const sprintNumber = extractSprintNumber(name);
+    const issueIds = extractIssueIds(text);
+    sprints.push({ name, sprintNumber, date, baseline, result, issueCount: mergedCount, issueIds });
   }
 }
 writeFileSync(join(OUT, 'sprints.json'), JSON.stringify(sprints, null, 2));

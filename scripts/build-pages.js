@@ -18,6 +18,7 @@ const ROOT = resolve(import.meta.dirname, "..");
 const PLAYGROUND_DIST = join(ROOT, "playground-dist");
 const PAGES_DIST = join(ROOT, "pages-dist");
 const DASHBOARD_DIR = join(ROOT, "dashboard");
+const PLAN_DIR = join(ROOT, "plan");
 const BENCHMARKS_RESULTS_DIR = join(ROOT, "benchmarks", "results");
 const RUNS_DIR = join(BENCHMARKS_RESULTS_DIR, "runs");
 const PLAYGROUND_DATA_DIR = join(PAGES_DIST, "playground-data");
@@ -179,6 +180,8 @@ ensureExists(PLAYGROUND_DIST);
 ensureExists(join(DASHBOARD_DIR, "index.html"));
 ensureExists(join(DASHBOARD_DIR, "data"));
 ensureExists(join(DASHBOARD_DIR, "data.js"));
+ensureExists(join(PLAN_DIR, "issues-graph.html"));
+ensureExists(join(PLAN_DIR, "graph-data.json"));
 
 rmSync(PAGES_DIST, { recursive: true, force: true });
 mkdirSync(PAGES_DIST, { recursive: true });
@@ -192,6 +195,8 @@ copyDirectory(PLAYGROUND_EXAMPLES_DIR, join(PAGES_DIST, "examples"));
 copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "dashboard", "index.html"));
 copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "dashboard", "data"));
 copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"));
+copyFile(join(PLAN_DIR, "issues-graph.html"), join(PAGES_DIST, "issues-graph.html"));
+copyFile(join(PLAN_DIR, "graph-data.json"), join(PAGES_DIST, "graph-data.json"));
 
 // Add the benchmark data files fetched by the public report pages.
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "history.json"), join(PAGES_DIST, "benchmarks", "results", "history.json"));

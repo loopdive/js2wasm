@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-    <title>ts2wasm playground</title>
+    <title>js2wasm playground</title>
     <style>
       * {
         box-sizing: border-box;
@@ -83,11 +83,24 @@
       .toolbar-link {
         text-decoration: none;
       }
+      .toolbar-spacer {
+        margin-left: auto;
+      }
       .timing {
         font-size: 0.75rem;
         color: #5a5a5a;
-        margin-left: auto;
         padding: 0.3rem 0;
+      }
+      .toolbar-btn.icon-only {
+        padding: 0 0.35rem;
+        min-width: 35px;
+        justify-content: center;
+      }
+      .toolbar-btn.icon-only .tb-icon {
+        margin-right: 0;
+      }
+      .toolbar-btn.icon-only .tb-label {
+        display: none;
       }
 
       /* ─── Main area ───────────────────────────────────── */
@@ -115,19 +128,27 @@
         transition: background 0.15s;
         flex-shrink: 0;
       }
-      .layout-divider-h:hover, .layout-divider-h.active,
-      .layout-divider-v:hover, .layout-divider-v.active {
+      .layout-divider-h:hover,
+      .layout-divider-h.active,
+      .layout-divider-v:hover,
+      .layout-divider-v.active {
         background: #4e4e4e;
       }
       .layout-divider-h::after {
         content: "";
         position: absolute;
-        top: 0; bottom: 0; left: -3px; right: -3px;
+        top: 0;
+        bottom: 0;
+        left: -3px;
+        right: -3px;
       }
       .layout-divider-v::after {
         content: "";
         position: absolute;
-        left: 0; right: 0; top: -3px; bottom: -3px;
+        left: 0;
+        right: 0;
+        top: -3px;
+        bottom: -3px;
       }
 
       /* Panel tab bar */
@@ -492,6 +513,10 @@
       .t262-cat-header:hover {
         background: rgba(255, 255, 255, 0.04);
       }
+      .t262-top-header {
+        display: flex;
+        align-items: center;
+      }
       .t262-arrow {
         font-size: 9px;
         display: inline-block;
@@ -540,11 +565,13 @@
       }
 
       /* ─── Test262 results dashboard ────────────────────── */
-      .t262-stats-bar {
-        padding: 8px 10px;
-        border-bottom: 1px solid #2b2b2b;
-        flex-shrink: 0;
-        background: #1e1e1e;
+      .t262-suite-summary {
+        margin: 6px 0 2px 18px;
+        padding-right: 10px;
+        cursor: default;
+      }
+      .t262-suite-summary-compact {
+        margin-top: 4px;
       }
       .t262-stats-segments {
         display: flex;
@@ -557,13 +584,22 @@
         height: 100%;
         min-width: 1px;
       }
-      .t262-seg-pass { background: #4caf50; }
-      .t262-seg-fail { background: #f44336; }
-      .t262-seg-ce { background: #ff9800; }
-      .t262-seg-skip { background: #555; }
+      .t262-seg-pass {
+        background: #4caf50;
+      }
+      .t262-seg-fail {
+        background: #f44336;
+      }
+      .t262-seg-ce {
+        background: #ff9800;
+      }
+      .t262-seg-skip {
+        background: #555;
+      }
       .t262-stats-text {
         font-size: 11px;
         color: #888;
+        line-height: 1.35;
       }
       .t262-stats-text strong {
         color: #ccc;
@@ -609,10 +645,18 @@
         text-align: center;
         font-size: 10px;
       }
-      .t262-status-pass { color: #4caf50; }
-      .t262-status-fail { color: #f44336; }
-      .t262-status-ce { color: #ff9800; }
-      .t262-status-skip { color: #666; }
+      .t262-status-pass {
+        color: #4caf50;
+      }
+      .t262-status-fail {
+        color: #f44336;
+      }
+      .t262-status-ce {
+        color: #ff9800;
+      }
+      .t262-status-skip {
+        color: #666;
+      }
 
       /* ─── Hex viewer section decorations ──────────────── */
       /* Background and label colors generated dynamically from SECTION_COLORS */
@@ -630,12 +674,11 @@
   </head>
 
   <body>
-      <div class="main-area" id="layout-root"></div>
+    <div class="main-area" id="layout-root"></div>
     <div class="toolbar">
       <img src="./image-white.png" alt="ts2wasm" class="toolbar-logo" />
       <button class="toolbar-btn" id="compile">
-        <span class="tb-icon lg">&#9881;</span
-        ><span class="tb-label">compile</span>
+        <span class="tb-icon lg">&#9881;</span><span class="tb-label">compile</span>
       </button>
       <button class="toolbar-btn" id="run" disabled>
         <span class="tb-icon lg">&#9654;</span><span class="tb-label">run</span>
@@ -649,16 +692,20 @@
       <button class="toolbar-btn" id="download-wasm" disabled>
         <span class="tb-icon">&#11015;</span><span class="tb-label">.wasm</span>
       </button>
-      <button class="toolbar-btn" id="reset-layout" title="Reset panel layout">
-        <span class="tb-icon">&#8634;</span><span class="tb-label">reset</span>
-      </button>
       <a class="toolbar-btn toolbar-link" href="./benchmarks/report.html">
         <span class="tb-icon">&#9638;</span><span class="tb-label">compatibility</span>
       </a>
       <a class="toolbar-btn toolbar-link" href="./dashboard/">
         <span class="tb-icon">&#9783;</span><span class="tb-label">plan</span>
       </a>
+      <span class="toolbar-spacer"></span>
       <span class="timing" id="timing"></span>
+      <button class="toolbar-btn icon-only" id="toggle-sidebar" title="Toggle sidebar">
+        <span class="tb-icon">&#9776;</span><span class="tb-label">sidebar</span>
+      </button>
+      <button class="toolbar-btn icon-only" id="reset-layout" title="Reset playground">
+        <span class="tb-icon">&#8634;</span><span class="tb-label">reset</span>
+      </button>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

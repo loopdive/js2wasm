@@ -1835,6 +1835,7 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
 
   // Date
   if (name === "Date_new") return { type: "date_new" };
+  if (name === "__date_now") return { type: "date_now" };
   if (name.startsWith("Date_")) return { type: "date_method", method: name.slice(5) };
 
   // Extern classes — check mod.externClasses
@@ -3039,9 +3040,9 @@ function generateImportsHelper(mod: WasmModule): string {
     lines.push("");
     lines.push("  // String constants as WebAssembly.Global values");
     lines.push("  const string_constants = {");
-    for (const s of mod.stringPool) {
+    for (const [index, s] of mod.stringPool.entries()) {
       lines.push(
-        `    ${JSON.stringify(s)}: new WebAssembly.Global({ value: "externref", mutable: false }, ${JSON.stringify(s)}),`,
+        `    ${JSON.stringify(`__str_${index}`)}: new WebAssembly.Global({ value: "externref", mutable: false }, ${JSON.stringify(s)}),`,
       );
     }
     lines.push("  };");
