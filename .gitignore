@@ -28,3 +28,4 @@ tests/fixtures/*.d.ts
 tests/fixtures/*.imports.js
 .claude/nonces/
 benchmarks/results/test262-results-*.jsonl
+.playwright-cli/

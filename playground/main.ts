@@ -7,7 +7,7 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 import * as ts from "typescript";
 import "./ts-lib-files.js";
 import { compile } from "../src/index.js";
-import { buildImports, instantiateWasm } from "../src/runtime.js";
+import { buildImports, buildStringConstants, instantiateWasm } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
 import { LayoutManager, clearSavedLayout } from "./layout.js";
@@ -2701,6 +2701,7 @@ async function runOnly() {
     const { instance, nativeBuiltins } = await instantiateWasm(
       result.binary as BufferSource,
       env,
+      buildStringConstants(result.stringPool),
     );
 
     wasmExports = instance.exports as Record<string, any>;
@@ -2831,6 +2832,7 @@ async function runBenchmark() {
   const { instance, nativeBuiltins } = await instantiateWasm(
     lastResult.binary as BufferSource,
     wasmEnv,
+    buildStringConstants(lastResult.stringPool),
   );
   log(`wasm:js-string → ${nativeBuiltins ? "native builtins" : "JS polyfill"}`);
   const wasmExports = instance.exports as Record<string, Function>;

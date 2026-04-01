@@ -1240,14 +1240,13 @@ function resolveImport(
 
 /**
  * Build string constants object for the "string_constants" import namespace.
- * Each string pool entry becomes a WebAssembly.Global under a compact __str_N key.
+ * Each string pool entry becomes a WebAssembly.Global keyed by the literal text.
  */
 export function buildStringConstants(stringPool: string[] = []): Record<string, WebAssembly.Global> {
   const constants: Record<string, WebAssembly.Global> = {};
-  for (const [index, s] of stringPool.entries()) {
-    const key = `__str_${index}`;
-    if (!(key in constants)) {
-      constants[key] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
+  for (const s of stringPool) {
+    if (!(s in constants)) {
+      constants[s] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
     }
   }
   return constants;
