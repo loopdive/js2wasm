@@ -1226,10 +1226,6 @@ import {
 } from "./closures.js";
 function emitLocalTdzCheck(ctx: CodegenContext, fctx: FunctionContext, _name: string, flagIdx: number): void {
   const tagIdx = ensureExnTag(ctx);
-  // Throw with ref.null.extern as payload when accessing a let/const variable
-  // before initialization (TDZ violation). The exception is catchable via
-  // try/catch. We avoid using addStringConstantGlobal here to prevent
-  // global index shifting during body compilation (#790).
   fctx.body.push({ op: "local.get", index: flagIdx });
   fctx.body.push({ op: "i32.eqz" });
   fctx.body.push({
@@ -1348,7 +1344,7 @@ function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
 }
 
 /** Emit a static TDZ throw (guaranteed violation — no flag check needed). */
-function emitStaticTdzThrow(ctx: CodegenContext, fctx: FunctionContext): void {
+function emitStaticTdzThrow(ctx: CodegenContext, fctx: FunctionContext, name: string): void {
   const tagIdx = ensureExnTag(ctx);
   fctx.body.push({ op: "ref.null.extern" } as Instr);
   fctx.body.push({ op: "throw", tagIdx });
@@ -1365,7 +1361,7 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
       if (tdzResult === "check") {
         emitLocalTdzCheck(ctx, fctx, name, tdzFlagIdx);
       } else if (tdzResult === "throw") {
-        emitStaticTdzThrow(ctx, fctx);
+        emitStaticTdzThrow(ctx, fctx, id.text);
       }
       // tdzResult === "skip" — no check needed, variable is guaranteed initialized
     }
@@ -1428,7 +1424,7 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
     if (tdzResult === "check") {
       emitTdzCheck(ctx, fctx, name);
     } else if (tdzResult === "throw") {
-      emitStaticTdzThrow(ctx, fctx);
+      emitStaticTdzThrow(ctx, fctx, id.text);
     }
     fctx.body.push({ op: "global.get", index: capturedIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
@@ -1450,7 +1446,7 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
     if (tdzResult === "check") {
       emitTdzCheck(ctx, fctx, name);
     } else if (tdzResult === "throw") {
-      emitStaticTdzThrow(ctx, fctx);
+      emitStaticTdzThrow(ctx, fctx, id.text);
     }
     fctx.body.push({ op: "global.get", index: moduleIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
@@ -1478,22 +1474,6 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
   if (name === "Infinity") {
     fctx.body.push({ op: "f64.const", value: Infinity });
     return { kind: "f64" };
-  }
-
-  // globalThis — in JS host mode, call __get_globalThis import to get the
-  // actual global object; in standalone/WASI mode, emit ref.null extern.
-  if (name === "globalThis") {
-    if (!ctx.wasi) {
-      const funcIdx = ensureLateImport(ctx, "__get_globalThis", [], [{ kind: "externref" }]);
-      flushLateImportShifts(ctx, fctx);
-      if (funcIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__get_globalThis")! });
-        return { kind: "externref" };
-      }
-    }
-    // Standalone fallback: no global object in Wasm
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
   }
 
   // Function reference as value: when a known function name is used as an

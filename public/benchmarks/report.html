@@ -1332,13 +1332,15 @@
         return card;
       }
 
-      function makeGaugeCard(pass, total, percent) {
+      function makeGaugeCard(summary, percent, captionSubtext) {
         const card = el("div", { className: "gauge-card" });
+        const pass = summary.pass || 0;
+        const failCount = summary.fail || 0;
+        const errorCount = summary.compile_error || 0;
+        const skipCount = summary.skip || 0;
+        const total = summary.total || pass + failCount + errorCount + skipCount + (summary.compile_timeout || 0);
         const totalSafe = Math.max(total, 1);
         const passDeg = (pass / totalSafe) * 360;
-        const failCount = window.__reportSummaryFail || 0;
-        const errorCount = window.__reportSummaryError || 0;
-        const skipCount = window.__reportSummarySkip || 0;
         const failDeg = passDeg + (failCount / totalSafe) * 360;
         const errorDeg = failDeg + (errorCount / totalSafe) * 360;
         card.style.setProperty("--gauge-pass-end", `${passDeg}deg`);
@@ -1421,7 +1423,7 @@
                   "div",
                   { className: "gauge-caption" },
                   el("div", { className: "gauge-caption-main" }, "ECMAScript"),
-                  el("div", { className: "gauge-caption-sub" }, "conformance"),
+                  el("div", { className: "gauge-caption-sub" }, captionSubtext || "conformance"),
                 ),
               ),
             ),
@@ -1429,6 +1431,38 @@
         );
         card.appendChild(gauge);
         return card;
+      }
+
+      function makeScopeSummary(...parts) {
+        const summary = {
+          pass: 0,
+          fail: 0,
+          compile_error: 0,
+          compile_timeout: 0,
+          skip: 0,
+          total: 0,
+          compilable: 0,
+          stale: 0,
+        };
+        for (const part of parts) {
+          if (!part) continue;
+          summary.pass += part.pass || 0;
+          summary.fail += part.fail || 0;
+          summary.compile_error += part.compile_error || 0;
+          summary.compile_timeout += part.compile_timeout || 0;
+          summary.skip += part.skip || 0;
+          summary.total += part.total || 0;
+          summary.compilable += part.compilable || 0;
+          summary.stale += part.stale || 0;
+        }
+        return summary;
+      }
+
+      function scopeLabel(includeLegacy, includeProposals) {
+        const parts = ["Standard"];
+        if (includeLegacy) parts.push("Annex B");
+        if (includeProposals) parts.push("Proposals");
+        return parts.join(" + ");
       }
 
       function toggleDetail(row, catName, statusFilter) {
@@ -1497,11 +1531,14 @@
       }
 
       function renderConformance(data, container) {
-        const s = data.summary;
-        const passRate = pct(s.pass, s.total);
-        window.__reportSummaryFail = s.fail;
-        window.__reportSummaryError = s.compile_error;
-        window.__reportSummarySkip = s.skip;
+        const scopeSummaries = data.scope_summaries || {};
+        const standardSummary = scopeSummaries.standard || data.summary;
+        const legacySummary = scopeSummaries.annex_b || null;
+        const proposalSummary = scopeSummaries.proposal || null;
+        const scoreState = {
+          includeLegacy: true,
+          includeProposals: false,
+        };
 
         let summaryStamp = null;
         if (data.timestamp) {
@@ -1511,13 +1548,49 @@
         }
 
         const summary = el("div", { className: "summary" });
-        const gaugeCard = makeGaugeCard(s.pass, s.total, passRate);
-        summary.appendChild(gaugeCard);
+        const summaryCardHost = el("div");
+        const controlsHost = el("div", { className: "filter-toggles", style: { marginTop: "1rem", justifyContent: "center" } });
+        const legacyToggle = el("label", { className: "filter-toggle" });
+        const legacyCheckbox = el("input", { type: "checkbox", checked: "checked" });
+        legacyToggle.appendChild(legacyCheckbox);
+        legacyToggle.appendChild(el("span", null, "Include Annex B"));
+        controlsHost.appendChild(legacyToggle);
+
+        const proposalToggle = el("label", { className: "filter-toggle" });
+        const proposalCheckbox = el("input", { type: "checkbox" });
+        proposalToggle.appendChild(proposalCheckbox);
+        proposalToggle.appendChild(el("span", null, "Include Proposals"));
+        controlsHost.appendChild(proposalToggle);
+
+        function renderSummaryCard() {
+          const s = makeScopeSummary(
+            standardSummary,
+            scoreState.includeLegacy ? legacySummary : null,
+            scoreState.includeProposals ? proposalSummary : null,
+          );
+          const passRate = pct(s.pass, s.total);
+          summaryCardHost.replaceChildren(
+            makeGaugeCard(s, passRate, scopeLabel(scoreState.includeLegacy, scoreState.includeProposals)),
+          );
+        }
+
+        legacyCheckbox.addEventListener("change", () => {
+          scoreState.includeLegacy = legacyCheckbox.checked;
+          renderSummaryCard();
+        });
+        proposalCheckbox.addEventListener("change", () => {
+          scoreState.includeProposals = proposalCheckbox.checked;
+          renderSummaryCard();
+        });
+
+        renderSummaryCard();
+        summary.appendChild(summaryCardHost);
+        summary.appendChild(controlsHost);
         if (summaryStamp) summary.appendChild(summaryStamp);
 
         // Stale results indicator
-        if (s.stale > 0) {
-          const staleCard = makeCard("Stale", s.stale.toLocaleString(), "var(--text-muted)", "from previous runs");
+        if (data.summary.stale > 0) {
+          const staleCard = makeCard("Stale", data.summary.stale.toLocaleString(), "var(--text-muted)", "from previous runs");
           staleCard.style.borderColor = "var(--error)";
           staleCard.style.borderStyle = "dashed";
           summary.appendChild(staleCard);

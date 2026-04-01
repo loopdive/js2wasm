@@ -144,9 +144,17 @@ export function isProvablyNonNull(expr: ts.Expression): boolean {
   }
 }
 
-export function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
+export function typeErrorThrowInstrs(ctx: CodegenContext, node?: ts.Node): Instr[] {
+  const line = node ? getLine(node) : 0;
+  const col = node ? getCol(node) : 0;
+  const message =
+    line > 0 && col > 0
+      ? `TypeError: Cannot access property on null or undefined at ${line}:${col}`
+      : "TypeError: Cannot access property on null or undefined";
+  addStringConstantGlobal(ctx, message);
+  const strIdx = ctx.stringGlobalMap.get(message)!;
   const tagIdx = ensureExnTag(ctx);
-  return [{ op: "ref.null.extern" } as Instr, { op: "throw", tagIdx } as Instr];
+  return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
 }
 
 /**
@@ -156,7 +164,12 @@ export function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
  *
  * Stack: [ref_null T] -> [ref_null T]  (non-null at runtime after this point)
  */
-export function emitNullCheckThrow(ctx: CodegenContext, fctx: FunctionContext, refType: ValType): void {
+export function emitNullCheckThrow(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  refType: ValType,
+  node?: ts.Node,
+): void {
   const backupLocal: number | undefined = (fctx as any).__lastGuardedCastBackup;
 
   const tmp = allocTempLocal(fctx, refType);
@@ -176,7 +189,7 @@ export function emitNullCheckThrow(ctx: CodegenContext, fctx: FunctionContext, r
         {
           op: "if",
           blockType: { kind: "empty" },
-          then: typeErrorThrowInstrs(ctx),
+          then: typeErrorThrowInstrs(ctx, node),
           else: [], // wrong struct type — don't throw
         } as Instr,
       ],
@@ -189,7 +202,7 @@ export function emitNullCheckThrow(ctx: CodegenContext, fctx: FunctionContext, r
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: typeErrorThrowInstrs(ctx),
+      then: typeErrorThrowInstrs(ctx, node),
       else: [],
     });
   }
@@ -1526,7 +1539,7 @@ export function compilePropertyAccess(
         fctx.body.push({
           op: "if",
           blockType: { kind: "empty" },
-          then: typeErrorThrowInstrs(ctx),
+          then: typeErrorThrowInstrs(ctx, expr),
           else: [],
         });
         // Multi-struct dispatch: the externref may actually be a WasmGC struct
@@ -1804,7 +1817,7 @@ export function compileElementAccess(
   if (objType.kind === "ref_null") {
     if (!isProvablyNonNull(expr.expression)) {
       // Emit null check that throws TypeError (#775)
-      emitNullCheckThrow(ctx, fctx, objType);
+      emitNullCheckThrow(ctx, fctx, objType, expr);
     }
     // After the null check (or provably non-null), the value is guaranteed non-null
     const nonNullObjType: ValType = { kind: "ref", typeIdx: (objType as any).typeIdx };
@@ -1814,7 +1827,7 @@ export function compileElementAccess(
   // Null-guard for externref: null[x] and undefined[x] throw TypeError (#775)
   if (objType.kind === "externref") {
     if (!isProvablyNonNull(expr.expression)) {
-      emitNullCheckThrow(ctx, fctx, objType);
+      emitNullCheckThrow(ctx, fctx, objType, expr);
     }
   }
 

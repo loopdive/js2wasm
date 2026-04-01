@@ -234,10 +234,11 @@ function collectBindingPatternNames(pattern: ts.BindingPattern, names: string[])
   }
 }
 
-/** Saved state for a block scope: localMap + optional TDZ flags */
+/** Saved state for a block scope: localMap + optional TDZ/const flags */
 interface BlockScopeSave {
-  locals: Map<string, number>;
+  locals: Map<string, number> | null;
   tdzFlags: Map<string, number> | null;
+  constBindings: Map<string, boolean> | null;
 }
 
 /**
@@ -252,7 +253,12 @@ function saveBlockScopedShadows(fctx: FunctionContext, block: ts.Block): BlockSc
 
   let savedLocals: Map<string, number> | null = null;
   let savedTdz: Map<string, number> | null = null;
+  let savedConstBindings: Map<string, boolean> | null = null;
   for (const name of blockNames) {
+    if (!savedConstBindings) savedConstBindings = new Map();
+    savedConstBindings.set(name, fctx.constBindings?.has(name) ?? false);
+    fctx.constBindings?.delete(name);
+
     const existing = fctx.localMap.get(name);
     if (existing !== undefined) {
       if (!savedLocals) savedLocals = new Map();
@@ -270,8 +276,8 @@ function saveBlockScopedShadows(fctx: FunctionContext, block: ts.Block): BlockSc
       }
     }
   }
-  if (!savedLocals) return null;
-  return { locals: savedLocals, tdzFlags: savedTdz };
+  if (!savedLocals && !savedTdz && !savedConstBindings) return null;
+  return { locals: savedLocals, tdzFlags: savedTdz, constBindings: savedConstBindings };
 }
 
 /**
@@ -280,13 +286,22 @@ function saveBlockScopedShadows(fctx: FunctionContext, block: ts.Block): BlockSc
  */
 function restoreBlockScopedShadows(fctx: FunctionContext, saved: BlockScopeSave | null): void {
   if (!saved) return;
-  for (const [name, idx] of saved.locals) {
-    fctx.localMap.set(name, idx);
+  if (saved.locals) {
+    for (const [name, idx] of saved.locals) {
+      fctx.localMap.set(name, idx);
+    }
   }
   if (saved.tdzFlags) {
     if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
     for (const [name, idx] of saved.tdzFlags) {
       fctx.tdzFlagLocals.set(name, idx);
+    }
+  }
+  if (saved.constBindings) {
+    if (!fctx.constBindings) fctx.constBindings = new Set();
+    for (const [name, hadConstBinding] of saved.constBindings) {
+      if (hadConstBinding) fctx.constBindings.add(name);
+      else fctx.constBindings.delete(name);
     }
   }
 }
@@ -3358,6 +3373,8 @@ function compileForStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: t
   // Save localMap entries for let/const initializers that shadow outer variables.
   // `for (let x = ...; ...)` creates a block scope that ends after the loop.
   let savedForScope: Map<string, number> | null = null;
+  let savedForTdz: Map<string, number> | null = null;
+  let savedForConstBindings: Map<string, boolean> | null = null;
   if (
     stmt.initializer &&
     ts.isVariableDeclarationList(stmt.initializer) &&
@@ -3366,11 +3383,21 @@ function compileForStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: t
     for (const decl of stmt.initializer.declarations) {
       if (ts.isIdentifier(decl.name)) {
         const name = decl.name.text;
+        if (!savedForConstBindings) savedForConstBindings = new Map();
+        savedForConstBindings.set(name, fctx.constBindings?.has(name) ?? false);
+        fctx.constBindings?.delete(name);
+
         const existing = fctx.localMap.get(name);
         if (existing !== undefined) {
           if (!savedForScope) savedForScope = new Map();
           savedForScope.set(name, existing);
           fctx.localMap.delete(name);
+        }
+        const existingTdz = fctx.tdzFlagLocals?.get(name);
+        if (existingTdz !== undefined) {
+          if (!savedForTdz) savedForTdz = new Map();
+          savedForTdz.set(name, existingTdz);
+          fctx.tdzFlagLocals?.delete(name);
         }
       }
     }
@@ -3619,6 +3646,19 @@ function compileForStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: t
   if (savedForScope) {
     for (const [name, idx] of savedForScope) {
       fctx.localMap.set(name, idx);
+    }
+  }
+  if (savedForTdz) {
+    if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+    for (const [name, idx] of savedForTdz) {
+      fctx.tdzFlagLocals.set(name, idx);
+    }
+  }
+  if (savedForConstBindings) {
+    if (!fctx.constBindings) fctx.constBindings = new Set();
+    for (const [name, hadConstBinding] of savedForConstBindings) {
+      if (hadConstBinding) fctx.constBindings.add(name);
+      else fctx.constBindings.delete(name);
     }
   }
 }

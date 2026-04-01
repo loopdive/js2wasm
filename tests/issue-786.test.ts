@@ -81,6 +81,23 @@ describe("Issue #786: block-scoped let/const shadowing", () => {
     expect(result).toBe(10);
   });
 
+  it("block const shadowing does not poison a later loop variable", async () => {
+    const result = await run(`
+      export function test(): number {
+        let sum: number = 0;
+        for (let i: number = 0; i < 2; i = i + 1) {
+          const d: number = i;
+          sum = sum + d;
+        }
+        for (let d: number = 1; d <= 3; d++) {
+          sum = sum + d;
+        }
+        return sum;
+      }
+    `);
+    expect(result).toBe(7);
+  });
+
   it("catch parameter scope does not leak", async () => {
     const result = await run(`
       export function test(): number {
