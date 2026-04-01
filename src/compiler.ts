@@ -3040,9 +3040,9 @@ function generateImportsHelper(mod: WasmModule): string {
     lines.push("");
     lines.push("  // String constants as WebAssembly.Global values");
     lines.push("  const string_constants = {");
-    for (const [index, s] of mod.stringPool.entries()) {
+    for (const s of mod.stringPool) {
       lines.push(
-        `    ${JSON.stringify(`__str_${index}`)}: new WebAssembly.Global({ value: "externref", mutable: false }, ${JSON.stringify(s)}),`,
+        `    ${JSON.stringify(s)}: new WebAssembly.Global({ value: "externref", mutable: false }, ${JSON.stringify(s)}),`,
       );
     }
     lines.push("  };");

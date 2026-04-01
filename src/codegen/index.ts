@@ -3234,13 +3234,8 @@ function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorSt
       }
     } else {
       addStringImports(ctx);
-      const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
       for (const value of state.objectMethodLiterals) {
-        const name = `__str_${ctx.stringLiteralCounter++}`;
-        addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-        ctx.stringLiteralMap.set(value, name);
-        ctx.stringLiteralValues.set(name, value);
-        ctx.mod.stringPool.push(value);
+        addStringConstantGlobal(ctx, value);
       }
     }
   }
@@ -8083,13 +8078,8 @@ function collectObjectMethodStringLiterals(ctx: CodegenContext, sourceFile: ts.S
   // Ensure wasm:js-string imports exist (may already be registered)
   addStringImports(ctx);
 
-  const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
   for (const value of literals) {
-    const name = `__str_${ctx.stringLiteralCounter++}`;
-    addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-    ctx.stringLiteralMap.set(value, name);
-    ctx.stringLiteralValues.set(name, value);
-    ctx.mod.stringPool.push(value);
+    addStringConstantGlobal(ctx, value);
   }
 }
 
@@ -9207,8 +9197,8 @@ export function addImport(ctx: CodegenContext, module: string, name: string, des
 
 /**
  * Register a string literal as a global import from the "string_constants" namespace.
- * Uses compact synthetic import names (__str_N) instead of the raw literal text,
- * and the global type is (ref extern) (non-nullable externref).
+ * Uses the literal string value itself as the import name, which is required
+ * by native wasm:js-string importedStringConstants handling.
  */
 export function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
   if (ctx.stringGlobalMap.has(value)) return; // already registered
@@ -9219,15 +9209,14 @@ export function addStringConstantGlobal(ctx: CodegenContext, value: string): voi
   const oldNumImportGlobals = ctx.numImportGlobals;
 
   const globalIdx = ctx.numImportGlobals; // next global import index
-  const importName = `__str_${ctx.stringLiteralCounter}`;
-  addImport(ctx, "string_constants", importName, {
+  addImport(ctx, "string_constants", value, {
     kind: "global",
     type: { kind: "externref" },
     mutable: false,
   });
   ctx.stringGlobalMap.set(value, globalIdx);
-  ctx.stringLiteralMap.set(value, importName);
-  ctx.stringLiteralValues.set(importName, value);
+  ctx.stringLiteralMap.set(value, `__str_${ctx.stringLiteralCounter}`);
+  ctx.stringLiteralValues.set(`__str_${ctx.stringLiteralCounter}`, value);
   ctx.stringLiteralCounter++;
   ctx.mod.stringPool.push(value);
 
