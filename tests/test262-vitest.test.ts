@@ -25,7 +25,16 @@ async function getCompileMulti() {
   }
   return _compileMulti;
 }
-import { findTestFiles, parseMeta, wrapTest, shouldSkip, classifyError, TEST_CATEGORIES } from "./test262-runner.js";
+import {
+  classifyError,
+  classifyTestScope,
+  findTestFiles,
+  parseMeta,
+  wrapTest,
+  shouldSkip,
+  TEST_CATEGORIES,
+  type Test262Scope,
+} from "./test262-runner.js";
 
 /**
  * Extract _FIXTURE.js file references from static import/export statements.
@@ -232,8 +241,32 @@ let flushCount = 0;
 const REPORT_FLUSH_INTERVAL = 500;
 
 const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0 };
-const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> =
-  {};
+type StatusCounts = {
+  pass: number;
+  fail: number;
+  compile_error: number;
+  compile_timeout: number;
+  skip: number;
+  total: number;
+};
+
+function createEmptyCounts(): StatusCounts {
+  return {
+    pass: 0,
+    fail: 0,
+    compile_error: 0,
+    compile_timeout: 0,
+    skip: 0,
+    total: 0,
+  };
+}
+
+const catCounts: Record<string, StatusCounts> = {};
+const scopeCounts: Record<Test262Scope, StatusCounts> = {
+  standard: createEmptyCounts(),
+  annex_b: createEmptyCounts(),
+  proposal: createEmptyCounts(),
+};
 const errorCategoryCounts: Record<string, number> = {};
 const skipReasonCounts: Record<string, number> = {};
 
@@ -247,12 +280,35 @@ class ConformanceError extends Error {
 // Periodic GC to prevent fork OOM
 const GC_INTERVAL = 200;
 
+function buildSummary(counts: StatusCounts) {
+  return {
+    ...counts,
+    compilable: counts.pass + counts.fail,
+    stale: 0,
+  };
+}
+
+function buildOfficialSummary() {
+  const counts = createEmptyCounts();
+  for (const scope of ["standard", "annex_b"] as const) {
+    const scoped = scopeCounts[scope];
+    counts.pass += scoped.pass;
+    counts.fail += scoped.fail;
+    counts.compile_error += scoped.compile_error;
+    counts.compile_timeout += scoped.compile_timeout;
+    counts.skip += scoped.skip;
+    counts.total += scoped.total;
+  }
+  return buildSummary(counts);
+}
+
 function recordResult(
   file: string,
   category: string,
   status: string,
   error?: string,
   timing?: { compileMs?: number; execMs?: number },
+  scopeInfo?: { scope: Test262Scope; official: boolean; reason?: string },
 ) {
   const errorCategory = status === "fail" || status === "compile_error" ? classifyError(error) : undefined;
 
@@ -265,13 +321,19 @@ function recordResult(
     error_category: errorCategory,
     compile_ms: timing?.compileMs !== undefined ? Math.round(timing.compileMs) : undefined,
     exec_ms: timing?.execMs !== undefined ? Math.round(timing.execMs) : undefined,
+    scope: scopeInfo?.scope ?? "standard",
+    scope_official: scopeInfo?.official ?? true,
+    scope_reason: scopeInfo?.reason,
   });
   fdWrite(jsonlFd, entry + "\n");
   summary.total++;
   (summary as any)[status]++;
-  if (!catCounts[category]) catCounts[category] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
+  if (!catCounts[category]) catCounts[category] = createEmptyCounts();
   (catCounts[category] as any)[status]++;
   catCounts[category].total++;
+  const scopeKey = scopeInfo?.scope ?? "standard";
+  (scopeCounts[scopeKey] as any)[status]++;
+  scopeCounts[scopeKey].total++;
 
   if (errorCategory) {
     errorCategoryCounts[errorCategory] = (errorCategoryCounts[errorCategory] || 0) + 1;
@@ -293,7 +355,10 @@ function recordResult(
   if (flushCount % REPORT_FLUSH_INTERVAL === 0) {
     const report = {
       timestamp: new Date().toISOString(),
-      summary: { ...summary, compilable: summary.pass + summary.fail, stale: 0 },
+      summary: buildOfficialSummary(),
+      official_summary: buildOfficialSummary(),
+      full_summary: buildSummary(summary),
+      scope_summaries: { ...scopeCounts },
       categories: Object.entries(catCounts)
         .map(([name, c]) => ({ name, ...c }))
         .sort((a, b) => a.name.localeCompare(b.name)),
@@ -320,7 +385,10 @@ afterAll(() => {
 
   const report = {
     timestamp: new Date().toISOString(),
-    summary: { ...summary, compilable: summary.pass + summary.fail, stale: 0 },
+    summary: buildOfficialSummary(),
+    official_summary: buildOfficialSummary(),
+    full_summary: buildSummary(summary),
+    scope_summaries: { ...scopeCounts },
     categories: Object.entries(catCounts)
       .map(([name, c]) => ({ name, ...c }))
       .sort((a, b) => a.name.localeCompare(b.name)),
@@ -434,11 +502,12 @@ for (const category of TEST_CATEGORIES) {
         async () => {
           const source = readFileSync(filePath, "utf-8");
           const meta = parseMeta(source);
+          const scopeInfo = classifyTestScope(source, meta, filePath);
 
           // Handle skips
           const filter = shouldSkip(source, meta, filePath);
           if (filter.skip) {
-            recordResult(relPath, category, "skip", filter.reason);
+            recordResult(relPath, category, "skip", filter.reason, undefined, scopeInfo);
             return;
           }
 
@@ -485,7 +554,14 @@ for (const category of TEST_CATEGORIES) {
             const cached = readFromCache(wrapped);
             if (cached === null) {
               // Cache miss — this shouldn't happen in two-phase mode, but handle gracefully
-              recordResult(relPath, category, "compile_error", "not in precompile cache (run Phase 1 first)");
+              recordResult(
+                relPath,
+                category,
+                "compile_error",
+                "not in precompile cache (run Phase 1 first)",
+                undefined,
+                scopeInfo,
+              );
               return;
             }
             compileResult = cached;
@@ -495,7 +571,7 @@ for (const category of TEST_CATEGORIES) {
           if (isNegative) {
             const earlyErrors = compileResult.ok ? (compileResult.result as any)?.earlyErrorCodes : undefined;
             if (earlyErrors?.length > 0) {
-              recordResult(relPath, category, "pass");
+              recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
               return;
             }
 
@@ -504,9 +580,9 @@ for (const category of TEST_CATEGORIES) {
               const codes = (compileResult as any).errorCodes as number[] | undefined;
               const hasEarlyError = codes?.some((c: number) => ES_EARLY_ERRORS.has(c));
               if (hasEarlyError) {
-                recordResult(relPath, category, "pass");
+                recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
               } else {
-                recordResult(relPath, category, "pass");
+                recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
               }
               return;
             }
@@ -516,18 +592,18 @@ for (const category of TEST_CATEGORIES) {
               const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
               await WebAssembly.instantiate(binary, imports as any);
             } catch {
-              recordResult(relPath, category, "pass");
+              recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
               return;
             }
             const desc = meta.description?.substring(0, 100) ?? "";
             const info = `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled${desc ? `: ${desc}` : ""}`;
-            recordResult(relPath, category, "fail", info);
+            recordResult(relPath, category, "fail", info, undefined, scopeInfo);
             return;
           }
 
           if (!compileResult.ok) {
             const status = (compileResult as any).timeout ? "compile_timeout" : "compile_error";
-            recordResult(relPath, category, status, adjustErrorLines(compileResult.error, wrapOffset));
+            recordResult(relPath, category, status, adjustErrorLines(compileResult.error, wrapOffset), undefined, scopeInfo);
             return;
           }
 
@@ -550,7 +626,7 @@ for (const category of TEST_CATEGORIES) {
 
           // Process worker result
           if (workerResult.timeout) {
-            recordResult(relPath, category, "fail", "runtime timeout (10s)", { compileMs, execMs: EXEC_TIMEOUT_MS });
+            recordResult(relPath, category, "fail", "runtime timeout (10s)", { compileMs, execMs: EXEC_TIMEOUT_MS }, scopeInfo);
             return;
           }
 
@@ -598,17 +674,17 @@ for (const category of TEST_CATEGORIES) {
                 enriched = `${msg} [in ${fname}()]`;
               }
             }
-            recordResult(relPath, category, "compile_error", enriched, timing);
+            recordResult(relPath, category, "compile_error", enriched, timing, scopeInfo);
             return;
           }
 
           if (workerResult.noTestExport) {
-            recordResult(relPath, category, "compile_error", "no test export", timing);
+            recordResult(relPath, category, "compile_error", "no test export", timing, scopeInfo);
             return;
           }
 
           if (workerResult.workerError) {
-            recordResult(relPath, category, "fail", workerResult.error, timing);
+            recordResult(relPath, category, "fail", workerResult.error, timing, scopeInfo);
             return;
           }
 
@@ -633,40 +709,40 @@ for (const category of TEST_CATEGORIES) {
               }
 
               if (/TypeError \(null\/undefined/.test(errInfo)) {
-                recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`, timing);
+                recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`, timing, scopeInfo);
               } else {
-                recordResult(relPath, category, "fail", errInfo, timing);
+                recordResult(relPath, category, "fail", errInfo, timing, scopeInfo);
               }
             } else {
-              recordResult(relPath, category, "fail", workerResult.error, timing);
+              recordResult(relPath, category, "fail", workerResult.error, timing, scopeInfo);
             }
             return;
           }
 
           // Success path
           if (workerResult.runtimeNegativePass) {
-            recordResult(relPath, category, "pass", undefined, timing);
+            recordResult(relPath, category, "pass", undefined, timing, scopeInfo);
             return;
           }
 
           if (workerResult.runtimeNegativeNoThrow) {
-            recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`, timing);
+            recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`, timing, scopeInfo);
             return;
           }
 
           const ret = workerResult.ret;
           if (ret === 1) {
-            recordResult(relPath, category, "pass", undefined, timing);
+            recordResult(relPath, category, "pass", undefined, timing, scopeInfo);
           } else if (ret === -1) {
             const desc = meta.description?.substring(0, 100) ?? "";
             const throwsMatch = source.match(/assert\.throws\s*\(\s*(\w+Error)/);
             const expectedErr = throwsMatch ? throwsMatch[1] : null;
             let context = desc || "exception in test body";
             if (expectedErr) context = `expected ${expectedErr} — ${context}`;
-            recordResult(relPath, category, "fail", `returned -1 — ${context}`, timing);
+            recordResult(relPath, category, "fail", `returned -1 — ${context}`, timing, scopeInfo);
           } else {
             const assertInfo = findNthAssert(source, ret);
-            recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`, timing);
+            recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`, timing, scopeInfo);
           }
         },
         90_000,

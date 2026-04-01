@@ -14,6 +14,17 @@ LOCKFILE="/tmp/ts2wasm-test262.lock"
 LOCKDIR="/tmp/ts2wasm-test262.lockdir"
 RESULTS_DIR="$MAIN_DIR/benchmarks/results"
 RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+INCLUDE_PROPOSALS=0
+
+forwarded_args=()
+for arg in "$@"; do
+  if [ "$arg" = "--include-proposals" ]; then
+    INCLUDE_PROPOSALS=1
+  else
+    forwarded_args+=("$arg")
+  fi
+done
+export TEST262_INCLUDE_PROPOSALS="$INCLUDE_PROPOSALS"
 
 resolve_esbuild() {
   if [ -n "${ESBUILD_BIN:-}" ] && [ -x "${ESBUILD_BIN:-}" ]; then
@@ -199,13 +210,13 @@ if [ -n "$CHUNKS" ]; then
   echo "Running $CHUNK_COUNT chunk files in one vitest invocation..."
   npx vitest run tests/test262-chunk*.test.ts \
     --reporter=verbose \
-    "$@" 2>&1 | tee /tmp/test262-vitest-run.log || true
+    "${forwarded_args[@]}" 2>&1 | tee /tmp/test262-vitest-run.log || true
 else
   # Single file mode: run the monolithic test file
   echo "Running single test file..."
   npx vitest run tests/test262-vitest.test.ts \
     --reporter=verbose \
-    "$@" 2>&1 | tee /tmp/test262-vitest-run.log || true
+    "${forwarded_args[@]}" 2>&1 | tee /tmp/test262-vitest-run.log || true
 fi
 # Generate report.json from JSONL (atomic — no fork race condition)
 JSONL_FILE="$RESULTS_DIR/test262-results-${RUN_TIMESTAMP}.jsonl"
@@ -217,18 +228,29 @@ import json
 from collections import Counter
 
 statuses = Counter()
+official_statuses = Counter()
 cats = {}
 errors = Counter()
 skips = Counter()
+scope_counts = {
+    'standard': Counter(),
+    'annex_b': Counter(),
+    'proposal': Counter(),
+}
 
 with open('$JSONL_FILE') as f:
     for line in f:
         r = json.loads(line)
         s = r['status']
         statuses[s] += 1
+        scope = r.get('scope', 'standard')
+        scope_counts.setdefault(scope, Counter())
+        scope_counts[scope][s] += 1
+        if r.get('scope_official', scope != 'proposal'):
+            official_statuses[s] += 1
         cat = r.get('category', 'unknown')
         if cat not in cats:
-            cats[cat] = {'pass': 0, 'fail': 0, 'compile_error': 0, 'skip': 0, 'total': 0}
+            cats[cat] = {'pass': 0, 'fail': 0, 'compile_error': 0, 'compile_timeout': 0, 'skip': 0, 'total': 0}
         cats[cat][s] = cats[cat].get(s, 0) + 1
         cats[cat]['total'] += 1
         if r.get('error_category'):
@@ -236,18 +258,28 @@ with open('$JSONL_FILE') as f:
         if s == 'skip' and r.get('error'):
             skips[r['error']] += 1
 
+def build_summary(counter):
+    return {
+        'total': sum(counter.values()),
+        'pass': counter.get('pass', 0),
+        'fail': counter.get('fail', 0),
+        'compile_error': counter.get('compile_error', 0),
+        'compile_timeout': counter.get('compile_timeout', 0),
+        'skip': counter.get('skip', 0),
+        'compilable': counter.get('pass', 0) + counter.get('fail', 0),
+        'stale': 0,
+    }
+
 report = {
     'timestamp': '$(date -Iseconds)',
-    'summary': {
-        'total': sum(statuses.values()),
-        'pass': statuses.get('pass', 0),
-        'fail': statuses.get('fail', 0),
-        'compile_error': statuses.get('compile_error', 0),
-        'compile_timeout': statuses.get('compile_timeout', 0),
-        'skip': statuses.get('skip', 0),
-        'compilable': statuses.get('pass', 0) + statuses.get('fail', 0),
-        'stale': 0,
+    'mode': {
+        'include_proposals': ${INCLUDE_PROPOSALS},
+        'label': 'full test262' if ${INCLUDE_PROPOSALS} else 'official test262 (default scope)',
     },
+    'summary': build_summary(official_statuses),
+    'official_summary': build_summary(official_statuses),
+    'full_summary': build_summary(statuses),
+    'scope_summaries': {name: build_summary(counter) for name, counter in sorted(scope_counts.items())},
     'categories': [{'name': n, **c} for n, c in sorted(cats.items())],
     'error_categories': dict(errors),
     'skip_reasons': dict(skips),

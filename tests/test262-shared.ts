@@ -15,7 +15,16 @@ import { dirname, join, relative } from "path";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { availableParallelism } from "os";
 import { CompilerPool, type TestResult } from "../scripts/compiler-pool.js";
-import { classifyError, findTestFiles, parseMeta, shouldSkip, TEST_CATEGORIES, wrapTest } from "./test262-runner.js";
+import {
+  classifyError,
+  classifyTestScope,
+  findTestFiles,
+  parseMeta,
+  shouldSkip,
+  TEST_CATEGORIES,
+  type Test262Scope,
+  wrapTest,
+} from "./test262-runner.js";
 
 // Prevent unhandled Promise rejections from crashing the vitest fork.
 process.on("unhandledRejection", () => {});
@@ -109,8 +118,27 @@ const summary = {
   compile_timeout: 0,
   skip: 0,
 };
-const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> =
-  {};
+type StatusCounts = {
+  pass: number;
+  fail: number;
+  compile_error: number;
+  compile_timeout: number;
+  skip: number;
+  total: number;
+};
+
+function createEmptyCounts(): StatusCounts {
+  return {
+    pass: 0,
+    fail: 0,
+    compile_error: 0,
+    compile_timeout: 0,
+    skip: 0,
+    total: 0,
+  };
+}
+
+const catCounts: Record<string, StatusCounts> = {};
 
 const errorCategoryCounts: Record<string, number> = {};
 const skipReasonCounts: Record<string, number> = {};
@@ -128,6 +156,7 @@ function recordResult(
   status: string,
   error?: string,
   timing?: { compileMs?: number; execMs?: number },
+  scopeInfo?: { scope: Test262Scope; official: boolean; reason?: string },
 ) {
   const errorCategory = status === "fail" || status === "compile_error" ? classifyError(error) : undefined;
 
@@ -140,11 +169,14 @@ function recordResult(
     error_category: errorCategory,
     compile_ms: timing?.compileMs !== undefined ? Math.round(timing.compileMs) : undefined,
     exec_ms: timing?.execMs !== undefined ? Math.round(timing.execMs) : undefined,
+    scope: scopeInfo?.scope ?? "standard",
+    scope_official: scopeInfo?.official ?? true,
+    scope_reason: scopeInfo?.reason,
   });
   fdWrite(jsonlFd, entry + "\n");
   summary.total++;
   (summary as any)[status]++;
-  if (!catCounts[category]) catCounts[category] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
+  if (!catCounts[category]) catCounts[category] = createEmptyCounts();
   (catCounts[category] as any)[status]++;
   catCounts[category].total++;
 
@@ -277,10 +309,11 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
           async () => {
             const source = readFileSync(filePath, "utf-8");
             const meta = parseMeta(source);
+            const scopeInfo = classifyTestScope(source, meta, filePath);
 
             const filter = shouldSkip(source, meta, filePath);
             if (filter.skip) {
-              recordResult(relPath, category, "skip", filter.reason);
+              recordResult(relPath, category, "skip", filter.reason, undefined, scopeInfo);
               return;
             }
 
@@ -307,18 +340,25 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
                 });
                 if (!result.success || result.binary.length === 0) {
                   if (isNegative) {
-                    recordResult(relPath, category, "pass");
+                    recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
                   } else {
                     const errMsg = result.errors.map((e: any) => `L${e.line}:${e.column} ${e.message}`).join("; ");
-                    recordResult(relPath, category, "compile_error", errMsg);
+                    recordResult(relPath, category, "compile_error", errMsg, undefined, scopeInfo);
                   }
                   return;
                 }
                 // For fixture tests, we'd need to execute in-process too.
                 // This is rare enough that we accept it.
-                recordResult(relPath, category, "compile_error", "fixture tests not supported in unified mode");
+                recordResult(
+                  relPath,
+                  category,
+                  "compile_error",
+                  "fixture tests not supported in unified mode",
+                  undefined,
+                  scopeInfo,
+                );
               } catch (e: any) {
-                recordResult(relPath, category, "compile_error", e.message ?? String(e));
+                recordResult(relPath, category, "compile_error", e.message ?? String(e), undefined, scopeInfo);
               }
               return;
             }
@@ -341,13 +381,13 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
 
             // Map worker result to recordResult
             if (r.status === "pass") {
-              recordResult(relPath, category, "pass", undefined, timing);
+              recordResult(relPath, category, "pass", undefined, timing, scopeInfo);
               return;
             }
 
             if (r.status === "compile_error" || r.status === "compile_timeout") {
               const error = r.error ? adjustErrorLines(r.error, wrapOffset) : r.status;
-              recordResult(relPath, category, r.status, error, timing);
+              recordResult(relPath, category, r.status, error, timing, scopeInfo);
               return;
             }
 
@@ -393,12 +433,12 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
                 }
               }
 
-              recordResult(relPath, category, "fail", error, timing);
+              recordResult(relPath, category, "fail", error, timing, scopeInfo);
               return;
             }
 
             // Fallback
-            recordResult(relPath, category, r.status || "fail", r.error || "unknown", timing);
+            recordResult(relPath, category, r.status || "fail", r.error || "unknown", timing, scopeInfo);
           },
           90_000,
         );

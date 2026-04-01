@@ -27,6 +27,79 @@ export interface Test262Meta {
   esid?: string;
 }
 
+export type Test262Scope = "standard" | "annex_b" | "proposal";
+
+export interface Test262ScopeInfo {
+  scope: Test262Scope;
+  official: boolean;
+  reason?: string;
+}
+
+const PROPOSAL_FEATURES = new Map([
+  ["Temporal", "proposal feature: Temporal"],
+  ["import-defer", "proposal feature: import defer"],
+  ["source-phase-imports", "proposal feature: source phase imports"],
+  ["upsert", "proposal feature: Map/WeakMap upsert"],
+]);
+
+function getTest262RelativePath(filePath?: string): string | undefined {
+  if (!filePath) return undefined;
+  return filePath.replace(/.*test262\//, "");
+}
+
+export function classifyTestScope(source: string, meta: Test262Meta, filePath?: string): Test262ScopeInfo {
+  const relPath = getTest262RelativePath(filePath) ?? "";
+
+  if (relPath.startsWith("test/staging/") || relPath.startsWith("staging/")) {
+    return {
+      scope: "proposal",
+      official: false,
+      reason: "test262 staging proposal",
+    };
+  }
+
+  if (relPath.startsWith("test/annexB/") || relPath.startsWith("annexB/")) {
+    return {
+      scope: "annex_b",
+      official: true,
+      reason: "Annex B",
+    };
+  }
+
+  if (relPath.includes("built-ins/Temporal/")) {
+    return {
+      scope: "proposal",
+      official: false,
+      reason: "proposal feature: Temporal",
+    };
+  }
+
+  if (meta.features) {
+    for (const feat of meta.features) {
+      if (/^set-methods/.test(feat)) {
+        return {
+          scope: "proposal",
+          official: false,
+          reason: "proposal feature: Set methods",
+        };
+      }
+      const reason = PROPOSAL_FEATURES.get(feat);
+      if (reason) {
+        return {
+          scope: "proposal",
+          official: false,
+          reason,
+        };
+      }
+    }
+  }
+
+  return {
+    scope: "standard",
+    official: true,
+  };
+}
+
 /** Parse the /*--- ... ---*​/ YAML front matter from a test262 file */
 export function parseMeta(source: string): Test262Meta {
   const match = source.match(/\/\*---\s*([\s\S]*?)\s*---\*\//);
@@ -94,6 +167,8 @@ const HANGING_TESTS = new Set([
 ]);
 
 export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
+  const scope = classifyTestScope(source, meta, filePath);
+
   // Skip FIXTURE files — auxiliary modules for dynamic-import tests that use
   // export syntax TypeScript rejects. They are never standalone tests.
   // findTestFiles already excludes them, but guard here for defense-in-depth.
@@ -160,19 +235,6 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
       reason: "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)",
     };
   }
-  if (meta.features?.some((f: string) => /^set-methods/.test(f))) {
-    return {
-      skip: true,
-      reason: "ES2025: Set methods (union, intersection, difference, etc.) (#834)",
-    };
-  }
-  if (filePath && /built-ins\/Temporal/.test(filePath)) {
-    return {
-      skip: true,
-      reason: "ES2025: Temporal API",
-    };
-  }
-
   // Skip known hanging tests by file path — prevents infinite compilation loops
   if (filePath) {
     const relPath = filePath.replace(/.*test262\//, "");
@@ -181,24 +243,15 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // Skip TC39 Stage 2/3 proposals we don't support. The catch-all MetaProperty
-  // handler (#712) makes import.source/import.defer compile, causing 117
-  // negative parse tests to regress without this filter.
   if (filePath && /BigInt64Array|BigUint64Array/.test(filePath)) {
     return { skip: true, reason: "ES2020: BigInt typed arrays not implemented (#838)" };
   }
-  const UNCONDITIONAL_SKIP_FEATURES = new Map([
-    ["source-phase-imports", "Stage 3: source phase imports"],
-    ["import-defer", "Stage 3: import defer"],
-    ["upsert", "Stage 3: Map/WeakMap upsert (getOrInsert) (#837)"],
-  ]);
-  if (meta.features) {
-    for (const feat of meta.features) {
-      const reason = UNCONDITIONAL_SKIP_FEATURES.get(feat);
-      if (reason) {
-        return { skip: true, reason };
-      }
-    }
+
+  if (scope.scope === "proposal" && process.env.TEST262_INCLUDE_PROPOSALS !== "1") {
+    return {
+      skip: true,
+      reason: `Proposal excluded from default scope${scope.reason ? `: ${scope.reason}` : ""}`,
+    };
   }
 
   // All other skip filters have been removed (#494). Tests that fail will

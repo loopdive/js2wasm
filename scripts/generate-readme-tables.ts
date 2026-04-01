@@ -280,7 +280,9 @@ function statusEmoji(status: string): string {
 interface TestResult {
   file: string;
   category: string;
-  status: "pass" | "fail" | "skip" | "compile_error";
+  status: "pass" | "fail" | "skip" | "compile_error" | "compile_timeout";
+  scope?: "standard" | "annex_b" | "proposal";
+  scope_official?: boolean;
   timing?: {
     totalMs: number;
     compileMs: number;
@@ -298,6 +300,11 @@ function readResults(): TestResult[] {
 
   const lines = readFileSync(JSONL_PATH, "utf-8").trim().split("\n");
   return lines.filter(Boolean).map((line) => JSON.parse(line) as TestResult);
+}
+
+function isOfficialResult(result: TestResult): boolean {
+  if (typeof result.scope_official === "boolean") return result.scope_official;
+  return result.scope !== "proposal";
 }
 
 // ---------------------------------------------------------------------------
@@ -386,7 +393,8 @@ function generateSummary(results: TestResult[]): string {
   let pass = 0,
     fail = 0,
     skip = 0,
-    compileError = 0;
+    compileError = 0,
+    compileTimeout = 0;
   for (const r of results) {
     switch (r.status) {
       case "pass":
@@ -401,6 +409,9 @@ function generateSummary(results: TestResult[]): string {
       case "compile_error":
         compileError++;
         break;
+      case "compile_timeout":
+        compileTimeout++;
+        break;
     }
   }
   const total = results.length;
@@ -411,10 +422,27 @@ function generateSummary(results: TestResult[]): string {
     `| Pass | ${pass.toLocaleString()} |`,
     `| Fail | ${fail.toLocaleString()} |`,
     `| Compile error | ${compileError.toLocaleString()} |`,
+    `| Compile timeout | ${compileTimeout.toLocaleString()} |`,
     `| Skip | ${skip.toLocaleString()} |`,
     `| **Pass rate (excl. skip)** | **${total - skip > 0 ? Math.round((pass / (total - skip)) * 100) : 0}%** |`,
   ];
   return lines.join("\n");
+}
+
+function generateScopeSummary(officialResults: TestResult[], fullResults: TestResult[]): string {
+  const officialTable = generateSummary(officialResults);
+  const fullTable = generateSummary(fullResults);
+  return [
+    "### Official Scope\n",
+    "_Default scope: standard-track ECMAScript plus Annex B, excluding proposals._",
+    "",
+    officialTable,
+    "",
+    "### Full Suite Context\n",
+    "_Includes proposal and staging tests when they are present in the JSONL._",
+    "",
+    fullTable,
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -536,12 +564,13 @@ function ensureMarkers(content: string): string {
 
 function main() {
   console.log("Reading test262 results...");
-  const results = readResults();
-  console.log(`  ${results.length} test results loaded`);
+  const allResults = readResults();
+  const officialResults = allResults.filter(isOfficialResult);
+  console.log(`  ${allResults.length} test results loaded`);
 
   // Generate tables
-  const summaryTable = generateSummary(results);
-  const coverageTable = generateCoverageTable(results);
+  const summaryTable = generateScopeSummary(officialResults, allResults);
+  const coverageTable = generateCoverageTable(officialResults);
   const benchmarkTable = generateBenchmarkTable();
 
   // Combine coverage content

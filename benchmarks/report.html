@@ -415,9 +415,26 @@
           const resp = await fetch(RESULTS_JSONL);
           if (!resp.ok) return null;
           const text = await resp.text();
-          const counts = { pass: 0, fail: 0, compile_error: 0, skip: 0 };
+          const counts = { pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0 };
+          const officialCounts = { pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0 };
+          const scopeSummaries = {
+            standard: { pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0, total: 0 },
+            annex_b: { pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0, total: 0 },
+            proposal: { pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0, total: 0 },
+          };
           const cats = {};
           const skipReasons = {};
+          const buildSummary = (counter) => ({
+            total:
+              counter.pass + counter.fail + counter.compile_error + counter.skip,
+            pass: counter.pass,
+            fail: counter.fail,
+            compile_error: counter.compile_error,
+            compile_timeout: counter.compile_timeout || 0,
+            skip: counter.skip,
+            compilable: counter.pass + counter.fail,
+            stale: 0,
+          });
           for (const line of text.split("\n")) {
             if (!line.trim()) continue;
             try {
@@ -425,6 +442,17 @@
               const s = r.status;
               if (s in counts) {
                 counts[s]++;
+                const scope = r.scope || "standard";
+                if (!scopeSummaries[scope]) {
+                  scopeSummaries[scope] = { pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0, total: 0 };
+                }
+                scopeSummaries[scope][s]++;
+                scopeSummaries[scope].total++;
+                if (r.scope_official !== false && scope !== "proposal") {
+                  officialCounts[s]++;
+                } else if (r.scope_official === true) {
+                  officialCounts[s]++;
+                }
                 const cat = r.category || "unknown";
                 if (!cats[cat])
                   cats[cat] = {
@@ -432,6 +460,7 @@
                     pass: 0,
                     fail: 0,
                     compile_error: 0,
+                    compile_timeout: 0,
                     skip: 0,
                     total: 0,
                   };
@@ -447,12 +476,15 @@
           if (total === 0) return null;
           return {
             timestamp: new Date().toISOString(),
-            summary: {
-              total,
-              ...counts,
-              compilable: counts.pass + counts.fail,
-              stale: 0,
-            },
+            summary: buildSummary(officialCounts),
+            official_summary: buildSummary(officialCounts),
+            full_summary: buildSummary(counts),
+            scope_summaries: Object.fromEntries(
+              Object.entries(scopeSummaries).map(([name, counter]) => [
+                name,
+                buildSummary(counter),
+              ]),
+            ),
             categories: Object.values(cats).sort((a, b) =>
               a.name.localeCompare(b.name),
             ),
@@ -855,6 +887,7 @@
 
       function renderConformance(data, container) {
         const s = data.summary;
+        const full = data.full_summary || data.summary;
         const passRate = pct(s.pass, s.pass + s.fail);
 
         container.appendChild(el("h2", null, "Test262 Conformance"));
@@ -870,8 +903,24 @@
         // --- Summary cards (clickable as status filters) ---
         const summary = el("div", { className: "summary" });
 
-        const totalCard = makeCard("Total Tests", s.total.toLocaleString());
+        const totalCard = makeCard(
+          "Official Scope",
+          s.total.toLocaleString(),
+          undefined,
+          "standard + Annex B, no proposals",
+        );
         summary.appendChild(totalCard);
+
+        if (full && full.total !== s.total) {
+          summary.appendChild(
+            makeCard(
+              "Full Suite",
+              full.total.toLocaleString(),
+              undefined,
+              "including proposals",
+            ),
+          );
+        }
 
         const statusCards = {
           pass: makeCard(
