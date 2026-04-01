@@ -6,6 +6,11 @@ export default defineConfig({
   base: "./",
   publicDir: "../public",
   plugins: [test262Plugin(), dashboardPlugin()],
+  optimizeDeps: {
+    esbuildOptions: {
+      target: "esnext",
+    },
+  },
   server: {
     fs: {
       // Allow serving files from project root (benchmarks, test262)
@@ -15,6 +20,7 @@ export default defineConfig({
   build: {
     outDir: "../playground-dist",
     emptyOutDir: true,
+    target: "esnext",
     rollupOptions: {
       output: {
         manualChunks(id) {

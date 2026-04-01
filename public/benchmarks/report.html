@@ -499,6 +499,8 @@
         display: flex;
         gap: 0.5rem;
         flex-wrap: wrap;
+        width: 100%;
+        justify-content: flex-end;
       }
       .filter-toggle {
         display: flex;
@@ -1549,7 +1551,7 @@
 
         const summary = el("div", { className: "summary" });
         const summaryCardHost = el("div");
-        const controlsHost = el("div", { className: "filter-toggles", style: { marginTop: "1rem", justifyContent: "center" } });
+        const controlsHost = el("div", { className: "filter-toggles", style: { marginTop: "1rem" } });
         const legacyToggle = el("label", { className: "filter-toggle" });
         const legacyCheckbox = el("input", { type: "checkbox", checked: "checked" });
         legacyToggle.appendChild(legacyCheckbox);
@@ -1562,6 +1564,11 @@
         proposalToggle.appendChild(el("span", null, "proposals"));
         controlsHost.appendChild(proposalToggle);
 
+        function syncToggleStyles() {
+          legacyToggle.classList.toggle("active", legacyCheckbox.checked);
+          proposalToggle.classList.toggle("active", proposalCheckbox.checked);
+        }
+
         function renderSummaryCard() {
           const s = makeScopeSummary(
             standardSummary,
@@ -1569,20 +1576,24 @@
             scoreState.includeProposals ? proposalSummary : null,
           );
           const passRate = pct(s.pass, s.total);
-          summaryCardHost.replaceChildren(
+          summaryCardHost.textContent = "";
+          summaryCardHost.appendChild(
             makeGaugeCard(s, passRate, scopeLabel(scoreState.includeLegacy, scoreState.includeProposals)),
           );
         }
 
         legacyCheckbox.addEventListener("change", () => {
           scoreState.includeLegacy = legacyCheckbox.checked;
+          syncToggleStyles();
           renderSummaryCard();
         });
         proposalCheckbox.addEventListener("change", () => {
           scoreState.includeProposals = proposalCheckbox.checked;
+          syncToggleStyles();
           renderSummaryCard();
         });
 
+        syncToggleStyles();
         renderSummaryCard();
         summary.appendChild(summaryCardHost);
         summary.appendChild(controlsHost);

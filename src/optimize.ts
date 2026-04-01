@@ -83,6 +83,8 @@ export interface OptimizeResult {
   warning?: string;
 }
 
+let _binaryenModulePromise: Promise<any | null> | null = null;
+
 /**
  * Optimize a Wasm binary using Binaryen.
  * Returns the optimized binary, or the original if optimization is unavailable.
@@ -117,6 +119,59 @@ export function optimizeBinary(binary: Uint8Array, options: OptimizeOptions = {}
   };
 }
 
+/**
+ * Async optimizer variant for environments that can lazy-load the ESM
+ * `binaryen` package (for example the browser playground via Vite).
+ */
+export async function optimizeBinaryAsync(
+  binary: Uint8Array,
+  options: OptimizeOptions = {},
+): Promise<OptimizeResult> {
+  const level = options.level ?? 3;
+  const gc = options.gc !== false;
+  const referenceTypes = options.referenceTypes !== false;
+  const exceptionHandling = options.exceptionHandling !== false;
+
+  try {
+    const binaryen = await getBinaryenModule();
+    if (binaryen) {
+      const result = optimizeWithBinaryenModule(
+        binaryen,
+        binary,
+        level,
+        gc,
+        referenceTypes,
+        exceptionHandling,
+      );
+      if (result) return result;
+    }
+  } catch {
+    // Fall through to sync system-binary fallback in Node.js
+  }
+
+  try {
+    const result = optimizeWithSystemBinary(binary, level, gc, referenceTypes, exceptionHandling);
+    if (result) return result;
+  } catch {
+    // Fall through to warning
+  }
+
+  return {
+    binary,
+    optimized: false,
+    warning:
+      "wasm-opt not available: install the 'binaryen' npm package or add wasm-opt to PATH. Skipping optimization.",
+  };
+}
+
+async function getBinaryenModule(): Promise<any | null> {
+  if (_binaryenModulePromise) return _binaryenModulePromise;
+  _binaryenModulePromise = import("binaryen")
+    .then((mod: any) => mod.default ?? mod)
+    .catch(() => null);
+  return _binaryenModulePromise;
+}
+
 function optimizeWithBinaryenPackage(
   binary: Uint8Array,
   level: number,
@@ -132,8 +187,19 @@ function optimizeWithBinaryenPackage(
     return null;
   }
 
-  // Enable features before reading the module
-  if (gc) binaryen.setFeatures(binaryen.features.All);
+  return optimizeWithBinaryenModule(binaryen, binary, level, gc, referenceTypes, exceptionHandling);
+}
+
+function optimizeWithBinaryenModule(
+  binaryen: any,
+  binary: Uint8Array,
+  level: number,
+  gc: boolean,
+  referenceTypes: boolean,
+  exceptionHandling: boolean,
+): OptimizeResult | null {
+  const featureFlags = binaryen.Features ?? binaryen.features;
+  if (!featureFlags) return null;
 
   let mod: any;
   try {
@@ -146,22 +212,16 @@ function optimizeWithBinaryenPackage(
   try {
     // Set features on the module
     let features = 0;
-    if (gc) features |= binaryen.features.GC | binaryen.features.ReferenceTypes;
-    if (referenceTypes) features |= binaryen.features.ReferenceTypes;
-    if (exceptionHandling) features |= binaryen.features.ExceptionHandling;
-    features |= binaryen.features.BulkMemory;
-    features |= binaryen.features.MutableGlobals;
+    if (gc) features |= featureFlags.GC | featureFlags.ReferenceTypes;
+    if (referenceTypes) features |= featureFlags.ReferenceTypes;
+    if (exceptionHandling) features |= featureFlags.ExceptionHandling;
+    features |= featureFlags.BulkMemory;
+    features |= featureFlags.MutableGlobals;
     mod.setFeatures(features);
 
     // Run optimization
-    if (level >= 4) {
-      mod.optimize();
-      mod.optimize(); // Two passes for -O4
-    } else {
-      mod.setOptimizeLevel(level);
-      mod.setShrinkLevel(level >= 3 ? 1 : 0);
-      mod.optimize();
-    }
+    mod.optimize();
+    if (level >= 4) mod.optimize(); // Two passes for -O4
 
     const optimizedBinary = mod.emitBinary();
     return { binary: new Uint8Array(optimizedBinary), optimized: true };
