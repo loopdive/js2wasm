@@ -329,6 +329,8 @@ export const jsString = {
   charCodeAt: (s: string, i: number): number => s.charCodeAt(i),
 };
 
+const JS_STRINGS_NATIVE_BUILTIN = true;
+
 function resolveImport(
   intent: ImportIntent,
   deps?: Record<string, any>,
@@ -363,6 +365,20 @@ function resolveImport(
       return (s: any, ...a: any[]) => (String(s) as any)[method](...a);
     }
     case "extern_class": {
+      if (intent.className === "Document" && intent.action === "get" && intent.member === "body") {
+        return (self: any) => self.body;
+      }
+      if (intent.className === "Document" && intent.action === "method" && intent.member === "createElement") {
+        return (self: any, tagName: any, options?: any) =>
+          options == null ? self.createElement(tagName) : self.createElement(tagName, options);
+      }
+      if (
+        intent.action === "method"
+        && intent.member === "addEventListener"
+      ) {
+        return (self: any, type: any, listener: any, options?: any) =>
+          options == null ? self.addEventListener(type, listener) : self.addEventListener(type, listener, options);
+      }
       if (intent.action === "new") {
         // Test262Error is a simple Error subclass used by the test262 harness
         class Test262Error extends Error {
@@ -1195,9 +1211,10 @@ function resolveImport(
       return (d: any) => d[m]();
     }
     case "declared_global": {
-      if (intent.name === "globalThis") return () => globalThis;
       const val = deps?.[intent.name];
-      return val !== undefined ? () => val : () => {};
+      if (val !== undefined) return () => val;
+      if (intent.name === "globalThis") return () => globalThis;
+      return () => {};
     }
     case "proxy_create":
       return (target: any, handler: any) => {
@@ -1437,6 +1454,11 @@ export function buildImports(
         try {
           return original.apply(this, args);
         } catch (e) {
+          console.error(`[ts2wasm] host import failed: ${imp.name}`, {
+            intent: imp.intent,
+            args,
+            error: e,
+          });
           lastCaughtException = e;
           throw e;
         } finally {
@@ -1476,23 +1498,27 @@ export async function instantiateWasm(
   binary: BufferSource,
   env: Record<string, Function>,
   stringConstants?: Record<string, WebAssembly.Global>,
+  options?: { preferJsStringPolyfill?: boolean },
 ): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
   const sc = stringConstants ?? {};
-  try {
-    const { instance } = await (WebAssembly.instantiate as Function)(
-      binary,
-      { env, string_constants: sc },
-      { builtins: ["js-string"], importedStringConstants: "string_constants" },
-    );
-    return { instance, nativeBuiltins: true };
-  } catch {
-    const { instance } = await WebAssembly.instantiate(binary, {
-      env,
-      "wasm:js-string": jsString,
-      string_constants: sc,
-    } as WebAssembly.Imports);
-    return { instance, nativeBuiltins: false };
+  if (JS_STRINGS_NATIVE_BUILTIN && !options?.preferJsStringPolyfill) {
+    try {
+      const { instance } = await (WebAssembly.instantiate as Function)(
+        binary,
+        { env, string_constants: sc },
+        { builtins: ["js-string"], importedStringConstants: "string_constants" },
+      );
+      return { instance, nativeBuiltins: true };
+    } catch {
+      // Fall through to the JS polyfill path.
+    }
   }
+  const { instance } = await WebAssembly.instantiate(binary, {
+    env,
+    "wasm:js-string": jsString,
+    string_constants: sc,
+  } as WebAssembly.Imports);
+  return { instance, nativeBuiltins: false };
 }
 
 /** Compile TypeScript source and instantiate the Wasm module. */

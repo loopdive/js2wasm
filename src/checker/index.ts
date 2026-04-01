@@ -1,5 +1,10 @@
 import ts from "typescript";
 
+function getBundledLibFiles(): Record<string, string> | undefined {
+  const files = (globalThis as any).__ts2wasmTsLibFiles;
+  return files && typeof files === "object" ? files as Record<string, string> : undefined;
+}
+
 function safeRequire<T>(id: string): T | null {
   try {
     return Function("return require")()(id) as T;
@@ -93,6 +98,10 @@ function getTsLibDir(): string {
  * Returns empty string if the file cannot be found (e.g. browser environment).
  */
 function readLibFile(name: string): string {
+  const bundled = getBundledLibFiles()?.[name];
+  if (typeof bundled === "string" && bundled.length > 0) {
+    return bundled;
+  }
   try {
     const rfs = getReadFileSync();
     if (!rfs) return "";

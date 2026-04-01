@@ -80,6 +80,9 @@
         color: #666;
         transition: color 0.15s;
       }
+      .toolbar-link {
+        text-decoration: none;
+      }
       .timing {
         font-size: 0.75rem;
         color: #5a5a5a;
@@ -647,8 +650,14 @@
         <span class="tb-icon">&#11015;</span><span class="tb-label">.wasm</span>
       </button>
       <button class="toolbar-btn" id="reset-layout" title="Reset panel layout">
-        <span class="tb-icon">&#8634;</span><span class="tb-label">reset layout</span>
+        <span class="tb-icon">&#8634;</span><span class="tb-label">reset</span>
       </button>
+      <a class="toolbar-btn toolbar-link" href="./benchmarks/report.html">
+        <span class="tb-icon">&#9638;</span><span class="tb-label">compatibility</span>
+      </a>
+      <a class="toolbar-btn toolbar-link" href="./dashboard/">
+        <span class="tb-icon">&#9783;</span><span class="tb-label">plan</span>
+      </a>
       <span class="timing" id="timing"></span>
     </div>
     <script type="module" src="./main.ts"></script>

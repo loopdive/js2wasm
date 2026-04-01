@@ -32,6 +32,12 @@ export type DropZone = "center" | "top" | "bottom" | "left" | "right";
 const LAYOUT_KEY = "ts2wasm_layout_v2";
 const MIN_PANEL_SIZE = 80; // px
 
+export function clearSavedLayout(): void {
+  try {
+    localStorage.removeItem(LAYOUT_KEY);
+  } catch { /* ignore */ }
+}
+
 // ─── Default layout ──────────────────────────────────────────────────────
 
 export function getDefaultLayout(): LayoutNode {

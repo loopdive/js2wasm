@@ -35,6 +35,13 @@ function emitThrowString(ctx: CodegenContext, fctx: FunctionContext, message: st
   fctx.body.push({ op: "throw", tagIdx });
 }
 
+function throwStringInstrs(ctx: CodegenContext, message: string): Instr[] {
+  addStringConstantGlobal(ctx, message);
+  const strIdx = ctx.stringGlobalMap.get(message)!;
+  const tagIdx = ensureExnTag(ctx);
+  return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+}
+
 /**
  * Check if a callback argument is known to be non-callable at compile time.
  * Returns true if the argument is null, undefined, a number, string, or boolean literal.
@@ -116,14 +123,13 @@ function guardedFuncRefCastInstrs(fctx: FunctionContext, funcTypeIdx: number): I
  * The local already holds the value via local.tee before this call.
  */
 function emitReceiverNullGuard(ctx: CodegenContext, fctx: FunctionContext, localIdx: number): void {
-  const tagIdx = ensureExnTag(ctx);
   // Check if the value in the local is null
   fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "ref.is_null" });
   fctx.body.push({
     op: "if",
     blockType: { kind: "empty" },
-    then: [{ op: "ref.null.extern" } as Instr, { op: "throw", tagIdx } as Instr],
+    then: throwStringInstrs(ctx, "TypeError: Array method called on null or undefined"),
     else: [],
   });
 }
@@ -2841,13 +2847,12 @@ function compileArrayReduce(
     // i already = 0 from setupArrayLoop
   } else {
     // No initial value: throw TypeError on empty array, else acc = data[0], start from i = 1
-    const tagIdx = ensureExnTag(ctx);
     fctx.body.push({ op: "local.get", index: loop.lenTmp });
     fctx.body.push({ op: "i32.eqz" });
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [{ op: "ref.null.extern" } as Instr, { op: "throw", tagIdx } as Instr],
+      then: throwStringInstrs(ctx, "TypeError: Reduce of empty array with no initial value"),
     } as Instr);
     fctx.body.push({ op: "local.get", index: loop.dataTmp });
     fctx.body.push({ op: "i32.const", value: 0 });
@@ -2973,13 +2978,12 @@ function compileArrayReduceRight(
     fctx.body.push({ op: "local.set", index: iTmp });
   } else {
     // No initial value: throw TypeError on empty array, else acc = data[length-1], start from length - 2
-    const tagIdx = ensureExnTag(ctx);
     fctx.body.push({ op: "local.get", index: lenTmp });
     fctx.body.push({ op: "i32.eqz" });
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [{ op: "ref.null.extern" } as Instr, { op: "throw", tagIdx } as Instr],
+      then: throwStringInstrs(ctx, "TypeError: Reduce of empty array with no initial value"),
     } as Instr);
     fctx.body.push({ op: "local.get", index: dataTmp });
     fctx.body.push({ op: "local.get", index: lenTmp });

@@ -89,13 +89,16 @@ function emitNonObjectArgGuard(
  * If null, throws TypeError via the exception tag.
  */
 function emitObjectArgNullGuard(ctx: CodegenContext, fctx: FunctionContext, localIdx: number): void {
+  const message = "TypeError: Object method called on null or undefined";
+  addStringConstantGlobal(ctx, message);
+  const strIdx = ctx.stringGlobalMap.get(message)!;
   const tagIdx = ensureExnTag(ctx);
   fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "ref.is_null" });
   fctx.body.push({
     op: "if",
     blockType: { kind: "empty" },
-    then: [{ op: "ref.null.extern" } as Instr, { op: "throw", tagIdx } as Instr],
+    then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
     else: [],
   });
 }

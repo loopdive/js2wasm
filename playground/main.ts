@@ -5,11 +5,12 @@ import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as ts from "typescript";
+import "./ts-lib-files.js";
 import { compile } from "../src/index.js";
 import { buildImports, instantiateWasm } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
-import { LayoutManager } from "./layout.js";
+import { LayoutManager, clearSavedLayout } from "./layout.js";
 import DEFAULT_SOURCE from "./examples/dom/calendar.ts?raw";
 
 self.MonacoEnvironment = {
@@ -1941,16 +1942,38 @@ function watLineForNode(name: string, fullPath: string): { start: number; end: n
 // (Old tab management removed — handled by LayoutManager)
 
 // ─── Compile helpers ────────────────────────────────────────────────────
-const DOM_PATTERNS =
-  /\b(?:Document|Window|HTMLElement|HTMLInputElement|HTMLButtonElement|HTMLCollection|Element|Node|NodeList|DOMTokenList|EventTarget|CSSStyleDeclaration)_/;
+const DOM_EXTERN_CLASSES = new Set([
+  "Document",
+  "Window",
+  "HTMLElement",
+  "HTMLInputElement",
+  "HTMLButtonElement",
+  "HTMLCollection",
+  "Element",
+  "Node",
+  "NodeList",
+  "DOMTokenList",
+  "EventTarget",
+  "CSSStyleDeclaration",
+]);
 
 function detectDomUsage(result: ReturnType<typeof compile>): boolean {
-  const helperBody = (result.importsHelper ?? "")
-    .replace(/^(\/\/[^\n]*\n)+\n?/, "")
-    .trimStart();
-  const envMatch = helperBody.match(/const env = \{([\s\S]*?)\n  \};/);
-  if (!envMatch) return false;
-  return envMatch[1].split("\n").some((l) => DOM_PATTERNS.test(l) && l.trim());
+  if (result.imports.some((imp) =>
+    imp.intent.type === "extern_class" && DOM_EXTERN_CLASSES.has(imp.intent.className)
+  )) {
+    return true;
+  }
+
+  if (result.imports.some((imp) =>
+    imp.intent.type === "declared_global"
+    && (imp.intent.name === "document" || imp.intent.name === "window")
+  )) {
+    return true;
+  }
+
+  return result.imports.some((imp) =>
+    imp.name === "__get_globalThis" && result.stringPool.includes("document")
+  );
 }
 
 function generateModularOutput(result: ReturnType<typeof compile>): string {
@@ -2420,6 +2443,17 @@ let lastResult: ReturnType<typeof compile> | null = null;
 let hasCompiledOnce = false;
 let autoCycleTimer: ReturnType<typeof setInterval> | null = null;
 
+function hasExportedMain(result: ReturnType<typeof compile>): boolean {
+  const dts = result.dts ?? "";
+  return /\bexport declare function main\(/.test(dts)
+    || /\bexport declare const main:/.test(dts);
+}
+
+function hasTopLevelMainDeclaration(source: string): boolean {
+  return /^\s*(?:export\s+)?(?:async\s+)?function\s+main\s*\(/m.test(source)
+    || /^\s*(?:export\s+)?(?:const|let|var)\s+main\b/m.test(source);
+}
+
 function compileOnly() {
   const source = inputFile.model.getValue();
   consolePre.textContent = "";
@@ -2436,6 +2470,11 @@ function compileOnly() {
   const compileTime = performance.now() - t0;
 
   lastResult = result;
+  (window as any).__ts2wasmCompileDebug = {
+    success: result.success,
+    errors: result.errors,
+    imports: result.imports.map((imp) => ({ name: imp.name, intent: imp.intent })),
+  };
 
   if (result.binary && result.binary.length > 0) {
     treemap.loadBinary(result.binary);
@@ -2516,23 +2555,141 @@ function buildEnv(
   setExports: (exports: Record<string, Function>) => void;
 } {
   const doc = previewRoot
-    ? new Proxy(document, {
-        get(target, prop) {
-          if (prop === "body") return previewRoot;
-          const val = (target as any)[prop];
-          return typeof val === "function" ? val.bind(target) : val;
+    ? {
+        get body() {
+          return previewRoot;
         },
-      })
+        createElement: document.createElement.bind(document),
+        querySelector: document.querySelector.bind(document),
+        querySelectorAll: document.querySelectorAll.bind(document),
+        getElementById: document.getElementById.bind(document),
+        getElementsByClassName: document.getElementsByClassName.bind(document),
+        getElementsByTagName: document.getElementsByTagName.bind(document),
+        addEventListener: document.addEventListener.bind(document),
+        removeEventListener: document.removeEventListener.bind(document),
+        dispatchEvent: document.dispatchEvent.bind(document),
+      }
     : document;
+
+  const sandboxGlobal = previewRoot
+    ? (() => {
+        const sandbox = Object.create(globalThis) as Record<string, unknown>;
+        Object.defineProperties(sandbox, {
+          document: { value: doc, configurable: true, enumerable: true, writable: true },
+          performance: { value: performance, configurable: true, enumerable: true, writable: true },
+          globalThis: { value: sandbox, configurable: true, enumerable: true, writable: true },
+          self: { value: sandbox, configurable: true, enumerable: true, writable: true },
+          window: { value: sandbox, configurable: true, enumerable: true, writable: true },
+        });
+        return sandbox;
+      })()
+    : globalThis;
 
   // Build closed env from the compiler-generated manifest.
   // The deps object provides declared globals (document, window, performance).
   const imports = buildImports(result.imports, {
     document: doc,
-    window: window,
+    window: sandboxGlobal,
     performance: performance,
+    globalThis: sandboxGlobal,
   });
   const env = imports.env;
+  (window as any).__ts2wasmRunDebug = {
+    ...(window as any).__ts2wasmRunDebug,
+    envHas: {
+      global_document: typeof env.global_document === "function",
+      Document_get_body: typeof env.Document_get_body === "function",
+      Document_createElement: typeof env.Document_createElement === "function",
+      Node_appendChild: typeof env.Node_appendChild === "function",
+      __extern_get: typeof env.__extern_get === "function",
+    },
+  };
+
+  if (env.global_document) {
+    const original = env.global_document;
+    env.global_document = () => {
+      const value = original();
+      log("[import] global_document()");
+      return value;
+    };
+  }
+
+  if (env.Document_get_body) {
+    const original = env.Document_get_body;
+    env.Document_get_body = (self: unknown) => {
+      log("[import] Document_get_body(self)");
+      const value = original(self as any);
+      log("[import] Document_get_body -> value");
+      return value;
+    };
+  }
+
+  if (env.Document_createElement) {
+    const original = env.Document_createElement;
+    env.Document_createElement = (self: unknown, tagName: unknown, options?: unknown) => {
+      const value = original(self as any, tagName as any, options as any);
+      const dbg = ((window as any).__ts2wasmRunDebug ??= {});
+      const created = (dbg.createdElements ??= []);
+      if (created.length < 20) {
+        created.push(String(tagName));
+      }
+      return value;
+    };
+  }
+
+  if (env.Node_appendChild) {
+    const original = env.Node_appendChild;
+    env.Node_appendChild = (self: unknown, child: unknown) => {
+      const dbg = ((window as any).__ts2wasmRunDebug ??= {});
+      const appends = (dbg.appendCalls ??= []);
+      if (appends.length < 20) {
+        const selfEl = self as HTMLElement | null | undefined;
+        const childEl = child as HTMLElement | null | undefined;
+        appends.push({
+          selfTag: selfEl?.tagName ?? null,
+          selfId: selfEl?.id ?? null,
+          childTag: childEl?.tagName ?? null,
+          childId: childEl?.id ?? null,
+          beforeChildren: selfEl?.childElementCount ?? null,
+        });
+      }
+      const value = original(self as any, child as any);
+      if (appends.length > 0) {
+        const last = appends[appends.length - 1];
+        last.afterChildren = (self as HTMLElement | null | undefined)?.childElementCount ?? null;
+      }
+      return value;
+    };
+  }
+
+  const summarizeArg = (value: unknown): unknown => {
+    if (value instanceof HTMLElement) {
+      return { tag: value.tagName, id: value.id, children: value.childElementCount };
+    }
+    if (value instanceof Node) {
+      return { node: value.nodeName };
+    }
+    if (value && typeof value === "object") {
+      return { type: (value as any).constructor?.name ?? "Object" };
+    }
+    return value;
+  };
+
+  for (const [name, original] of Object.entries(env)) {
+    if (typeof original !== "function") continue;
+    env[name] = (...args: unknown[]) => {
+      const dbg = ((window as any).__ts2wasmRunDebug ??= {});
+      const trace = (dbg.importTrace ??= []);
+      trace.push({
+        name,
+        args: args.slice(0, 3).map(summarizeArg),
+      });
+      if (trace.length > 120) {
+        trace.shift();
+      }
+      return original(...args);
+    };
+  }
 
   // Override console_log variants to redirect to the playground's console panel
   env.console_log_number = (v: number) => log(String(v));
@@ -2554,13 +2711,38 @@ function buildEnv(
 
 async function runOnly() {
   if (!lastResult) return;
-  const result = lastResult;
+  let result = lastResult;
+  let synthesizedMain = false;
 
   consolePre.textContent = "";
   errorsPre.textContent = "";
   previewPanel.innerHTML = "";
 
+  if (!hasExportedMain(result)) {
+    const source = inputFile.model.getValue();
+    if (!hasTopLevelMainDeclaration(source)) {
+      const runtimeSource = `${source}\n\nexport function main(): void {}\n`;
+      const runtimeResult = compile(runtimeSource);
+      if (!runtimeResult.success) {
+        errorsPre.textContent = runtimeResult.errors
+          .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
+          .join("\n");
+        showOutputPanel("errors");
+        return;
+      }
+      result = runtimeResult;
+      synthesizedMain = true;
+    }
+  }
+
   const usesDom = detectDomUsage(result);
+  (window as any).__ts2wasmRunDebug = {
+    ...(window as any).__ts2wasmRunDebug,
+    usesDom,
+    synthesizedMainCandidate: !hasExportedMain(result),
+    previewConnected: previewPanel.isConnected,
+    previewChildCount: previewPanel.childElementCount,
+  };
   const logs: string[] = [];
 
   const { env, setExports } = buildEnv(
@@ -2582,13 +2764,54 @@ async function runOnly() {
 
     wasmExports = instance.exports as Record<string, any>;
     setExports(wasmExports as Record<string, Function>);
+    (window as any).__ts2wasmRunDebug = {
+      ...(window as any).__ts2wasmRunDebug,
+      exportKeys: Object.keys(wasmExports),
+      hasMain: typeof wasmExports.main === "function",
+    };
     if (typeof wasmExports.main === "function") {
+      if (synthesizedMain) {
+        logs.push("[run] synthesized exported main() to execute top-level statements");
+      }
+      logs.push("[run] before main()");
+      consolePre.textContent = logs.join("\n");
+      (window as any).__ts2wasmRunDebug = {
+        ...(window as any).__ts2wasmRunDebug,
+        beforeMain: {
+          previewConnected: previewPanel.isConnected,
+          previewChildCount: previewPanel.childElementCount,
+          previewHtmlLength: previewPanel.innerHTML.length,
+        },
+      };
+      console.log("[ts2wasm] before main()", {
+        previewConnected: previewPanel.isConnected,
+        previewChildCount: previewPanel.childElementCount,
+        previewHtmlLength: previewPanel.innerHTML.length,
+      });
       const returnValue = wasmExports.main();
+      logs.push("[run] after main()");
+      (window as any).__ts2wasmRunDebug = {
+        ...(window as any).__ts2wasmRunDebug,
+        afterMain: {
+          previewConnected: previewPanel.isConnected,
+          previewChildCount: previewPanel.childElementCount,
+          previewHtmlLength: previewPanel.innerHTML.length,
+        },
+      };
+      console.log("[ts2wasm] after main()", {
+        previewConnected: previewPanel.isConnected,
+        previewChildCount: previewPanel.childElementCount,
+        previewHtmlLength: previewPanel.innerHTML.length,
+      });
       if (returnValue !== undefined) logs.push(`→ ${returnValue}`);
+    } else {
+      logs.push("[run] no exported main()");
+      logs.push("[run] top-level statements are not auto-executed by the playground");
     }
 
     consolePre.textContent = logs.join("\n");
-    if (usesDom) showOutputPanel("preview");
+    if (usesDom && typeof wasmExports.main === "function") showOutputPanel("preview");
+    else showOutputPanel("console");
 
     // Auto-cycle demos if nextDemo is exported
     if (autoCycleTimer !== null) {
@@ -2600,6 +2823,10 @@ async function runOnly() {
       autoCycleTimer = setInterval(() => nd(), 8000);
     }
   } catch (e) {
+    (window as any).__ts2wasmRunDebug = {
+      ...(window as any).__ts2wasmRunDebug,
+      error: String(e),
+    };
     let msg: string;
     if (e instanceof WebAssembly.Exception) {
       // Extract exception payload via __exn_tag export
@@ -2607,19 +2834,36 @@ async function runOnly() {
       if (tag) {
         try {
           const payload = e.getArg(tag, 0);
-          msg = typeof payload === "string" ? payload :
-                payload?.message ? String(payload.message) :
-                String(payload);
+          const payloadText =
+            typeof payload === "string" ? payload
+              : payload instanceof Error ? payload.stack ?? payload.message
+                : payload?.message ? String(payload.message)
+                  : payload === null ? "null"
+                    : payload === undefined ? "undefined"
+                      : String(payload);
+          msg = [
+            `Wasm exception payload: ${payloadText}`,
+            String(e),
+          ].join("\n");
         } catch {
-          msg = String(e);
+          msg = e.stack ?? String(e);
         }
       } else {
-        msg = String(e);
+        msg = e.stack ?? String(e);
       }
     } else {
-      msg = e instanceof Error ? e.message : String(e);
+      if (e instanceof Error) {
+        msg = e.stack ?? e.message;
+      } else if (e === null) {
+        msg = "null (non-Error exception)";
+      } else if (e === undefined) {
+        msg = "undefined (non-Error exception)";
+      } else {
+        msg = `${String(e)} (non-Error exception)`;
+      }
     }
     errorsPre.textContent = `Runtime: ${msg}`;
+    console.error("[ts2wasm] runOnly() failed", e);
     showOutputPanel("errors");
   }
 }
@@ -2830,7 +3074,18 @@ runBtn.addEventListener("click", runOnly);
 benchBtn.addEventListener("click", runBenchmark);
 downloadWatBtn.addEventListener("click", downloadWat);
 downloadWasmBtn.addEventListener("click", downloadWasm);
-resetLayoutBtn.addEventListener("click", () => layout.resetLayout());
+resetLayoutBtn.addEventListener("click", () => {
+  clearSavedLayout();
+  sessionStorage.removeItem(STORAGE_KEY);
+  t262ActivePath = null;
+  t262Loading = true;
+  inputFile.model.setValue(DEFAULT_SOURCE);
+  t262Loading = false;
+  updateTabLabel("ts-source", "example.ts");
+  layout.resetLayout();
+  clearSavedLayout();
+  compileOnly();
+});
 
 // Auto-compile and run on page load
 compileOnly();
