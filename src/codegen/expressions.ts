@@ -10133,8 +10133,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     if (ts.isIdentifier(propAccess.expression) && propAccess.expression.text === "Date") {
       const method = propAccess.name.text;
       if (method === "now") {
-        // Date.now() — no clock in pure Wasm, return 0
-        fctx.body.push({ op: "f64.const", value: 0 } as Instr);
+        const dateNowIdx = ensureLateImport(ctx, "__date_now", [], [{ kind: "f64" }]);
+        if (dateNowIdx !== undefined) {
+          flushLateImportShifts(ctx, fctx);
+          fctx.body.push({ op: "call", funcIdx: dateNowIdx } as Instr);
+        } else {
+          fctx.body.push({ op: "f64.const", value: 0 } as Instr);
+        }
         return { kind: "f64" };
       }
       if (method === "UTC") {
@@ -15204,8 +15209,14 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     const args = expr.arguments ?? [];
 
     if (args.length === 0) {
-      // new Date() — no clock in pure Wasm, use epoch 0
-      fctx.body.push({ op: "i64.const", value: 0n } as unknown as Instr);
+      const dateNowIdx = ensureLateImport(ctx, "__date_now", [], [{ kind: "f64" }]);
+      if (dateNowIdx !== undefined) {
+        flushLateImportShifts(ctx, fctx);
+        fctx.body.push({ op: "call", funcIdx: dateNowIdx } as Instr);
+        fctx.body.push({ op: "i64.trunc_sat_f64_s" } as Instr);
+      } else {
+        fctx.body.push({ op: "i64.const", value: 0n } as unknown as Instr);
+      }
       fctx.body.push({ op: "struct.new", typeIdx: dateTypeIdx } as Instr);
       return { kind: "ref", typeIdx: dateTypeIdx };
     }

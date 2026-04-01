@@ -139,17 +139,18 @@ describe("importedStringConstants", () => {
   describe("buildStringConstants", () => {
     it("creates WebAssembly.Global objects from string pool", () => {
       const constants = buildStringConstants(["hello", "world"]);
-      expect(constants["hello"]).toBeInstanceOf(WebAssembly.Global);
-      expect(constants["world"]).toBeInstanceOf(WebAssembly.Global);
-      expect(constants["hello"].value).toBe("hello");
-      expect(constants["world"].value).toBe("world");
+      expect(constants.__str_0).toBeInstanceOf(WebAssembly.Global);
+      expect(constants.__str_1).toBeInstanceOf(WebAssembly.Global);
+      expect(constants.__str_0.value).toBe("hello");
+      expect(constants.__str_1.value).toBe("world");
     });
 
-    it("deduplicates strings in the pool", () => {
+    it("preserves pool order even for duplicate strings", () => {
       const constants = buildStringConstants(["a", "b", "a"]);
-      expect(Object.keys(constants).length).toBe(2);
-      expect(constants["a"].value).toBe("a");
-      expect(constants["b"].value).toBe("b");
+      expect(Object.keys(constants)).toEqual(["__str_0", "__str_1", "__str_2"]);
+      expect(constants.__str_0.value).toBe("a");
+      expect(constants.__str_1.value).toBe("b");
+      expect(constants.__str_2.value).toBe("a");
     });
 
     it("handles empty string pool", () => {
@@ -157,17 +158,17 @@ describe("importedStringConstants", () => {
       expect(Object.keys(constants).length).toBe(0);
     });
 
-    it("handles empty string as a key", () => {
+    it("handles empty string values", () => {
       const constants = buildStringConstants([""]);
-      expect(constants[""]).toBeInstanceOf(WebAssembly.Global);
-      expect(constants[""].value).toBe("");
+      expect(constants.__str_0).toBeInstanceOf(WebAssembly.Global);
+      expect(constants.__str_0.value).toBe("");
     });
 
     it("handles special characters in strings", () => {
       const constants = buildStringConstants(["hello\nworld", "tab\there", 'quotes"inside']);
-      expect(constants["hello\nworld"].value).toBe("hello\nworld");
-      expect(constants["tab\there"].value).toBe("tab\there");
-      expect(constants['quotes"inside'].value).toBe('quotes"inside');
+      expect(constants.__str_0.value).toBe("hello\nworld");
+      expect(constants.__str_1.value).toBe("tab\there");
+      expect(constants.__str_2.value).toBe('quotes"inside');
     });
   });
 

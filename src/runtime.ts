@@ -1206,6 +1206,8 @@ function resolveImport(
       return _safeSet;
     case "date_new":
       return () => new Date();
+    case "date_now":
+      return () => Date.now();
     case "date_method": {
       const m = intent.method;
       return (d: any) => d[m]();
@@ -1238,13 +1240,14 @@ function resolveImport(
 
 /**
  * Build string constants object for the "string_constants" import namespace.
- * Each string pool entry becomes a WebAssembly.Global with ref extern type.
+ * Each string pool entry becomes a WebAssembly.Global under a compact __str_N key.
  */
 export function buildStringConstants(stringPool: string[] = []): Record<string, WebAssembly.Global> {
   const constants: Record<string, WebAssembly.Global> = {};
-  for (const s of stringPool) {
-    if (!(s in constants)) {
-      constants[s] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
+  for (const [index, s] of stringPool.entries()) {
+    const key = `__str_${index}`;
+    if (!(key in constants)) {
+      constants[key] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
     }
   }
   return constants;

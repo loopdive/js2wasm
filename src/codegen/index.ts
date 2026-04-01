@@ -9207,7 +9207,7 @@ export function addImport(ctx: CodegenContext, module: string, name: string, des
 
 /**
  * Register a string literal as a global import from the "string_constants" namespace.
- * Uses importedStringConstants: the import name is the literal string value itself,
+ * Uses compact synthetic import names (__str_N) instead of the raw literal text,
  * and the global type is (ref extern) (non-nullable externref).
  */
 export function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
@@ -9219,14 +9219,15 @@ export function addStringConstantGlobal(ctx: CodegenContext, value: string): voi
   const oldNumImportGlobals = ctx.numImportGlobals;
 
   const globalIdx = ctx.numImportGlobals; // next global import index
-  addImport(ctx, "string_constants", value, {
+  const importName = `__str_${ctx.stringLiteralCounter}`;
+  addImport(ctx, "string_constants", importName, {
     kind: "global",
     type: { kind: "externref" },
     mutable: false,
   });
   ctx.stringGlobalMap.set(value, globalIdx);
-  ctx.stringLiteralMap.set(value, `__str_${ctx.stringLiteralCounter}`);
-  ctx.stringLiteralValues.set(`__str_${ctx.stringLiteralCounter}`, value);
+  ctx.stringLiteralMap.set(value, importName);
+  ctx.stringLiteralValues.set(importName, value);
   ctx.stringLiteralCounter++;
   ctx.mod.stringPool.push(value);
 

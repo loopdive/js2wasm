@@ -15,6 +15,7 @@ export type ImportIntent =
   | { type: "truthy_check" }
   | { type: "date_new" }
   | { type: "date_method"; method: string }
+  | { type: "date_now" }
   | { type: "declared_global"; name: string }
   | { type: "dynamic_import" }
   | { type: "proxy_create" };
