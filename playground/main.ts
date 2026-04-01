@@ -858,6 +858,47 @@ interface T262Category { name: string; path: string; fileCount: number; files: s
 interface T262CategorySummary { name: string; path: string; fileCount: number; }
 let t262Index: T262CategorySummary[] | null = null;
 const t262FilesCache = new Map<string, string[]>();
+let staticT262Files: Record<string, string[]> | null = null;
+let staticT262FileResults: Record<string, T262FileResult[]> | null = null;
+let staticEquivTests: { name: string; source: string }[] | null = null;
+
+async function fetchJson<T>(path: string): Promise<T | null> {
+  try {
+    const resp = await fetch(path);
+    if (!resp.ok) return null;
+    return await resp.json() as T;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchText(path: string): Promise<string | null> {
+  try {
+    const resp = await fetch(path);
+    if (!resp.ok) return null;
+    return await resp.text();
+  } catch {
+    return null;
+  }
+}
+
+async function loadStaticEquivTests(): Promise<{ name: string; source: string }[]> {
+  if (staticEquivTests) return staticEquivTests;
+  staticEquivTests = await fetchJson<{ name: string; source: string }[]>("playground-data/equiv-tests.json") ?? [];
+  return staticEquivTests;
+}
+
+async function loadStaticT262Files(): Promise<Record<string, string[]>> {
+  if (staticT262Files) return staticT262Files;
+  staticT262Files = await fetchJson<Record<string, string[]>>("playground-data/test262-files.json") ?? {};
+  return staticT262Files;
+}
+
+async function loadStaticT262FileResults(): Promise<Record<string, T262FileResult[]>> {
+  if (staticT262FileResults) return staticT262FileResults;
+  staticT262FileResults = await fetchJson<Record<string, T262FileResult[]>>("playground-data/test262-file-results.json") ?? {};
+  return staticT262FileResults;
+}
 
 // ── Test262 results data ──
 interface T262Report {
@@ -871,28 +912,26 @@ const t262FileResultsCache = new Map<string, T262FileResult[]>();
 
 async function t262LoadReport(): Promise<T262Report | null> {
   if (t262Report) return t262Report;
-  try {
-    const resp = await fetch("/api/test262-results");
-    const data = await resp.json();
-    if (data.error) return null;
-    if (!data.summary || data.summary.total === 0) return null;
-    t262Report = data as T262Report;
-    return t262Report;
-  } catch {
-    return null;
-  }
+  const data =
+    await fetchJson<T262Report | { error: string }>("/api/test262-results")
+    ?? await fetchJson<T262Report>("benchmarks/results/test262-report.json");
+  if (!data || "error" in data) return null;
+  if (!data.summary || data.summary.total === 0) return null;
+  t262Report = data as T262Report;
+  return t262Report;
 }
 
 async function t262LoadFileResults(category: string): Promise<T262FileResult[]> {
   if (t262FileResultsCache.has(category)) return t262FileResultsCache.get(category)!;
-  try {
-    const resp = await fetch(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
-    const data = await resp.json() as T262FileResult[];
-    t262FileResultsCache.set(category, data);
-    return data;
-  } catch {
-    return [];
+  const apiData = await fetchJson<T262FileResult[]>(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
+  if (apiData) {
+    t262FileResultsCache.set(category, apiData);
+    return apiData;
   }
+  const staticResults = await loadStaticT262FileResults();
+  const data = staticResults[category] ?? [];
+  t262FileResultsCache.set(category, data);
+  return data;
 }
 
 function t262GetCategoryStats(catName: string): { pass: number; fail: number; skip: number; compile_error: number } | null {
@@ -923,24 +962,25 @@ let t262Loading = false;
 
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
-  // Use summary endpoint — no file lists, ~2KB instead of ~500KB
-  const resp = await fetch("/api/test262-index-summary");
-  const data = await resp.json();
-  t262Index = data.categories as T262CategorySummary[];
+  const data =
+    await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")
+    ?? await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json");
+  t262Index = data?.categories ?? [];
   return t262Index;
 }
 
 async function t262LoadFiles(category: string): Promise<string[]> {
   if (t262FilesCache.has(category)) return t262FilesCache.get(category)!;
-  const resp = await fetch(`/api/test262-files?category=${encodeURIComponent(category)}`);
-  const files = await resp.json() as string[];
+  const apiData = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
+  const files = apiData ?? (await loadStaticT262Files())[category] ?? [];
   t262FilesCache.set(category, files);
   return files;
 }
 
 async function t262LoadFile(path: string): Promise<string> {
-  const resp = await fetch(`/api/test262-file?path=${encodeURIComponent(path)}`);
-  return resp.text();
+  const apiData = await fetchText(`/api/test262-file?path=${encodeURIComponent(path)}`);
+  if (apiData !== null) return apiData;
+  return (await fetchText(`test262/test/${path}`)) ?? "";
 }
 
 interface EquivTest { name: string; index: number; }
@@ -948,14 +988,21 @@ let equivIndex: EquivTest[] | null = null;
 
 async function loadEquivIndex(): Promise<EquivTest[]> {
   if (equivIndex) return equivIndex;
-  const resp = await fetch("/api/equiv-index");
-  equivIndex = await resp.json() as EquivTest[];
+  const apiData = await fetchJson<EquivTest[]>("/api/equiv-index");
+  if (apiData) {
+    equivIndex = apiData;
+    return equivIndex;
+  }
+  const staticTests = await loadStaticEquivTests();
+  equivIndex = staticTests.map((t, index) => ({ name: t.name, index }));
   return equivIndex;
 }
 
 async function loadEquivSource(idx: number): Promise<string> {
-  const resp = await fetch(`/api/equiv-source?index=${idx}`);
-  return resp.text();
+  const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
+  if (apiData !== null) return apiData;
+  const staticTests = await loadStaticEquivTests();
+  return staticTests[idx]?.source ?? "";
 }
 
 function t262FileName(fullPath: string): string {
@@ -1062,7 +1109,7 @@ async function t262Render() {
     entry.textContent = ex.name;
     entry.dataset.path = ex.path;
     entry.addEventListener("click", async () => {
-      const resp = await fetch("/" + ex.path);
+      const resp = await fetch(ex.path);
       const content = await resp.text();
       t262Loading = true;
       sessionStorage.removeItem(STORAGE_KEY);
@@ -2534,7 +2581,7 @@ async function runBenchmark() {
   // If current source has no bench_* exports, load benchmarks example
   const src = inputFile.model.getValue();
   if (!src.includes("bench_")) {
-    const resp = await fetch("/examples/benchmarks.ts");
+    const resp = await fetch("examples/benchmarks.ts");
     const content = await resp.text();
     t262Loading = true;
     sessionStorage.removeItem(STORAGE_KEY);
