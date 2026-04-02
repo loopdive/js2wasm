@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "vite build",
-    "dev": "vite serve playground",
+    "dev": "vite serve --config playground/vite.config.ts",
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
@@ -31,7 +31,7 @@
     "lint": "biome lint src/checker/index.ts src/codegen/expressions.ts src/codegen/index.ts src/codegen/statements.ts src/ir/types.ts src/runtime.ts --diagnostic-level=error",
     "typecheck": "tsc --noEmit",
     "report": "npx tsx scripts/serve-report.ts",
-    "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build playground",
+    "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
     "build:pages": "node dashboard/build-data.js && pnpm run build:playground && node scripts/build-pages.js",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push"
   },

@@ -17,13 +17,13 @@ import { dirname, join, resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "..");
 const PLAYGROUND_DIST = join(ROOT, "playground-dist");
 const PAGES_DIST = join(ROOT, "pages-dist");
-const PAGES_HOME = join(ROOT, "public", "pages-index.html");
-const PUBLIC_DIR = join(ROOT, "public");
 const DASHBOARD_DIR = join(ROOT, "dashboard");
 const PLAN_DIR = join(ROOT, "plan");
 const BENCHMARKS_RESULTS_DIR = join(ROOT, "benchmarks", "results");
 const RUNS_DIR = join(BENCHMARKS_RESULTS_DIR, "runs");
 const PLAYGROUND_DATA_DIR = join(PAGES_DIST, "playground-data");
+const PLAYGROUND_APP_DATA_DIR = join(PAGES_DIST, "playground", "playground-data");
+const PLAYGROUND_BENCHMARKS_RESULTS_DIR = join(PAGES_DIST, "playground", "benchmarks", "results");
 const TEST262_REPO_ROOT = join(ROOT, "test262");
 const PLAYGROUND_EXAMPLES_DIR = join(ROOT, "playground", "examples");
 const EQUIV_DIR = join(ROOT, "tests", "equivalence");
@@ -179,7 +179,6 @@ function buildStaticTest262Data(resultsJsonlPath) {
 }
 
 ensureExists(PLAYGROUND_DIST);
-ensureExists(PAGES_HOME);
 ensureExists(join(DASHBOARD_DIR, "index.html"));
 ensureExists(join(DASHBOARD_DIR, "data"));
 ensureExists(join(DASHBOARD_DIR, "data.js"));
@@ -189,18 +188,10 @@ ensureExists(join(PLAN_DIR, "graph-data.json"));
 rmSync(PAGES_DIST, { recursive: true, force: true });
 mkdirSync(PAGES_DIST, { recursive: true });
 
-// Publish the playground under /playground/.
-copyDirectory(PLAYGROUND_DIST, join(PAGES_DIST, "playground"));
+// Start from the Vite multi-page build, which now includes the landing page
+// at / and the playground at /playground/.
+copyDirectory(PLAYGROUND_DIST, PAGES_DIST);
 copyDirectory(PLAYGROUND_EXAMPLES_DIR, join(PAGES_DIST, "examples"));
-copyFile(PAGES_HOME, join(PAGES_DIST, "index.html"));
-copyFile(join(PUBLIC_DIR, "jswasmlogo.png"), join(PAGES_DIST, "jswasmlogo.png"));
-copyFile(join(PUBLIC_DIR, "wasm-treemap.html"), join(PAGES_DIST, "wasm-treemap.html"));
-copyDirectory(join(PLAYGROUND_DIST, "assets"), join(PAGES_DIST, "assets"));
-copyFileIfExists(join(PLAYGROUND_DIST, "playground.png"), join(PAGES_DIST, "playground.png"));
-copyFileIfExists(
-  join(PLAYGROUND_DIST, "benchmarks", "report.html"),
-  join(PAGES_DIST, "benchmarks", "report.html"),
-);
 
 // Add the static dashboard route and pre-generated dashboard data.
 copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "dashboard", "index.html"));
@@ -229,11 +220,28 @@ copyFile(
 
 const equivTests = buildEquivTests();
 writeJson(join(PLAYGROUND_DATA_DIR, "equiv-tests.json"), equivTests);
+writeJson(join(PLAYGROUND_APP_DATA_DIR, "equiv-tests.json"), equivTests);
 
 const test262Data = buildStaticTest262Data(test262ResultsSource);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-index-summary.json"), test262Data.categories);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-files.json"), test262Data.filesJson);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-file-results.json"), test262Data.resultsJson);
+writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-index-summary.json"), test262Data.categories);
+writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-files.json"), test262Data.filesJson);
+writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-file-results.json"), test262Data.resultsJson);
+
+copyFileIfExists(
+  join(BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
+  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
+);
+copyFileIfExists(
+  join(BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
+  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
+);
+copyFileIfExists(
+  join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
+  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "test262-report.json"),
+);
 
 // Disable Jekyll processing so all generated assets are published as-is.
 writeFileSync(join(PAGES_DIST, ".nojekyll"), "");

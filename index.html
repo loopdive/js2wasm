@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>js2wasm</title>
+    <meta
+      name="description"
+      content="js2wasm is an ahead-of-time compiler that compiles JavaScript and TypeScript to WebAssembly GC."
+    />
+    <style>
+      :root {
+        --bg: #060a14;
+        --bg-soft: #0c1220;
+        --fg: #ffffff;
+        --fg-soft: rgba(255, 255, 255, 0.68);
+        --fg-faint: rgba(255, 255, 255, 0.46);
+        --line: rgba(255, 255, 255, 0.12);
+        --line-strong: rgba(255, 255, 255, 0.22);
+        --surface: rgba(255, 255, 255, 0.05);
+        --surface-hover: rgba(255, 255, 255, 0.08);
+        --nav: rgba(6, 10, 20, 0.45);
+        --mono: "JetBrains Mono", "SF Mono", SFMono-Regular, Consolas, monospace;
+        --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg);
+        color: var(--fg);
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        font-family: var(--font);
+        overflow-x: hidden;
+        background:
+          linear-gradient(rgba(46, 32, 92, 0.34), rgba(24, 18, 44, 0.16) 26%, transparent 56%),
+          radial-gradient(circle at 24% 14%, rgba(58, 41, 110, 0.34), transparent 28%), var(--bg);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .site-nav {
+        position: fixed;
+        inset: 0 0 auto 0;
+        z-index: 100;
+        height: 64px;
+        padding: 0 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--nav);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow: inset 0 -1px 0 var(--line);
+      }
+
+      .nav-logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .nav-logo img {
+        height: 34px;
+        width: auto;
+        display: block;
+        filter: grayscale(1) contrast(2.4) brightness(1.35);
+      }
+
+      .nav-logo span {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--fg-soft);
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 6px;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .nav-links a {
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--fg-soft);
+        transition:
+          color 0.15s ease,
+          background 0.15s ease;
+      }
+
+      .nav-links a:hover {
+        color: var(--fg);
+        background: var(--surface);
+      }
+
+      .nav-actions {
+        display: flex;
+        gap: 12px;
+      }
+
+      .btn-outline,
+      .btn-solid {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        border: 1px solid var(--line);
+        transition:
+          background 0.15s ease,
+          border-color 0.15s ease,
+          opacity 0.15s ease;
+      }
+
+      .btn-outline:hover {
+        background: var(--surface-hover);
+        border-color: var(--line-strong);
+      }
+
+      .btn-solid {
+        color: var(--bg);
+        background: var(--fg);
+        border-color: var(--fg);
+      }
+
+      .btn-solid:hover {
+        opacity: 0.9;
+      }
+
+      .hero-wrap {
+        min-height: 100svh;
+        display: flex;
+        align-items: center;
+        overflow: clip;
+      }
+
+      .hero {
+        position: relative;
+        width: 100%;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 128px 56px 88px;
+      }
+
+      h1 {
+        max-width: 980px;
+        margin: 0 0 34px;
+        font-size: clamp(48px, 6vw, 78px);
+        line-height: 0.95;
+        letter-spacing: -0.05em;
+        font-weight: 700;
+      }
+
+      .hero-sub {
+        max-width: 720px;
+        font-size: 18px;
+        line-height: 1.7;
+        color: var(--fg-soft);
+        margin-bottom: 40px;
+      }
+
+      .hero-sub .highlight {
+        color: var(--fg);
+        font-weight: 500;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .hero-actions .btn-solid,
+      .hero-actions .btn-outline {
+        min-height: 50px;
+        padding: 0 28px;
+        font-size: 15px;
+      }
+
+      section {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 56px;
+      }
+
+      .section-pad {
+        padding-top: 110px;
+        padding-bottom: 110px;
+      }
+
+      .divider {
+        border: none;
+        border-top: 1px solid var(--line);
+        margin: 0;
+      }
+
+      .intro h2,
+      .code-copy h2,
+      .cta h2 {
+        font-size: clamp(38px, 5vw, 70px);
+        line-height: 0.95;
+        letter-spacing: -0.045em;
+        font-weight: 700;
+        margin: 0 0 28px;
+      }
+
+      .intro p,
+      .code-copy p,
+      .cta p {
+        max-width: 760px;
+        font-size: 18px;
+        line-height: 1.72;
+        color: var(--fg-soft);
+      }
+
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid var(--line);
+        margin-top: 52px;
+      }
+
+      .feature-card {
+        padding: 48px 34px;
+        border-right: 1px solid var(--line);
+        transition: background 0.18s ease;
+      }
+
+      .feature-card:last-child {
+        border-right: none;
+      }
+
+      .feature-card:hover {
+        background: var(--surface-hover);
+      }
+
+      .feature-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 52px;
+        height: 52px;
+        margin-bottom: 28px;
+        font-size: 32px;
+        font-weight: 700;
+        line-height: 1;
+        color: #ffffff;
+        filter: grayscale(1) contrast(2.4) brightness(1.25);
+      }
+
+      .feature-card h3 {
+        margin: 0 0 18px;
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .feature-card p {
+        margin: 0;
+        color: var(--fg-soft);
+        font-size: 15px;
+        line-height: 1.72;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid var(--line);
+      }
+
+      .stat-item {
+        padding: 56px 34px;
+        border-right: 1px solid var(--line);
+      }
+
+      .stat-item:last-child {
+        border-right: none;
+      }
+
+      .stat-number {
+        font-size: 70px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .stat-label {
+        font-size: 14px;
+        color: var(--fg-faint);
+      }
+
+      .code-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 72px;
+        align-items: center;
+      }
+
+      .stats-inline {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px 28px;
+        margin-top: 34px;
+      }
+
+      .stat-inline {
+        font-size: 16px;
+        color: var(--fg-soft);
+      }
+
+      .stat-inline strong {
+        font-size: 28px;
+        color: var(--fg);
+        margin-right: 6px;
+      }
+
+      .code-block {
+        min-width: 0;
+        overflow-x: auto;
+        padding: 34px 38px;
+        border: 1px solid var(--line);
+        background: var(--bg-soft);
+        font-family: var(--mono);
+        font-size: 14px;
+        line-height: 1.8;
+        color: var(--fg-soft);
+      }
+
+      .kw {
+        color: var(--fg);
+        font-weight: 500;
+      }
+
+      .fn {
+        color: #d9ddff;
+      }
+
+      .str {
+        color: #bcb5ff;
+      }
+
+      .cm {
+        color: var(--fg-faint);
+      }
+
+      .link-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        margin-top: 36px;
+      }
+
+      .link-card {
+        padding: 18px 18px 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.025);
+        transition:
+          background 0.18s ease,
+          border-color 0.18s ease;
+      }
+
+      .link-card:hover {
+        background: var(--surface-hover);
+        border-color: var(--line-strong);
+      }
+
+      .link-card strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .link-card span {
+        color: var(--fg-soft);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .cta-actions {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 36px;
+      }
+
+      footer {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 64px 56px;
+      }
+
+      .footer-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 44px;
+        padding-bottom: 42px;
+      }
+
+      .footer-brand img {
+        height: 34px;
+        width: auto;
+        display: block;
+      }
+
+      .footer-brand p {
+        margin-top: 12px;
+        font-size: 14px;
+        color: var(--fg-faint);
+      }
+
+      .footer-cols {
+        display: flex;
+        gap: 72px;
+      }
+
+      .footer-col h4 {
+        margin: 0 0 18px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--fg-faint);
+      }
+
+      .footer-col ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .footer-col a {
+        font-size: 14px;
+        color: var(--fg-soft);
+      }
+
+      .footer-col a:hover {
+        color: var(--fg);
+      }
+
+      .footer-bottom {
+        padding-top: 30px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        color: var(--fg-faint);
+        font-size: 13px;
+      }
+
+      @media (max-width: 1120px) {
+        .features-grid,
+        .stats-grid,
+        .link-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .features-grid .feature-card:nth-child(2n),
+        .stats-grid .stat-item:nth-child(2n) {
+          border-right: none;
+        }
+      }
+
+      @media (max-width: 980px) {
+        .site-nav {
+          padding: 0 24px;
+        }
+
+        .nav-links,
+        .nav-actions .btn-outline {
+          display: none;
+        }
+
+        .hero,
+        section,
+        footer {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+
+        .hero {
+          padding-top: 116px;
+        }
+
+        .code-section,
+        .footer-top {
+          grid-template-columns: 1fr;
+          display: grid;
+        }
+
+        .footer-cols {
+          gap: 36px;
+          flex-wrap: wrap;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .features-grid,
+        .stats-grid,
+        .link-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .feature-card,
+        .stat-item {
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .feature-card:last-child,
+        .stat-item:last-child {
+          border-bottom: none;
+        }
+
+        .footer-bottom {
+          flex-direction: column;
+        }
+
+        .hero-actions,
+        .cta-actions {
+          gap: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="site-nav">
+      <a class="nav-logo" href="/" aria-label="js2wasm home">
+        <img src="./jswasmlogo.png" alt="js2wasm logo" />
+        <span>js2wasm</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#goals">Goals</a></li>
+        <li><a href="#approach">Approach</a></li>
+        <li><a href="#links">Links</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a class="btn-outline" href="https://github.com/loopdive/js2wasm">GitHub</a>
+        <a class="btn-solid" href="./playground/">Open Playground</a>
+      </div>
+    </nav>
+
+    <main>
+      <div class="hero-wrap">
+        <section class="hero">
+          <h1>JavaScript - just more lightweight and secure.</h1>
+          <p class="hero-sub">
+            js2wasm is an <span class="highlight">ahead-of-time compiler</span> for JavaScript and TypeScript targeting
+            WebAssembly GC. The project aims to keep source code idiomatic, keep modules small, and move execution into
+            a capability-limited Wasm boundary instead of shipping a full JavaScript runtime with every artifact.
+          </p>
+          <p class="hero-sub">
+            The broader goal is <span class="highlight">npm compatibility for Wasm hosts</span>: taking existing
+            JavaScript packages, compiling them into Wasm modules, and preserving a packaging and integration model
+            developers already use.
+          </p>
+          <div class="hero-actions">
+            <a class="btn-solid" href="./playground/">Open Playground</a>
+            <a class="btn-outline" href="./benchmarks/report.html">Conformance Report</a>
+            <a class="btn-outline" href="./dashboard/">Dashboard</a>
+          </div>
+        </section>
+      </div>
+
+      <hr class="divider" />
+
+      <section class="section-pad" id="goals">
+        <div class="intro">
+          <h2>Javascript compatible, but more secure and lightweight.</h2>
+          <p>
+            The project is not trying to invent a new source language. It is trying to make familiar JavaScript and
+            TypeScript code viable in places where a JS engine is too heavy, too open, or too expensive to embed per
+            module.
+          </p>
+        </div>
+        <div class="features-grid">
+          <article class="feature-card">
+            <div class="feature-icon">🧩</div>
+            <h3>Small modules</h3>
+            <p>Target Wasm GC directly and avoid bundling a JavaScript runtime into every output module.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <h3>Sandboxed by default</h3>
+            <p>Filesystem, network, DOM, and globals stay behind explicit imports instead of ambient access.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">JS</div>
+            <h3>Just Javascript</h3>
+            <p>Write idiomatic JavaScript and TypeScript instead of switching to a separate language just to target Wasm.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">npm</div>
+            <h3>npm compatibility</h3>
+            <p>Move existing package ecosystems toward Wasm hosts instead of forcing rewrites into other languages.</p>
+          </article>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad">
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-number" id="compat-pass-rate">35.3%</div>
+            <div class="stat-label" id="compat-pass-rate-label">compatible with the official ECMAScript Test Suite</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number">15k+</div>
+            <div class="stat-label">test262 passes in the default official scope</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number">48k</div>
+            <div class="stat-label">full-suite tests tracked including proposal coverage</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="performance-score">195</div>
+            <div class="stat-label" id="performance-score-label">performance score on core benchmarks (100 = JS parity)</div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad code-section" id="approach">
+        <div class="code-copy">
+          <h2>Compile, inspect, and benchmark the actual lowering.</h2>
+          <p>
+            js2wasm parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm operations,
+            and keeps host effects isolated at imports and exports. The playground is used as a real development tool
+            for inspecting WAT, profiling codegen, and comparing Wasm against native JS execution.
+          </p>
+          <div class="stats-inline">
+            <div class="stat-inline"><strong>WAT</strong> inspect the exact lowered module</div>
+            <div class="stat-inline"><strong>Bench</strong> compare Wasm against JS side by side</div>
+            <div class="stat-inline"><strong>DOM</strong> run browser-hosted imports in the sandbox</div>
+            <div class="stat-inline"><strong>Plan</strong> connect regressions to tracked sprint work</div>
+          </div>
+        </div>
+        <pre class="code-block"><span class="cm">;; DOM-oriented JS lowers to Wasm plus explicit host imports</span>
+(<span class="kw">module</span>
+  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"global_document"</span> (<span class="kw">func</span> <span class="fn">$global_document</span> (<span class="kw">result</span> externref)))
+  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"Document_createElement"</span> (<span class="kw">func</span> <span class="fn">$create</span> (<span class="kw">param</span> externref externref) (<span class="kw">result</span> externref)))
+  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"Element_appendChild"</span> (<span class="kw">func</span> <span class="fn">$append</span> (<span class="kw">param</span> externref externref) (<span class="kw">result</span> externref)))
+  (<span class="kw">import</span> <span class="str">"string_constants"</span> <span class="str">"div"</span> (<span class="kw">global</span> <span class="fn">$div</span> externref))
+  (<span class="kw">func</span> <span class="fn">$main</span> (<span class="kw">export</span> <span class="str">"main"</span>)
+    call <span class="fn">$global_document</span>
+    global.get <span class="fn">$div</span>
+    call <span class="fn">$create</span>
+    call <span class="fn">$append</span>
+    drop))</pre>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad" id="links">
+        <div class="intro">
+          <h2>Use the project through focused tools, not a single monolith.</h2>
+          <p>
+            The GitHub Pages site publishes the same artifacts used during development: the playground, the benchmark
+            and conformance report, the dashboard, and the issue graph.
+          </p>
+        </div>
+        <div class="link-grid">
+          <a class="link-card" href="./playground/">
+            <strong>Playground</strong>
+            <span>Compile code, inspect WAT, run examples, and benchmark Wasm against JS.</span>
+          </a>
+          <a class="link-card" href="./dashboard/">
+            <strong>Dashboard</strong>
+            <span>Track sprint plans, issue status, conformance trendlines, and roadmap progress.</span>
+          </a>
+          <a class="link-card" href="./benchmarks/report.html">
+            <strong>Report</strong>
+            <span>See current test262 pass rates, history, proposal coverage, and benchmark summaries.</span>
+          </a>
+          <a class="link-card" href="./issues-graph.html">
+            <strong>Issues Graph</strong>
+            <span>Explore planning dependencies between backlog items and implementation themes.</span>
+          </a>
+          <a class="link-card" href="./wasm-treemap.html">
+            <strong>Wasm Treemap</strong>
+            <span>Inspect binary size distribution across functions and sections in generated modules.</span>
+          </a>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad cta">
+        <h2>Build JavaScript modules for Wasm hosts without changing the programming model first.</h2>
+        <p>
+          The project is still incomplete, but the playground, report, and planning artifacts already make the compiler
+          direction concrete and inspectable.
+        </p>
+        <div class="cta-actions">
+          <a class="btn-solid" href="./playground/">Open Playground</a>
+          <a class="btn-outline" href="https://github.com/loopdive/js2wasm">View Source</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-top">
+        <div class="footer-brand">
+          <img src="./jswasmlogo.png" alt="js2wasm logo" />
+          <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h4>Project</h4>
+            <ul>
+              <li><a href="./playground/">Playground</a></li>
+              <li><a href="./dashboard/">Dashboard</a></li>
+              <li><a href="./benchmarks/report.html">Conformance Report</a></li>
+            </ul>
+          </div>
+          <div class="footer-col">
+            <h4>Analysis</h4>
+            <ul>
+              <li><a href="./issues-graph.html">Issues Graph</a></li>
+              <li><a href="./wasm-treemap.html">Wasm Treemap</a></li>
+              <li><a href="https://github.com/loopdive/js2wasm">GitHub</a></li>
+            </ul>
+          </div>
+          <div class="footer-col">
+            <h4>Focus</h4>
+            <ul>
+              <li><a href="#goals">Goals</a></li>
+              <li><a href="#approach">Approach</a></li>
+              <li><a href="#links">Published tools</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>js2wasm GitHub Pages site</span>
+        <span>Built from the same artifacts used for compiler development.</span>
+      </div>
+    </footer>
+
+    <script>
+      (async function hydrateCompatibilityStat() {
+        const rateEl = document.getElementById("compat-pass-rate");
+        const labelEl = document.getElementById("compat-pass-rate-label");
+        if (!rateEl || !labelEl) return;
+        try {
+          const resp = await fetch("./benchmarks/results/test262-report.json");
+          if (!resp.ok) return;
+          const report = await resp.json();
+          const pass = Number(report?.summary?.pass ?? 0);
+          const total = Number(report?.summary?.total ?? 0);
+          if (!Number.isFinite(pass) || !Number.isFinite(total) || total <= 0) return;
+          const pct = ((pass / total) * 100).toFixed(1);
+          rateEl.textContent = `${pct}%`;
+          labelEl.textContent = "compatible with the official ECMAScript Test Suite";
+        } catch {
+          // Keep the build-time fallback when the report file is unavailable.
+        }
+      })();
+
+      (async function hydratePerformanceScore() {
+        const scoreEl = document.getElementById("performance-score");
+        const labelEl = document.getElementById("performance-score-label");
+        if (!scoreEl || !labelEl) return;
+        try {
+          const resp = await fetch("./benchmarks/results/playground-benchmark-sidebar.json");
+          if (!resp.ok) return;
+          const rows = await resp.json();
+          if (!Array.isArray(rows) || rows.length === 0) return;
+
+          const ratios = rows
+            .map((row) => {
+              const wasmUs = Number(row?.wasmUs ?? 0);
+              const jsUs = Number(row?.jsUs ?? 0);
+              if (!Number.isFinite(wasmUs) || !Number.isFinite(jsUs) || wasmUs <= 0 || jsUs <= 0) return null;
+              return jsUs / wasmUs;
+            })
+            .filter((v) => typeof v === "number");
+
+          if (ratios.length === 0) return;
+
+          const geometricMean = Math.exp(ratios.reduce((sum, ratio) => sum + Math.log(ratio), 0) / ratios.length);
+          const score = Math.round(geometricMean * 100);
+          scoreEl.textContent = String(score);
+          labelEl.textContent = "performance score on core benchmarks (100 = JS parity)";
+        } catch {
+          // Keep the build-time fallback when benchmark data is unavailable.
+        }
+      })();
+    </script>
+  </body>
+</html>
