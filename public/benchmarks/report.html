@@ -43,12 +43,13 @@
         align-items: flex-start;
         gap: 0.2rem;
         margin-bottom: 0.25rem;
+        overflow: visible;
       }
       .brand-logo {
-        height: 112.5px;
+        display: block;
+        height: 60px;
         object-fit: contain;
-        margin-left: -20px;
-        margin-bottom: -30px;
+        max-width: 100%;
       }
       h2 {
         font-size: 1.25rem;
@@ -1601,7 +1602,12 @@
 
         // Stale results indicator
         if (data.summary.stale > 0) {
-          const staleCard = makeCard("Stale", data.summary.stale.toLocaleString(), "var(--text-muted)", "from previous runs");
+          const staleCard = makeCard(
+            "Stale",
+            data.summary.stale.toLocaleString(),
+            "var(--text-muted)",
+            "from previous runs",
+          );
           staleCard.style.borderColor = "var(--error)";
           staleCard.style.borderStyle = "dashed";
           summary.appendChild(staleCard);
