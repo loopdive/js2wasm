@@ -17,6 +17,8 @@ import { dirname, join, resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "..");
 const PLAYGROUND_DIST = join(ROOT, "playground-dist");
 const PAGES_DIST = join(ROOT, "pages-dist");
+const PAGES_HOME = join(ROOT, "public", "pages-index.html");
+const PUBLIC_DIR = join(ROOT, "public");
 const DASHBOARD_DIR = join(ROOT, "dashboard");
 const PLAN_DIR = join(ROOT, "plan");
 const BENCHMARKS_RESULTS_DIR = join(ROOT, "benchmarks", "results");
@@ -177,6 +179,7 @@ function buildStaticTest262Data(resultsJsonlPath) {
 }
 
 ensureExists(PLAYGROUND_DIST);
+ensureExists(PAGES_HOME);
 ensureExists(join(DASHBOARD_DIR, "index.html"));
 ensureExists(join(DASHBOARD_DIR, "data"));
 ensureExists(join(DASHBOARD_DIR, "data.js"));
@@ -186,10 +189,18 @@ ensureExists(join(PLAN_DIR, "graph-data.json"));
 rmSync(PAGES_DIST, { recursive: true, force: true });
 mkdirSync(PAGES_DIST, { recursive: true });
 
-// Start from the Vite playground build, which already includes /benchmarks HTML
-// and shared public assets.
-copyDirectory(PLAYGROUND_DIST, PAGES_DIST);
+// Publish the playground under /playground/.
+copyDirectory(PLAYGROUND_DIST, join(PAGES_DIST, "playground"));
 copyDirectory(PLAYGROUND_EXAMPLES_DIR, join(PAGES_DIST, "examples"));
+copyFile(PAGES_HOME, join(PAGES_DIST, "index.html"));
+copyFile(join(PUBLIC_DIR, "jswasmlogo.png"), join(PAGES_DIST, "jswasmlogo.png"));
+copyFile(join(PUBLIC_DIR, "wasm-treemap.html"), join(PAGES_DIST, "wasm-treemap.html"));
+copyDirectory(join(PLAYGROUND_DIST, "assets"), join(PAGES_DIST, "assets"));
+copyFileIfExists(join(PLAYGROUND_DIST, "playground.png"), join(PAGES_DIST, "playground.png"));
+copyFileIfExists(
+  join(PLAYGROUND_DIST, "benchmarks", "report.html"),
+  join(PAGES_DIST, "benchmarks", "report.html"),
+);
 
 // Add the static dashboard route and pre-generated dashboard data.
 copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "dashboard", "index.html"));

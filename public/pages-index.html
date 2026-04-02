@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>js2wasm</title>
+    <style>
+      :root {
+        --bg: #0c1117;
+        --panel: #121a23;
+        --panel-2: #161f2a;
+        --text: #ecf2f8;
+        --muted: #97a7b7;
+        --line: rgba(255, 255, 255, 0.09);
+        --blue: #72c2ff;
+        --green: #5fd18d;
+        --red: #ff7d73;
+        --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(114, 194, 255, 0.18), transparent 28%),
+          radial-gradient(circle at top right, rgba(95, 209, 141, 0.12), transparent 24%),
+          linear-gradient(180deg, #0b1015 0%, #0c1117 100%);
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .page {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 32px 24px 72px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 28px;
+        align-items: stretch;
+      }
+
+      .hero-main,
+      .hero-side,
+      .section-card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+
+      .hero-main {
+        padding: 32px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .brand img {
+        height: 28px;
+        display: block;
+      }
+
+      .brand span {
+        font-size: 0.8rem;
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        font-size: clamp(2.4rem, 5vw, 4.5rem);
+        line-height: 0.95;
+        margin: 22px 0 18px;
+        letter-spacing: -0.04em;
+      }
+
+      .lede {
+        max-width: 48rem;
+        font-size: 1.08rem;
+        line-height: 1.7;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        min-height: 48px;
+        padding: 0 18px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .btn.primary {
+        background: var(--text);
+        color: #0b1015;
+      }
+
+      .btn.secondary {
+        background: rgba(255,255,255,0.03);
+      }
+
+      .hero-side {
+        padding: 24px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .hero-side h2,
+      .section-card h2 {
+        margin: 0 0 10px;
+        font-size: 0.82rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .metric {
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 1.8rem;
+        line-height: 1;
+        margin-bottom: 8px;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+
+      .sections {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+        margin-top: 24px;
+      }
+
+      .section-card {
+        padding: 24px;
+      }
+
+      .section-card p {
+        color: var(--muted);
+        line-height: 1.65;
+        margin: 0 0 16px;
+      }
+
+      .section-card ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 10px;
+      }
+
+      .section-card li {
+        color: var(--text);
+      }
+
+      .section-card li span {
+        color: var(--muted);
+      }
+
+      .footer-note {
+        margin-top: 22px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      @media (max-width: 960px) {
+        .hero,
+        .sections {
+          grid-template-columns: 1fr;
+        }
+
+        .page {
+          padding: 20px 16px 48px;
+        }
+
+        .hero-main,
+        .hero-side,
+        .section-card {
+          border-radius: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-main">
+          <div class="brand">
+            <img src="./jswasmlogo.png" alt="js2wasm logo" />
+            <span>ECMAScript to WebAssembly</span>
+          </div>
+          <h1>Compile ordinary JavaScript into small Wasm modules.</h1>
+          <p class="lede">
+            js2wasm is an ahead-of-time compiler for JavaScript and TypeScript that targets WebAssembly
+            GC. The goal is to keep the source language familiar, keep the output small, and move
+            execution into a capability-limited Wasm module instead of shipping a full JavaScript runtime
+            inside every artifact. A further goal is to bring real npm package compatibility into the
+            Wasm ecosystem, so existing JavaScript modules can move into Wasm hosts without being rewritten
+            into a different language or packaging model.
+          </p>
+          <div class="actions">
+            <a class="btn primary" href="./playground/">Open Playground</a>
+            <a class="btn secondary" href="./dashboard/">View Dashboard</a>
+            <a class="btn secondary" href="./benchmarks/report.html">Conformance Report</a>
+            <a class="btn secondary" href="https://github.com/loopdive/js2wasm">GitHub</a>
+          </div>
+        </div>
+        <aside class="hero-side">
+          <div>
+            <h2>Why</h2>
+          </div>
+          <div class="metric">
+            <strong>Small modules</strong>
+            <span>Target Wasm GC directly without embedding a JavaScript engine per module.</span>
+          </div>
+          <div class="metric">
+            <strong>Sandboxed host access</strong>
+            <span>Filesystem, network, DOM, and globals stay behind explicit imports instead of ambient access.</span>
+          </div>
+          <div class="metric">
+            <strong>Real browser tooling</strong>
+            <span>Inspect WAT, benchmark Wasm against JS, browse test262 progress, and explore example programs.</span>
+          </div>
+        </aside>
+      </section>
+
+      <section class="sections">
+        <article class="section-card">
+          <h2>Compiler Model</h2>
+          <p>
+            js2wasm parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm
+            operations, and leaves only explicit host boundaries as imports.
+          </p>
+          <ul>
+            <li>Closed-world optimization for code the compiler can fully see</li>
+            <li><span>Host effects isolated at imports and exports</span></li>
+            <li><span>Readable WAT output for debugging and inspection</span></li>
+          </ul>
+        </article>
+
+        <article class="section-card">
+          <h2>Current Surface</h2>
+          <p>
+            The project already supports numeric code, control flow, classes, arrays, strings, modules,
+            browser DOM access, and a growing subset of ECMAScript semantics.
+          </p>
+          <ul>
+            <li>Interactive playground with real Wasm execution</li>
+            <li><span>Benchmark suite comparing Wasm to JavaScript</span></li>
+            <li><span>test262 tracking and sprint-based issue planning</span></li>
+          </ul>
+        </article>
+
+        <article class="section-card">
+          <h2>Useful Links</h2>
+          <p>
+            The GitHub Pages site is split into focused tools instead of one monolithic app.
+          </p>
+          <ul>
+            <li><a href="./playground/">Playground</a> <span>Compile, inspect, and run code in-browser</span></li>
+            <li><a href="./dashboard/">Dashboard</a> <span>Progress, issues, and sprint view</span></li>
+            <li><a href="./benchmarks/report.html">Report</a> <span>Conformance snapshots and trends</span></li>
+            <li><a href="./issues-graph.html">Issues Graph</a> <span>Dependency graph for planning work</span></li>
+            <li><a href="./wasm-treemap.html">Wasm Treemap</a> <span>Inspect module size breakdowns</span></li>
+          </ul>
+        </article>
+      </section>
+
+      <p class="footer-note">
+        This site publishes the live playground, benchmark report, and planning artifacts used to build
+        the compiler.
+      </p>
+    </main>
+  </body>
+</html>

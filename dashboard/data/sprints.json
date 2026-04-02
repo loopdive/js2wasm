@@ -843,6 +843,23 @@
     ]
   },
   {
+    "name": "sprint 33",
+    "sprintNumber": 33,
+    "date": "2026-04-02",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      896,
+      897,
+      898,
+      899,
+      900,
+      901,
+      902
+    ]
+  },
+  {
     "name": "sprint 34 planning",
     "sprintNumber": 34,
     "date": "2026-03-29",

@@ -75,6 +75,106 @@
   ],
   "ready": [
     {
+      "id": "905",
+      "title": "Support versioned shapes for compile-time-known prototype mutation",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "743",
+        "746"
+      ],
+      "goal": "property-model",
+      "status": null
+    },
+    {
+      "id": "904",
+      "title": "Add link-time specialization after separate compilation",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "33",
+        "743"
+      ],
+      "goal": "compiler-architecture",
+      "status": null
+    },
+    {
+      "id": "903",
+      "title": "Add typed host import contracts and effect summaries",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "compiler-architecture",
+      "status": null
+    },
+    {
+      "id": "902",
+      "title": "Remove helper-call coercion from pure numeric recursive call/return paths",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "897"
+      ],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "901",
+      "title": "Remove helper-call coercion from numeric GC-array element access",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "896"
+      ],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "900",
+      "title": "Move missing-main handling out of runtime execution",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "runtime-simplicity",
+      "status": null
+    },
+    {
+      "id": "899",
+      "title": "Extend compile-time TDZ elimination to provably safe closure captures",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "898",
+      "title": "Extend compile-time TDZ elimination to loop-local accesses",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "897",
+      "title": "Restore direct numeric recursion codegen for fib hot path",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "896",
+      "title": "Restore direct numeric GC-array codegen in hot loops",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
       "id": "893",
       "title": "ES version filtering and Baseline compatibility mode for test262",
       "priority": "medium",
