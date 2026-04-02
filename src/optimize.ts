@@ -210,6 +210,11 @@ function optimizeWithBinaryenModule(
   }
 
   try {
+    const previousOptimizeLevel =
+      typeof binaryen.getOptimizeLevel === "function" ? binaryen.getOptimizeLevel() : undefined;
+    const previousShrinkLevel =
+      typeof binaryen.getShrinkLevel === "function" ? binaryen.getShrinkLevel() : undefined;
+
     // Set features on the module
     let features = 0;
     if (gc) features |= featureFlags.GC | featureFlags.ReferenceTypes;
@@ -219,9 +224,27 @@ function optimizeWithBinaryenModule(
     features |= featureFlags.MutableGlobals;
     mod.setFeatures(features);
 
-    // Run optimization
-    mod.optimize();
-    if (level >= 4) mod.optimize(); // Two passes for -O4
+    // Match the requested optimization level more closely than a bare optimize() call.
+    // Binaryen's npm API exposes global optimize/shrink settings that affect mod.optimize().
+    if (typeof binaryen.setOptimizeLevel === "function") {
+      binaryen.setOptimizeLevel(level >= 4 ? 3 : level);
+    }
+    if (typeof binaryen.setShrinkLevel === "function") {
+      binaryen.setShrinkLevel(level >= 4 ? 1 : 0);
+    }
+
+    try {
+      // Run optimization
+      mod.optimize();
+      if (level >= 4) mod.optimize();
+    } finally {
+      if (typeof binaryen.setOptimizeLevel === "function" && previousOptimizeLevel !== undefined) {
+        binaryen.setOptimizeLevel(previousOptimizeLevel);
+      }
+      if (typeof binaryen.setShrinkLevel === "function" && previousShrinkLevel !== undefined) {
+        binaryen.setShrinkLevel(previousShrinkLevel);
+      }
+    }
 
     const optimizedBinary = mod.emitBinary();
     return { binary: new Uint8Array(optimizedBinary), optimized: true };

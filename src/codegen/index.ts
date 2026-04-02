@@ -12419,7 +12419,7 @@ function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
   const hasStaticInits = ctx.staticInitExprs.length > 0;
   let compiledInitFctx: FunctionContext | null = null;
 
-  if (hasModuleInits || hasStaticInits) {
+  function compileModuleInitBody(): FunctionContext {
     const initFctx: FunctionContext = {
       name: "__module_init",
       params: [],
@@ -12448,10 +12448,14 @@ function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
     }
 
     ctx.currentFunc = null;
-    compiledInitFctx = initFctx;
+    return initFctx;
+  }
+
+  if (hasModuleInits || hasStaticInits) {
+    compiledInitFctx = compileModuleInitBody();
     // Expose the pending init body so fixupModuleGlobalIndices can adjust it
     // when addStringConstantGlobal is called during function body compilation.
-    ctx.pendingInitBody = initFctx.body;
+    ctx.pendingInitBody = compiledInitFctx.body;
   }
 
   // Compile top-level function declarations
@@ -12471,6 +12475,14 @@ function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
         }
       }
     }
+  }
+
+  // Recompile module init after top-level functions are compiled so call sites
+  // inside module-level code can see the final inlinable-function registry.
+  // The first compile above still serves early closure/setup discovery.
+  if (hasModuleInits || hasStaticInits) {
+    compiledInitFctx = compileModuleInitBody();
+    ctx.pendingInitBody = compiledInitFctx.body;
   }
 
   // Clear pendingInitBody before injection (it will be in mod.functions or main body after this)
@@ -14178,7 +14190,6 @@ const INLINE_DISALLOWED_OPS = new Set([
   "if",
   "br",
   "br_if",
-  "return",
   "try",
   "throw",
   "rethrow",
@@ -14212,6 +14223,11 @@ function registerInlinableFunction(ctx: CodegenContext, funcName: string, func: 
   const realBody = body.filter((instr) => instr.op !== "nop");
   if (realBody.length === 0 || realBody.length > INLINE_MAX_INSTRS) return;
 
+  // Allow expression-shaped functions to end in a single trailing return.
+  const normalizedBody =
+    realBody.length > 0 && realBody[realBody.length - 1]?.op === "return" ? realBody.slice(0, -1) : realBody;
+  if (normalizedBody.length === 0 || normalizedBody.length > INLINE_MAX_INSTRS) return;
+
   // Get param count from type definition
   const funcType = ctx.mod.types[func.typeIdx];
   if (!funcType || funcType.kind !== "func") return;
@@ -14221,7 +14237,7 @@ function registerInlinableFunction(ctx: CodegenContext, funcName: string, func: 
   if (func.locals.length > 0) return;
 
   // Check all instructions are safe to inline
-  for (const instr of realBody) {
+  for (const instr of normalizedBody) {
     if (INLINE_DISALLOWED_OPS.has(instr.op)) return;
 
     // local.get must reference params only (index < paramCount)
@@ -14234,7 +14250,7 @@ function registerInlinableFunction(ctx: CodegenContext, funcName: string, func: 
   const returnType = funcType.results.length > 0 ? funcType.results[0]! : null;
 
   ctx.inlinableFunctions.set(funcName, {
-    body: realBody,
+    body: normalizedBody,
     paramCount,
     paramTypes: funcType.params.slice(),
     returnType,
