@@ -1,6 +1,6 @@
 /**
  * Test262 conformance tests — runs a filtered subset of the official
- * ECMAScript test suite through the ts2wasm compiler.
+ * ECMAScript test suite through the js2wasm compiler.
  *
  * Tests are non-failing: we track pass/fail/skip/compile_error counts
  * as a conformance dashboard, not as a gate.

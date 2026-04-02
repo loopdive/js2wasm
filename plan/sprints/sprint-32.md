@@ -6,7 +6,7 @@
 
 ## Context
 
-The repo was renamed from ts2wasm to js2wasm. The STF application requires: a compelling README, public demo, conformance data, roadmap, performance benchmarks, and CI. This sprint focuses entirely on presentation and infrastructure — no compiler work.
+The repo was renamed from js2wasm to js2wasm. The STF application requires: a compelling README, public demo, conformance data, roadmap, performance benchmarks, and CI. This sprint focuses entirely on presentation and infrastructure — no compiler work.
 
 ## Task queue
 
@@ -24,7 +24,7 @@ The repo was renamed from ts2wasm to js2wasm. The STF application requires: a co
 - **#888 is already completed** — benchmark committed at 6b486bf9. Results in `benchmarks/results/`.
 - **#884 depends on #882** (sharded test262 runner). If #882 isn't ready, #884 can start with equiv tests only and add test262 later.
 - **#886 depends on #883** (GitHub Pages must be deployed first for the page to be accessible).
-- **ts2wasm → js2wasm rename**: All issues reference old URLs (ts2wasm). Devs should use js2wasm in all new content.
+- **js2wasm → js2wasm rename**: All issues reference old URLs (js2wasm). Devs should use js2wasm in all new content.
 - Dev paths run in parallel — 2 devs can work simultaneously on non-dependent tasks.
 
 ## Dev paths

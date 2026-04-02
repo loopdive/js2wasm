@@ -21,4 +21,4 @@
 1. Check `free -m` available (need >2GB for equiv tests)
 2. Kill stray vitest: `pgrep -la vitest` — ask before killing
 3. Start with #891: `cd /workspace/.claude/worktrees/issue-891-equiv-pool`, merge main, build bundle, run equiv tests
-4. Use `flock /tmp/ts2wasm-test262.lock COMMAND` once #891 lands
+4. Use `flock /tmp/js2wasm-test262.lock COMMAND` once #891 lands

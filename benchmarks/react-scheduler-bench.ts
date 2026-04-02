@@ -2,7 +2,7 @@
  * React Scheduler Min-Heap Benchmark: JS vs WasmGC
  *
  * Compares performance of the React scheduler min-heap implementation
- * running natively in JS vs compiled to WasmGC via ts2wasm.
+ * running natively in JS vs compiled to WasmGC via js2wasm.
  *
  * Usage: npx tsx benchmarks/react-scheduler-bench.ts
  */

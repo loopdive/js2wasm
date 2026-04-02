@@ -1,5 +1,5 @@
 /**
- * Closure and arrow-function compilation for ts2wasm.
+ * Closure and arrow-function compilation for js2wasm.
  *
  * Extracted from expressions.ts (issue #688, step 4).
  *

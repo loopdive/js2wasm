@@ -88,8 +88,10 @@ const TS_LIB_FILES = {
   "lib.es2021.weakref.d.ts": libEs2021WeakRef,
 } as const;
 
-(globalThis as any).__ts2wasmTsLibFiles = {
-  ...((globalThis as any).__ts2wasmTsLibFiles ?? {}),
+(globalThis as any).__js2wasmTsLibFiles = {
+  ...((globalThis as any).__js2wasmTsLibFiles ??
+    (globalThis as any).__ts2wasmTsLibFiles ??
+    {}),
   ...TS_LIB_FILES,
 };
 

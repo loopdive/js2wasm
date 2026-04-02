@@ -164,7 +164,7 @@ function jsRunBenchmark(
 }
 
 // ---------------------------------------------------------------------------
-// Wasm source — same algorithm, written in the subset ts2wasm compiles
+// Wasm source — same algorithm, written in the subset js2wasm compiles
 // ---------------------------------------------------------------------------
 const WASM_SOURCE = `
 class FiberNode {

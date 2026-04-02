@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Run ts2wasm benchmarks.
+ * Run js2wasm benchmarks.
  *
  * Usage:
  *   npx tsx benchmarks/run.ts                     # run all suites
@@ -51,7 +51,7 @@ const suites: Record<string, BenchmarkDef[]> = {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("ts2wasm benchmark suite");
+  console.log("js2wasm benchmark suite");
   console.log(`Node ${process.version} | ${process.platform} ${process.arch}`);
   if (strategies) console.log(`Strategies: ${strategies.join(", ")}`);
   if (suiteFilter) console.log(`Suite: ${suiteFilter}`);

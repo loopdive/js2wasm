@@ -2,7 +2,7 @@
  * React Scheduler min-heap compilation test.
  *
  * Extracts the core priority-queue algorithm from React's scheduler
- * (react/packages/scheduler) and compiles it to Wasm via ts2wasm.
+ * (react/packages/scheduler) and compiles it to Wasm via js2wasm.
  * This tests struct arrays, callable parameters, and numeric comparisons --
  * patterns that were previously blocked by #446 and #461.
  *
@@ -39,7 +39,7 @@ async function run(source: string, fn: string = "test", args: unknown[] = []): P
 //   - compare (by sortIndex, then by id)
 //
 // Uses fixed-size storage (7 slots) via globals instead of arrays,
-// because ts2wasm does not yet support arrays of structs natively.
+// because js2wasm does not yet support arrays of structs natively.
 // This is sufficient for testing the algorithm with small heaps.
 // ---------------------------------------------------------------------------
 const SCHEDULER_HEAP_SOURCE = `

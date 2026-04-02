@@ -64,7 +64,7 @@ export function generateMarkdown(results: BenchmarkResult[]): string {
   const rows = groupByName(results);
   const lines: string[] = [];
 
-  lines.push("# ts2wasm Benchmark Results\n");
+  lines.push("# js2wasm Benchmark Results\n");
   lines.push(`Date: ${new Date().toISOString().split("T")[0]}`);
   lines.push(`Node: ${process.version}`);
   lines.push(`Platform: ${process.platform} ${process.arch}\n`);

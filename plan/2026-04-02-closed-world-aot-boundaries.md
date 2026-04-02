@@ -1,10 +1,10 @@
-# Closed-World AOT Boundaries for ts2wasm
+# Closed-World AOT Boundaries for js2wasm
 
 **Date**: 2026-04-02
 
 ## Thesis
 
-For `ts2wasm`, the central compilation question is usually not:
+For `js2wasm`, the central compilation question is usually not:
 
 - "can this JavaScript/TypeScript semantic be lowered at all?"
 
@@ -18,7 +18,7 @@ The practical challenge is preserving those specialized lowerings once the progr
 
 ## Working model
 
-The right mental model for `ts2wasm` is:
+The right mental model for `js2wasm` is:
 
 1. Compile as much as possible into a closed world
 2. Make every dynamic boundary explicit
@@ -84,7 +84,7 @@ This is a compiler complexity and code-size problem, not a fundamental impossibi
 
 This can be isolated at the host boundary.
 
-For `ts2wasm`, the right model is:
+For `js2wasm`, the right model is:
 
 - closed-world compiled code stays optimized
 - `eval` / `new Function` / dynamic import become explicit host-mediated escape hatches
@@ -189,7 +189,7 @@ The missing architectural gaps are:
 
 ## Conclusion
 
-For `ts2wasm`, most of the hard cases discussed as "too dynamic for AOT" are better understood as:
+For `js2wasm`, most of the hard cases discussed as "too dynamic for AOT" are better understood as:
 
 - boundary modeling problems
 - compiler sophistication problems

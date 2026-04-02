@@ -48,7 +48,7 @@ Could not find a project called "zena" from Elematic. The closest comparable pro
 
 **Adoptable patterns**: Both major engines support WasmGC and js-string-builtins, so we can target these features without browser-compatibility concerns.
 
-## 5. Key Takeaways for ts2wasm
+## 5. Key Takeaways for js2wasm
 
 1. **Strings: Use js-string-builtins** -- represent strings as `externref`, import operations from `wasm:js-string`. No need to implement string encoding/decoding. Both V8 and SpiderMonkey support this. String constants via imported globals from `"_"` module.
 

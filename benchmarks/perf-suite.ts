@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Performance benchmark suite for ts2wasm.
+ * Performance benchmark suite for js2wasm.
  *
  * Compiles TypeScript workloads to WebAssembly, runs both JS and Wasm versions,
  * measures execution time over 10 iterations, and reports speedup ratios.
@@ -532,7 +532,7 @@ function printReport(results: BenchResult[]): void {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("ts2wasm Performance Benchmark Suite");
+  console.log("js2wasm Performance Benchmark Suite");
   console.log(`Node ${process.version} | ${process.platform} ${process.arch}`);
   console.log(`Iterations: ${ITERATIONS} | Warmup: ${WARMUP}`);
 

@@ -1,7 +1,9 @@
 import ts from "typescript";
 
 function getBundledLibFiles(): Record<string, string> | undefined {
-  const files = (globalThis as any).__ts2wasmTsLibFiles;
+  const files =
+    (globalThis as any).__js2wasmTsLibFiles ??
+    (globalThis as any).__ts2wasmTsLibFiles;
   return files && typeof files === "object" ? files as Record<string, string> : undefined;
 }
 

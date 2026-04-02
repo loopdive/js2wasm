@@ -3,7 +3,7 @@
  *
  * Extracts the min-heap functions (push, pop, peek, compare, siftUp, siftDown)
  * from the actual scheduler@0.25.0 npm package source, wraps them in TypeScript
- * with type annotations, and attempts to compile + run them via ts2wasm.
+ * with type annotations, and attempts to compile + run them via js2wasm.
  *
  * The original source lives at:
  *   node_modules/scheduler/cjs/scheduler.development.js  (lines 85-136)
@@ -40,8 +40,8 @@ async function run(source: string, fn: string = "test", args: unknown[] = []): P
  * Milestone 1: Direct TypeScript port of the min-heap functions.
  *
  * This is the closest we can get to the original scheduler source while
- * staying within ts2wasm's supported subset. Key adaptations:
- *   - HeapNode is a class (ts2wasm needs struct-backed objects)
+ * staying within js2wasm's supported subset. Key adaptations:
+ *   - HeapNode is a class (js2wasm needs struct-backed objects)
  *   - Arrays are typed as (HeapNode | null)[]
  *   - `heap.pop()` is replaced with manual size tracking (no .pop() yet)
  *   - `>>> 1` replaced with `>> 1` (logical shift not yet supported)
@@ -504,7 +504,7 @@ export function test(): number {
   describe("raw JS source from npm (allowJs)", () => {
     it("attempts to compile the original JS min-heap functions", () => {
       // This tests whether the raw minified JS from the npm package
-      // can be parsed and compiled by ts2wasm with allowJs: true.
+      // can be parsed and compiled by js2wasm with allowJs: true.
       // We expect this to fail because the original source uses patterns
       // not yet supported:
       //   - `>>> 1` (unsigned right shift)
@@ -683,7 +683,7 @@ export function test(): number {
         for (const e of result.errors) {
           console.log(`  L${e.line}: ${e.message}`);
         }
-        console.log("NOTE: Original scheduler uses >>> 1; ts2wasm port uses >> 1 instead");
+        console.log("NOTE: Original scheduler uses >>> 1; js2wasm port uses >> 1 instead");
       }
       // Document but don't fail
       expect(true).toBe(true);
@@ -694,7 +694,7 @@ export function test(): number {
   describe("feature gap documentation", () => {
     it("documents what works and what is missing for full scheduler compilation", () => {
       // This test documents the gap between the actual npm scheduler source
-      // and what ts2wasm can compile today.
+      // and what js2wasm can compile today.
       const analysis = {
         // What COMPILES AND RUNS correctly:
         compilesAndRuns: [
@@ -773,7 +773,7 @@ export function test(): number {
       }
 
       // KEY FINDINGS:
-      // 1. ts2wasm CAN compile the TypeScript-annotated min-heap and run
+      // 1. js2wasm CAN compile the TypeScript-annotated min-heap and run
       //    push/peek correctly. Single pop also works.
       // 2. The siftDown implementation has a runtime bug where multiple
       //    consecutive pops return elements in wrong order. This is the

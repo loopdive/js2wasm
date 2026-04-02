@@ -9,7 +9,7 @@
 
 ## Why
 
-This is the north star. Full ECMAScript conformance means ts2wasm can compile
+This is the north star. Full ECMAScript conformance means js2wasm can compile
 any valid JavaScript/TypeScript and produce correct results, making it a
 production-grade compiler.
 
