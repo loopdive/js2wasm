@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (() => {
+        const base = document.createElement("base");
+        base.href = location.hostname === "loopdive.github.io" ? "/js2wasm/" : "/";
+        document.head.appendChild(base);
+      })();
+    </script>
     <title>js2wasm</title>
     <meta
       name="description"
