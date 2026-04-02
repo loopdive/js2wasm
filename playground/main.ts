@@ -3335,7 +3335,7 @@ async function runBenchmark() {
 
   log("Optimizing WASM with Binaryen…");
   await yield_();
-  const optResult = await optimizeBinaryAsync(lastResult.binary, { level: 3 });
+  const optResult = await optimizeBinaryAsync(lastResult.binary, { level: 4 });
   if (optResult.optimized) {
     log("Binaryen optimization applied.");
   } else if (optResult.warning) {
