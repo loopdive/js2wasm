@@ -64,7 +64,7 @@ export function main(): void {
 
 ## Try it
 
-**[Live Playground →](https://loopdive.github.io/js2wasm/)** — compile and run TypeScript as WebAssembly in your browser. No install needed.
+**[Live Playground →](https://loopdive.github.io/js2wasm/playground/)** — compile and run TypeScript as WebAssembly in your browser. No install needed.
 
 The playground was built for dogfooding and analysis during development. It provides:
 
