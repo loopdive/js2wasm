@@ -19,67 +19,9 @@ const HELPERS_SOURCE = readFileSync(HELPERS_PATH, "utf8");
 const BENCHMARKS = [
   { path: "examples/benchmarks/fib.ts", exportName: "bench_fib" },
   { path: "examples/benchmarks/loop.ts", exportName: "bench_loop" },
-  { path: "examples/benchmarks/dom.ts", exportName: "bench_dom" },
   { path: "examples/benchmarks/string.ts", exportName: "bench_string" },
   { path: "examples/benchmarks/array.ts", exportName: "bench_array" },
-  { path: "examples/benchmarks/style.ts", exportName: "bench_style" },
 ];
-
-class FakeStyle {
-  cssText = "";
-  background = "";
-}
-
-class FakeElement {
-  children = [];
-  style = new FakeStyle();
-  textContent = "";
-  innerHTML = "";
-  nodeType = 1;
-  parentNode = null;
-  parentElement = null;
-  ownerDocument = null;
-
-  appendChild(child) {
-    child.parentNode = this;
-    child.parentElement = this;
-    child.ownerDocument = this.ownerDocument;
-    this.children.push(child);
-    return child;
-  }
-
-  removeChild(child) {
-    const index = this.children.indexOf(child);
-    if (index >= 0) this.children.splice(index, 1);
-    child.parentNode = null;
-    child.parentElement = null;
-    return child;
-  }
-
-  contains(node) {
-    let current = node;
-    while (current) {
-      if (current === this) return true;
-      current = current.parentNode;
-    }
-    return false;
-  }
-}
-
-function createFakeDocument() {
-  const body = new FakeElement();
-  const doc = {
-    nodeType: 9,
-    body,
-    createElement() {
-      const el = new FakeElement();
-      el.ownerDocument = doc;
-      return el;
-    },
-  };
-  body.ownerDocument = doc;
-  return doc;
-}
 
 function stripImportsAndExports(source) {
   return source
@@ -126,9 +68,7 @@ async function measureBenchmark(entryPath, exportName) {
     throw new Error(`Compilation failed for ${entryPath}:\n${result.errors.map((e) => e.message).join("\n")}`);
   }
 
-  const fakeDocument = createFakeDocument();
-  const deps = { document: fakeDocument, window: { document: fakeDocument }, globalThis: { document: fakeDocument } };
-  const imports = buildImports(result.imports, deps, result.stringPool, { domRoot: fakeDocument.body });
+  const imports = buildImports(result.imports, {}, result.stringPool);
   const { instance } = await instantiateWasm(result.binary, imports.env, imports.string_constants);
   if (imports.setExports) imports.setExports(instance.exports);
   const wasmFn = instance.exports[exportName];
@@ -136,14 +76,8 @@ async function measureBenchmark(entryPath, exportName) {
     throw new Error(`Missing wasm export ${exportName} in ${entryPath}`);
   }
 
-  const jsFactory = new Function(
-    "document",
-    "window",
-    "globalThis",
-    buildJsFactorySource(source, exportName),
-  );
-  const jsDocument = createFakeDocument();
-  const jsExports = jsFactory(jsDocument, { document: jsDocument }, { document: jsDocument });
+  const jsFactory = new Function(buildJsFactorySource(source, exportName));
+  const jsExports = jsFactory();
   const jsFn = jsExports[exportName];
   if (typeof jsFn !== "function") {
     throw new Error(`Missing JS export ${exportName} in ${entryPath}`);
