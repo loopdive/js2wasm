@@ -36,7 +36,7 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 // lodash-style utility functions compiled to WebAssembly
 //
 // These are TypeScript implementations of common lodash functions, written
-// using only patterns supported by ts2wasm (number arrays, basic control flow,
+// using only patterns supported by js2wasm (number arrays, basic control flow,
 // array methods like push/indexOf/slice/concat).
 //
 // Results summary:

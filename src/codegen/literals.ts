@@ -1,5 +1,5 @@
 /**
- * Literal compilation for ts2wasm — object, array, tuple, and symbol literals.
+ * Literal compilation for js2wasm — object, array, tuple, and symbol literals.
  *
  * Extracted from expressions.ts (issue #688, step 7).
  *

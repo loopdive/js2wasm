@@ -1,5 +1,5 @@
 /**
- * Benchmark harness for ts2wasm.
+ * Benchmark harness for js2wasm.
  *
  * Compares four strategies:
  *   1. Pure JS          — run TypeScript source directly via eval

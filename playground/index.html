@@ -548,38 +548,47 @@
         background: #1a1a3a;
       }
       .bench-file-name {
+        flex: 1;
+        min-width: 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .bench-file-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .bench-run-btn {
+        flex-shrink: 0;
+        font: inherit;
+        font-size: 11px;
+        line-height: 1;
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: #6f6f6f;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .bench-run-btn:hover {
+        color: #d8d8d8;
+      }
+      .bench-run-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
       }
       .bench-result {
         position: relative;
         height: 6px;
         margin-top: 4px;
         border-radius: 999px;
-        background:
-          linear-gradient(
-            to right,
-            rgba(248, 81, 73, 0.12) 0%,
-            rgba(248, 81, 73, 0.12) 49.5%,
-            rgba(255, 255, 255, 0.12) 49.5%,
-            rgba(255, 255, 255, 0.12) 50.5%,
-            rgba(63, 185, 80, 0.12) 50.5%,
-            rgba(63, 185, 80, 0.12) 100%
-          );
+        background: transparent;
         overflow: hidden;
-      }
-      .bench-result-fill {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        border-radius: 999px;
-      }
-      .bench-result-faster {
-        background: var(--pass);
-      }
-      .bench-result-slower {
-        background: var(--fail);
       }
       .bench-result-label {
         margin-top: 3px;
@@ -716,7 +725,7 @@
   <body>
     <div class="main-area" id="layout-root"></div>
     <div class="toolbar">
-      <img src="./image-white.png" alt="ts2wasm" class="toolbar-logo" />
+      <img src="./image-white.png" alt="js2wasm" class="toolbar-logo" />
       <button class="toolbar-btn" id="compile">
         <span class="tb-icon lg">&#9881;</span><span class="tb-label">compile</span>
       </button>

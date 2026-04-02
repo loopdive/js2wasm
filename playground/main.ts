@@ -2,7 +2,13 @@ import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.
 import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
+import {
+  typescriptDefaults,
+  javascriptDefaults,
+  ScriptTarget as MonacoScriptTarget,
+  ModuleKind as MonacoModuleKind,
+  ModuleResolutionKind as MonacoModuleResolutionKind,
+} from "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as ts from "typescript";
 import "./ts-lib-files.js";
@@ -15,6 +21,11 @@ import { LayoutManager, clearSavedLayout } from "./layout.js";
 import DEFAULT_SOURCE from "./examples/dom/calendar.ts?raw";
 import BENCH_HELPERS_SOURCE from "./examples/benchmarks/helpers.ts?raw";
 
+const rawExampleModules = import.meta.glob("./examples/**/*.ts", {
+  query: "?raw",
+  import: "default",
+});
+
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
     if (label === "typescript" || label === "javascript") {
@@ -23,6 +34,24 @@ self.MonacoEnvironment = {
     return new editorWorker();
   },
 };
+
+typescriptDefaults.setCompilerOptions({
+  target: MonacoScriptTarget.ESNext,
+  module: MonacoModuleKind.ESNext,
+  moduleResolution: MonacoModuleResolutionKind.NodeJs,
+  allowImportingTsExtensions: true,
+  allowNonTsExtensions: true,
+  strict: true,
+});
+
+javascriptDefaults.setCompilerOptions({
+  target: MonacoScriptTarget.ESNext,
+  module: MonacoModuleKind.ESNext,
+  moduleResolution: MonacoModuleResolutionKind.NodeJs,
+  allowImportingTsExtensions: true,
+  allowNonTsExtensions: true,
+  checkJs: true,
+});
 
 // ─── Cursor Dark theme ──────────────────────────────────────────────────
 monaco.editor.defineTheme("cursor-dark", {
@@ -702,8 +731,19 @@ interface FileEntry {
   binaryData?: Uint8Array;
 }
 
-const STORAGE_KEY = "ts2wasm_source";
-const saved = sessionStorage.getItem(STORAGE_KEY);
+const STORAGE_KEY = "js2wasm_source";
+const LEGACY_STORAGE_KEY = "ts2wasm_source";
+const saved = sessionStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(LEGACY_STORAGE_KEY);
+
+function canonicalizeBenchmarkHelperImports(source: string, pathHint?: string | null): string {
+  const replacement = pathHint === "examples/benchmarks.ts"
+    ? "./benchmarks/helpers.ts"
+    : "./helpers.ts";
+  return source.replace(
+    /(["'])(?:\/examples\/benchmarks\/helpers\.ts|examples\/benchmarks\/helpers\.ts|\.\/benchmarks\/helpers\.ts|\.\/helpers\.ts)\1/g,
+    `"${replacement}"`,
+  );
+}
 
 function createFileEntry(
   path: string,
@@ -732,15 +772,126 @@ const files: FileEntry[] = [
     "typescript",
     false,
     "input",
-    saved ?? DEFAULT_SOURCE,
+    canonicalizeBenchmarkHelperImports(saved ?? DEFAULT_SOURCE, null),
   ),
   createFileEntry("output/example.wat", "wat", true, "output", ""),
   createFileEntry("output/example.wasm", "text", true, "output", ""),
   createFileEntry("output/example.js", "javascript", true, "output", ""),
 ];
 
+monaco.editor.createModel(
+  BENCH_HELPERS_SOURCE,
+  "typescript",
+  monaco.Uri.parse("file:///examples/benchmarks/helpers.ts"),
+);
+
 const fileMap = new Map<string, FileEntry>(files.map((f) => [f.path, f]));
 const inputFile = fileMap.get("input/example.ts")!;
+let inputModelChangeDisposable: monaco.IDisposable | null = null;
+
+function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
+  inputModelChangeDisposable?.dispose();
+  inputModelChangeDisposable = model.onDidChangeContent(() => {
+    if (t262Loading) return;
+    sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
+    lastResult = null;
+    compileBtn.disabled = false;
+    runBtn.disabled = true;
+    benchBtn.disabled = true;
+    downloadWatBtn.disabled = true;
+    downloadWasmBtn.disabled = true;
+  });
+}
+
+function setInputSourceModel(virtualPath: string, source: string): void {
+  const normalizedSource = canonicalizeBenchmarkHelperImports(source, virtualPath);
+  const uri = monaco.Uri.parse(`file:///${virtualPath}`);
+  let model = monaco.editor.getModel(uri);
+  if (!model) {
+    model = monaco.editor.createModel(normalizedSource, "typescript", uri);
+  } else if (model.getValue() !== normalizedSource) {
+    model.setValue(normalizedSource);
+  }
+  inputFile.path = virtualPath;
+  inputFile.displayName = virtualPath.split("/").pop()!;
+  inputFile.model = model;
+  (tabDefs["ts-source"] as EditorTabDef).model = model;
+  const sourcePanelId = layout.findPanelForTab("ts-source");
+  if (sourcePanelId && layout.getActiveTabForPanel(sourcePanelId) !== "ts-source") {
+    layout.switchTab(sourcePanelId, "ts-source");
+  }
+  bindInputModelPersistence(model);
+  for (const slot of editorSlots) {
+    if (!slot.panelId) continue;
+    if (layout.getActiveTabForPanel(slot.panelId) !== "ts-source") continue;
+    slot.editor.setModel(model);
+  }
+}
+
+async function loadBundledExampleSource(path: string): Promise<string | null> {
+  const key = `./${path}`;
+  const loader = rawExampleModules[key] as (() => Promise<string>) | undefined;
+  if (!loader) return null;
+  return await loader();
+}
+
+function resolveLocalExampleImport(fromPath: string, specifier: string): string | null {
+  if (!specifier.startsWith(".")) return null;
+  const fromParts = fromPath.split("/");
+  fromParts.pop();
+  const specParts = specifier.split("/");
+  for (const part of specParts) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (fromParts.length > 0) fromParts.pop();
+      continue;
+    }
+    fromParts.push(part);
+  }
+  return fromParts.join("/");
+}
+
+function getImportSpecifierAtPosition(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position,
+): string | null {
+  const line = model.getLineContent(position.lineNumber);
+  const matches = [...line.matchAll(/["']([^"']+)["']/g)];
+  for (const match of matches) {
+    const full = match[0];
+    const spec = match[1];
+    const start = (match.index ?? 0) + 1;
+    const end = start + full.length;
+    if (position.column >= start && position.column <= end) {
+      return spec;
+    }
+  }
+  return null;
+}
+
+async function openLocalImportedSource(specifier: string): Promise<boolean> {
+  const fromPath = inputFile.path;
+  const resolvedPath = resolveLocalExampleImport(fromPath, specifier);
+  if (!resolvedPath) return false;
+  if (!(resolvedPath.startsWith("examples/") || resolvedPath.startsWith("input/"))) return false;
+  try {
+    const content = resolvedPath.startsWith("examples/")
+      ? await loadBundledExampleSource(resolvedPath)
+      : null;
+    if (content == null) return false;
+    t262Loading = true;
+    sessionStorage.removeItem(STORAGE_KEY);
+    setInputSourceModel(resolvedPath, content);
+    revealSourceTab();
+    t262SetActive(resolvedPath);
+    updateTabLabel("ts-source", resolvedPath.split("/").pop() ?? "example.ts");
+    t262Loading = false;
+    return true;
+  } catch {
+    t262Loading = false;
+    return false;
+  }
+}
 
 // ─── Editor pool ─────────────────────────────────────────────────────────
 const editorOpts: monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -808,18 +959,6 @@ function editorForPanel(panelId: string): EditorSlot | null {
   return editorSlots.find((s) => s.panelId === panelId) ?? null;
 }
 
-// Session storage for input
-inputFile.model.onDidChangeContent(() => {
-  if (t262Loading) return;
-  sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
-  lastResult = null;
-  compileBtn.disabled = false;
-  runBtn.disabled = true;
-  benchBtn.disabled = true;
-  downloadWatBtn.disabled = true;
-  downloadWasmBtn.disabled = true;
-});
-
 // ─── DOM references ─────────────────────────────────────────────────────
 const timingSpan = document.getElementById("timing") as HTMLSpanElement;
 const compileBtn = document.getElementById("compile") as HTMLButtonElement;
@@ -829,6 +968,9 @@ const downloadWasmBtn = document.getElementById("download-wasm") as HTMLButtonEl
 const benchBtn = document.getElementById("bench") as HTMLButtonElement;
 const resetLayoutBtn = document.getElementById("reset-layout") as HTMLButtonElement;
 const toggleSidebarBtn = document.getElementById("toggle-sidebar") as HTMLButtonElement;
+
+// Session storage for input
+bindInputModelPersistence(inputFile.model);
 
 // Create output panel elements programmatically (mounted by layout system)
 const consolePre = document.createElement("pre");
@@ -1140,7 +1282,8 @@ async function t262LoadAndShow(filePath: string) {
   const content = await t262LoadFile(filePath);
   t262Loading = true;
   sessionStorage.removeItem(STORAGE_KEY);
-  inputFile.model.setValue(content);
+  setInputSourceModel(filePath, content);
+  revealSourceTab();
   t262SetActive(filePath);
   const fname = t262FileName(filePath);
   updateTabLabel("ts-source", fname);
@@ -1168,6 +1311,12 @@ interface BenchmarkSidebarResult {
   wasmUs: number;
   jsUs: number;
   deltaPct: number;
+}
+
+interface BenchmarkSidebarSnapshot {
+  path: string;
+  wasmUs: number;
+  jsUs: number;
 }
 
 const benchmarkExamples: BenchmarkExample[] = [
@@ -1215,6 +1364,21 @@ const benchmarkExamples: BenchmarkExample[] = [
   },
 ];
 const benchmarkSidebarResults = new Map<string, BenchmarkSidebarResult>();
+let benchmarkSidebarSnapshotLoaded = false;
+
+async function ensureBenchmarkSidebarSnapshot(): Promise<void> {
+  if (benchmarkSidebarSnapshotLoaded || benchmarkSidebarResults.size > 0) return;
+  const snapshot = await fetchJson<BenchmarkSidebarSnapshot[]>("benchmarks/results/playground-benchmark-sidebar.json");
+  benchmarkSidebarSnapshotLoaded = true;
+  if (!snapshot?.length) return;
+  for (const item of snapshot) {
+    benchmarkSidebarResults.set(item.path, {
+      wasmUs: item.wasmUs,
+      jsUs: item.jsUs,
+      deltaPct: ((item.jsUs / item.wasmUs) - 1) * 100,
+    });
+  }
+}
 
 function isBenchmarkProjectPath(path: string | null): boolean {
   return !!path && (path === "examples/benchmarks.ts" || path.startsWith("examples/benchmarks/"));
@@ -1224,21 +1388,32 @@ function usesBenchmarkHelpers(source: string): boolean {
   return /^\s*import\s+\{[^}]+\}\s+from\s+["']\.\/(?:benchmarks\/)?helpers\.ts["'];?\s*$/m.test(source);
 }
 
+function normalizeBenchmarkHelperImport(source: string, entryPath: string | null): string {
+  const replacement = entryPath === "examples/benchmarks.ts"
+    ? "./benchmarks/helpers.ts"
+    : "./helpers.ts";
+  return source.replace(
+    /(["'])(?:\/examples\/benchmarks\/helpers\.ts|examples\/benchmarks\/helpers\.ts|\.\/benchmarks\/helpers\.ts|\.\/helpers\.ts)\1/g,
+    `"${replacement}"`,
+  );
+}
+
 function buildCompileResultForEditorSource(source: string) {
-  if (!isBenchmarkProjectPath(t262ActivePath) && !usesBenchmarkHelpers(source)) {
-    return compile(source);
-  }
   const entryPath = isBenchmarkProjectPath(t262ActivePath)
     ? t262ActivePath!
     : (source.includes("bench_") ? "examples/benchmarks.ts" : "example.ts");
+  const normalizedSource = normalizeBenchmarkHelperImport(source, entryPath);
+  if (!isBenchmarkProjectPath(t262ActivePath) && !usesBenchmarkHelpers(normalizedSource)) {
+    return compile(normalizedSource);
+  }
   return compileMulti({
-    [entryPath]: source,
+    [entryPath]: normalizedSource,
     "examples/benchmarks/helpers.ts": BENCH_HELPERS_SOURCE,
   }, entryPath);
 }
 
 function buildBenchmarkRuntimeJs(source: string): string {
-  const strippedSource = source
+  const strippedSource = normalizeBenchmarkHelperImport(source, t262ActivePath)
     .replace(/^\s*import\s+\{[^}]+\}\s+from\s+["']\.\/(?:benchmarks\/)?helpers\.ts["'];?\s*$/gm, "")
     .replace(/^\s*import\s+["'][^"']+["'];?\s*$/gm, "")
     .trim();
@@ -1313,6 +1488,8 @@ async function t262Render() {
   if (!listEl) return;
   listEl.innerHTML = "";
 
+  await ensureBenchmarkSidebarSnapshot();
+
   // Load test262 results report
   const report = await t262LoadReport();
 
@@ -1330,11 +1507,12 @@ async function t262Render() {
     entry.textContent = ex.name;
     entry.dataset.path = ex.path;
     entry.addEventListener("click", async () => {
-      const resp = await fetch(ex.path);
-      const content = await resp.text();
+      const content = await loadBundledExampleSource(ex.path);
+      if (content == null) return;
       t262Loading = true;
       sessionStorage.removeItem(STORAGE_KEY);
-      inputFile.model.setValue(content);
+      setInputSourceModel(ex.path, content);
+      revealSourceTab();
       t262SetActive(ex.path);
       updateTabLabel("ts-source", ex.name);
       compileOnly();
@@ -1343,44 +1521,78 @@ async function t262Render() {
     parent.appendChild(entry);
   }
 
+  async function loadBenchmarkFile(bench: BenchmarkExample) {
+    const rawContent = await loadBundledExampleSource(bench.path);
+    if (rawContent == null) return;
+    const content = normalizeBenchmarkHelperImport(rawContent, bench.path);
+    t262Loading = true;
+    sessionStorage.removeItem(STORAGE_KEY);
+    setInputSourceModel(bench.path, content);
+    revealSourceTab();
+    t262SetActive(bench.path);
+    updateTabLabel("ts-source", bench.name);
+    compileOnly();
+    t262Loading = false;
+  }
+
   function renderBenchmarkFile(bench: BenchmarkExample, parent: HTMLElement) {
     const entry = document.createElement("div");
     entry.className = "t262-file" + (t262ActivePath === bench.path ? " active" : "");
     entry.dataset.path = bench.path;
     entry.title = bench.description;
+    const row = document.createElement("div");
+    row.className = "bench-file-row";
+    const runInlineBtn = document.createElement("button");
+    runInlineBtn.className = "bench-run-btn";
+    runInlineBtn.type = "button";
+    runInlineBtn.innerHTML = "&#9654;";
+    runInlineBtn.title = `Benchmark ${bench.name}`;
+    runInlineBtn.disabled = benchBtn.disabled;
+    runInlineBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      if (runInlineBtn.disabled) return;
+      await loadBenchmarkFile(bench);
+      await runBenchmark();
+    });
+    row.appendChild(runInlineBtn);
     const titleEl = document.createElement("div");
     titleEl.className = "bench-file-name";
     titleEl.textContent = bench.name;
-    entry.appendChild(titleEl);
+    row.appendChild(titleEl);
+    entry.appendChild(row);
     const result = benchmarkSidebarResults.get(bench.path);
     if (result) {
       const meter = document.createElement("div");
       meter.className = "bench-result";
       const clamped = Math.max(-100, Math.min(100, result.deltaPct));
       const fillWidth = Math.min(Math.abs(clamped), 100) / 2;
-      const fill = document.createElement("div");
-      fill.className = `bench-result-fill ${clamped >= 0 ? "bench-result-faster" : "bench-result-slower"}`;
-      fill.style.width = `${fillWidth}%`;
-      if (clamped >= 0) fill.style.left = "50%";
-      else fill.style.left = `${50 - fillWidth}%`;
-      meter.appendChild(fill);
+      const fillStart = clamped >= 0 ? 50 : 50 - fillWidth;
+      const fillEnd = clamped >= 0 ? 50 + fillWidth : 50;
+      const fillColor = clamped >= 0 ? "#3fb950" : "#f85149";
+      meter.style.background = `linear-gradient(to right,
+        rgba(248, 81, 73, 0.12) 0%,
+        rgba(248, 81, 73, 0.12) 49.5%,
+        rgba(255, 255, 255, 0.18) 49.5%,
+        rgba(255, 255, 255, 0.18) 50.5%,
+        rgba(63, 185, 80, 0.12) 50.5%,
+        rgba(63, 185, 80, 0.12) 100%),
+        linear-gradient(to right,
+        transparent 0%,
+        transparent ${fillStart}%,
+        ${fillColor} ${fillStart}%,
+        ${fillColor} ${fillEnd}%,
+        transparent ${fillEnd}%,
+        transparent 100%)`;
       const label = document.createElement("div");
-      label.className = `bench-result-label ${clamped >= 0 ? "bench-result-faster" : "bench-result-slower"}`;
+      label.className = "bench-result-label";
+      label.style.color = clamped >= 0 ? "#7ee787" : "#ff8e8a";
       const signed = `${result.deltaPct >= 0 ? "+" : ""}${result.deltaPct.toFixed(0)}%`;
       label.textContent = `${signed} vs JS`;
       entry.appendChild(meter);
       entry.appendChild(label);
     }
     entry.addEventListener("click", async () => {
-      const resp = await fetch(bench.path);
-      const content = await resp.text();
-      t262Loading = true;
-      sessionStorage.removeItem(STORAGE_KEY);
-      inputFile.model.setValue(content);
-      t262SetActive(bench.path);
-      updateTabLabel("ts-source", bench.name);
-      compileOnly();
-      t262Loading = false;
+      await loadBenchmarkFile(bench);
     });
     parent.appendChild(entry);
   }
@@ -1562,6 +1774,7 @@ async function t262Render() {
     name: string, folderKey: string, parent: HTMLElement,
     renderContents: (container: HTMLElement) => void | Promise<void>,
     summaryHtml?: string,
+    onOpen?: () => void | Promise<void>,
   ) {
     if (filter && !name.toLowerCase().includes(filter)) {
       // Still render if contents might match — caller handles filtering
@@ -1580,9 +1793,11 @@ async function t262Render() {
       ${summaryHtml ?? ""}
     `;
     headerEl.addEventListener("click", async () => {
-      if (t262ExpandedFolders.has(folderKey)) t262ExpandedFolders.delete(folderKey);
+      const wasExpanded = t262ExpandedFolders.has(folderKey);
+      if (wasExpanded) t262ExpandedFolders.delete(folderKey);
       else t262ExpandedFolders.add(folderKey);
       await t262Render();
+      if (!wasExpanded && onOpen) await onOpen();
     });
     el.appendChild(headerEl);
 
@@ -1593,13 +1808,13 @@ async function t262Render() {
     parent.appendChild(el);
   }
 
-  // ── ts2wasm folder (equivalence tests) ──
+  // ── js2wasm folder (equivalence tests) ──
   const equivTests = await loadEquivIndex();
   const equivMatches = filter
     ? equivTests.filter(t => t.name.toLowerCase().includes(filter))
     : equivTests;
   if (!filter || equivMatches.length > 0 || "js2wasm test suite".includes(filter)) {
-    await renderTopFolder("js2wasm Test Suite", "__ts2wasm__", listEl, (container) => {
+    await renderTopFolder("js2wasm Test Suite", "__js2wasm__", listEl, (container) => {
       const filesEl = document.createElement("div");
       filesEl.className = "t262-files";
       filesEl.style.paddingLeft = "22px";
@@ -1614,7 +1829,8 @@ async function t262Render() {
           const source = await loadEquivSource(t.index);
           t262Loading = true;
           sessionStorage.removeItem(STORAGE_KEY);
-          inputFile.model.setValue(source);
+          setInputSourceModel("input/example.ts", source);
+          revealSourceTab();
           t262SetActive(path);
           updateTabLabel("ts-source", t.name);
           compileOnly();
@@ -1873,6 +2089,13 @@ function openFileTab(path: string) {
   if (!tabId) return;
   const panelId = layout.findPanelForTab(tabId);
   if (panelId) layout.switchTab(panelId, tabId);
+}
+
+function revealSourceTab(): void {
+  openFileTab("input/example.ts");
+  requestAnimationFrame(() => {
+    editorForTab("ts-source")?.focus();
+  });
 }
 
 function showOutputPanel(name: string) {
@@ -2229,7 +2452,7 @@ function generateModularOutput(result: ReturnType<typeof compile>): string {
 
   return `${helper || `export function createImports() {\n  return { env: {} };\n}`}
 
-import { compile } from "ts2wasm";
+import { compile } from "js2wasm";
 import source from "./example.ts?raw";
 
 const result = compile(source);
@@ -2667,6 +2890,13 @@ function setupEditorHandlers(ed: monaco.editor.IStandaloneCodeEditor) {
     if (!e.target.position) return;
     const model = ed.getModel();
     if (model === inputFile.model) {
+      if (e.event.metaKey || e.event.ctrlKey) {
+        const specifier = getImportSpecifierAtPosition(model, e.target.position);
+        if (specifier) {
+          void openLocalImportedSource(specifier);
+          return;
+        }
+      }
       handleHighlightClick(resolveTsTarget(e.target.position.lineNumber), "ts");
     } else if (model === wasmHexModel) {
       const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
@@ -2993,11 +3223,15 @@ async function runBenchmark() {
   // If current source has no bench_* exports, load benchmarks example
   const src = inputFile.model.getValue();
   if (!src.includes("bench_")) {
-    const resp = await fetch("examples/benchmarks.ts");
-    const content = await resp.text();
+    const content = await loadBundledExampleSource("examples/benchmarks.ts");
+    if (content == null) {
+      benchBtn.disabled = false;
+      return;
+    }
     t262Loading = true;
     sessionStorage.removeItem(STORAGE_KEY);
-    inputFile.model.setValue(content);
+    setInputSourceModel("examples/benchmarks.ts", normalizeBenchmarkHelperImport(content, "examples/benchmarks.ts"));
+    revealSourceTab();
     t262SetActive("examples/benchmarks.ts");
     updateTabLabel("ts-source", "benchmarks.ts");
 
@@ -3207,7 +3441,8 @@ resetLayoutBtn.addEventListener("click", () => {
   sessionStorage.removeItem(STORAGE_KEY);
   t262ActivePath = null;
   t262Loading = true;
-  inputFile.model.setValue(DEFAULT_SOURCE);
+  setInputSourceModel("input/example.ts", DEFAULT_SOURCE);
+  revealSourceTab();
   t262Loading = false;
   updateTabLabel("ts-source", "example.ts");
   layout.resetLayout();

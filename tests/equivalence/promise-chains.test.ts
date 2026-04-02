@@ -4,7 +4,7 @@ import { compileToWasm, evaluateAsJs } from "./helpers.js";
 /**
  * Promise/async tests for equivalence.
  *
- * The ts2wasm compiler compiles async functions synchronously:
+ * The js2wasm compiler compiles async functions synchronously:
  * - `await` is identity (pass-through)
  * - async functions return their value directly, not wrapped in a Promise
  * - Promise.resolve/reject are not runtime JS promises in Wasm

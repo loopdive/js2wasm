@@ -1,6 +1,6 @@
 /**
  * Test262 runner — compiles a filtered subset of the official ECMAScript
- * conformance suite through ts2wasm and validates the results.
+ * conformance suite through js2wasm and validates the results.
  *
  * Each test262 test is a standalone JS file. We:
  *   1. Parse metadata (features, flags, negative, includes)
@@ -1943,7 +1943,7 @@ export function findTestFiles(category: string): string[] {
 export interface TestTiming {
   /** Total wall-clock time in ms */
   totalMs: number;
-  /** Time spent in ts2wasm compile() in ms */
+  /** Time spent in js2wasm compile() in ms */
   compileMs: number;
   /** Time spent in WebAssembly.instantiate() in ms */
   instantiateMs: number;

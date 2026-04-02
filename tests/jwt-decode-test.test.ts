@@ -6,7 +6,7 @@ import { buildStringConstants } from "../src/runtime.js";
 /**
  * JWT Decode + HS256 Verify Showcase
  *
- * Demonstrates ts2wasm compiling real-world crypto/encoding logic to pure Wasm:
+ * Demonstrates js2wasm compiling real-world crypto/encoding logic to pure Wasm:
  * - Base64url decoding (charCodeAt, lookup table, bitwise ops)
  * - SHA-256 (i32 bitwise ops, array manipulation, unsigned right shift)
  * - HMAC-SHA-256 (key padding, XOR, dual SHA-256)

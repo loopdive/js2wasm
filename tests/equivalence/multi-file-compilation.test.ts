@@ -105,7 +105,7 @@ describe("multi-file compilation", () => {
 });
 
 describe("compileFiles (disk-based)", () => {
-  const tmpDir = join(tmpdir(), `ts2wasm-test-${Date.now()}`);
+  const tmpDir = join(tmpdir(), `js2wasm-test-${Date.now()}`);
 
   // Create temp files before tests
   it("resolves imports from disk via ts.createProgram", async () => {

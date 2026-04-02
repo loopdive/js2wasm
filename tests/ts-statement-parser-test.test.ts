@@ -67,7 +67,7 @@ async function compileToWasm(source: string) {
 // Milestone 3: Statement parser - extends the expression parser with
 // variable declarations, assignments, if/else, while, return, and blocks.
 //
-// This tests whether ts2wasm can handle the patterns needed for a
+// This tests whether js2wasm can handle the patterns needed for a
 // statement-level parser: deeper control flow, variable environments
 // using parallel arrays, and function calls returning void.
 

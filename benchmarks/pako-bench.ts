@@ -1,12 +1,12 @@
 /**
- * pako (zlib) benchmark: ts2wasm Wasm vs JS
+ * pako (zlib) benchmark: js2wasm Wasm vs JS
  *
- * pako is a pure-JS zlib implementation. Its full source uses patterns ts2wasm
+ * pako is a pure-JS zlib implementation. Its full source uses patterns js2wasm
  * cannot yet compile (classes, require(), untyped object property access,
  * labeled break across nested loops, Uint32Array constructor, etc.).
  *
  * This benchmark extracts the core compute-intensive kernels from pako as clean
- * TypeScript and compiles them to Wasm via ts2wasm, then benchmarks against
+ * TypeScript and compiles them to Wasm via js2wasm, then benchmarks against
  * equivalent JS implementations.
  *
  * Each kernel is self-contained: it generates test data internally, runs the
@@ -26,7 +26,7 @@ import { compile } from "../src/index.ts";
 import { buildImports } from "../src/runtime.ts";
 
 // ---------------------------------------------------------------------------
-// Self-contained TypeScript sources for ts2wasm compilation.
+// Self-contained TypeScript sources for js2wasm compilation.
 // Each exports a run() function that builds data internally and returns a result.
 // ---------------------------------------------------------------------------
 
@@ -384,7 +384,7 @@ function runTimed(
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("=== pako kernel benchmark: ts2wasm Wasm vs JS ===\n");
+  console.log("=== pako kernel benchmark: js2wasm Wasm vs JS ===\n");
 
   const ITERATIONS = 50;
   const results: BenchResult[] = [];
@@ -550,7 +550,7 @@ async function main() {
   // === Blocking patterns for full pako ===
   console.log("\n=== Blocking Patterns for Full pako Compilation ===\n");
   console.log("The following patterns in pako's source prevent full compilation:\n");
-  console.log("1. CommonJS require()/module.exports - ts2wasm expects ES modules");
+  console.log("1. CommonJS require()/module.exports - js2wasm expects ES modules");
   console.log("2. Classes (Inflate, Deflate, ZStream, GZheader) - not yet supported");
   console.log("3. Untyped object property access (strm.state, state.mode)");
   console.log("4. Uint8Array/Uint32Array constructors - typed arrays not supported");

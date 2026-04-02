@@ -39,7 +39,7 @@
 
 **Effort**: Easy (2-3h). Vite build works. Need GitHub Actions workflow + Pages config.
 
-**Notes**: URL should be updated from ts2wasm to js2wasm.
+**Notes**: URL should be updated from js2wasm to js2wasm.
 
 ### Priority 4: Conformance report (#886) — High
 
@@ -74,7 +74,7 @@ Committed at 6b486bf9. Results show js2wasm produces 100-1000x smaller Wasm outp
 
 | Risk | Mitigation |
 |------|------------|
-| GitHub Pages URL still shows ts2wasm | Update repo settings; redirects may work automatically |
+| GitHub Pages URL still shows js2wasm | Update repo settings; redirects may work automatically |
 | #884 blocked by #882 (sharded runner) | Start with equiv-tests-only CI; add test262 shard later |
 | Conformance number lower than expected (33.3% after exception tag fix) | Frame as "honest baseline" — show trajectory, not just current number |
 | README comparison table data incomplete | Use known data from existing blog post + benchmark results |

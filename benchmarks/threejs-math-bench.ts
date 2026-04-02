@@ -1,7 +1,7 @@
 /**
  * Three.js Math Benchmark — Vector3, Matrix4, Quaternion
  *
- * Compiles each class to Wasm via ts2wasm, runs a hot loop,
+ * Compiles each class to Wasm via js2wasm, runs a hot loop,
  * and compares wall-clock time against an equivalent pure-JS loop.
  *
  * Run:  npx tsx benchmarks/threejs-math-bench.ts
@@ -324,7 +324,7 @@ async function benchQuaternionMul() {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("=== Three.js Math Benchmark: Wasm (ts2wasm) vs JS ===");
+  console.log("=== Three.js Math Benchmark: Wasm (js2wasm) vs JS ===");
 
   const results = [];
   results.push(await benchVector3Dot());

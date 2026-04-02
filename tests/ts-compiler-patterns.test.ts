@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 
 // Exploratory test: which TypeScript patterns used by the real TypeScript
-// compiler does ts2wasm handle? Each test tries to compile a pattern
+// compiler does js2wasm handle? Each test tries to compile a pattern
 // found in the TypeScript compiler source.
 
 describe("TypeScript Compiler Pattern Compatibility", () => {

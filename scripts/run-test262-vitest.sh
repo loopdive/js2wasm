@@ -10,8 +10,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LOCKFILE="/tmp/ts2wasm-test262.lock"
-LOCKDIR="/tmp/ts2wasm-test262.lockdir"
+LOCKFILE="/tmp/js2wasm-test262.lock"
+LOCKDIR="/tmp/js2wasm-test262.lockdir"
 RESULTS_DIR="$MAIN_DIR/benchmarks/results"
 RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 INCLUDE_PROPOSALS=0
@@ -106,7 +106,7 @@ fi
 echo "Lock acquired (PID $$)"
 
 # ── Create isolated worktree ─────────────────────────────────────
-WT_DIR="/tmp/ts2wasm-vitest-$$"
+WT_DIR="/tmp/js2wasm-vitest-$$"
 USE_WORKTREE=1
 echo "Creating worktree at $WT_DIR ..."
 if ! git -C "$MAIN_DIR" worktree add "$WT_DIR" HEAD --detach --quiet 2>/dev/null; then

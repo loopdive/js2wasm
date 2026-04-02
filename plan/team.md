@@ -1,4 +1,4 @@
-# ts2wasm Team Specification
+# js2wasm Team Specification
 
 ## Roles
 

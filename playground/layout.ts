@@ -29,12 +29,14 @@ export interface LeafNode {
 
 export type DropZone = "center" | "top" | "bottom" | "left" | "right";
 
-const LAYOUT_KEY = "ts2wasm_layout_v2";
+const LAYOUT_KEY = "js2wasm_layout_v2";
+const LEGACY_LAYOUT_KEY = "ts2wasm_layout_v2";
 const MIN_PANEL_SIZE = 80; // px
 
 export function clearSavedLayout(): void {
   try {
     localStorage.removeItem(LAYOUT_KEY);
+    localStorage.removeItem(LEGACY_LAYOUT_KEY);
   } catch { /* ignore */ }
 }
 
@@ -651,7 +653,7 @@ export class LayoutManager {
 
   static loadLayout(allTabIds: Set<string>): LayoutNode | null {
     try {
-      const raw = localStorage.getItem(LAYOUT_KEY);
+      const raw = localStorage.getItem(LAYOUT_KEY) ?? localStorage.getItem(LEGACY_LAYOUT_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       // Validate: all tab IDs in the layout must exist in allTabIds

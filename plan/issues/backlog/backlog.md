@@ -1,4 +1,4 @@
-# ts2wasm Backlog
+# js2wasm Backlog
 
 **Current state** (2026-03-28): 18,041 pass | 21,181 fail | 2,284 CE | 6,580 skip
 

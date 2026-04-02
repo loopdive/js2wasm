@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Combined benchmark runner for ts2wasm.
+ * Combined benchmark runner for js2wasm.
  *
  * Runs all benchmark suites and produces a single combined JSON report:
  *   1. Suite benchmarks (strings, arrays, dom, mixed) via benchmarks/run.ts harness
@@ -567,7 +567,7 @@ async function runReactBench(): Promise<ReactBenchResult[]> {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("ts2wasm Combined Benchmark Runner");
+  console.log("js2wasm Combined Benchmark Runner");
   console.log(`Node ${process.version} | ${process.platform} ${process.arch}`);
   console.log(`Iterations: ${ITERATIONS} | Warmup: ${WARMUP}`);
 
