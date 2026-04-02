@@ -26,6 +26,14 @@ const rawExampleModules = import.meta.glob("./examples/**/*.ts", {
   import: "default",
 });
 
+function isPagesPlaygroundPath(): boolean {
+  return /\/playground\/?$/.test(window.location.pathname);
+}
+
+function resolveSiteLink(path: string): string {
+  return isPagesPlaygroundPath() ? `../${path}` : `./${path}`;
+}
+
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
     if (label === "typescript" || label === "javascript") {
@@ -968,6 +976,11 @@ const downloadWasmBtn = document.getElementById("download-wasm") as HTMLButtonEl
 const benchBtn = document.getElementById("bench") as HTMLButtonElement;
 const resetLayoutBtn = document.getElementById("reset-layout") as HTMLButtonElement;
 const toggleSidebarBtn = document.getElementById("toggle-sidebar") as HTMLButtonElement;
+const compatLink = document.getElementById("compat-link") as HTMLAnchorElement | null;
+const planLink = document.getElementById("plan-link") as HTMLAnchorElement | null;
+
+if (compatLink) compatLink.href = resolveSiteLink("benchmarks/report.html");
+if (planLink) planLink.href = resolveSiteLink("dashboard/");
 
 // Session storage for input
 bindInputModelPersistence(inputFile.model);
