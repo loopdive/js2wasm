@@ -491,7 +491,16 @@ Conformance is improving with each release. The full test262 conformance report 
 
 <!-- AUTO:BENCHMARKS:START -->
 
-_No benchmark data available. Run benchmarks to populate this section._
+```text
+Benchmark     WASM          JS        Ratio     n
+──────────────────────────────────────────────────────────────
+  array         29.0 µs      30.8 µs    WASM 1.06× 32.510
+  dom          100.7 µs      94.9 µs    JS 1.06×   10.670
+  fib            2.4 ms       8.2 ms    WASM 3.38× 400
+  loop         992.3 µs       1.6 ms    WASM 1.58× 1.010
+  string         2.9 µs       2.5 µs    JS 1.12×   300.810
+  style         95.1 µs      81.0 µs    JS 1.17×   9.890
+```
 
 <!-- AUTO:BENCHMARKS:END -->
 
