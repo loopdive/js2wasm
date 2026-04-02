@@ -1319,6 +1319,9 @@ interface BenchmarkSidebarSnapshot {
   jsUs: number;
 }
 
+const BENCHMARK_IDB_NAME = "js2wasm-benchmarks";
+const BENCHMARK_IDB_STORE = "sidebar-results";
+
 const benchmarkExamples: BenchmarkExample[] = [
   {
     name: "fib.ts",
@@ -1366,12 +1369,70 @@ const benchmarkExamples: BenchmarkExample[] = [
 const benchmarkSidebarResults = new Map<string, BenchmarkSidebarResult>();
 let benchmarkSidebarSnapshotLoaded = false;
 
+function isBrowserOnlyBenchmark(path: string): boolean {
+  return path === "examples/benchmarks/dom.ts" || path === "examples/benchmarks/style.ts";
+}
+
+function openBenchmarkDb(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    if (typeof indexedDB === "undefined") {
+      resolve(null);
+      return;
+    }
+    const req = indexedDB.open(BENCHMARK_IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(BENCHMARK_IDB_STORE)) {
+        db.createObjectStore(BENCHMARK_IDB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function loadBrowserBenchmarkSidebarResults(): Promise<BenchmarkSidebarSnapshot[]> {
+  const db = await openBenchmarkDb();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    const tx = db.transaction(BENCHMARK_IDB_STORE, "readonly");
+    const store = tx.objectStore(BENCHMARK_IDB_STORE);
+    const req = store.getAll();
+    req.onsuccess = () => {
+      db.close();
+      resolve((req.result as BenchmarkSidebarSnapshot[] | undefined) ?? []);
+    };
+    req.onerror = () => {
+      db.close();
+      resolve([]);
+    };
+  });
+}
+
+async function saveBrowserBenchmarkSidebarResult(snapshot: BenchmarkSidebarSnapshot): Promise<void> {
+  if (!isBrowserOnlyBenchmark(snapshot.path)) return;
+  const db = await openBenchmarkDb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(BENCHMARK_IDB_STORE, "readwrite");
+    tx.objectStore(BENCHMARK_IDB_STORE).put(snapshot, snapshot.path);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      resolve();
+    };
+  });
+}
+
 async function ensureBenchmarkSidebarSnapshot(): Promise<void> {
   if (benchmarkSidebarSnapshotLoaded || benchmarkSidebarResults.size > 0) return;
   const snapshot = await fetchJson<BenchmarkSidebarSnapshot[]>("benchmarks/results/playground-benchmark-sidebar.json");
+  const browserSnapshot = await loadBrowserBenchmarkSidebarResults();
   benchmarkSidebarSnapshotLoaded = true;
-  if (!snapshot?.length) return;
-  for (const item of snapshot) {
+  for (const item of [...(snapshot ?? []), ...browserSnapshot]) {
     benchmarkSidebarResults.set(item.path, {
       wasmUs: item.wasmUs,
       jsUs: item.jsUs,
@@ -1589,6 +1650,11 @@ async function t262Render() {
       const signed = `${result.deltaPct >= 0 ? "+" : ""}${result.deltaPct.toFixed(0)}%`;
       label.textContent = `${signed} vs JS`;
       entry.appendChild(meter);
+      entry.appendChild(label);
+    } else if (isBrowserOnlyBenchmark(bench.path)) {
+      const label = document.createElement("div");
+      label.className = "bench-result-label";
+      label.textContent = "run in browser";
       entry.appendChild(label);
     }
     entry.addEventListener("click", async () => {
@@ -3389,15 +3455,20 @@ async function runBenchmark() {
   tempPreview?.remove();
   disposeJsModule();
 
-  benchmarkSidebarResults.clear();
   for (const r of results) {
     const bench = benchmarkExamples.find((example) => example.benchmarkFunction === `bench_${r.name}`);
     if (!bench) continue;
+    const snapshot = {
+      path: bench.path,
+      wasmUs: r.wasmUs,
+      jsUs: r.jsUs,
+    };
     benchmarkSidebarResults.set(bench.path, {
       wasmUs: r.wasmUs,
       jsUs: r.jsUs,
       deltaPct: ((r.jsUs / r.wasmUs) - 1) * 100,
     });
+    void saveBrowserBenchmarkSidebarResult(snapshot);
   }
   if (t262Loaded) {
     t262Render();
