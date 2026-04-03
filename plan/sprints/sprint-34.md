@@ -22,6 +22,7 @@ Issues already completed in sprint 35 are removed. Remaining:
 | 6 | #849 | 200 FAIL | Mapped arguments object sync (needs architect) |
 | 7 | #822 WI4 | 17 CE | struct.new type stack inference (deferred from s31) |
 | 8 | #924 | infra | Vite dev server 9GB OOM — playground unusable locally |
+| 9 | #925 | presentation | Landing page: conformance circle + ES edition timeline diagrams |
 
 ### Already done (removed from queue)
 - ~~#856~~ — done in sprint 35 (ValidateAndApplyPropertyDescriptor)
