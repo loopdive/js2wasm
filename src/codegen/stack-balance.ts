@@ -1184,6 +1184,12 @@ function callArgCoercionInstrs(
       const actualIdx = (actual as any).typeIdx;
       const expectedIdx = (expected as any).typeIdx;
       if (actualIdx === expectedIdx) return [];
+      // Different typeIdx (e.g. closure struct type shifted by addUnionImports) —
+      // insert ref.cast_null to coerce to the expected ref type.
+      // This is safe in call-argument context (callArgCoercionInstrs is only used there).
+      if (expectedIdx !== undefined) {
+        return [{ op: "ref.cast_null", typeIdx: expectedIdx } as unknown as Instr];
+      }
     } else {
       return [];
     }
