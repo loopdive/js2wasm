@@ -11637,6 +11637,7 @@ function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
 
   // Inject the compiled init body into the appropriate location
   if (compiledInitFctx && compiledInitFctx.body.length > 0) {
+    ctx.mod.hasTopLevelStatements = true;
     const mainIdx = funcByName.get("main");
     if (mainIdx !== undefined) {
       const mainFunc = ctx.mod.functions[mainIdx]!;

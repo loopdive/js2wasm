@@ -2298,6 +2298,8 @@ export function compileSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2315,6 +2317,8 @@ export function compileSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2332,6 +2336,8 @@ export function compileSource(
         errors,
         stringPool: [],
         imports: [],
+        hasMain: false,
+        hasTopLevelStatements: false,
       };
     }
   }
@@ -2350,6 +2356,8 @@ export function compileSource(
         errors,
         stringPool: [],
         imports: [],
+        hasMain: false,
+        hasTopLevelStatements: false,
       };
     }
   }
@@ -2396,6 +2404,8 @@ export function compileSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2453,6 +2463,8 @@ export function compileSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2514,6 +2526,8 @@ export function compileSource(
     imports: buildImportManifest(mod),
     cHeader,
     wit: witOutput,
+    hasMain: mod.exports.some(e => e.name === "main" && e.desc.kind === "func"),
+    hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }
 
@@ -2618,6 +2632,8 @@ export function compileMultiSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2637,6 +2653,8 @@ export function compileMultiSource(
         errors,
         stringPool: [],
         imports: [],
+        hasMain: false,
+        hasTopLevelStatements: false,
       };
     }
   }
@@ -2682,6 +2700,8 @@ export function compileMultiSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2731,6 +2751,8 @@ export function compileMultiSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2785,6 +2807,8 @@ export function compileMultiSource(
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
     imports: buildImportManifest(mod),
+    hasMain: mod.exports.some(e => e.name === "main" && e.desc.kind === "func"),
+    hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }
 
@@ -2828,6 +2852,8 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2847,6 +2873,8 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
         errors,
         stringPool: [],
         imports: [],
+        hasMain: false,
+        hasTopLevelStatements: false,
       };
     }
   }
@@ -2891,6 +2919,8 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2934,6 +2964,8 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2987,6 +3019,8 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
     imports: buildImportManifest(mod),
+    hasMain: mod.exports.some(e => e.name === "main" && e.desc.kind === "func"),
+    hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }
 

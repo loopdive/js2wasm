@@ -29,6 +29,8 @@ export interface WasmModule {
   memories: { min: number; max?: number }[];
   /** Data segments for linear memory (string literals, etc.) */
   dataSegments: { offset: number; bytes: Uint8Array }[];
+  /** Whether the module has top-level executable statements (module init code) */
+  hasTopLevelStatements?: boolean;
 }
 
 export type TypeDef = FuncTypeDef | StructTypeDef | ArrayTypeDef | RecGroupDef | SubTypeDef;
