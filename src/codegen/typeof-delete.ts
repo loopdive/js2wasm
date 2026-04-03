@@ -3,18 +3,16 @@
  * Extracted from expressions.ts (issue #688 step 5).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { addImport } from "./registry/imports.js";
+import { addFuncType } from "./registry/types.js";
 import {
-  allocLocal,
-  allocTempLocal,
-  releaseTempLocal,
   resolveWasmType,
   addUnionImports,
   parseRegExpLiteral,
   isAnyValue,
   ensureAnyHelpers,
-  addImport,
-  addFuncType,
 } from "./index.js";
 import { isNumberType, isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";

@@ -5,16 +5,14 @@
  * Contains: coerceType, pushDefaultValue, defaultValueInstrs, coercionInstrs.
  */
 
-import type { CodegenContext, FunctionContext, ClosureInfo, OptionalParamInfo } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
+import type { ClosureInfo, CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
+import { addStringConstantGlobal } from "./registry/imports.js";
+import { getArrTypeIdxFromVec } from "./registry/types.js";
 import {
-  allocLocal,
-  allocTempLocal,
-  releaseTempLocal,
   addUnionImports,
-  addStringConstantGlobal,
   isAnyValue,
   ensureAnyHelpers,
-  getArrTypeIdxFromVec,
 } from "./index.js";
 import { registerCoerceType, ensureLateImport, flushLateImportShifts } from "./shared.js";
 import type { Instr, ValType, StructTypeDef, ArrayTypeDef } from "../ir/types.js";

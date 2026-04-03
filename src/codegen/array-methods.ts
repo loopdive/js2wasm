@@ -6,17 +6,14 @@
  * shared.ts (NOT expressions.ts) to avoid circular dependencies.
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
+import { allocLocal } from "./context/locals.js";
+import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
+import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
+import { getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
 import {
-  allocLocal,
   resolveWasmType,
-  getOrRegisterArrayType,
-  getOrRegisterVecType,
   addStringImports,
-  localGlobalIdx,
-  ensureExnTag,
   addArrayIteratorImports,
-  addStringConstantGlobal,
 } from "./index.js";
 import { isStringType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";

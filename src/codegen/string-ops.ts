@@ -4,21 +4,17 @@
  * and native string method calls.
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
+import { pushBody } from "./context/bodies.js";
+import { allocLocal } from "./context/locals.js";
+import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
+import { addStringConstantGlobal, ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
+import { getArrTypeIdxFromVec, getOrRegisterTemplateVecType, getOrRegisterVecType } from "./registry/types.js";
 import {
-  allocLocal,
   resolveWasmType,
-  getOrRegisterVecType,
-  getArrTypeIdxFromVec,
   addUnionImports,
   nativeStringType,
   flatStringType,
   addStringImports,
-  addStringConstantGlobal,
-  nextModuleGlobalIdx,
-  getOrRegisterTemplateVecType,
-  pushBody,
-  ensureExnTag,
 } from "./index.js";
 import { isBooleanType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";

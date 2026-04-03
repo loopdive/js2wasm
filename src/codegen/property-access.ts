@@ -7,20 +7,14 @@
  */
 
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./index.js";
+import { popBody, pushBody } from "./context/bodies.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
+import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
-  allocLocal,
-  allocTempLocal,
-  releaseTempLocal,
   resolveWasmType,
   addUnionImports,
-  addStringConstantGlobal,
-  getArrTypeIdxFromVec,
-  localGlobalIdx,
-  getOrRegisterVecType,
-  pushBody,
-  popBody,
-  ensureExnTag,
 } from "./index.js";
 import { isStringType, isExternalDeclaredClass, isIteratorResultType } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef } from "../ir/types.js";

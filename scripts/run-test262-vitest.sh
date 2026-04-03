@@ -6,7 +6,7 @@
 # - Writes results to timestamped files, updates symlink only on completion
 # - Builds compiler bundle from the worktree (not /workspace)
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -108,11 +108,20 @@ echo "Lock acquired (PID $$)"
 # ── Create isolated worktree ─────────────────────────────────────
 WT_DIR="/tmp/js2wasm-vitest-$$"
 USE_WORKTREE=1
-echo "Creating worktree at $WT_DIR ..."
-if ! git -C "$MAIN_DIR" worktree add "$WT_DIR" HEAD --detach --quiet 2>/dev/null; then
-  echo "Worktree creation failed; falling back to current workspace"
+
+# Local dev runs should exercise the current workspace, not a clean detached
+# worktree at HEAD. Otherwise uncommitted compiler changes are silently ignored.
+if [ -n "$(git -C "$MAIN_DIR" status --porcelain --untracked-files=normal)" ]; then
+  echo "Working tree has local changes; running test262 from current workspace"
   WT_DIR="$MAIN_DIR"
   USE_WORKTREE=0
+else
+  echo "Creating worktree at $WT_DIR ..."
+  if ! git -C "$MAIN_DIR" worktree add "$WT_DIR" HEAD --detach --quiet 2>/dev/null; then
+    echo "Worktree creation failed; falling back to current workspace"
+    WT_DIR="$MAIN_DIR"
+    USE_WORKTREE=0
+  fi
 fi
 
 # Symlink heavy directories to avoid duplication
@@ -144,9 +153,9 @@ if [ -z "$ESBUILD_BIN" ]; then
   exit 1
 fi
 "$ESBUILD_BIN" src/index.ts --bundle --platform=node --format=esm \
-  --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
+  --outfile=scripts/compiler-bundle.mjs --external:typescript --external:binaryen 2>&1 | tail -1
 "$ESBUILD_BIN" src/runtime.ts --bundle --platform=node --format=esm \
-  --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
+  --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen 2>&1 | tail -1
 
 # ── Prepare result files ─────────────────────────────────────────
 # Vitest writes to timestamped test262-results-YYYYMMDD-HHMMSS.jsonl directly.
@@ -204,19 +213,35 @@ cd "$WT_DIR"
 CHUNKS=$(ls tests/test262-chunk*.test.ts 2>/dev/null | sort)
 > /tmp/test262-vitest-run.log
 
+# Vitest loses TTY detection when piped through tee. Force ANSI colors so
+# failures stay readable in the terminal while still being captured to disk.
+unset NO_COLOR
+export FORCE_COLOR=1
+export CLICOLOR_FORCE=1
+
 if [ -n "$CHUNKS" ]; then
   # Run all chunk files in a single vitest invocation — vitest parallelizes across forks
   CHUNK_COUNT=$(echo "$CHUNKS" | wc -l)
   echo "Running $CHUNK_COUNT chunk files in one vitest invocation..."
-  npx vitest run tests/test262-chunk*.test.ts \
-    --reporter=verbose \
-    "${forwarded_args[@]}" 2>&1 | tee /tmp/test262-vitest-run.log || true
+  if [ ${#forwarded_args[@]} -gt 0 ]; then
+    node node_modules/vitest/dist/cli.js run tests/test262-chunk*.test.ts \
+      --reporter=verbose \
+      "${forwarded_args[@]}" 2>&1 | tee /tmp/test262-vitest-run.log || true
+  else
+    node node_modules/vitest/dist/cli.js run tests/test262-chunk*.test.ts \
+      --reporter=verbose 2>&1 | tee /tmp/test262-vitest-run.log || true
+  fi
 else
   # Single file mode: run the monolithic test file
   echo "Running single test file..."
-  npx vitest run tests/test262-vitest.test.ts \
-    --reporter=verbose \
-    "${forwarded_args[@]}" 2>&1 | tee /tmp/test262-vitest-run.log || true
+  if [ ${#forwarded_args[@]} -gt 0 ]; then
+    node node_modules/vitest/dist/cli.js run tests/test262-vitest.test.ts \
+      --reporter=verbose \
+      "${forwarded_args[@]}" 2>&1 | tee /tmp/test262-vitest-run.log || true
+  else
+    node node_modules/vitest/dist/cli.js run tests/test262-vitest.test.ts \
+      --reporter=verbose 2>&1 | tee /tmp/test262-vitest-run.log || true
+  fi
 fi
 # Generate report.json from JSONL (atomic — no fork race condition)
 JSONL_FILE="$RESULTS_DIR/test262-results-${RUN_TIMESTAMP}.jsonl"

@@ -13,21 +13,18 @@
  */
 
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./index.js";
+import { popBody, pushBody } from "./context/bodies.js";
+import { allocLocal } from "./context/locals.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { nextModuleGlobalIdx } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
-  allocLocal,
   resolveWasmType,
-  getOrRegisterVecType,
-  getArrTypeIdxFromVec,
-  addFuncType,
-  nextModuleGlobalIdx,
   ensureStructForType,
   isTupleType,
   getTupleElementTypes,
   getOrRegisterTupleType,
   cacheStringLiterals,
-  pushBody,
-  popBody,
   destructureParamArray,
   destructureParamObject,
 } from "./index.js";

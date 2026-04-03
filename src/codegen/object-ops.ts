@@ -5,19 +5,14 @@
  * Extracted from expressions.ts (#688 step 6).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
-  allocLocal,
-  allocTempLocal,
-  releaseTempLocal,
   resolveWasmType,
-  getOrRegisterVecType,
-  getArrTypeIdxFromVec,
-  addFuncType,
   addUnionImports,
   getOrRegisterTupleType,
-  addStringConstantGlobal,
-  ensureExnTag,
   cacheStringLiterals,
 } from "./index.js";
 import { isVoidType } from "../checker/type-mapper.js";

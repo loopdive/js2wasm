@@ -14,9 +14,10 @@
  */
 
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
+import { pushBody } from "./context/bodies.js";
+import { allocLocal } from "./context/locals.js";
+import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import {
-  allocLocal,
   resolveWasmType,
   getArrTypeIdxFromVec,
   getOrRegisterVecType,
@@ -24,7 +25,6 @@ import {
   nextModuleGlobalIdx,
   ensureStructForType,
   getOrRegisterRefCellType,
-  pushBody,
   destructureParamArray,
   destructureParamObject,
   ensureExnTag,

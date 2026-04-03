@@ -13,8 +13,8 @@
  */
 
 import type { Instr, ValType, LocalDef } from "../ir/types.js";
-import type { CodegenContext } from "./index.js";
-import { addFuncType, getOrRegisterArrayType } from "./index.js";
+import type { CodegenContext } from "./context/types.js";
+import { addFuncType, getOrRegisterArrayType } from "./registry/types.js";
 
 // ---------------------------------------------------------------------------
 // IR builder helpers (terse names to keep instruction arrays readable)
