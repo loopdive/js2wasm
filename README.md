@@ -288,6 +288,7 @@ js2wasm/
 
 - **[Live Playground](https://loopdive.github.io/js2wasm/playground/)** — compile and run in the browser
 - **[Conformance Dashboard](https://loopdive.github.io/js2wasm/dashboard/)** — test262 pass rates and trends
+- **[Conformance Report](https://loopdive.github.io/js2wasm/benchmarks/report.html)** — ECMAScript feature compatibility breakdown
 - **[Roadmap](./ROADMAP.md)** — development plan and milestones
 
 ## License
