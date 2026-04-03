@@ -109,6 +109,17 @@ export const instantiateWasm = __mod.instantiateWasm;
             'from "/playground/stubs/path-shim.js"',
           );
 
+          // Stub out Node.js built-in dynamic imports — browsers can't fetch node: URLs.
+          // Replace import("node:xxx") with Promise.resolve(null) to avoid CORS errors.
+          code = code.replace(
+            /import\(\s*\/\*[^*]*\*\/\s*"node:[^"]+"\s*\)/g,
+            "Promise.resolve(null)",
+          );
+          code = code.replace(
+            /import\(\s*"node:[^"]+"\s*\)/g,
+            "Promise.resolve(null)",
+          );
+
           bundleCache = code;
         }
 
