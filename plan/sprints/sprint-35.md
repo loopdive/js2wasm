@@ -33,15 +33,18 @@ Sprint 31 (redo) landed safely: +84 pass, -266 CE via incremental fixes. The rem
 
 ## Task queue (ordered by impact)
 
-| Order | Issue | Impact | Risk | Notes |
-|-------|-------|--------|------|-------|
-| 1 | #845 | 340 CE | Medium | Multiple sub-patterns, architect may help |
-| 2 | #829 | 141 CE | Low | Assignment target patterns |
-| 3 | #844 | 85 CE | Low | new expression for built-in classes |
-| 4 | #831 | 242 FAIL | Low | Negative tests — SyntaxError detection |
-| 5 | #855 | 210 FAIL | Medium | Promise/async |
-| 6 | #856 | 136 FAIL | Medium | Wrong error type |
-| 7 | #822 WI4 | 17 CE | Medium | struct.new type stack (deferred from s31) |
+| Order | Issue | Impact | Risk | Status |
+|-------|-------|--------|------|--------|
+| 1 | #840 | 31 CE | Low | **Done** — array 0-arg concat/push/splice |
+| 2 | #842 | 14 CE | Low | **Done** — new Array() externref fallback |
+| 3 | #831 | 242 FAIL | Low | **Done** — negative test early error detection (+72 pass) |
+| 4 | #836 | 20 CE | Low | **Done** — tagged template Identifier/CallExpression tags |
+| 5 | #843 | 20 CE | Medium | **Done** — super in object literals + base classes |
+| 6 | #856 | 136 FAIL | Medium | **Done** — ValidateAndApplyPropertyDescriptor (+275 pass combined) |
+| 7 | #834 | 216 skip | Easy | **Done** — ES2025 Set methods + collection extern classes |
+| — | #845 | 340 CE | Medium | Deferred to sprint 34 (needs architect) |
+| — | #855 | 210 FAIL | Medium | Deferred to sprint 34 |
+| — | #822 WI4 | 17 CE | Medium | Deferred to sprint 34 |
 
 ## Sprint 35 Session Results (2026-04-03)
 
