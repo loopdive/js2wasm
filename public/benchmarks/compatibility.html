@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>js2wasm — Feature Compatibility</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #30363d;
+        --text: #e6edf3;
+        --text-muted: #8b949e;
+        --pass: #3fb950;
+        --fail: #f85149;
+        --skip: #8b949e;
+        --error: #d29922;
+        --accent: #58a6ff;
+        --bar-bg: #21262d;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+          Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+        padding: 2rem;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 2rem;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+      }
+      .subtitle {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        margin-bottom: 2rem;
+      }
+      .nav {
+        margin-bottom: 1.5rem;
+        font-size: 0.875rem;
+      }
+      .nav a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .nav a:hover {
+        text-decoration: underline;
+      }
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 2rem;
+      }
+      .summary-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem;
+        text-align: center;
+      }
+      .summary-card .label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-bottom: 0.25rem;
+      }
+      .summary-card .rate {
+        font-size: 1.75rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .summary-card .count {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+      .importance-critical .rate {
+        color: var(--accent);
+      }
+      .importance-high .rate {
+        color: var(--pass);
+      }
+      .importance-medium .rate {
+        color: var(--error);
+      }
+      .importance-low .rate {
+        color: var(--text-muted);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+      }
+      thead th {
+        text-align: left;
+        padding: 0.625rem 0.75rem;
+        border-bottom: 2px solid var(--border);
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+      }
+      thead th:hover {
+        color: var(--text);
+      }
+      thead th .sort-arrow {
+        display: inline-block;
+        width: 1em;
+        text-align: center;
+        opacity: 0.3;
+      }
+      thead th.sorted .sort-arrow {
+        opacity: 1;
+      }
+      tbody tr {
+        border-bottom: 1px solid var(--border);
+      }
+      tbody tr:hover {
+        background: rgba(88, 166, 255, 0.04);
+      }
+      td {
+        padding: 0.5rem 0.75rem;
+        vertical-align: middle;
+      }
+      .feature-name {
+        font-weight: 500;
+      }
+      .importance-badge {
+        display: inline-block;
+        padding: 0.125rem 0.5rem;
+        border-radius: 9999px;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .badge-critical {
+        background: rgba(88, 166, 255, 0.15);
+        color: var(--accent);
+      }
+      .badge-high {
+        background: rgba(63, 185, 80, 0.15);
+        color: var(--pass);
+      }
+      .badge-medium {
+        background: rgba(210, 153, 34, 0.15);
+        color: var(--error);
+      }
+      .badge-low {
+        background: rgba(139, 148, 158, 0.15);
+        color: var(--text-muted);
+      }
+      .status-badge {
+        display: inline-block;
+        padding: 0.125rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      .status-full {
+        background: rgba(63, 185, 80, 0.15);
+        color: var(--pass);
+      }
+      .status-partial {
+        background: rgba(210, 153, 34, 0.15);
+        color: var(--error);
+      }
+      .status-stub {
+        background: rgba(248, 81, 73, 0.15);
+        color: #e5534b;
+      }
+      .status-none {
+        background: rgba(139, 148, 158, 0.15);
+        color: var(--text-muted);
+      }
+      .status-skip {
+        background: rgba(139, 148, 158, 0.1);
+        color: var(--skip);
+      }
+      .rate-cell {
+        font-variant-numeric: tabular-nums;
+        font-weight: 500;
+      }
+      .bar-container {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .bar-track {
+        flex: 1;
+        height: 6px;
+        background: var(--bar-bg);
+        border-radius: 3px;
+        overflow: hidden;
+        min-width: 60px;
+      }
+      .bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s ease;
+      }
+      .tests-cell {
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .legend {
+        display: flex;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+        flex-wrap: wrap;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+      }
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+      }
+      .loading {
+        text-align: center;
+        padding: 4rem;
+        color: var(--text-muted);
+      }
+      .error-msg {
+        text-align: center;
+        padding: 4rem;
+        color: var(--fail);
+      }
+      @media (max-width: 768px) {
+        body {
+          padding: 1rem;
+        }
+        .summary-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        table {
+          font-size: 0.8125rem;
+        }
+        .bar-track {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="nav">
+      <a href="/benchmarks/report.html">Conformance Report</a>
+    </nav>
+    <h1>Feature Compatibility</h1>
+    <p class="subtitle">
+      JavaScript feature support in js2wasm, ranked by real-world importance.
+      <span id="timestamp"></span>
+    </p>
+
+    <div class="summary-grid" id="summary"></div>
+
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background: var(--pass)"></div>
+        Full (&gt;80%)
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: var(--error)"></div>
+        Partial (30-80%)
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: #e5534b"></div>
+        Stub (1-30%)
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: var(--text-muted)"></div>
+        None / Skipped
+      </div>
+    </div>
+
+    <div id="content">
+      <p class="loading">Loading feature data...</p>
+    </div>
+
+    <script>
+      const STATUS_COLORS = {
+        full: "var(--pass)",
+        partial: "var(--error)",
+        stub: "#e5534b",
+        none: "var(--text-muted)",
+        skip: "var(--skip)",
+      };
+
+      const STATUS_LABELS = {
+        full: "Full",
+        partial: "Partial",
+        stub: "Stub",
+        none: "None",
+        skip: "N/A",
+      };
+
+      let data = null;
+      let sortCol = "default";
+      let sortAsc = true;
+
+      async function loadData() {
+        try {
+          const resp = await fetch(
+            "/benchmarks/results/feature-compatibility.json",
+          );
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          data = await resp.json();
+          renderSummary();
+          renderTable();
+          document.getElementById("timestamp").textContent = `Generated ${new Date(data.generated).toLocaleDateString()}.`;
+        } catch (e) {
+          document.getElementById("content").innerHTML = `
+          <p class="error-msg">Failed to load feature-compatibility.json. Run: <code>npx tsx scripts/generate-feature-compatibility.ts</code></p>`;
+        }
+      }
+
+      function renderSummary() {
+        const el = document.getElementById("summary");
+        const tiers = [
+          ["critical", "Critical"],
+          ["high", "High"],
+          ["medium", "Medium"],
+          ["low", "Low"],
+        ];
+        el.innerHTML = tiers
+          .map(
+            ([key, label]) => `
+        <div class="summary-card importance-${key}">
+          <div class="label">${label}</div>
+          <div class="rate">${data.summary[key].passRate.toFixed(1)}%</div>
+          <div class="count">${data.summary[key].features} features</div>
+        </div>`,
+          )
+          .join("");
+      }
+
+      function getSortedFeatures() {
+        const features = [...data.features];
+        if (sortCol === "default") return features;
+
+        features.sort((a, b) => {
+          let va, vb;
+          switch (sortCol) {
+            case "name":
+              va = a.name.toLowerCase();
+              vb = b.name.toLowerCase();
+              return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+            case "importance":
+              va = a.importanceRank;
+              vb = b.importanceRank;
+              break;
+            case "status":
+              const ord = { full: 0, partial: 1, stub: 2, none: 3, skip: 4 };
+              va = ord[a.status];
+              vb = ord[b.status];
+              break;
+            case "rate":
+              va = a.passRate;
+              vb = b.passRate;
+              break;
+            case "tests":
+              va = a.total;
+              vb = b.total;
+              break;
+            default:
+              return 0;
+          }
+          return sortAsc ? va - vb : vb - va;
+        });
+        return features;
+      }
+
+      function renderTable() {
+        const features = getSortedFeatures();
+        const arrow = (col) => {
+          if (sortCol !== col) return '<span class="sort-arrow">\u2195</span>';
+          return `<span class="sort-arrow">${sortAsc ? "\u2191" : "\u2193"}</span>`;
+        };
+        const sorted = (col) => (sortCol === col ? "sorted" : "");
+
+        const html = `
+        <table>
+          <thead>
+            <tr>
+              <th class="${sorted("name")}" data-col="name">Feature ${arrow("name")}</th>
+              <th class="${sorted("importance")}" data-col="importance">Importance ${arrow("importance")}</th>
+              <th class="${sorted("status")}" data-col="status">Status ${arrow("status")}</th>
+              <th class="${sorted("rate")}" data-col="rate">Pass Rate ${arrow("rate")}</th>
+              <th class="${sorted("tests")}" data-col="tests">Tests ${arrow("tests")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${features.map((f) => renderRow(f)).join("")}
+          </tbody>
+        </table>`;
+        document.getElementById("content").innerHTML = html;
+
+        // Attach sort handlers
+        document.querySelectorAll("thead th[data-col]").forEach((th) => {
+          th.addEventListener("click", () => {
+            const col = th.dataset.col;
+            if (sortCol === col) {
+              sortAsc = !sortAsc;
+            } else {
+              sortCol = col;
+              sortAsc = col === "name" ? true : false; // default desc for numbers
+            }
+            renderTable();
+          });
+        });
+      }
+
+      function renderRow(f) {
+        const pct = (f.passRate * 100).toFixed(1);
+        const color = STATUS_COLORS[f.status];
+        return `
+        <tr>
+          <td class="feature-name">${f.name}</td>
+          <td><span class="importance-badge badge-${f.importance}">${f.importance}</span></td>
+          <td><span class="status-badge status-${f.status}">${STATUS_LABELS[f.status]}</span></td>
+          <td>
+            <div class="bar-container">
+              <span class="rate-cell">${pct}%</span>
+              <div class="bar-track">
+                <div class="bar-fill" style="width:${pct}%; background:${color}"></div>
+              </div>
+            </div>
+          </td>
+          <td class="tests-cell">${f.pass.toLocaleString()} / ${f.total.toLocaleString()}</td>
+        </tr>`;
+      }
+
+      loadData();
+    </script>
+  </body>
+</html>
