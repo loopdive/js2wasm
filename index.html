@@ -76,9 +76,13 @@
         vector-effect: non-scaling-stroke;
       }
 
-      .puzzle-bg #puzzle-bg-highlight {
-        fill: rgba(255, 255, 255, 0.04);
-        stroke: #58567a;
+      .puzzle-bg #puzzle-bg-glow {
+        stroke: url(#puzzle-glow-gradient);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: url(#puzzle-glow-filter);
+        opacity: 0.95;
       }
 
       .site-nav,
@@ -191,7 +195,7 @@
       .hero-wrap {
         min-height: 100svh;
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         overflow: clip;
       }
 
@@ -200,22 +204,90 @@
         width: 100%;
         max-width: 1400px;
         margin: 0 auto;
-        padding: max(128px, calc(var(--hero-piece-clearance) + 40px)) 56px 88px;
+        padding: 112px 56px 88px;
       }
 
       h1 {
-        max-width: 980px;
+        max-width: 1180px;
         margin: 0 0 34px;
         font-size: clamp(48px, 6vw, 78px);
         line-height: 0.95;
-        letter-spacing: -0.05em;
+        letter-spacing: -0.035em;
         font-weight: 700;
         position: relative;
         z-index: 1;
       }
 
+      .hero-title-shell {
+        display: grid;
+        align-items: end;
+      }
+
+      .hero-title-measure,
+      .hero-title-type {
+        grid-area: 1 / 1;
+        white-space: pre-wrap;
+        word-break: normal;
+      }
+
+      .hero-title-measure {
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      .hero-title-type {
+        display: inline;
+      }
+
+      .hero-title-char {
+        opacity: 0;
+        transition: opacity 520ms ease;
+      }
+
+      .hero-title-char.is-visible {
+        opacity: 1;
+      }
+
+      .hero-title-type::after {
+        content: "";
+      }
+
+      .hero-title-type.is-typing {
+        animation: none;
+      }
+
+      .hero-title-type.is-typing::after {
+        opacity: 0;
+      }
+
+      .hero-title-type.is-done {
+        animation: none;
+      }
+
+      .hero-title-type.is-done::after {
+        opacity: 0;
+      }
+
+      @keyframes hero-caret-blink {
+        0%,
+        45% {
+          opacity: 1;
+        }
+
+        46%,
+        100% {
+          opacity: 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .hero-title-type {
+          animation: none;
+        }
+      }
+
       .hero-sub {
-        max-width: 720px;
+        max-width: 920px;
         font-size: 18px;
         line-height: 1.7;
         color: var(--fg-soft);
@@ -552,7 +624,7 @@
         }
 
         .hero {
-          padding-top: max(116px, calc(var(--hero-piece-clearance) + 32px));
+          padding-top: 104px;
         }
 
         .code-section,
@@ -598,8 +670,25 @@
   </head>
   <body>
     <svg class="puzzle-bg" aria-hidden="true">
+      <defs>
+        <linearGradient id="puzzle-glow-gradient" x1="-30%" y1="0%" x2="-5%" y2="0%">
+          <stop offset="0%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <stop offset="35%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <stop offset="50%" stop-color="#f3eeff" stop-opacity="1"></stop>
+          <stop offset="65%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <stop offset="100%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <animate attributeName="x1" values="-30%;105%" dur="17s" repeatCount="indefinite"></animate>
+          <animate attributeName="x2" values="-5%;130%" dur="17s" repeatCount="indefinite"></animate>
+          <animate attributeName="y1" values="0%;0%" dur="17s" repeatCount="indefinite"></animate>
+          <animate attributeName="y2" values="0%;0%" dur="17s" repeatCount="indefinite"></animate>
+        </linearGradient>
+        <filter id="puzzle-glow-filter" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="0.8" result="blur"></feGaussianBlur>
+          <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1.25 0"></feColorMatrix>
+        </filter>
+      </defs>
       <path id="puzzle-bg-path"></path>
-      <path id="puzzle-bg-highlight"></path>
+      <path id="puzzle-bg-glow"></path>
     </svg>
     <nav class="site-nav">
       <a class="nav-logo" href="/" aria-label="js2wasm home">
@@ -620,10 +709,21 @@
     <main>
       <div class="hero-wrap">
         <section class="hero">
-          <h1>Run sandboxed Javascript modules without a runtime.</h1>
+          <h1
+            id="hero-title"
+            data-texts='["Run lightweight JavaScript modules in WebAssembly without embedding an interpreter.","Contain supply chain attacks with fine grained module sandboxing.","Compatible with existing Javascript code, not a new language."]'
+          >
+            <span class="hero-title-shell">
+              <span class="hero-title-measure" aria-hidden="true"
+                >Javascript compiled to native WebAssembly, no runtime interpreter, no Typescript subset, the real
+                thing.</span
+              >
+              <span class="hero-title-type">Run JavaScript in WebAssembly without embedding an engine.</span>
+            </span>
+          </h1>
           <p class="hero-sub">
-            The goal of this compiler project is to run Javascript and NPM packages without a runtime as lightweight
-            and sandboxed WebAssembly GC modules.
+            The goal of this compiler project is to run Javascript and NPM packages without a runtime as lightweight and
+            sandboxed WebAssembly GC modules.
           </p>
           <div class="hero-actions">
             <a class="btn-solid" href="./playground/">Open Playground</a>
@@ -817,14 +917,18 @@
       (function mountPuzzleBackground() {
         const svg = document.querySelector(".puzzle-bg");
         const path = document.getElementById("puzzle-bg-path");
-        const highlight = document.getElementById("puzzle-bg-highlight");
-        if (!(svg instanceof SVGElement) || !(path instanceof SVGPathElement) || !(highlight instanceof SVGPathElement)) {
+        const glowPath = document.getElementById("puzzle-bg-glow");
+        if (
+          !(svg instanceof SVGElement) ||
+          !(path instanceof SVGPathElement) ||
+          !(glowPath instanceof SVGPathElement)
+        ) {
           return;
         }
 
         const basePieceWidth = 180;
         const basePieceHeight = 186;
-        const mobilePieceHeight = 150;
+        const mobilePieceHeight = 124;
         const seedBase = 37;
         const tabsize = 20;
         const jitter = 4;
@@ -970,31 +1074,6 @@
           return str.trim();
         };
 
-        const piecePath = (col, row) => {
-          const cellW = width / xn;
-          const cellH = height / yn;
-          const x0 = Math.round(col * cellW * 100) / 100;
-          const y0 = Math.round(row * cellH * 100) / 100;
-          const x1 = Math.round((col + 1) * cellW * 100) / 100;
-          const y1 = Math.round((row + 1) * cellH * 100) / 100;
-          const parts = [`M ${x0},${y0}`];
-
-          if (row > 0) parts.push(curveCommands(horizontalSegments[row - 1][col]));
-          else parts.push(`L ${x1},${y0}`);
-
-          if (col < xn - 1) parts.push(curveCommands(verticalSegments[col][row]));
-          else parts.push(`L ${x1},${y1}`);
-
-          if (row < yn - 1) parts.push(reverseCurveCommands(horizontalSegments[row][col]));
-          else parts.push(`L ${x0},${y1}`);
-
-          if (col > 0) parts.push(reverseCurveCommands(verticalSegments[col - 1][row]));
-          else parts.push(`L ${x0},${y0}`);
-
-          parts.push("Z");
-          return parts.join(" ");
-        };
-
         let raf = 0;
         const render = () => {
           raf = 0;
@@ -1008,18 +1087,10 @@
           svg.setAttribute("width", "100%");
           svg.setAttribute("height", String(height));
           svg.style.height = `${height}px`;
-          path.setAttribute("d", genD());
-
-          const highlightCol = Math.min(xn - 1, 1);
-          const highlightRow = Math.min(yn - 1, 1);
-          const cellW = width / xn;
-          const cellH = height / yn;
-          const pieceX = highlightCol * cellW;
-          const pieceY = highlightRow * cellH;
-          highlight.setAttribute("d", piecePath(highlightCol, highlightRow));
-
-          const clearance = Math.max(0, pieceY + cellH + 24);
-          document.documentElement.style.setProperty("--hero-piece-clearance", `${clearance}px`);
+          const d = genD();
+          path.setAttribute("d", d);
+          glowPath.setAttribute("d", d);
+          document.documentElement.style.setProperty("--hero-piece-clearance", `0px`);
         };
 
         render();
@@ -1076,6 +1147,93 @@
         } catch {
           // Keep the build-time fallback when benchmark data is unavailable.
         }
+      })();
+
+      (function typeHeroTitle() {
+        const title = document.getElementById("hero-title");
+        if (!(title instanceof HTMLElement)) return;
+        const typeEl = title.querySelector(".hero-title-type");
+        const measureEl = title.querySelector(".hero-title-measure");
+        if (!(typeEl instanceof HTMLElement)) return;
+        if (!(measureEl instanceof HTMLElement)) return;
+
+        let texts = [];
+        try {
+          texts = JSON.parse(title.dataset.texts ?? "[]");
+        } catch {
+          texts = [];
+        }
+        texts = texts.filter((text) => typeof text === "string" && text.length > 0);
+        if (!texts.length) {
+          const fallback = typeEl.textContent ?? "";
+          if (fallback) texts = [fallback];
+        }
+        if (!texts.length) return;
+
+        const longestText = texts.reduce((longest, text) => (text.length > longest.length ? text : longest), "");
+        measureEl.textContent = longestText;
+
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          typeEl.textContent = texts[0];
+          typeEl.classList.add("is-done");
+          return;
+        }
+
+        let textIndex = 0;
+        let activeRaf = 0;
+        let cycleTimer = 0;
+
+        const prepareChars = (fullText) => {
+          typeEl.textContent = "";
+          const spans = [];
+          for (const char of fullText) {
+            const span = document.createElement("span");
+            span.className = "hero-title-char";
+            span.textContent = char;
+            typeEl.appendChild(span);
+            spans.push(span);
+          }
+          return spans;
+        };
+
+        const startCycle = (fullText) => {
+          typeEl.classList.remove("is-done");
+          typeEl.classList.add("is-typing");
+          const chars = prepareChars(fullText);
+          let index = 0;
+          let lastStepAt = 0;
+
+          const step = (now) => {
+            if (!lastStepAt) lastStepAt = now;
+            const interval = index < 8 ? 30 : 18;
+            if (now - lastStepAt >= interval) {
+              lastStepAt = now;
+              const span = chars[index];
+              if (!span) {
+                typeEl.classList.remove("is-typing");
+                typeEl.classList.add("is-done");
+                cycleTimer = window.setTimeout(() => {
+                  textIndex = (textIndex + 1) % texts.length;
+                  startCycle(texts[textIndex]);
+                }, 3600);
+                return;
+              }
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  span.classList.add("is-visible");
+                });
+              });
+              index += 1;
+            }
+            activeRaf = window.requestAnimationFrame(step);
+          };
+
+          activeRaf = window.requestAnimationFrame(step);
+        };
+
+        cycleTimer = window.setTimeout(() => {
+          startCycle(texts[textIndex]);
+        }, 260);
       })();
     </script>
   </body>
