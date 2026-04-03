@@ -1,0 +1,68 @@
+[
+  {
+    "edition": "ES5",
+    "total": 34785,
+    "pass": 14574,
+    "pct": 42
+  },
+  {
+    "edition": "ES2015",
+    "total": 6267,
+    "pass": 2422,
+    "pct": 39
+  },
+  {
+    "edition": "ES2016",
+    "total": 0,
+    "pass": 0,
+    "pct": 0
+  },
+  {
+    "edition": "ES2017",
+    "total": 486,
+    "pass": 40,
+    "pct": 8
+  },
+  {
+    "edition": "ES2018",
+    "total": 41,
+    "pass": 6,
+    "pct": 15
+  },
+  {
+    "edition": "ES2019",
+    "total": 0,
+    "pass": 0,
+    "pct": 0
+  },
+  {
+    "edition": "ES2020",
+    "total": 77,
+    "pass": 21,
+    "pct": 27
+  },
+  {
+    "edition": "ES2021",
+    "total": 101,
+    "pass": 26,
+    "pct": 26
+  },
+  {
+    "edition": "ES2022",
+    "total": 0,
+    "pass": 0,
+    "pct": 0
+  },
+  {
+    "edition": "ES2023",
+    "total": 0,
+    "pass": 0,
+    "pct": 0
+  },
+  {
+    "edition": "ES2024",
+    "total": 0,
+    "pass": 0,
+    "pct": 0
+  }
+]
