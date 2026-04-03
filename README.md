@@ -136,6 +136,8 @@ The playground provides a live compiler, WAT inspector, binary size treemap, imp
 
 ## Architecture
 
+> **For contributors:** see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a detailed guide to the compiler pipeline, file ownership, and where to add new features.
+
 ```
 JS/TS Source → TypeScript Compiler API → js2wasm Codegen → WasmGC Binary
                 (parse + typecheck)       (AST → Wasm IR → binary emit)
@@ -291,6 +293,7 @@ js2wasm/
 - **[Conformance Dashboard](https://loopdive.github.io/js2wasm/dashboard/)** — test262 pass rates and trends
 - **[Conformance Report](https://loopdive.github.io/js2wasm/benchmarks/report.html)** — ECMAScript feature compatibility breakdown
 - **[Roadmap](./ROADMAP.md)** — development plan and milestones
+- **[Contributing](./CONTRIBUTING.md)** — how to set up, test, and submit changes
 
 ## License
 
