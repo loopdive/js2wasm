@@ -10,6 +10,9 @@ export default defineConfig({
   publicDir: "public",
   plugins: [test262Plugin(), dashboardPlugin()],
   optimizeDeps: {
+    // Pre-bundle the compiler source tree so Vite doesn't transform 15K+ lines on each page load.
+    // binaryen is excluded (stubbed via resolve.alias) since it's a native module.
+    include: ["typescript", "monaco-editor/esm/vs/editor/editor.api"],
     exclude: ["binaryen"],
     esbuildOptions: {
       target: "esnext",
@@ -17,7 +20,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      // Stub binaryen for dev server — it's only used in optimize.ts which is optional
+      // Stub binaryen for dev server — optimize.ts handles the import failure gracefully
       binaryen: "/workspace/playground/stubs/binaryen.js",
     },
   },
