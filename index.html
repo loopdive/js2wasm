@@ -459,6 +459,72 @@
 
       /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
 
+      .benchmark-chart {
+        margin-top: 56px;
+        padding: 40px;
+      }
+
+      .benchmark-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .bench-row {
+        display: grid;
+        grid-template-columns: 100px 1fr 60px;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .bench-name {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--fg-soft);
+        text-align: right;
+      }
+
+      .bench-track {
+        height: 28px;
+        background: var(--surface);
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .bench-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.6s ease;
+      }
+
+      .bench-fill.faster { background: #22c55e; }
+      .bench-fill.near-parity { background: #eab308; }
+      .bench-fill.slower { background: #ef4444; }
+
+      .bench-parity {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: var(--fg-faint);
+        opacity: 0.5;
+      }
+
+      .bench-value {
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--fg-soft);
+      }
+
+      .benchmark-legend {
+        margin-top: 16px;
+        font-size: 12px;
+        color: var(--fg-faint);
+      }
+
       @media (max-width: 1120px) {
         .conformance-diagrams {
           grid-template-columns: 1fr;
@@ -468,6 +534,15 @@
       @media (max-width: 720px) {
         .diagram-panel {
           padding: 28px 20px;
+        }
+
+        .benchmark-chart {
+          padding: 28px 20px;
+        }
+
+        .bench-row {
+          grid-template-columns: 70px 1fr 50px;
+          gap: 8px;
         }
       }
 
@@ -823,10 +898,8 @@
             <div class="stat-label">standardized ECMAScript feature tests tracked (no proposals)</div>
           </div>
           <div class="stat-item">
-            <div class="stat-number" id="performance-score">195</div>
-            <div class="stat-label" id="performance-score-label">
-              performance score on core benchmarks (100 = JS parity)
-            </div>
+            <div class="stat-number" id="feature-coverage">33%</div>
+            <div class="stat-label" id="feature-coverage-label">JavaScript feature areas implemented (&gt;50% tests passing)</div>
           </div>
         </div>
 
@@ -842,6 +915,15 @@
             <h3 class="diagram-title">ECMAScript Edition Coverage</h3>
             <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
           </div>
+        </div>
+
+        <div class="benchmark-chart" id="benchmark-chart">
+          <h3 class="diagram-title">Benchmark Performance (Wasm vs JS)</h3>
+          <div class="benchmark-bars" id="benchmark-bars"></div>
+          <p class="benchmark-legend">
+            Bar length = Wasm speed relative to native JS. 100% = JS parity.
+            <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline;">Full report</a>
+          </p>
         </div>
       </section>
 
@@ -1209,33 +1291,72 @@
 
       // Conformance diagrams are now rendered by <t262-donut> and <t262-edition-bars> web components.
 
-      (async function hydratePerformanceScore() {
-        const scoreEl = document.getElementById("performance-score");
-        const labelEl = document.getElementById("performance-score-label");
-        if (!scoreEl || !labelEl) return;
+      (async function hydrateFeatureCoverage() {
+        const coverageEl = document.getElementById("feature-coverage");
+        const labelEl = document.getElementById("feature-coverage-label");
+        if (!coverageEl || !labelEl) return;
+        try {
+          const resp = await fetch("./benchmarks/results/test262-report.json");
+          if (!resp.ok) return;
+          const report = await resp.json();
+          const categories = report?.categories;
+          if (!Array.isArray(categories) || categories.length === 0) return;
+
+          let implemented = 0;
+          let total = 0;
+          for (const cat of categories) {
+            const t = Number(cat?.total ?? 0);
+            const s = Number(cat?.skip ?? 0);
+            const p = Number(cat?.pass ?? 0);
+            const effective = t - s;
+            if (effective <= 0) continue;
+            total++;
+            if (p / effective > 0.5) implemented++;
+          }
+          if (total <= 0) return;
+          const pct = Math.round((implemented / total) * 100);
+          coverageEl.textContent = `${pct}%`;
+          labelEl.textContent = `JavaScript feature areas implemented (${implemented}/${total} with >50% tests passing)`;
+        } catch {
+          // Keep the build-time fallback when the report file is unavailable.
+        }
+      })();
+
+      (async function renderBenchmarkChart() {
+        const container = document.getElementById("benchmark-bars");
+        if (!container) return;
         try {
           const resp = await fetch("./benchmarks/results/playground-benchmark-sidebar.json");
-          if (!resp.ok) return;
+          if (!resp.ok) { document.getElementById("benchmark-chart")?.remove(); return; }
           const rows = await resp.json();
-          if (!Array.isArray(rows) || rows.length === 0) return;
+          if (!Array.isArray(rows) || rows.length === 0) { document.getElementById("benchmark-chart")?.remove(); return; }
 
-          const ratios = rows
-            .map((row) => {
-              const wasmUs = Number(row?.wasmUs ?? 0);
-              const jsUs = Number(row?.jsUs ?? 0);
-              if (!Number.isFinite(wasmUs) || !Number.isFinite(jsUs) || wasmUs <= 0 || jsUs <= 0) return null;
-              return jsUs / wasmUs;
-            })
-            .filter((v) => typeof v === "number");
+          const maxRatio = 12; // cap display at 12x for layout
+          for (const row of rows) {
+            const wasmUs = Number(row?.wasmUs ?? 0);
+            const jsUs = Number(row?.jsUs ?? 0);
+            if (wasmUs <= 0 || jsUs <= 0) continue;
 
-          if (ratios.length === 0) return;
+            const ratio = jsUs / wasmUs; // >1 means Wasm is faster
+            const pct = Math.min(ratio / maxRatio * 100, 100);
+            const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
+            const scoreText = ratio >= 1 ? `${ratio.toFixed(1)}x` : `${(1/ratio).toFixed(1)}x`;
+            const cls = ratio >= 1 ? "faster" : ratio >= 0.5 ? "near-parity" : "slower";
 
-          const geometricMean = Math.exp(ratios.reduce((sum, ratio) => sum + Math.log(ratio), 0) / ratios.length);
-          const score = Math.round(geometricMean * 100);
-          scoreEl.textContent = String(score);
-          labelEl.textContent = "performance score on core benchmarks (100 = JS parity)";
+            const rowEl = document.createElement("div");
+            rowEl.className = "bench-row";
+            rowEl.innerHTML = `
+              <span class="bench-name">${label}</span>
+              <div class="bench-track">
+                <div class="bench-parity"></div>
+                <div class="bench-fill ${cls}" style="width: ${pct}%"></div>
+              </div>
+              <span class="bench-value" style="color: ${cls === 'faster' ? '#22c55e' : cls === 'near-parity' ? '#eab308' : '#ef4444'}">${ratio >= 1 ? '' : '-'}${scoreText}</span>
+            `;
+            container.appendChild(rowEl);
+          }
         } catch {
-          // Keep the build-time fallback when benchmark data is unavailable.
+          document.getElementById("benchmark-chart")?.remove();
         }
       })();
 
