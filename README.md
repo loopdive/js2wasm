@@ -136,6 +136,8 @@ The playground provides a live compiler, WAT inspector, binary size treemap, imp
 
 ## Architecture
 
+> **For contributors:** see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a detailed guide to the compiler pipeline, file ownership, and where to add new features.
+
 ```
 JS/TS Source → TypeScript Compiler API → js2wasm Codegen → WasmGC Binary
                 (parse + typecheck)       (AST → Wasm IR → binary emit)
