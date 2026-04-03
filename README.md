@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./public/jswasmlogo.png" alt="js2wasm" width="300" />
+  <img src="./jswasmlogo.png" alt="js2wasm" width="300" />
 </p>
 
 # js2wasm — TypeScript/JavaScript to WebAssembly Compiler
@@ -8,24 +8,25 @@
 
 js2wasm produces native WasmGC binaries in the range of hundreds of bytes to a few kilobytes per module. There is no garbage collector, allocator, or standard library bundled into the output — the Wasm engine manages memory natively. This makes it practical to deploy individual ECMAScript modules as sandboxed Wasm components in embedded systems, serverless platforms, and any host that speaks WebAssembly but not JavaScript.
 
-> **15,526 / 42,934** official [test262](https://github.com/tc39/test262) conformance tests passing (36.2%) — up from 550 at project start. See the [live conformance dashboard](https://loopdive.github.io/js2wasm/dashboard/).
+> **17,583 / 43,120** official [test262](https://github.com/tc39/test262) conformance tests passing (40.8%) — up from 550 at project start. See the [live conformance dashboard](https://loopdive.github.io/js2wasm/dashboard/).
 
 ## How It Compares
 
 js2wasm takes a fundamentally different approach from other projects in this space. Most tools that run JavaScript in WebAssembly do so by **bundling an interpreter** (QuickJS, SpiderMonkey) inside a Wasm module — the output is megabytes, not bytes, and the JS code is interpreted, not compiled. js2wasm compiles JS/TS directly to native Wasm instructions.
 
-| Project | Approach | WasmGC | Standalone | Output size | Conformance | Status |
-|---------|----------|--------|------------|-------------|-------------|--------|
-| **js2wasm** | **AOT → WasmGC** | **Yes** | **Yes (WASI + JS host)** | **~0.1–10 KB** | **36%** | **Active** |
-| [Javy](https://github.com/bytecodealliance/javy) | QuickJS bundled in Wasm | No | WASI only | 869 KB+ static | ~99%* | Production |
-| [StarlingMonkey](https://github.com/bytecodealliance/StarlingMonkey) | SpiderMonkey bundled in Wasm | No | No (needs CM host) | ~8 MB | ~99%* | Production |
-| [Porffor](https://porffor.dev/) | AOT → Wasm (linear memory) | No | Yes | <100 KB | ~50% | Experimental |
-| [JAWSM](https://github.com/drogus/jawsm) | AOT → WasmGC | Yes | Yes | No data | ~25% | Dormant |
-| [Static Hermes](https://github.com/facebook/hermes) | AOT → native via C | No | Yes (bundles runtime) | Bundles runtime | ~55% | Experimental |
+| Project                                                              | Approach                     | WasmGC  | Standalone               | Output size     | Conformance | Status       |
+| -------------------------------------------------------------------- | ---------------------------- | ------- | ------------------------ | --------------- | ----------- | ------------ |
+| **js2wasm**                                                          | **AOT → WasmGC**             | **Yes** | **Yes (WASI + JS host)** | **~0.1–10 KB**  | **41%**     | **Active**   |
+| [Javy](https://github.com/bytecodealliance/javy)                     | QuickJS bundled in Wasm      | No      | WASI only                | 869 KB+ static  | ~99%\*      | Production   |
+| [StarlingMonkey](https://github.com/bytecodealliance/StarlingMonkey) | SpiderMonkey bundled in Wasm | No      | No (needs CM host)       | ~8 MB           | ~99%\*      | Production   |
+| [Porffor](https://porffor.dev/)                                      | AOT → Wasm (linear memory)   | No      | Yes                      | <100 KB         | ~50%        | Experimental |
+| [JAWSM](https://github.com/drogus/jawsm)                             | AOT → WasmGC                 | Yes     | Yes                      | No data         | ~25%        | Dormant      |
+| [Static Hermes](https://github.com/facebook/hermes)                  | AOT → native via C           | No      | Yes (bundles runtime)    | Bundles runtime | ~55%        | Experimental |
 
-<sub>* Javy and StarlingMonkey inherit their embedded engine's conformance — they're not compiling JS to Wasm, they're running an interpreter inside Wasm.</sub>
+<sub>\* Javy and StarlingMonkey inherit their embedded engine's conformance — they're not compiling JS to Wasm, they're running an interpreter inside Wasm.</sub>
 
 **Key differentiators:**
+
 - **No runtime overhead** — compiled to native Wasm instructions, not interpreted
 - **Tiny output** — hundreds of bytes per function vs. megabytes for interpreter-bundling approaches
 - **Standalone deployment** — runs on wasmtime, wasmer, wazero, or any Wasm runtime via `--target wasi`
@@ -173,14 +174,14 @@ JS/TS Source → TypeScript Compiler API → js2wasm Codegen → WasmGC Binary
 
 **Type mapping** — TypeScript types compile directly to Wasm types with zero overhead:
 
-| TypeScript | Wasm | Notes |
-|-----------|------|-------|
-| `number` | `f64` | Unboxed, native arithmetic |
-| `boolean` | `i32` | 0/1, native comparison |
-| `string` | WasmGC array / externref | `--nativeStrings` for standalone |
-| `interface` | GC struct | `(struct (field $x (mut f64)))` |
-| `class` | GC struct + vtable | Inheritance via struct subtyping |
-| `Array<T>` | GC array | Native GC-managed arrays |
+| TypeScript  | Wasm                     | Notes                            |
+| ----------- | ------------------------ | -------------------------------- |
+| `number`    | `f64`                    | Unboxed, native arithmetic       |
+| `boolean`   | `i32`                    | 0/1, native comparison           |
+| `string`    | WasmGC array / externref | `--nativeStrings` for standalone |
+| `interface` | GC struct                | `(struct (field $x (mut f64)))`  |
+| `class`     | GC struct + vtable       | Inheritance via struct subtyping |
+| `Array<T>`  | GC array                 | Native GC-managed arrays         |
 
 ## ES Conformance
 
