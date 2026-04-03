@@ -898,25 +898,18 @@
   {
     "name": "sprint 35",
     "sprintNumber": 35,
-    "date": "TBD (after sprint-34 completes)",
-    "baseline": "TBD (sprint-34 final numbers)",
-    "result": "(pending)",
+    "date": "2026-04-03",
+    "baseline": "15,187 pass / 42,934 official (35.4%) — post sprint-31 session",
+    "result": "",
     "issueCount": 0,
     "issueIds": [
-      797,
-      799,
       822,
-      836,
-      841,
-      842,
-      843,
+      829,
+      831,
+      844,
       845,
-      849,
-      853,
       855,
-      864,
-      865,
-      872
+      856
     ]
   }
 ]
