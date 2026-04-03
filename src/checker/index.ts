@@ -7,34 +7,18 @@ function getBundledLibFiles(): Record<string, string> | undefined {
   return files && typeof files === "object" ? files as Record<string, string> : undefined;
 }
 
-function safeRequire<T>(id: string): T | null {
-  // Try Function("return require")() first (works in CJS and some bundled ESM contexts)
+async function safeImport<T>(id: string): Promise<T | null> {
   try {
-    return Function("return require")()(id) as T;
+    return await import(/* @vite-ignore */ id) as T;
   } catch {
-    // Ignore — require not available in pure ESM
+    return null;
   }
-  // Fallback: process.getBuiltinModule (Node.js >=22.3) for built-in modules
-  try {
-    const gbm = (globalThis as any).process?.getBuiltinModule;
-    if (typeof gbm === "function") {
-      const mod = gbm(id);
-      if (mod) return mod as T;
-    }
-  } catch {
-    // Ignore — not available
-  }
-  return null;
 }
 
-// Lazy-load ALL Node.js modules for browser compatibility.
-// Vite externalizes fs, path, module, url — static imports crash in the browser.
-let _path: typeof import("node:path") | null = null;
+// Top-level await loads for all Node builtins — browsers get null silently.
+const _nodePathMod = await safeImport<typeof import("node:path")>("node:path");
 function getPath() {
-  if (!_path) {
-    _path = safeRequire<typeof import("node:path")>("node:path");
-  }
-  return _path;
+  return _nodePathMod;
 }
 function dirname(p: string) {
   return getPath()?.dirname(p) ?? "";
@@ -42,31 +26,20 @@ function dirname(p: string) {
 function join(...args: string[]) {
   return getPath()?.join(...args) ?? args.join("/");
 }
-let _readFileSync: typeof import("node:fs").readFileSync | null = null;
+// Top-level await: resolve Node builtins once at module load.
+// In browsers, these silently resolve to null.
+const _nodeFsMod = await safeImport<typeof import("node:fs")>("node:fs");
+const _nodeModuleMod = await safeImport<typeof import("node:module")>("node:module");
+const _nodeUrlMod = await safeImport<typeof import("node:url")>("node:url");
+
 function getReadFileSync() {
-  if (!_readFileSync) {
-    _readFileSync =
-      safeRequire<typeof import("node:fs")>("node:fs")?.readFileSync ?? null;
-  }
-  return _readFileSync;
+  return _nodeFsMod?.readFileSync ?? null;
 }
-let _createRequire: typeof import("node:module").createRequire | null = null;
 function getCreateRequire() {
-  if (!_createRequire) {
-    _createRequire =
-      safeRequire<typeof import("node:module")>("node:module")
-        ?.createRequire ?? null;
-  }
-  return _createRequire;
+  return _nodeModuleMod?.createRequire ?? null;
 }
-let _fileURLToPath: typeof import("node:url").fileURLToPath | null = null;
 function getFileURLToPath() {
-  if (!_fileURLToPath) {
-    _fileURLToPath =
-      safeRequire<typeof import("node:url")>("node:url")?.fileURLToPath ??
-      null;
-  }
-  return _fileURLToPath;
+  return _nodeUrlMod?.fileURLToPath ?? null;
 }
 // Custom type declarations not found in TS lib files
 // All lib types now loaded from the typescript package at runtime.
