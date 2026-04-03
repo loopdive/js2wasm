@@ -1,17 +1,16 @@
 import ts from "typescript";
 import * as path from "path";
-// Lazy-load fs for browser compatibility (Vite externalizes Node.js modules).
-// eval("require") hides the require call from bundlers so it doesn't get
-// resolved at build time. The esbuild warning is cosmetic and harmless.
+// Lazy-load fs for browser compatibility.
+// Dynamic import avoids bundlers resolving it at build time and avoids
+// eval("require") warnings. The top-level await resolves before any
+// sync getFs() call since module evaluation completes before exports are used.
 let _fs: typeof import("fs") | null = null;
+try {
+  _fs = await import("node:fs");
+} catch {
+  _fs = null;
+}
 function getFs() {
-  if (!_fs) {
-    try {
-      _fs = eval("require")("fs");
-    } catch {
-      _fs = null;
-    }
-  }
   return _fs;
 }
 import type { CompileOptions } from "./index.js";
