@@ -75,6 +75,169 @@
   ],
   "ready": [
     {
+      "id": "922",
+      "title": "Add a reproducible test262 baseline-diff workflow so regressions are compared against current clean HEAD",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "test262-infrastructure",
+      "status": null
+    },
+    {
+      "id": "921",
+      "title": "Fix class destructuring generator/private-method codegen that now yields Wasm type mismatches",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-correctness",
+      "status": null
+    },
+    {
+      "id": "920",
+      "title": "Recover RegExp feature acceptance regressions relative to the April 1 test262 baseline",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-correctness",
+      "status": null
+    },
+    {
+      "id": "919",
+      "title": "Fix direct-eval arguments regressions introduced since the April 1 test262 baseline",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-correctness",
+      "status": null
+    },
+    {
+      "id": "918",
+      "title": "Create a curated batch of contributor-friendly starter issues with exact file ownership and acceptance criteria",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "914",
+        "915"
+      ],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "917",
+      "title": "Make lint, format, and typecheck apply consistently across the whole source tree",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "916",
+      "title": "Clean contributor-facing repo hygiene and remove misleading clutter",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "915",
+      "title": "Add CONTRIBUTING.md with the minimum safe contributor workflow",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "914",
+      "title": "Add a short compiler architecture overview for contributors",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "913",
+      "title": "Split compiler.ts into validation, orchestration, and output modules",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "912",
+      "title": "Remove circular dependencies from the core codegen backend",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "909",
+        "910",
+        "911"
+      ],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "911",
+      "title": "Split statements.ts into control-flow, variables, destructuring, loops, and functions modules",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "909"
+      ],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "910",
+      "title": "Split expressions.ts into syntax-family modules",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "909"
+      ],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "908",
+      "title": "Remove redundant codegen in inlined top-level numeric loops",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "906",
+        "907"
+      ],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "907",
+      "title": "Replace __init_done runtime guards with start/init entry semantics",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "900"
+      ],
+      "goal": "runtime-simplicity",
+      "status": null
+    },
+    {
+      "id": "906",
+      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "800",
+        "898"
+      ],
+      "goal": "performance",
+      "status": null
+    },
+    {
       "id": "905",
       "title": "Support versioned shapes for compile-time-known prototype mutation",
       "priority": "medium",
@@ -510,15 +673,6 @@
       "status": "fixed-by-827"
     },
     {
-      "id": "856",
-      "title": "Expected TypeError but got wrong error type (136 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "ready"
-    },
-    {
       "id": "855",
       "title": "Promise resolution and async error handling (210 tests)",
       "priority": "medium",
@@ -618,24 +772,6 @@
       "status": null
     },
     {
-      "id": "842",
-      "title": "new Array() with non-literal/spread arguments: invalid vec type (14 CE)",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "840",
-      "title": "Array.prototype.concat/push/splice require 0-arg support (31 CE)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
       "id": "838",
       "title": "BigInt64Array / BigUint64Array typed arrays",
       "priority": "low",
@@ -647,24 +783,6 @@
     {
       "id": "837",
       "title": "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "836",
-      "title": "Tagged templates with non-PropertyAccess tag expressions (20 CE)",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "834",
-      "title": "ES2025 Set methods: union, intersection, difference, symmetricDifference, isSubsetOf, isSupersetOf, isDisjointFrom",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
@@ -690,15 +808,6 @@
       "status": null
     },
     {
-      "id": "831",
-      "title": "Negative test gaps: expected SyntaxError but compiled (242 failures)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
       "id": "830",
       "title": "DisposableStack extern class missing (38 wasm_compile failures)",
       "priority": "low",
@@ -714,7 +823,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "already-fixed"
     },
     {
       "id": "827",
@@ -732,7 +841,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "ready"
+      "status": "review"
     },
     {
       "id": "825",
@@ -1579,6 +1688,15 @@
       "status": "done"
     },
     {
+      "id": "909",
+      "title": "Split codegen/index.ts into context, registry, collect, and api modules",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": "done"
+    },
+    {
       "id": "895",
       "title": "CompilerPool fails to dispatch queued jobs when first worker becomes ready",
       "priority": "critical",
@@ -1606,6 +1724,15 @@
       "status": "done"
     },
     {
+      "id": "856",
+      "title": "Expected TypeError but got wrong error type (136 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "in-progress"
+    },
+    {
       "id": "849",
       "title": "Mapped arguments object does not sync with named parameters (200 tests)",
       "priority": "medium",
@@ -1624,9 +1751,36 @@
       "status": null
     },
     {
+      "id": "843",
+      "title": "super keyword in object literals and edge cases (20 CE)",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "842",
+      "title": "new Array() with non-literal/spread arguments: invalid vec type (14 CE)",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
       "id": "841",
       "title": "Unsupported Math methods: sumPrecise, cosh, sinh, tanh, f16round (19 CE)",
       "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": null
+    },
+    {
+      "id": "840",
+      "title": "Array.prototype.concat/push/splice require 0-arg support (31 CE)",
+      "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
@@ -1642,6 +1796,15 @@
       "status": "done"
     },
     {
+      "id": "836",
+      "title": "Tagged templates with non-PropertyAccess tag expressions (20 CE)",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "in-progress"
+    },
+    {
       "id": "835",
       "title": "Unknown extern class: Error types (32 CE)",
       "priority": "low",
@@ -1649,6 +1812,24 @@
       "depends_on": [],
       "goal": "core-semantics",
       "status": null
+    },
+    {
+      "id": "834",
+      "title": "ES2025 Set methods: union, intersection, difference, symmetricDifference, isSubsetOf, isSupersetOf, isDisjointFrom",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": null
+    },
+    {
+      "id": "831",
+      "title": "Negative test gaps: expected SyntaxError but compiled (242 failures)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "in-progress"
     },
     {
       "id": "829",
