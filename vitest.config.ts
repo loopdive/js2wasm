@@ -6,10 +6,13 @@ export default defineConfig({
     pool: 'forks',
     poolOptions: {
       forks: {
-        // 1 vitest fork — CompilerPool inside spawns cpus-1 child_process.fork workers
-        // Multiple vitest forks would create multiple pools and OOM
+        // Each test file gets its own fork process — when it finishes, the OS
+        // reclaims all memory (same strategy as the test262 chunk runner).
+        // maxForks=1 ensures only one fork at a time (no parallel OOM).
+        singleFork: false,
         maxForks: 1,
-        execArgv: ['--max-old-space-size=4096', '--expose-gc'],
+        minForks: 0,
+        execArgv: ['--max-old-space-size=512', '--expose-gc'],
       },
     },
     testTimeout: 10000, // 10s per test — prevents infinite compilation loops from blocking the run
