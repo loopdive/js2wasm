@@ -24,6 +24,7 @@ export default defineConfig({
     emptyOutDir: true,
     target: "esnext",
     rollupOptions: {
+      external: ["binaryen"],
       input: {
         index: resolve(import.meta.dirname, "../index.html"),
         playground: resolve(import.meta.dirname, "index.html"),
