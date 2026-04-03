@@ -106,6 +106,7 @@ export {
   compileOptionalPropertyAccess,
   compilePropertyAccess,
   emitNullCheckThrow,
+  isProvablyNonNull,
 } from "./property-access.js";
 export { getCol, getLine, valTypesMatch, VOID_RESULT } from "./shared.js";
 export {
@@ -1251,10 +1252,24 @@ function analyzeTdzAccess(ctx: CodegenContext, id: ts.Identifier): "skip" | "thr
   const declEnd = decl.getEnd(); // use end of declaration (after initializer)
 
   // Find the containing function of the access and the declaration.
-  // If they differ, the access is in a nested closure — keep runtime check.
   const accessFunc = getContainingFunction(id);
   const declFunc = getContainingFunction(decl);
-  if (accessFunc !== declFunc) return "check";
+
+  if (accessFunc !== declFunc) {
+    // Access is in a nested closure. We can still prove it safe if:
+    // 1. The closure is an arrow function or function expression (not hoisted), AND
+    // 2. The closure definition starts after the variable's declaration ends, AND
+    // 3. No loop wraps both the declaration and the closure definition
+    // In that case, the closure cannot exist until after the variable is initialized,
+    // so any invocation of the closure is guaranteed to see the initialized value.
+    if (accessFunc && !ts.isFunctionDeclaration(accessFunc) && !ts.isSourceFile(accessFunc)) {
+      const closureStart = accessFunc.getStart();
+      if (closureStart >= declEnd && !isInsideLoopContaining(accessFunc as ts.Node, decl)) {
+        return "skip";
+      }
+    }
+    return "check";
+  }
 
   // Check if the access is inside a loop that contains the declaration
   // (back-edge could reach access before re-initialization)
@@ -1295,6 +1310,10 @@ function getContainingFunction(node: ts.Node): ts.Node | undefined {
  * Check if the access node is inside a loop body that also contains (or is
  * an ancestor of) the declaration. In that case the access could run on a
  * subsequent iteration before the declaration re-initializes the variable.
+ *
+ * Exception: if the declaration is inside the loop body (not the for-initializer)
+ * and the access is textually after the declaration, the back-edge is harmless
+ * because let/const creates a fresh binding each iteration.
  */
 function isInsideLoopContaining(access: ts.Node, decl: ts.Node): boolean {
   let current = access.parent;
@@ -1312,12 +1331,31 @@ function isInsideLoopContaining(access: ts.Node, decl: ts.Node): boolean {
     if (isLoopStatement(current)) {
       // Check if the declaration is also inside this loop
       if (isDescendantOf(decl, current)) {
+        // Both are inside this loop. If the decl is in the loop body
+        // (not the for-initializer/condition/incrementor) and the access
+        // is textually after the decl, the per-iteration fresh binding
+        // guarantees initialization before access on every iteration.
+        const body = getLoopBody(current);
+        if (body && isDescendantOf(decl, body) && access.getStart() >= decl.getEnd()) {
+          // Safe: loop-local let/const, access after declaration in same iteration
+          return false;
+        }
         return true;
       }
     }
     current = current.parent;
   }
   return false;
+}
+
+/** Get the body statement/block of a loop node. */
+function getLoopBody(loop: ts.Node): ts.Node | undefined {
+  if (ts.isForStatement(loop)) return loop.statement;
+  if (ts.isForInStatement(loop)) return loop.statement;
+  if (ts.isForOfStatement(loop)) return loop.statement;
+  if (ts.isWhileStatement(loop)) return loop.statement;
+  if (ts.isDoStatement(loop)) return loop.statement;
+  return undefined;
 }
 
 function isLoopStatement(node: ts.Node): boolean {
@@ -1337,6 +1375,47 @@ function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
     current = current.parent;
   }
   return false;
+}
+
+/**
+ * Position-based TDZ analysis for call-site capture checks.
+ * Used when we know the variable name and the call expression position,
+ * but don't have an identifier with a resolved symbol (e.g., pushing
+ * closure captures at a nested function call site).
+ */
+function analyzeTdzAccessByPos(
+  ctx: CodegenContext,
+  varName: string,
+  callNode: ts.Node,
+): "skip" | "throw" | "check" {
+  // Look up the variable's symbol via the checker
+  // We need to find the declaration to get its end position
+  const sourceFile = callNode.getSourceFile();
+  if (!sourceFile) return "check";
+
+  // Find the declaration by looking up the local symbol in scope
+  const sym = ctx.checker.getSymbolsInScope(callNode, ts.SymbolFlags.Variable).find(
+    (s) => s.name === varName,
+  );
+  if (!sym) return "check";
+  const decl = sym.valueDeclaration;
+  if (!decl) return "check";
+
+  const callPos = callNode.getStart();
+  const declEnd = decl.getEnd();
+
+  // Both must be in the same function scope (call site is in the declaring function)
+  const callFunc = getContainingFunction(callNode);
+  const declFunc = getContainingFunction(decl);
+  if (callFunc !== declFunc) return "check";
+
+  if (isInsideLoopContaining(callNode, decl)) return "check";
+
+  if (callPos >= declEnd) {
+    return "skip";
+  } else {
+    return "throw";
+  }
 }
 
 /** Emit a static TDZ throw (guaranteed violation — no flag check needed). */
@@ -1460,6 +1539,18 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
   if (globalInfo) {
     fctx.body.push({ op: "call", funcIdx: globalInfo.funcIdx });
     return globalInfo.type;
+  }
+
+  // globalThis — return the JS global object via host import
+  if (name === "globalThis") {
+    let funcIdx = ctx.funcMap.get("__get_globalThis");
+    if (funcIdx === undefined) {
+      const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__get_globalThis", { kind: "func", typeIdx });
+      funcIdx = ctx.funcMap.get("__get_globalThis")!;
+    }
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "externref" };
   }
 
   // Built-in numeric constants: NaN, Infinity
@@ -3848,7 +3939,8 @@ function compileElementAssignment(
     const vecLocal = allocLocal(fctx, `__vec_${fctx.locals.length}`, arrType);
     fctx.body.push({ op: "local.set", index: vecLocal });
     // Null guard: throw TypeError if vec is null (#441)
-    if (arrType.kind === "ref_null") {
+    // Skip when receiver is provably non-null (e.g. const array literal)
+    if (arrType.kind === "ref_null" && !isProvablyNonNull(target.expression, ctx.checker)) {
       const tagIdx = ensureExnTag(ctx);
       fctx.body.push({ op: "local.get", index: vecLocal });
       fctx.body.push({ op: "ref.is_null" } as Instr);
@@ -9647,9 +9739,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
       }
 
-      // Host import path: Object.create(null) and Object.create(proto) for dynamic protos
+      // Host import path: Object.create(null) and Object.create(proto[, descriptors])
       // Object.create(null) → empty object with null prototype
       // Object.create(proto) → new object with __proto__ set to proto
+      // Object.create(proto, descriptors) → expand descriptors at compile time
       const hostIdx = ensureLateImport(ctx, "__object_create", [{ kind: "externref" }], [{ kind: "externref" }]);
       flushLateImportShifts(ctx, fctx);
 
@@ -9668,6 +9761,122 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
         }
         fctx.body.push({ op: "call", funcIdx: hostIdx });
+
+        // If there's a second argument (property descriptors), expand at compile time
+        if (expr.arguments.length >= 2 && ts.isObjectLiteralExpression(expr.arguments[1]!)) {
+          const descsLiteral = expr.arguments[1] as ts.ObjectLiteralExpression;
+          // Save created object to local for repeated use
+          const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: objLocal });
+
+          // Expand each property descriptor as Object.defineProperty(obj, key, desc)
+          for (const prop of descsLiteral.properties) {
+            if (!ts.isPropertyAssignment(prop)) continue;
+            const propName = ts.isIdentifier(prop.name)
+              ? prop.name.text
+              : ts.isStringLiteral(prop.name)
+                ? prop.name.text
+                : ts.isNumericLiteral(prop.name)
+                  ? prop.name.text
+                  : undefined;
+            if (propName === undefined) continue;
+
+            // Parse descriptor fields from the object literal
+            let valueExpr: ts.Expression | undefined;
+            let getExpr: ts.Expression | undefined;
+            let setExpr: ts.Expression | undefined;
+            let descWritable: boolean | undefined;
+            let descEnumerable: boolean | undefined;
+            let descConfigurable: boolean | undefined;
+
+            if (ts.isObjectLiteralExpression(prop.initializer)) {
+              for (const dp of prop.initializer.properties) {
+                if (ts.isPropertyAssignment(dp) && ts.isIdentifier(dp.name)) {
+                  if (dp.name.text === "value") valueExpr = dp.initializer;
+                  if (dp.name.text === "get") getExpr = dp.initializer;
+                  if (dp.name.text === "set") setExpr = dp.initializer;
+                  if (dp.name.text === "writable") {
+                    descWritable = dp.initializer.kind === ts.SyntaxKind.TrueKeyword;
+                  }
+                  if (dp.name.text === "enumerable") {
+                    descEnumerable = dp.initializer.kind === ts.SyntaxKind.TrueKeyword;
+                  }
+                  if (dp.name.text === "configurable") {
+                    descConfigurable = dp.initializer.kind === ts.SyntaxKind.TrueKeyword;
+                  }
+                }
+              }
+            }
+
+            // Emit __defineProperty_value(obj, prop, value, flags)
+            const dpIdx = ensureLateImport(ctx, "__defineProperty_value",
+              [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "i32" }],
+              [{ kind: "externref" }]);
+            flushLateImportShifts(ctx, fctx);
+
+            if (dpIdx !== undefined) {
+              // obj
+              fctx.body.push({ op: "local.get", index: objLocal });
+              // prop name as string constant
+              addStringConstantGlobal(ctx, propName);
+              const strGlobalIdx = ctx.stringGlobalMap.get(propName);
+              if (strGlobalIdx !== undefined) {
+                fctx.body.push({ op: "global.get", index: strGlobalIdx } as Instr);
+              } else {
+                fctx.body.push({ op: "ref.null.extern" });
+              }
+              // value (or null for accessor descriptors)
+              if (valueExpr) {
+                const vt = compileExpression(ctx, fctx, valueExpr);
+                if (!vt) {
+                  fctx.body.push({ op: "ref.null.extern" });
+                } else if (vt.kind !== "externref") {
+                  coerceType(ctx, fctx, vt, { kind: "externref" });
+                }
+              } else {
+                fctx.body.push({ op: "ref.null.extern" });
+              }
+              // flags: bit 0=writable, 1=enumerable, 2=configurable, 3=writable specified,
+              //        4=enumerable specified, 5=configurable specified, 7=has value
+              let flags = 0;
+              if (descWritable) flags |= 1;
+              if (descEnumerable) flags |= 2;
+              if (descConfigurable) flags |= 4;
+              if (descWritable !== undefined) flags |= 8;
+              if (descEnumerable !== undefined) flags |= 16;
+              if (descConfigurable !== undefined) flags |= 32;
+              if (valueExpr) flags |= 128; // has value
+              if (getExpr || setExpr) flags |= 64; // is accessor
+              fctx.body.push({ op: "i32.const", value: flags });
+              fctx.body.push({ op: "call", funcIdx: dpIdx });
+              fctx.body.push({ op: "drop" }); // defineProperty returns obj, drop it
+            }
+          }
+          // Push obj back on stack as the result
+          fctx.body.push({ op: "local.get", index: objLocal });
+        } else if (expr.arguments.length >= 2) {
+          // Non-literal descriptors: use __defineProperties host import
+          const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: objLocal });
+
+          const dpIdx = ensureLateImport(ctx, "__defineProperties",
+            [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+          flushLateImportShifts(ctx, fctx);
+
+          if (dpIdx !== undefined) {
+            fctx.body.push({ op: "local.get", index: objLocal });
+            const descType = compileExpression(ctx, fctx, expr.arguments[1]!);
+            if (!descType) {
+              fctx.body.push({ op: "ref.null.extern" });
+            } else if (descType.kind !== "externref") {
+              fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+            }
+            fctx.body.push({ op: "call", funcIdx: dpIdx });
+          } else {
+            // No host import available — just return obj without descriptors
+            fctx.body.push({ op: "local.get", index: objLocal });
+          }
+        }
         return { kind: "externref" };
       }
 
@@ -11437,6 +11646,23 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
+    // decodeURI, decodeURIComponent, encodeURI, encodeURIComponent — host imports
+    if (
+      (funcName === "decodeURI" || funcName === "decodeURIComponent" ||
+       funcName === "encodeURI" || funcName === "encodeURIComponent") &&
+      expr.arguments.length >= 1
+    ) {
+      const importFuncIdx = ctx.funcMap.get(funcName);
+      if (importFuncIdx !== undefined) {
+        const arg0Type = compileExpression(ctx, fctx, expr.arguments[0]!);
+        if (arg0Type && arg0Type.kind !== "externref") {
+          coerceType(ctx, fctx, arg0Type, { kind: "externref" });
+        }
+        fctx.body.push({ op: "call", funcIdx: importFuncIdx });
+        return { kind: "externref" };
+      }
+    }
+
     // Number(x) — ToNumber coercion
     if (funcName === "Number" && expr.arguments.length >= 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
@@ -11915,10 +12141,17 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
         } else {
-          // TDZ check for captured let/const variables
+          // TDZ check for captured let/const variables — apply static analysis
+          // to skip checks when the call site is provably after initialization.
           const capTdzIdx = fctx.tdzFlagLocals?.get(cap.name);
           if (capTdzIdx !== undefined) {
-            emitLocalTdzCheck(ctx, fctx, cap.name, capTdzIdx);
+            const capTdzResult = analyzeTdzAccessByPos(ctx, cap.name, expr);
+            if (capTdzResult === "check") {
+              emitLocalTdzCheck(ctx, fctx, cap.name, capTdzIdx);
+            } else if (capTdzResult === "throw") {
+              emitStaticTdzThrow(ctx, fctx, cap.name);
+            }
+            // "skip" — call site is after declaration, no check needed
           }
           fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
           // Coerce capture value to expected param type if they differ
@@ -18296,6 +18529,7 @@ import {
   emitBoundsGuardedArraySet,
   emitNullCheckThrow,
   emitNullGuardedStructGet,
+  isProvablyNonNull,
   typeErrorThrowInstrs,
 } from "./property-access.js";
 export function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undefined {

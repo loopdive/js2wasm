@@ -21,11 +21,11 @@
   },
   "scripts": {
     "build": "vite build",
-    "dev": "vite serve --config playground/vite.config.ts",
+    "dev": "pnpm run build:compiler-bundle && vite serve --config playground/vite.config.ts",
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
-    "build:compiler-bundle": "npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript --external:binaryen",
+    "build:compiler-bundle": "esbuild scripts/compiler-bundle-entry.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript --external:binaryen --external:node:module",
     "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
     "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
     "lint": "biome lint src/checker/index.ts src/codegen/expressions.ts src/codegen/index.ts src/codegen/statements.ts src/ir/types.ts src/runtime.ts --diagnostic-level=error",

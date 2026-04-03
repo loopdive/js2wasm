@@ -2,16 +2,33 @@ import { defineConfig } from "vite";
 import { resolve } from "node:path";
 import { test262Plugin } from "./vite-plugin-test262.js";
 import { dashboardPlugin } from "./vite-plugin-dashboard.js";
+import { compilerBundlePlugin } from "./vite-plugin-compiler-bundle.js";
 
 export default defineConfig({
   root: resolve(import.meta.dirname, ".."),
   appType: "mpa",
   base: "./",
   publicDir: "public",
-  plugins: [test262Plugin(), dashboardPlugin()],
+  plugins: [
+    compilerBundlePlugin(),
+    test262Plugin(),
+    dashboardPlugin(),
+  ],
   optimizeDeps: {
+    // Pre-bundle heavy deps so Vite doesn't transform them on each page load.
+    // compiler-bundle.mjs (3.2MB) and runtime-bundle.mjs (3.2MB) cause OOM without this.
+    include: [
+      "typescript",
+      "monaco-editor/esm/vs/editor/editor.api",
+    ],
+    exclude: ["binaryen"],
     esbuildOptions: {
       target: "esnext",
+    },
+  },
+  resolve: {
+    alias: {
+      binaryen: "/workspace/playground/stubs/binaryen.js",
     },
   },
   server: {

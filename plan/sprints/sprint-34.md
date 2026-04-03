@@ -1,8 +1,8 @@
 # Sprint 34
 
-**Date**: TBD (after sprint-33 completes)
-**Goal**: Push past 40% — medium-difficulty high-impact issues
-**Baseline**: TBD (sprint-33 result, currently ~15,526 pass / 36.2%)
+**Date**: 2026-04-03
+**Goal**: Push toward 43% — medium-difficulty high-impact runtime fixes
+**Baseline**: 17,583 pass / 43,120 official (40.8%) — post sprint-33
 
 ## Context
 
@@ -21,6 +21,8 @@ Issues already completed in sprint 35 are removed. Remaining:
 | 5 | #853 | 58 FAIL | Opaque Wasm objects in for-in/Object.create |
 | 6 | #849 | 200 FAIL | Mapped arguments object sync (needs architect) |
 | 7 | #822 WI4 | 17 CE | struct.new type stack inference (deferred from s31) |
+| 8 | #924 | infra | Vite dev server 9GB OOM — playground unusable locally |
+| 9 | #925 | presentation | Landing page: conformance circle + ES edition timeline diagrams |
 
 ### Already done (removed from queue)
 - ~~#856~~ — done in sprint 35 (ValidateAndApplyPropertyDescriptor)

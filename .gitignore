@@ -9,6 +9,7 @@ output/
 .file-registry.json
 .worktrees/
 benchmarks/results/*.json
+!benchmarks/results/test262-report.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
 .pnpm-store/

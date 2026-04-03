@@ -431,6 +431,46 @@
         color: var(--fg-faint);
       }
 
+      /* Conformance diagrams */
+      .conformance-diagrams {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+        margin-top: 56px;
+        align-items: start;
+      }
+
+      .diagram-panel {
+        padding: 40px;
+        background: transparent;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .diagram-title {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--fg-faint);
+        margin: 0 0 28px;
+      }
+
+      /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
+
+      @media (max-width: 1120px) {
+        .conformance-diagrams {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .diagram-panel {
+          padding: 28px 20px;
+        }
+      }
+
       .code-section {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -677,10 +717,6 @@
           <stop offset="50%" stop-color="#f3eeff" stop-opacity="1"></stop>
           <stop offset="65%" stop-color="#beb0ff" stop-opacity="0"></stop>
           <stop offset="100%" stop-color="#beb0ff" stop-opacity="0"></stop>
-          <animate attributeName="x1" values="-30%;50%" dur="38.25s" repeatCount="1" fill="freeze"></animate>
-          <animate attributeName="x2" values="-5%;75%" dur="38.25s" repeatCount="1" fill="freeze"></animate>
-          <animate attributeName="y1" values="0%;0%" dur="38.25s" repeatCount="1" fill="freeze"></animate>
-          <animate attributeName="y2" values="0%;0%" dur="38.25s" repeatCount="1" fill="freeze"></animate>
         </linearGradient>
         <filter id="puzzle-glow-filter" x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="0.8" result="blur"></feGaussianBlur>
@@ -692,7 +728,7 @@
     </svg>
     <nav class="site-nav">
       <a class="nav-logo" href="./" aria-label="js2wasm home">
-        <img src="./jswasmlogo.png" alt="js2wasm logo" />
+        <img src="/jswasmlogo.png" alt="js2wasm logo" />
         <span>js2wasm</span>
       </a>
       <ul class="nav-links">
@@ -711,20 +747,21 @@
         <section class="hero">
           <h1
             id="hero-title"
-            data-texts='["Compile JavaScript to WebAssembly without embedding an interpreter.",
+            data-texts='["A next generation JavaScript compiler leveraging the NPM ecosystem.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
             "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
           >
             <span class="hero-title-shell">
               <span class="hero-title-measure" aria-hidden="true"
-                >Javascript compiled to native WebAssembly, no runtime interpreter, no Typescript subset, the real
-                thing.</span
+                >A next generation JavaScript compiler building on the NPM ecosystems", "Compile JavaScript to
+                WebAssembly without embedding an interpreter.</span
               >
-              <span class="hero-title-type">Run JavaScript in WebAssembly without embedding an engine.</span>
+              <span class="hero-title-type"></span>
             </span>
           </h1>
           <p class="hero-sub">
-            The goal of this compiler project is to run Javascript and NPM packages without a runtime as lightweight and
-            sandboxed WebAssembly GC modules.
+            The js2wasm compiler project is a technology study for next generation Javascript and runs JavaScript and
+            NPM packages as tiny native modules without a runtime and sandboxes dependencies to prevent supply chain
+            attacks with zero cost abstractions.
           </p>
           <div class="hero-actions">
             <a class="btn-solid" href="./playground/">Live demo</a>
@@ -782,14 +819,28 @@
             <div class="stat-label">test262 passes in the default official scope</div>
           </div>
           <div class="stat-item">
-            <div class="stat-number">48k</div>
-            <div class="stat-label">full-suite tests tracked including proposal coverage</div>
+            <div class="stat-number">43k</div>
+            <div class="stat-label">standardized ECMAScript feature tests tracked (no proposals)</div>
           </div>
           <div class="stat-item">
             <div class="stat-number" id="performance-score">195</div>
             <div class="stat-label" id="performance-score-label">
               performance score on core benchmarks (100 = JS parity)
             </div>
+          </div>
+        </div>
+
+        <div class="conformance-diagrams">
+          <div class="diagram-panel">
+            <h3 class="diagram-title">Test262 Conformance</h3>
+            <t262-donut
+              src="./benchmarks/results/test262-report.json"
+              style="--t262-bg: var(--bg-soft, #0c1220)"
+            ></t262-donut>
+          </div>
+          <div class="diagram-panel">
+            <h3 class="diagram-title">ECMAScript Edition Coverage</h3>
+            <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
           </div>
         </div>
       </section>
@@ -875,7 +926,7 @@
     <footer>
       <div class="footer-top">
         <div class="footer-brand">
-          <img src="./jswasmlogo.png" alt="js2wasm logo" />
+          <img src="/jswasmlogo.png" alt="js2wasm logo" />
           <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
         </div>
         <div class="footer-cols">
@@ -910,6 +961,8 @@
         <span>Built from the same artifacts used for compiler development.</span>
       </div>
     </footer>
+
+    <script type="module" src="./components/t262-charts.js"></script>
 
     <script>
       (function mountPuzzleBackground() {
@@ -1098,6 +1151,43 @@
         });
       })();
 
+      (function animateGlowWave() {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        const grad = document.getElementById("puzzle-glow-gradient");
+        const glowPath = document.getElementById("puzzle-bg-glow");
+        if (!grad || !glowPath) return;
+
+        // Remove blur filter during animation to avoid expensive per-frame repaints
+        glowPath.style.filter = "none";
+
+        const startX1 = -30,
+          endX1 = 50;
+        const startX2 = -5,
+          endX2 = 75;
+        const duration = 10000;
+        let start = 0;
+        let raf = 0;
+
+        const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+        const step = (now) => {
+          if (!start) start = now;
+          const elapsed = now - start;
+          const t = Math.min(elapsed / duration, 1);
+          const e = ease(t);
+          grad.setAttribute("x1", startX1 + (endX1 - startX1) * e + "%");
+          grad.setAttribute("x2", startX2 + (endX2 - startX2) * e + "%");
+          if (t < 1) {
+            raf = requestAnimationFrame(step);
+          } else {
+            // Re-apply blur only on the frozen final state (single repaint)
+            glowPath.style.filter = "";
+          }
+        };
+
+        raf = requestAnimationFrame(step);
+      })();
+
       (async function hydrateCompatibilityStat() {
         const rateEl = document.getElementById("compat-pass-rate");
         const labelEl = document.getElementById("compat-pass-rate-label");
@@ -1116,6 +1206,8 @@
           // Keep the build-time fallback when the report file is unavailable.
         }
       })();
+
+      // Conformance diagrams are now rendered by <t262-donut> and <t262-edition-bars> web components.
 
       (async function hydratePerformanceScore() {
         const scoreEl = document.getElementById("performance-score");
