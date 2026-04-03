@@ -10109,18 +10109,23 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
-    // Handle Promise.all / Promise.race / Promise.resolve / Promise.reject — host-delegated static calls
+    // Handle Promise.all / Promise.race / Promise.allSettled / Promise.any /
+    // Promise.resolve / Promise.reject — host-delegated static calls
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Promise" &&
       (propAccess.name.text === "all" ||
         propAccess.name.text === "race" ||
+        propAccess.name.text === "allSettled" ||
+        propAccess.name.text === "any" ||
         propAccess.name.text === "resolve" ||
         propAccess.name.text === "reject")
     ) {
       const methodName = propAccess.name.text;
       const importName = `Promise_${methodName}`;
-      const funcIdx = ctx.funcMap.get(importName);
+      const funcIdx = ctx.funcMap.get(importName) ??
+        ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
       if (funcIdx !== undefined) {
         if (expr.arguments.length >= 1) {
           compileExpression(ctx, fctx, expr.arguments[0]!, {
@@ -10416,13 +10421,24 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
-    // Handle Promise instance methods: .then(cb1, cb2?), .catch(cb)
+    // Handle Promise instance methods: .then(cb1, cb2?), .catch(cb), .finally(cb)
     // Promise values are externref; delegate to host imports
     {
       const method = propAccess.name.text;
-      if ((method === "then" || method === "catch") && expr.arguments.length >= 1) {
-        const importName = `Promise_${method}`;
-        const funcIdx = ctx.funcMap.get(importName);
+      if ((method === "then" || method === "catch" || method === "finally") && expr.arguments.length >= 1) {
+        // For .then() with 2 callbacks, use Promise_then2 import
+        const useThen2 = method === "then" && expr.arguments.length >= 2;
+        const importName = useThen2 ? "Promise_then2" : `Promise_${method}`;
+        const funcIdx = ctx.funcMap.get(importName) ??
+          ensureLateImport(
+            ctx,
+            importName,
+            useThen2
+              ? [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }]
+              : [{ kind: "externref" }, { kind: "externref" }],
+            [{ kind: "externref" }],
+          );
+        flushLateImportShifts(ctx, fctx);
         if (funcIdx !== undefined) {
           // Compile the Promise value (receiver)
           compileExpression(ctx, fctx, propAccess.expression, {
@@ -10435,17 +10451,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           if (cbType && cbType.kind !== "externref") {
             coerceType(ctx, fctx, cbType, { kind: "externref" });
           }
-          // For .then(): push second callback (onRejected) or null
-          if (method === "then") {
-            if (expr.arguments.length >= 2) {
-              const cb2Type = compileExpression(ctx, fctx, expr.arguments[1]!, {
-                kind: "externref",
-              });
-              if (cb2Type && cb2Type.kind !== "externref") {
-                coerceType(ctx, fctx, cb2Type, { kind: "externref" });
-              }
-            } else {
-              fctx.body.push({ op: "ref.null.extern" });
+          // For .then() with 2 callbacks: push second callback (onRejected)
+          if (useThen2) {
+            const cb2Type = compileExpression(ctx, fctx, expr.arguments[1]!, {
+              kind: "externref",
+            });
+            if (cb2Type && cb2Type.kind !== "externref") {
+              coerceType(ctx, fctx, cb2Type, { kind: "externref" });
             }
           }
           // Re-lookup funcIdx after compiling args (addUnionImports may shift)
