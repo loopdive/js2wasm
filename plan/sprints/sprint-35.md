@@ -68,7 +68,7 @@ Issues already completed in sprint 35 are removed. Remaining:
 | #822 WI4 | — | — | — | already fixed by prior work |
 | #924 | — | — | infra | merged (Vite OOM → 84MB) |
 | #925 | — | — | frontend | merged (chart web components) |
-| #831 v2 | 17,717 | pending | ~+150 est. | tester running |
+| #831 v2 | 17,717 | ~17,717 (runner unstable) | +150 est. (negative tests) | merged (equiv-only due to runner instability #943) |
 
 **Additional work completed:**
 - #926-#931: PO error pattern analysis, 6 new issues created
@@ -92,13 +92,17 @@ Issues already completed in sprint 35 are removed. Remaining:
 ### What went wrong
 - **Premature test262 reject** — compared #855 results against wrong baseline (17,782 vs 17,583). Almost blocked a +134 pass improvement. Need to always verify which baseline to compare against.
 - **Told tester to rerun entire test262 unnecessarily** — the first run was valid, just compared wrong. Wasted ~10 min of compute.
-- **#831 v2 may have false positives** — for-in/for-of LHS validation might reject valid destructuring patterns. test262 will catch this.
+- **#831 v2 had 6 false positives** — for-in/for-of LHS validation rejected valid destructuring patterns. Required a fix dev + re-test cycle. Fixed by adding `allowDestructuring` parameter.
+- **Test262 runner instability** — 1,400+ pass variance between identical runs (#943 created). Made it impossible to reliably validate #831 v2. Had to fall back to equiv-only proof.
 - **Bundle node: imports caused browser CORS errors** — three iterations to fix (createRequire → eval → top-level await → string replacement in plugin). Should have tested in browser earlier.
 - **report.json corrupted by cat > same_file** — hardlink trap. Need atomic writes.
+- **report.json overwritten by partial test262 run** — landing page showed 0.0% mid-run. Runner writes to the live file during execution, not atomically at completion.
 - **Task list not maintained** — forgot to create tasks at sprint start, only added them mid-sprint when asked.
 
 ### Process improvements
 1. **Always verify baseline before rejecting** — document the exact baseline commit/run in the tester prompt
 2. **Test in browser after any Node import changes** — playground is the canary
+3. **Merge proof in worktree** — testers write proof to their own `.claude/nonces/` instead of main workspace. Hook updated to check both locations.
+4. **Runner instability is a blocker** — created #943. Must fix before CI can be trusted.
 3. **Use atomic writes for report.json** — write to .tmp, then rename
 4. **Create task list at sprint start, not mid-sprint** (reinforcing existing memory)
