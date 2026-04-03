@@ -647,6 +647,9 @@ export function generateModule(
     }
   }
 
+  // Register built-in collection types as extern classes if not already collected from lib files
+  registerBuiltinExternClasses(ctx);
+
   // Pre-pass: detect empty object literals that get properties assigned later
   // Must run before import collectors so that widened types are known
   collectEmptyObjectWidening(ctx, ast.checker, ast.sourceFile);
@@ -1652,6 +1655,9 @@ export function generateMultiModule(
       }
     }
   }
+
+  // Register built-in collection types as extern classes if not already collected from lib files
+  registerBuiltinExternClasses(ctx);
 
   // Pre-pass: detect empty object literals that get properties assigned later
   // Must run before import collectors so that widened types are known
@@ -9072,6 +9078,120 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
       exported: false,
     };
     ctx.mod.functions.push(methodFunc);
+  }
+}
+
+// ── Built-in extern class registration ───────────────────────────────
+
+/** Helper to create an extern method signature with externref params and results */
+function externMethod(paramCount: number, returnsExternref = true): { params: ValType[]; results: ValType[]; requiredParams: number } {
+  const params: ValType[] = [];
+  for (let i = 0; i <= paramCount; i++) params.push({ kind: "externref" }); // self + args
+  return {
+    params,
+    results: returnsExternref ? [{ kind: "externref" }] : [],
+    requiredParams: params.length,
+  };
+}
+
+/**
+ * Register built-in collection types (Set, Map, WeakMap, WeakSet) as extern classes
+ * if they weren't already collected from lib .d.ts files. This ensures these types
+ * are available for extern class method dispatch even when lib file scanning fails
+ * (e.g., bundled/browser environments where readLibFile returns empty strings).
+ */
+function registerBuiltinExternClasses(ctx: CodegenContext): void {
+  // Set methods — all take (self: externref, ...args: externref) → externref
+  if (!ctx.externClasses.has("Set")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    // ES2015 methods
+    methods.set("add", externMethod(1));       // add(value) → Set
+    methods.set("has", externMethod(1));        // has(value) → boolean (externref)
+    methods.set("delete", externMethod(1));     // delete(value) → boolean (externref)
+    methods.set("clear", externMethod(0, false)); // clear() → void
+    methods.set("forEach", externMethod(1));    // forEach(callback) → void (externref for simplicity)
+    methods.set("entries", externMethod(0));    // entries() → Iterator
+    methods.set("keys", externMethod(0));       // keys() → Iterator
+    methods.set("values", externMethod(0));     // values() → Iterator
+    // ES2025 Set methods
+    methods.set("union", externMethod(1));               // union(other) → Set
+    methods.set("intersection", externMethod(1));        // intersection(other) → Set
+    methods.set("difference", externMethod(1));          // difference(other) → Set
+    methods.set("symmetricDifference", externMethod(1)); // symmetricDifference(other) → Set
+    methods.set("isSubsetOf", externMethod(1));          // isSubsetOf(other) → boolean (externref)
+    methods.set("isSupersetOf", externMethod(1));        // isSupersetOf(other) → boolean (externref)
+    methods.set("isDisjointFrom", externMethod(1));      // isDisjointFrom(other) → boolean (externref)
+
+    ctx.externClasses.set("Set", {
+      importPrefix: "Set",
+      namespacePath: [],
+      className: "Set",
+      constructorParams: [{ kind: "externref" }], // new Set(iterable?)
+      methods,
+      properties: new Map([
+        ["size", { type: { kind: "externref" }, readonly: true }],
+      ]),
+    });
+  }
+
+  // Map methods
+  if (!ctx.externClasses.has("Map")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("get", externMethod(1));
+    methods.set("set", externMethod(2));
+    methods.set("has", externMethod(1));
+    methods.set("delete", externMethod(1));
+    methods.set("clear", externMethod(0, false));
+    methods.set("forEach", externMethod(1));
+    methods.set("entries", externMethod(0));
+    methods.set("keys", externMethod(0));
+    methods.set("values", externMethod(0));
+
+    ctx.externClasses.set("Map", {
+      importPrefix: "Map",
+      namespacePath: [],
+      className: "Map",
+      constructorParams: [{ kind: "externref" }],
+      methods,
+      properties: new Map([
+        ["size", { type: { kind: "externref" }, readonly: true }],
+      ]),
+    });
+  }
+
+  // WeakMap methods
+  if (!ctx.externClasses.has("WeakMap")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("get", externMethod(1));
+    methods.set("set", externMethod(2));
+    methods.set("has", externMethod(1));
+    methods.set("delete", externMethod(1));
+
+    ctx.externClasses.set("WeakMap", {
+      importPrefix: "WeakMap",
+      namespacePath: [],
+      className: "WeakMap",
+      constructorParams: [{ kind: "externref" }],
+      methods,
+      properties: new Map(),
+    });
+  }
+
+  // WeakSet methods
+  if (!ctx.externClasses.has("WeakSet")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("add", externMethod(1));
+    methods.set("has", externMethod(1));
+    methods.set("delete", externMethod(1));
+
+    ctx.externClasses.set("WeakSet", {
+      importPrefix: "WeakSet",
+      namespacePath: [],
+      className: "WeakSet",
+      constructorParams: [{ kind: "externref" }],
+      methods,
+      properties: new Map(),
+    });
   }
 }
 
