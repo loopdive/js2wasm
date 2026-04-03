@@ -19,29 +19,25 @@ import {
   resolveArrayInfo,
 } from "./array-methods.js";
 import { compileBinaryExpression, emitModulo, emitToInt32 } from "./binary-ops.js";
-import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "./index.js";
+import { popBody, pushBody } from "./context/bodies.js";
+import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
+import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "./context/types.js";
 import {
   addFuncType,
   addImport,
   addStringConstantGlobal,
   addStringImports,
   addUnionImports,
-  allocLocal,
-  allocTempLocal,
   ensureAnyHelpers,
   ensureExnTag,
   ensureI32Condition,
   ensureStructForType,
   getArrTypeIdxFromVec,
-  getLocalType,
   getOrRegisterRefCellType,
   getOrRegisterVecType,
   isAnyValue,
   localGlobalIdx,
   nativeStringType,
-  popBody,
-  pushBody,
-  releaseTempLocal,
   resolveWasmType,
   hoistLetConstWithTdz,
   hoistVarDeclarations,
@@ -16211,7 +16207,7 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
 
 // ── Extern class inheritance helper ──────────────────────────────────
 
-import type { ExternClassInfo } from "./index.js";
+import type { ExternClassInfo } from "./context/types.js";
 
 /** Walk the externClassParent chain to find the extern class that declares a member */
 export function findExternInfoForMember(

@@ -10,8 +10,8 @@
  * with arithmetic range reduction. Precision target: within 4 ULP of
  * IEEE 754 for the common range.
  */
-import type { CodegenContext } from "./index.js";
-import { addFuncType } from "./index.js";
+import type { CodegenContext } from "./context/types.js";
+import { addFuncType } from "./registry/types.js";
 import type { Instr, ValType } from "../ir/types.js";
 
 // ─── Instruction shorthand helpers ──────────────────────────────────

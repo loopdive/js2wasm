@@ -4,11 +4,9 @@
  * bitwise, modulo, boolean, and any-typed binary operations.
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
 import {
-  allocLocal,
-  allocTempLocal,
-  releaseTempLocal,
   resolveWasmType,
   resolveNativeTypeAnnotation,
   addUnionImports,

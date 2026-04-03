@@ -1,0 +1,131 @@
+/**
+ * Backend context creation ownership.
+ *
+ * This module constructs a fresh CodegenContext and performs the minimal
+ * upfront registry bootstrap that generateModule/generateMultiModule rely on.
+ */
+import ts from "typescript";
+import type { WasmModule } from "../../ir/types.js";
+import type { CodegenContext, CodegenOptions } from "./types.js";
+import { getOrRegisterVecType, registerNativeStringTypes } from "../registry/types.js";
+
+export function createCodegenContext(
+  mod: WasmModule,
+  checker: ts.TypeChecker,
+  options?: CodegenOptions,
+): CodegenContext {
+  const ctx: CodegenContext = {
+    mod,
+    checker,
+    funcMap: new Map(),
+    structMap: new Map(),
+    typeIdxToStructName: new Map(),
+    structFields: new Map(),
+    numImportFuncs: 0,
+    currentFunc: null,
+    funcStack: [],
+    errors: [],
+    externClasses: new Map(),
+    funcOptionalParams: new Map(),
+    anonTypeMap: new Map(),
+    anonTypeCounter: 0,
+    stringLiteralMap: new Map(),
+    stringLiteralValues: new Map(),
+    stringLiteralCounter: 0,
+    stringGlobalMap: new Map(),
+    numImportGlobals: 0,
+    hasStringImports: false,
+    enumValues: new Map(),
+    enumStringValues: new Map(),
+    arrayTypeMap: new Map(),
+    vecTypeMap: new Map(),
+    externClassParent: new Map(),
+    declaredGlobals: new Map(),
+    callbackCounter: 0,
+    capturedGlobals: new Map(),
+    capturedGlobalsWidened: new Set(),
+    classSet: new Set(),
+    classThrowsOnEval: new Set(),
+    classMethodSet: new Set(),
+    deferredClassBodies: new Set(),
+    classAccessorSet: new Set(),
+    staticAccessorSet: new Set(),
+    staticMethodSet: new Set(),
+    staticProps: new Map(),
+    staticInitExprs: [],
+    closureCounter: 0,
+    closureMap: new Map(),
+    closureInfoByTypeIdx: new Map(),
+    genericResolved: new Map(),
+    funcRestParams: new Map(),
+    valueOfClosureTypes: new Map(),
+    exnTagIdx: -1,
+    hasUnionImports: false,
+    asyncFunctions: new Set(),
+    generatorFunctions: new Set(),
+    generatorYieldType: new Map(),
+    moduleGlobals: new Map(),
+    moduleInitStatements: [],
+    nestedFuncCaptures: new Map(),
+    classParentMap: new Map(),
+    classTagCounter: 0,
+    classTagMap: new Map(),
+    classExprNameMap: new Map(),
+    anonClassExprNames: new Map(),
+    functionNameMap: new Map(),
+    sourceMap: options?.sourceMap ?? false,
+    tupleTypeMap: new Map(),
+    fast: options?.fast ?? false,
+    nativeStrings: options?.nativeStrings ?? options?.fast ?? options?.wasi ?? false,
+    nativeStrDataTypeIdx: -1,
+    anyStrTypeIdx: -1,
+    nativeStrTypeIdx: -1,
+    consStrTypeIdx: -1,
+    nativeStrHelpersEmitted: false,
+    nativeStrHelpers: new Map(),
+    refCellTypeMap: new Map(),
+    anyValueTypeIdx: -1,
+    anyHelpers: new Map(),
+    anyHelpersEmitted: false,
+    shapeMap: new Map(),
+    templateCacheCounter: 0,
+    templateVecTypeIdx: -1,
+    widenedTypeProperties: new Map(),
+    widenedVarStructMap: new Map(),
+    pendingMathMethods: new Set(),
+    classDeclarationMap: new Map(),
+    wrapperNumberTypeIdx: -1,
+    wrapperStringTypeIdx: -1,
+    wrapperBooleanTypeIdx: -1,
+    funcRefWrapperCache: new Map(),
+    pendingInitBody: null,
+    inlinableFunctions: new Map(),
+    symbolCounterGlobalIdx: -1,
+    parentBodiesStack: [],
+    anonStructHash: new Map(),
+    funcTypeCache: new Map(),
+    pendingLateImportShift: null,
+    protoGlobals: new Map(),
+    wasi: options?.wasi ?? false,
+    wasiFdWriteIdx: -1,
+    wasiProcExitIdx: -1,
+    wasiBumpPtrGlobalIdx: -1,
+    tdzGlobals: new Map(),
+    tdzLetConstNames: new Set(),
+    definedPropertyFlags: new Map(),
+    nonExtensibleVars: new Set(),
+    frozenVars: new Set(),
+    sealedVars: new Set(),
+    shapePropFlags: new Map(),
+    funcConstructorMap: new Map(),
+  };
+
+  getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+  getOrRegisterVecType(ctx, "f64", { kind: "f64" });
+
+  if (ctx.nativeStrings) {
+    registerNativeStringTypes(ctx);
+  }
+
+  return ctx;
+}

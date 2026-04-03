@@ -17,18 +17,18 @@ import {
   valTypesMatch,
   VOID_RESULT,
 } from "./expressions.js";
-import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./index.js";
+import { popBody, pushBody } from "./context/bodies.js";
+import { reportError } from "./context/errors.js";
+import { allocLocal, getLocalType } from "./context/locals.js";
+import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
+import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
+import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterRefCellType, getOrRegisterVecType } from "./registry/types.js";
 import {
-  addFuncType,
-  addImport,
-  addStringConstantGlobal,
   addStringImports,
   addUnionImports,
-  allocLocal,
-  attachSourcePos,
   collectClassDeclaration,
   compileClassBodies,
-  ensureExnTag,
   ensureAnyHelpers,
   ensureI32Condition,
   ensureNativeStringHelpers,
@@ -38,16 +38,7 @@ import {
   destructureParamArray,
   destructureParamObject,
   extractConstantDefault,
-  getArrTypeIdxFromVec,
-  getLocalType,
-  getOrRegisterRefCellType,
-  getOrRegisterVecType,
-  getSourcePos,
-  localGlobalIdx,
-  reportError,
   resolveWasmType,
-  pushBody,
-  popBody,
 } from "./index.js";
 import { promoteAccessorCapturesToGlobals } from "./closures.js";
 import { resolveComputedKeyExpression } from "./literals.js";
