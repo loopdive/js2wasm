@@ -8,11 +8,23 @@ function getBundledLibFiles(): Record<string, string> | undefined {
 }
 
 function safeRequire<T>(id: string): T | null {
+  // Try Function("return require")() first (works in CJS and some bundled ESM contexts)
   try {
     return Function("return require")()(id) as T;
   } catch {
-    return null;
+    // Ignore — require not available in pure ESM
   }
+  // Fallback: process.getBuiltinModule (Node.js >=22.3) for built-in modules
+  try {
+    const gbm = (globalThis as any).process?.getBuiltinModule;
+    if (typeof gbm === "function") {
+      const mod = gbm(id);
+      if (mod) return mod as T;
+    }
+  } catch {
+    // Ignore — not available
+  }
+  return null;
 }
 
 // Lazy-load ALL Node.js modules for browser compatibility.
@@ -201,6 +213,10 @@ function getLibSource(name: string): string | undefined {
       "lib.es2021.promise.d.ts",
       "lib.es2021.string.d.ts",
       "lib.es2021.weakref.d.ts",
+      // ES2024
+      "lib.es2024.collection.d.ts",
+      // ESNext — Set methods (union, intersection, difference, etc.)
+      "lib.esnext.collection.d.ts",
       // DOM (decorators loaded via /// <reference> in lib.es5.d.ts)
       "lib.dom.d.ts",
     ];
