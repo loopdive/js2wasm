@@ -1,62 +1,74 @@
-# Sprint 34
+# Sprint 34 — Benchmark Regression Recovery
 
 **Date**: 2026-04-03
-**Goal**: Push toward 43% — medium-difficulty high-impact runtime fixes
-**Baseline**: 17,583 pass / 43,120 official (40.8%) — post sprint-33
+**Goal**: Recover benchmark credibility after codegen regressions were discovered in the playground benchmark suite
+**Baseline**: 15,526 pass / 42,934 official (36.2%) — post sprint-35 final
 
 ## Context
 
-After sprints 31/35 (CE reduction + incremental fixes) and 33 (benchmark recovery), this sprint targets the medium-difficulty runtime failures that don't require full architectural features.
+While validating the public benchmark suite for STF/demo use, two concrete performance regressions were identified:
+
+- `#896` — numeric GC-array hot path regressed from near-JS speed to heavy helper-call/coercion overhead
+- `#897` — pure recursive numeric `fib` regressed from Wasm-faster-than-JS to helper-call-heavy slowdown
+
+Follow-on investigation also identified adjacent compiler cleanup work:
+
+- `#898` — extend compile-time TDZ elimination to loop-local accesses
+- `#899` — extend compile-time TDZ elimination to provably safe closure captures
+- `#900` — move missing-`main()` handling out of runtime execution
+- `#901` — remove helper-call coercion from GC-array element access
+- `#902` — remove helper-call coercion from pure numeric recursion paths
 
 ## Task queue
 
-Issues already completed in sprint 35 are removed. Remaining:
-
-| Order | Issue | Impact | Notes |
-|-------|-------|--------|-------|
-| 1 | #858 | 182 FAIL | Worker/timeout exits + eval null deref |
-| 2 | #863 | 70 FAIL | decodeURI/encodeURI missing |
-| 3 | #845 | 340 CE | Misc CE: object literals, RegExp, for-in/of edges (needs architect) |
-| 4 | #855 | 210 FAIL | Promise/async error handling |
-| 5 | #853 | 58 FAIL | Opaque Wasm objects in for-in/Object.create |
-| 6 | #849 | 200 FAIL | Mapped arguments object sync (needs architect) |
-| 7 | #822 WI4 | 17 CE | struct.new type stack inference (deferred from s31) |
-| 8 | #924 | infra | Vite dev server 9GB OOM — playground unusable locally |
-| 9 | #925 | presentation | Landing page: conformance circle + ES edition timeline diagrams |
-
-### Already done (removed from queue)
-- ~~#856~~ — done in sprint 35 (ValidateAndApplyPropertyDescriptor)
-- ~~#844~~ — done (prior session)
-- ~~#831~~ — done in sprint 35 (negative test early error detection)
-- ~~#840~~ — done in sprint 35 (array 0-arg)
-- ~~#829~~ — done (prior session)
-
-### Stretch / architectural (not in this sprint)
-- #797 — Property descriptor subsystem (~5,000 FAIL) — needs full architect spec
-- #799 — Prototype chain (~2,500 FAIL) — needs full architect spec
-- #831 remaining — yield-as-id, await-as-id patterns (159/242 done, 83 remain)
+| Order | Issue | Title | Impact | Effort | Dev | Deps |
+|-------|-------|-------|--------|--------|-----|------|
+| 1 | #896 | Restore direct numeric GC-array codegen in hot loops | Critical — benchmark credibility | Medium | dev-1 | — |
+| 2 | #901 | Remove helper-call coercion from numeric GC-array element access | High — root-cause isolation for #896 | Small | dev-1 | #896 |
+| 3 | #898 | Support loops for compile-time TDZ checks | High — removes unnecessary loop runtime baggage | Medium | dev-1 | — |
+| 4 | #897 | Restore direct numeric recursion codegen for fib hot path | Critical — benchmark credibility | Medium | dev-2 | — |
+| 5 | #902 | Remove helper-call coercion from pure numeric recursive call/return paths | High — root-cause isolation for #897 | Small | dev-2 | #897 |
+| 6 | #899 | Support closures for compile-time TDZ checks | Medium — removes conservative closure runtime baggage | Medium | dev-2 | — |
+| 7 | #900 | Move missing-main checks out of runtime execution | Medium — reduce avoidable runtime scaffolding | Small | dev-2 | — |
 
 ## Dev paths
 
-**Dev-1**: #858 → #863 → #853 (runtime error fixes)
-**Dev-2**: #845 (needs architect first) → #855 → #849
+**Dev-1**: #896 → #901 → #898 (array benchmark regression and loop-side cleanup)
+**Dev-2**: #897 → #902 → #899 → #900 (fib benchmark regression and runtime-cleanup follow-ons)
 
-## Expected impact
+## Status (2026-04-03)
 
-| Issue | Est. tests fixed |
-|-------|-----------------|
-| #858 | ~100 |
-| #863 | ~50 |
-| #845 | ~200 |
-| #855 | ~100 |
-| #853 | ~40 |
-| #849 | ~100 |
-| **Total** | **~590** |
+Complete. All 7 issues resolved.
 
 ## Results
 
-(Fill after sprint completion)
+| Order | Issue | Pre-merge pass | Post-merge pass | Delta | Status |
+|-------|-------|---------------|----------------|-------|--------|
+| 1 | #896 | 17,583 | pending test262 | perf (null guard elimination) | merged |
+| 2 | #901 | — | — | — | already fixed by #896 |
+| 3 | #898 | pending | pending test262 | perf (loop TDZ elimination) | merged |
+| 4 | #897 | — | — | — | already fixed on main |
+| 5 | #902 | — | — | — | already fixed on main |
+| 6 | #899 | pending | pending test262 | perf (closure TDZ elimination) | merged |
+| 7 | #900 | pending | pending test262 | infra (compile-time main() detection) | merged |
+
+Final test262 numbers: pending (run in progress)
 
 ## Retrospective
 
-(To be filled after sprint completion)
+### What went well
+- **Smoke-testing before coding** — dev-2 verified #897 and #902 were already fixed before writing any code. Saved significant time.
+- **Parallel dev paths worked** — array track (dev-1) and fib track (dev-2) ran independently with no file conflicts.
+- **#898 TDZ analysis is a solid architectural contribution** — `needsTdzFlag()` does proper static analysis instead of conservative flag allocation. Eliminates dead code in hot loops.
+- **#900 compile-time metadata** — `hasMain`/`hasTopLevelStatements` on `CompileResult` is clean API design that benefits playground, CLI, and future tooling.
+
+### What went wrong
+- **OOM crash from concurrent equiv tests** — both agents ran equiv tests simultaneously, spawning ~20 vitest forks. Swap filled (974/1023 MB), killed the tech lead process. Fix applied: fork-per-file vitest config.
+- **dev-1 also implemented #900** despite dev-2 already doing it — the message telling dev-1 to focus only on #898 arrived after it had started. Wasted work, needed manual conflict resolution.
+- **dev-1 crashed without committing** — 64 lines of uncommitted work sat in worktree until tech lead manually reviewed, committed, and cherry-picked.
+- **Only 1 dev initially dispatched for 3 independent issues** — user had to point out dev-2 should handle #900 separately.
+
+### Process improvements
+1. **Fork-per-file equiv tests** — vitest.config.ts changed to `singleFork: false`. Eliminates memory accumulation (+157 more tests pass). Also discovered #923: compiler leaks state between `compile()` calls.
+2. **Always dispatch max parallel devs** for independent issues — don't serialize when work can be parallelized.
+3. **Verify agent received narrowed scope** before it starts coding — check for confirmation message.
