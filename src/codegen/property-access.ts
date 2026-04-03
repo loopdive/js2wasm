@@ -735,6 +735,63 @@ export function compilePropertyAccess(
     return { kind: "externref" };
   }
 
+  // Handle globalThis.prop — compile as __extern_get(__get_globalThis(), key)
+  // globalThis is a genuine JS object (externref), not a WasmGC struct.
+  // Without this handler, the TS type `typeof globalThis` resolves to a struct
+  // type and struct.get on a real JS object traps with null deref.
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "globalThis") {
+    const gtFuncIdx = ensureLateImport(ctx, "__get_globalThis", [], [{ kind: "externref" }]);
+    // Ensure __extern_get import exists
+    const getIdx = ensureLateImport(
+      ctx,
+      "__extern_get",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+
+    if (gtFuncIdx === undefined || getIdx === undefined) {
+      // Fallback: return null externref if imports couldn't be registered
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
+    // Emit: __extern_get(__get_globalThis(), key) -> externref
+    fctx.body.push({ op: "call", funcIdx: gtFuncIdx });
+    addStringConstantGlobal(ctx, propName);
+    const strGlobalIdx = ctx.stringGlobalMap.get(propName);
+    if (strGlobalIdx !== undefined) {
+      fctx.body.push({ op: "global.get", index: strGlobalIdx });
+    } else {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    if (getIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: getIdx });
+    }
+
+    // Coerce externref to expected type
+    const accessType = ctx.checker.getTypeAtLocation(expr);
+    const accessWasm = resolveWasmType(ctx, accessType);
+    if (accessWasm.kind === "f64") {
+      const unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (unboxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: unboxIdx });
+      }
+      return { kind: "f64" };
+    }
+    if (accessWasm.kind === "i32") {
+      const unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (unboxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: unboxIdx });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+      }
+      return { kind: "i32" };
+    }
+    return { kind: "externref" };
+  }
+
   // Check for enum member access: EnumName.Member
   if (ts.isIdentifier(expr.expression)) {
     const objName = expr.expression.text;

@@ -1541,6 +1541,18 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
     return globalInfo.type;
   }
 
+  // globalThis — return the JS global object via host import
+  if (name === "globalThis") {
+    let funcIdx = ctx.funcMap.get("__get_globalThis");
+    if (funcIdx === undefined) {
+      const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__get_globalThis", { kind: "func", typeIdx });
+      funcIdx = ctx.funcMap.get("__get_globalThis")!;
+    }
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "externref" };
+  }
+
   // Built-in numeric constants: NaN, Infinity
   if (name === "NaN") {
     fctx.body.push({ op: "f64.const", value: NaN });
@@ -11619,6 +11631,23 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
         fctx.body.push({ op: "call", funcIdx: importFuncIdx });
         return { kind: "f64" };
+      }
+    }
+
+    // decodeURI, decodeURIComponent, encodeURI, encodeURIComponent — host imports
+    if (
+      (funcName === "decodeURI" || funcName === "decodeURIComponent" ||
+       funcName === "encodeURI" || funcName === "encodeURIComponent") &&
+      expr.arguments.length >= 1
+    ) {
+      const importFuncIdx = ctx.funcMap.get(funcName);
+      if (importFuncIdx !== undefined) {
+        const arg0Type = compileExpression(ctx, fctx, expr.arguments[0]!);
+        if (arg0Type && arg0Type.kind !== "externref") {
+          coerceType(ctx, fctx, arg0Type, { kind: "externref" });
+        }
+        fctx.body.push({ op: "call", funcIdx: importFuncIdx });
+        return { kind: "externref" };
       }
     }
 
