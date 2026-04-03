@@ -10,8 +10,15 @@ export default defineConfig({
   publicDir: "public",
   plugins: [test262Plugin(), dashboardPlugin()],
   optimizeDeps: {
+    exclude: ["binaryen"],
     esbuildOptions: {
       target: "esnext",
+    },
+  },
+  resolve: {
+    alias: {
+      // Stub binaryen for dev server — it's only used in optimize.ts which is optional
+      binaryen: "/workspace/playground/stubs/binaryen.js",
     },
   },
   server: {
