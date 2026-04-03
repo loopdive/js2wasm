@@ -442,18 +442,9 @@
 
       .diagram-panel {
         padding: 40px;
-        border: 1px solid var(--line);
-        background: var(--surface);
+        background: transparent;
         position: relative;
         overflow: hidden;
-      }
-
-      .diagram-panel::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(ellipse at 50% 0%, rgba(124, 92, 191, 0.08), transparent 70%);
-        pointer-events: none;
       }
 
       .diagram-title {
@@ -756,22 +747,21 @@
         <section class="hero">
           <h1
             id="hero-title"
-            data-texts='["Compile JavaScript to WebAssembly without embedding an interpreter.",
+            data-texts='["A next generation JavaScript compiler leveraging the NPM ecosystem.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
             "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
           >
             <span class="hero-title-shell">
               <span class="hero-title-measure" aria-hidden="true"
-                >Javascript compiled to native WebAssembly, no runtime interpreter, no Typescript subset, the real
-                thing.</span
+                >A next generation JavaScript compiler building on the NPM ecosystems", "Compile JavaScript to
+                WebAssembly without embedding an interpreter.</span
               >
-              <span class="hero-title-type">Run JavaScript in WebAssembly without embedding an engine.</span>
+              <span class="hero-title-type"></span>
             </span>
           </h1>
           <p class="hero-sub">
-            The js2wasm compiler project is a technology study for next generation Javascript. Run JavaScript and NPM
-            packages without a runtime. Isolate dependencies in sandboxed WebAssembly GC modules to prevent supply chain
-            attacks and enable portable dependency injection. Foundational infrastructure for the next generation
-            ecosystem.
+            The js2wasm compiler project is a technology study for next generation Javascript and runs JavaScript and
+            NPM packages as tiny native modules without a runtime and sandboxes dependencies to prevent supply chain
+            attacks with zero cost abstractions.
           </p>
           <div class="hero-actions">
             <a class="btn-solid" href="./playground/">Live demo</a>
