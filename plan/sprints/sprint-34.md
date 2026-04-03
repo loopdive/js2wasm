@@ -1,8 +1,8 @@
 # Sprint 34
 
-**Date**: TBD (after sprint-33 completes)
-**Goal**: Push past 40% — medium-difficulty high-impact issues
-**Baseline**: TBD (sprint-33 result, currently ~15,526 pass / 36.2%)
+**Date**: 2026-04-03
+**Goal**: Push toward 43% — medium-difficulty high-impact runtime fixes
+**Baseline**: 17,583 pass / 43,120 official (40.8%) — post sprint-33
 
 ## Context
 

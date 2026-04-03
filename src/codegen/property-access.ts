@@ -119,7 +119,7 @@ function emitGetterCallWithDummy(
  *  - `"str"` / template  — string literals are never null
  *  - Parenthesized wrapper around any of the above
  */
-export function isProvablyNonNull(expr: ts.Expression): boolean {
+export function isProvablyNonNull(expr: ts.Expression, checker?: ts.TypeChecker): boolean {
   // Unwrap parentheses: (new Foo()).bar
   let inner: ts.Expression = expr;
   while (ts.isParenthesizedExpression(inner)) {
@@ -134,8 +134,22 @@ export function isProvablyNonNull(expr: ts.Expression): boolean {
     case ts.SyntaxKind.TemplateExpression:
       return true;
     default:
-      return false;
+      break;
   }
+  // Identifier referencing a const variable with a provably non-null initializer
+  if (checker && ts.isIdentifier(inner)) {
+    const sym = checker.getSymbolAtLocation(inner);
+    if (sym) {
+      const decl = sym.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+        const declList = decl.parent;
+        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+          return isProvablyNonNull(decl.initializer, checker);
+        }
+      }
+    }
+  }
+  return false;
 }
 
 export function typeErrorThrowInstrs(ctx: CodegenContext, node?: ts.Node): Instr[] {
@@ -1265,7 +1279,7 @@ export function compilePropertyAccess(
         const fieldType = fields[fieldIdx]!.type;
         // Null-guard: if the object ref could be null (ref_null), prevent trap
         // Skip null guard when expression is provably non-null (#800)
-        const exprNonNull = isProvablyNonNull(expr.expression);
+        const exprNonNull = isProvablyNonNull(expr.expression, ctx.checker);
         if (objResult && objResult.kind === "ref_null") {
           // Always use multi-struct dispatch (even when provably non-null) to avoid
           // illegal cast traps when runtime struct type differs from compile-time type (#778).
@@ -1438,7 +1452,7 @@ export function compilePropertyAccess(
             if (fieldIdx !== -1) {
               const fieldType = fields[fieldIdx]!.type;
               const objResult = compileExpression(ctx, fctx, expr.expression);
-              const exprNonNull2 = isProvablyNonNull(expr.expression);
+              const exprNonNull2 = isProvablyNonNull(expr.expression, ctx.checker);
               if (objResult && objResult.kind === "ref_null") {
                 // Always use multi-struct dispatch to avoid illegal cast traps (#778)
                 emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
@@ -1809,7 +1823,7 @@ export function compileElementAccess(
   // Null-guard for ref_null: throw TypeError on null, narrow to ref after check
   // In JS, null[x] and undefined[x] throw TypeError
   if (objType.kind === "ref_null") {
-    if (!isProvablyNonNull(expr.expression)) {
+    if (!isProvablyNonNull(expr.expression, ctx.checker)) {
       // Emit null check that throws TypeError (#775)
       emitNullCheckThrow(ctx, fctx, objType, expr);
     }
@@ -1820,7 +1834,7 @@ export function compileElementAccess(
 
   // Null-guard for externref: null[x] and undefined[x] throw TypeError (#775)
   if (objType.kind === "externref") {
-    if (!isProvablyNonNull(expr.expression)) {
+    if (!isProvablyNonNull(expr.expression, ctx.checker)) {
       emitNullCheckThrow(ctx, fctx, objType, expr);
     }
   }

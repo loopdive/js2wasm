@@ -38,13 +38,37 @@ Follow-on investigation also identified adjacent compiler cleanup work:
 
 ## Status (2026-04-03)
 
-Both dev paths dispatched as teammates. In progress.
+Complete. All 7 issues resolved.
 
 ## Results
 
 | Order | Issue | Pre-merge pass | Post-merge pass | Delta | Status |
 |-------|-------|---------------|----------------|-------|--------|
+| 1 | #896 | 17,583 | pending test262 | perf (null guard elimination) | merged |
+| 2 | #901 | — | — | — | already fixed by #896 |
+| 3 | #898 | pending | pending test262 | perf (loop TDZ elimination) | merged |
+| 4 | #897 | — | — | — | already fixed on main |
+| 5 | #902 | — | — | — | already fixed on main |
+| 6 | #899 | pending | pending test262 | perf (closure TDZ elimination) | merged |
+| 7 | #900 | pending | pending test262 | infra (compile-time main() detection) | merged |
+
+Final test262 numbers: pending (run in progress)
 
 ## Retrospective
 
-(To be filled after sprint completion)
+### What went well
+- **Smoke-testing before coding** — dev-2 verified #897 and #902 were already fixed before writing any code. Saved significant time.
+- **Parallel dev paths worked** — array track (dev-1) and fib track (dev-2) ran independently with no file conflicts.
+- **#898 TDZ analysis is a solid architectural contribution** — `needsTdzFlag()` does proper static analysis instead of conservative flag allocation. Eliminates dead code in hot loops.
+- **#900 compile-time metadata** — `hasMain`/`hasTopLevelStatements` on `CompileResult` is clean API design that benefits playground, CLI, and future tooling.
+
+### What went wrong
+- **OOM crash from concurrent equiv tests** — both agents ran equiv tests simultaneously, spawning ~20 vitest forks. Swap filled (974/1023 MB), killed the tech lead process. Fix applied: fork-per-file vitest config.
+- **dev-1 also implemented #900** despite dev-2 already doing it — the message telling dev-1 to focus only on #898 arrived after it had started. Wasted work, needed manual conflict resolution.
+- **dev-1 crashed without committing** — 64 lines of uncommitted work sat in worktree until tech lead manually reviewed, committed, and cherry-picked.
+- **Only 1 dev initially dispatched for 3 independent issues** — user had to point out dev-2 should handle #900 separately.
+
+### Process improvements
+1. **Fork-per-file equiv tests** — vitest.config.ts changed to `singleFork: false`. Eliminates memory accumulation (+157 more tests pass). Also discovered #923: compiler leaks state between `compile()` calls.
+2. **Always dispatch max parallel devs** for independent issues — don't serialize when work can be parallelized.
+3. **Verify agent received narrowed scope** before it starts coding — check for confirmation message.
