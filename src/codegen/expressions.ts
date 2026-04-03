@@ -11437,6 +11437,23 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
+    // decodeURI, decodeURIComponent, encodeURI, encodeURIComponent — host imports
+    if (
+      (funcName === "decodeURI" || funcName === "decodeURIComponent" ||
+       funcName === "encodeURI" || funcName === "encodeURIComponent") &&
+      expr.arguments.length >= 1
+    ) {
+      const importFuncIdx = ctx.funcMap.get(funcName);
+      if (importFuncIdx !== undefined) {
+        const arg0Type = compileExpression(ctx, fctx, expr.arguments[0]!);
+        if (arg0Type && arg0Type.kind !== "externref") {
+          coerceType(ctx, fctx, arg0Type, { kind: "externref" });
+        }
+        fctx.body.push({ op: "call", funcIdx: importFuncIdx });
+        return { kind: "externref" };
+      }
+    }
+
     // Number(x) — ToNumber coercion
     if (funcName === "Number" && expr.arguments.length >= 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);

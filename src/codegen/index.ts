@@ -1789,6 +1789,8 @@ interface UnifiedCollectorState {
   mathNeedsToUint32: boolean;
   // -- collectParseImports --
   parseNeeded: Set<string>;
+  // -- collectURIImports --
+  uriNeeded: Set<string>;
   // -- collectStringStaticImports --
   needsFromCharCode: boolean;
   // -- collectPromiseImports --
@@ -1841,6 +1843,7 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
     mathNeeded: new Set(),
     mathNeedsToUint32: false,
     parseNeeded: new Set(),
+    uriNeeded: new Set(),
     needsFromCharCode: false,
     promiseNeeded: new Set(),
     promiseNeedConstructor: false,
@@ -2059,6 +2062,9 @@ function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorState, nod
     const name = node.expression.text;
     if (name === "parseInt" || name === "parseFloat") {
       state.parseNeeded.add(name);
+    }
+    if (name === "decodeURI" || name === "decodeURIComponent" || name === "encodeURI" || name === "encodeURIComponent") {
+      state.uriNeeded.add(name);
     }
     if (name === "Number") {
       state.parseNeeded.add("parseFloat");
@@ -2547,6 +2553,12 @@ function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorSt
       const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
       addImport(ctx, "env", name, { kind: "func", typeIdx });
     }
+  }
+
+  // ── collectURIImports finalize ──
+  for (const name of state.uriNeeded) {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", name, { kind: "func", typeIdx });
   }
 
   // ── collectStringStaticImports finalize ──
