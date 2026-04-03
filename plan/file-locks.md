@@ -27,6 +27,9 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/type-coercion.ts | externrefToRef no-fctx path | dev-agent | #826 | 2026-04-03 |
 | src/codegen/string-ops.ts | compileTaggedTemplateExpression | dev-836 | #836 | 2026-04-03 |
 | src/runtime.ts | __defineProperty_value, __defineProperties | dev-856 | #856 | 2026-04-03 |
+| playground/vite.config.ts | entire file | dev-924 | #924 | 2026-04-03 |
+| playground/main.ts | compiler imports (top of file) | dev-924 | #924 | 2026-04-03 |
+| package.json | dev/build scripts | dev-924 | #924 | 2026-04-03 |
 
 <!--
 Example entries:

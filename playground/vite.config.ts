@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import { resolve } from "node:path";
 import { test262Plugin } from "./vite-plugin-test262.js";
 import { dashboardPlugin } from "./vite-plugin-dashboard.js";
+import { compilerBundlePlugin } from "./vite-plugin-compiler-bundle.js";
 
 export default defineConfig({
   root: resolve(import.meta.dirname, ".."),
@@ -9,6 +10,7 @@ export default defineConfig({
   base: "./",
   publicDir: "public",
   plugins: [
+    compilerBundlePlugin(),
     test262Plugin(),
     dashboardPlugin(),
   ],
