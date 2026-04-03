@@ -1283,6 +1283,14 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       ) {
         return true;
       }
+      // Class property declarations (field initializers) inherit super context
+      // e.g. class C extends B { func = () => { super.prop; } }
+      if (ts.isPropertyDeclaration(current) && ts.isClassDeclaration(current.parent)) {
+        return true;
+      }
+      if (ts.isPropertyDeclaration(current) && ts.isClassExpression(current.parent)) {
+        return true;
+      }
       // Arrow functions inherit super property context — don't stop
       if (ts.isArrowFunction(current)) {
         current = current.parent;
