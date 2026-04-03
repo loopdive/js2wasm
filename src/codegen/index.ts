@@ -13236,6 +13236,11 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
         const varType = ctx.checker.getTypeAtLocation(decl);
         const wasmType = resolveWasmType(ctx, varType);
         allocLocal(fctx, name, wasmType);
+        // Skip TDZ flag for declarations with initializers — analyzeTdzAccess
+        // already elides runtime checks when the access is provably after
+        // the declaration in the same function scope. The flag is only needed
+        // when an inner function captures the variable before initialization.
+        if (decl.initializer) continue;
         // Add a TDZ flag local (i32, init 0 = uninitialized)
         if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
         const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
@@ -13265,6 +13270,9 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
             const varType = ctx.checker.getTypeAtLocation(decl);
             const wasmType = resolveWasmType(ctx, varType);
             allocLocal(fctx, name, wasmType);
+            // For-loop initializers with initializers are always safe —
+            // the variable is scoped to the loop and initialized before the body
+            if (decl.initializer) continue;
             if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
             const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
             fctx.tdzFlagLocals.set(name, flagIdx);

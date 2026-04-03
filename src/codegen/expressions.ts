@@ -106,6 +106,7 @@ export {
   compileOptionalPropertyAccess,
   compilePropertyAccess,
   emitNullCheckThrow,
+  isProvablyNonNull,
 } from "./property-access.js";
 export { getCol, getLine, valTypesMatch, VOID_RESULT } from "./shared.js";
 export {
@@ -3848,7 +3849,8 @@ function compileElementAssignment(
     const vecLocal = allocLocal(fctx, `__vec_${fctx.locals.length}`, arrType);
     fctx.body.push({ op: "local.set", index: vecLocal });
     // Null guard: throw TypeError if vec is null (#441)
-    if (arrType.kind === "ref_null") {
+    // Skip when receiver is provably non-null (e.g. const array literal)
+    if (arrType.kind === "ref_null" && !isProvablyNonNull(target.expression, ctx.checker)) {
       const tagIdx = ensureExnTag(ctx);
       fctx.body.push({ op: "local.get", index: vecLocal });
       fctx.body.push({ op: "ref.is_null" } as Instr);
@@ -18284,6 +18286,7 @@ import {
   emitBoundsGuardedArraySet,
   emitNullCheckThrow,
   emitNullGuardedStructGet,
+  isProvablyNonNull,
   typeErrorThrowInstrs,
 } from "./property-access.js";
 export function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undefined {
