@@ -119,7 +119,9 @@ function guardedFuncRefCastInstrs(fctx: FunctionContext, funcTypeIdx: number): I
  * Stack: [ref_null] -> [ref_null]  (value is still on stack, unchanged)
  * The local already holds the value via local.tee before this call.
  */
-function emitReceiverNullGuard(ctx: CodegenContext, fctx: FunctionContext, localIdx: number): void {
+function emitReceiverNullGuard(ctx: CodegenContext, fctx: FunctionContext, localIdx: number, receiverExpr?: ts.Expression): void {
+  // Skip null guard if receiver is provably non-null (e.g. const initialized from array literal)
+  if (receiverExpr && isReceiverNonNull(receiverExpr, ctx.checker)) return;
   // Check if the value in the local is null
   fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "ref.is_null" });
@@ -129,6 +131,33 @@ function emitReceiverNullGuard(ctx: CodegenContext, fctx: FunctionContext, local
     then: throwStringInstrs(ctx, "TypeError: Array method called on null or undefined"),
     else: [],
   });
+}
+
+/** Check if an expression is provably non-null (e.g. const initialized from array literal). */
+function isReceiverNonNull(expr: ts.Expression, checker: ts.TypeChecker): boolean {
+  let inner: ts.Expression = expr;
+  while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
+  switch (inner.kind) {
+    case ts.SyntaxKind.NewExpression:
+    case ts.SyntaxKind.ObjectLiteralExpression:
+    case ts.SyntaxKind.ArrayLiteralExpression:
+      return true;
+    default:
+      break;
+  }
+  if (ts.isIdentifier(inner)) {
+    const sym = checker.getSymbolAtLocation(inner);
+    if (sym) {
+      const decl = sym.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+        const declList = decl.parent;
+        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+          return isReceiverNonNull(decl.initializer, checker);
+        }
+      }
+    }
+  }
+  return false;
 }
 
 // ── Bounds-checked array access ───────────────────────────────────────
@@ -1705,7 +1734,7 @@ function compileArrayPush(
     const vecTmp0 = allocLocal(fctx, `__arr_push_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
     compileExpression(ctx, fctx, propAccess.expression);
     fctx.body.push({ op: "local.tee", index: vecTmp0 });
-    emitReceiverNullGuard(ctx, fctx, vecTmp0);
+    emitReceiverNullGuard(ctx, fctx, vecTmp0, propAccess.expression);
     fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
     if (!ctx.fast) fctx.body.push({ op: "f64.convert_i32_s" });
     return ctx.fast ? { kind: "i32" } : { kind: "f64" };
@@ -1724,7 +1753,7 @@ function compileArrayPush(
   // Compile receiver -> vec ref
   compileExpression(ctx, fctx, propAccess.expression);
   fctx.body.push({ op: "local.tee", index: vecTmp });
-  emitReceiverNullGuard(ctx, fctx, vecTmp);
+  emitReceiverNullGuard(ctx, fctx, vecTmp, propAccess.expression);
 
   // Get length
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
