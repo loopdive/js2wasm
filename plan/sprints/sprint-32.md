@@ -43,8 +43,29 @@ The repo was renamed from js2wasm to js2wasm. The STF application requires: a co
 
 ## Results
 
-(Fill after sprint completion)
+| Issue | Status | Notes |
+|-------|--------|-------|
+| #885 | **Done** | README updated: conformance numbers, comparison table, architecture, CLI flags |
+| #887 | **Done** | ROADMAP.md created: vision, achievements, planned work, sovereign tech relevance |
+| #883 | **Done** | GitHub Pages: fixed nav paths, externalized binaryen, regenerated dashboard data |
+| #886 | **Done** | Conformance report link added to README, report already accessible via dashboard |
+| #888 | **Done** (prior) | Performance benchmarks already committed |
+| #884 | **Deferred** | CI workflow needs #882 (sharded runner) first. Equiv tests could be added without it. |
+
+Sprint 32 baseline was stale (17,252 from old session). Current state: 15,526 pass (36.2%) with honest baseline.
 
 ## Retrospective
 
-(To be filled by SM after sprint completion)
+### What went well
+- All docs/infra tasks completed in one session alongside compiler sprints
+- README and ROADMAP quality is good for STF reviewers
+- GitHub Pages deployment verified by dev-3
+
+### What went wrong
+- #884 (CI) blocked by #882 — should have been identified upfront and either descoped or #882 prioritized
+- Sprint 32 was originally from a prior session with stale baseline numbers — needs updating
+- Mixing compiler sprints (31, 35) with docs sprint (32) in one session caused context-switching overhead
+
+### Remaining for STF
+- #884: Add at minimum equiv tests to GitHub Actions (doesn't need sharded runner)
+- Verify GitHub Pages actually deploys when pushed (can't test locally)
