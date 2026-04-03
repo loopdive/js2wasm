@@ -727,9 +727,8 @@
             sandboxed WebAssembly GC modules.
           </p>
           <div class="hero-actions">
-            <a class="btn-solid" href="./playground/">Open Playground</a>
-            <a class="btn-outline" href="./benchmarks/report.html">Conformance Report</a>
-            <a class="btn-outline" href="./dashboard/">Dashboard</a>
+            <a class="btn-solid" href="./playground/">Live demo</a>
+            <a class="btn-outline" href="./benchmarks/report.html">Javascript compatibility</a>
           </div>
         </section>
       </div>
@@ -738,7 +737,7 @@
 
       <section class="section-pad" id="goals">
         <div class="intro">
-          <h2>Javascript compatible, but more secure and lightweight.</h2>
+          <h2>Javascript compatible.</h2>
           <p>
             Our goal is to make familiar JavaScript and TypeScript code more secure and lightweight so it can run in
             places where a JS engine is too heavy, insecure, or too expensive to embed per module.
@@ -799,7 +798,7 @@
 
       <section class="section-pad code-section" id="approach">
         <div class="code-copy">
-          <h2>Compile, inspect, and benchmark the actual lowering.</h2>
+          <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
             js2wasm parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm operations,
             and keeps host effects isolated at imports and exports. The playground is used as a real development tool
@@ -830,20 +829,17 @@
 
       <section class="section-pad" id="links">
         <div class="intro">
-          <h2>Use the project through focused tools, not a single monolith.</h2>
+          <h2>Safer with module sandboxing.</h2>
           <p>
-            The GitHub Pages site publishes the same artifacts used during development: the playground, the benchmark
-            and conformance report, the dashboard, and the issue graph.
+            While JavaScript in the browser is running in a sandbox, dependencies are not isolated from each other and
+            one foul module risks it all, as has been proven by recent supply chain attacks. In Node.js it is worse any
+            program has full access to the file system an network.
           </p>
         </div>
         <div class="link-grid">
           <a class="link-card" href="./playground/">
             <strong>Playground</strong>
             <span>Compile code, inspect WAT, run examples, and benchmark Wasm against JS.</span>
-          </a>
-          <a class="link-card" href="./dashboard/">
-            <strong>Dashboard</strong>
-            <span>Track sprint plans, issue status, conformance trendlines, and roadmap progress.</span>
           </a>
           <a class="link-card" href="./benchmarks/report.html">
             <strong>Report</strong>
@@ -863,13 +859,14 @@
       <hr class="divider" />
 
       <section class="section-pad cta">
-        <h2>Build JavaScript modules for Wasm hosts without changing the programming model first.</h2>
+        <h2>Project roadmap.</h2>
         <p>
           The project is still incomplete, but the playground, report, and planning artifacts already make the compiler
           direction concrete and inspectable.
         </p>
         <div class="cta-actions">
           <a class="btn-solid" href="./playground/">Open Playground</a>
+          <a class="btn-outline" href="./dashboard/">Project Dashboard</a>
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">View Source</a>
         </div>
       </section>
