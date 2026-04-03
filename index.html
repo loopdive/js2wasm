@@ -449,7 +449,7 @@
       }
 
       .diagram-panel::before {
-        content: '';
+        content: "";
         position: absolute;
         inset: 0;
         background: radial-gradient(ellipse at 50% 0%, rgba(124, 92, 191, 0.08), transparent 70%);
@@ -565,10 +565,10 @@
       }
 
       .es-bar-fill::after {
-        content: '';
+        content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 50%);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, transparent 50%);
         border-radius: 4px;
       }
 
@@ -884,7 +884,10 @@
             </span>
           </h1>
           <p class="hero-sub">
-            js2wasm is a technology study compiler project. Run JavaScript and NPM packages without a runtime. Isolate dependencies in sandboxed WebAssembly GC modules to prevent supply chain attacks and enable portable dependency injection. Foundational infrastructure for the next generation ecosystem.
+            The js2wasm compiler project is a technology study for next generation Javascript. Run JavaScript and NPM
+            packages without a runtime. Isolate dependencies in sandboxed WebAssembly GC modules to prevent supply chain
+            attacks and enable portable dependency injection. Foundational infrastructure for the next generation
+            ecosystem.
           </p>
           <div class="hero-actions">
             <a class="btn-solid" href="./playground/">Live demo</a>
@@ -942,8 +945,8 @@
             <div class="stat-label">test262 passes in the default official scope</div>
           </div>
           <div class="stat-item">
-            <div class="stat-number">48k</div>
-            <div class="stat-label">full-suite tests tracked including proposal coverage</div>
+            <div class="stat-number">43k</div>
+            <div class="stat-label">standardized ECMAScript feature tests tracked (no proposals)</div>
           </div>
           <div class="stat-item">
             <div class="stat-number" id="performance-score">195</div>
@@ -957,7 +960,13 @@
           <div class="diagram-panel">
             <h3 class="diagram-title">Test262 Conformance</h3>
             <div class="donut-wrap">
-              <svg id="conformance-donut" width="200" height="200" viewBox="0 0 200 200" aria-label="Conformance donut chart"></svg>
+              <svg
+                id="conformance-donut"
+                width="200"
+                height="200"
+                viewBox="0 0 200 200"
+                aria-label="Conformance donut chart"
+              ></svg>
               <div class="donut-center">
                 <div class="donut-pct" id="donut-pct">—</div>
                 <div class="donut-sub">pass rate</div>
@@ -1333,14 +1342,14 @@
       })();
 
       (async function renderConformanceDiagrams() {
-        const donutSvg = document.getElementById('conformance-donut');
-        const donutPct = document.getElementById('donut-pct');
-        const donutLegend = document.getElementById('donut-legend');
-        const esTimeline = document.getElementById('es-timeline');
+        const donutSvg = document.getElementById("conformance-donut");
+        const donutPct = document.getElementById("donut-pct");
+        const donutLegend = document.getElementById("donut-legend");
+        const esTimeline = document.getElementById("es-timeline");
         if (!donutSvg || !donutPct || !donutLegend || !esTimeline) return;
 
         try {
-          const resp = await fetch('./benchmarks/results/test262-report.json');
+          const resp = await fetch("./benchmarks/results/test262-report.json");
           if (!resp.ok) return;
           const report = await resp.json();
           const s = report?.summary;
@@ -1354,59 +1363,74 @@
           if (total <= 0) return;
 
           const pct = ((pass / total) * 100).toFixed(1);
-          donutPct.textContent = pct + '%';
+          donutPct.textContent = pct + "%";
 
           // Draw donut
           const segments = [
-            { value: pass, color: '#34d399', label: 'Pass' },
-            { value: fail, color: '#f87171', label: 'Fail' },
-            { value: ce, color: '#fbbf24', label: 'CE' },
-            { value: skip, color: '#6b7280', label: 'Skip' },
+            { value: pass, color: "#34d399", label: "Pass" },
+            { value: fail, color: "#f87171", label: "Fail" },
+            { value: ce, color: "#fbbf24", label: "CE" },
+            { value: skip, color: "#6b7280", label: "Skip" },
           ];
-          const cx = 100, cy = 100, r = 80, stroke = 24;
+          const cx = 100,
+            cy = 100,
+            r = 80,
+            stroke = 24;
           const circumference = 2 * Math.PI * r;
           let offset = -circumference / 4; // start at top
 
-          segments.forEach(seg => {
+          segments.forEach((seg) => {
             const len = (seg.value / total) * circumference;
             if (len <= 0) return;
-            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            circle.setAttribute('cx', String(cx));
-            circle.setAttribute('cy', String(cy));
-            circle.setAttribute('r', String(r));
-            circle.setAttribute('fill', 'none');
-            circle.setAttribute('stroke', seg.color);
-            circle.setAttribute('stroke-width', String(stroke));
-            circle.setAttribute('stroke-dasharray', len + ' ' + (circumference - len));
-            circle.setAttribute('stroke-dashoffset', String(-offset));
-            circle.style.filter = 'drop-shadow(0 0 4px ' + seg.color + '40)';
+            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            circle.setAttribute("cx", String(cx));
+            circle.setAttribute("cy", String(cy));
+            circle.setAttribute("r", String(r));
+            circle.setAttribute("fill", "none");
+            circle.setAttribute("stroke", seg.color);
+            circle.setAttribute("stroke-width", String(stroke));
+            circle.setAttribute("stroke-dasharray", len + " " + (circumference - len));
+            circle.setAttribute("stroke-dashoffset", String(-offset));
+            circle.style.filter = "drop-shadow(0 0 4px " + seg.color + "40)";
             donutSvg.appendChild(circle);
             offset += len;
           });
 
           // Legend
-          segments.forEach(seg => {
-            const item = document.createElement('div');
-            item.className = 'legend-item';
-            item.innerHTML = '<span class="legend-dot" style="background:' + seg.color + '"></span>'
-              + seg.label
-              + '<span class="legend-count">' + seg.value.toLocaleString() + '</span>';
+          segments.forEach((seg) => {
+            const item = document.createElement("div");
+            item.className = "legend-item";
+            item.innerHTML =
+              '<span class="legend-dot" style="background:' +
+              seg.color +
+              '"></span>' +
+              seg.label +
+              '<span class="legend-count">' +
+              seg.value.toLocaleString() +
+              "</span>";
             donutLegend.appendChild(item);
           });
 
           // ES edition timeline — load pre-computed edition coverage
           try {
-            const edResp = await fetch('./benchmarks/results/test262-editions.json');
+            const edResp = await fetch("./benchmarks/results/test262-editions.json");
             if (edResp.ok) {
               const editions = await edResp.json();
               if (Array.isArray(editions)) {
-                editions.forEach(ed => {
+                editions.forEach((ed) => {
                   if (!ed || ed.total <= 0) return;
-                  const row = document.createElement('div');
-                  row.className = 'es-row';
-                  row.innerHTML = '<span class="es-label">' + ed.edition + '</span>'
-                    + '<div class="es-bar-track"><div class="es-bar-fill" style="width:' + ed.pct + '%"></div></div>'
-                    + '<span class="es-pct">' + ed.pct + '%</span>';
+                  const row = document.createElement("div");
+                  row.className = "es-row";
+                  row.innerHTML =
+                    '<span class="es-label">' +
+                    ed.edition +
+                    "</span>" +
+                    '<div class="es-bar-track"><div class="es-bar-fill" style="width:' +
+                    ed.pct +
+                    '%"></div></div>' +
+                    '<span class="es-pct">' +
+                    ed.pct +
+                    "%</span>";
                   esTimeline.appendChild(row);
                 });
               }
