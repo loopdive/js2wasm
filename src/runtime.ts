@@ -773,25 +773,53 @@ function resolveImport(
             throw new TypeError("Object.defineProperties called on non-object");
           }
           if (descsObj == null) return obj;
+          // Helper to get keys from plain or opaque objects
+          const getKeys = (o: any): string[] => {
+            if (_isWasmStruct(o)) {
+              const exps = callbackState?.getExports();
+              const fieldNames = _getStructFieldNames(o, exps) ?? [];
+              const sc = _wasmStructProps.get(o);
+              if (sc) for (const k of Object.keys(sc)) if (!fieldNames.includes(k)) fieldNames.push(k);
+              return fieldNames;
+            }
+            return Object.keys(o);
+          };
+          // Helper to get a field value from plain or opaque object
+          const getField = (o: any, field: string): any => {
+            if (!_isWasmStruct(o)) return o[field];
+            let v = _sidecarGet(o, field);
+            if (v === undefined) {
+              const exps = callbackState?.getExports();
+              const g = exps?.[`__sget_${field}`];
+              if (typeof g === "function") v = g(o);
+            }
+            return v;
+          };
           try {
             Object.defineProperties(obj, descsObj);
           } catch (e) {
             if (e instanceof TypeError) {
               const msg = (e as Error).message || "";
               if (msg.includes("opaque") || msg.includes("WebAssembly")) {
-                // WasmGC struct — validate and apply each descriptor via sidecar
+                // Opaque obj or descsObj — apply via sidecar using safe key access
                 const sDescs = _getSidecarDescs(obj);
-                const keys = Object.keys(descsObj);
+                const keys = getKeys(descsObj);
                 for (const key of keys) {
-                  const rawDesc = descsObj[key];
+                  const rawDesc = getField(descsObj, key);
                   if (rawDesc && typeof rawDesc === "object") {
                     const desc: PropertyDescriptor = {};
-                    if ("value" in rawDesc) desc.value = rawDesc.value;
-                    if ("writable" in rawDesc) desc.writable = !!rawDesc.writable;
-                    if ("enumerable" in rawDesc) desc.enumerable = !!rawDesc.enumerable;
-                    if ("configurable" in rawDesc) desc.configurable = !!rawDesc.configurable;
-                    if ("get" in rawDesc) desc.get = rawDesc.get;
-                    if ("set" in rawDesc) desc.set = rawDesc.set;
+                    const val = getField(rawDesc, "value");
+                    if (val !== undefined) desc.value = val;
+                    const wr = getField(rawDesc, "writable");
+                    if (wr !== undefined) desc.writable = !!wr;
+                    const en = getField(rawDesc, "enumerable");
+                    if (en !== undefined) desc.enumerable = !!en;
+                    const conf = getField(rawDesc, "configurable");
+                    if (conf !== undefined) desc.configurable = !!conf;
+                    const getFn = getField(rawDesc, "get");
+                    if (getFn !== undefined) desc.get = getFn;
+                    const setFn = getField(rawDesc, "set");
+                    if (setFn !== undefined) desc.set = setFn;
                     const newFlags = _validatePropertyDescriptor(sDescs, key, desc);
                     sDescs.set(key, newFlags);
                     if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
@@ -803,11 +831,12 @@ function resolveImport(
               }
             } else {
               // Non-TypeError — apply via sidecar
-              const keys = Object.keys(descsObj);
+              const keys = getKeys(descsObj);
               for (const key of keys) {
-                const desc = descsObj[key];
-                if (desc && typeof desc === "object" && "value" in desc) {
-                  _sidecarSet(obj, key, desc.value);
+                const rawDesc = getField(descsObj, key);
+                if (rawDesc && typeof rawDesc === "object") {
+                  const val = getField(rawDesc, "value");
+                  if (val !== undefined) _sidecarSet(obj, key, val);
                 }
               }
             }
@@ -837,27 +866,115 @@ function resolveImport(
           arr.push(val);
         };
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
+      // hasOwnProperty runtime check for externref/any receivers
+      if (name === "__hasOwnProperty")
+        return (obj: any, key: any): number => {
+          if (obj == null) return 0;
+          if (!_isWasmStruct(obj)) {
+            try {
+              return Object.prototype.hasOwnProperty.call(obj, key) ? 1 : 0;
+            } catch {
+              return 0;
+            }
+          }
+          // WasmGC struct: check sidecar properties
+          const sc = _wasmStructProps.get(obj);
+          if (sc && key in sc) return 1;
+          // Check struct field names via exported helpers
+          const exports = callbackState?.getExports();
+          const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+          return fieldNames.includes(String(key)) ? 1 : 0;
+        };
+      // propertyIsEnumerable runtime check for externref/any receivers
+      if (name === "__propertyIsEnumerable")
+        return (obj: any, key: any): number => {
+          if (obj == null) return 0;
+          if (!_isWasmStruct(obj)) {
+            try {
+              return Object.prototype.propertyIsEnumerable.call(obj, key) ? 1 : 0;
+            } catch {
+              return 0;
+            }
+          }
+          // WasmGC struct: check sidecar descriptor flags
+          const descs = _wasmPropDescs.get(obj);
+          if (descs) {
+            const flags = descs.get(String(key));
+            if (flags !== undefined) return (flags & _SC_ENUMERABLE) ? 1 : 0;
+          }
+          // Sidecar props without explicit descriptor are enumerable
+          const sc = _wasmStructProps.get(obj);
+          if (sc && String(key) in sc) return 1;
+          // Check struct field names (always enumerable)
+          const exports = callbackState?.getExports();
+          const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+          return fieldNames.includes(String(key)) ? 1 : 0;
+        };
       // for-in key enumeration: returns a JS array of enumerable string keys
       if (name === "__for_in_keys")
         return (obj: any) => {
           if (obj == null) return [];
-          // Plain JS object — use for-in (includes prototype chain)
+          // Plain JS object — try native for-in (includes prototype chain)
           if (!_isWasmStruct(obj)) {
-            const keys: string[] = [];
-            for (const k in obj) keys.push(k);
-            return keys;
-          }
-          // WasmGC struct — combine struct field names + sidecar properties
-          const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(obj, exports) ?? [];
-          const sc = _wasmStructProps.get(obj);
-          if (sc) {
-            const sidecarKeys = Object.keys(sc);
-            for (const k of sidecarKeys) {
-              if (!fieldNames.includes(k)) fieldNames.push(k);
+            try {
+              const keys: string[] = [];
+              for (const k in obj) keys.push(k);
+              return keys;
+            } catch (e: any) {
+              // Prototype chain may include an opaque WasmGC struct — fall through to manual walk
+              if (!(e instanceof TypeError) || !(typeof e.message === "string" && (e.message.includes("opaque") || e.message.includes("WebAssembly")))) {
+                throw e;
+              }
             }
           }
-          return fieldNames;
+          // Manual prototype chain walk — handles WasmGC structs and mixed chains
+          const exports = callbackState?.getExports();
+          const keys: string[] = [];
+          const seen = new Set<string>();
+          let current: any = obj;
+          while (current != null) {
+            if (_isWasmStruct(current)) {
+              // WasmGC struct — get field names from exported helper
+              const fieldNames = _getStructFieldNames(current, exports) ?? [];
+              for (const k of fieldNames) {
+                if (!seen.has(k)) { keys.push(k); seen.add(k); }
+              }
+              // Also include enumerable sidecar properties
+              const sc = _wasmStructProps.get(current);
+              if (sc) {
+                const descs = _wasmPropDescs.get(current);
+                for (const k of Object.keys(sc)) {
+                  if (seen.has(k)) continue;
+                  // Check enumerability — sidecar props without explicit descriptor are enumerable
+                  if (descs) {
+                    const flags = descs.get(k);
+                    if (flags !== undefined && (flags & _SC_DEFINED) && !(flags & _SC_ENUMERABLE)) continue;
+                  }
+                  keys.push(k);
+                  seen.add(k);
+                }
+              }
+            } else {
+              // Plain JS object — use Object.keys for own enumerable, respecting shadowing
+              try {
+                for (const k of Object.keys(current)) {
+                  if (!seen.has(k)) { keys.push(k); seen.add(k); }
+                }
+                // Mark all own properties (including non-enumerable) as seen for shadowing
+                for (const k of Object.getOwnPropertyNames(current)) {
+                  seen.add(k);
+                }
+              } catch {
+                break;
+              }
+            }
+            try {
+              current = Object.getPrototypeOf(current);
+            } catch {
+              break;
+            }
+          }
+          return keys;
         };
       if (name === "__for_in_len")
         return (keys: any) => {
