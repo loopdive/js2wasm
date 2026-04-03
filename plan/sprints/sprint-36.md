@@ -68,6 +68,7 @@ The sprints were executed out of order this session. Renumber to match actual ex
 |-------|-------|-------|--------|--------|
 | 15 | #931 | Error location reporting: 83% of CE errors lack line numbers | **High** — DX quality | Medium |
 | 16 | #927 | Missing early/parse error detection (840 FAIL) | **High** — correctness + conformance | Hard |
+| 17 | #932 | Landing page: replace perf score with JS feature coverage % | Medium — clarity | Easy |
 
 ## Dev paths
 
