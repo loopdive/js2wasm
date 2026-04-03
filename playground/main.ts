@@ -12,9 +12,10 @@ import {
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as ts from "typescript";
 import "./ts-lib-files.js";
-import { compile, compileMulti } from "../src/index.js";
+// Use pre-built bundles — importing raw src/ causes Vite to OOM transforming 15K+ lines
+import { compile, compileMulti } from "../scripts/compiler-bundle.mjs";
 import { optimizeBinaryAsync } from "../src/optimize.js";
-import { buildImports, buildStringConstants, instantiateWasm } from "../src/runtime.js";
+import { buildImports, buildStringConstants, instantiateWasm } from "../scripts/runtime-bundle.mjs";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
 import { LayoutManager, clearSavedLayout } from "./layout.js";
