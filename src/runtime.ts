@@ -15,6 +15,95 @@ import type { ImportDescriptor, ImportIntent, ImportPolicy } from "./index.js";
  */
 const _wasmStructProps = new WeakMap<object, Record<string | symbol, any>>();
 
+/**
+ * Sidecar property descriptor store for WasmGC structs.
+ *
+ * Stores property descriptor flags per property on WasmGC structs, enabling
+ * spec-compliant ValidateAndApplyPropertyDescriptor behavior (ES spec 9.1.6.3)
+ * for Object.defineProperty on opaque objects.
+ *
+ * Key: the WasmGC struct object. Value: map of property name -> descriptor flags.
+ * Flags: bit 0 = writable, bit 1 = enumerable, bit 2 = configurable, bit 3 = defined.
+ */
+const _wasmPropDescs = new WeakMap<object, Map<string | symbol, number>>();
+
+const _SC_WRITABLE = 1;
+const _SC_ENUMERABLE = 2;
+const _SC_CONFIGURABLE = 4;
+const _SC_DEFINED = 8;
+const _SC_ACCESSOR = 16;
+
+function _getSidecarDescs(obj: object): Map<string | symbol, number> {
+  let m = _wasmPropDescs.get(obj);
+  if (!m) {
+    m = new Map();
+    _wasmPropDescs.set(obj, m);
+  }
+  return m;
+}
+
+/**
+ * Validate a defineProperty call against existing sidecar property descriptor.
+ * Implements ES spec 9.1.6.3 ValidateAndApplyPropertyDescriptor for WasmGC structs.
+ * Throws TypeError if the redefinition violates non-configurable constraints.
+ * Returns the new flags to store.
+ */
+function _validatePropertyDescriptor(
+  descs: Map<string | symbol, number>,
+  prop: string | symbol,
+  desc: PropertyDescriptor,
+): number {
+  const existing = descs.get(prop);
+  // Compute new flags — for Object.defineProperty, unspecified attributes default to false
+  let newFlags = _SC_DEFINED;
+  if (desc.writable) newFlags |= _SC_WRITABLE;
+  if (desc.enumerable) newFlags |= _SC_ENUMERABLE;
+  if (desc.configurable) newFlags |= _SC_CONFIGURABLE;
+  if (desc.get !== undefined || desc.set !== undefined) newFlags |= _SC_ACCESSOR;
+
+  if (existing === undefined) return newFlags; // First definition
+
+  const isConfigurable = !!(existing & _SC_CONFIGURABLE);
+  if (isConfigurable) return newFlags; // Configurable — any change OK
+
+  // Non-configurable: validate constraints (ES spec 9.1.6.3 step 7)
+  if (desc.configurable === true) {
+    throw new TypeError("Cannot redefine property: " + String(prop));
+  }
+  if (desc.enumerable !== undefined) {
+    const wasEnumerable = !!(existing & _SC_ENUMERABLE);
+    if (desc.enumerable !== wasEnumerable) {
+      throw new TypeError("Cannot redefine property: " + String(prop));
+    }
+  }
+  // Cannot change data<->accessor on non-configurable
+  const wasAccessor = !!(existing & _SC_ACCESSOR);
+  const isAccessor = desc.get !== undefined || desc.set !== undefined;
+  if (isAccessor && !wasAccessor) {
+    throw new TypeError("Cannot redefine property: " + String(prop));
+  }
+  if (!isAccessor && wasAccessor && (desc.value !== undefined || desc.writable !== undefined)) {
+    throw new TypeError("Cannot redefine property: " + String(prop));
+  }
+  // Data property: writable checks
+  if (!wasAccessor && !isAccessor) {
+    const wasWritable = !!(existing & _SC_WRITABLE);
+    if (!wasWritable) {
+      if (desc.writable === true) {
+        throw new TypeError("Cannot redefine property: " + String(prop));
+      }
+      if (desc.value !== undefined) {
+        throw new TypeError("Cannot redefine property: " + String(prop));
+      }
+    }
+  }
+
+  // Preserve existing flags for non-configurable (can only narrow writable)
+  let resultFlags = existing;
+  if (desc.writable === false) resultFlags &= ~_SC_WRITABLE;
+  return resultFlags;
+}
+
 /** Return true when `obj` is a WasmGC struct (opaque to JS). */
 function _isWasmStruct(obj: any): boolean {
   if (obj == null || typeof obj !== "object") return false;
@@ -658,30 +747,68 @@ function resolveImport(
           try {
             Object.defineProperty(obj, prop, desc);
           } catch (e) {
-            // Re-throw TypeErrors (spec-mandated: non-configurable redefinition, etc.)
-            if (e instanceof TypeError) throw e;
-            // WasmGC struct or frozen/sealed — store value in sidecar
-            if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
+            if (e instanceof TypeError) {
+              // Distinguish WasmGC "opaque" errors from spec-mandated errors.
+              const msg = (e as Error).message || "";
+              if (msg.includes("opaque") || msg.includes("WebAssembly")) {
+                // WasmGC struct — validate against sidecar descriptors, then store
+                const sDescs = _getSidecarDescs(obj);
+                const newFlags = _validatePropertyDescriptor(sDescs, prop, desc);
+                sDescs.set(prop, newFlags);
+                if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
+              } else {
+                // Spec-mandated TypeError (non-configurable redefinition on real JS objects)
+                throw e;
+              }
+            } else {
+              // Non-TypeError — store value in sidecar
+              if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
+            }
           }
           return obj;
         };
       if (name === "__defineProperties")
-        return (obj: any, descs: any) => {
+        return (obj: any, descsObj: any) => {
           if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
             throw new TypeError("Object.defineProperties called on non-object");
           }
-          if (descs == null) return obj;
+          if (descsObj == null) return obj;
           try {
-            Object.defineProperties(obj, descs);
+            Object.defineProperties(obj, descsObj);
           } catch (e) {
-            // Re-throw TypeErrors (spec-mandated: non-configurable redefinition, etc.)
-            if (e instanceof TypeError) throw e;
-            // WasmGC struct — apply each descriptor individually via sidecar
-            const keys = Object.keys(descs);
-            for (const key of keys) {
-              const desc = descs[key];
-              if (desc && typeof desc === "object" && "value" in desc) {
-                _sidecarSet(obj, key, desc.value);
+            if (e instanceof TypeError) {
+              const msg = (e as Error).message || "";
+              if (msg.includes("opaque") || msg.includes("WebAssembly")) {
+                // WasmGC struct — validate and apply each descriptor via sidecar
+                const sDescs = _getSidecarDescs(obj);
+                const keys = Object.keys(descsObj);
+                for (const key of keys) {
+                  const rawDesc = descsObj[key];
+                  if (rawDesc && typeof rawDesc === "object") {
+                    const desc: PropertyDescriptor = {};
+                    if ("value" in rawDesc) desc.value = rawDesc.value;
+                    if ("writable" in rawDesc) desc.writable = !!rawDesc.writable;
+                    if ("enumerable" in rawDesc) desc.enumerable = !!rawDesc.enumerable;
+                    if ("configurable" in rawDesc) desc.configurable = !!rawDesc.configurable;
+                    if ("get" in rawDesc) desc.get = rawDesc.get;
+                    if ("set" in rawDesc) desc.set = rawDesc.set;
+                    const newFlags = _validatePropertyDescriptor(sDescs, key, desc);
+                    sDescs.set(key, newFlags);
+                    if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
+                  }
+                }
+              } else {
+                // Spec-mandated TypeError on real JS objects
+                throw e;
+              }
+            } else {
+              // Non-TypeError — apply via sidecar
+              const keys = Object.keys(descsObj);
+              for (const key of keys) {
+                const desc = descsObj[key];
+                if (desc && typeof desc === "object" && "value" in desc) {
+                  _sidecarSet(obj, key, desc.value);
+                }
               }
             }
           }
