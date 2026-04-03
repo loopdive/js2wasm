@@ -1097,7 +1097,11 @@
       (function animateGlowWave() {
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
         const grad = document.getElementById("puzzle-glow-gradient");
-        if (!grad) return;
+        const glowPath = document.getElementById("puzzle-bg-glow");
+        if (!grad || !glowPath) return;
+
+        // Remove blur filter during animation to avoid expensive per-frame repaints
+        glowPath.style.filter = "none";
 
         const startX1 = -30, endX1 = 50;
         const startX2 = -5, endX2 = 75;
@@ -1116,6 +1120,9 @@
           grad.setAttribute("x2", (startX2 + (endX2 - startX2) * e) + "%");
           if (t < 1) {
             raf = requestAnimationFrame(step);
+          } else {
+            // Re-apply blur only on the frozen final state (single repaint)
+            glowPath.style.filter = "";
           }
         };
 
@@ -1234,10 +1241,12 @@
               if (!span) {
                 typeEl.classList.remove("is-typing");
                 typeEl.classList.add("is-done");
-                cycleTimer = window.setTimeout(() => {
-                  textIndex = (textIndex + 1) % texts.length;
-                  startCycle(texts[textIndex]);
-                }, 5600);
+                if (textIndex < texts.length - 1) {
+                  cycleTimer = window.setTimeout(() => {
+                    textIndex += 1;
+                    startCycle(texts[textIndex]);
+                  }, 5600);
+                }
                 return;
               }
               requestAnimationFrame(() => {
