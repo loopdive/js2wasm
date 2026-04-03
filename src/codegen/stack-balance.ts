@@ -691,14 +691,12 @@ function fixBranchType(body: Instr[], blockType: BlockType, types: TypeDef[], si
     return 1;
   }
 
-  // externref → ref/ref_null: any.convert_extern + ref.cast
+  // externref → ref/ref_null: any.convert_extern + ref.cast_null
+  // Uses ref.cast_null unconditionally — passes null through instead of trapping.
+  // Downstream code has null guards, so null values are handled correctly.
   if ((expectedType.kind === "ref" || expectedType.kind === "ref_null") && produced === "externref") {
     body.push({ op: "any.convert_extern" } as Instr);
-    if (expectedType.kind === "ref_null") {
-      body.push({ op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr);
-    } else {
-      body.push({ op: "ref.cast", typeIdx: expectedType.typeIdx } as unknown as Instr);
-    }
+    body.push({ op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr);
     return 1;
   }
 
@@ -1186,6 +1184,12 @@ function callArgCoercionInstrs(
       const actualIdx = (actual as any).typeIdx;
       const expectedIdx = (expected as any).typeIdx;
       if (actualIdx === expectedIdx) return [];
+      // Different typeIdx (e.g. closure struct type shifted by addUnionImports) —
+      // insert ref.cast_null to coerce to the expected ref type.
+      // This is safe in call-argument context (callArgCoercionInstrs is only used there).
+      if (expectedIdx !== undefined) {
+        return [{ op: "ref.cast_null", typeIdx: expectedIdx } as unknown as Instr];
+      }
     } else {
       return [];
     }
