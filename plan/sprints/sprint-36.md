@@ -55,6 +55,7 @@ Sprint 36 focuses entirely on contributor readiness and code quality — no new 
 | 16 | #927 | Missing early/parse error detection (840 FAIL) | **High** — correctness + conformance | Hard |
 | 17 | #932 | Landing page: replace perf score with JS feature coverage % | Medium — clarity | Easy |
 | 18 | #933 | Migrate report.html charts to shared t262-charts.js web components | Medium — DRY | Medium |
+| 19 | #942 | JS feature compatibility report ranked by real-world importance | **High** — user/contributor clarity | Medium |
 
 ## Dev paths
 
