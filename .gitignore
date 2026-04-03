@@ -22,6 +22,9 @@ scripts/compiler-bundle.mjs
 scripts/runtime-bundle.mjs
 tmp_*.ts
 tmp_*.mts
+_tmp_*.ts
+tests/_tmp_*
+tests/test*_check*.ts
 isolate-*.log
 tests/fixtures/*.wasm
 tests/fixtures/*.wat
