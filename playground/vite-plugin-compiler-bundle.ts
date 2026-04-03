@@ -109,16 +109,12 @@ export const instantiateWasm = __mod.instantiateWasm;
             'from "/playground/stubs/path-shim.js"',
           );
 
-          // Stub out Node.js built-in dynamic imports — browsers can't fetch node: URLs.
-          // Replace import("node:xxx") with Promise.resolve(null) to avoid CORS errors.
-          code = code.replace(
-            /import\(\s*\/\*[^*]*\*\/\s*"node:[^"]+"\s*\)/g,
-            "Promise.resolve(null)",
-          );
-          code = code.replace(
-            /import\(\s*"node:[^"]+"\s*\)/g,
-            "Promise.resolve(null)",
-          );
+          // Stub out Node.js built-in references — browsers can't fetch node: URLs.
+          // Replace ALL "node:xxx" string literals with empty strings so
+          // safeImport("node:path") becomes safeImport("") which fails silently,
+          // and import("node:fs") becomes import("") which also fails silently.
+          // Also handle __require("node:xxx") calls from esbuild's CJS shims.
+          code = code.replace(/"node:(fs|path|module|url|os|child_process|crypto)"/g, '""');
 
           bundleCache = code;
         }
