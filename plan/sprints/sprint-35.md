@@ -1,118 +1,104 @@
-# Sprint 35
+# Sprint 35 — Push Toward 43%
 
 **Date**: 2026-04-03
-**Goal**: CE reduction + highest-impact runtime fixes. Target: 15,500+ pass.
-**Baseline**: 15,187 pass / 42,934 official (35.4%) — post sprint-31 session
+**Goal**: Push toward 43% — medium-difficulty high-impact runtime fixes
+**Baseline**: 17,583 pass / 43,120 official (40.8%) — post sprint-33
 
 ## Context
 
-Sprint 31 (redo) landed safely: +84 pass, -266 CE via incremental fixes. The remaining CE backlog is 1,433 (down from 1,699). Top opportunities:
+After sprints 31/35 (CE reduction + incremental fixes) and 33 (benchmark recovery), this sprint targets the medium-difficulty runtime failures that don't require full architectural features.
 
-### Current CE breakdown (1,433 total)
-| Pattern | Count | Issue |
-|---------|-------|-------|
-| undefined AST node (runner interaction) | 150 | #828 (investigate wrapper) |
-| fixture tests not supported | 172 | infra (skip) |
-| return_call not enough args (class methods) | ~120 | #822 WI1 follow-up |
-| call[0] type mismatch | ~62 | #822 new WI |
-| __call_toString fallthru type error | ~20 | #822 new WI |
-| struct.new field type | ~17 | #822 WI4 |
-| Other | ~892 | various |
+## Task queue
 
-### Highest-impact FAIL issues (ready)
-| Issue | Impact | Notes |
-|-------|--------|-------|
-| #855 | 210 FAIL | Promise/async error handling |
-| #856 | 136 FAIL | Wrong error type (TypeError expected) |
-| #858 | 182 FAIL | Worker/timeout exits + eval null deref |
-| #853 | 58 FAIL | Opaque Wasm objects |
-| #845 | 340 CE | Misc CE: object literals, RegExp-on-X, for-in/of edges |
-| #829 | 141 CE | Unsupported assignment targets |
-| #831 | 242 FAIL | Negative test gaps |
-| #844 | 85 CE | Unsupported new expression built-ins |
+Issues already completed in sprint 35 are removed. Remaining:
 
-## Task queue (ordered by impact)
+| Order | Issue | Impact | Notes |
+|-------|-------|--------|-------|
+| 1 | #858 | 182 FAIL | Worker/timeout exits + eval null deref |
+| 2 | #863 | 70 FAIL | decodeURI/encodeURI missing |
+| 3 | #845 | 340 CE | Misc CE: object literals, RegExp, for-in/of edges (needs architect) |
+| 4 | #855 | 210 FAIL | Promise/async error handling |
+| 5 | #853 | 58 FAIL | Opaque Wasm objects in for-in/Object.create |
+| 6 | #849 | 200 FAIL | Mapped arguments object sync (needs architect) |
+| 7 | #822 WI4 | 17 CE | struct.new type stack inference (deferred from s31) |
+| 8 | #924 | infra | Vite dev server 9GB OOM — playground unusable locally |
+| 9 | #925 | presentation | Landing page: conformance circle + ES edition timeline diagrams |
 
-| Order | Issue | Impact | Risk | Status |
-|-------|-------|--------|------|--------|
-| 1 | #840 | 31 CE | Low | **Done** — array 0-arg concat/push/splice |
-| 2 | #842 | 14 CE | Low | **Done** — new Array() externref fallback |
-| 3 | #831 | 242 FAIL | Low | **Done** — negative test early error detection (+72 pass) |
-| 4 | #836 | 20 CE | Low | **Done** — tagged template Identifier/CallExpression tags |
-| 5 | #843 | 20 CE | Medium | **Done** — super in object literals + base classes |
-| 6 | #856 | 136 FAIL | Medium | **Done** — ValidateAndApplyPropertyDescriptor (+275 pass combined) |
-| 7 | #834 | 216 skip | Easy | **Done** — ES2025 Set methods + collection extern classes |
-| — | #845 | 340 CE | Medium | Deferred to sprint 34 (needs architect) |
-| — | #855 | 210 FAIL | Medium | Deferred to sprint 34 |
-| — | #822 WI4 | 17 CE | Medium | Deferred to sprint 34 |
+### Already done (removed from queue)
+- ~~#856~~ — done in sprint 35 (ValidateAndApplyPropertyDescriptor)
+- ~~#844~~ — done (prior session)
+- ~~#831~~ — done in sprint 35 (negative test early error detection)
+- ~~#840~~ — done in sprint 35 (array 0-arg)
+- ~~#829~~ — done (prior session)
 
-## Sprint 35 Session Results (2026-04-03)
+### Stretch / architectural (not in this sprint)
+- #797 — Property descriptor subsystem (~5,000 FAIL) — needs full architect spec
+- #799 — Prototype chain (~2,500 FAIL) — needs full architect spec
+- #831 remaining — yield-as-id, await-as-id patterns (159/242 done, 83 remain)
 
-**Test262 final:** 15,526 pass / 42,934 official (36.2%) — **+339 from sprint baseline (15,187)**
-**CE:** 1,394 (down from 1,433, -39)
-**Equiv tests:** 999 pass / 1,224 total (+4 from baseline)
+## Dev paths
 
-### Analysis of remaining FAIL patterns
-| Pattern | Count | Actionable? |
-|---------|-------|------------|
-| null pointer in assert_throws | 1,426 | No (requires eval support) |
-| WebAssembly objects are opaque | 1,087 | Partially (#853, needs property model) |
-| illegal cast in test() | 1,011 | Partially (#826, incremental progress) |
-| expected parse/early error | 904 | Yes (#831, validation pass) |
-| BindingElement null access | 205 | Yes (#821) |
-| Object.getOwnPropertyDescriptor | 188 | Yes (#797, property descriptors) |
+**Dev-1**: #858 → #863 → #853 (runtime error fixes)
+**Dev-2**: #845 (needs architect first) → #855 → #849
 
-### Key insight
-The biggest pass-count gains now require **architectural features**, not incremental CE fixes:
-1. Property descriptor subsystem (#797) — ~5,000 FAIL potential
-2. Prototype chain (#799) — ~2,500 FAIL potential  
-3. SyntaxError detection (#831) — 904 FAIL
-4. eval support — 1,426 FAIL (very hard)
+## Expected impact
 
-CE reduction is approaching diminishing returns (1,433 → fragmented small patterns).
+| Issue | Est. tests fixed |
+|-------|-----------------|
+| #858 | ~100 |
+| #863 | ~50 |
+| #845 | ~200 |
+| #855 | ~100 |
+| #853 | ~40 |
+| #849 | ~100 |
+| **Total** | **~590** |
+
+## Results
+
+**Baseline**: 17,583 pass / 43,120 official (40.8%)
+**Final**: 17,717 pass / 43,120 official (41.1%) — pending #831 v2 merge
+
+| Issue | Pre-merge | Post-merge | Delta | Status |
+|-------|-----------|------------|-------|--------|
+| #858 + #863 | 17,583 | 17,782 | +199 | merged (globalThis + URI encoding) |
+| #853 | 17,782 | 17,782 | +0 (runtime fix) | merged (opaque object enumeration) |
+| #855 | 17,583 | 17,717 | +134 | merged (Promise resolution + async) |
+| #845 | — | — | — | already fixed by prior work |
+| #849 | — | — | — | already fixed by prior work |
+| #822 WI4 | — | — | — | already fixed by prior work |
+| #924 | — | — | infra | merged (Vite OOM → 84MB) |
+| #925 | — | — | frontend | merged (chart web components) |
+| #831 v2 | 17,717 | pending | ~+150 est. | tester running |
+
+**Additional work completed:**
+- #926-#931: PO error pattern analysis, 6 new issues created
+- #932: Issue for feature coverage % on landing page
+- #933: Issue for shared chart web components
+- #934: Issue for array benchmark f64 conversion churn
+- Landing page: mission subtitle, donut chart, ES edition bars, typewriter fix
+- Vite watcher: excluded worktrees to prevent delayed OOM
+- Compiler: top-level await for Node builtins, removed eval("require")
+- Report data: fixed dangling symlink, added public/ symlinks
 
 ## Retrospective
 
 ### What went well
-- **7 issues merged in one session** (#840, #842, #831, #836, #843, #856, #834) — high throughput
-- **#831 negative test detection** was the highest-value fix: +72 pass from 2 early error checks (delete-private, new-import)
-- **Architect specs from sprint 31** continued to pay off — devs landed targeted fixes quickly
-- **#856 property descriptor validation** is a proper architectural contribution (not just a patch)
+- **Merge protocol followed** — testers spawned for #855 and #831, with full test262 runs. Caught the #855 baseline comparison mistake before bad data hit main.
+- **5 devs in parallel** at peak — #855, #845, #849, #853, #924 all running concurrently with no file conflicts.
+- **3 issues found already fixed** (#845, #849, #822 WI4) — devs smoke-tested and confirmed, saving implementation time.
+- **PO error analysis** produced 6 actionable issues (#926-#931) with data-driven prioritization.
+- **Vite OOM fixed properly** — compilerBundlePlugin serves bundle via middleware (84MB vs 9.4GB), watcher excludes worktrees.
 
 ### What went wrong
-- **All agents spawned as subagents, not teammates** — violated CLAUDE.md throughout session. Fixed with pre-agent-spawn hook enforcement.
-- **Committed on a running agent's worktree** (#834) — caused confusion, could have corrupted work
-- **Test262 cache confusion** — two runs showed 0 flips, wasted investigation time. Cache works correctly; I just misunderstood when to expect changes.
-- **Jumped from sprint 31 to sprint 35** — skipped 32-34 instead of following sequential order
-- **Prematurely exited Ralph Loop** — signaled DONE after sprint 31 instead of continuing to next sprint as instructed
-- **Sprint planning was ad-hoc** — picked issues on the fly instead of planning the full queue upfront
+- **Premature test262 reject** — compared #855 results against wrong baseline (17,782 vs 17,583). Almost blocked a +134 pass improvement. Need to always verify which baseline to compare against.
+- **Told tester to rerun entire test262 unnecessarily** — the first run was valid, just compared wrong. Wasted ~10 min of compute.
+- **#831 v2 may have false positives** — for-in/for-of LHS validation might reject valid destructuring patterns. test262 will catch this.
+- **Bundle node: imports caused browser CORS errors** — three iterations to fix (createRequire → eval → top-level await → string replacement in plugin). Should have tested in browser earlier.
+- **report.json corrupted by cat > same_file** — hardlink trap. Need atomic writes.
+- **Task list not maintained** — forgot to create tasks at sprint start, only added them mid-sprint when asked.
 
-### Process improvements applied
-1. **Hook added**: `pre-agent-spawn.sh` now blocks Agent calls without `team_name`
-2. **Task chain**: created meta-level tasks for sprint sequence (35 → 32 → 33 → 34)
-3. **Memory saved**: `feedback_task_chain.md` and `feedback_no_subagents.md` for future sessions
-
-### Process improvements still needed
-1. Follow sprint numbering sequentially — don't skip
-2. Plan full sprint queue before dispatching any devs
-3. Always use TeamCreate before Agent (now enforced by hook)
-4. Don't interfere with running agent worktrees
-
-## Rules (carried from sprint 31)
-1. ONE merge at a time. Full test262 after risky changes.
-2. Equiv tests before every merge.
-3. Architect spec for any issue touching coercion or type system.
-
-## Results
-
-(Fill after each merge)
-
-| Order | Issue | Pre-merge pass | Post-merge pass | Delta | Status |
-|-------|-------|---------------|----------------|-------|--------|
-| 1 | #840 | 15,187 | 15,187 (cache) | -31 CE (est.) | merged (array 0-arg concat/push/splice) |
-| 2 | #842 | 15,187 | 15,187 (cache) | -14 CE (est.), +3 equiv pass | merged (new Array() externref fallback) |
-| 3 | #836 | 15,259 | 15,251 | -8 (flaky eval) | merged (tagged template Identifier/CallExpression tags) |
-| 4 | #831 | 15,187 | 15,259 | +72 pass (combined) | merged (delete-private + new-import detection) |
-| 5 | #843 | 15,259 | 15,251 | (combined w/ #836) | merged (super in object literals + base classes) |
-| 6 | #856 | 15,251 | 15,526 | +275 pass (combined w/ #834) | merged (ValidateAndApplyPropertyDescriptor for WasmGC) |
-| 7 | #834 | 15,251 | 15,526 | (combined above) | merged (ES2025 Set methods + collection extern classes) |
+### Process improvements
+1. **Always verify baseline before rejecting** — document the exact baseline commit/run in the tester prompt
+2. **Test in browser after any Node import changes** — playground is the canary
+3. **Use atomic writes for report.json** — write to .tmp, then rename
+4. **Create task list at sprint start, not mid-sprint** (reinforcing existing memory)
