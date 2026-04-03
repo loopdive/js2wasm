@@ -1462,6 +1462,18 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
     return globalInfo.type;
   }
 
+  // globalThis — return the JS global object via host import
+  if (name === "globalThis") {
+    let funcIdx = ctx.funcMap.get("__get_globalThis");
+    if (funcIdx === undefined) {
+      const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__get_globalThis", { kind: "func", typeIdx });
+      funcIdx = ctx.funcMap.get("__get_globalThis")!;
+    }
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "externref" };
+  }
+
   // Built-in numeric constants: NaN, Infinity
   if (name === "NaN") {
     fctx.body.push({ op: "f64.const", value: NaN });
