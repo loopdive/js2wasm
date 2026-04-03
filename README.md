@@ -291,6 +291,7 @@ js2wasm/
 - **[Conformance Dashboard](https://loopdive.github.io/js2wasm/dashboard/)** — test262 pass rates and trends
 - **[Conformance Report](https://loopdive.github.io/js2wasm/benchmarks/report.html)** — ECMAScript feature compatibility breakdown
 - **[Roadmap](./ROADMAP.md)** — development plan and milestones
+- **[Contributing](./CONTRIBUTING.md)** — how to set up, test, and submit changes
 
 ## License
 
