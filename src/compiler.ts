@@ -322,33 +322,26 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   }
 
   /**
-   * Check if an expression is an "invalid" assignment target per ES spec.
-   * Invalid targets include: `this`, `new.target`, literals, arrow functions,
-   * template literals, class expressions, etc.
+   * Check if an expression is NOT a valid assignment target per ES spec.
+   * For simple assignment (=): identifiers, property/element access, and
+   * destructuring patterns (object/array literals) are valid.
+   * For update (++/--) and compound (+=, etc.): only identifiers and
+   * property/element access are valid — no destructuring patterns.
    */
-  function isInvalidAssignmentTarget(node: ts.Expression): boolean {
+  function isInvalidAssignmentTarget(node: ts.Expression, allowDestructuring = false): boolean {
     let expr: ts.Node = node;
     while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
-    // this
-    if (expr.kind === ts.SyntaxKind.ThisKeyword) return true;
-    // Literals (numbers, strings, booleans, null, regex, template)
-    if (
-      ts.isNumericLiteral(expr) ||
-      ts.isStringLiteral(expr) ||
-      ts.isRegularExpressionLiteral(expr) ||
-      ts.isNoSubstitutionTemplateLiteral(expr) ||
-      ts.isTemplateExpression(expr) ||
-      ts.isTaggedTemplateExpression(expr) ||
-      expr.kind === ts.SyntaxKind.TrueKeyword ||
-      expr.kind === ts.SyntaxKind.FalseKeyword ||
-      expr.kind === ts.SyntaxKind.NullKeyword
-    )
-      return true;
-    // Arrow functions, function expressions, class expressions
-    if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr) || ts.isClassExpression(expr)) return true;
-    // new.target (MetaProperty)
-    if (ts.isMetaProperty(expr)) return true;
-    return false;
+    // Valid: identifiers, property access, element access
+    if (ts.isIdentifier(expr)) return false;
+    if (ts.isPropertyAccessExpression(expr)) return false;
+    if (ts.isElementAccessExpression(expr)) return false;
+    // Valid only in simple assignment: destructuring patterns
+    if (allowDestructuring) {
+      if (ts.isObjectLiteralExpression(expr)) return false;
+      if (ts.isArrayLiteralExpression(expr)) return false;
+    }
+    // Everything else is invalid
+    return true;
   }
 
   /**
@@ -430,7 +423,7 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       if (name && isStrictMode(node)) {
         addError(node.left, `Cannot assign to '${name}' in strict mode`);
       }
-      if (isInvalidAssignmentTarget(node.left)) {
+      if (isInvalidAssignmentTarget(node.left, /* allowDestructuring */ true)) {
         addError(node, "Invalid left-hand side in assignment");
       }
     }
@@ -461,16 +454,16 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         if (name && isStrictMode(node)) {
           addError(node.left, `Cannot assign to '${name}' in strict mode`);
         }
-        // Check logical/compound assignment to call expressions in strict mode
-        if (isCallExpressionTarget(node.left) && isStrictMode(node)) {
+        // Compound assignment to non-simple targets (call expressions, binary, etc.)
+        if (isInvalidAssignmentTarget(node.left)) {
           addError(node, "Invalid left-hand side in assignment");
         }
       }
     }
 
-    // Check for-in/for-of with call expression as LHS in strict mode
+    // Check for-in/for-of with non-simple assignment target as LHS
     if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && !ts.isVariableDeclarationList(node.initializer)) {
-      if (isCallExpressionTarget(node.initializer) && isStrictMode(node)) {
+      if (isInvalidAssignmentTarget(node.initializer as ts.Expression)) {
         addError(node.initializer, "Invalid left-hand side in for-in/for-of");
       }
     }
@@ -1258,6 +1251,21 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         const textAfter = sourceFile.text.substring(start, start + 30);
         if (/^new\s+import\s*[\.(]/.test(textAfter)) {
           addError(node, "Cannot use new with import()");
+        }
+      }
+    }
+
+    // ── typeof import — always a SyntaxError ────────────────────────
+    // ES spec: `import` is not a valid UnaryExpression operand (not an identifier).
+    // TS parser creates a TypeOfExpression with an empty Identifier when parsing
+    // `typeof import`. Detect this by checking source text.
+    if (ts.isTypeOfExpression(node)) {
+      const expr = node.expression;
+      if (ts.isIdentifier(expr) && expr.text === "") {
+        const start = node.getStart(sourceFile);
+        const textAfter = sourceFile.text.substring(start, start + 30);
+        if (/^typeof\s+import\b/.test(textAfter)) {
+          addError(node, "Cannot use typeof with import");
         }
       }
     }
