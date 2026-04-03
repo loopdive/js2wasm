@@ -826,8 +826,8 @@ function renderIssueBoard(issues) {
 async function main() {
   // Load test262 run data
   let runs = null;
-  runs = await loadJSON('data/runs.json');
-  if (!runs) runs = await loadJSON('../benchmarks/results/runs/index.json');
+  runs = await loadJSON('../benchmarks/results/runs/index.json');
+  if (!runs) runs = await loadJSON('data/runs.json');
   if (!runs && EMBEDDED_DATA) runs = EMBEDDED_DATA.runs;
   if (!runs) runs = [];
 
