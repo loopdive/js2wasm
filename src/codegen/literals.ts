@@ -1145,6 +1145,7 @@ export function compileArrayLiteral(
 
   // Determine element type from first non-omitted, non-spread element, or from spread source
   let elemWasm: ValType;
+  // biome-ignore lint/style/useConst: reassigned in branches below
   let elemKind: string;
   const firstSignificantElem = expr.elements.find((el) => !ts.isOmittedExpression(el));
   const firstElem = firstSignificantElem ?? expr.elements[0]!;
@@ -1305,7 +1306,7 @@ export function compileArrayConstructorCall(
 
   // Determine element type from contextual type or expression type
   const ctxType = ctx.checker.getContextualType(expr);
-  let exprType = ctxType ?? ctx.checker.getTypeAtLocation(expr);
+  const exprType = ctxType ?? ctx.checker.getTypeAtLocation(expr);
 
   // Infer element type
   let elemWasm: ValType;

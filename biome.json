@@ -3,18 +3,40 @@
   "organizeImports": {
     "enabled": true
   },
+  "files": {
+    "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+    "ignore": ["**/node_modules/**", "**/dist/**", "test262/**"]
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
       "complexity": {
-        "noForEach": "off"
+        "noForEach": "off",
+        "noBannedTypes": "off",
+        "useLiteralKeys": "off",
+        "useOptionalChain": "off"
       },
       "suspicious": {
-        "noExplicitAny": "warn"
+        "noExplicitAny": "warn",
+        "noThenProperty": "off",
+        "noAssignInExpressions": "off",
+        "noImplicitAnyLet": "off",
+        "noGlobalIsNan": "off",
+        "noApproximativeNumericConstant": "off"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "useNumberNamespace": "off",
+        "useTemplate": "off",
+        "noUnusedTemplateLiteral": "off",
+        "noParameterAssign": "off",
+        "noUselessElse": "off",
+        "noInferrableTypes": "off",
+        "useSingleVarDeclarator": "off",
+        "useNodejsImportProtocol": "off",
+        "useImportType": "off",
+        "useExponentiationOperator": "off"
       }
     }
   },

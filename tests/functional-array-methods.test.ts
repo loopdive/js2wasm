@@ -15,6 +15,7 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
   }
 
   // Late-binding reference for __make_callback to call back into exports
+  // biome-ignore lint/style/useConst: assigned later in beforeAll
   let wasmExports: Record<string, Function>;
 
   const env: Record<string, Function> = {

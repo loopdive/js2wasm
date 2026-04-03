@@ -11262,7 +11262,6 @@ function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isE
     if (ts.isBlock(stmt)) {
       walkModuleStmtForVars(stmt);
       ctx.moduleInitStatements.push(stmt);
-      continue;
     }
   }
 

@@ -1424,6 +1424,7 @@ function resolveImport(
     case "dynamic_import":
       return (specifier: any) => import(/* @vite-ignore */ specifier);
     case "typeof_check":
+      // biome-ignore lint/suspicious/useValidTypeof: targetType is a runtime string from compiled code
       return (v: any) => (typeof v === intent.targetType ? 1 : 0);
     case "box":
       return intent.targetType === "boolean" ? (v: number) => Boolean(v) : (v: number) => v;

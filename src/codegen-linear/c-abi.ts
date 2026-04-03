@@ -108,7 +108,6 @@ export function mapParamsToCabi(params: ParamDef[]): CabiParam[] {
           role: "direct",
         });
         break;
-      case "object":
       default:
         result.push({
           name: p.name,
@@ -140,7 +139,6 @@ export function mapResultToCabi(result: ValType | null, semantic: TsSemanticType
       return { wasmTypes: [{ kind: "i32" }], semantic };
     case "number_f64":
       return { wasmTypes: [{ kind: "f64" }], semantic };
-    case "object":
     default:
       return { wasmTypes: [{ kind: "i32" }], semantic };
   }

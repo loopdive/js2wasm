@@ -1910,7 +1910,7 @@ export function compileElementAccessBody(
   if (objType.kind === "externref") {
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
     // Lazily register __extern_get if not already registered
-    let funcIdx = ensureLateImport(
+    const funcIdx = ensureLateImport(
       ctx,
       "__extern_get",
       [{ kind: "externref" }, { kind: "externref" }],
@@ -1928,7 +1928,7 @@ export function compileElementAccessBody(
     // Primitive types (f64, i32): box to externref and use __extern_get
     if (objType.kind === "f64") {
       // Box f64 to externref via __box_number
-      let boxIdx = ctx.funcMap.get("__box_number");
+      const boxIdx = ctx.funcMap.get("__box_number");
       if (boxIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: boxIdx });
       } else {
@@ -1937,7 +1937,7 @@ export function compileElementAccessBody(
       }
     } else if (objType.kind === "i32") {
       fctx.body.push({ op: "f64.convert_i32_s" });
-      let boxIdx = ctx.funcMap.get("__box_number");
+      const boxIdx = ctx.funcMap.get("__box_number");
       if (boxIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: boxIdx });
       } else {
@@ -1954,7 +1954,7 @@ export function compileElementAccessBody(
     }
     // Compile key as externref and call __extern_get
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
-    let funcIdx = ensureLateImport(
+    const funcIdx = ensureLateImport(
       ctx,
       "__extern_get",
       [{ kind: "externref" }, { kind: "externref" }],
@@ -2069,7 +2069,7 @@ export function compileElementAccessBody(
       compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
       // Call __extern_get(externref, externref) → externref
       {
-        let funcIdx = ensureLateImport(
+        const funcIdx = ensureLateImport(
           ctx,
           "__extern_get",
           [{ kind: "externref" }, { kind: "externref" }],
