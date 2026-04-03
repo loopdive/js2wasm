@@ -616,6 +616,20 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
+    // Check 'delete' on private names — always a SyntaxError
+    // ES spec: delete MemberExpression.PrivateName and delete CallExpression.PrivateName
+    // are early errors (class bodies are always strict mode).
+    // Covers: delete this.#x, delete (this.#x), delete g().#x, delete (g().#x)
+    if (ts.isDeleteExpression(node)) {
+      let operand: ts.Expression = node.expression;
+      while (ts.isParenthesizedExpression(operand)) {
+        operand = operand.expression;
+      }
+      if (ts.isPropertyAccessExpression(operand) && ts.isPrivateIdentifier(operand.name)) {
+        addError(node, `Deleting a private field is a SyntaxError`);
+      }
+    }
+
     // Check for-in loop with initializer — SyntaxError in strict mode for var,
     // always a SyntaxError for let/const (ES2015+)
     // Also: var with destructuring pattern + initializer is always SyntaxError (Annex B)
@@ -1231,6 +1245,23 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
+    // ── new import() — always a SyntaxError ────────────────────────
+    // ES spec: ImportCall is a CallExpression, not a NewExpression target.
+    // Also applies to import.source() and import.defer() proposals.
+    // TS parser splits "new import('x')" into a broken NewExpression (empty identifier)
+    // followed by an import CallExpression. We detect this by checking for
+    // NewExpression with a missing/empty expression where the source text shows "new import".
+    if (ts.isNewExpression(node)) {
+      const expr = node.expression;
+      if (ts.isIdentifier(expr) && expr.text === "") {
+        const start = node.getStart(sourceFile);
+        const textAfter = sourceFile.text.substring(start, start + 30);
+        if (/^new\s+import\s*[\.(]/.test(textAfter)) {
+          addError(node, "Cannot use new with import()");
+        }
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
@@ -1281,6 +1312,14 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         ts.isGetAccessorDeclaration(current) ||
         ts.isSetAccessorDeclaration(current)
       ) {
+        return true;
+      }
+      // Class property declarations (field initializers) inherit super context
+      // e.g. class C extends B { func = () => { super.prop; } }
+      if (ts.isPropertyDeclaration(current) && ts.isClassDeclaration(current.parent)) {
+        return true;
+      }
+      if (ts.isPropertyDeclaration(current) && ts.isClassExpression(current.parent)) {
         return true;
       }
       // Arrow functions inherit super property context — don't stop
