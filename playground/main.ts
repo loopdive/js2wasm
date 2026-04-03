@@ -1442,7 +1442,7 @@ async function saveBrowserBenchmarkSidebarResult(snapshot: BenchmarkSidebarSnaps
 
 async function ensureBenchmarkSidebarSnapshot(): Promise<void> {
   if (benchmarkSidebarSnapshotLoaded || benchmarkSidebarResults.size > 0) return;
-  const snapshot = await fetchJson<BenchmarkSidebarSnapshot[]>("benchmarks/results/playground-benchmark-sidebar.json");
+  const snapshot = await fetchJson<BenchmarkSidebarSnapshot[]>("../benchmarks/results/playground-benchmark-sidebar.json");
   const browserSnapshot = await loadBrowserBenchmarkSidebarResults();
   benchmarkSidebarSnapshotLoaded = true;
   for (const item of [...(snapshot ?? []), ...browserSnapshot]) {
