@@ -160,14 +160,14 @@
     };
 
     async function loadData() {
-      try {
-        const res = await fetch('runs/index.json');
-        if (!res.ok) throw new Error('Failed to load index.json');
-        return await res.json();
-      } catch {
-        document.getElementById('loading').textContent = 'Error loading runs/index.json. Serve this directory with a local HTTP server.';
-        return null;
+      for (const url of ['runs/index.json', '/benchmarks/results/runs/index.json']) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) return await res.json();
+        } catch {}
       }
+      document.getElementById('loading').textContent = 'Error loading runs/index.json. Serve this directory with a local HTTP server.';
+      return null;
     }
 
     function formatDate(ts) {
@@ -349,11 +349,15 @@
     }
 
     async function loadReport() {
-      try {
-        const res = await fetch('test262-report.json');
-        if (!res.ok) return null;
-        return await res.json();
-      } catch { return null; }
+      // Try relative path first (works when built into pages-dist),
+      // then try absolute path from repo root (works in local dev)
+      for (const url of ['test262-report.json', '/benchmarks/results/test262-report.json']) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) return await res.json();
+        } catch {}
+      }
+      return null;
     }
 
     function renderTimestamp(report) {
