@@ -2848,6 +2848,11 @@ function canTailCall(ctx: CodegenContext, fctx: FunctionContext, calleeIdx: numb
   const typeDef = ctx.mod.types[calleeTypeIdx];
   if (!typeDef || typeDef.kind !== "func") return false;
 
+  // Parameter count must match — return_call requires the stack to contain
+  // exactly the callee's params, so mismatched counts cause "not enough
+  // arguments" CE (#822 Work Item 1)
+  if (typeDef.params.length !== fctx.params.length) return false;
+
   // Compare callee results with caller return type
   const calleeResults = typeDef.results;
   if (!fctx.returnType) {
@@ -2875,6 +2880,10 @@ function canTailCall(ctx: CodegenContext, fctx: FunctionContext, calleeIdx: numb
 function canTailCallRef(ctx: CodegenContext, fctx: FunctionContext, typeIdx: number): boolean {
   const typeDef = ctx.mod.types[typeIdx];
   if (!typeDef || typeDef.kind !== "func") return false;
+
+  // Parameter count must match (#822 Work Item 1)
+  if (typeDef.params.length !== fctx.params.length) return false;
+
   const calleeResults = typeDef.results;
   if (!fctx.returnType) return calleeResults.length === 0;
   if (calleeResults.length !== 1) return false;
