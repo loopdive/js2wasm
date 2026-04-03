@@ -49,13 +49,14 @@ The sprints were executed out of order this session. Renumber to match actual ex
 | 8 | #917 | Lint, format, typecheck consistently across source tree | Medium | Medium |
 | 9 | #918 | Curated batch of contributor-friendly starter issues | High — onboarding | Easy |
 
-### Phase 4: Regression fixes
+### Phase 4: Compiler correctness
 | Order | Issue | Title | Impact | Effort |
 |-------|-------|-------|--------|--------|
-| 10 | #919 | Fix direct-eval arguments regressions since April 1 baseline | Medium | Medium |
-| 11 | #920 | Recover RegExp feature acceptance regressions | Medium | Medium |
-| 12 | #921 | Fix class destructuring generator/private-method Wasm type mismatches | Medium | Medium |
-| 13 | #922 | Add reproducible test262 baseline-diff workflow | High — prevents future regressions | Medium |
+| 10 | #923 | Fix compiler state leakage between compile() calls | **Critical** — blocks LSP/watch/REPL | Hard |
+| 11 | #919 | Fix direct-eval arguments regressions since April 1 baseline | Medium | Medium |
+| 12 | #920 | Recover RegExp feature acceptance regressions | Medium | Medium |
+| 13 | #921 | Fix class destructuring generator/private-method Wasm type mismatches | Medium | Medium |
+| 14 | #922 | Add reproducible test262 baseline-diff workflow | High — prevents future regressions | Medium |
 
 ## Dev paths
 
