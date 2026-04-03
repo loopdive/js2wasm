@@ -14,6 +14,8 @@ The compiler itself is based on Typescript 6 and needs a JS runtime to compile J
 JS/TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8Array) → WebAssembly.instantiate()
 ```
 
+**[Project Roadmap →](ROADMAP.md)** — vision, achievements, and planned work.
+
 ## Why js2wasm?
 
 TypeScript normally transpiles to JavaScript, which requires a JS engine to run and provides no sandboxing between modules – any module can access globals, the filesystem, the network, or mutate shared state. js2wasm compiles TypeScript directly to WebAssembly instead, which unlocks features that regular JS/TS does not have:
