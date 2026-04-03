@@ -1700,13 +1700,15 @@ function compileArrayPush(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({
-      message: "push requires at least 1 argument",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
-    return null;
+  // 0-arg push: no-op, return current length
+  if (callExpr.arguments.length === 0) {
+    const vecTmp0 = allocLocal(fctx, `__arr_push_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+    compileExpression(ctx, fctx, propAccess.expression);
+    fctx.body.push({ op: "local.tee", index: vecTmp0 });
+    emitReceiverNullGuard(ctx, fctx, vecTmp0);
+    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+    if (!ctx.fast) fctx.body.push({ op: "f64.convert_i32_s" });
+    return ctx.fast ? { kind: "i32" } : { kind: "f64" };
   }
 
   const argCount = callExpr.arguments.length;
@@ -2032,13 +2034,37 @@ function compileArrayConcat(
   arrTypeIdx: number,
   _elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({
-      message: "concat requires at least 1 argument",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
-    return null;
+  // 0-arg concat: shallow copy of the receiver array
+  if (callExpr.arguments.length === 0) {
+    const vecA = allocLocal(fctx, `__arr_cat_va_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+    const dataA = allocLocal(fctx, `__arr_cat_da_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+    const newData = allocLocal(fctx, `__arr_cat_nd_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+    const lenA = allocLocal(fctx, `__arr_cat_la_${fctx.locals.length}`, { kind: "i32" });
+
+    // Compile receiver -> vec ref
+    compileExpression(ctx, fctx, propAccess.expression);
+    fctx.body.push({ op: "local.tee", index: vecA });
+    emitReceiverNullGuard(ctx, fctx, vecA);
+    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+    fctx.body.push({ op: "local.set", index: lenA });
+    fctx.body.push({ op: "local.get", index: vecA });
+    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+    fctx.body.push({ op: "local.set", index: dataA });
+
+    // newData = array.new_default(lenA)
+    fctx.body.push({ op: "local.get", index: lenA });
+    fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: newData });
+
+    // array.copy newData[0..lenA] = dataA[0..lenA]
+    emitArrayCopy(fctx, arrTypeIdx, newData, null, dataA, null, lenA);
+
+    // Create new vec struct: { lenA, newData }
+    fctx.body.push({ op: "local.get", index: lenA });
+    fctx.body.push({ op: "local.get", index: newData });
+    fctx.body.push({ op: "ref.as_non_null" });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   const vecA = allocLocal(fctx, `__arr_cat_va_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
@@ -2227,13 +2253,17 @@ function compileArraySplice(
   arrTypeIdx: number,
   _elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({
-      message: "splice requires at least 1 argument",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
-    return null;
+  // 0-arg splice: no mutation, return empty array
+  if (callExpr.arguments.length === 0) {
+    // Still need to evaluate receiver for side effects
+    compileExpression(ctx, fctx, propAccess.expression);
+    fctx.body.push({ op: "drop" });
+    // Return empty vec struct: { 0, array.new_default(0) }
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   const vecTmp = allocLocal(fctx, `__arr_spl_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
