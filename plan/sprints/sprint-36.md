@@ -17,20 +17,7 @@ Sprint 36 focuses entirely on contributor readiness and code quality — no new 
 
 ## Task queue
 
-### Phase 1: Refactoring (from #909 sub-issues)
-| Order | Issue | Title | Impact | Effort |
-|-------|-------|-------|--------|--------|
-| 1 | #910 | Split expressions.ts into syntax-family modules | High — largest file | Hard |
-| 2 | #911 | Split statements.ts into control-flow, vars, destructuring, loops, functions | High | Hard |
-| 3 | #912 | Remove circular dependencies from core codegen backend | High — contributor friction | Medium |
-| 4 | #913 | Split compiler.ts into validation, orchestration, output | Medium | Medium |
-
-### Phase 2b: Dev infrastructure
-| Order | Issue | Title | Impact | Effort |
-|-------|-------|-------|--------|--------|
-| 4b | #924 | Vite dev server OOMs / consumes 9GB+ loading playground | **High** — blocks local dev | Medium |
-
-### Phase 3: Contributor experience
+### Phase 1: Contributor experience
 | Order | Issue | Title | Impact | Effort |
 |-------|-------|-------|--------|--------|
 | 5 | #914 | Compiler architecture overview for contributors | High — first thing new devs read | Easy |
@@ -57,10 +44,20 @@ Sprint 36 focuses entirely on contributor readiness and code quality — no new 
 | 18 | #933 | Migrate report.html charts to shared t262-charts.js web components | Medium — DRY | Medium |
 | 19 | #942 | JS feature compatibility report ranked by real-world importance | **High** — user/contributor clarity | Medium |
 
+### Phase 6: Refactoring (from #909 sub-issues — sequential, high-risk)
+| Order | Issue | Title | Impact | Effort |
+|-------|-------|-------|--------|--------|
+| 20 | #910 | Split expressions.ts into syntax-family modules | High — largest file | Hard |
+| 21 | #911 | Split statements.ts into control-flow, vars, destructuring, loops, functions | High | Hard |
+| 22 | #912 | Remove circular dependencies from core codegen backend | High — contributor friction | Medium |
+| 23 | #913 | Split compiler.ts into validation, orchestration, output | Medium | Medium |
+
+### Done (completed earlier)
+- ~~#924~~ — Vite dev server OOM (done in sprint 35)
+
 ## Dev paths
 
-**Dev-1**: #910 → #911 → #912 → #913 (refactoring — sequential, each depends on prior)
-**Dev-2**: #914 → #915 → #916 → #917 → #918 (contributor docs — can run in parallel with dev-1)
+Parallel tracks, refactoring last:
 **Dev-3**: #919 → #920 → #921 → #922 (regression fixes — independent of refactoring)
 
 ## Notes
