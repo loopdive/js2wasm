@@ -1310,6 +1310,10 @@ function getContainingFunction(node: ts.Node): ts.Node | undefined {
  * Check if the access node is inside a loop body that also contains (or is
  * an ancestor of) the declaration. In that case the access could run on a
  * subsequent iteration before the declaration re-initializes the variable.
+ *
+ * Exception: if the declaration is inside the loop body (not the for-initializer)
+ * and the access is textually after the declaration, the back-edge is harmless
+ * because let/const creates a fresh binding each iteration.
  */
 function isInsideLoopContaining(access: ts.Node, decl: ts.Node): boolean {
   let current = access.parent;
@@ -1327,12 +1331,31 @@ function isInsideLoopContaining(access: ts.Node, decl: ts.Node): boolean {
     if (isLoopStatement(current)) {
       // Check if the declaration is also inside this loop
       if (isDescendantOf(decl, current)) {
+        // Both are inside this loop. If the decl is in the loop body
+        // (not the for-initializer/condition/incrementor) and the access
+        // is textually after the decl, the per-iteration fresh binding
+        // guarantees initialization before access on every iteration.
+        const body = getLoopBody(current);
+        if (body && isDescendantOf(decl, body) && access.getStart() >= decl.getEnd()) {
+          // Safe: loop-local let/const, access after declaration in same iteration
+          return false;
+        }
         return true;
       }
     }
     current = current.parent;
   }
   return false;
+}
+
+/** Get the body statement/block of a loop node. */
+function getLoopBody(loop: ts.Node): ts.Node | undefined {
+  if (ts.isForStatement(loop)) return loop.statement;
+  if (ts.isForInStatement(loop)) return loop.statement;
+  if (ts.isForOfStatement(loop)) return loop.statement;
+  if (ts.isWhileStatement(loop)) return loop.statement;
+  if (ts.isDoStatement(loop)) return loop.statement;
+  return undefined;
 }
 
 function isLoopStatement(node: ts.Node): boolean {

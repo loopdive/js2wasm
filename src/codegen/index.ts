@@ -13224,6 +13224,123 @@ export function hoistLetConstWithTdz(
   }
 }
 
+/**
+ * Check if a let/const variable needs a TDZ flag by analyzing all references.
+ * Returns false if every access to the symbol is provably after the declaration
+ * in straight-line code (same function, no closures, loop-local safe).
+ */
+function needsTdzFlag(ctx: CodegenContext, decl: ts.VariableDeclaration): boolean {
+  const symbol = ctx.checker.getSymbolAtLocation(decl.name);
+  if (!symbol) return true;
+  const declEnd = decl.getEnd();
+  const declFunc = getContainingFunctionForTdz(decl);
+
+  // Collect all references to this symbol in the containing function
+  // We walk the function body checking every identifier that resolves to this symbol
+  const funcBody = declFunc && 'body' in declFunc ? (declFunc as any).body : undefined;
+  const scope = funcBody || decl.getSourceFile();
+
+  let needsFlag = false;
+  function visit(node: ts.Node): void {
+    if (needsFlag) return;
+    if (ts.isIdentifier(node) && node !== decl.name) {
+      const sym = ctx.checker.getSymbolAtLocation(node);
+      if (sym === symbol) {
+        const accessPos = node.getStart();
+        const accessFunc = getContainingFunctionForTdz(node);
+        // Cross-function access (closure) — needs flag
+        if (accessFunc !== declFunc) { needsFlag = true; return; }
+        // Access before declaration — needs flag
+        if (accessPos < declEnd) { needsFlag = true; return; }
+        // Check loop safety: if access is inside a loop containing the decl,
+        // it's only safe if decl is in the loop body and access is after decl
+        if (isInsideLoopContainingForTdz(node, decl)) { needsFlag = true; return; }
+      }
+    }
+    // Don't recurse into nested functions (they have their own scope)
+    if (node !== scope &&
+        (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
+         ts.isArrowFunction(node) || ts.isMethodDeclaration(node))) {
+      // But DO check if they reference our symbol (closure capture)
+      ts.forEachChild(node, visit);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  ts.forEachChild(scope, visit);
+  return needsFlag;
+}
+
+/** Walk up to find nearest containing function (TDZ analysis version for index.ts). */
+function getContainingFunctionForTdz(node: ts.Node): ts.Node | undefined {
+  let current = node.parent;
+  while (current) {
+    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) || ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) || ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current) || ts.isSourceFile(current)) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
+/** Check if access is inside a loop containing decl (TDZ version for index.ts). */
+function isInsideLoopContainingForTdz(access: ts.Node, decl: ts.Node): boolean {
+  let current = access.parent;
+  while (current) {
+    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) || ts.isMethodDeclaration(current) ||
+        ts.isSourceFile(current)) {
+      return false;
+    }
+    if (ts.isForStatement(current) || ts.isForInStatement(current) ||
+        ts.isForOfStatement(current) || ts.isWhileStatement(current) ||
+        ts.isDoStatement(current)) {
+      if (isDescendantOfNode(decl, current)) {
+        // For-initializer variables (e.g. `for (let i = 0; ...)`) are always
+        // initialized before the body/condition/incrementor execute
+        if (ts.isForStatement(current) && current.initializer &&
+            isDescendantOfNode(decl, current.initializer)) {
+          return false;
+        }
+        // For-in/for-of loop variables are initialized each iteration
+        if ((ts.isForInStatement(current) || ts.isForOfStatement(current)) &&
+            isDescendantOfNode(decl, current.initializer)) {
+          return false;
+        }
+        // Both in loop — check if decl is in loop body and access after decl
+        const body = getLoopBodyNode(current);
+        if (body && isDescendantOfNode(decl, body) && access.getStart() >= decl.getEnd()) {
+          return false; // loop-local, access after decl — safe per iteration
+        }
+        return true;
+      }
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+function isDescendantOfNode(node: ts.Node, ancestor: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function getLoopBodyNode(loop: ts.Node): ts.Node | undefined {
+  if (ts.isForStatement(loop)) return loop.statement;
+  if (ts.isForInStatement(loop)) return loop.statement;
+  if (ts.isForOfStatement(loop)) return loop.statement;
+  if (ts.isWhileStatement(loop)) return loop.statement;
+  if (ts.isDoStatement(loop)) return loop.statement;
+  return undefined;
+}
+
 function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
   if (ts.isVariableStatement(stmt)) {
     const list = stmt.declarationList;
@@ -13237,15 +13354,12 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
         const varType = ctx.checker.getTypeAtLocation(decl);
         const wasmType = resolveWasmType(ctx, varType);
         allocLocal(fctx, name, wasmType);
-        // Skip TDZ flag for declarations with initializers — analyzeTdzAccess
-        // already elides runtime checks when the access is provably after
-        // the declaration in the same function scope. The flag is only needed
-        // when an inner function captures the variable before initialization.
-        if (decl.initializer) continue;
-        // Add a TDZ flag local (i32, init 0 = uninitialized)
-        if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
-        const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
-        fctx.tdzFlagLocals.set(name, flagIdx);
+        // Only add TDZ flag if static analysis can't prove all accesses are safe
+        if (needsTdzFlag(ctx, decl)) {
+          if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+          const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+          fctx.tdzFlagLocals.set(name, flagIdx);
+        }
       }
     }
     return;
@@ -13271,12 +13385,11 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
             const varType = ctx.checker.getTypeAtLocation(decl);
             const wasmType = resolveWasmType(ctx, varType);
             allocLocal(fctx, name, wasmType);
-            // For-loop initializers with initializers are always safe —
-            // the variable is scoped to the loop and initialized before the body
-            if (decl.initializer) continue;
-            if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
-            const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
-            fctx.tdzFlagLocals.set(name, flagIdx);
+            if (needsTdzFlag(ctx, decl)) {
+              if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+              const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+              fctx.tdzFlagLocals.set(name, flagIdx);
+            }
           }
         }
       }
