@@ -40,6 +40,11 @@ The sprints were executed out of order this session. Renumber to match actual ex
 | 3 | #912 | Remove circular dependencies from core codegen backend | High — contributor friction | Medium |
 | 4 | #913 | Split compiler.ts into validation, orchestration, output | Medium | Medium |
 
+### Phase 2b: Dev infrastructure
+| Order | Issue | Title | Impact | Effort |
+|-------|-------|-------|--------|--------|
+| 4b | #924 | Vite dev server OOMs / consumes 9GB+ loading playground | **High** — blocks local dev | Medium |
+
 ### Phase 3: Contributor experience
 | Order | Issue | Title | Impact | Effort |
 |-------|-------|-------|--------|--------|
