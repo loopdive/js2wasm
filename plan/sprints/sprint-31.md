@@ -144,3 +144,24 @@ For EACH issue:
 2. Architect specs with exact file/line references dramatically improve dev efficiency
 3. ref.cast→ref.cast_null is a safe universal improvement (null passes through to existing guards)
 4. CE→fail transitions are progress (runtime fails are closer to correct than compile errors)
+
+## Retrospective
+
+### What went well
+- **Strict merge protocol paid off.** Sprint 31 original failed because 4 changes stacked without test262. This redo merged ONE at a time with equiv tests between each — zero regressions across 6 merges.
+- **Architect-first workflow.** Both #822 and #826 got architect specs before dev work. The specs named exact files, line numbers, and Wasm patterns. Devs finished faster and produced cleaner, more targeted fixes.
+- **ref.cast→ref.cast_null pattern.** Simple, universal, safe. One-line changes that let null flow through to existing guards instead of trapping. Should be applied everywhere ref.cast appears at boundary sites.
+- **Incremental #822 work items.** Breaking the reverted monolithic fix into 4 independent WIs meant each could be tested and merged separately. WI1-3 all landed cleanly; WI4 was deferred without blocking anything.
+
+### What went wrong
+- **Sprint numbering confusion.** After completing sprint 31, jumped to sprint 35 instead of continuing with sprint 32. Need to follow sequential numbering and not skip.
+- **Dev agent for return_call (160 CE) produced duplicate work.** The agent reimplemented the WI1 fix that was already on main. The prompt didn't clearly state "the param count check is already merged — investigate why 104 CEs remain with a DIFFERENT pattern."
+- **#828 investigation was inconclusive.** 150 "undefined AST node" CEs appear in test262 but not when compiling directly. The runner wrapper interaction was identified but not resolved. Marked as "verified fixed" prematurely.
+- **Test262 cache served stale results.** Two full runs returned identical numbers because the disk cache keyed on compiler hash didn't invalidate. Wasted ~20 min of wall time. Need a `--no-cache` flag or automatic invalidation on compiler changes.
+
+### Process improvements for next sprint
+1. **Always state what's already on main** when dispatching devs — prevent duplicate work.
+2. **Don't skip sprint numbers.** Continue sequentially even if prior sprints had different themes.
+3. **Run test262 with fresh cache** after merges to get real numbers (clear cache or add `--no-cache`).
+4. **Don't prematurely mark issues as "verified fixed"** when the test262 runner still shows failures — investigate the discrepancy first.
+5. **Ralph loop discipline**: when the loop says "start next sprint," actually start the next sequential sprint, don't exit.
