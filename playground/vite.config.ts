@@ -35,6 +35,21 @@ export default defineConfig({
     fs: {
       allow: ["."],
     },
+    watch: {
+      // Exclude agent worktrees, test262, node_modules, and build artifacts.
+      // Without this, Vite watches the entire project root including full repo
+      // copies in .claude/worktrees/ — each file change triggers transforms
+      // that accumulate and OOM after ~4 minutes.
+      ignored: [
+        "**/.claude/worktrees/**",
+        "**/test262/**",
+        "**/node_modules/**",
+        "**/.test262-cache/**",
+        "**/pages-dist/**",
+        "**/playground-dist/**",
+        "**/benchmarks/results/test262-results-*.jsonl",
+      ],
+    },
   },
   build: {
     outDir: "playground-dist",
