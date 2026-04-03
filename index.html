@@ -677,10 +677,6 @@
           <stop offset="50%" stop-color="#f3eeff" stop-opacity="1"></stop>
           <stop offset="65%" stop-color="#beb0ff" stop-opacity="0"></stop>
           <stop offset="100%" stop-color="#beb0ff" stop-opacity="0"></stop>
-          <animate attributeName="x1" values="-30%;50%" dur="38.25s" repeatCount="1" fill="freeze"></animate>
-          <animate attributeName="x2" values="-5%;75%" dur="38.25s" repeatCount="1" fill="freeze"></animate>
-          <animate attributeName="y1" values="0%;0%" dur="38.25s" repeatCount="1" fill="freeze"></animate>
-          <animate attributeName="y2" values="0%;0%" dur="38.25s" repeatCount="1" fill="freeze"></animate>
         </linearGradient>
         <filter id="puzzle-glow-filter" x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="0.8" result="blur"></feGaussianBlur>
@@ -1096,6 +1092,34 @@
           if (raf) cancelAnimationFrame(raf);
           raf = requestAnimationFrame(render);
         });
+      })();
+
+      (function animateGlowWave() {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        const grad = document.getElementById("puzzle-glow-gradient");
+        if (!grad) return;
+
+        const startX1 = -30, endX1 = 50;
+        const startX2 = -5, endX2 = 75;
+        const duration = 4000;
+        let start = 0;
+        let raf = 0;
+
+        const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+        const step = (now) => {
+          if (!start) start = now;
+          const elapsed = now - start;
+          const t = Math.min(elapsed / duration, 1);
+          const e = ease(t);
+          grad.setAttribute("x1", (startX1 + (endX1 - startX1) * e) + "%");
+          grad.setAttribute("x2", (startX2 + (endX2 - startX2) * e) + "%");
+          if (t < 1) {
+            raf = requestAnimationFrame(step);
+          }
+        };
+
+        raf = requestAnimationFrame(step);
       })();
 
       (async function hydrateCompatibilityStat() {
