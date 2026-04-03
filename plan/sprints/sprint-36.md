@@ -63,6 +63,12 @@ The sprints were executed out of order this session. Renumber to match actual ex
 | 13 | #921 | Fix class destructuring generator/private-method Wasm type mismatches | Medium | Medium |
 | 14 | #922 | Add reproducible test262 baseline-diff workflow | High — prevents future regressions | Medium |
 
+### Phase 5: Error reporting quality (from 2026-04-03 error analysis)
+| Order | Issue | Title | Impact | Effort |
+|-------|-------|-------|--------|--------|
+| 15 | #931 | Error location reporting: 83% of CE errors lack line numbers | **High** — DX quality | Medium |
+| 16 | #927 | Missing early/parse error detection (840 FAIL) | **High** — correctness + conformance | Hard |
+
 ## Dev paths
 
 **Dev-1**: #910 → #911 → #912 → #913 (refactoring — sequential, each depends on prior)
