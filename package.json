@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "vite build",
-    "dev": "vite serve --config playground/vite.config.ts",
+    "dev": "NODE_OPTIONS='--max-old-space-size=8192' vite serve --config playground/vite.config.ts",
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
