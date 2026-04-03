@@ -76,13 +76,6 @@ export function classifyTestScope(source: string, meta: Test262Meta, filePath?: 
 
   if (meta.features) {
     for (const feat of meta.features) {
-      if (/^set-methods/.test(feat)) {
-        return {
-          scope: "proposal",
-          official: false,
-          reason: "proposal feature: Set methods",
-        };
-      }
       const reason = PROPOSAL_FEATURES.get(feat);
       if (reason) {
         return {

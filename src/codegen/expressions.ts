@@ -8653,6 +8653,53 @@ function compileCallablePropertyCall(
   return undefined;
 }
 
+/**
+ * Try to resolve a method call on an `any`-typed receiver through registered extern classes.
+ * When the type checker resolves the receiver as `any` (e.g. when lib files aren't loaded
+ * in ESM/bundled contexts), we dispatch known collection methods (Set.union, Map.get, etc.)
+ * by looking them up in ctx.externClasses and lazily registering the import.
+ */
+function tryExternClassMethodOnAny(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  methodName: string,
+): InnerResult {
+  for (const [, info] of ctx.externClasses) {
+    const sig = info.methods.get(methodName);
+    if (!sig) continue;
+
+    const importName = `${info.importPrefix}_${methodName}`;
+    let funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const typeIdx = addFuncType(ctx, sig.params, sig.results);
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      funcIdx = ctx.funcMap.get(importName);
+    }
+    if (funcIdx === undefined) continue;
+
+    compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+    const argCount = sig.params.length - 1; // skip self
+    for (let i = 0; i < expr.arguments.length && i < argCount; i++) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, { kind: "externref" });
+    }
+    for (let i = expr.arguments.length; i < argCount; i++) {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    for (let i = argCount; i < expr.arguments.length; i++) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[i]!);
+      if (argType) fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "call", funcIdx });
+    if (sig.results.length === 0) return VOID_RESULT;
+    return sig.results[0]!;
+  }
+  return null;
+}
+
 function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult {
   // Optional chaining on calls: obj?.method()
   if (expr.questionDotToken && ts.isPropertyAccessExpression(expr.expression)) {
@@ -11281,6 +11328,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             fctx.body.push({ op: "call", funcIdx: genThrowIdx });
             return { kind: "externref" };
           }
+        }
+
+        // Try to resolve via registered extern classes (e.g. Set.union, Map.get)
+        // when the receiver type is `any` but the method matches a built-in.
+        {
+          const externResult = tryExternClassMethodOnAny(ctx, fctx, expr, propAccess, methodName);
+          if (externResult !== null) return externResult;
         }
 
         // General fallback for any method call on any/externref receiver:
