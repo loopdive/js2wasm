@@ -1,11 +1,15 @@
 import ts from "typescript";
 import * as path from "path";
-// Lazy-load fs for browser compatibility (Vite externalizes Node.js modules)
+// Lazy-load fs for browser compatibility (Vite externalizes Node.js modules).
+// Uses createRequire to avoid esbuild's direct-eval warning while keeping
+// the require() call invisible to bundlers.
+import { createRequire } from "node:module";
 let _fs: typeof import("fs") | null = null;
 function getFs() {
   if (!_fs) {
     try {
-      _fs = eval("require")("fs");
+      const req = createRequire(import.meta.url);
+      _fs = req("fs");
     } catch {
       _fs = null;
     }

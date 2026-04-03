@@ -2995,9 +2995,7 @@ let hasCompiledOnce = false;
 let autoCycleTimer: ReturnType<typeof setInterval> | null = null;
 
 function hasExportedMain(result: ReturnType<typeof compile>): boolean {
-  const dts = result.dts ?? "";
-  return /\bexport declare function main\(/.test(dts)
-    || /\bexport declare const main:/.test(dts);
+  return result.hasMain === true;
 }
 
 function hasTopLevelMainDeclaration(source: string): boolean {
@@ -3168,7 +3166,19 @@ async function runOnly() {
   errorsPre.textContent = "";
   previewPanel.innerHTML = "";
 
-  if (!hasExportedMain(result)) {
+  // Use compile-time metadata to determine execution intent
+  const hasMain = result.hasMain === true;
+  const hasTopLevel = result.hasTopLevelStatements === true;
+
+  if (!hasMain && !hasTopLevel) {
+    consolePre.textContent = "Nothing to run: no exported main() and no top-level statements.";
+    showOutputPanel("console");
+    return;
+  }
+
+  if (!hasMain && hasTopLevel) {
+    // Top-level statements exist but no main() — recompile with a synthesized
+    // main() so the playground has an entry point to call.
     const source = inputFile.model.getValue();
     if (!hasTopLevelMainDeclaration(source)) {
       const runtimeSource = `${source}\n\nexport function main(): void {}\n`;
@@ -3209,13 +3219,12 @@ async function runOnly() {
     setExports(wasmExports as Record<string, Function>);
     if (typeof wasmExports.main === "function") {
       if (synthesizedMain) {
-        logs.push("Executed top-level statements via synthesized exported main().");
+        logs.push("Executed top-level statements via synthesized main().");
       }
       const returnValue = wasmExports.main();
       if (returnValue !== undefined) logs.push(`→ ${returnValue}`);
     } else {
-      logs.push("No exported main().");
-      logs.push("Top-level statements are not auto-executed by the playground.");
+      logs.push("No exported main() found in Wasm module.");
     }
 
     consolePre.textContent = logs.join("\n");

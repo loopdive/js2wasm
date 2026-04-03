@@ -1,6 +1,6 @@
 # js2wasm Backlog
 
-**Current state** (2026-03-28): 18,041 pass | 21,181 fail | 2,284 CE | 6,580 skip
+**Current state** (2026-04-03): 17,782 pass | 21,178 fail | 2,803 CE | 6,411 skip
 
 ---
 
@@ -17,6 +17,8 @@ Issues where the compiler emits invalid Wasm (type errors, missing args, bad cas
 | [844](../ready/844.md) | Medium | Unsupported new expression for built-in classes | **85 CE** | Ready |
 | [845](../ready/845.md) | Medium | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** | Ready |
 | [831](../ready/831.md) | Medium | Negative test gaps: expected SyntaxError but compiled | **242 FAIL** | Ready |
+| [927](../ready/927.md) | **HIGH** | Missing early/parse error detection (umbrella for #831) | **840 FAIL** | Ready |
+| [926](../ready/926.md) | Low | Fixture tests not supported in unified mode | **172 CE** | Ready |
 | [840](../ready/840.md) | Medium | Array concat/push/splice 0-arg support | **31 CE** | Ready |
 | [836](../ready/836.md) | Low | Tagged templates with non-PropertyAccess tags | **20 CE** | Ready |
 | [843](../ready/843.md) | Low | super keyword in object literals and edge cases | **20 CE** | Ready |
@@ -56,6 +58,9 @@ Issues where compiled Wasm runs but produces wrong values or wrong error types.
 | [737](../ready/737.md) | Medium | Undefined-handling edge cases | 276 FAIL | Ready |
 | [821](../ready/821.md) | High | BindingElement null guard over-triggering | 537 FAIL | Review |
 | [764](../ready/764.md) | Medium | Immutable global assignment error | 240 CE | Ready |
+| [928](../ready/928.md) | Medium | Unknown failure tests with empty error message | **209 FAIL** | Ready |
+| [929](../ready/929.md) | Medium | Object.defineProperty called on non-object | **53 FAIL** | Ready |
+| [930](../ready/930.md) | Medium | Not-a-constructor detection for built-in methods | **68 FAIL** | Ready |
 
 ## 3. Built-in Methods -- Array, Set, Map, Math, Error, RegExp
 
@@ -107,6 +112,7 @@ Issues where built-in method implementations are missing, incomplete, or incorre
 | [858](../ready/858.md) | Medium | Worker/timeout exits and eval-code null deref | **182 FAIL** | Ready (also in Runtime) |
 | [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX | Ready |
 | [696](../ready/696.md) | High | Classify "other fail" runtime errors | 4,649 FAIL | Ready |
+| [931](../ready/931.md) | **HIGH** | Error location reporting: 83% of CE errors lack line numbers | **DX** | Ready |
 | [699](../ready/699.md) | High | Shared compiler pool for test262 | Perf | Ready |
 | [832](../ready/832.md) | Medium | Upgrade to TypeScript 6.x for Unicode 16.0 identifiers | 82 skip | Ready |
 | [833](../ready/833.md) | Low | Consider sloppy mode support for legacy octal escapes | 16 skip | Ready |
@@ -177,4 +183,5 @@ See `plan/issues/done/log.md` for the full completion log.
 **Session 2026-03-19/20**: 97 issues. Pass: 9,270 -> 13,226 (+43%). CE: 14,950 -> 6,894 (-54%).
 **Session 2026-03-25**: Pass: 14,720 -> 18,437 (+25%). CE: 4,443 -> 1,657 (-63%).
 **Session 2026-03-26**: Pass: 17,602 -> 20,162 (+14.5%).
-**Session 2026-03-28 (current)**: 18,041 pass, 21,181 fail, 2,284 CE, 6,580 skip. Full error analysis: 13 new runtime issues (#846-#858), 7 new CE issues (#839-#845).
+**Session 2026-03-28**: 18,041 pass, 21,181 fail, 2,284 CE, 6,580 skip. Full error analysis: 13 new runtime issues (#846-#858), 7 new CE issues (#839-#845).
+**Session 2026-04-03**: 17,782 pass, 21,178 fail, 2,803 CE, 6,411 skip. Error pattern analysis: 6 new issues (#926-#931).

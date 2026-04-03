@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./jswasmlogo.png" alt="js2wasm" width="300" />
+  <img src="/jswasmlogo.png" alt="js2wasm" width="300" />
 </p>
 
 # js2wasm — TypeScript/JavaScript to WebAssembly Compiler

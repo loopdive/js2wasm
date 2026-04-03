@@ -70,6 +70,8 @@ All independent -- can run in parallel (different codegen paths).
 | 843 | super keyword in object literals and edge cases | **20 CE** | **Ready** |
 | 842 | new Array() with non-literal/spread args | **14 CE** | **Ready** |
 | 831 | Negative test gaps: expected SyntaxError but compiled | **242 FAIL** | **Ready** |
+| 927 | Missing early/parse error detection (umbrella for #831) | **840 FAIL** | **Ready** |
+| 926 | Fixture tests not supported in unified mode | **172 CE** | **Ready** |
 | 764 | Immutable global assignment error | **240 CE** | **Ready** |
 | 736 | SyntaxError detection at compile time | 316 FAIL | **Ready** |
 
@@ -97,6 +99,9 @@ All independent -- can run in parallel (different codegen paths).
 | 737 | Undefined-handling edge cases | 276 FAIL | **Ready** |
 | 778 | Illegal cast errors (ref.cast wrong type) | 135 FAIL | **Ready** |
 | 821 | BindingElement null guard over-triggering | 537 FAIL | **Review** |
+| 928 | Unknown failure tests with empty error message | **209 FAIL** | **Ready** |
+| 929 | Object.defineProperty called on non-object | **53 FAIL** | **Ready** |
+| 930 | Not-a-constructor detection for built-in methods | **68 FAIL** | **Ready** |
 
 ---
 

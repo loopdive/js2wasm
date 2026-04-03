@@ -50,6 +50,10 @@ export interface CompileResult {
   cHeader?: string;
   /** WIT interface definition (only present when wit option is enabled) */
   wit?: string;
+  /** Whether the source declares an exported main() function */
+  hasMain: boolean;
+  /** Whether the source has top-level executable statements (module init code) */
+  hasTopLevelStatements: boolean;
 }
 
 export interface CompileError {

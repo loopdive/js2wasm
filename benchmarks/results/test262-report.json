@@ -1,1 +1,22 @@
-test262-report-20260403-144514.json
+{
+  "summary": {
+    "total": 43120,
+    "pass": 17782,
+    "fail": 21178,
+    "compile_error": 2803,
+    "compile_timeout": 9,
+    "skip": 1348,
+    "compilable": 38960,
+    "stale": 0
+  },
+  "full_summary": {
+    "total": 48174,
+    "pass": 17782,
+    "fail": 21178,
+    "compile_error": 2803,
+    "compile_timeout": 9,
+    "skip": 6402,
+    "compilable": 38960,
+    "stale": 0
+  }
+}
