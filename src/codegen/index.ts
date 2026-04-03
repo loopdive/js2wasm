@@ -1439,6 +1439,14 @@ function _emitVecAccessExportsInner(ctx: CodegenContext): void {
         boxInstrs = [{ op: "call", funcIdx: boxNumIdx } as Instr];
       } else if (elemKey === "i32" && boxNumIdx !== undefined) {
         boxInstrs = [{ op: "f64.convert_i32_s" } as Instr, { op: "call", funcIdx: boxNumIdx } as Instr];
+      } else if (elemKey === "i64") {
+        // i64 (BigInt) is a value type, not a ref type — extern.convert_any expects anyref.
+        // Convert i64 -> f64 (lossy for large values) then box, or drop and return null.
+        if (boxNumIdx !== undefined) {
+          boxInstrs = [{ op: "f64.convert_i64_s" } as Instr, { op: "call", funcIdx: boxNumIdx } as Instr];
+        } else {
+          boxInstrs = [{ op: "drop" } as Instr, { op: "ref.null.extern" } as Instr];
+        }
       } else {
         boxInstrs = [{ op: "extern.convert_any" } as Instr];
       }

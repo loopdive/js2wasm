@@ -2181,8 +2181,8 @@ export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType, 
       releaseTempLocal(fctx, tmp);
       return result;
     }
-    // No fctx available — use original ref.cast
-    return [{ op: "any.convert_extern" } as Instr, { op: "ref.cast", typeIdx: toIdx } as unknown as Instr];
+    // No fctx available — use ref.cast_null (passes null through instead of trapping)
+    return [{ op: "any.convert_extern" } as Instr, { op: "ref.cast_null", typeIdx: toIdx } as unknown as Instr];
   }
   // eqref/anyref → ref_null: guarded ref.cast_null
   if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref_null") {
