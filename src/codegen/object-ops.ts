@@ -1972,6 +1972,31 @@ export function compilePropertyIntrospection(
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
   const receiverWasm = resolveWasmType(ctx, receiverType);
 
+  // For externref/any receivers (e.g. Object.create result), delegate to runtime
+  // since we can't statically know their properties
+  if (receiverWasm.kind === "externref") {
+    const isHOP = propAccess.name.text === "hasOwnProperty";
+    const importName = isHOP ? "__hasOwnProperty" : "__propertyIsEnumerable";
+    const hopIdx = ensureLateImport(ctx, importName,
+      [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (hopIdx !== undefined) {
+      // Push receiver
+      compileExpression(ctx, fctx, propAccess.expression);
+      // Push key argument (or null if missing)
+      if (expr.arguments[0]) {
+        const argType = compileExpression(ctx, fctx, expr.arguments[0]);
+        if (argType && argType.kind !== "externref") {
+          coerceType(ctx, fctx, argType, { kind: "externref" });
+        }
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      fctx.body.push({ op: "call", funcIdx: hopIdx });
+      return { kind: "i32" };
+    }
+  }
+
   // Build a set of private member names (without '#') from the TS type.
   // Private fields (#x) are stored in the struct with the '#' stripped, but
   // should never be reported as own properties via hasOwnProperty("x").
