@@ -106,6 +106,7 @@ export {
   compileOptionalPropertyAccess,
   compilePropertyAccess,
   emitNullCheckThrow,
+  isProvablyNonNull,
 } from "./property-access.js";
 export { getCol, getLine, valTypesMatch, VOID_RESULT } from "./shared.js";
 export {
@@ -1251,10 +1252,24 @@ function analyzeTdzAccess(ctx: CodegenContext, id: ts.Identifier): "skip" | "thr
   const declEnd = decl.getEnd(); // use end of declaration (after initializer)
 
   // Find the containing function of the access and the declaration.
-  // If they differ, the access is in a nested closure — keep runtime check.
   const accessFunc = getContainingFunction(id);
   const declFunc = getContainingFunction(decl);
-  if (accessFunc !== declFunc) return "check";
+
+  if (accessFunc !== declFunc) {
+    // Access is in a nested closure. We can still prove it safe if:
+    // 1. The closure is an arrow function or function expression (not hoisted), AND
+    // 2. The closure definition starts after the variable's declaration ends, AND
+    // 3. No loop wraps both the declaration and the closure definition
+    // In that case, the closure cannot exist until after the variable is initialized,
+    // so any invocation of the closure is guaranteed to see the initialized value.
+    if (accessFunc && !ts.isFunctionDeclaration(accessFunc) && !ts.isSourceFile(accessFunc)) {
+      const closureStart = accessFunc.getStart();
+      if (closureStart >= declEnd && !isInsideLoopContaining(accessFunc as ts.Node, decl)) {
+        return "skip";
+      }
+    }
+    return "check";
+  }
 
   // Check if the access is inside a loop that contains the declaration
   // (back-edge could reach access before re-initialization)
@@ -1295,6 +1310,10 @@ function getContainingFunction(node: ts.Node): ts.Node | undefined {
  * Check if the access node is inside a loop body that also contains (or is
  * an ancestor of) the declaration. In that case the access could run on a
  * subsequent iteration before the declaration re-initializes the variable.
+ *
+ * Exception: if the declaration is inside the loop body (not the for-initializer)
+ * and the access is textually after the declaration, the back-edge is harmless
+ * because let/const creates a fresh binding each iteration.
  */
 function isInsideLoopContaining(access: ts.Node, decl: ts.Node): boolean {
   let current = access.parent;
@@ -1312,12 +1331,31 @@ function isInsideLoopContaining(access: ts.Node, decl: ts.Node): boolean {
     if (isLoopStatement(current)) {
       // Check if the declaration is also inside this loop
       if (isDescendantOf(decl, current)) {
+        // Both are inside this loop. If the decl is in the loop body
+        // (not the for-initializer/condition/incrementor) and the access
+        // is textually after the decl, the per-iteration fresh binding
+        // guarantees initialization before access on every iteration.
+        const body = getLoopBody(current);
+        if (body && isDescendantOf(decl, body) && access.getStart() >= decl.getEnd()) {
+          // Safe: loop-local let/const, access after declaration in same iteration
+          return false;
+        }
         return true;
       }
     }
     current = current.parent;
   }
   return false;
+}
+
+/** Get the body statement/block of a loop node. */
+function getLoopBody(loop: ts.Node): ts.Node | undefined {
+  if (ts.isForStatement(loop)) return loop.statement;
+  if (ts.isForInStatement(loop)) return loop.statement;
+  if (ts.isForOfStatement(loop)) return loop.statement;
+  if (ts.isWhileStatement(loop)) return loop.statement;
+  if (ts.isDoStatement(loop)) return loop.statement;
+  return undefined;
 }
 
 function isLoopStatement(node: ts.Node): boolean {
@@ -1337,6 +1375,47 @@ function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
     current = current.parent;
   }
   return false;
+}
+
+/**
+ * Position-based TDZ analysis for call-site capture checks.
+ * Used when we know the variable name and the call expression position,
+ * but don't have an identifier with a resolved symbol (e.g., pushing
+ * closure captures at a nested function call site).
+ */
+function analyzeTdzAccessByPos(
+  ctx: CodegenContext,
+  varName: string,
+  callNode: ts.Node,
+): "skip" | "throw" | "check" {
+  // Look up the variable's symbol via the checker
+  // We need to find the declaration to get its end position
+  const sourceFile = callNode.getSourceFile();
+  if (!sourceFile) return "check";
+
+  // Find the declaration by looking up the local symbol in scope
+  const sym = ctx.checker.getSymbolsInScope(callNode, ts.SymbolFlags.Variable).find(
+    (s) => s.name === varName,
+  );
+  if (!sym) return "check";
+  const decl = sym.valueDeclaration;
+  if (!decl) return "check";
+
+  const callPos = callNode.getStart();
+  const declEnd = decl.getEnd();
+
+  // Both must be in the same function scope (call site is in the declaring function)
+  const callFunc = getContainingFunction(callNode);
+  const declFunc = getContainingFunction(decl);
+  if (callFunc !== declFunc) return "check";
+
+  if (isInsideLoopContaining(callNode, decl)) return "check";
+
+  if (callPos >= declEnd) {
+    return "skip";
+  } else {
+    return "throw";
+  }
 }
 
 /** Emit a static TDZ throw (guaranteed violation — no flag check needed). */
@@ -3848,7 +3927,8 @@ function compileElementAssignment(
     const vecLocal = allocLocal(fctx, `__vec_${fctx.locals.length}`, arrType);
     fctx.body.push({ op: "local.set", index: vecLocal });
     // Null guard: throw TypeError if vec is null (#441)
-    if (arrType.kind === "ref_null") {
+    // Skip when receiver is provably non-null (e.g. const array literal)
+    if (arrType.kind === "ref_null" && !isProvablyNonNull(target.expression, ctx.checker)) {
       const tagIdx = ensureExnTag(ctx);
       fctx.body.push({ op: "local.get", index: vecLocal });
       fctx.body.push({ op: "ref.is_null" } as Instr);
@@ -12020,10 +12100,17 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
         } else {
-          // TDZ check for captured let/const variables
+          // TDZ check for captured let/const variables — apply static analysis
+          // to skip checks when the call site is provably after initialization.
           const capTdzIdx = fctx.tdzFlagLocals?.get(cap.name);
           if (capTdzIdx !== undefined) {
-            emitLocalTdzCheck(ctx, fctx, cap.name, capTdzIdx);
+            const capTdzResult = analyzeTdzAccessByPos(ctx, cap.name, expr);
+            if (capTdzResult === "check") {
+              emitLocalTdzCheck(ctx, fctx, cap.name, capTdzIdx);
+            } else if (capTdzResult === "throw") {
+              emitStaticTdzThrow(ctx, fctx, cap.name);
+            }
+            // "skip" — call site is after declaration, no check needed
           }
           fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
           // Coerce capture value to expected param type if they differ
@@ -18401,6 +18488,7 @@ import {
   emitBoundsGuardedArraySet,
   emitNullCheckThrow,
   emitNullGuardedStructGet,
+  isProvablyNonNull,
   typeErrorThrowInstrs,
 } from "./property-access.js";
 export function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undefined {
