@@ -1,8 +1,8 @@
 # Sprint 36 — Contributor Readiness & Code Quality
 
-**Date**: TBD (after sprint 34 completes)
+**Date**: 2026-04-03
 **Goal**: Make the codebase welcoming to new contributors and reduce technical debt from rapid feature sprints
-**Baseline**: TBD (sprint 34 result)
+**Baseline**: 17,717 pass / 43,120 official (41.1%) — post sprint 35
 
 ## Context
 
@@ -15,24 +15,9 @@ After 5 sprints of compiler work (31–35), the codebase has accumulated:
 
 Sprint 36 focuses entirely on contributor readiness and code quality — no new features.
 
-## Task 0: Renumber sprints 32–35
-
-The sprints were executed out of order this session. Renumber to match actual execution order:
-- sprint-35.md (CE reduction, done first) → sprint-32
-- sprint-32.md (STF presentability, done second) → sprint-33
-- sprint-33.md (benchmark recovery, done third) → sprint-34
-- sprint-34.md (push past 40%, planned fourth) → sprint-35
-
-**Status**: Pending (first task in this sprint)
-
 ## Task queue
 
-### Phase 1: Sprint renumbering (task 0)
-| Order | Task | Status |
-|-------|------|--------|
-| 0 | Renumber sprint files 32↔35 to match execution order | pending |
-
-### Phase 2: Refactoring (from #909 sub-issues)
+### Phase 1: Refactoring (from #909 sub-issues)
 | Order | Issue | Title | Impact | Effort |
 |-------|-------|-------|--------|--------|
 | 1 | #910 | Split expressions.ts into syntax-family modules | High — largest file | Hard |
@@ -70,6 +55,7 @@ The sprints were executed out of order this session. Renumber to match actual ex
 | 16 | #927 | Missing early/parse error detection (840 FAIL) | **High** — correctness + conformance | Hard |
 | 17 | #932 | Landing page: replace perf score with JS feature coverage % | Medium — clarity | Easy |
 | 18 | #933 | Migrate report.html charts to shared t262-charts.js web components | Medium — DRY | Medium |
+| 19 | #942 | JS feature compatibility report ranked by real-world importance | **High** — user/contributor clarity | Medium |
 
 ## Dev paths
 
