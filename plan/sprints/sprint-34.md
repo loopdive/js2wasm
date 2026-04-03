@@ -21,6 +21,7 @@ Issues already completed in sprint 35 are removed. Remaining:
 | 5 | #853 | 58 FAIL | Opaque Wasm objects in for-in/Object.create |
 | 6 | #849 | 200 FAIL | Mapped arguments object sync (needs architect) |
 | 7 | #822 WI4 | 17 CE | struct.new type stack inference (deferred from s31) |
+| 8 | #924 | infra | Vite dev server 9GB OOM — playground unusable locally |
 
 ### Already done (removed from queue)
 - ~~#856~~ — done in sprint 35 (ValidateAndApplyPropertyDescriptor)
