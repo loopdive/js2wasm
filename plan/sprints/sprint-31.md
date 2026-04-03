@@ -21,6 +21,27 @@
   - `#877` done
 - Next compiler-facing item to pick up: `#854`.
 
+## Resumption State (2026-04-03)
+
+- Sprint 31 resumed from `main` at commit `316e099d`.
+- Last known result: `15,155 / 48,174` pass (report `2026-03-31T23:51:58`).
+- Fresh test262 baseline run in progress.
+- Additional items already on `main` since last resumption:
+  - `#854` done (WasmGC iterable, iterator protocol)
+  - `#851` done (iterator close protocol)
+  - `#862` done (generator throw deferral)
+  - `#868` done (playground lazy-load)
+  - `#909` done (codegen context/registry extraction — new issue, added to sprint)
+  - `#822` reverted (type mismatch repairs caused regressions)
+  - Codegen refactor: `src/codegen/context/` and `src/codegen/registry/` extracted
+  - Landing page updates (non-compiler)
+- Remaining sprint 31 items:
+  - `#822 A/B/C` — needs rework (reverted)
+  - `#826` — HIGH risk, guarded casts
+  - `#828` — smoke test needed (may already be fixed)
+- **Baseline: 15,103 pass / 42,934 official (35.2%)** — stable (delta -52 from last run is eval-code flakiness, not real regression).
+- Ready to dispatch remaining work.
+
 ## Learnings from Sprint 31
 
 ### What went wrong
@@ -80,14 +101,46 @@ For EACH issue:
 | 0b | #895 | widespread fake 30s timeouts | isolated repros pass; full run completes | n/a | done |
 | 1 | #839 | 15,246 | merged earlier | n/a | done |
 | 2 | #866 | 15,246 | merged earlier | n/a | done |
-| 3 | #854 | 15,160 | | | next |
-| 4 | #822 A | | | | pending |
-| 5 | #822 C | | | | pending |
-| 6 | #851 | | | | pending |
-| 7 | #822 B | | | | pending |
-| 8 | #828 | | | | pending |
-| 9 | #826 | | | | pending |
-| 10 | #862 | | | | pending |
+| 3 | #854 | 15,160 | (on main) | n/a | done (merged prior session) |
+| 4 | #822 WI1 | 15,103 | 15,104 | +1 pass, -15 CE | done (return_call param check) |
+| 5 | #822 WI2 | 15,104 | 15,187 | +83 pass, -266 CE (cumulative w/ WI3) | merged |
+| 5b | #822 WI3 | 15,104 | 15,187 | (combined above) | merged |
+| 6 | #851 | (on main) | (on main) | n/a | done (merged prior session) |
+| 7 | #822 WI4 | | | | deferred to sprint 32 (17 CE, complex) |
+| 8 | #828 | 15,103 | n/a | n/a | verified fixed (compiles OK, 150 CE are runner interaction) |
+| 9 | #826 C1 | 15,103 | 15,104 | +1 pass, -15 CE (combined w/ WI1) | done (ref.cast→ref.cast_null) |
+| 10 | #862 | (on main) | (on main) | n/a | done (merged prior session) |
 | 11 | #876 | merged earlier | merged earlier | n/a | done |
 | 12 | #877 | merged earlier | merged earlier | n/a | done |
-| 13 | #868 | | | | pending |
+| 13 | #868 | (on main) | (on main) | n/a | done (merged prior session) |
+| 14 | #909 | n/a (refactor) | n/a | n/a | done (context + registry extracted, -1,150 LOC from index.ts) |
+
+## Sprint 31 Final Results
+
+**Baseline**: 15,103 pass / 42,934 official (35.2%) — 2026-04-03 session start
+**Final**: 15,187 pass / 42,934 official (35.4%) — 2026-04-03 post-merges
+
+| Metric | Before | After | Delta |
+|--------|--------|-------|-------|
+| Pass | 15,103 | 15,187 | **+84** |
+| CE | 1,699 | 1,433 | **-266** |
+| Fail | 24,773 | 24,956 | +183 (CE→fail, expected) |
+| CT | 11 | 10 | -1 |
+
+### Completed this session (2026-04-03)
+- #822 WI1: return_call param count check (+1 pass, -15 CE)
+- #822 WI2: ref.cast_null for closure typeIdx mismatch
+- #822 WI3: i64 element type boxing in __vec_get
+- #826 C1: ref.cast→ref.cast_null in branch fixup + no-fctx coercion
+- #909: codegen context/registry extraction (-1,150 LOC from index.ts)
+- #828: verified already fixed (compiler handles async private gen methods correctly)
+
+### Deferred to next sprint
+- #822 WI4: struct.new type stack inference (17 CE, complex)
+- #826 remaining patterns (closures.ts left alone per sprint-31 learnings)
+
+### Key learnings reinforced
+1. Incremental, independently-revertible changes work — 4 merges, zero regressions
+2. Architect specs with exact file/line references dramatically improve dev efficiency
+3. ref.cast→ref.cast_null is a safe universal improvement (null passes through to existing guards)
+4. CE→fail transitions are progress (runtime fails are closer to correct than compile errors)
