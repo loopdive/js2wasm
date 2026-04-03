@@ -31,7 +31,7 @@ Output files:
 
 let inputPath: string | undefined;
 let outDir: string | undefined;
-let emitWasm = true;
+const emitWasm = true;
 let emitWat = true;
 let emitDts = true;
 let watOnly = false;

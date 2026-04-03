@@ -786,7 +786,7 @@ export function compileObjectDefineProperty(
             .filter((e) => !e.field.name.startsWith("__"));
           const userIdx = userFieldsList.findIndex((e) => e.field.name === propName);
           if (userIdx >= 0) {
-            let flagsArr = ctx.shapePropFlags.get(structTypeIdx);
+            const flagsArr = ctx.shapePropFlags.get(structTypeIdx);
             if (flagsArr && userIdx < flagsArr.length) {
               flagsArr[userIdx] = newFlags & 0x07; // Only store WEC bits
             }
@@ -1031,7 +1031,7 @@ function emitExternDefinePropertyValue(
   fctx.body.push({ op: "local.get", index: valLocal });
   fctx.body.push({ op: "f64.const", value: runtimeFlags });
 
-  let funcIdx = ensureLateImport(
+  const funcIdx = ensureLateImport(
     ctx,
     "__defineProperty_value",
     [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
@@ -1125,7 +1125,7 @@ function emitExternDefinePropertyNoValue(
     fctx.body.push({ op: "ref.null.extern" }); // null value
     fctx.body.push({ op: "f64.const", value: runtimeFlags });
 
-    let funcIdx = ensureLateImport(
+    const funcIdx = ensureLateImport(
       ctx,
       "__defineProperty_value",
       [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
@@ -1538,7 +1538,7 @@ export function compileObjectDefineProperties(
           .filter((e) => !e.field.name.startsWith("__"));
         const userFieldIdx = userFields.findIndex((e) => e.fieldIdx === fieldIdx);
         if (userFieldIdx >= 0) {
-          let flagsArr = ctx.shapePropFlags.get(structTypeIdx);
+          const flagsArr = ctx.shapePropFlags.get(structTypeIdx);
           if (flagsArr && userFieldIdx < flagsArr.length) {
             const isAccessor = false;
             const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
@@ -1689,7 +1689,7 @@ export function compileObjectKeysOrValues(
       coerceType(ctx, fctx, argResult, { kind: "externref" });
     }
     const importName = `__object_${method}`;
-    let funcIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+    const funcIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
     flushLateImportShifts(ctx, fctx);
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });

@@ -941,6 +941,7 @@ export function coerceType(
   to: ValType,
   toPrimitiveHint?: "number" | "string" | "default",
 ): void {
+  // biome-ignore lint/correctness/noVoidTypeReturn: delegates to void impl
   return coerceTypeImpl(ctx, fctx, from, to, toPrimitiveHint);
 }
 
@@ -4282,7 +4283,7 @@ function compileExternSetFallback(
   fctx.body.push({ op: "local.get", index: valLocal });
 
   // Lazily register __extern_set if not already registered
-  let funcIdx = ensureLateImport(
+  const funcIdx = ensureLateImport(
     ctx,
     "__extern_set",
     [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
@@ -4751,7 +4752,7 @@ function compilePropertyLogicalAssignmentExternref(
   fctx.body.push({ op: "local.set", index: keyLocal });
 
   // Ensure __extern_get is available
-  let getIdx = ensureLateImport(
+  const getIdx = ensureLateImport(
     ctx,
     "__extern_get",
     [{ kind: "externref" }, { kind: "externref" }],
@@ -4760,7 +4761,7 @@ function compilePropertyLogicalAssignmentExternref(
   if (getIdx === undefined) return null;
 
   // Ensure __extern_set is available
-  let setIdx = ensureLateImport(
+  const setIdx = ensureLateImport(
     ctx,
     "__extern_set",
     [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
@@ -5953,7 +5954,7 @@ function compilePropertyCompoundAssignmentExternref(
   // Read current value: __extern_get(obj, key) -> externref
   fctx.body.push({ op: "local.get", index: objLocal });
   fctx.body.push({ op: "local.get", index: keyLocal });
-  let getIdx = ensureLateImport(
+  const getIdx = ensureLateImport(
     ctx,
     "__extern_get",
     [{ kind: "externref" }, { kind: "externref" }],
@@ -6012,7 +6013,7 @@ function compilePropertyCompoundAssignmentExternref(
   fctx.body.push({ op: "local.get", index: objLocal });
   fctx.body.push({ op: "local.get", index: keyLocal });
   fctx.body.push({ op: "local.get", index: boxedLocal });
-  let setIdx = ensureLateImport(
+  const setIdx = ensureLateImport(
     ctx,
     "__extern_set",
     [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
@@ -6065,7 +6066,7 @@ function compileElementCompoundAssignment(
     // Read current value: __extern_get(obj, key) -> externref
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "local.get", index: keyLocal });
-    let getIdx = ensureLateImport(
+    const getIdx = ensureLateImport(
       ctx,
       "__extern_get",
       [{ kind: "externref" }, { kind: "externref" }],
@@ -6124,7 +6125,7 @@ function compileElementCompoundAssignment(
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "local.get", index: keyLocal });
     fctx.body.push({ op: "local.get", index: boxedLocal });
-    let setIdx = ensureLateImport(
+    const setIdx = ensureLateImport(
       ctx,
       "__extern_set",
       [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
@@ -6163,7 +6164,7 @@ function compileElementCompoundAssignment(
     // Read current value: __extern_get(obj, key) -> externref
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "local.get", index: keyLocal });
-    let getIdx = ensureLateImport(
+    const getIdx = ensureLateImport(
       ctx,
       "__extern_get",
       [{ kind: "externref" }, { kind: "externref" }],
@@ -6222,7 +6223,7 @@ function compileElementCompoundAssignment(
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "local.get", index: keyLocal });
     fctx.body.push({ op: "local.get", index: boxedLocal });
-    let setIdx = ensureLateImport(
+    const setIdx = ensureLateImport(
       ctx,
       "__extern_set",
       [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
@@ -9569,7 +9570,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
 
       // Compile the argument — returns the object itself (freeze/seal return their arg)
-      let argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (!argType) return null;
 
       // For externref objects, delegate to host import for runtime enforcement
@@ -10101,7 +10102,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       if (propType.kind !== "externref") {
         coerceType(ctx, fctx, propType, { kind: "externref" });
       }
-      let funcIdx = ensureLateImport(
+      const funcIdx = ensureLateImport(
         ctx,
         "__getOwnPropertyDescriptor",
         [{ kind: "externref" }, { kind: "externref" }],
@@ -13529,12 +13530,12 @@ function compileConditionalCallee(
   // Compile then-branch call
   const savedBody = fctx.body;
   fctx.body = [];
-  let thenType = compileBranchCall(condExpr.whenTrue);
+  const thenType = compileBranchCall(condExpr.whenTrue);
   let thenInstrs = fctx.body;
 
   // Compile else-branch call
   fctx.body = [];
-  let elseType = compileBranchCall(condExpr.whenFalse);
+  const elseType = compileBranchCall(condExpr.whenFalse);
   let elseInstrs = fctx.body;
 
   fctx.body = savedBody;
@@ -16429,7 +16430,7 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     // `new Array()` without type args gives Array<any>, but `var a: number[] = new Array()`
     // needs to produce Array<number> to match the variable's vec type.
     const ctxType = ctx.checker.getContextualType(expr);
-    let exprType = ctxType ?? ctx.checker.getTypeAtLocation(expr);
+    const exprType = ctxType ?? ctx.checker.getTypeAtLocation(expr);
     // If element type is `any` (no contextual type, no explicit type arg),
     // infer from how the array variable is used: scan element assignments
     // like arr[i] = value and arr.push(value) to determine the element type.

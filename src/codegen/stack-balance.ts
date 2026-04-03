@@ -678,7 +678,7 @@ function fixBranchType(body: Instr[], blockType: BlockType, types: TypeDef[], si
 
   if (typesCompatible(produced, expectedType)) return 0; // types match
 
-  let fixups = 0;
+  const fixups = 0;
 
   // ref/anyref → externref: insert extern.convert_any
   // Guard: extern.convert_any takes anyref, NOT externref — skip if already externref

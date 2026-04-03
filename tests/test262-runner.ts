@@ -346,7 +346,7 @@ function transformPrototypeCall(code: string, pattern: string): string {
     let pos = idx + search.length;
     // Extract first argument (obj) by finding the comma at depth 0
     let depth = 1;
-    let firstArgStart = pos;
+    const firstArgStart = pos;
     let commaPos = -1;
     while (pos < code.length && depth > 0) {
       const ch = code[pos]!;
@@ -571,7 +571,7 @@ function stripUndefinedThrowGuards(code: string): string {
     let elseBody = "";
     const afterBrace = code.slice(bracePos).match(/^\s*else\s*\{/);
     if (afterBrace) {
-      let elseStart = bracePos + afterBrace[0].length;
+      const elseStart = bracePos + afterBrace[0].length;
       let elseDepth = 1;
       let elseEnd = elseStart;
       while (elseEnd < code.length && elseDepth > 0) {
@@ -1637,7 +1637,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Body-modifying passes that don't affect preamble content
   // (must happen before preamble cache lookup so the body is consistent)
   if (includes.includes("propertyHelper.js")) {
-    if (new RegExp(`\\bverifyProperty\\b`).test(body)) {
+    if (/\bverifyProperty\b/.test(body)) {
       body = transformVerifyPropertyCalls(body);
     }
     // Strip verifyCallableProperty, verifyPrimordialProperty, verifyPrimordialCallableProperty

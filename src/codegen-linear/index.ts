@@ -4509,7 +4509,6 @@ function detectParamCollectionTypes(
       }
       if (typeStr.endsWith("[]") || typeStr.startsWith("Array<")) {
         fctx.collectionTypes.set(paramName, "Array");
-        continue;
       }
     } catch {
       /* ignore */

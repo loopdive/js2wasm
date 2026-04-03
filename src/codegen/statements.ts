@@ -984,7 +984,7 @@ function emitNullGuard(
  * JS impl: (obj) => obj[Symbol.asyncIterator]?.() ?? obj[Symbol.iterator]()
  */
 function ensureAsyncIterator(ctx: CodegenContext, fctx: FunctionContext): number | undefined {
-  let idx = ctx.funcMap.get("__async_iterator");
+  const idx = ctx.funcMap.get("__async_iterator");
   if (idx !== undefined) return idx;
   const importsBefore = ctx.numImportFuncs;
   const fnType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
@@ -999,7 +999,7 @@ function ensureAsyncIterator(ctx: CodegenContext, fctx: FunctionContext): number
  * JS impl: (v: unknown) => v === undefined ? 1 : 0
  */
 function ensureExternIsUndefined(ctx: CodegenContext, fctx: FunctionContext): number | undefined {
-  let idx = ctx.funcMap.get("__extern_is_undefined");
+  const idx = ctx.funcMap.get("__extern_is_undefined");
   if (idx !== undefined) return idx;
   const importsBefore = ctx.numImportFuncs;
   const fnType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
@@ -1368,8 +1368,7 @@ function compileObjectDestructuring(ctx: CodegenContext, fctx: FunctionContext, 
         // Recursively destructure the nested value (with null guard for ref_null)
         if (ts.isObjectBindingPattern(element.name) && (nFieldType.kind === "ref" || nFieldType.kind === "ref_null")) {
           const nestedTypeIdx = (nFieldType as { typeIdx: number }).typeIdx;
-          let nestedStructName: string | undefined;
-          nestedStructName = ctx.typeIdxToStructName.get(nestedTypeIdx);
+          const nestedStructName = ctx.typeIdxToStructName.get(nestedTypeIdx);
           const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
           if (nestedFields) {
             emitNullGuard(ctx, fctx, nestedTmp, nFieldType.kind === "ref_null", () => {
@@ -6586,8 +6585,7 @@ function compileTryStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: t
     }
 
     // Build "catch $exn" body: receives the externref value on the stack
-    {
-      fctx.body = [];
+    fctx.body = [];
       if (exnLocalIdx !== null) {
         fctx.body.push({ op: "local.set", index: exnLocalIdx });
       } else {
@@ -6614,7 +6612,6 @@ function compileTryStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: t
         fctx.body.push(...catchBodyInstrs);
       }
       catches = [{ tagIdx, body: fctx.body }];
-    }
 
     // Build "catch_all" body: no value on stack from catch_all itself.
     // Call __get_caught_exception host import to retrieve the foreign JS exception.
