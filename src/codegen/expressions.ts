@@ -16104,12 +16104,10 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     }
 
     if (arrTypeIdx < 0) {
-      ctx.errors.push({
-        message: "new Array(): invalid vec type",
-        line: getLine(expr),
-        column: getCol(expr),
-      });
-      return null;
+      // Fallback: use externref vec type for Array<any> or unresolvable element types
+      vecTypeIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+      arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+      elemWasm = { kind: "externref" };
     }
 
     const args = expr.arguments ?? [];
