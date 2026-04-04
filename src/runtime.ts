@@ -872,7 +872,7 @@ function resolveImport(
           const sc = _wasmStructProps.get(obj);
           if (sc && prop in sc) {
             const descs = _wasmPropDescs.get(obj);
-            const flags = descs?.get(prop) ?? (_SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED);
+            const flags = descs?.get(prop) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
             if (flags & _SC_ACCESSOR) {
               return {
                 get: sc[`__get_${prop}`],
@@ -896,7 +896,7 @@ function resolveImport(
             const getter = exports?.[`__sget_${propStr}`];
             const value = typeof getter === "function" ? getter(obj) : undefined;
             const descs = _wasmPropDescs.get(obj);
-            const flags = descs?.get(propStr) ?? (_SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED);
+            const flags = descs?.get(propStr) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
             return {
               value,
               writable: !!(flags & _SC_WRITABLE),
@@ -930,7 +930,11 @@ function resolveImport(
       if (name === "__getPrototypeOf")
         return (obj: any) => {
           if (obj == null) return null;
-          try { return Object.getPrototypeOf(obj); } catch { return null; }
+          try {
+            return Object.getPrototypeOf(obj);
+          } catch {
+            return null;
+          }
         };
       // __create_descriptor(value, flags) → {value, writable, enumerable, configurable}
       // flags: bit 0 = writable, bit 1 = enumerable, bit 2 = configurable
@@ -1434,8 +1438,9 @@ function resolveImport(
       if (name === "decodeURIComponent") return (s: any) => decodeURIComponent(String(s));
       if (name === "encodeURI") return (s: any) => encodeURI(String(s));
       if (name === "encodeURIComponent") return (s: any) => encodeURIComponent(String(s));
-      // String.fromCharCode host import
+      // String.fromCharCode / String.fromCodePoint host imports
       if (name === "String_fromCharCode") return (code: number) => String.fromCharCode(code);
+      if (name === "String_fromCodePoint") return (code: number) => String.fromCodePoint(code);
       // String comparison (lexicographic ordering)
       if (name === "string_compare") return (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
       // ToUint32 for Math.clz32/imul — spec-correct conversion
