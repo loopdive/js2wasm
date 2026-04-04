@@ -308,7 +308,7 @@ function recordResult(
   status: string,
   error?: string,
   timing?: { compileMs?: number; execMs?: number },
-  scopeInfo?: { scope: Test262Scope; official: boolean; reason?: string },
+  scopeInfo?: { scope: Test262Scope; official: boolean; reason?: string; strict?: "only" | "no" | "both" },
 ) {
   const errorCategory = status === "fail" || status === "compile_error" ? classifyError(error) : undefined;
 
@@ -324,6 +324,7 @@ function recordResult(
     scope: scopeInfo?.scope ?? "standard",
     scope_official: scopeInfo?.official ?? true,
     scope_reason: scopeInfo?.reason,
+    strict: scopeInfo?.strict ?? "both",
   });
   fdWrite(jsonlFd, entry + "\n");
   summary.total++;
@@ -502,7 +503,14 @@ for (const category of TEST_CATEGORIES) {
         async () => {
           const source = readFileSync(filePath, "utf-8");
           const meta = parseMeta(source);
-          const scopeInfo = classifyTestScope(source, meta, filePath);
+          const scopeInfo = {
+            ...classifyTestScope(source, meta, filePath),
+            strict: meta.flags?.includes("onlyStrict")
+              ? ("only" as const)
+              : meta.flags?.includes("noStrict")
+                ? ("no" as const)
+                : ("both" as const),
+          };
 
           // Handle skips
           const filter = shouldSkip(source, meta, filePath);

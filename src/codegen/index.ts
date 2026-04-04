@@ -1802,6 +1802,7 @@ interface UnifiedCollectorState {
   uriNeeded: Set<string>;
   // -- collectStringStaticImports --
   needsFromCharCode: boolean;
+  needsFromCodePoint: boolean;
   // -- collectPromiseImports --
   promiseNeeded: Set<string>;
   promiseNeedConstructor: boolean;
@@ -1854,6 +1855,7 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
     parseNeeded: new Set(),
     uriNeeded: new Set(),
     needsFromCharCode: false,
+    needsFromCodePoint: false,
     promiseNeeded: new Set(),
     promiseNeedConstructor: false,
     jsonNeedStringify: false,
@@ -2141,15 +2143,15 @@ function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorState, nod
     }
   }
 
-  // ── collectStringStaticImports (String.fromCharCode) ──
+  // ── collectStringStaticImports (String.fromCharCode / String.fromCodePoint) ──
   if (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
     ts.isIdentifier(node.expression.expression) &&
-    node.expression.expression.text === "String" &&
-    node.expression.name.text === "fromCharCode"
+    node.expression.expression.text === "String"
   ) {
-    state.needsFromCharCode = true;
+    if (node.expression.name.text === "fromCharCode") state.needsFromCharCode = true;
+    if (node.expression.name.text === "fromCodePoint") state.needsFromCodePoint = true;
   }
 
   // ── collectPromiseImports ──
@@ -2581,6 +2583,15 @@ function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorSt
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
+    }
+  }
+  if (state.needsFromCodePoint) {
+    if (ctx.nativeStrings) {
+      // Native strings mode: use pure-Wasm helper, no host import needed
+      ensureNativeStringHelpers(ctx);
+    } else {
+      const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "String_fromCodePoint", { kind: "func", typeIdx });
     }
   }
 
@@ -7234,6 +7245,66 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
         { name: "arr", type: strDataRef },
         { name: "i", type: { kind: "i32" } },
       ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_fromCodePoint(cp: i32) -> ref $NativeString ---
+  // Creates a NativeString from a Unicode code point.
+  // BMP (cp <= 0xFFFF): 1-element array.
+  // Supplementary (cp > 0xFFFF): 2-element surrogate pair.
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_fromCodePoint", funcIdx);
+
+    // params: cp(0)
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0xffff },
+      { op: "i32.gt_u" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
+        then: [
+          // Surrogate pair: len=2, off=0, [high, low]
+          { op: "i32.const", value: 2 }, // len
+          { op: "i32.const", value: 0 }, // off
+          // high = ((cp - 0x10000) >> 10) + 0xD800
+          { op: "local.get", index: 0 },
+          { op: "i32.const", value: 0x10000 },
+          { op: "i32.sub" },
+          { op: "i32.const", value: 10 },
+          { op: "i32.shr_u" },
+          { op: "i32.const", value: 0xd800 },
+          { op: "i32.add" },
+          // low = ((cp - 0x10000) & 0x3FF) + 0xDC00
+          { op: "local.get", index: 0 },
+          { op: "i32.const", value: 0x10000 },
+          { op: "i32.sub" },
+          { op: "i32.const", value: 0x3ff },
+          { op: "i32.and" },
+          { op: "i32.const", value: 0xdc00 },
+          { op: "i32.add" },
+          { op: "array.new_fixed", typeIdx: strDataTypeIdx, length: 2 },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ],
+        else: [
+          // BMP: len=1, off=0, [cp]
+          { op: "i32.const", value: 1 }, // len
+          { op: "i32.const", value: 0 }, // off
+          { op: "local.get", index: 0 }, // cp
+          { op: "array.new_fixed", typeIdx: strDataTypeIdx, length: 1 },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ],
+      } as Instr,
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_fromCodePoint",
+      typeIdx,
+      locals: [],
       body,
       exported: false,
     });
