@@ -364,7 +364,7 @@ class T262Donut extends HTMLElement {
         glow.style.background =
           "conic-gradient(" +
           "rgba(255,255,255,0) 0deg," +
-          "rgba(255,255,255,0.15) " +
+          "rgba(255,255,255,0.25) " +
           curDeg +
           "deg," +
           "rgba(255,255,255,0) " +
