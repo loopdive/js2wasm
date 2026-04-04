@@ -178,7 +178,7 @@ class T262Donut extends HTMLElement {
           font-size: 2.5rem;
           font-weight: 800;
           line-height: 1;
-          color: var(--_pass);
+          color: #fff;
         }
         .gauge-caption {
           margin-top: 0.35rem;
