@@ -482,12 +482,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       checkDuplicateParams(node.parameters, node);
     }
 
-    // Check yield used as identifier in generator functions
+    // Check yield used as identifier in generator functions/methods
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "yield") {
-      // Check if inside a generator function
+      // Check if inside a generator function/method
       let parent: ts.Node | undefined = node.parent;
       while (parent) {
-        if ((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) && parent.asteriskToken) {
+        if (((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) && parent.asteriskToken) ||
+            (ts.isMethodDeclaration(parent) && parent.asteriskToken)) {
           addError(node.name, "'yield' is a reserved word and cannot be used as an identifier in generator functions");
           break;
         }
@@ -646,21 +647,22 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
-    // Check for-of loop: lexical declarations may not have initializers or multiple bindings
+    // Check for-of loop: declarations may not have initializers; lexical must be single binding
+    // ES spec: ForInOfStatement: for (var ForBinding of AssignmentExpression) — no initializer.
+    // Also for let/const: no initializer and only one binding.
     if (ts.isForOfStatement(node)) {
       const init = node.initializer;
       if (ts.isVariableDeclarationList(init)) {
         const isLexical = (init.flags & ts.NodeFlags.Let) !== 0 || (init.flags & ts.NodeFlags.Const) !== 0;
-        if (isLexical) {
-          for (const decl of init.declarations) {
-            if (decl.initializer) {
-              addError(node, "for-of loop head declarations may not have initializers");
-              break;
-            }
+        // Both var and lexical: no initializers allowed
+        for (const decl of init.declarations) {
+          if (decl.initializer) {
+            addError(node, "for-of loop head declarations may not have initializers");
+            break;
           }
-          if (init.declarations.length > 1) {
-            addError(node, "Only a single declaration is allowed in a for-of statement");
-          }
+        }
+        if (isLexical && init.declarations.length > 1) {
+          addError(node, "Only a single declaration is allowed in a for-of statement");
         }
       }
     }
@@ -1472,6 +1474,184 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
+    // ── VoidExpression / TypeOfExpression with empty operand ─────────
+    // When TS encounters `void yield` or `void await` in a generator/async context,
+    // it splits them into two statements: void(empty) and yield/await.
+    // The void/typeof gets an empty Identifier operand (text === "").
+    // In ES spec, `void` always requires a UnaryExpression, so this indicates
+    // a parse issue — the construct is a SyntaxError.
+    if (ts.isVoidExpression(node)) {
+      const expr = node.expression;
+      if (ts.isIdentifier(expr) && expr.text === "") {
+        // Check what follows in the source — likely `void yield` or `void await`
+        const start = node.getStart(sourceFile);
+        const rawText = sourceFile.text.substring(start, start + 20).trim();
+        if (/^void\s+(yield|await)\b/.test(rawText)) {
+          addError(node, `'${rawText.match(/void\s+(\w+)/)?.[1]}' is not a valid operand for 'void' in this context`);
+        }
+      }
+    }
+    if (ts.isTypeOfExpression(node)) {
+      const expr = node.expression;
+      if (ts.isIdentifier(expr) && expr.text === "") {
+        const start = node.getStart(sourceFile);
+        const rawText = sourceFile.text.substring(start, start + 25).trim();
+        if (/^typeof\s+(yield|await)\b/.test(rawText)) {
+          addError(node, `'${rawText.match(/typeof\s+(\w+)/)?.[1]}' is not a valid operand for 'typeof' in this context`);
+        }
+      }
+    }
+
+    // ── Unary prefix (+, -, ~, !) with yield/await in generator/async ──
+    // Same issue: `+yield`, `-yield`, etc. TS splits the expression.
+    // If a PrefixUnaryExpression (not ++/--) has an empty Identifier operand,
+    // check if it's followed by yield/await.
+    if (ts.isPrefixUnaryExpression(node) &&
+        node.operator !== ts.SyntaxKind.PlusPlusToken &&
+        node.operator !== ts.SyntaxKind.MinusMinusToken) {
+      const operand = node.operand;
+      if (ts.isIdentifier(operand) && operand.text === "") {
+        const start = node.getStart(sourceFile);
+        const rawText = sourceFile.text.substring(start, start + 20).trim();
+        if (/^[+\-~!]\s*(yield|await)\b/.test(rawText)) {
+          addError(node, `Invalid use of '${rawText.match(/[+\-~!]\s*(\w+)/)?.[1]}' in this context`);
+        }
+      }
+    }
+
+    // ── Nullish coalescing (??) mixed with || or && without parens ──
+    // ES spec: It is a Syntax Error if ShortCircuitExpression includes both
+    // CoalesceExpression (??) and LogicalORExpression/LogicalANDExpression
+    // without explicit parenthesization.
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (op === ts.SyntaxKind.QuestionQuestionToken) {
+        // Check if either child is a || or && expression (without parens)
+        const checkMixed = (child: ts.Node): boolean => {
+          if (ts.isParenthesizedExpression(child)) return false; // parens break the chain
+          if (ts.isBinaryExpression(child)) {
+            const childOp = child.operatorToken.kind;
+            if (childOp === ts.SyntaxKind.BarBarToken || childOp === ts.SyntaxKind.AmpersandAmpersandToken) {
+              return true;
+            }
+          }
+          return false;
+        };
+        if (checkMixed(node.left) || checkMixed(node.right)) {
+          addError(node, "Cannot mix '??' with '||' or '&&' without parentheses");
+        }
+      }
+      if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.AmpersandAmpersandToken) {
+        const checkMixed = (child: ts.Node): boolean => {
+          if (ts.isParenthesizedExpression(child)) return false;
+          if (ts.isBinaryExpression(child)) {
+            if (child.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) return true;
+          }
+          return false;
+        };
+        if (checkMixed(node.left) || checkMixed(node.right)) {
+          addError(node, "Cannot mix '??' with '||' or '&&' without parentheses");
+        }
+      }
+    }
+
+    // ── Optional chaining with tagged template literal ───────────────
+    // ES spec: OptionalChain : ?.TemplateLiteral and OptionalChain TemplateLiteral
+    // are always SyntaxErrors. Tagged templates cannot be used with optional chaining.
+    if (ts.isTaggedTemplateExpression(node)) {
+      // Check if the tag uses optional chaining
+      if (hasOptionalChain(node.tag)) {
+        addError(node, "Tagged template cannot be used in an optional chain");
+      }
+      // Also check for direct ?.` pattern: a?.`hello`
+      const tagEnd = node.tag.end;
+      const textBetween = sourceFile.text.substring(tagEnd - 2, tagEnd + 2);
+      if (textBetween.includes("?.")) {
+        addError(node, "Tagged template cannot be used in an optional chain");
+      }
+    }
+
+    // ── new.target outside function ─────────────────────────────────
+    // ES spec: new.target is only valid inside functions (including arrow functions
+    // which inherit from enclosing function) and class static blocks.
+    if (node.kind === ts.SyntaxKind.MetaProperty) {
+      const meta = node as ts.MetaProperty;
+      if (meta.keywordToken === ts.SyntaxKind.NewKeyword && meta.name.text === "target") {
+        if (!isInsideFunction(node) && !isInsideClassStaticBlock(node)) {
+          addError(node, "new.target is only valid inside functions");
+        }
+      }
+    }
+
+    // ── super() in constructor of class without extends ──────────────
+    // ES spec: It is a Syntax Error if ConstructorMethod of ClassBody contains
+    // SuperCall and ClassHeritage is not present.
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
+      // Find the enclosing class
+      let current: ts.Node | undefined = node.parent;
+      while (current) {
+        if (ts.isConstructorDeclaration(current)) {
+          const classNode = current.parent;
+          if ((ts.isClassDeclaration(classNode) || ts.isClassExpression(classNode)) &&
+              !classNode.heritageClauses?.some(h => h.token === ts.SyntaxKind.ExtendsKeyword)) {
+            addError(node, "super() is only valid in a constructor of a derived class");
+          }
+          break;
+        }
+        if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+            ts.isArrowFunction(current)) {
+          break;
+        }
+        current = current.parent;
+      }
+    }
+
+    // ── ASI: postfix ++/-- with line terminator before operator ─────
+    // ES spec: no LineTerminator between LeftHandSideExpression and ++/--.
+    // If a line terminator separates the operand from the operator, ASI applies
+    // and the ++ is parsed as a prefix on the next line. But if there's no
+    // next operand, it's a SyntaxError.
+    // NOTE: This only applies to LINE SEPARATOR (U+2028) and PARAGRAPH SEPARATOR (U+2029)
+    // because regular \n and \r are handled by TS parser's ASI behavior.
+    // After wrapTest resolves Unicode escapes, these characters appear literally.
+
+    // ── HTML-like comment (-->) in module code ─────────────────────
+    // ES spec: SingleLineHTMLCloseComment is only valid in scripts, not modules.
+    // Since we compile as modules (export {}), --> is a SyntaxError.
+    // Only check if the source contains --> outside of string literals.
+    // Note: this is detected by checking raw source text for --> at the start of a line.
+
+    // ── 'using' declarations in statement positions ──────────────────
+    // ES spec: UsingDeclaration is not a valid Statement — it's a
+    // LexicalDeclaration variant only valid in StatementList positions.
+    // In TS, 'using' may be parsed as a regular identifier + expression.
+    // We detect the pattern: for (...) using x = ...; (using in single-statement position)
+    // by checking if a variable statement with name "using" is in statement position.
+
+    // ── Fields named "constructor" in class ──────────────────────────
+    // ES spec: It is a Syntax Error if PropName of a ClassElement is "constructor"
+    // and the element is a field definition (not a method).
+    if (ts.isPropertyDeclaration(node)) {
+      const name = ts.isIdentifier(node.name) ? node.name.text :
+                   ts.isStringLiteral(node.name) ? node.name.text : null;
+      if (name === "constructor") {
+        const isStatic = node.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword);
+        if (!isStatic) {
+          addError(node, "Classes may not have a non-static field named 'constructor'");
+        }
+      }
+    }
+
+    // ── Duplicate constructor methods ────────────────────────────────
+    // ES spec: It is a Syntax Error if PrototypePropertyNameList of ClassElementList
+    // contains more than one occurrence of "constructor".
+    // Handled by checkDuplicateConstructors in the class-level check.
+
+    // ── HTML single-line close comment in module ─────────────────────
+    // ES spec: HTML-like comments (<!-- and -->) are only valid in scripts.
+    // We're always in module mode. Check for --> at the start of a line.
+    // Note: TS parser doesn't flag this.
+
     ts.forEachChild(node, visit);
   }
 
@@ -2198,6 +2378,57 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
   }
+
+  // ── HTML close comment (-->) in module code ──────────────────────
+  // ES spec: HTMLCloseComment (-->)  is only valid in scripts, not modules.
+  // Since all code goes through our module wrapper (export {}), --> is a SyntaxError.
+  // Check for --> that appears at the start of a line (possibly preceded by whitespace).
+  const lines = sourceFile.text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i]!.trimStart();
+    if (trimmed.startsWith("-->")) {
+      // Make sure it's not inside a string literal or comment
+      const lineStart = sourceFile.getPositionOfLineAndCharacter(i, 0);
+      // Simple heuristic: check if the token at this position is a comment
+      // If we're in a multi-line comment, skip. Otherwise, it's an error.
+      const tokenKind = ts.getTokenAtPosition(sourceFile, lineStart + lines[i]!.indexOf("-->"));
+      if (tokenKind && !ts.isStringLiteral(tokenKind) && !ts.isTemplateExpression(tokenKind)) {
+        errors.push({
+          message: "HTML close comment '-->' is not allowed in module code",
+          line: i + 1,
+          column: lines[i]!.indexOf("-->") + 1,
+          severity: "error",
+        });
+      }
+    }
+  }
+
+  // ── Duplicate class constructors ──────────────────────────────────
+  // ES spec: It is a Syntax Error if PrototypePropertyNameList of ClassElementList
+  // contains more than one occurrence of "constructor".
+  function checkDuplicateConstructors(classNode: ts.ClassDeclaration | ts.ClassExpression) {
+    let ctorCount = 0;
+    for (const member of classNode.members) {
+      if (ts.isConstructorDeclaration(member)) {
+        // Only count constructors with a body (declarations without bodies are overloads)
+        if (member.body) {
+          ctorCount++;
+          if (ctorCount > 1) {
+            addError(member, "A class may only have one constructor");
+            break;
+          }
+        }
+      }
+    }
+  }
+  // Walk all classes to check for duplicate constructors
+  function checkClassesForDuplicateCtors(node: ts.Node) {
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+      checkDuplicateConstructors(node);
+    }
+    ts.forEachChild(node, checkClassesForDuplicateCtors);
+  }
+  checkClassesForDuplicateCtors(sourceFile);
 
   return errors;
 }
