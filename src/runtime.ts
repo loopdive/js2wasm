@@ -1551,8 +1551,9 @@ function resolveImport(
       if (name === "decodeURIComponent") return (s: any) => decodeURIComponent(String(s));
       if (name === "encodeURI") return (s: any) => encodeURI(String(s));
       if (name === "encodeURIComponent") return (s: any) => encodeURIComponent(String(s));
-      // String.fromCharCode host import
+      // String.fromCharCode / String.fromCodePoint host imports
       if (name === "String_fromCharCode") return (code: number) => String.fromCharCode(code);
+      if (name === "String_fromCodePoint") return (code: number) => String.fromCodePoint(code);
       // String comparison (lexicographic ordering)
       if (name === "string_compare") return (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
       // ToUint32 for Math.clz32/imul — spec-correct conversion
