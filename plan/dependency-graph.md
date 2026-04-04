@@ -21,7 +21,7 @@ These are the biggest bang-for-buck issues. Pick from here first.
 ```
 #822 (Wasm type mismatch CE -- 907 CE) -- BLOCKED (needs architect, repair-pass approach failed)
 ~~#826 (illegal cast -- 1,294 FAIL) -- DONE (0 illegal_cast remaining, 255 tests fixed)~~
-#851 (iterator close protocol -- 147 FAIL) -- sync paths fixed, async-gen still broken
+~~#851 (iterator close protocol -- 147 FAIL) -- DONE (sync paths fixed, break/throw/continue call return())~~
 ~~#839 (return_call stack/type mismatch -- 158 CE) -- DONE~~
 ```
 
@@ -32,7 +32,7 @@ These are the biggest bang-for-buck issues. Pick from here first.
 |-----|-------|--------|--------|
 | **822** | Wasm type mismatch compile errors | **907 CE** | **Blocked** — needs architect (repair passes caused +6K CE regression) |
 | ~~**826**~~ | ~~Illegal cast failures (sub of #820)~~ | ~~**~489 FAIL**~~ | **Done** (0 illegal_cast, 255 tests fixed) |
-| **851** | Iterator close protocol | **~100 FAIL** | **Ready** (sync fixed, async-gen broken) |
+| ~~**851**~~ | ~~Iterator close protocol~~ | ~~**~100 FAIL**~~ | **Done** (sync fixed, break/throw/continue call return()) |
 | ~~**839**~~ | ~~return_call stack/type mismatch in constructors~~ | ~~**158 CE**~~ | **Done** |
 | ~~**854**~~ | ~~Iterator protocol: null next/return/throw methods~~ | ~~**126 FAIL**~~ | **Done** (sub-issue 4: 32/64 iterable tests fixed) |
 | ~~**862**~~ | ~~Empty error message failures~~ | ~~**212 FAIL**~~ | **Done** (generator throw deferral) |
