@@ -97,9 +97,35 @@ If #797 and #799 both land, conformance could reach 55-60%. The infrastructure f
 - #943 (runner stability) should be fixed early so test262 validation is reliable
 - Sprint 36 refactoring (#910-#913) would make #797/#799 implementation cleaner but is not blocking
 
+### Phase 6: Session issues (#940-#953)
+| Order | Issue | Title | Impact | Effort |
+|-------|-------|-------|--------|--------|
+| 20 | #940 | String.fromCodePoint WASI helper | Low | Easy |
+| 21 | #941 | Equiv tests for isNaN/isFinite | Low | Easy |
+| 22 | #946 | Show strict mode compatibility by default | Medium | Easy |
+| 23 | #947 | Calendar WAT: 6 codegen inefficiencies | Medium | Medium |
+| 24 | #948 | Systematic WAT analysis of all equiv tests | High | Medium |
+| 25 | #949 | Document JS-to-Wasm landscape and related work | Medium | Easy |
+| 26 | #950 | Compile error on calls with fewer args than TS signature | Medium | Medium |
+| 27 | #951 | Unused imports cause const declaration error | Medium | Medium |
+| 28 | #953 | Add Wasm validation pass to compilation tests | High | Easy |
+
 ## Results
 
-(Fill after sprint completion)
+**Baseline**: 17,822 pass / 43,120 (41.3%)
+**Current**: 18,288 pass / 43,120 (42.4%)
+**Delta**: +466
+
+| Issue | Status | Delta |
+|-------|--------|-------|
+| #945 vec_get i32 | Merged ✓ | -780 CE (targeted fix) |
+| #797 architect spec | Done ✓ | 6 work items written |
+| #797 WI1+WI2+WI4 | Merged ✓ | getOwnPropertyDescriptor, keys enumerability, propertyIsEnumerable |
+| #797 WI3+WI6 | Merged ✓ | getOwnPropertyNames/Symbols, Object.create |
+| #923+#943 state leak | Done ✓ | Compiler proven idempotent, _ensureStructPending fixed |
+| #931 error reporting | Merged ✓ | 132 ctx.errors.push migrated to reportError |
+| #919 async gen fix | Merged ✓ | Exclude async generators from Promise.resolve wrapping |
+| #952 regression fix | Merged ✓ | +1,040 pass — removed 5 overly aggressive #927 checks |
 
 ## Retrospective
 
