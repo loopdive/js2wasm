@@ -864,10 +864,13 @@ async function main() {
   // ── Metrics ──
   if (runs.length > 0) {
     const latest = runs[runs.length - 1];
-    const passRate = ((latest.pass / latest.total) * 100).toFixed(1);
+    // Use strict-mode pass rate (ES module compatible) when available, fall back to all tests
+    const strictPass = latest.strict_pass ?? latest.pass;
+    const strictTotal = latest.strict_total ?? latest.total;
+    const passRate = ((strictPass / strictTotal) * 100).toFixed(1);
     document.getElementById('m-passrate').textContent = passRate + '%';
     document.getElementById('m-passrate-sub').textContent =
-      `${latest.pass.toLocaleString()} / ${latest.total.toLocaleString()} tests (standard + Annex B)`;
+      `${strictPass.toLocaleString()} / ${strictTotal.toLocaleString()} tests (strict mode)`;
 
     document.getElementById('m-ce').textContent = latest.ce.toLocaleString();
     document.getElementById('m-ce').className = 'value ' + (latest.ce > 2000 ? 'red' : latest.ce > 500 ? 'yellow' : 'green');
