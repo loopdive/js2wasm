@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-04-04T06:31:37+02:00",
+  "timestamp": "2026-04-04T08:35:43+02:00",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
     "total": 43120,
-    "pass": 17241,
-    "fail": 22388,
+    "pass": 17248,
+    "fail": 22381,
     "compile_error": 2134,
     "compile_timeout": 9,
     "skip": 1348,
@@ -16,8 +16,8 @@
   },
   "official_summary": {
     "total": 43120,
-    "pass": 17241,
-    "fail": 22388,
+    "pass": 17248,
+    "fail": 22381,
     "compile_error": 2134,
     "compile_timeout": 9,
     "skip": 1348,
@@ -26,8 +26,8 @@
   },
   "full_summary": {
     "total": 48174,
-    "pass": 17241,
-    "fail": 22388,
+    "pass": 17248,
+    "fail": 22381,
     "compile_error": 2134,
     "compile_timeout": 9,
     "skip": 6402,
@@ -57,8 +57,8 @@
     },
     "standard": {
       "total": 42034,
-      "pass": 16847,
-      "fail": 21758,
+      "pass": 16854,
+      "fail": 21751,
       "compile_error": 2083,
       "compile_timeout": 9,
       "skip": 1337,
@@ -267,8 +267,8 @@
     },
     {
       "name": "built-ins/GeneratorFunction",
-      "pass": 4,
-      "fail": 19,
+      "pass": 6,
+      "fail": 17,
       "compile_error": 0,
       "compile_timeout": 0,
       "skip": 0,
@@ -366,8 +366,8 @@
     },
     {
       "name": "built-ins/Object",
-      "pass": 1205,
-      "fail": 2184,
+      "pass": 1209,
+      "fail": 2180,
       "compile_error": 21,
       "compile_timeout": 0,
       "skip": 1,
@@ -393,8 +393,8 @@
     },
     {
       "name": "built-ins/Reflect",
-      "pass": 47,
-      "fail": 104,
+      "pass": 48,
+      "fail": 103,
       "compile_error": 2,
       "compile_timeout": 0,
       "skip": 0,
@@ -420,8 +420,8 @@
     },
     {
       "name": "built-ins/Set",
-      "pass": 153,
-      "fail": 216,
+      "pass": 154,
+      "fail": 215,
       "compile_error": 14,
       "compile_timeout": 0,
       "skip": 0,
@@ -888,8 +888,8 @@
     },
     {
       "name": "language/statements",
-      "pass": 3530,
-      "fail": 5008,
+      "pass": 3529,
+      "fail": 5009,
       "compile_error": 588,
       "compile_timeout": 4,
       "skip": 207,
@@ -915,31 +915,31 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 8695,
+    "assertion_fail": 8692,
     "other": 2558,
-    "wasm_compile": 2690,
+    "type_error": 6085,
     "illegal_cast": 1257,
-    "range_error": 18,
-    "null_deref": 2323,
-    "type_error": 6091,
-    "runtime_error": 338,
     "negative_test_fail": 453,
+    "null_deref": 2324,
+    "runtime_error": 338,
+    "wasm_compile": 2691,
     "oob": 43,
+    "unreachable": 27,
     "promise_error": 29,
-    "unreachable": 27
+    "range_error": 18
   },
   "skip_reasons": {
     "ES5 legacy: with statement (strict mode disallowed)": 560,
     "ES2020: dynamic import()": 432,
     "Proposal excluded from default scope: proposal feature: source phase imports": 211,
     "Proposal excluded from default scope: proposal feature: import defer": 210,
-    "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)": 8,
     "ES5 strict mode: octal escape sequences forbidden in modules (#833)": 27,
-    "ES2020: BigInt typed arrays not implemented (#838)": 28,
     "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)": 460,
-    "Proposal excluded from default scope: proposal feature: Map/WeakMap upsert": 72,
     "Proposal excluded from default scope: proposal feature: Temporal": 4383,
-    "compiler hang (see HANGING_TESTS)": 3,
-    "ES5 sloppy mode: not supported in strict/module mode (#833)": 8
+    "Proposal excluded from default scope: proposal feature: Map/WeakMap upsert": 72,
+    "ES2020: BigInt typed arrays not implemented (#838)": 28,
+    "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)": 8,
+    "ES5 sloppy mode: not supported in strict/module mode (#833)": 8,
+    "compiler hang (see HANGING_TESTS)": 3
   }
 }
