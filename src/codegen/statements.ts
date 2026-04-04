@@ -2526,7 +2526,7 @@ function compileArrayDestructuring(ctx: CodegenContext, fctx: FunctionContext, d
               fctx.body.push({ op: "local.get", index: nestedExtLocal });
               compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, elemType);
             }
-                if (ts.isObjectBindingPattern(element.name)) {
+            if (ts.isObjectBindingPattern(element.name)) {
               fctx.body.push({ op: "local.get", index: nestedExtLocal });
               compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, elemType);
             }
@@ -2691,7 +2691,7 @@ function compileArrayDestructuring(ctx: CodegenContext, fctx: FunctionContext, d
               fctx.body.push({ op: "local.get", index: nestedLocal });
               compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, elemType);
             }
-                if (ts.isObjectBindingPattern(element.name)) {
+            if (ts.isObjectBindingPattern(element.name)) {
               fctx.body.push({ op: "local.get", index: nestedLocal });
               compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, elemType);
             }
@@ -4433,9 +4433,7 @@ function compileForOfAssignDestructuring(
         if (targetLocal === undefined) continue;
 
         // Property doesn't exist on primitive — use default if provided
-        const init = ts.isShorthandPropertyAssignment(prop)
-          ? prop.objectAssignmentInitializer
-          : undefined;
+        const init = ts.isShorthandPropertyAssignment(prop) ? prop.objectAssignmentInitializer : undefined;
         if (init) {
           const targetType = getLocalType(fctx, targetLocal);
           const instrs = collectInstrs(fctx, () => {
@@ -6555,32 +6553,32 @@ function compileTryStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: t
 
     // Build "catch $exn" body: receives the externref value on the stack
     fctx.body = [];
-      if (exnLocalIdx !== null) {
-        fctx.body.push({ op: "local.set", index: exnLocalIdx });
-      } else {
-        fctx.body.push({ op: "drop" });
-      }
+    if (exnLocalIdx !== null) {
+      fctx.body.push({ op: "local.set", index: exnLocalIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+    }
 
-      if (finallyInstrs) {
-        // Wrap catch body in inner try/catch_all so that if the catch body
-        // throws, the finally block still executes before the exception
-        // propagates.
-        const innerCatchAllBody: Instr[] = [...cloneFinally(), { op: "rethrow", depth: 0 } as any];
+    if (finallyInstrs) {
+      // Wrap catch body in inner try/catch_all so that if the catch body
+      // throws, the finally block still executes before the exception
+      // propagates.
+      const innerCatchAllBody: Instr[] = [...cloneFinally(), { op: "rethrow", depth: 0 } as any];
 
-        fctx.body.push({
-          op: "try",
-          blockType: { kind: "empty" },
-          body: catchBodyInstrs,
-          catches: [],
-          catchAll: innerCatchAllBody,
-        } as any);
+      fctx.body.push({
+        op: "try",
+        blockType: { kind: "empty" },
+        body: catchBodyInstrs,
+        catches: [],
+        catchAll: innerCatchAllBody,
+      } as any);
 
-        // Finally on normal exit path (no exception in catch body)
-        fctx.body.push(...cloneFinally());
-      } else {
-        fctx.body.push(...catchBodyInstrs);
-      }
-      catches = [{ tagIdx, body: fctx.body }];
+      // Finally on normal exit path (no exception in catch body)
+      fctx.body.push(...cloneFinally());
+    } else {
+      fctx.body.push(...catchBodyInstrs);
+    }
+    catches = [{ tagIdx, body: fctx.body }];
 
     // Build "catch_all" body: no value on stack from catch_all itself.
     // Call __get_caught_exception host import to retrieve the foreign JS exception.
@@ -6751,8 +6749,7 @@ function compileNestedFunctionDeclaration(
   }
   // Detect async functions — their TS return type is Promise<T> but the
   // Wasm return should be T (matching the unwrap that top-level async functions use).
-  const isAsync =
-    stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+  const isAsync = stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
   if (isAsync) {
     ctx.asyncFunctions.add(funcName);
   }
