@@ -9769,12 +9769,28 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
       }
 
-      // Fallback: compile and drop arg, return null
-      const argType = compileExpression(ctx, fctx, arg0);
-      if (argType) {
-        fctx.body.push({ op: "drop" });
+      // Fallback: use host import for externref/dynamic objects (e.g. Object.create results)
+      const argTypeF = compileExpression(ctx, fctx, arg0, { kind: "externref" });
+      if (!argTypeF) {
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
       }
-      fctx.body.push({ op: "ref.null.extern" });
+      if (argTypeF.kind !== "externref") {
+        coerceType(ctx, fctx, argTypeF, { kind: "externref" });
+      }
+      const gptFuncIdx = ensureLateImport(
+        ctx,
+        "__getPrototypeOf",
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (gptFuncIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: gptFuncIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
       return { kind: "externref" };
     }
 
@@ -10179,6 +10195,71 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       return { kind: "externref" };
     }
 
+    // Handle Object.getOwnPropertyNames(obj) — returns all own string-keyed property names
+    // (including non-enumerable), delegates to __getOwnPropertyNames host import.
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "getOwnPropertyNames" &&
+      expr.arguments.length >= 1
+    ) {
+      const arg = expr.arguments[0]!;
+      const argResult = compileExpression(ctx, fctx, arg, { kind: "externref" });
+      if (!argResult) {
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+      if (argResult.kind !== "externref") {
+        coerceType(ctx, fctx, argResult, { kind: "externref" });
+      }
+      const funcIdx = ensureLateImport(
+        ctx,
+        "__getOwnPropertyNames",
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      return { kind: "externref" };
+    }
+
+    // Handle Object.getOwnPropertySymbols(obj) — returns own symbol-keyed properties
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "getOwnPropertySymbols" &&
+      expr.arguments.length >= 1
+    ) {
+      const arg = expr.arguments[0]!;
+      const argResult = compileExpression(ctx, fctx, arg, { kind: "externref" });
+      if (!argResult) {
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+      if (argResult.kind !== "externref") {
+        coerceType(ctx, fctx, argResult, { kind: "externref" });
+      }
+      const funcIdx = ensureLateImport(
+        ctx,
+        "__getOwnPropertySymbols",
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      return { kind: "externref" };
+    }
+
     // ── Reflect API — compile-time rewrites to equivalent operations ──────
     if (ts.isIdentifier(propAccess.expression) && propAccess.expression.text === "Reflect") {
       const reflectMethod = propAccess.name.text;
@@ -10261,11 +10342,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         return compileExpression(ctx, fctx, syntheticNew);
       }
 
-      // Reflect.ownKeys(obj) → Object.keys(obj)
+      // Reflect.ownKeys(obj) → Object.getOwnPropertyNames(obj)
+      // (includes non-enumerable string keys; per spec should also include symbols,
+      // but getOwnPropertyNames is a closer approximation than Object.keys)
       if (reflectMethod === "ownKeys" && expr.arguments.length >= 1) {
         const syntheticPropAccess = ts.factory.createPropertyAccessExpression(
           ts.factory.createIdentifier("Object"),
-          "keys",
+          "getOwnPropertyNames",
         );
         const syntheticCall = ts.factory.createCallExpression(syntheticPropAccess, undefined, [
           expr.arguments[0] as ts.Expression,
