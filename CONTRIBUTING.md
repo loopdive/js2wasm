@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This guide covers the minimum workflow
 ## Setup
 
 ```bash
-git clone https://github.com/nicolo-ribaudo/js2wasm.git
+git clone https://github.com/loopdive/js2wasm.git
 cd js2wasm
 pnpm install
 ```

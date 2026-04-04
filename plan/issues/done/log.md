@@ -497,3 +497,5 @@
 
 | 866 | 2026-03-31 | NaN sentinel fix — sNaN check + ToPrimitive toString fallback (71 FAIL restored) | Sprint-31  |
 | 849 | 2026-03-31 | Mapped arguments object sync with named parameters (200 FAIL restored) | Sprint-31  |
+
+| 920 | 2026-04-04 | RegExp regression recovery — disable compiler cache, pre-filter proposals (17,822 pass, 41.3%) | Sprint-36 |

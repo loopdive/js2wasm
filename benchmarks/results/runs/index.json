@@ -835,7 +835,7 @@
     "skip": 6580,
     "total": 48088,
     "gitHash": "08cc4778",
-    "note": "clean baseline — cache disabled, conformance count (not vitest count)"
+    "note": "clean baseline \u2014 cache disabled, conformance count (not vitest count)"
   },
   {
     "timestamp": "2026-03-31T01:24:13.763Z",
@@ -1065,5 +1065,37 @@
     "skip": 6402,
     "total": 48088,
     "gitHash": "3ce41b5e"
+  },
+  {
+    "timestamp": "20260404-021526",
+    "pass": 16268,
+    "fail": 21133,
+    "ce": 4361,
+    "skip": 1348,
+    "total": 43120
+  },
+  {
+    "timestamp": "20260404-023825",
+    "pass": 16268,
+    "fail": 21133,
+    "ce": 4361,
+    "skip": 1348,
+    "total": 43120
+  },
+  {
+    "timestamp": "20260404-025747",
+    "pass": 16268,
+    "fail": 21133,
+    "ce": 4361,
+    "skip": 1348,
+    "total": 43120
+  },
+  {
+    "timestamp": "20260404-033322",
+    "pass": 17822,
+    "fail": 21186,
+    "ce": 2755,
+    "skip": 1348,
+    "total": 43120
   }
 ]
