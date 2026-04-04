@@ -8368,6 +8368,126 @@ function compileGetterCallable(
 }
 
 /**
+ * Object.prototype method fallback for known class instances (#799 WI1).
+ *
+ * When a method call like `obj.toString()` cannot be resolved on a user-defined
+ * class or its ancestors, this function checks if the method is an Object.prototype
+ * method and emits host-delegated code via externref conversion.
+ */
+function compileObjectPrototypeFallback(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  receiverClassName: string,
+  methodName: string,
+): InnerResult | undefined {
+  // toString: coerce receiver to externref and call __extern_toString
+  if (methodName === "toString") {
+    const toStrIdx = ensureLateImport(ctx, "__extern_toString", [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (toStrIdx !== undefined) {
+      compileExpression(ctx, fctx, propAccess.expression);
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+      fctx.body.push({ op: "call", funcIdx: toStrIdx });
+      return { kind: "externref" };
+    }
+    return undefined;
+  }
+
+  // toLocaleString: delegate to toString (ES spec default behavior)
+  if (methodName === "toLocaleString") {
+    const toStrIdx = ensureLateImport(ctx, "__extern_toString", [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (toStrIdx !== undefined) {
+      compileExpression(ctx, fctx, propAccess.expression);
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+      fctx.body.push({ op: "call", funcIdx: toStrIdx });
+      return { kind: "externref" };
+    }
+    return undefined;
+  }
+
+  // valueOf: return the receiver itself (Object.prototype.valueOf returns this)
+  if (methodName === "valueOf") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+    return { kind: "externref" };
+  }
+
+  // hasOwnProperty: delegate to __hasOwnProperty host import
+  if (methodName === "hasOwnProperty") {
+    const hopIdx = ensureLateImport(
+      ctx,
+      "__hasOwnProperty",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "i32" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+    if (hopIdx !== undefined) {
+      compileExpression(ctx, fctx, propAccess.expression);
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+      if (expr.arguments.length > 0) {
+        compileExpression(ctx, fctx, expr.arguments[0]!);
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      fctx.body.push({ op: "call", funcIdx: hopIdx });
+      return { kind: "i32" };
+    }
+    return undefined;
+  }
+
+  // propertyIsEnumerable: delegate to __propertyIsEnumerable host import
+  if (methodName === "propertyIsEnumerable") {
+    const pieIdx = ensureLateImport(
+      ctx,
+      "__propertyIsEnumerable",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "i32" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+    if (pieIdx !== undefined) {
+      compileExpression(ctx, fctx, propAccess.expression);
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+      if (expr.arguments.length > 0) {
+        compileExpression(ctx, fctx, expr.arguments[0]!);
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      fctx.body.push({ op: "call", funcIdx: pieIdx });
+      return { kind: "i32" };
+    }
+    return undefined;
+  }
+
+  // isPrototypeOf: delegate to host __isPrototypeOf
+  if (methodName === "isPrototypeOf") {
+    const ipIdx = ensureLateImport(
+      ctx,
+      "__isPrototypeOf",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "i32" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+    if (ipIdx !== undefined) {
+      compileExpression(ctx, fctx, propAccess.expression);
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+      if (expr.arguments.length > 0) {
+        compileExpression(ctx, fctx, expr.arguments[0]!);
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      fctx.body.push({ op: "call", funcIdx: ipIdx });
+      return { kind: "i32" };
+    }
+    return undefined;
+  }
+
+  return undefined;
+}
+
+/**
  * Handle calls to callable struct fields: obj.callback() where callback
  * is a function-typed property stored in a struct field (not a method).
  * Returns undefined if the property is not a callable struct field,
@@ -10882,6 +11002,20 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           if (getterCallResult !== undefined) return getterCallResult;
         }
       }
+      // Object.prototype fallback for known class instances (#799 WI1):
+      // When no method found on the class or its ancestors, check if the method
+      // is an Object.prototype method and delegate to the host via externref.
+      if (funcIdx === undefined) {
+        const objProtoResult = compileObjectPrototypeFallback(
+          ctx,
+          fctx,
+          expr,
+          propAccess,
+          receiverClassName,
+          methodName,
+        );
+        if (objProtoResult !== undefined) return objProtoResult;
+      }
       if (funcIdx !== undefined) {
         const isStaticMethod = ctx.staticMethodSet.has(fullName);
         // Static methods: evaluate receiver for side effects, drop, call directly
@@ -11590,11 +11724,65 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           if (externResult !== null) return externResult;
         }
 
-        // General fallback for any method call on any/externref receiver:
-        // compile the receiver and all arguments for side effects, then throw
-        // TypeError (calling a non-function). This matches JS semantics where
-        // accessing an unknown property returns undefined and calling it throws.
+        // (#799 WI3) Generic host-delegated method call for any/externref receivers.
+        // Builds a JS array of arguments and calls __extern_method_call(obj, methodName, args).
         {
+          const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+          const arrPushIdx = ensureLateImport(
+            ctx,
+            "__js_array_push",
+            [{ kind: "externref" }, { kind: "externref" }],
+            [],
+          );
+          const methodCallIdx = ensureLateImport(
+            ctx,
+            "__extern_method_call",
+            [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+            [{ kind: "externref" }],
+          );
+          flushLateImportShifts(ctx, fctx);
+
+          if (methodCallIdx !== undefined && arrNewIdx !== undefined && arrPushIdx !== undefined) {
+            // Compile receiver as externref
+            const recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+            if (recvType && recvType.kind !== "externref") {
+              fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+            }
+            const recvLocal = allocLocal(fctx, `__emc_recv_${fctx.locals.length}`, { kind: "externref" });
+            fctx.body.push({ op: "local.set", index: recvLocal });
+
+            // Build args array
+            fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+            const argsLocal = allocLocal(fctx, `__emc_args_${fctx.locals.length}`, { kind: "externref" });
+            fctx.body.push({ op: "local.set", index: argsLocal });
+
+            for (const arg of expr.arguments) {
+              fctx.body.push({ op: "local.get", index: argsLocal });
+              const argType = compileExpression(ctx, fctx, arg, { kind: "externref" });
+              if (argType && argType.kind !== "externref") {
+                fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+              }
+              if (argType === null) {
+                fctx.body.push({ op: "ref.null.extern" });
+              }
+              fctx.body.push({ op: "call", funcIdx: arrPushIdx });
+            }
+
+            // Push receiver, method name, args array → call __extern_method_call
+            fctx.body.push({ op: "local.get", index: recvLocal });
+            addStringConstantGlobal(ctx, methodName);
+            const strIdx = ctx.stringGlobalMap.get(methodName);
+            if (strIdx !== undefined) {
+              fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+            } else {
+              compileStringLiteral(ctx, fctx, methodName);
+            }
+            fctx.body.push({ op: "local.get", index: argsLocal });
+            fctx.body.push({ op: "call", funcIdx: methodCallIdx });
+            return { kind: "externref" };
+          }
+
+          // Fallback if imports unavailable: evaluate for side effects, return null
           const recvType = compileExpression(ctx, fctx, propAccess.expression);
           if (recvType) {
             fctx.body.push({ op: "drop" });
@@ -11605,9 +11793,6 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               fctx.body.push({ op: "drop" });
             }
           }
-          // Unresolvable method call — return externref null as fallback.
-          // Don't throw TypeError: many built-in/prototype methods can't be
-          // resolved at compile time but work fine at runtime via host imports.
           fctx.body.push({ op: "ref.null.extern" });
           return { kind: "externref" };
         }

@@ -1127,6 +1127,40 @@ function resolveImport(
         return (arr: any[], val: any) => {
           arr.push(val);
         };
+      // isPrototypeOf: check if obj is in the prototype chain of candidate (#799)
+      if (name === "__isPrototypeOf")
+        return (obj: any, candidate: any): number => {
+          if (obj == null) return 0;
+          try {
+            return Object.prototype.isPrototypeOf.call(obj, candidate) ? 1 : 0;
+          } catch {
+            return 0;
+          }
+        };
+      // Generic method call on externref receiver (#799 WI3)
+      if (name === "__extern_method_call")
+        return (obj: any, method: string, args: any[]) => {
+          if (obj == null) throw new TypeError("Cannot read properties of null (reading '" + method + "')");
+          const fn = obj[method];
+          if (typeof fn !== "function") throw new TypeError(method + " is not a function");
+          return fn.apply(obj, args ?? []);
+        };
+      // Object.prototype methods for extern class dispatch (#799 WI2)
+      if (name === "Object_hasOwnProperty")
+        return (obj: any, key: any) => (Object.prototype.hasOwnProperty.call(obj, key) ? 1 : 0);
+      if (name === "Object_isPrototypeOf")
+        return (obj: any, candidate: any) => {
+          try {
+            return Object.prototype.isPrototypeOf.call(obj, candidate) ? 1 : 0;
+          } catch {
+            return 0;
+          }
+        };
+      if (name === "Object_propertyIsEnumerable")
+        return (obj: any, key: any) => (Object.prototype.propertyIsEnumerable.call(obj, key) ? 1 : 0);
+      if (name === "Object_toString") return (obj: any) => Object.prototype.toString.call(obj);
+      if (name === "Object_valueOf") return (obj: any) => Object.prototype.valueOf.call(obj);
+      if (name === "Object_toLocaleString") return (obj: any) => Object.prototype.toLocaleString.call(obj);
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
       // hasOwnProperty runtime check for externref/any receivers
       if (name === "__hasOwnProperty")
