@@ -11,7 +11,7 @@
 
 class T262Donut extends HTMLElement {
   static get observedAttributes() {
-    return ["pass", "fail", "ce", "skip", "total", "src"];
+    return ["pass", "fail", "ce", "skip", "total", "src", "strict-only"];
   }
 
   constructor() {
@@ -41,7 +41,8 @@ class T262Donut extends HTMLElement {
         const resp = await fetch(src);
         if (!resp.ok) return;
         const report = await resp.json();
-        const s = report?.summary;
+        const strictOnly = this.hasAttribute("strict-only");
+        const s = strictOnly && report?.strict_summary ? report.strict_summary : report?.summary;
         if (!s) return;
         pass = Number(s.pass ?? 0);
         fail = Number(s.fail ?? 0);
