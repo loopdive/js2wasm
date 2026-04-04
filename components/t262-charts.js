@@ -145,9 +145,9 @@ class T262Donut extends HTMLElement {
           background: conic-gradient(
             rgba(255,255,255,0.2) 0deg,
             rgba(255,255,255,1) ${passDeg}deg,
-            rgba(255,255,255,0.1) ${passDeg}deg ${failDeg - 1}deg,
-            rgba(255,255,255,0.3) ${failDeg - 1}deg ${failDeg + 1}deg,
-            rgba(255,255,255,0.1) ${failDeg + 1}deg ${ceDeg}deg,
+            rgba(255,255,255,0.1) ${passDeg}deg ${failDeg - 0.4}deg,
+            var(--_bg) ${failDeg - 0.4}deg ${failDeg + 0.4}deg,
+            rgba(255,255,255,0.1) ${failDeg + 0.4}deg ${ceDeg}deg,
             rgba(255,255,255,0) ${ceDeg}deg 360deg
           );
         }
