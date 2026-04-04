@@ -29,7 +29,7 @@ import { createEmptyModule } from "../ir/types.js";
 import { createCodegenContext } from "./context/create-context.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
-import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
+import { allocLocal, allocTempLocal, deduplicateLocals, getLocalType, releaseTempLocal } from "./context/locals.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type {
   ClosureInfo,
@@ -12954,6 +12954,7 @@ export function compileClassBodies(
     fctx.body.push({ op: "local.get", index: selfLocal });
 
     cacheStringLiterals(ctx, fctx);
+    deduplicateLocals(fctx);
     func.locals = fctx.locals;
     func.body = fctx.body;
     ctx.currentFunc = null;
@@ -13177,6 +13178,7 @@ export function compileClassBodies(
       }
 
       cacheStringLiterals(ctx, fctx);
+      deduplicateLocals(fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -13261,6 +13263,7 @@ export function compileClassBodies(
       }
 
       cacheStringLiterals(ctx, fctx);
+      deduplicateLocals(fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -13370,6 +13373,7 @@ export function compileClassBodies(
       }
 
       cacheStringLiterals(ctx, fctx);
+      deduplicateLocals(fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -13786,25 +13790,11 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
     return;
   }
   if (ts.isForStatement(stmt)) {
-    if (stmt.initializer && ts.isVariableDeclarationList(stmt.initializer)) {
-      const list = stmt.initializer;
-      if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) {
-        for (const decl of list.declarations) {
-          if (ts.isIdentifier(decl.name)) {
-            const name = decl.name.text;
-            if (fctx.localMap.has(name) || ctx.moduleGlobals.has(name)) continue;
-            const varType = ctx.checker.getTypeAtLocation(decl);
-            const wasmType = resolveWasmType(ctx, varType);
-            allocLocal(fctx, name, wasmType);
-            if (needsTdzFlag(ctx, decl)) {
-              if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
-              const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
-              fctx.tdzFlagLocals.set(name, flagIdx);
-            }
-          }
-        }
-      }
-    }
+    // Do NOT pre-allocate for-loop let/const initializer variables here.
+    // compileForStatement handles their allocation with correct types (e.g. i32
+    // for integer loop counters). Pre-allocating here would create duplicate
+    // locals: one f64 from the pre-pass, one i32 from codegen — see #954.
+    // The loop body may still declare let/const variables, so recurse into it.
     walkStmtForLetConst(ctx, fctx, stmt.statement);
     return;
   }
@@ -14239,6 +14229,7 @@ function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclaration, 
   }
 
   cacheStringLiterals(ctx, fctx);
+  deduplicateLocals(fctx);
   func.locals = fctx.locals;
   func.body = fctx.body;
 
