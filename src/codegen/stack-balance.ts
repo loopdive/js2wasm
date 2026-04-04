@@ -1199,6 +1199,21 @@ function callArgCoercionInstrs(
     }
   }
 
+  // Cross-kind ref ↔ ref_null: different nullability (ref vs ref_null)
+  // In Wasm, (ref T) is a subtype of (ref null T), so same typeIdx needs no coercion.
+  // Different typeIdx needs ref.cast_null to the expected type. (#822)
+  if (
+    (actual.kind === "ref" || actual.kind === "ref_null") &&
+    (expected.kind === "ref" || expected.kind === "ref_null")
+  ) {
+    const actualIdx = (actual as any).typeIdx;
+    const expectedIdx = (expected as any).typeIdx;
+    if (actualIdx === expectedIdx) return []; // subtyping handles nullability
+    if (expectedIdx !== undefined) {
+      return [{ op: "ref.cast_null", typeIdx: expectedIdx } as unknown as Instr];
+    }
+  }
+
   // Both externref (possibly different kind strings: "externref" vs "ref_extern") — no coercion
   const actualIsExternref = actual.kind === "externref" || actual.kind === "ref_extern";
   const expectedIsExternref = expected.kind === "externref" || expected.kind === "ref_extern";
@@ -1242,6 +1257,11 @@ function callArgCoercionInstrs(
   // i64 → i32: i32.wrap_i64
   if (actual.kind === "i64" && expected.kind === "i32") {
     return [{ op: "i32.wrap_i64" } as unknown as Instr];
+  }
+
+  // f64 → i32: i32.trunc_sat_f64_s (#822)
+  if (actual.kind === "f64" && expected.kind === "i32") {
+    return [{ op: "i32.trunc_sat_f64_s" } as Instr];
   }
 
   // i32 → f64: f64.convert_i32_s

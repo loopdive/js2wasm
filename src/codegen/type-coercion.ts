@@ -319,6 +319,13 @@ function buildTupleFromExternref(
           (fieldType.kind === "ref" || fieldType.kind === "ref_null") &&
           (elemType as { typeIdx: number }).typeIdx !== (fieldType as { typeIdx: number }).typeIdx)
       ) {
+        // Ensure __box_number / __unbox_number are imported before use (#822)
+        if (
+          (elemType.kind === "f64" && fieldType.kind === "externref") ||
+          (elemType.kind === "externref" && fieldType.kind === "f64")
+        ) {
+          addUnionImports(ctx);
+        }
         // Inline coercion: most common case is f64 → externref (box) or externref → f64 (unbox)
         if (elemType.kind === "f64" && fieldType.kind === "externref") {
           const boxIdx = ctx.funcMap.get("__box_number");
