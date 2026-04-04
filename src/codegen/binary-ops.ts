@@ -852,8 +852,24 @@ export function compileBinaryExpression(
   const leftNativeType = resolveNativeTypeAnnotation(leftTsType);
   const rightNativeType = resolveNativeTypeAnnotation(rightTsType);
   const bothNativeI32 = leftNativeType?.kind === "i32" && rightNativeType?.kind === "i32";
+  // Use i32 hint for relational comparisons where one operand is a known i32 local.
+  // This avoids f64 conversion churn in for-loop conditions like `i < 10000` where
+  // detectI32LoopVar already promoted the loop variable to i32.
+  const hasI32LocalOperand =
+    isRelational &&
+    !isDivOrPow &&
+    (() => {
+      const isI32Local = (e: ts.Expression): boolean => {
+        if (!ts.isIdentifier(e)) return false;
+        const idx = fctx.localMap.get(e.text);
+        if (idx === undefined) return false;
+        const type = idx < fctx.params.length ? fctx.params[idx] : fctx.locals[idx - fctx.params.length]?.type;
+        return type?.kind === "i32";
+      };
+      return isI32Local(expr.left) || isI32Local(expr.right);
+    })();
   const numericHint: ValType | undefined = isNumericOp
-    ? { kind: (ctx.fast || bothNativeI32) && !isDivOrPow ? "i32" : "f64" }
+    ? { kind: (ctx.fast || bothNativeI32 || hasI32LocalOperand) && !isDivOrPow ? "i32" : "f64" }
     : undefined;
 
   let leftType = compileExpression(ctx, fctx, expr.left, numericHint);
@@ -936,11 +952,11 @@ export function compileBinaryExpression(
     }
   }
 
-  // i32 numeric operations: fast mode or native type annotations (type i32 = number)
+  // i32 numeric operations: fast mode, native type annotations, or known i32 local comparison
   if (
     leftType.kind === "i32" &&
     rightType.kind === "i32" &&
-    ((ctx.fast && isNumberType(leftTsType)) || bothNativeI32)
+    ((ctx.fast && isNumberType(leftTsType)) || bothNativeI32 || hasI32LocalOperand)
   ) {
     return compileI32BinaryOp(ctx, fctx, op, expr);
   }
