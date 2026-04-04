@@ -153,6 +153,20 @@ class T262Donut extends HTMLElement {
             rgba(255,255,255,0) ${ceDeg + 0.8}deg 360deg
           );
         }
+        .gauge-wrap::after {
+          content: "";
+          position: absolute;
+          inset: -8px;
+          border-radius: 50%;
+          background: conic-gradient(
+            rgba(255,255,255,0) 0deg,
+            rgba(255,255,255,0.4) ${passDeg}deg,
+            rgba(255,255,255,0) ${passDeg + 2}deg 360deg
+          );
+          filter: blur(12px);
+          pointer-events: none;
+          z-index: 0;
+        }
         .gauge-wrap::before {
           content: "";
           position: absolute;
