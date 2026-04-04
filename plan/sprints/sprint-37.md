@@ -47,6 +47,12 @@ These are **architectural** features that each unlock thousands of tests but req
 | 12 | #851 | Iterator close protocol (async-gen remaining) | **~100 FAIL** | Medium |
 | 13 | #763 | RegExp runtime method gaps | **~400 FAIL** | Medium |
 
+### Phase 4b: Presentation & DX
+| Order | Issue | Title | Impact | Effort |
+|-------|-------|-------|--------|--------|
+| 14 | #946 | Show strict mode compatibility by default on all pages | Medium — DX | Easy |
+| 15 | #933 | Migrate report.html to shared web components | Medium — DRY | Medium |
+
 ### Phase 5: Refactoring (sprint 36 prereq met — #944 regression fix done)
 | Order | Issue | Title | Impact | Effort |
 |-------|-------|-------|--------|--------|
