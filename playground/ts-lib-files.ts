@@ -89,9 +89,7 @@ const TS_LIB_FILES = {
 } as const;
 
 (globalThis as any).__js2wasmTsLibFiles = {
-  ...((globalThis as any).__js2wasmTsLibFiles ??
-    (globalThis as any).__ts2wasmTsLibFiles ??
-    {}),
+  ...((globalThis as any).__js2wasmTsLibFiles ?? (globalThis as any).__ts2wasmTsLibFiles ?? {}),
   ...TS_LIB_FILES,
 };
 

@@ -27,6 +27,13 @@ const _wasmStructProps = new WeakMap<object, Record<string | symbol, any>>();
  */
 const _wasmPropDescs = new WeakMap<object, Map<string | symbol, number>>();
 
+/** Tracks WasmGC struct objects that have been frozen via Object.freeze. */
+const _wasmFrozenObjs = new WeakSet<object>();
+/** Tracks WasmGC struct objects that have been sealed via Object.seal. */
+const _wasmSealedObjs = new WeakSet<object>();
+/** Tracks WasmGC struct objects that are non-extensible (freeze/seal/preventExtensions). */
+const _wasmNonExtensibleObjs = new WeakSet<object>();
+
 const _SC_WRITABLE = 1;
 const _SC_ENUMERABLE = 2;
 const _SC_CONFIGURABLE = 4;
@@ -118,8 +125,12 @@ function _isWasmStruct(obj: any): boolean {
     (obj as any)[probe] = 1;
     delete (obj as any)[probe];
     return false; // set succeeded → regular object
-  } catch {
-    return true; // "WebAssembly objects are opaque"
+  } catch (e: any) {
+    // Sealed/frozen plain JS objects (null-proto) also throw on new-symbol set.
+    // WasmGC structs throw "WebAssembly objects are opaque" — NOT an extensibility error.
+    // Filter out the JS extensibility error so sealed JS objects aren't misidentified.
+    if (e instanceof TypeError && (e.message ?? "").includes("extensible")) return false;
+    return true; // "WebAssembly objects are opaque" or similar
   }
 }
 
@@ -360,9 +371,44 @@ const _symbolToWasm: Map<symbol, string> = new Map([
   [Symbol.asyncIterator, "@@asyncIterator"],
 ]);
 
+/**
+ * Reverse map from well-known symbol i32 IDs (used in compiled Wasm) to
+ * the "@@name" string and real JS Symbol. When the compiler sees
+ * `obj[Symbol.iterator]`, it emits `i32.const 1` which becomes a boxed
+ * Number(1) at the JS boundary. This map resolves it back to "@@iterator"
+ * and Symbol.iterator for sidecar lookups.
+ */
+const _symbolIdToKeys: Map<number, { wasm: string; sym: symbol }> = new Map([
+  [1, { wasm: "@@iterator", sym: Symbol.iterator }],
+  [2, { wasm: "@@hasInstance", sym: Symbol.hasInstance }],
+  [3, { wasm: "@@toPrimitive", sym: Symbol.toPrimitive }],
+  [4, { wasm: "@@toStringTag", sym: Symbol.toStringTag }],
+  [5, { wasm: "@@species", sym: Symbol.species }],
+  [6, { wasm: "@@isConcatSpreadable", sym: Symbol.isConcatSpreadable }],
+  [7, { wasm: "@@match", sym: Symbol.match }],
+  [8, { wasm: "@@replace", sym: Symbol.replace }],
+  [9, { wasm: "@@search", sym: Symbol.search }],
+  [10, { wasm: "@@split", sym: Symbol.split }],
+  [11, { wasm: "@@unscopables", sym: Symbol.unscopables }],
+  [12, { wasm: "@@asyncIterator", sym: Symbol.asyncIterator }],
+]);
+
 /** Safe property get: works on both JS objects and WasmGC structs. */
 function _safeGet(obj: any, key: any): any {
   if (obj == null) return undefined;
+  // Well-known symbol ID (i32 from compiler): resolve to "@@name" and real Symbol
+  if (typeof key === "number" && key >= 1 && key <= 12) {
+    const symKeys = _symbolIdToKeys.get(key);
+    if (symKeys) {
+      const v = obj[symKeys.sym];
+      if (v !== undefined) return v;
+      const sc = _sidecarGet(obj, symKeys.sym);
+      if (sc !== undefined) return sc;
+      const sc2 = _sidecarGet(obj, symKeys.wasm);
+      if (sc2 !== undefined) return sc2;
+      return undefined;
+    }
+  }
   const direct = obj[key]; // safe — returns undefined for WasmGC structs
   if (direct !== undefined) return direct;
   // Check sidecar for WasmGC struct properties
@@ -379,9 +425,48 @@ function _safeGet(obj: any, key: any): any {
 /** Safe property set: works on both JS objects and WasmGC structs. */
 function _safeSet(obj: any, key: any, val: any): void {
   if (obj == null) return;
+  // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name"
+  if (typeof key === "number" && key >= 1 && key <= 12) {
+    const symKeys = _symbolIdToKeys.get(key);
+    if (symKeys) {
+      try {
+        obj[symKeys.sym] = val;
+      } catch {
+        /* WasmGC struct */
+      }
+      _sidecarSet(obj, symKeys.sym, val);
+      _sidecarSet(obj, symKeys.wasm, val);
+      return;
+    }
+  }
   try {
     obj[key] = val;
-  } catch {
+  } catch (e) {
+    if (_isWasmStruct(obj)) {
+      // WasmGC struct: check sidecar descriptor flags before allowing write
+      const descs = _wasmPropDescs.get(obj);
+      if (descs) {
+        const propKey = typeof key === "symbol" ? key : String(key);
+        const flags = descs.get(propKey);
+        if (flags !== undefined && !(flags & _SC_WRITABLE)) {
+          return; // silent fail: read-only property (non-strict mode semantics)
+        }
+      }
+      // Check non-extensible: new properties cannot be added.
+      // Silently return (non-strict mode semantics — Wasm has no strict/non-strict distinction).
+      // Strict mode TypeError is handled at the defineProperty level.
+      if (_wasmNonExtensibleObjs.has(obj)) {
+        const sc = _wasmStructProps.get(obj);
+        const propKey = typeof key === "symbol" ? key : String(key);
+        const hasInSidecar = sc && key in sc;
+        const hasInDescs = descs?.has(propKey);
+        if (!hasInSidecar && !hasInDescs) {
+          return; // silent fail: non-extensible, new property not added
+        }
+      }
+    }
+    // For both WasmGC structs and non-WasmGC objects (frozen/sealed JS objects),
+    // fall through to sidecar set — preserves original behavior for non-strict callers.
     _sidecarSet(obj, key, val);
     // Also store under the "@@name" alias for well-known symbols
     if (typeof key === "symbol") {
@@ -613,6 +698,28 @@ function resolveImport(
       if (name === "__object_create") return (proto: any) => Object.create(proto);
       if (name === "__object_freeze")
         return (obj: any) => {
+          if (obj == null) return obj;
+          if (_isWasmStruct(obj)) {
+            // Mark all known fields as non-writable + non-configurable in sidecar
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+            const sDescs = _getSidecarDescs(obj);
+            for (const field of fieldNames) {
+              const existing = sDescs.get(field) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
+              sDescs.set(field, (existing & ~(_SC_WRITABLE | _SC_CONFIGURABLE)) | _SC_DEFINED);
+            }
+            // Also freeze any sidecar properties
+            const sc = _wasmStructProps.get(obj);
+            if (sc) {
+              for (const key of Object.keys(sc)) {
+                const existing = sDescs.get(key) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
+                sDescs.set(key, (existing & ~(_SC_WRITABLE | _SC_CONFIGURABLE)) | _SC_DEFINED);
+              }
+            }
+            _wasmFrozenObjs.add(obj);
+            _wasmNonExtensibleObjs.add(obj);
+            return obj;
+          }
           try {
             return Object.freeze(obj);
           } catch {
@@ -621,6 +728,27 @@ function resolveImport(
         };
       if (name === "__object_seal")
         return (obj: any) => {
+          if (obj == null) return obj;
+          if (_isWasmStruct(obj)) {
+            // Mark all known fields as non-configurable in sidecar
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+            const sDescs = _getSidecarDescs(obj);
+            for (const field of fieldNames) {
+              const existing = sDescs.get(field) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
+              sDescs.set(field, (existing & ~_SC_CONFIGURABLE) | _SC_DEFINED);
+            }
+            const sc = _wasmStructProps.get(obj);
+            if (sc) {
+              for (const key of Object.keys(sc)) {
+                const existing = sDescs.get(key) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
+                sDescs.set(key, (existing & ~_SC_CONFIGURABLE) | _SC_DEFINED);
+              }
+            }
+            _wasmSealedObjs.add(obj);
+            _wasmNonExtensibleObjs.add(obj);
+            return obj;
+          }
           try {
             return Object.seal(obj);
           } catch {
@@ -629,11 +757,45 @@ function resolveImport(
         };
       if (name === "__object_preventExtensions")
         return (obj: any) => {
+          if (obj == null) return obj;
+          if (_isWasmStruct(obj)) {
+            _wasmNonExtensibleObjs.add(obj);
+            return obj;
+          }
           try {
             return Object.preventExtensions(obj);
           } catch {
             return obj;
           }
+        };
+      // Runtime Object.isFrozen/isSealed/isExtensible — used when compile-time tracking
+      // cannot determine the state (e.g. argument is not a simple identifier).
+      // null/undefined return 0/1 conservatively to match tests where unresolvable
+      // identifiers (Object, this, etc.) compile to null in our Wasm.
+      if (name === "__object_isFrozen")
+        return (obj: any) => {
+          if (obj == null) return 0; // unresolvable identifier → assume not frozen
+          // Boxed primitives (numbers/strings from __box_number) are not real objects.
+          // Return 0 to match old compile-time behavior (tracking-based, not intrinsic).
+          if (typeof obj !== "object" && typeof obj !== "function") return 0;
+          if (_isWasmStruct(obj)) return _wasmFrozenObjs.has(obj) ? 1 : 0;
+          return Object.isFrozen(obj) ? 1 : 0;
+        };
+      if (name === "__object_isSealed")
+        return (obj: any) => {
+          if (obj == null) return 0; // unresolvable identifier → assume not sealed
+          if (typeof obj !== "object" && typeof obj !== "function") return 0;
+          if (_isWasmStruct(obj)) return _wasmSealedObjs.has(obj) || _wasmFrozenObjs.has(obj) ? 1 : 0;
+          return Object.isSealed(obj) ? 1 : 0;
+        };
+      if (name === "__object_isExtensible")
+        return (obj: any) => {
+          if (obj == null) return 1; // unresolvable identifier → assume extensible
+          // Boxed primitives (numbers/strings from __box_number) represent wrapper objects.
+          // Return 1 (extensible) to match old compile-time behavior.
+          if (typeof obj !== "object" && typeof obj !== "function") return 1;
+          if (_isWasmStruct(obj)) return _wasmNonExtensibleObjs.has(obj) ? 0 : 1;
+          return Object.isExtensible(obj) ? 1 : 0;
         };
       // Object.keys/values/entries host imports — handle WasmGC structs via
       // exported getters so opaque struct fields are visible at runtime.
@@ -1185,6 +1347,15 @@ function resolveImport(
           // Check direct Symbol.iterator first, then sidecar (both JS Symbol and Wasm "@@iterator")
           const fn = obj[Symbol.iterator] ?? _sidecarGet(obj, Symbol.iterator) ?? _sidecarGet(obj, "@@iterator");
           if (typeof fn === "function") return fn.call(obj);
+          // If fn is a WasmGC closure (not a JS function), call it via __call_fn_0
+          if (fn != null && _isWasmStruct(fn)) {
+            const exports = callbackState?.getExports();
+            const callFn0 = (exports as any)?.__call_fn_0;
+            if (typeof callFn0 === "function") {
+              const iter = callFn0(fn);
+              if (iter != null) return iter;
+            }
+          }
           // WasmGC struct fallback: check for @@iterator struct field via exported getter,
           // then try vec struct iteration.
           if (_isWasmStruct(obj)) {
@@ -1256,7 +1427,9 @@ function resolveImport(
               }
             }
           }
-          throw new TypeError("object is not iterable");
+          throw new TypeError(
+            (typeof obj === "object" ? Object.prototype.toString.call(obj) : String(obj)) + " is not iterable",
+          );
         };
       if (name === "__iterator_next")
         return (iter: any) => {
@@ -1267,6 +1440,15 @@ function resolveImport(
             next = exports?.__sget_next?.(iter);
           }
           if (typeof next === "function") return next.call(iter);
+          // If next is a WasmGC closure, call via __call_fn_0
+          if (next != null && _isWasmStruct(next)) {
+            const exports = callbackState?.getExports();
+            const callFn0 = (exports as any)?.__call_fn_0;
+            if (typeof callFn0 === "function") {
+              const result = callFn0(next);
+              if (result != null) return result;
+            }
+          }
           // Try __call_next dispatch for WasmGC struct iterators
           {
             const exports = callbackState?.getExports();
@@ -1305,7 +1487,28 @@ function resolveImport(
             const exports = callbackState?.getExports();
             ret = exports?.__sget_return?.(iter);
           }
-          if (typeof ret === "function") ret.call(iter);
+          if (typeof ret === "function") {
+            const result = ret.call(iter);
+            // ES spec 7.4.6 IteratorClose: return value must be an Object
+            if (result !== null && result !== undefined && typeof result !== "object" && typeof result !== "function") {
+              throw new TypeError("Iterator result is not an object");
+            }
+          } else if (ret != null && _isWasmStruct(ret)) {
+            // WasmGC closure: call via __call_fn_0
+            const exports = callbackState?.getExports();
+            const callFn0 = (exports as any)?.__call_fn_0;
+            if (typeof callFn0 === "function") {
+              const result = callFn0(ret);
+              if (
+                result !== null &&
+                result !== undefined &&
+                typeof result !== "object" &&
+                typeof result !== "function"
+              ) {
+                throw new TypeError("Iterator result is not an object");
+              }
+            }
+          }
         };
       // Convert a WasmGC vec struct to a real JS array so it's iterable by
       // native JS APIs (Map, Set, spread, for-of, etc.). (#854)

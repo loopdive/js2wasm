@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite';
-import dts from 'vite-plugin-dts';
+import { defineConfig } from "vite";
+import dts from "vite-plugin-dts";
 
 export default defineConfig({
   plugins: [dts()],
@@ -7,24 +7,24 @@ export default defineConfig({
   // Exclude compiler source from dep scanning — it pulls in binaryen/typescript
   // and makes page loads take 30+ seconds.
   optimizeDeps: {
-    exclude: ['binaryen', 'typescript'],
+    exclude: ["binaryen", "typescript"],
   },
   server: {
     fs: {
       // Allow serving files from the whole workspace (benchmarks/, dashboard/, etc.)
-      allow: ['.'],
+      allow: ["."],
     },
   },
   build: {
     lib: {
       entry: {
-        index: 'src/index.ts',
-        cli: 'src/cli.ts',
+        index: "src/index.ts",
+        cli: "src/cli.ts",
       },
-      formats: ['es'],
+      formats: ["es"],
     },
     rollupOptions: {
-      external: ['typescript', 'node:fs', 'node:path', 'node:process', 'binaryen'],
+      external: ["typescript", "node:fs", "node:path", "node:process", "binaryen"],
     },
   },
 });

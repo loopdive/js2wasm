@@ -10,6 +10,16 @@
  *      ref.cast $funcType      ;; already non-null
  *      ref.as_non_null         ;; redundant — removed
  *      call_ref $funcType
+ *
+ * 2. local.get N; drop — loading a local then immediately dropping it is a
+ *    no-op (local.get has no side effects). Both instructions are removed.
+ *      local.get N   ;; push value
+ *      drop          ;; pop it — net effect: nothing. Removed.
+ *
+ * 3. local.tee N; drop — tee saves to local AND pushes a copy. If the pushed
+ *    copy is immediately dropped, replace with local.set (save only, no push):
+ *      local.tee N   ;; save + push
+ *      drop          ;; pop the copy — replace with local.set N
  */
 import type { Instr, WasmModule } from "../ir/types.js";
 
@@ -43,16 +53,37 @@ function optimizeBody(body: Instr[]): number {
     }
   }
 
-  // Now scan for ref.cast followed by ref.as_non_null and remove the latter
+  // Scan for peephole patterns
   let i = 0;
   while (i < body.length - 1) {
-    if (body[i]!.op === "ref.cast" && body[i + 1]!.op === "ref.as_non_null") {
+    const cur = body[i]!;
+    const next = body[i + 1]!;
+
+    // Pattern 1: ref.cast followed by ref.as_non_null — remove the latter
+    if (cur.op === "ref.cast" && next.op === "ref.as_non_null") {
       body.splice(i + 1, 1);
       removed++;
-      // Don't increment i — check if there are multiple ref.as_non_null in a row
-    } else {
-      i++;
+      // Don't increment i — check for multiple ref.as_non_null in a row
+      continue;
     }
+
+    // Pattern 2: local.get N; drop — dead load, remove both
+    if (cur.op === "local.get" && next.op === "drop") {
+      body.splice(i, 2);
+      removed += 2;
+      // Don't increment i — recheck at same position (new pair may have formed)
+      continue;
+    }
+
+    // Pattern 3: local.tee N; drop — pushed copy is unused, replace with local.set
+    if (cur.op === "local.tee" && next.op === "drop") {
+      body.splice(i, 2, { op: "local.set", index: cur.index });
+      removed++; // net: 2 removed, 1 added = 1 instruction saved
+      i++;
+      continue;
+    }
+
+    i++;
   }
 
   return removed;
