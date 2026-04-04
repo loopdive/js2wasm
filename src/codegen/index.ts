@@ -732,6 +732,9 @@ export function generateModule(
   // Emit __call_@@iterator export for runtime Symbol.iterator dispatch on WasmGC structs
   emitIteratorMethodExport(ctx);
 
+  // Emit __call_fn_0 export for calling zero-arg closures from JS (#851)
+  emitClosureCallExport(ctx);
+
   // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
   emitToPrimitiveMethodExports(ctx);
 
@@ -1121,6 +1124,195 @@ function emitIteratorMethodExport(ctx: CodegenContext): void {
 
   emitMethodDispatch("@@iterator", "__call_@@iterator");
   emitMethodDispatch("next", "__call_next");
+}
+
+/**
+ * Emit __call_fn_0 export (#851): call a zero-arg WasmGC closure from JS.
+ * Takes an externref (the closure struct) and returns externref (the result).
+ * This enables calling dynamically-assigned closures (e.g. iterable[Symbol.iterator])
+ * from the JS runtime when the closure is stored as a WasmGC struct in the sidecar.
+ *
+ * Strategy: dispatch by FUNCREF TYPE, not struct type.
+ *
+ * Problem with struct-type dispatch: V8's isorecursive canonicalization merges all
+ * base wrapper struct types that have one field (funcref) into the same Wasm type.
+ * So `ref.test $baseWrapperA` also passes for closures of base wrapper B, causing
+ * `ref.cast $funcTypeA` on a funcref of type B to trap with "illegal cast".
+ *
+ * Solution: use ONE representative struct type for `ref.test` + `struct.get 0` to
+ * extract the funcref, then dispatch on funcref type (which remains distinct per
+ * closure signature even after struct canonicalization). Concrete subtype closures
+ * (with captures) share the same funcref type as their base wrapper, so they're
+ * covered automatically.
+ *
+ * Locals layout:
+ *   0 = externref param
+ *   1 = anyref (__any) — the converted externref
+ *   2 = (ref null $baseWrapper) (__struct) — cast struct for field access and self arg
+ *   3 = funcref (__funcref) — extracted funcref for type dispatch
+ */
+function emitClosureCallExport(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+
+  // Phase 1: collect unique zero-arg funcref types and find representative base wrapper.
+  // Dedup by funcTypeIdx — concrete subtypes share funcTypeIdx with their base wrapper,
+  // so one dispatch arm handles all closures with the same funcref signature.
+  let baseWrapperIdx: number | undefined;
+  const seenFuncTypeIdx = new Set<number>();
+  const entries: { funcTypeIdx: number; returnType: ValType | null; selfTypeIdx: number }[] = [];
+
+  for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+    if (info.paramTypes.length !== 0) continue;
+
+    const typeDef = mod.types[typeIdx];
+    if (!typeDef || typeDef.kind !== "struct") continue;
+
+    // Find a representative base wrapper (superTypeIdx === -1, no parent struct)
+    // for the initial ref.test + ref.cast + struct.get 0.
+    // After V8 isorecursive canonicalization, all base wrappers with one funcref
+    // field collapse to the same type, so any base wrapper typeIdx works.
+    if (typeDef.superTypeIdx === -1 && baseWrapperIdx === undefined) {
+      baseWrapperIdx = typeIdx;
+    }
+
+    // Deduplicate by funcref type: concrete subtypes share funcTypeIdx with the
+    // base wrapper — only one dispatch arm needed per unique funcref type.
+    if (!seenFuncTypeIdx.has(info.funcTypeIdx)) {
+      seenFuncTypeIdx.add(info.funcTypeIdx);
+      // Look up the self param type from the funcref type definition.
+      // The lifted func type has (ref $selfStructType, ...params) → result.
+      // We must pass (ref $selfStructType) as the self arg for call_ref to validate.
+      const funcTypeDef = mod.types[info.funcTypeIdx];
+      const selfParam = funcTypeDef?.kind === "func" ? funcTypeDef.params[0] : undefined;
+      const selfTypeIdx =
+        selfParam && (selfParam.kind === "ref" || selfParam.kind === "ref_null")
+          ? (selfParam as { typeIdx: number }).typeIdx
+          : typeIdx; // fallback: use struct typeIdx
+      entries.push({ funcTypeIdx: info.funcTypeIdx, returnType: info.returnType, selfTypeIdx });
+    }
+  }
+
+  if (entries.length === 0) return;
+
+  // If no base wrapper found (all are concrete subtypes), use first struct type.
+  if (baseWrapperIdx === undefined) {
+    for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+      if (info.paramTypes.length === 0) {
+        baseWrapperIdx = typeIdx;
+        break;
+      }
+    }
+  }
+  if (baseWrapperIdx === undefined) return;
+
+  // Check if __box_number is available for boxing numeric results.
+  const boxNumberIdx = ctx.funcMap.get("__box_number");
+
+  const exportFuncTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }], "$call_fn_0_type");
+  const funcIdx = ctx.numImportFuncs + mod.functions.length;
+  const bwIdx = baseWrapperIdx; // final for closures
+
+  // Body:
+  //   local 0: externref (param)
+  //   local 1: anyref (__any)
+  //   local 2: (ref null $baseWrapper) (__struct) — after initial struct test+cast
+  //   local 3: funcref (__funcref) — extracted from field 0
+  const body: Instr[] = [];
+  body.push({ op: "local.get", index: 0 });
+  body.push({ op: "any.convert_extern" } as Instr);
+  body.push({ op: "local.set", index: 1 } as Instr);
+
+  // Phase 2: build funcref-type dispatch chain (innermost = last entry, outermost = first)
+  let funcrefDispatch: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+  for (const entry of entries) {
+    const callBody: Instr[] = [
+      // Self arg: cast from anyref (local 1) to the specific base wrapper type for this
+      // funcref. Each funcref's first param is (ref $specificBaseWrapper). Using local 1
+      // (anyref) and casting to the exact expected type satisfies the Wasm validator.
+      { op: "local.get", index: 1 } as Instr,
+      { op: "ref.cast", typeIdx: entry.selfTypeIdx } as Instr,
+      // Funcref arg: cast to specific func type (safe since ref.test passed)
+      { op: "local.get", index: 3 } as Instr,
+      { op: "ref.cast", typeIdx: entry.funcTypeIdx } as Instr,
+      { op: "call_ref", typeIdx: entry.funcTypeIdx } as Instr,
+    ];
+
+    // Coerce result to externref
+    if (entry.returnType) {
+      if (entry.returnType.kind === "ref" || entry.returnType.kind === "ref_null") {
+        callBody.push({ op: "extern.convert_any" } as Instr);
+      } else if (entry.returnType.kind === "f64") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i32") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i32_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      }
+      // externref: no conversion needed
+    } else {
+      callBody.push({ op: "ref.null.extern" } as Instr);
+    }
+
+    funcrefDispatch = [
+      { op: "local.get", index: 3 } as Instr,
+      { op: "ref.test", typeIdx: entry.funcTypeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "externref" } },
+        then: callBody,
+        else: funcrefDispatch,
+      } as Instr,
+    ];
+  }
+
+  // Outer: if the value is a closure struct, extract funcref and dispatch.
+  // ref.test uses the representative base wrapper; concrete subtypes (with captures)
+  // also pass since they're subtypes of the base wrapper.
+  const structExtractAndDispatch: Instr[] = [
+    // Cast to base wrapper, tee to local 2, struct.get 0 → funcref, store in local 3
+    { op: "local.get", index: 1 } as Instr,
+    { op: "ref.cast", typeIdx: bwIdx } as Instr,
+    { op: "local.tee", index: 2 } as Instr,
+    { op: "struct.get", typeIdx: bwIdx, fieldIdx: 0 } as Instr,
+    { op: "local.set", index: 3 } as Instr,
+    ...funcrefDispatch,
+  ];
+
+  body.push({ op: "local.get", index: 1 } as Instr);
+  body.push({ op: "ref.test", typeIdx: bwIdx } as Instr);
+  body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "externref" } },
+    then: structExtractAndDispatch,
+    else: [{ op: "ref.null.extern" } as Instr],
+  } as Instr);
+
+  mod.functions.push({
+    name: "__call_fn_0",
+    typeIdx: exportFuncTypeIdx,
+    locals: [
+      { name: "__any", type: { kind: "anyref" } },
+      { name: "__struct", type: { kind: "ref_null", typeIdx: bwIdx } },
+      { name: "__funcref", type: { kind: "funcref" } },
+    ],
+    body,
+    exported: true,
+  } as WasmFunction);
+
+  mod.exports.push({
+    name: "__call_fn_0",
+    desc: { kind: "func", index: funcIdx },
+  });
 }
 
 /**

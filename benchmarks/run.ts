@@ -31,9 +31,7 @@ function getArg(name: string): string | undefined {
 const suiteFilter = getArg("suite");
 const nameFilter = getArg("filter");
 const strategyArg = getArg("strategy");
-const strategies: Strategy[] | undefined = strategyArg
-  ? (strategyArg.split(",") as Strategy[])
-  : undefined;
+const strategies: Strategy[] | undefined = strategyArg ? (strategyArg.split(",") as Strategy[]) : undefined;
 
 // ---------------------------------------------------------------------------
 // Suite registry

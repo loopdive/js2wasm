@@ -406,9 +406,7 @@ async function main() {
   let correct = true;
   for (let i = 0; i < RUNS; i++) {
     if (jsChecksums[i] !== wasmChecksums[i]) {
-      console.error(
-        `CHECKSUM MISMATCH at run ${i}: JS=${jsChecksums[i]}, Wasm=${wasmChecksums[i]}`,
-      );
+      console.error(`CHECKSUM MISMATCH at run ${i}: JS=${jsChecksums[i]}, Wasm=${wasmChecksums[i]}`);
       correct = false;
     }
   }
@@ -546,7 +544,9 @@ async function main() {
     }
 
     console.log();
-    console.log(`  Correctness: ${internalCorrect ? "PASS (checksums match)" : `FAIL (JS=${jsCheck}, Wasm=${wasmCheck})`}`);
+    console.log(
+      `  Correctness: ${internalCorrect ? "PASS (checksums match)" : `FAIL (JS=${jsCheck}, Wasm=${wasmCheck})`}`,
+    );
     console.log();
 
     console.log("  Per-run times (ms):");

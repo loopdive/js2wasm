@@ -64,17 +64,12 @@ export function bench_style(): number {
 export function main(): void {
   const host = document.body;
   host.innerHTML = "";
-  host.style.cssText =
-    "margin:0;background:#111;color:#ddd;" +
-    "font-family:system-ui,sans-serif;overflow-y:auto";
+  host.style.cssText = "margin:0;background:#111;color:#ddd;" + "font-family:system-ui,sans-serif;overflow-y:auto";
 
   const wrap = el("div", "padding:0.75rem");
 
-  const intro = el("div",
-    "font-size:0.75rem;color:#777;margin-bottom:0.75rem;line-height:1.5");
-  intro.textContent =
-    "Each benchmark runs inside the Wasm sandbox. " +
-    "Click a card to measure.";
+  const intro = el("div", "font-size:0.75rem;color:#777;margin-bottom:0.75rem;line-height:1.5");
+  intro.textContent = "Each benchmark runs inside the Wasm sandbox. " + "Click a card to measure.";
   wrap.appendChild(intro);
 
   addBenchCard(wrap, "fib(30)", "Recursive — pure i32/f64 math, no host calls", bench_fib);
