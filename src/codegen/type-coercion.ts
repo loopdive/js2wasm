@@ -9,11 +9,7 @@ import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.j
 import type { ClosureInfo, CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
 import { addStringConstantGlobal } from "./registry/imports.js";
 import { getArrTypeIdxFromVec } from "./registry/types.js";
-import {
-  addUnionImports,
-  isAnyValue,
-  ensureAnyHelpers,
-} from "./index.js";
+import { addUnionImports, isAnyValue, ensureAnyHelpers } from "./index.js";
 import { registerCoerceType, ensureLateImport, flushLateImportShifts } from "./shared.js";
 import type { Instr, ValType, StructTypeDef, ArrayTypeDef } from "../ir/types.js";
 

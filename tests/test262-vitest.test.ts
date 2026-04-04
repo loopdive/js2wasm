@@ -603,7 +603,14 @@ for (const category of TEST_CATEGORIES) {
 
           if (!compileResult.ok) {
             const status = (compileResult as any).timeout ? "compile_timeout" : "compile_error";
-            recordResult(relPath, category, status, adjustErrorLines(compileResult.error, wrapOffset), undefined, scopeInfo);
+            recordResult(
+              relPath,
+              category,
+              status,
+              adjustErrorLines(compileResult.error, wrapOffset),
+              undefined,
+              scopeInfo,
+            );
             return;
           }
 
@@ -626,7 +633,14 @@ for (const category of TEST_CATEGORIES) {
 
           // Process worker result
           if (workerResult.timeout) {
-            recordResult(relPath, category, "fail", "runtime timeout (10s)", { compileMs, execMs: EXEC_TIMEOUT_MS }, scopeInfo);
+            recordResult(
+              relPath,
+              category,
+              "fail",
+              "runtime timeout (10s)",
+              { compileMs, execMs: EXEC_TIMEOUT_MS },
+              scopeInfo,
+            );
             return;
           }
 
@@ -726,7 +740,14 @@ for (const category of TEST_CATEGORIES) {
           }
 
           if (workerResult.runtimeNegativeNoThrow) {
-            recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`, timing, scopeInfo);
+            recordResult(
+              relPath,
+              category,
+              "fail",
+              `expected runtime ${meta.negative!.type} but succeeded`,
+              timing,
+              scopeInfo,
+            );
             return;
           }
 

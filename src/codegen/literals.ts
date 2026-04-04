@@ -870,8 +870,7 @@ export function compileObjectLiteralForStruct(
 
       const sig = ctx.checker.getSignatureFromDeclaration(prop);
       // For async methods, unwrap Promise<T> to get T (matching top-level handling)
-      const isAsyncMethod =
-        prop.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+      const isAsyncMethod = prop.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
       if (isAsyncMethod) {
         ctx.asyncFunctions.add(fullName);
       }

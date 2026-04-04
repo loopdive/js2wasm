@@ -13,7 +13,7 @@ describe("Array 0-arg methods (#840)", () => {
     `;
     const result = compile(src, { fileName: "test.ts" });
     // Should compile without the "concat requires" error
-    const concatError = result.errors?.find(e => e.message.includes("concat requires"));
+    const concatError = result.errors?.find((e) => e.message.includes("concat requires"));
     expect(concatError).toBeUndefined();
   });
 
@@ -24,7 +24,7 @@ describe("Array 0-arg methods (#840)", () => {
       export function test(): number { return 1; }
     `;
     const result = compile(src, { fileName: "test.ts" });
-    const pushError = result.errors?.find(e => e.message.includes("push requires"));
+    const pushError = result.errors?.find((e) => e.message.includes("push requires"));
     expect(pushError).toBeUndefined();
   });
 
@@ -35,7 +35,7 @@ describe("Array 0-arg methods (#840)", () => {
       export function test(): number { return 1; }
     `;
     const result = compile(src, { fileName: "test.ts" });
-    const spliceError = result.errors?.find(e => e.message.includes("splice requires"));
+    const spliceError = result.errors?.find((e) => e.message.includes("splice requires"));
     expect(spliceError).toBeUndefined();
   });
 });
