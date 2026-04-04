@@ -113,7 +113,9 @@ Issues where built-in method implementations are missing, incomplete, or incorre
 | [858](../ready/858.md) | Medium | Worker/timeout exits and eval-code null deref | **182 FAIL** | Ready (also in Runtime) |
 | [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX | Ready |
 | [696](../ready/696.md) | High | Classify "other fail" runtime errors | 4,649 FAIL | Ready |
-| [931](../ready/931.md) | **HIGH** | Error location reporting: 83% of CE errors lack line numbers | **DX** | Ready |
+| [931](../done/931.md) | **HIGH** | Error location reporting: 83% of CE errors lack line numbers | **DX** | **Done** |
+| [950](../ready/950.md) | Medium | Calls with fewer args than TS expects → CE (should emit undefined) | **DX** | Ready |
+| [951](../ready/951.md) | Medium | Unused imports → "Missing initializer in const declaration" CE | **DX** | Ready |
 | [699](../ready/699.md) | High | Shared compiler pool for test262 | Perf | Ready |
 | [832](../ready/832.md) | Medium | Upgrade to TypeScript 6.x for Unicode 16.0 identifiers | 82 skip | Ready |
 | [833](../ready/833.md) | Low | Consider sloppy mode support for legacy octal escapes | 16 skip | Ready |
