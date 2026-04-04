@@ -1270,7 +1270,262 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
+    // ── `arguments` in class field initializers ──────────────────────
+    // ES spec: FieldDefinition — It is a Syntax Error if ContainsArguments
+    // of Initializer is true. `arguments` is not allowed in any class field
+    // initializer (instance or static), because field initializers are not
+    // "real" function bodies and don't bind `arguments`.
+    if (ts.isPropertyDeclaration(node) && node.initializer) {
+      if (ts.isClassDeclaration(node.parent) || ts.isClassExpression(node.parent)) {
+        if (containsArguments(node.initializer)) {
+          addError(node.initializer, "'arguments' is not allowed in class field initializers");
+        }
+      }
+    }
+
+    // ── await with empty operand in async functions ───────────────
+    // When TS parses `void await`, `await:`, or just `await` (as identifier ref)
+    // inside an async function, it creates AwaitExpression with empty Identifier
+    // operand. This means `await` was used as an identifier, not as the keyword.
+    // ES spec: await is a reserved word in async function bodies.
+    if (ts.isAwaitExpression(node)) {
+      const operand = node.expression;
+      if (ts.isIdentifier(operand) && operand.text === "") {
+        if (isInsideAsyncFunction(node) || isInsideClassStaticBlock(node)) {
+          addError(node, "'await' is not allowed as an identifier in this context");
+        }
+      }
+      // Also check await: label pattern (TS parses await: as AwaitExpression + colon)
+      if (isInsideAsyncFunction(node) || isInsideClassStaticBlock(node)) {
+        const endPos = node.end;
+        const afterText = sourceFile.text.substring(endPos, endPos + 5).trimStart();
+        if (afterText.startsWith(":")) {
+          addError(node, "'await' is not allowed as a label identifier in this context");
+        }
+      }
+    }
+
+    // ── yield with empty operand in generator functions ──────────
+    // Similar to await: when `yield` is used as identifier reference in a generator,
+    // TS may create YieldExpression with empty operand.
+    if (ts.isYieldExpression(node) && isInsideGeneratorFunction(node)) {
+      const operand = node.expression;
+      if (operand && ts.isIdentifier(operand) && operand.text === "") {
+        addError(node, "'yield' is not allowed as an identifier in a generator function");
+      }
+    }
+
+    // ── import/export in invalid positions ──────────────────────────
+    // ES spec: ImportDeclaration and ExportDeclaration are only valid at the
+    // top level of a Module. They cannot appear inside functions, blocks, etc.
+    if (ts.isImportDeclaration(node)) {
+      if (!ts.isSourceFile(node.parent) && !ts.isModuleBlock(node.parent)) {
+        addError(node, "An import declaration can only be used at the top level of a module");
+      }
+    }
+    if (ts.isExportDeclaration(node) || ts.isExportAssignment(node)) {
+      if (!ts.isSourceFile(node.parent) && !ts.isModuleBlock(node.parent)) {
+        addError(node, "An export declaration can only be used at the top level of a module");
+      }
+    }
+    // export default in invalid positions (e.g., do { export default null } while(false))
+    if (node.kind === ts.SyntaxKind.ExportKeyword) {
+      const parent = node.parent;
+      if (parent && !ts.isSourceFile(parent.parent) && !ts.isModuleBlock(parent?.parent)) {
+        // Only flag if the parent is a declaration inside a non-top-level context
+        if (ts.isVariableStatement(parent) || ts.isFunctionDeclaration(parent) || ts.isClassDeclaration(parent) || ts.isExpressionStatement(parent)) {
+          if (parent.parent && !ts.isSourceFile(parent.parent) && !ts.isModuleBlock(parent.parent)) {
+            addError(node, "An export declaration can only be used at the top level of a module");
+          }
+        }
+      }
+    }
+
+    // ── dynamic import() as assignment target ──────────────────────
+    // ES spec: ImportCall is not a valid LeftHandSideExpression for assignment.
+    // e.g., import('x')++, import('x') = 1, ++import('x')
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const parent = node.parent;
+      if (parent) {
+        // import()++ or import()--
+        if (ts.isPostfixUnaryExpression(parent) && parent.operand === node) {
+          addError(node, "Invalid left-hand side in postfix operation");
+        }
+        // ++import() or --import()
+        if (ts.isPrefixUnaryExpression(parent) &&
+            (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken) &&
+            parent.operand === node) {
+          addError(node, "Invalid left-hand side expression in prefix operation");
+        }
+        // import() = x
+        if (ts.isBinaryExpression(parent) && parent.left === node &&
+            parent.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          addError(node, "Invalid left-hand side in assignment");
+        }
+      }
+    }
+
+    // ── await in class static initializer blocks ──────────────────
+    // ES spec: It is a Syntax Error if the code matched by this production is
+    // nested within a ClassStaticBlock and StringValue of Identifier is "await".
+    if (ts.isIdentifier(node) && node.text === "await") {
+      if (isInsideClassStaticBlock(node) && !isInsideAsyncFunction(node)) {
+        const parent = node.parent;
+        // Skip property names
+        const isPropertyName = parent && (
+          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+          (ts.isPropertyAssignment(parent) && parent.name === node) ||
+          (ts.isMethodDeclaration(parent) && parent.name === node) ||
+          (ts.isPropertyDeclaration(parent) && parent.name === node));
+        if (!isPropertyName) {
+          addError(node, "'await' is not allowed as an identifier in a class static initializer block");
+        }
+      }
+    }
+
+    // ── return outside function ──────────────────────────────────
+    // ES spec: A ReturnStatement can only appear in a FunctionBody.
+    if (ts.isReturnStatement(node)) {
+      if (!isInsideFunction(node)) {
+        addError(node, "A 'return' statement can only be used within a function body");
+      }
+    }
+
+    // ── yield-as-label (TS parses yield: as YieldExpression in generators)
+    if (ts.isYieldExpression(node) && isInsideGeneratorFunction(node)) {
+      const endPos = node.end;
+      const afterText = sourceFile.text.substring(endPos, endPos + 5).trimStart();
+      if (afterText.startsWith(":")) {
+        addError(node, "'yield' is not allowed as a label identifier in a generator function");
+      }
+    }
+
+    // ── Escaped 'let' keyword ─────────────────────────────────────
+    // \u006Cet is not valid as a keyword
+    if (ts.isIdentifier(node) && node.text === "let") {
+      const start = node.getStart(sourceFile);
+      const rawText = sourceFile.text.substring(start, start + 10);
+      if (rawText.includes("\\u")) {
+        addError(node, "Keyword must not contain escaped characters");
+      }
+    }
+
+    // ── private name escape sequences ─────────────────────────────
+    // ES spec: It is a Syntax Error if any code point in the PrivateIdentifier
+    // is expressed by a UnicodeEscapeSequence, unless it's for a valid start/part.
+    // For keywords like 'async', 'generator', 'field' — private names with
+    // escape sequences like #\u0061sync are SyntaxErrors.
+    // Note: TS represents private identifiers with ts.isPrivateIdentifier.
+    // The "cannot-escape-token" tests check that keywords used in private name
+    // positions cannot use Unicode escapes.
+
+    // ── Duplicate export names ────────────────────────────────────
+    // ES spec: It is a Syntax Error if the ExportedNames of ModuleBody contains
+    // any duplicate entries.
+    // This is checked at the source file level.
+
+    // ── import() with spread argument ──────────────────────────────
+    // ES spec: ImportCall takes exactly one AssignmentExpression, not ArgumentList.
+    // import(...['x']) is a SyntaxError.
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      for (const arg of node.arguments) {
+        if (ts.isSpreadElement(arg)) {
+          addError(arg, "import() does not allow spread arguments");
+        }
+      }
+    }
+
+    // ── Escaped 'import' keyword in dynamic import() ──────────────
+    // im\u0070ort('x') — escaped form of import keyword is not valid
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const start = node.getStart(sourceFile);
+      const rawText = sourceFile.text.substring(start, start + 15);
+      if (rawText.includes("\\u")) {
+        addError(node, "Keyword must not contain escaped characters");
+      }
+    }
+
     ts.forEachChild(node, visit);
+  }
+
+  /** Check if a node is inside a class static initializer block. */
+  function isInsideClassStaticBlock(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isClassStaticBlockDeclaration(current)) return true;
+      // Function boundaries stop the search (except arrow functions)
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return false;
+      }
+      // Arrow functions DON'T create a new scope for await in static blocks
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /** Check if a node is inside any function (for return statement validation). */
+  function isInsideFunction(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /**
+   * Check if an expression tree contains `arguments` identifier reference.
+   * Used for ES spec ContainsArguments check in class field initializers.
+   * Does NOT cross function boundaries (arguments is valid inside nested functions).
+   */
+  function containsArguments(node: ts.Node): boolean {
+    if (ts.isIdentifier(node) && node.text === "arguments") {
+      // Check it's not a property name
+      const parent = node.parent;
+      if (parent && (
+        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) && parent.name === node)
+      )) {
+        return false;
+      }
+      return true;
+    }
+    // Don't cross function boundaries — arguments IS valid inside nested functions
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node)
+    ) {
+      return false;
+    }
+    // Arrow functions don't bind arguments — keep searching
+    let found = false;
+    ts.forEachChild(node, (child) => {
+      if (!found && containsArguments(child)) {
+        found = true;
+      }
+    });
+    return found;
   }
 
   /** Get the computed name of a class member, if it's a simple string. */
@@ -1554,6 +1809,8 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   function isInsideAsyncFunction(node: ts.Node): boolean {
     let current: ts.Node | undefined = node.parent;
     while (current) {
+      // Class static blocks create a new scope — stop searching
+      if (ts.isClassStaticBlockDeclaration(current)) return false;
       if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) || ts.isMethodDeclaration(current)) {
         return current.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
       }
@@ -1569,6 +1826,8 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   function isInsideGeneratorFunction(node: ts.Node): boolean {
     let current: ts.Node | undefined = node.parent;
     while (current) {
+      // Class static blocks create a new scope — stop searching
+      if (ts.isClassStaticBlockDeclaration(current)) return false;
       if ((ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) && current.asteriskToken) {
         return true;
       }
@@ -1844,6 +2103,75 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   }
 
   visit(sourceFile);
+
+  // ── Duplicate export names (source-file level check) ──────────────
+  // ES spec: It is a Syntax Error if ExportedNames contains any duplicate entries.
+  const exportedNames = new Map<string, ts.Node>();
+  for (const stmt of sourceFile.statements) {
+    if (ts.isExportDeclaration(stmt)) {
+      if (stmt.exportClause && ts.isNamedExports(stmt.exportClause)) {
+        for (const spec of stmt.exportClause.elements) {
+          const exportName = (spec.propertyName ?? spec.name).text;
+          const exportedAs = spec.name.text;
+          if (exportedNames.has(exportedAs)) {
+            addError(spec, `Duplicate export name '${exportedAs}'`);
+          } else {
+            exportedNames.set(exportedAs, spec);
+          }
+        }
+      }
+      // export * as name — adds 'name' to exported names
+      if (stmt.exportClause && ts.isNamespaceExport(stmt.exportClause)) {
+        const exportedAs = stmt.exportClause.name.text;
+        if (exportedNames.has(exportedAs)) {
+          addError(stmt.exportClause, `Duplicate export name '${exportedAs}'`);
+        } else {
+          exportedNames.set(exportedAs, stmt.exportClause);
+        }
+      }
+    }
+    if (ts.isExportAssignment(stmt)) {
+      if (exportedNames.has("default")) {
+        addError(stmt, "Duplicate export name 'default'");
+      } else {
+        exportedNames.set("default", stmt);
+      }
+    }
+    // export function/class/variable declarations contribute to exported names
+    if (ts.isFunctionDeclaration(stmt) && stmt.name && ts.canHaveModifiers(stmt) &&
+        ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+      const isDefault = ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
+      const name = isDefault ? "default" : stmt.name.text;
+      if (exportedNames.has(name)) {
+        addError(stmt.name, `Duplicate export name '${name}'`);
+      } else {
+        exportedNames.set(name, stmt.name);
+      }
+    }
+    if (ts.isClassDeclaration(stmt) && ts.canHaveModifiers(stmt) &&
+        ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+      const isDefault = ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
+      const name = isDefault ? "default" : (stmt.name?.text ?? "default");
+      if (exportedNames.has(name)) {
+        addError(stmt.name ?? stmt, `Duplicate export name '${name}'`);
+      } else {
+        exportedNames.set(name, stmt.name ?? stmt);
+      }
+    }
+    if (ts.isVariableStatement(stmt) && ts.canHaveModifiers(stmt) &&
+        ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name)) {
+          if (exportedNames.has(decl.name.text)) {
+            addError(decl.name, `Duplicate export name '${decl.name.text}'`);
+          } else {
+            exportedNames.set(decl.name.text, decl.name);
+          }
+        }
+      }
+    }
+  }
+
   return errors;
 }
 
