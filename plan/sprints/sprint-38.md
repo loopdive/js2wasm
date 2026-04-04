@@ -1,52 +1,63 @@
-# Sprint 38 — Error Quality, Regressions & Promise Redo
+# Sprint 38 -- Correctness: Promise, Destructuring Completion & Codegen Peephole
 
-**Date**: TBD (after sprint 37)
-**Goal**: Fix rejected issues, improve error reporting, redo Promise support safely
-**Baseline**: TBD (sprint 37 result)
+**Date**: 2026-04-04 (after sprint 37)
+**Goal**: Fix remaining high-impact correctness failures + apply codegen peephole optimizations discovered via WAT analysis
+**Baseline**: 18,594 pass / 43,120 (43.1%) -- sprint 37 final (test262 running for confirmation)
 
 ## Context
 
-Sprint 36 rejected #931 (error line migration crashed the compiler) and reverted #855 (Promise support caused 1,451 regressions). Both need careful redo with max reasoning effort and full test262 validation.
+Sprint 37 closed 23 issues, reaching 18,594+ pass (43.1%). The biggest remaining blockers are:
+- **Promise/async** (#855) -- 210 FAIL, architect spec written, previously reverted due to regressions
+- **Destructuring** (#852 partial) -- sprint 37 fixed arrow-function/dstr (+34). Most subcategories still failing.
+- **Property model** (#797) -- ~5,000 FAIL remaining (WI5 not yet done)
+- **Prototype chain** (#799) -- ready, architect spec in issue file
 
-Sprint 37's refactoring (#910-#913) may make these changes cleaner if it lands first.
+Note: #931, #946, #947, #948 are already DONE in sprint 37. Do NOT dispatch these.
 
 ## Task queue
 
-### Phase 1: Fix rejected sprint 36 work
+### Phase 1: Highest-impact correctness (parallel)
 | Order | Issue | Title | Impact | Effort | Model |
 |-------|-------|-------|--------|--------|-------|
-| 1 | #931 | Error line numbers — debug and fix the crash from 132-call migration | **High** — DX | Hard | opus |
-| 2 | #855 | Promise resolution v2 — redo with architect spec, receiver type guards | **210 FAIL** | Hard | opus |
+| 1 | #855 | Promise resolution v2 -- architect spec ready | **210 FAIL** | Hard | opus |
+| 2 | #799 | Prototype chain remaining | **~2,500 FAIL** | Hard | opus |
+| 3 | #858 | Worker/timeout exits and eval-code null deref | **182 FAIL** | Medium | sonnet |
+| 4 | #856 | Expected TypeError but got wrong error type | **136 FAIL** | Medium | sonnet |
 
-### Phase 2: Additional error quality
+### Phase 2: Codegen peephole (from WAT analysis #948)
 | Order | Issue | Title | Impact | Effort | Model |
 |-------|-------|-------|--------|--------|-------|
-| 3 | #946 | Show strict mode compatibility by default on all pages | Medium | Easy | sonnet |
-| 4 | #932 follow-up | Update feature coverage % with post-sprint-37 data | Low | Easy | sonnet |
+| 5 | #956 | Emit i32.const directly vs f64.const+trunc (673 cases) | Size/perf | Easy | sonnet |
+| 6 | #957 | Eliminate local.set+drop dead-store pattern (272 cases) | Size/perf | Easy | sonnet |
+| 7 | #955 | Eliminate redundant ref.test+ref.cast pairs (8,642 cases) | Size/perf | Medium | sonnet |
+| 8 | #954 | Eliminate duplicate locals (3,366 extra, 57% modules) | Size/perf | Medium | sonnet |
+| 9 | #958 | Batch string concat chains into multi-arg call (531 chains) | GC allocs | Hard | opus |
 
-### Phase 2b: Codegen quality analysis
+### Phase 3: High-value ready items
 | Order | Issue | Title | Impact | Effort | Model |
 |-------|-------|-------|--------|--------|-------|
-| 4b | #948 | Systematic WAT analysis of all passing equiv tests | **High** — data-driven optimization | Medium | opus |
-| 4c | #947 | Calendar WAT: 6 codegen inefficiencies (modulo guard, br_table, etc.) | Medium | Medium | sonnet |
-
-### Phase 3: Regression recovery
-| Order | Issue | Title | Impact | Effort | Model |
-|-------|-------|-------|--------|--------|-------|
-| 5 | #919 follow-up | Verify async closure wrapping doesn't break with #855 v2 | Medium | Medium | sonnet |
-| 6 | #920 follow-up | Verify RegExp fallthrough interacts correctly with #797 property model | Medium | Medium | sonnet |
+| 10 | #766 | Symbol.iterator protocol for custom iterables | ~500 FAIL | Medium | sonnet |
+| 11 | #845 | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** | Medium | sonnet |
+| 12 | #822 | Wasm type mismatch compile errors | **907 CE** | Hard | opus |
 
 ## Dev paths
 
-**Dev-1 (opus/senior-developer)**: #931 — must bisect the crash first (which of 132 migrations caused it), fix incrementally, test262 after each batch
-**Dev-2 (opus/senior-developer)**: #855 v2 — architect spec already written (plan/issues/ready/855.md Implementation Plan v2). Follow the 8 work items strictly.
-**Dev-3 (sonnet)**: #946 strict mode + follow-ups
+**Dev-1 (opus)**: #855 Promise v2 -- follow architect spec (plan/issues/ready/855.md) strictly, 8 work items, test262 after each WI
+**Dev-2 (opus)**: #799 prototype chain -- read architect spec in issue file first
+**Dev-3 (sonnet)**: #956 + #957 (easy peephole wins, independent, fast)
+**Dev-4 (sonnet)**: #858 + #856 (runtime semantics, independent)
+
+## Model dispatch rules
+
+- `reasoning_effort: easy/medium` -> sonnet
+- `reasoning_effort: max` or `feasibility: hard` -> opus
 
 ## Prerequisites
 
-- #931 must be debugged before retry — find which of 132 error-push migrations caused the crash
-- #855 v2 depends on architect spec (already written) and #944 revert (already merged)
-- Sprint 37's #797 (property descriptors) may interact with #855 — coordinate
+- #855 has architect spec in issue file (Implementation Plan v2) -- dev can start immediately
+- #799 has architect spec in issue file -- dev can start immediately
+- #956, #957 are truly easy (single-function codegen fix, clear before/after WAT)
+- #958 (string concat batching) is hard -- needs architect spec before dev work
 
 ## Results
 
