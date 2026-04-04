@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="/jswasmlogo.png" alt="js2wasm" width="300" />
+  <img src="./public/jswasmlogo.png" alt="js2wasm" width="300" />
 </p>
 
 # js2wasm — TypeScript/JavaScript to WebAssembly Compiler
 
-**Ahead-of-time compiler that compiles JavaScript and TypeScript directly to [WebAssembly GC](https://github.com/nicolo-ribaudo/tc39-proposal-wasm-gc) — no interpreter, no runtime, no vendor lock-in.**
+**Ahead-of-time compiler that compiles JavaScript and TypeScript directly to [WebAssembly GC](https://github.com/webassembly/gc) — no interpreter, no runtime, no vendor lock-in.**
 
 js2wasm produces native WasmGC binaries in the range of hundreds of bytes to a few kilobytes per module. There is no garbage collector, allocator, or standard library bundled into the output — the Wasm engine manages memory natively. This makes it practical to deploy individual ECMAScript modules as sandboxed Wasm components in embedded systems, serverless platforms, and any host that speaks WebAssembly but not JavaScript.
 
