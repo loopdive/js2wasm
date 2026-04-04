@@ -463,7 +463,7 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
 
     // Check for-in/for-of with non-simple assignment target as LHS
     if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && !ts.isVariableDeclarationList(node.initializer)) {
-      if (isInvalidAssignmentTarget(node.initializer as ts.Expression)) {
+      if (isInvalidAssignmentTarget(node.initializer as ts.Expression, /* allowDestructuring */ true)) {
         addError(node.initializer, "Invalid left-hand side in for-in/for-of");
       }
     }
