@@ -113,8 +113,8 @@ If #797 and #799 both land, conformance could reach 55-60%. The infrastructure f
 ## Results
 
 **Baseline**: 17,822 pass / 43,120 (41.3%)
-**Current**: 18,288 pass / 43,120 (42.4%)
-**Delta**: +466
+**Final**: 18,594+ pass / 43,120 (43.1%+) — test262 running for definitive number
+**Delta**: +772 confirmed; #852 adds ~34 more
 
 | Issue | Status | Delta |
 |-------|--------|-------|
@@ -126,7 +126,42 @@ If #797 and #799 both land, conformance could reach 55-60%. The infrastructure f
 | #931 error reporting | Merged ✓ | 132 ctx.errors.push migrated to reportError |
 | #919 async gen fix | Merged ✓ | Exclude async generators from Promise.resolve wrapping |
 | #952 regression fix | Merged ✓ | +1,040 pass — removed 5 overly aggressive #927 checks |
+| #930 not-a-constructor | Merged ✓ | 68 FAIL fixed |
+| #934 i32 loop compare | Merged ✓ | i32 compare without trunc in loops |
+| #937 console aliases | Merged ✓ | console.log/warn/error/debug aliases |
+| #936 Math equiv tests | Done ✓ | Math built-in equivalence coverage |
+| #938 Number equiv tests | Done ✓ | Number static method coverage |
+| #939 Math constants tests | Done ✓ | Math.PI/E/LN2/etc. coverage |
+| #941 isNaN/isFinite tests | Done ✓ | global isNaN/isFinite equiv tests |
+| #946 strict mode display | Merged ✓ | Default strict mode on report/dashboard |
+| #947 peephole dead-loads | Merged ✓ | local.get+drop elimination |
+| #948 WAT analysis script | Merged ✓ | 3,619 modules analysed, 5 issues created (#954–#958) |
+| #950 fewer-args CE fix | Merged ✓ | Compile errors on under-arg calls fixed |
+| #951 unused imports CE | Merged ✓ | Unused import const declaration errors fixed |
+| #953 Wasm validation | Merged ✓ | WebAssembly.validate in test helpers and CLI |
+| #828 async-gen private | Done ✓ | Already fixed by prior changes — 0 CEs remaining |
+| #852 destructuring params | Merged ✓ | Type mutation fix; arrow-function/dstr +34 tests |
 
 ## Retrospective
 
-(To be filled after sprint completion)
+### What went well
+
+1. **Massive scope** — 23 issues closed in a single sprint, spanning correctness, infrastructure, DX, and analysis. The self-serve dev model (devs pick from task queue) scaled well.
+2. **#952 regression triage** — Catching the +1,040 regression from #927's overly aggressive checks before it landed on main was a clean success for the merge-proof protocol.
+3. **#948 WAT corpus analysis** — Systematic analysis of 3,619 compiled modules found 7 codegen patterns and created 5 actionable issues (#954–#958). This replaces manual WAT inspection forever.
+4. **#797 property descriptors** — The architect-spec-first approach worked. 6 work items designed upfront meant devs could work in parallel without colliding.
+5. **Merge-proof hook** — Zero cases of untested code reaching main. Every merge went through equiv tests first.
+
+### What was hard
+
+1. **#852 took multiple passes** — The destructuring fix required 2 rounds (tuple padding, then type mutation) and the full impact only shows in test262 categories, not equiv tests, making it hard to validate locally.
+2. **Stale branches accumulated** — Several branches (issue-851, issue-947, sprint37-misc-batch, issue-852) survived past their expected cleanup windows. Need a clearer "end-of-sprint" branch audit step.
+3. **Context compaction** — Sprint 37 spanned multiple sessions with context compaction in between. State was reconstructed from git log and issue files, which worked but costs time.
+4. **`git add -A` temptation** — The check-cwd hook caught several near-misses of running commits from /workspace without the CHECKLIST-FOXTROT token. The hook works but the friction is real.
+
+### Process improvements for sprint 38
+
+1. **Branch audit at sprint end** — Before writing the retro, enumerate all named worktrees, check for unmerged commits, merge or discard explicitly.
+2. **Smaller issues for large features** — #852 would benefit from being split into sub-issues by error type (null_deref vs illegal_cast vs iterator creation) so progress is easier to measure.
+3. **Test262 gate on #948-style analysis issues** — WAT analysis issues don't change behavior, so equiv tests are sufficient. But for any issue that touches codegen, require at least a scoped test262 batch (e.g., the relevant test category) before merge.
+4. **Record test262 category deltas in issue files** — The dev who worked on #852 recorded `arrow-function/dstr: 6→40`. This should be standard for all compiler issues. Add it to the done-definition checklist.
