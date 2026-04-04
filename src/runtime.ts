@@ -461,10 +461,7 @@ function resolveImport(
         return (self: any, tagName: any, options?: any) =>
           options == null ? self.createElement(tagName) : self.createElement(tagName, options);
       }
-      if (
-        intent.action === "method"
-        && intent.member === "addEventListener"
-      ) {
+      if (intent.action === "method" && intent.member === "addEventListener") {
         return (self: any, type: any, listener: any, options?: any) =>
           options == null ? self.addEventListener(type, listener) : self.addEventListener(type, listener, options);
       }
@@ -926,7 +923,7 @@ function resolveImport(
           const descs = _wasmPropDescs.get(obj);
           if (descs) {
             const flags = descs.get(String(key));
-            if (flags !== undefined) return (flags & _SC_ENUMERABLE) ? 1 : 0;
+            if (flags !== undefined) return flags & _SC_ENUMERABLE ? 1 : 0;
           }
           // Sidecar props without explicit descriptor are enumerable
           const sc = _wasmStructProps.get(obj);
@@ -948,7 +945,10 @@ function resolveImport(
               return keys;
             } catch (e: any) {
               // Prototype chain may include an opaque WasmGC struct — fall through to manual walk
-              if (!(e instanceof TypeError) || !(typeof e.message === "string" && (e.message.includes("opaque") || e.message.includes("WebAssembly")))) {
+              if (
+                !(e instanceof TypeError) ||
+                !(typeof e.message === "string" && (e.message.includes("opaque") || e.message.includes("WebAssembly")))
+              ) {
                 throw e;
               }
             }
@@ -963,7 +963,10 @@ function resolveImport(
               // WasmGC struct — get field names from exported helper
               const fieldNames = _getStructFieldNames(current, exports) ?? [];
               for (const k of fieldNames) {
-                if (!seen.has(k)) { keys.push(k); seen.add(k); }
+                if (!seen.has(k)) {
+                  keys.push(k);
+                  seen.add(k);
+                }
               }
               // Also include enumerable sidecar properties
               const sc = _wasmStructProps.get(current);
@@ -974,7 +977,7 @@ function resolveImport(
                   // Check enumerability — sidecar props without explicit descriptor are enumerable
                   if (descs) {
                     const flags = descs.get(k);
-                    if (flags !== undefined && (flags & _SC_DEFINED) && !(flags & _SC_ENUMERABLE)) continue;
+                    if (flags !== undefined && flags & _SC_DEFINED && !(flags & _SC_ENUMERABLE)) continue;
                   }
                   keys.push(k);
                   seen.add(k);
@@ -984,7 +987,10 @@ function resolveImport(
               // Plain JS object — use Object.keys for own enumerable, respecting shadowing
               try {
                 for (const k of Object.keys(current)) {
-                  if (!seen.has(k)) { keys.push(k); seen.add(k); }
+                  if (!seen.has(k)) {
+                    keys.push(k);
+                    seen.add(k);
+                  }
                 }
                 // Mark all own properties (including non-enumerable) as seen for shadowing
                 for (const k of Object.getOwnPropertyNames(current)) {
