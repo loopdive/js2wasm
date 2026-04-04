@@ -161,6 +161,7 @@ function isEffectivelyVoidReturn(ctx: CodegenContext, retType: ts.Type, funcName
  */
 function isAsyncCallExpression(ctx: CodegenContext, expr: ts.CallExpression): boolean {
   // Check if the callee is a named function in ctx.asyncFunctions
+  // (async generators are excluded from asyncFunctions at registration time)
   if (ts.isIdentifier(expr.expression)) {
     if (ctx.asyncFunctions.has(expr.expression.text)) return true;
   }
@@ -170,6 +171,9 @@ function isAsyncCallExpression(ctx: CodegenContext, expr: ts.CallExpression): bo
   if (sig) {
     const decl = sig.getDeclaration();
     if (decl && decl.modifiers) {
+      // Exclude async generators — they return AsyncGenerator objects, not Promises.
+      // Wrapping in Promise.resolve() would destroy the .next() method.
+      if (ts.isFunctionLike(decl) && (decl as ts.FunctionLikeDeclaration).asteriskToken) return false;
       for (const mod of decl.modifiers) {
         if (mod.kind === ts.SyntaxKind.AsyncKeyword) return true;
       }

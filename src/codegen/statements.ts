@@ -6665,7 +6665,7 @@ function compileNestedFunctionDeclaration(
   // Detect async functions — their TS return type is Promise<T> but the
   // Wasm return should be T (matching the unwrap that top-level async functions use).
   const isAsync = stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
-  if (isAsync) {
+  if (isAsync && !isGenerator) {
     ctx.asyncFunctions.add(funcName);
   }
 
