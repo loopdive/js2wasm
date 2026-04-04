@@ -1838,7 +1838,7 @@ interface UnifiedCollectorState {
   sourceFile: ts.SourceFile;
 }
 
-const CONSOLE_METHODS_SET = new Set(["log", "warn", "error"]);
+const CONSOLE_METHODS_SET = new Set(["log", "warn", "error", "info", "debug"]);
 
 function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollectorState {
   return {
@@ -2420,7 +2420,7 @@ function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorState, nod
 /** Run all post-walk finalization (register imports based on collected state) */
 function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorState): void {
   // ── collectConsoleImports finalize ──
-  const CONSOLE_METHODS = ["log", "warn", "error"] as const;
+  const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
   for (const method of CONSOLE_METHODS) {
     const needed = state.consoleNeededByMethod.get(method);
     if (!needed) continue;
@@ -2779,9 +2779,9 @@ function collectAllSourceImports(ctx: CodegenContext, sourceFile: ts.SourceFile)
   finalizeUnifiedCollector(ctx, state);
 }
 
-/** Scan source for console.log/warn/error() calls and register only needed import variants */
+/** Scan source for console.log/warn/error/info/debug() calls and register only needed import variants */
 function collectConsoleImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
-  const CONSOLE_METHODS = ["log", "warn", "error"] as const;
+  const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
   // Track needed variants per console method
   const neededByMethod = new Map<string, Set<"number" | "bool" | "string" | "externref">>();
 

@@ -2469,7 +2469,7 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   if (name === "console_log_bool") return { type: "console_log", variant: "bool" };
   if (name === "console_log_string") return { type: "console_log", variant: "string" };
   if (name === "console_log_externref") return { type: "console_log", variant: "externref" };
-  for (const cm of ["warn", "error"]) {
+  for (const cm of ["warn", "error", "info", "debug"]) {
     if (name === `console_${cm}_number`) return { type: "console_log", variant: `${cm}_number` };
     if (name === `console_${cm}_bool`) return { type: "console_log", variant: `${cm}_bool` };
     if (name === `console_${cm}_string`) return { type: "console_log", variant: `${cm}_string` };
