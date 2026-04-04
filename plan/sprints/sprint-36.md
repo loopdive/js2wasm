@@ -68,60 +68,77 @@ Parallel tracks, refactoring last:
 **Baseline (end)**: 17,822 pass / 43,120 total (41.3%) — confirmed real, cache disabled, proposals pre-filtered
 **Delta**: +2,296 pass (+6.1pp)
 
-**Completed issues**: #914, #915, #916, #917, #918, #920, #922, #932, #942, #944 (regression fix)
-
-**Pending test-and-merge** (branches ready, not yet on main):
-- #919: eval/args async closure fix
-- #921: class dstr generator/private-method type mismatch  
-- #927: early/parse error detection (5 commits)
-- #931: error line numbers (132 ctx.errors.push calls migrated)
-
-**Deferred to sprint 37**: #923 (compiler state leakage), #933 (chart web components), #910-#913 (refactoring)
+**Completed issues (14)**: #914, #915, #916, #917, #918, #919, #920, #921, #922, #927, #932, #933, #942, #944
+**Rejected**: #931 (fatal crash in error reporting migration — only 1,879/48K tests ran)
+**Deferred to sprint 37**: #923 (state leakage), #931 (needs fix), #910-#913 (refactoring)
 
 ## Retrospective
 
-### Completed
+### Completed (14 issues)
 - #914: Architecture overview (docs/ARCHITECTURE.md)
 - #915: CONTRIBUTING.md
 - #916: Repo hygiene (-1,236 lines of clutter)
 - #917: Lint/format/typecheck consistency + CI workflow
 - #918: 7 contributor-friendly starter issues (#935-#941)
+- #919: Eval/args async closure fix (Promise.resolve wrapping)
+- #920: RegExp regressions (extern class method fallthrough)
+- #921: Class dstr type mismatch (pushBody/popBody fix)
 - #922: Baseline-diff script (scripts/diff-test262.ts)
+- #927: Early error detection (877 lines, 15 new ES error categories)
 - #932: Feature coverage % + benchmark chart on landing page
+- #933: Shared chart web components (t262-donut, t262-trend-chart)
 - #942: Feature compatibility report (52 features ranked)
 - #944: Regression fix — revert #855, fix #831 LHS validation
 
-### In progress / pending merge
-- #920: RegExp regressions (test-and-merge running)
-- #921: Class dstr type mismatch (branch ready)
-- #919: Eval/args async closure fix (branch ready)
-- #927: Early error detection — 5 commits (branch ready)
-- #931: Error line numbers — 132 calls migrated (branch ready)
+### Rejected
+- #931: Error line numbers — migrated 132 ctx.errors.push calls but introduced fatal crash (only 1,879/48K tests ran). Needs debugging before retry.
 
 ### Deferred to sprint 37
 - #923: Compiler state leakage (hard, needs focused attention)
-- #933: Shared chart web components
+- #931: Error line numbers (rejected, needs fix)
 - #910-#913: Refactoring (sequential, high-risk)
 
-### Honest baseline
-- Pre-session: 15,526 pass (36.2%)
-- Current (post #944 fix): 16,268 pass (37.7%)
-- Improvement: +742 pass
-- Note: The 17,782 result was cache-inflated and never real
+### Baseline
+- Session start: 15,526 pass (36.2%)
+- After cache disabled + all merges: 17,822 pass (41.3%)
+- Delta: **+2,296 pass (+5.1pp)**
+- Note: 17,782 mid-session result was cache-inflated. 17,822 is the honest result with cache disabled.
 
-## Retrospective (draft — finalize after all merges)
+## Retrospective
 
 ### What went well
+- **14 issues completed** — highest throughput sprint. Contributor docs, CI, tooling, error detection, regression fix all landed.
 - **Bisect tool saved the sprint** — scripts/diff-test262.ts identified #855 and #831 as regression culprits within minutes
-- **test-and-merge.sh replaces tester agents** — zero token cost for merge validation
-- **PO error analysis** produced 6 data-driven issues with clear root causes
-- **Contributor docs shipped** — ARCHITECTURE.md, CONTRIBUTING.md, starter issues, CI workflow
-- **9 issues completed** despite regression disruption
+- **test-and-merge.sh replaces tester agents** — zero token cost for merge validation. Saved ~5 agent spawns.
+- **PO error analysis** produced 6 data-driven issues (#926-#931, #945) with clear root causes
+- **Cache disabled** — discovered that the disk cache was causing false baselines. All results now honest.
+- **#927 early error detection** — 877 lines of new ES spec validation, 15 error categories
+- **Process improvements shipped** — senior-developer.md, reasoning_effort in issues, model selection rules
 
 ### What went wrong
-- **#855 caused 1,451 regressions** — merged without proper test262 validation (equiv-only)
-- **Dismissed regression as "runner instability"** for hours — wasted 4+ test262 runs before bisecting
-- **17,782 baseline was fake** — cache-inflated result accepted as real. Only discovered after reverting #855 showed same 16,268
+- **#855 caused 1,451 regressions** — merged without proper test262 validation (equiv-only at first, then tester didn't build from branch)
+- **Dismissed regression as "runner instability"** for hours — wasted 4+ test262 runs and significant time before bisecting
+- **17,782 baseline was fake** — cache-inflated result accepted as real for hours. Led to incorrect regression analysis.
+- **#931 crashed the compiler** — 132 error-push migrations introduced a fatal bug. test-and-merge.sh correctly caught it (only 1,879/48K tests ran).
+- **30+ opus agents spawned** — burned 25% of weekly token budget. Most dev tasks don't need opus.
+- **Tester agents couldn't build from worktrees** — repeatedly tested regressed code. Replaced by bash script.
+- **Multiple test262 runs competing** — orphaned processes held locks, caused OOM
+
+### Process improvements applied this sprint
+1. **test-and-merge.sh** — bash script replaces tester agents (zero tokens per merge)
+2. **Developer model: sonnet** — opus only for hard issues via senior-developer.md
+3. **reasoning_effort in issues** — drives model selection (max→opus, high→sonnet, medium→haiku)
+4. **Cache permanently disabled** — every test compiled fresh, no stale results
+5. **Proposals pre-filtered** — staging/ tests excluded at file level, not just skip-tagged
+6. **Never dismiss regressions** — always bisect with diff-test262.ts first
+7. **Merge proof in worktree** — hook checks both locations
+8. **CI workflow added** — lint + format + typecheck on PRs (#917)
+
+### Lessons for sprint 37
+1. Run test262 from branch source, not main — verify the bundle was actually rebuilt
+2. Don't merge error-reporting refactors without thorough testing — they touch every codegen path
+3. Keep max 3 devs + test262 — more causes OOM and lock contention
+4. Use test-and-merge.sh instead of tester agents for all merges
 - **Tester agents couldn't build from worktrees** — they built from main, testing regressed code repeatedly
 - **30+ opus agents spawned** — burned 25% of weekly token budget in one day
 - **Too many concurrent agents** — OOMed test262, crashed docker
