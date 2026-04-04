@@ -36,15 +36,31 @@
  *      i32/f64.const 1
  *      i32/f64.add/sub
  *      local.set N
+ *
+ * 5. ref.test T + if(then [local.get N; ref.cast T; ...]) when local N is (ref_null T)
+ *    (#955): ref.test already proves the value is non-null and of type T, making the
+ *    subsequent ref.cast T a runtime no-op.  Replace ref.cast with ref.as_non_null
+ *    (saves 2+ bytes; valid because (ref_null T) + ref.as_non_null → (ref T)):
+ *      local.get N         ;; (ref_null T) local
+ *      ref.test (ref T)    ;; proved: non-null, type T
+ *      if (then
+ *        local.get N
+ *        ref.cast (ref T)  ;; redundant — replace with ref.as_non_null (1 byte)
+ *        ...
+ *      )
  */
-import type { Instr, WasmModule } from "../ir/types.js";
+import type { Instr, WasmModule, ValType } from "../ir/types.js";
 
 /**
  * Remove redundant ref.as_non_null after ref.cast in a single instruction list.
  * Recurses into block, loop, if/then/else, and try/catch bodies.
  * Mutates the array in place and returns the number of instructions removed.
+ *
+ * @param localTypes - flat array of Wasm types for locals in the enclosing function:
+ *   indices [0..numParams-1] are param types, [numParams..] are declared locals.
+ *   Used by Pattern 5 to look up whether a local is (ref_null T).
  */
-function optimizeBody(body: Instr[]): number {
+function optimizeBody(body: Instr[], localTypes?: ValType[]): number {
   let removed = 0;
 
   // First, recurse into nested blocks
@@ -52,17 +68,17 @@ function optimizeBody(body: Instr[]): number {
     switch (instr.op) {
       case "block":
       case "loop":
-        if (instr.body) removed += optimizeBody(instr.body);
+        if (instr.body) removed += optimizeBody(instr.body, localTypes);
         break;
       case "if":
-        if (instr.then) removed += optimizeBody(instr.then);
-        if (instr.else) removed += optimizeBody(instr.else);
+        if (instr.then) removed += optimizeBody(instr.then, localTypes);
+        if (instr.else) removed += optimizeBody(instr.else, localTypes);
         break;
       case "try":
-        if (instr.body) removed += optimizeBody(instr.body as Instr[]);
+        if (instr.body) removed += optimizeBody(instr.body as Instr[], localTypes);
         if ((instr as any).catches) {
           for (const c of (instr as any).catches) {
-            if (c.body) removed += optimizeBody(c.body);
+            if (c.body) removed += optimizeBody(c.body, localTypes);
           }
         }
         break;
@@ -124,10 +140,60 @@ function optimizeBody(body: Instr[]): number {
       continue;
     }
 
+    // Pattern 5: local.get N; ref.test T; if (then [local.get N; ref.cast T; ...rest]) (#955)
+    // When local N is of type (ref_null T), the ref.test already proved non-null and
+    // correct type, so ref.cast T is redundant for the runtime check.
+    // Replace ref.cast T with ref.as_non_null (1 byte vs 3+ bytes, preserves (ref T) type).
+    // Only valid when the local is (ref_null T) — ref.as_non_null on anyref would give (ref any).
+    if (
+      localTypes &&
+      i + 2 < body.length &&
+      cur.op === "local.get" &&
+      next.op === "ref.test" &&
+      body[i + 2]!.op === "if"
+    ) {
+      const localIdx = (cur as any).index as number;
+      const testTypeIdx = (next as any).typeIdx as number;
+      const ifInstr = body[i + 2]!;
+      const localType = localTypes[localIdx];
+      // Check: local is (ref_null T) where T matches the ref.test type
+      if (
+        localType &&
+        localType.kind === "ref_null" &&
+        (localType as any).typeIdx === testTypeIdx &&
+        (ifInstr as any).then &&
+        (ifInstr as any).then.length >= 2 &&
+        (ifInstr as any).then[0].op === "local.get" &&
+        (ifInstr as any).then[0].index === localIdx &&
+        (ifInstr as any).then[1].op === "ref.cast" &&
+        (ifInstr as any).then[1].typeIdx === testTypeIdx
+      ) {
+        // Replace ref.cast T with ref.as_non_null in the then branch
+        (ifInstr as any).then[1] = { op: "ref.as_non_null" };
+        removed++; // net: ref.cast (3+ bytes) → ref.as_non_null (1 byte)
+        i++;
+        continue;
+      }
+    }
+
     i++;
   }
 
   return removed;
+}
+
+/**
+ * Resolve param types for a function from the module's type table.
+ * Returns an empty array if the type cannot be found or is not a func type.
+ */
+function getFuncParamTypes(mod: WasmModule, typeIdx: number): ValType[] {
+  const typeDef = mod.types[typeIdx];
+  if (!typeDef) return [];
+  // Direct function type
+  if (typeDef.kind === "func") return typeDef.params;
+  // Sub type wrapping a func type
+  if (typeDef.kind === "sub" && typeDef.type.kind === "func") return typeDef.type.params;
+  return [];
 }
 
 /**
@@ -137,7 +203,10 @@ function optimizeBody(body: Instr[]): number {
 export function peepholeOptimize(mod: WasmModule): number {
   let totalRemoved = 0;
   for (const func of mod.functions) {
-    totalRemoved += optimizeBody(func.body);
+    // Build flat local-type array: params first, then declared locals
+    const paramTypes = getFuncParamTypes(mod, func.typeIdx);
+    const localTypes: ValType[] = [...paramTypes, ...func.locals.map((l) => l.type)];
+    totalRemoved += optimizeBody(func.body, localTypes);
   }
   return totalRemoved;
 }
