@@ -245,10 +245,16 @@ const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
  * the test in one process. No separate Phase 1 needed.
  */
 export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
-  // Build full test list, then round-robin across chunks
+  // Build full test list, filtering out proposals unless explicitly included.
+  // This avoids registering ~5,200 proposal tests that would be skipped anyway,
+  // saving ~10% of run time and keeping the statusline total accurate.
+  const includeProposals = process.env.TEST262_INCLUDE_PROPOSALS === "1";
   const allTests: { category: string; filePath: string }[] = [];
   for (const category of TEST_CATEGORIES) {
     for (const filePath of findTestFiles(category)) {
+      // Skip staging/ and proposal-tagged tests at the file level
+      const relPath = filePath.replace(/.*test262\//, "");
+      if (!includeProposals && (relPath.startsWith("test/staging/") || relPath.startsWith("staging/"))) continue;
       allTests.push({ category, filePath });
     }
   }
@@ -364,7 +370,10 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
             }
 
             // ── Normal path: unified compile+execute in fork ────────
-            const { wasmPath, metaPath } = getCachePaths(wrapped);
+            // Cache disabled — stale cache entries caused false baselines.
+            // Every test is compiled and executed fresh each run.
+            const wasmPath = "";
+            const metaPath = "";
             const r = await pool!.runTest(
               wrapped,
               {
