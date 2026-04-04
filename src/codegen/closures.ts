@@ -807,8 +807,7 @@ export function compileArrowAsClosure(
 
   // Detect async functions/arrows — their TS return type is Promise<T> but the
   // Wasm return should be T (matching the unwrap that top-level async functions use).
-  const isAsync =
-    arrow.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+  const isAsync = arrow.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
 
   const sig = ctx.checker.getSignatureFromDeclaration(arrow);
   let closureReturnType: ValType | null = null;

@@ -123,10 +123,7 @@ export function optimizeBinary(binary: Uint8Array, options: OptimizeOptions = {}
  * Async optimizer variant for environments that can lazy-load the ESM
  * `binaryen` package (for example the browser playground via Vite).
  */
-export async function optimizeBinaryAsync(
-  binary: Uint8Array,
-  options: OptimizeOptions = {},
-): Promise<OptimizeResult> {
+export async function optimizeBinaryAsync(binary: Uint8Array, options: OptimizeOptions = {}): Promise<OptimizeResult> {
   const level = options.level ?? 3;
   const gc = options.gc !== false;
   const referenceTypes = options.referenceTypes !== false;
@@ -135,14 +132,7 @@ export async function optimizeBinaryAsync(
   try {
     const binaryen = await getBinaryenModule();
     if (binaryen) {
-      const result = optimizeWithBinaryenModule(
-        binaryen,
-        binary,
-        level,
-        gc,
-        referenceTypes,
-        exceptionHandling,
-      );
+      const result = optimizeWithBinaryenModule(binaryen, binary, level, gc, referenceTypes, exceptionHandling);
       if (result) return result;
     }
   } catch {
@@ -166,9 +156,7 @@ export async function optimizeBinaryAsync(
 
 async function getBinaryenModule(): Promise<any | null> {
   if (_binaryenModulePromise) return _binaryenModulePromise;
-  _binaryenModulePromise = import("binaryen")
-    .then((mod: any) => mod.default ?? mod)
-    .catch(() => null);
+  _binaryenModulePromise = import("binaryen").then((mod: any) => mod.default ?? mod).catch(() => null);
   return _binaryenModulePromise;
 }
 
@@ -212,8 +200,7 @@ function optimizeWithBinaryenModule(
   try {
     const previousOptimizeLevel =
       typeof binaryen.getOptimizeLevel === "function" ? binaryen.getOptimizeLevel() : undefined;
-    const previousShrinkLevel =
-      typeof binaryen.getShrinkLevel === "function" ? binaryen.getShrinkLevel() : undefined;
+    const previousShrinkLevel = typeof binaryen.getShrinkLevel === "function" ? binaryen.getShrinkLevel() : undefined;
 
     // Set features on the module
     let features = 0;

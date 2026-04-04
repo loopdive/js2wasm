@@ -7,13 +7,7 @@ import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.j
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { addImport } from "./registry/imports.js";
 import { addFuncType } from "./registry/types.js";
-import {
-  resolveWasmType,
-  addUnionImports,
-  parseRegExpLiteral,
-  isAnyValue,
-  ensureAnyHelpers,
-} from "./index.js";
+import { resolveWasmType, addUnionImports, parseRegExpLiteral, isAnyValue, ensureAnyHelpers } from "./index.js";
 import { isNumberType, isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, getLine, getCol } from "./shared.js";
