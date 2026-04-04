@@ -484,11 +484,14 @@ class T262EditionBars extends HTMLElement {
     let dots = "";
     const maxPassIdx = cumPass.reduce((mi, v, i, a) => (v > a[mi] ? i : mi), 0);
     for (let i = 0; i < n; i++) {
-      const cx = x(i),
-        cy = y(cumPass[i]);
-      dots += `<circle cx="${cx}" cy="${cy}" r="3" fill="rgba(255,255,255,0.9)"/>`;
+      const cx = x(i);
+      dots += `<circle cx="${cx}" cy="${y(cumSkip[i])}" r="2" fill="none"/>`;
+      dots += `<circle cx="${cx}" cy="${y(cumCe[i])}" r="2" fill="none"/>`;
+      dots += `<circle cx="${cx}" cy="${y(cumFail[i])}" r="2" fill="none"/>`;
+      dots += `<circle cx="${cx}" cy="${y(cumSkip[i])}" r="2.5" fill="#4a5060"/>`;
+      dots += `<circle cx="${cx}" cy="${y(cumPass[i])}" r="3" fill="rgba(255,255,255,0.9)"/>`;
       if (i === maxPassIdx) {
-        dots += `<text x="${cx}" y="${cy - 8}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10" font-family="monospace">${cumPass[i].toLocaleString()}</text>`;
+        dots += `<text x="${cx}" y="${y(cumPass[i]) - 8}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10" font-family="monospace">${cumPass[i].toLocaleString()}</text>`;
       }
     }
 
@@ -498,6 +501,18 @@ class T262EditionBars extends HTMLElement {
           <stop offset="0%" stop-color="white" stop-opacity="0"/>
           <stop offset="25%" stop-color="white" stop-opacity="0.055"/>
           <stop offset="100%" stop-color="white" stop-opacity="0.41"/>
+        </linearGradient>
+        <linearGradient id="failGrad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#0a0e16" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#1a2436" stop-opacity="1"/>
+        </linearGradient>
+        <linearGradient id="ceGrad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#090d14" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#141c2c" stop-opacity="1"/>
+        </linearGradient>
+        <linearGradient id="skipGrad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#080c12" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#0f1520" stop-opacity="1"/>
         </linearGradient>
         <filter id="passLineGlow">
           <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
@@ -509,23 +524,23 @@ class T262EditionBars extends HTMLElement {
       <path d="${areaPath(
         (i) => y(cumSkip[i]),
         (i) => y(cumCe[i]),
-      )}" fill="rgba(255,255,255,0.04)"/>
+      )}" fill="url(#skipGrad)"/>
       <path d="${areaPath(
         (i) => y(cumCe[i]),
         (i) => y(cumFail[i]),
-      )}" fill="rgba(255,255,255,0.06)"/>
+      )}" fill="url(#ceGrad)"/>
       <path d="${areaPath(
         (i) => y(cumFail[i]),
         (i) => y(cumPass[i]),
-      )}" fill="rgba(255,255,255,0.08)"/>
+      )}" fill="url(#failGrad)"/>
       <path d="${areaPath(
         (i) => y(cumPass[i]),
         () => y(0),
       )}" fill="url(#passGrad)"/>
+      <path d="${linePath((i) => y(cumSkip[i]))}" fill="none" stroke="#4a5060" stroke-width="1.5"/>
       <path d="${linePath((i) => y(cumCe[i]))}" fill="none" stroke="none"/>
       <path d="${linePath((i) => y(cumFail[i]))}" fill="none" stroke="none"/>
       <path d="${linePath((i) => y(cumPass[i]))}" fill="none" stroke="#fff" stroke-width="2" filter="url(#passLineGlow)"/>
-      <path d="${linePath((i) => y(cumSkip[i]))}" fill="none" stroke="none"/>
       ${dots}
     </svg>`;
 
@@ -547,11 +562,13 @@ class T262EditionBars extends HTMLElement {
     let dotsPct = "";
     const maxPctIdx = pctPass.reduce((mi, v, i, a) => (v > a[mi] ? i : mi), 0);
     for (let i = 0; i < n; i++) {
-      const cx = x(i),
-        cy = yPct(pctPass[i]);
-      dotsPct += `<circle cx="${cx}" cy="${cy}" r="3" fill="rgba(255,255,255,0.9)"/>`;
+      const cx = x(i);
+      dotsPct += `<circle cx="${cx}" cy="${yPct(100)}" r="2" fill="none"/>`;
+      dotsPct += `<circle cx="${cx}" cy="${yPct(pctCe[i])}" r="2" fill="none"/>`;
+      dotsPct += `<circle cx="${cx}" cy="${yPct(pctFail[i])}" r="2" fill="none"/>`;
+      dotsPct += `<circle cx="${cx}" cy="${yPct(pctPass[i])}" r="3" fill="rgba(255,255,255,0.9)"/>`;
       if (i === maxPctIdx) {
-        dotsPct += `<text x="${cx}" y="${cy - 8}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10" font-family="monospace">${Math.round(pctPass[i])}%</text>`;
+        dotsPct += `<text x="${cx}" y="${yPct(pctPass[i]) - 8}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10" font-family="monospace">${Math.round(pctPass[i])}%</text>`;
       }
     }
 
@@ -561,6 +578,18 @@ class T262EditionBars extends HTMLElement {
           <stop offset="0%" stop-color="white" stop-opacity="0"/>
           <stop offset="25%" stop-color="white" stop-opacity="0.055"/>
           <stop offset="100%" stop-color="white" stop-opacity="0.41"/>
+        </linearGradient>
+        <linearGradient id="failGradPct" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#0a0e16" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#1a2436" stop-opacity="1"/>
+        </linearGradient>
+        <linearGradient id="ceGradPct" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#090d14" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#141c2c" stop-opacity="1"/>
+        </linearGradient>
+        <linearGradient id="skipGradPct" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#080c12" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#0f1520" stop-opacity="1"/>
         </linearGradient>
         <filter id="passLineGlowPct">
           <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
@@ -572,23 +601,23 @@ class T262EditionBars extends HTMLElement {
       <path d="${areaPath(
         () => yPct(100),
         (i) => yPct(pctCe[i]),
-      )}" fill="rgba(255,255,255,0.04)"/>
+      )}" fill="url(#skipGradPct)"/>
       <path d="${areaPath(
         (i) => yPct(pctCe[i]),
         (i) => yPct(pctFail[i]),
-      )}" fill="rgba(255,255,255,0.06)"/>
+      )}" fill="url(#ceGradPct)"/>
       <path d="${areaPath(
         (i) => yPct(pctFail[i]),
         (i) => yPct(pctPass[i]),
-      )}" fill="rgba(255,255,255,0.08)"/>
+      )}" fill="url(#failGradPct)"/>
       <path d="${areaPath(
         (i) => yPct(pctPass[i]),
         () => yPct(0),
       )}" fill="url(#passGradPct)"/>
+      <path d="${linePath(() => yPct(100))}" fill="none" stroke="none"/>
       <path d="${linePath((i) => yPct(pctCe[i]))}" fill="none" stroke="none"/>
       <path d="${linePath((i) => yPct(pctFail[i]))}" fill="none" stroke="none"/>
       <path d="${linePath((i) => yPct(pctPass[i]))}" fill="none" stroke="#fff" stroke-width="2" filter="url(#passLineGlowPct)"/>
-      <path d="${linePath(() => yPct(100))}" fill="none" stroke="none"/>
       ${dotsPct}
     </svg>`;
 
@@ -602,7 +631,7 @@ class T262EditionBars extends HTMLElement {
       </style>
       <div class="charts">
         ${svg}
-        ${svgPct}
+        <!-- ${svgPct} -->
       </div>
     `;
   }
