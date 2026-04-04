@@ -9283,6 +9283,37 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
+    // Handle String.fromCodePoint(code) — native helper (nativeStrings) or host import
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "String" &&
+      propAccess.name.text === "fromCodePoint" &&
+      expr.arguments.length >= 1
+    ) {
+      // Native strings mode: use pure-Wasm __str_fromCodePoint (no host import)
+      if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+        const helperIdx = ctx.nativeStrHelpers.get("__str_fromCodePoint");
+        if (helperIdx !== undefined) {
+          const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+          if (argType && argType.kind !== "i32") {
+            fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+          }
+          fctx.body.push({ op: "call", funcIdx: helperIdx });
+          return nativeStringType(ctx);
+        }
+      }
+      // Host import path (non-nativeStrings mode)
+      const funcIdx = ctx.funcMap.get("String_fromCodePoint");
+      if (funcIdx !== undefined) {
+        const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+        if (argType && argType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+        }
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+    }
+
     // Handle Array.from(arr) — array copy
     if (
       ts.isIdentifier(propAccess.expression) &&

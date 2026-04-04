@@ -207,3 +207,24 @@ function add(a: number, b: number): number {
 - **Equivalence tests** (`tests/equivalence.test.ts`): compile TS snippets, run in both Node.js and Wasm, compare outputs. The primary correctness test.
 - **Test262** (`tests/test262.test.ts`): ECMAScript conformance suite. Tracks pass/fail counts as a dashboard — tests don't assert, so vitest always passes.
 - **Issue-specific tests** (`tests/issue-*.test.ts`): regression tests for specific bugs.
+
+## Related Work
+
+js2wasm occupies a specific niche in the JS-to-Wasm landscape. There are four major approaches:
+
+| Approach | Example | Strategy | Module size | Spec coverage |
+|---|---|---|---|---|
+| Bundled engine + AOT specialization | StarlingMonkey / weval | SpiderMonkey in Wasm, partially evaluated against fixed bytecode | ~8 MB | ~100% |
+| **Direct AOT to Wasm GC** | **js2wasm** | **TS/JS → WasmGC structs/arrays directly, no bundled engine** | **KB range** | **~42%** |
+| Interpreter-only bundling | Javy / QuickJS | QuickJS compiled to Wasm, JS interpreted at runtime | ~869 KB | ~99% |
+| Direct AOT to core Wasm | Porffor | JS → linear memory Wasm, no GC types | KB range | ~50% |
+
+**js2wasm's position**: the only approach using the Wasm GC proposal for direct compilation. This means the host runtime manages GC natively — no custom allocator, no bundled engine — at the cost of requiring a GC-capable runtime (Chrome 119+, Firefox 120+, wasmtime 14+).
+
+The StarlingMonkey/weval approach (by the Bytecode Alliance) is technically closest in goal but architecturally opposite: it achieves near-100% spec coverage by bundling SpiderMonkey and specializing it via partial evaluation (the first Futamura projection). The three-part blog series by Chris Fallin is the best public description of that architecture:
+
+- [Part 1: Portable Baseline Interpreter](https://cfallin.org/blog/2023/10/11/spidermonkey-pbl/) (Oct 2023)
+- [Part 2: AOT JS Compilation](https://cfallin.org/blog/2024/08/27/aot-js/) (Aug 2024)
+- [Part 3: weval / Partial Evaluation](https://cfallin.org/blog/2024/08/28/weval/) (Aug 2024)
+
+For a full technical comparison, see [docs/competitive-analysis.md](./competitive-analysis.md).

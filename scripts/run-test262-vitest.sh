@@ -254,6 +254,7 @@ from collections import Counter
 
 statuses = Counter()
 official_statuses = Counter()
+strict_counts = Counter()
 cats = {}
 errors = Counter()
 skips = Counter()
@@ -273,6 +274,8 @@ with open('$JSONL_FILE') as f:
         scope_counts[scope][s] += 1
         if r.get('scope_official', scope != 'proposal'):
             official_statuses[s] += 1
+            if r.get('strict', 'both') != 'no':
+                strict_counts[s] += 1
         cat = r.get('category', 'unknown')
         if cat not in cats:
             cats[cat] = {'pass': 0, 'fail': 0, 'compile_error': 0, 'compile_timeout': 0, 'skip': 0, 'total': 0}
@@ -304,6 +307,7 @@ report = {
     'summary': build_summary(official_statuses),
     'official_summary': build_summary(official_statuses),
     'full_summary': build_summary(statuses),
+    'strict_summary': build_summary(strict_counts),
     'scope_summaries': {name: build_summary(counter) for name, counter in sorted(scope_counts.items())},
     'categories': [{'name': n, **c} for n, c in sorted(cats.items())],
     'error_categories': dict(errors),
@@ -375,6 +379,8 @@ entry = {
     'ce': report['summary'].get('compile_error', 0),
     'skip': report['summary'].get('skip', 0),
     'total': report['summary']['total'],
+    'strict_pass': report.get('strict_summary', {}).get('pass', 0),
+    'strict_total': report.get('strict_summary', {}).get('total', 0),
 }
 with open('$INDEX_FILE') as f: idx = json.load(f)
 idx.append(entry)

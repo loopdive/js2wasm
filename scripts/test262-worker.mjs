@@ -107,6 +107,20 @@ process.on("message", async (msg) => {
     return;
   }
 
+  // Validate Wasm binary before proceeding
+  if (!WebAssembly.validate(result.binary)) {
+    const errMsg = "invalid Wasm binary (WebAssembly.validate failed)";
+    if (msg.wasmPath && msg.metaPath) {
+      try {
+        writeFileSync(msg.wasmPath, new Uint8Array(0));
+        writeFileSync(msg.metaPath, JSON.stringify({ ok: false, error: errMsg, compileMs }));
+      } catch {}
+    }
+    process.send({ id, status: "compile_error", error: errMsg, compileMs });
+    postCompileCleanup();
+    return;
+  }
+
   // Compilation succeeded — write to disk cache
   if (msg.wasmPath && msg.metaPath) {
     try {
