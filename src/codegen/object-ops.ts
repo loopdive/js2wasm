@@ -964,10 +964,16 @@ function emitExternDefinePropertyValue(
   descEnumerable: boolean | undefined,
   descConfigurable: boolean | undefined,
 ): ValType | null {
-  // Compile obj and coerce to externref
-  const objType = compileExpression(ctx, fctx, objArg, { kind: "externref" });
+  // Compile obj WITHOUT externref hint to get the raw Wasm type.
+  // For vec structs (e.g. string[], number[]) coerceType would call __make_iterable,
+  // which creates a NEW JS array on every call — breaking sidecar property descriptor
+  // storage (WeakMap keys on different objects each time). We emit extern.convert_any
+  // directly to get a stable externref identity for the WasmGC struct (#856).
+  const objType = compileExpression(ctx, fctx, objArg);
   if (!objType) return null;
-  if (objType.kind !== "externref") {
+  if (objType.kind === "ref" || objType.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" } as Instr);
+  } else if (objType.kind !== "externref") {
     coerceType(ctx, fctx, objType, { kind: "externref" });
   }
   const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, { kind: "externref" });
@@ -1114,7 +1120,11 @@ function emitExternDefinePropertyNoValue(
     const runtimeFlags = computeRuntimeFlags(descWritable, descEnumerable, descConfigurable, false);
 
     fctx.body.push({ op: "local.get", index: objLocal });
-    if (objType.kind !== "externref") {
+    // Use extern.convert_any directly (not coerceType) to avoid __make_iterable
+    // for vec structs, which would create a new JS array with different identity (#856).
+    if (objType.kind === "ref" || objType.kind === "ref_null") {
+      fctx.body.push({ op: "extern.convert_any" } as Instr);
+    } else if (objType.kind !== "externref") {
       coerceType(ctx, fctx, objType, { kind: "externref" });
     }
     fctx.body.push({ op: "local.get", index: propLocal });

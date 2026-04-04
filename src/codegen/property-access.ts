@@ -1696,6 +1696,59 @@ export function compilePropertyAccess(
     }
   }
 
+  // Any WasmGC struct (arrays, Date, user objects) can have named properties added via
+  // Object.defineProperty, stored in a sidecar WeakMap at runtime. When a named property
+  // is accessed on a struct-typed object that wasn't handled by any earlier path, check
+  // the sidecar via __extern_get (extern.convert_any converts the struct to externref).
+  // Covers: var arr = []; Object.defineProperty(arr,"prop",...); arr.prop; and Date objects.
+  // Does NOT apply to class instances (ctx.classSet) to avoid disrupting typed field access (#856).
+  {
+    const structObjType = resolveWasmType(ctx, objType);
+    const isWasmStruct =
+      (structObjType.kind === "ref" || structObjType.kind === "ref_null") &&
+      (structObjType as { typeIdx: number }).typeIdx !== undefined &&
+      !typeName; // typeName is set for user-class structs handled above; skip those
+    if (isWasmStruct) {
+      const getIdx856 = ensureLateImport(
+        ctx,
+        "__extern_get",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      let unboxIdx856: number | undefined;
+      if (accessWasm.kind === "f64" || accessWasm.kind === "i32") {
+        unboxIdx856 = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+      }
+      flushLateImportShifts(ctx, fctx);
+      if (getIdx856 !== undefined) {
+        const structExprType = compileExpression(ctx, fctx, expr.expression);
+        if (structExprType && (structExprType.kind === "ref" || structExprType.kind === "ref_null")) {
+          fctx.body.push({ op: "extern.convert_any" });
+        }
+        addStringConstantGlobal(ctx, propName);
+        const strGIdx856 = ctx.stringGlobalMap.get(propName);
+        if (strGIdx856 !== undefined) {
+          fctx.body.push({ op: "global.get", index: strGIdx856 });
+        } else {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+        fctx.body.push({ op: "call", funcIdx: getIdx856 });
+        if (accessWasm.kind === "f64") {
+          if (unboxIdx856 !== undefined) fctx.body.push({ op: "call", funcIdx: unboxIdx856 });
+          return { kind: "f64" };
+        }
+        if (accessWasm.kind === "i32") {
+          if (unboxIdx856 !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: unboxIdx856 });
+            fctx.body.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+          }
+          return { kind: "i32" };
+        }
+        return { kind: "externref" };
+      }
+    }
+  }
+
   // Fallback: emit default values for unresolvable property accesses.
   if (accessWasm.kind === "f64" || accessWasm.kind === "i32") {
     fctx.body.push({ op: accessWasm.kind === "f64" ? "f64.const" : "i32.const", value: 0 });
