@@ -10,7 +10,7 @@ Issues where the compiler emits invalid Wasm (type errors, missing args, bad cas
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [944](../ready/944.md) | **HIGH** | __vec_get: extern.convert_any fails on integer TypedArray elements | **780 CE** | Ready |
+| [945](../ready/945.md) | **HIGH** | __vec_get: extern.convert_any fails on integer TypedArray elements | **780 CE** | Ready |
 | [822](../ready/822.md) | **HIGH** | Wasm type mismatch compile errors (all sub-patterns) | **~907 CE** | Ready |
 | [839](../ready/839.md) | High | return_call stack args / type mismatch in constructors | **158 CE** | Ready |
 | [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **154 CE** | Ready |
