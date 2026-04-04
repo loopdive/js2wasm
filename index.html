@@ -495,21 +495,42 @@
       .bench-fill {
         height: 100%;
         border-radius: 4px;
-        transition: width 0.6s ease;
+        transition:
+          width 0.6s ease,
+          left 0.6s ease;
+        position: absolute;
+        top: 0;
       }
 
-      .bench-fill.faster { background: #22c55e; }
-      .bench-fill.near-parity { background: #eab308; }
-      .bench-fill.slower { background: #ef4444; }
+      .bench-fill.faster {
+        background: #22c55e;
+      }
+      .bench-fill.near-parity {
+        background: #eab308;
+      }
+      .bench-fill.slower {
+        background: #ef4444;
+      }
 
       .bench-parity {
         position: absolute;
         left: 50%;
-        top: 0;
-        bottom: 0;
-        width: 1px;
-        background: var(--fg-faint);
-        opacity: 0.5;
+        top: -4px;
+        bottom: -4px;
+        width: 2px;
+        background: var(--fg-soft);
+        opacity: 0.7;
+        z-index: 1;
+      }
+
+      .bench-parity-label {
+        position: absolute;
+        left: 50%;
+        top: -18px;
+        transform: translateX(-50%);
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--fg-faint);
       }
 
       .bench-value {
@@ -827,14 +848,15 @@
           >
             <span class="hero-title-shell">
               <span class="hero-title-measure" aria-hidden="true"
-                >JS2 - A next generation JavaScript compiler.", "Compile JavaScript to
-                WebAssembly without embedding an interpreter.</span
+                >JS2 - A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an
+                interpreter.</span
               >
               <span class="hero-title-type"></span>
             </span>
           </h1>
           <p class="hero-sub">
-            The JS2 compiler project is a technology study for next generation Javascript that AOT compiles real JavaScript to WebAssembly.
+            The JS2 compiler project is a technology study for next generation Javascript that AOT compiles real
+            JavaScript to WebAssembly.
           </p>
           <div class="hero-actions">
             <a class="btn-solid" href="./playground/">Live demo</a>
@@ -897,7 +919,9 @@
           </div>
           <div class="stat-item">
             <div class="stat-number" id="feature-coverage">33%</div>
-            <div class="stat-label" id="feature-coverage-label">JavaScript feature areas implemented (&gt;50% tests passing)</div>
+            <div class="stat-label" id="feature-coverage-label">
+              JavaScript feature areas implemented (&gt;50% tests passing)
+            </div>
           </div>
         </div>
 
@@ -920,8 +944,8 @@
           <h3 class="diagram-title">Benchmark Performance (Wasm vs JS)</h3>
           <div class="benchmark-bars" id="benchmark-bars"></div>
           <p class="benchmark-legend">
-            Bar length = Wasm speed relative to native JS. 100% = JS parity.
-            <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline;">Full report</a>
+            Center line = JS speed. Right = faster than JS. Left = slower.
+            <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline">Full report</a>
           </p>
         </div>
       </section>
@@ -1328,21 +1352,37 @@
         if (!container) return;
         try {
           const resp = await fetch("./benchmarks/results/playground-benchmark-sidebar.json");
-          if (!resp.ok) { document.getElementById("benchmark-chart")?.remove(); return; }
+          if (!resp.ok) {
+            document.getElementById("benchmark-chart")?.remove();
+            return;
+          }
           const rows = await resp.json();
-          if (!Array.isArray(rows) || rows.length === 0) { document.getElementById("benchmark-chart")?.remove(); return; }
+          if (!Array.isArray(rows) || rows.length === 0) {
+            document.getElementById("benchmark-chart")?.remove();
+            return;
+          }
 
-          const maxRatio = 12; // cap display at 12x for layout
+          // Center line = JS parity (1x). Right of center = faster. Left = slower.
+          const maxRatio = 2.5;
           for (const row of rows) {
             const wasmUs = Number(row?.wasmUs ?? 0);
             const jsUs = Number(row?.jsUs ?? 0);
             if (wasmUs <= 0 || jsUs <= 0) continue;
 
             const ratio = jsUs / wasmUs; // >1 means Wasm is faster
-            const pct = Math.min(ratio / maxRatio * 100, 100);
             const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
-            const scoreText = ratio >= 1 ? `${ratio.toFixed(1)}x` : `${(1/ratio).toFixed(1)}x`;
-            const cls = ratio >= 1 ? "faster" : ratio >= 0.5 ? "near-parity" : "slower";
+            const scoreText = ratio >= 1 ? `${ratio.toFixed(1)}x` : `${(1 / ratio).toFixed(1)}x slower`;
+            const cls = ratio >= 1.1 ? "faster" : ratio >= 0.8 ? "near-parity" : "slower";
+
+            let left, width;
+            if (ratio >= 1) {
+              left = 50;
+              width = Math.min(((ratio - 1) / (maxRatio - 1)) * 50, 50);
+            } else {
+              const slowPct = Math.max((ratio / 1) * 50, 0);
+              left = slowPct;
+              width = 50 - slowPct;
+            }
 
             const rowEl = document.createElement("div");
             rowEl.className = "bench-row";
@@ -1350,9 +1390,9 @@
               <span class="bench-name">${label}</span>
               <div class="bench-track">
                 <div class="bench-parity"></div>
-                <div class="bench-fill ${cls}" style="width: ${pct}%"></div>
+                <div class="bench-fill ${cls}" style="left: ${left}%; width: ${width}%"></div>
               </div>
-              <span class="bench-value" style="color: ${cls === 'faster' ? '#22c55e' : cls === 'near-parity' ? '#eab308' : '#ef4444'}">${ratio >= 1 ? '' : '-'}${scoreText}</span>
+              <span class="bench-value" style="color: ${cls === "faster" ? "#22c55e" : cls === "near-parity" ? "#eab308" : "#ef4444"}">${scoreText}</span>
             `;
             container.appendChild(rowEl);
           }
