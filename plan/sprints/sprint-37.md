@@ -113,8 +113,8 @@ If #797 and #799 both land, conformance could reach 55-60%. The infrastructure f
 ## Results
 
 **Baseline**: 17,822 pass / 43,120 (41.3%)
-**Final**: 18,594+ pass / 43,120 (43.1%+) — test262 running for definitive number
-**Delta**: +772 confirmed; #852 adds ~34 more
+**Final**: 18,791 pass / 43,120 (43.6%)
+**Delta**: +969 from baseline
 
 | Issue | Status | Delta |
 |-------|--------|-------|

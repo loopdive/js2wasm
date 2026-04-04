@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-04 (after sprint 37)
 **Goal**: Fix remaining high-impact correctness failures + apply codegen peephole optimizations discovered via WAT analysis
-**Baseline**: 18,594 pass / 43,120 (43.1%) -- sprint 37 final (test262 running for confirmation)
+**Baseline**: 18,791 pass / 43,120 (43.6%) -- sprint 37 final
 
 ## Context
 
