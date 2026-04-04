@@ -1462,6 +1462,54 @@ export function compilePropertyAccess(
           return effectiveResult;
         }
       }
+
+      // (#799 WI4) Property not found on struct and no __proto__ field.
+      // For known class types, fall back to __extern_get via host import.
+      // This handles prototype chain lookups delegated to the JS host.
+      if (ctx.classSet.has(typeName)) {
+        const getIdx = ensureLateImport(
+          ctx,
+          "__extern_get",
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (getIdx !== undefined) {
+          compileExpression(ctx, fctx, expr.expression);
+          // Coerce struct ref to externref
+          fctx.body.push({ op: "extern.convert_any" } as Instr);
+          addStringConstantGlobal(ctx, propName);
+          const strIdx = ctx.stringGlobalMap.get(propName);
+          if (strIdx !== undefined) {
+            fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+          } else {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+          fctx.body.push({ op: "call", funcIdx: getIdx });
+
+          // Unbox if the expected type is numeric
+          const protoAccessType = ctx.checker.getTypeAtLocation(expr);
+          const expectedWasm = resolveWasmType(ctx, protoAccessType);
+          if (expectedWasm.kind === "f64") {
+            const unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+            flushLateImportShifts(ctx, fctx);
+            if (unboxIdx !== undefined) {
+              fctx.body.push({ op: "call", funcIdx: unboxIdx });
+            }
+            return { kind: "f64" };
+          }
+          if (expectedWasm.kind === "i32") {
+            const unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+            flushLateImportShifts(ctx, fctx);
+            if (unboxIdx !== undefined) {
+              fctx.body.push({ op: "call", funcIdx: unboxIdx });
+              fctx.body.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+            }
+            return { kind: "i32" };
+          }
+          return { kind: "externref" };
+        }
+      }
     }
   }
 

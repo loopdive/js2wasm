@@ -9524,6 +9524,34 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
       properties: new Map(),
     });
   }
+
+  // Register Object as base extern class with prototype methods (#799 WI2).
+  // All extern classes that lack a parent inherit from Object, so
+  // findExternInfoForMember will resolve hasOwnProperty, toString, etc.
+  if (!ctx.externClasses.has("Object")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("hasOwnProperty", externMethod(1));
+    methods.set("isPrototypeOf", externMethod(1));
+    methods.set("propertyIsEnumerable", externMethod(1));
+    methods.set("toString", externMethod(0));
+    methods.set("valueOf", externMethod(0));
+    methods.set("toLocaleString", externMethod(0));
+    ctx.externClasses.set("Object", {
+      importPrefix: "Object",
+      namespacePath: [],
+      className: "Object",
+      constructorParams: [],
+      methods,
+      properties: new Map([["constructor", { type: { kind: "externref" }, readonly: true }]]),
+    });
+  }
+
+  // Set Object as terminal parent for any extern class that has no parent
+  for (const [className] of ctx.externClasses) {
+    if (className !== "Object" && !ctx.externClassParent.has(className)) {
+      ctx.externClassParent.set(className, "Object");
+    }
+  }
 }
 
 // ── Extern class collection ──────────────────────────────────────────
@@ -10598,17 +10626,11 @@ export function collectClassDeclaration(
                 ctx.classAccessorSet.add(childAccessorKey);
               }
             }
-          } else if (!suffix.includes("_")) {
-            // Regular method (no underscores in method name)
+          } else {
+            // Regular method — inherit from parent (works for all method names,
+            // including those with underscores like my_method) (#799 WI6)
             const childFullName = `${className}_${suffix}`;
             if (!ownMethodNames.has(suffix) && !ctx.funcMap.has(childFullName)) {
-              ctx.funcMap.set(childFullName, funcIdx);
-              ctx.classMethodSet.add(childFullName);
-            }
-          } else {
-            // Method name contains underscore (e.g., my_method) — still inherit it
-            const childFullName = `${className}_${suffix}`;
-            if (!ownMethodNames.has(suffix) && !ctx.funcMap.has(childFullName) && ctx.classMethodSet.has(key)) {
               ctx.funcMap.set(childFullName, funcIdx);
               ctx.classMethodSet.add(childFullName);
             }
