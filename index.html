@@ -472,7 +472,7 @@
 
       .bench-row {
         display: grid;
-        grid-template-columns: 100px 1fr 60px;
+        grid-template-columns: 100px 1fr;
         align-items: center;
         gap: 16px;
       }
@@ -486,10 +486,19 @@
 
       .bench-track {
         height: 28px;
+        background: transparent;
+        border-radius: 4px;
+        overflow: visible;
+        position: relative;
+      }
+
+      .bench-track-bg {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
         background: var(--surface);
         border-radius: 4px;
-        overflow: hidden;
-        position: relative;
       }
 
       .bench-fill {
@@ -562,7 +571,7 @@
         }
 
         .bench-row {
-          grid-template-columns: 70px 1fr 50px;
+          grid-template-columns: 70px 1fr;
           gap: 8px;
         }
       }
@@ -1430,14 +1439,21 @@
             const grad = `linear-gradient(${gradDir}, rgba(255,255,255,${baseOpacity}), rgba(255,255,255,${edgeOpacity}))`;
             const textOpacity = (0.4 + dist * 0.6).toFixed(2);
 
+            // Position label at the end of the bar (right edge for faster, left edge for slower)
+            const barEnd = ratio >= 1 ? left + width : left;
+            const labelAlign = ratio >= 1 ? "left" : "right";
+            const labelOffset =
+              ratio >= 1 ? `left: ${barEnd}%; padding-left: 6px` : `right: ${100 - barEnd}%; padding-right: 6px`;
+
             const rowEl = document.createElement("div");
             rowEl.className = "bench-row";
             rowEl.innerHTML = `
               <span class="bench-name">${label}</span>
               <div class="bench-track">
+                <div class="bench-track-bg" style="width: ${jsPos}%"></div>
                 <div class="bench-fill" style="left: ${left}%; width: ${width}%; background: ${grad}; border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
+                <span class="bench-value" style="position: absolute; ${labelOffset}; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,${textOpacity}); font-family: var(--mono); font-size: 12px; font-weight: 600; z-index: 2; white-space: nowrap">${scoreText}</span>
               </div>
-              <span class="bench-value" style="color: rgba(255,255,255,${textOpacity})">${scoreText}</span>
             `;
             container.appendChild(rowEl);
           }
