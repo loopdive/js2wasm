@@ -43,6 +43,14 @@ These are **architectural** features that each unlock thousands of tests but req
 | 10 | #851 | Iterator close protocol (async-gen remaining) | **~100 FAIL** | Medium |
 | 11 | #763 | RegExp runtime method gaps | **~400 FAIL** | Medium |
 
+### Phase 5: Refactoring (moved from sprint 36 — depends on #944 regression fix)
+| Order | Issue | Title | Impact | Effort |
+|-------|-------|-------|--------|--------|
+| 12 | #910 | Split expressions.ts into syntax-family modules | High — largest file | Hard |
+| 13 | #911 | Split statements.ts into control-flow, vars, destructuring, loops, functions | High | Hard |
+| 14 | #912 | Remove circular dependencies from core codegen backend | High — contributor friction | Medium |
+| 15 | #913 | Split compiler.ts into validation, orchestration, output | Medium | Medium |
+
 ## Dev paths
 
 **Path 1 (Architect → Dev)**: #797 property descriptors — architect spec first, then 2-3 devs implementing subsystem
