@@ -158,10 +158,7 @@ function isEffectivelyVoidReturn(ctx: CodegenContext, retType: ts.Type, funcName
  * Check if a call expression targets an async function/method.
  * Used to determine whether the result needs Promise.resolve() wrapping (#919).
  */
-function isAsyncCallExpression(
-  ctx: CodegenContext,
-  expr: ts.CallExpression,
-): boolean {
+function isAsyncCallExpression(ctx: CodegenContext, expr: ts.CallExpression): boolean {
   // Check if the callee is a named function in ctx.asyncFunctions
   if (ts.isIdentifier(expr.expression)) {
     if (ctx.asyncFunctions.has(expr.expression.text)) return true;
@@ -187,22 +184,13 @@ function isAsyncCallExpression(
  * If the result is VOID_RESULT/null, pushes ref.null.extern first.
  * Returns { kind: "externref" }.
  */
-function wrapAsyncReturn(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  resultType: InnerResult,
-): ValType {
+function wrapAsyncReturn(ctx: CodegenContext, fctx: FunctionContext, resultType: InnerResult): ValType {
   if (resultType === null || resultType === VOID_RESULT) {
     fctx.body.push({ op: "ref.null.extern" });
   } else if (resultType.kind !== "externref") {
     coerceType(ctx, fctx, resultType, { kind: "externref" });
   }
-  const resolveIdx = ensureLateImport(
-    ctx,
-    "Promise_resolve",
-    [{ kind: "externref" }],
-    [{ kind: "externref" }],
-  );
+  const resolveIdx = ensureLateImport(ctx, "Promise_resolve", [{ kind: "externref" }], [{ kind: "externref" }]);
   flushLateImportShifts(ctx, fctx);
   if (resolveIdx !== undefined) {
     fctx.body.push({ op: "call", funcIdx: resolveIdx });
@@ -1448,20 +1436,14 @@ function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
  * but don't have an identifier with a resolved symbol (e.g., pushing
  * closure captures at a nested function call site).
  */
-function analyzeTdzAccessByPos(
-  ctx: CodegenContext,
-  varName: string,
-  callNode: ts.Node,
-): "skip" | "throw" | "check" {
+function analyzeTdzAccessByPos(ctx: CodegenContext, varName: string, callNode: ts.Node): "skip" | "throw" | "check" {
   // Look up the variable's symbol via the checker
   // We need to find the declaration to get its end position
   const sourceFile = callNode.getSourceFile();
   if (!sourceFile) return "check";
 
   // Find the declaration by looking up the local symbol in scope
-  const sym = ctx.checker.getSymbolsInScope(callNode, ts.SymbolFlags.Variable).find(
-    (s) => s.name === varName,
-  );
+  const sym = ctx.checker.getSymbolsInScope(callNode, ts.SymbolFlags.Variable).find((s) => s.name === varName);
   if (!sym) return "check";
   const decl = sym.valueDeclaration;
   if (!decl) return "check";
@@ -8286,11 +8268,7 @@ function compileOptionalCallExpression(
   return resultType;
 }
 
-function compileOptionalDirectCall(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  expr: ts.CallExpression,
-): InnerResult {
+function compileOptionalDirectCall(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult {
   const callee = expr.expression as ts.Identifier;
   const calleeType = compileExpression(ctx, fctx, callee);
   if (!calleeType) return null;
@@ -9874,9 +9852,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
 
             // Emit __defineProperty_value(obj, prop, value, flags)
-            const dpIdx = ensureLateImport(ctx, "__defineProperty_value",
+            const dpIdx = ensureLateImport(
+              ctx,
+              "__defineProperty_value",
               [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "i32" }],
-              [{ kind: "externref" }]);
+              [{ kind: "externref" }],
+            );
             flushLateImportShifts(ctx, fctx);
 
             if (dpIdx !== undefined) {
@@ -9924,8 +9905,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
           fctx.body.push({ op: "local.set", index: objLocal });
 
-          const dpIdx = ensureLateImport(ctx, "__defineProperties",
-            [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+          const dpIdx = ensureLateImport(
+            ctx,
+            "__defineProperties",
+            [{ kind: "externref" }, { kind: "externref" }],
+            [{ kind: "externref" }],
+          );
           flushLateImportShifts(ctx, fctx);
 
           if (dpIdx !== undefined) {
@@ -11706,8 +11691,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
 
     // decodeURI, decodeURIComponent, encodeURI, encodeURIComponent — host imports
     if (
-      (funcName === "decodeURI" || funcName === "decodeURIComponent" ||
-       funcName === "encodeURI" || funcName === "encodeURIComponent") &&
+      (funcName === "decodeURI" ||
+        funcName === "decodeURIComponent" ||
+        funcName === "encodeURI" ||
+        funcName === "encodeURIComponent") &&
       expr.arguments.length >= 1
     ) {
       const importFuncIdx = ctx.funcMap.get(funcName);
