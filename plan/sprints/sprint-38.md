@@ -24,6 +24,12 @@ Sprint 37's refactoring (#910-#913) may make these changes cleaner if it lands f
 | 3 | #946 | Show strict mode compatibility by default on all pages | Medium | Easy | sonnet |
 | 4 | #932 follow-up | Update feature coverage % with post-sprint-37 data | Low | Easy | sonnet |
 
+### Phase 2b: Codegen quality analysis
+| Order | Issue | Title | Impact | Effort | Model |
+|-------|-------|-------|--------|--------|-------|
+| 4b | #948 | Systematic WAT analysis of all passing equiv tests | **High** — data-driven optimization | Medium | opus |
+| 4c | #947 | Calendar WAT: 6 codegen inefficiencies (modulo guard, br_table, etc.) | Medium | Medium | sonnet |
+
 ### Phase 3: Regression recovery
 | Order | Issue | Title | Impact | Effort | Model |
 |-------|-------|-------|--------|--------|-------|
