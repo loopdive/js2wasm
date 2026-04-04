@@ -487,8 +487,10 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       // Check if inside a generator function/method
       let parent: ts.Node | undefined = node.parent;
       while (parent) {
-        if (((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) && parent.asteriskToken) ||
-            (ts.isMethodDeclaration(parent) && parent.asteriskToken)) {
+        if (
+          ((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) && parent.asteriskToken) ||
+          (ts.isMethodDeclaration(parent) && parent.asteriskToken)
+        ) {
           addError(node.name, "'yield' is a reserved word and cannot be used as an identifier in generator functions");
           break;
         }
@@ -1001,8 +1003,7 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       for (const member of node.members) {
         if (member.name && !ts.isPrivateIdentifier(member.name)) {
           const isStatic = ts.canHaveModifiers(member)
-            ? (ts.getModifiers(member as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ??
-              false)
+            ? (ts.getModifiers(member as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ?? false)
             : false;
           if (isStatic) {
             const memberName = ts.isIdentifier(member.name)
@@ -1330,9 +1331,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
     // Escaped 'async' modifier
-    if ((ts.isArrowFunction(node) || ts.isFunctionDeclaration(node) ||
-         ts.isFunctionExpression(node) || ts.isMethodDeclaration(node)) &&
-        node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+    if (
+      (ts.isArrowFunction(node) ||
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isMethodDeclaration(node)) &&
+      node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
+    ) {
       for (const mod of node.modifiers!) {
         if (mod.kind === ts.SyntaxKind.AsyncKeyword) {
           const modStart = mod.getStart(sourceFile);
@@ -1381,14 +1386,19 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
           addError(node, "Invalid left-hand side in postfix operation");
         }
         // ++import() or --import()
-        if (ts.isPrefixUnaryExpression(parent) &&
-            (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken) &&
-            parent.operand === node) {
+        if (
+          ts.isPrefixUnaryExpression(parent) &&
+          (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken) &&
+          parent.operand === node
+        ) {
           addError(node, "Invalid left-hand side expression in prefix operation");
         }
         // import() = x
-        if (ts.isBinaryExpression(parent) && parent.left === node &&
-            parent.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        if (
+          ts.isBinaryExpression(parent) &&
+          parent.left === node &&
+          parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        ) {
           addError(node, "Invalid left-hand side in assignment");
         }
       }
@@ -1401,11 +1411,12 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       if (isInsideClassStaticBlock(node) && !isInsideAsyncFunction(node)) {
         const parent = node.parent;
         // Skip property names
-        const isPropertyName = parent && (
-          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
-          (ts.isPropertyAssignment(parent) && parent.name === node) ||
-          (ts.isMethodDeclaration(parent) && parent.name === node) ||
-          (ts.isPropertyDeclaration(parent) && parent.name === node));
+        const isPropertyName =
+          parent &&
+          ((ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+            (ts.isPropertyAssignment(parent) && parent.name === node) ||
+            (ts.isMethodDeclaration(parent) && parent.name === node) ||
+            (ts.isPropertyDeclaration(parent) && parent.name === node));
         if (!isPropertyName) {
           addError(node, "'await' is not allowed as an identifier in a class static initializer block");
         }
@@ -1497,7 +1508,10 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         const start = node.getStart(sourceFile);
         const rawText = sourceFile.text.substring(start, start + 25).trim();
         if (/^typeof\s+(yield|await)\b/.test(rawText)) {
-          addError(node, `'${rawText.match(/typeof\s+(\w+)/)?.[1]}' is not a valid operand for 'typeof' in this context`);
+          addError(
+            node,
+            `'${rawText.match(/typeof\s+(\w+)/)?.[1]}' is not a valid operand for 'typeof' in this context`,
+          );
         }
       }
     }
@@ -1506,9 +1520,11 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     // Same issue: `+yield`, `-yield`, etc. TS splits the expression.
     // If a PrefixUnaryExpression (not ++/--) has an empty Identifier operand,
     // check if it's followed by yield/await.
-    if (ts.isPrefixUnaryExpression(node) &&
-        node.operator !== ts.SyntaxKind.PlusPlusToken &&
-        node.operator !== ts.SyntaxKind.MinusMinusToken) {
+    if (
+      ts.isPrefixUnaryExpression(node) &&
+      node.operator !== ts.SyntaxKind.PlusPlusToken &&
+      node.operator !== ts.SyntaxKind.MinusMinusToken
+    ) {
       const operand = node.operand;
       if (ts.isIdentifier(operand) && operand.text === "") {
         const start = node.getStart(sourceFile);
@@ -1592,14 +1608,15 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       while (current) {
         if (ts.isConstructorDeclaration(current)) {
           const classNode = current.parent;
-          if ((ts.isClassDeclaration(classNode) || ts.isClassExpression(classNode)) &&
-              !classNode.heritageClauses?.some(h => h.token === ts.SyntaxKind.ExtendsKeyword)) {
+          if (
+            (ts.isClassDeclaration(classNode) || ts.isClassExpression(classNode)) &&
+            !classNode.heritageClauses?.some((h) => h.token === ts.SyntaxKind.ExtendsKeyword)
+          ) {
             addError(node, "super() is only valid in a constructor of a derived class");
           }
           break;
         }
-        if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-            ts.isArrowFunction(current)) {
+        if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) || ts.isArrowFunction(current)) {
           break;
         }
         current = current.parent;
@@ -1632,10 +1649,9 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     // ES spec: It is a Syntax Error if PropName of a ClassElement is "constructor"
     // and the element is a field definition (not a method).
     if (ts.isPropertyDeclaration(node)) {
-      const name = ts.isIdentifier(node.name) ? node.name.text :
-                   ts.isStringLiteral(node.name) ? node.name.text : null;
+      const name = ts.isIdentifier(node.name) ? node.name.text : ts.isStringLiteral(node.name) ? node.name.text : null;
       if (name === "constructor") {
-        const isStatic = node.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword);
+        const isStatic = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword);
         if (!isStatic) {
           addError(node, "Classes may not have a non-static field named 'constructor'");
         }
@@ -1706,10 +1722,11 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     if (ts.isIdentifier(node) && node.text === "arguments") {
       // Check it's not a property name
       const parent = node.parent;
-      if (parent && (
-        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
-        (ts.isPropertyAssignment(parent) && parent.name === node)
-      )) {
+      if (
+        parent &&
+        ((ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+          (ts.isPropertyAssignment(parent) && parent.name === node))
+      ) {
         return false;
       }
       return true;
@@ -2345,8 +2362,12 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
     // export function/class/variable declarations contribute to exported names
-    if (ts.isFunctionDeclaration(stmt) && stmt.name && ts.canHaveModifiers(stmt) &&
-        ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+    if (
+      ts.isFunctionDeclaration(stmt) &&
+      stmt.name &&
+      ts.canHaveModifiers(stmt) &&
+      ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
       const isDefault = ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
       const name = isDefault ? "default" : stmt.name.text;
       if (exportedNames.has(name)) {
@@ -2355,8 +2376,11 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         exportedNames.set(name, stmt.name);
       }
     }
-    if (ts.isClassDeclaration(stmt) && ts.canHaveModifiers(stmt) &&
-        ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+    if (
+      ts.isClassDeclaration(stmt) &&
+      ts.canHaveModifiers(stmt) &&
+      ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
       const isDefault = ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
       const name = isDefault ? "default" : (stmt.name?.text ?? "default");
       if (exportedNames.has(name)) {
@@ -2365,8 +2389,11 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         exportedNames.set(name, stmt.name ?? stmt);
       }
     }
-    if (ts.isVariableStatement(stmt) && ts.canHaveModifiers(stmt) &&
-        ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+    if (
+      ts.isVariableStatement(stmt) &&
+      ts.canHaveModifiers(stmt) &&
+      ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
           if (exportedNames.has(decl.name.text)) {
@@ -3120,7 +3147,7 @@ export function compileSource(
     imports: buildImportManifest(mod),
     cHeader,
     wit: witOutput,
-    hasMain: mod.exports.some(e => e.name === "main" && e.desc.kind === "func"),
+    hasMain: mod.exports.some((e) => e.name === "main" && e.desc.kind === "func"),
     hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }
@@ -3401,7 +3428,7 @@ export function compileMultiSource(
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
     imports: buildImportManifest(mod),
-    hasMain: mod.exports.some(e => e.name === "main" && e.desc.kind === "func"),
+    hasMain: mod.exports.some((e) => e.name === "main" && e.desc.kind === "func"),
     hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }
@@ -3613,7 +3640,7 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
     imports: buildImportManifest(mod),
-    hasMain: mod.exports.some(e => e.name === "main" && e.desc.kind === "func"),
+    hasMain: mod.exports.some((e) => e.name === "main" && e.desc.kind === "func"),
     hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }

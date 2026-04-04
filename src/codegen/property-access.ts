@@ -12,10 +12,7 @@ import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.j
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
-import {
-  resolveWasmType,
-  addUnionImports,
-} from "./index.js";
+import { resolveWasmType, addUnionImports } from "./index.js";
 import { isStringType, isExternalDeclaredClass, isIteratorResultType } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef } from "../ir/types.js";
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
@@ -172,12 +169,7 @@ export function typeErrorThrowInstrs(ctx: CodegenContext, node?: ts.Node): Instr
  *
  * Stack: [ref_null T] -> [ref_null T]  (non-null at runtime after this point)
  */
-export function emitNullCheckThrow(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  refType: ValType,
-  node?: ts.Node,
-): void {
+export function emitNullCheckThrow(ctx: CodegenContext, fctx: FunctionContext, refType: ValType, node?: ts.Node): void {
   const backupLocal: number | undefined = (fctx as any).__lastGuardedCastBackup;
 
   const tmp = allocTempLocal(fctx, refType);

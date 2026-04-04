@@ -9,13 +9,7 @@ import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { addStringConstantGlobal, ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterTemplateVecType, getOrRegisterVecType } from "./registry/types.js";
-import {
-  resolveWasmType,
-  addUnionImports,
-  nativeStringType,
-  flatStringType,
-  addStringImports,
-} from "./index.js";
+import { resolveWasmType, addUnionImports, nativeStringType, flatStringType, addStringImports } from "./index.js";
 import { isBooleanType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, VOID_RESULT, getLine, getCol, ensureLateImport, flushLateImportShifts } from "./shared.js";
