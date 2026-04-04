@@ -9456,32 +9456,49 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       return argType;
     }
 
-    // Handle Object.isFrozen/isSealed — check compile-time state
+    // Handle Object.isFrozen/isSealed — compile-time fast path + runtime delegation
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
       (propAccess.name.text === "isFrozen" || propAccess.name.text === "isSealed") &&
       expr.arguments.length >= 1
     ) {
+      const method = propAccess.name.text;
       const arg0 = expr.arguments[0]!;
-      const argType = compileExpression(ctx, fctx, arg0);
-      if (argType) {
-        fctx.body.push({ op: "drop" });
-      }
-      // Check compile-time tracking
-      let result = 0;
+
+      // Compile-time fast path: identifier known to be frozen/sealed at compile time
       if (ts.isIdentifier(arg0)) {
-        if (propAccess.name.text === "isFrozen" && ctx.frozenVars.has(arg0.text)) {
-          result = 1;
-        } else if (propAccess.name.text === "isSealed" && ctx.sealedVars.has(arg0.text)) {
-          result = 1;
+        const isKnown =
+          (method === "isFrozen" && ctx.frozenVars.has(arg0.text)) ||
+          (method === "isSealed" && ctx.sealedVars.has(arg0.text));
+        if (isKnown) {
+          const argType = compileExpression(ctx, fctx, arg0);
+          if (argType) fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "i32.const", value: 1 });
+          return { kind: "i32" };
         }
       }
-      fctx.body.push({ op: "i32.const", value: result });
+
+      // General case: compile arg and delegate to runtime host import
+      const argType = compileExpression(ctx, fctx, arg0);
+      if (argType?.kind === "externref") {
+        const importName = method === "isFrozen" ? "__object_isFrozen" : "__object_isSealed";
+        const hostIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "i32" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (hostIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: hostIdx });
+          return { kind: "i32" };
+        }
+        fctx.body.push({ op: "drop" });
+      } else if (argType) {
+        fctx.body.push({ op: "drop" });
+      }
+      // Fallback: not frozen/sealed (conservative)
+      fctx.body.push({ op: "i32.const", value: 0 });
       return { kind: "i32" };
     }
 
-    // Handle Object.isExtensible — check compile-time state
+    // Handle Object.isExtensible — compile-time fast path + runtime delegation
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
@@ -9489,16 +9506,30 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       expr.arguments.length >= 1
     ) {
       const arg0 = expr.arguments[0]!;
+
+      // Compile-time fast path: identifier known to be non-extensible
+      if (ts.isIdentifier(arg0) && ctx.nonExtensibleVars.has(arg0.text)) {
+        const argType = compileExpression(ctx, fctx, arg0);
+        if (argType) fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        return { kind: "i32" };
+      }
+
+      // General case: delegate to runtime
       const argType = compileExpression(ctx, fctx, arg0);
-      if (argType) {
+      if (argType?.kind === "externref") {
+        const hostIdx = ensureLateImport(ctx, "__object_isExtensible", [{ kind: "externref" }], [{ kind: "i32" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (hostIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: hostIdx });
+          return { kind: "i32" };
+        }
+        fctx.body.push({ op: "drop" });
+      } else if (argType) {
         fctx.body.push({ op: "drop" });
       }
-      // Non-extensible vars return false
-      let result = 1;
-      if (ts.isIdentifier(arg0) && ctx.nonExtensibleVars.has(arg0.text)) {
-        result = 0;
-      }
-      fctx.body.push({ op: "i32.const", value: result });
+      // Fallback: extensible (conservative)
+      fctx.body.push({ op: "i32.const", value: 1 });
       return { kind: "i32" };
     }
 
