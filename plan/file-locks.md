@@ -13,23 +13,6 @@ Active file/function claims by agents. **Check before editing. Update when start
 
 | File | Function/Area | Agent | Issue | Since |
 |------|--------------|-------|-------|-------|
-| src/codegen/index.ts | compileClass* | dev-agent | #820 | 2026-03-28 |
-| src/codegen/expressions.ts | compilePropertyAccess | dev-agent | #820 | 2026-03-28 |
-| src/runtime.ts | _toPrimitive / buildImports | dev-agent-866 | #866 | 2026-03-28 |
-| src/codegen/statements.ts | emitDefaultParamInit | dev-agent-866 | #866 | 2026-03-28 |
-| src/codegen/type-coercion.ts | pushParamSentinel/pushDefaultValue | dev | #869 | 2026-03-29 |
-| src/codegen/index.ts | OptionalParamInfo, top-level default init | dev | #869 | 2026-03-29 |
-| src/codegen/statements.ts | emitDefaultParamInit | dev | #869 | 2026-03-29 |
-| src/codegen/expressions.ts | call sites (pushParamSentinel) | dev | #869 | 2026-03-29 |
-| src/codegen/index.ts | fixupStructNewArgCounts | dev-1 | #822 | 2026-03-29 |
-| src/codegen/index.ts | collectClassDeclaration (async private gen) | dev-2 | #828 | 2026-03-29 |
-| src/codegen/stack-balance.ts | fixBranchType | dev-agent | #826 | 2026-04-03 |
-| src/codegen/type-coercion.ts | externrefToRef no-fctx path | dev-agent | #826 | 2026-04-03 |
-| src/codegen/string-ops.ts | compileTaggedTemplateExpression | dev-836 | #836 | 2026-04-03 |
-| src/runtime.ts | __defineProperty_value, __defineProperties | dev-856 | #856 | 2026-04-03 |
-| playground/vite.config.ts | entire file | dev-924 | #924 | 2026-04-03 |
-| playground/main.ts | compiler imports (top of file) | dev-924 | #924 | 2026-04-03 |
-| package.json | dev/build scripts | dev-924 | #924 | 2026-04-03 |
 
 <!--
 Example entries:
