@@ -2,6 +2,10 @@
 
 **Read this at the beginning of every session.**
 
+## Effort level
+
+0. [ ] Set `/effort max` — tech lead must use maximum reasoning effort
+
 ## Environment check
 
 1. [ ] `pwd` — must be `/workspace`
