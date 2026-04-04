@@ -12760,9 +12760,9 @@ export function compileClassBodies(
         fctx.body.push({ op: "local.set", index: bufferLocal });
 
         // Wrap body in a block so return can br out
-        const bodyInstrs: Instr[] = [];
-        const outerBody = fctx.body;
-        fctx.body = bodyInstrs;
+        // Use pushBody/popBody so the outer body stays reachable for global-index
+        // fixups when new string-constant imports are added during body compilation.
+        const savedGenBody = pushBody(fctx);
 
         fctx.generatorReturnDepth = 0;
         fctx.blockDepth++;
@@ -12778,7 +12778,8 @@ export function compileClassBodies(
         for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
         fctx.generatorReturnDepth = undefined;
 
-        fctx.body = outerBody;
+        const bodyInstrs = fctx.body;
+        popBody(fctx, savedGenBody);
         fctx.body.push({
           op: "block",
           blockType: { kind: "empty" },
@@ -13772,9 +13773,9 @@ function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclaration, 
     // Wrap the generator body in a block so that `return` statements inside
     // the body can `br` out to the generator creation code instead of
     // using the wasm `return` opcode (which would skip __create_generator).
-    const bodyInstrs: Instr[] = [];
-    const outerBody = fctx.body;
-    fctx.body = bodyInstrs;
+    // Use pushBody/popBody so the outer body stays reachable for global-index
+    // fixups when new string-constant imports are added during body compilation.
+    const savedGenBody = pushBody(fctx);
 
     // Set generator return depth for correct `br` depth in nested contexts
     fctx.generatorReturnDepth = 0;
@@ -13799,7 +13800,8 @@ function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclaration, 
     fctx.generatorReturnDepth = undefined;
 
     // Restore outer body and wrap compiled body in a block
-    fctx.body = outerBody;
+    const bodyInstrs = fctx.body;
+    popBody(fctx, savedGenBody);
     fctx.body.push({
       op: "block",
       blockType: { kind: "empty" },

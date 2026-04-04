@@ -10638,13 +10638,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       if (dateResult !== undefined) return dateResult;
     }
 
-    if (isExternalDeclaredClass(receiverType, ctx.checker)) {
-      return compileExternMethodCall(ctx, fctx, propAccess, expr);
-    }
-
     // Property introspection: hasOwnProperty / propertyIsEnumerable
+    // Must be checked BEFORE extern class dispatch so that calls like
+    // regexp.hasOwnProperty("x") use the generic handler instead of
+    // looking for a non-existent RegExp_hasOwnProperty import.
     if (propAccess.name.text === "hasOwnProperty" || propAccess.name.text === "propertyIsEnumerable") {
       return compilePropertyIntrospection(ctx, fctx, propAccess, expr);
+    }
+
+    if (isExternalDeclaredClass(receiverType, ctx.checker)) {
+      const externResult = compileExternMethodCall(ctx, fctx, propAccess, expr);
+      // undefined means method not found in extern class hierarchy — fall through to generic handlers
+      if (externResult !== undefined) return externResult;
     }
 
     // Generator method calls: gen.next(), gen.return(value), gen.throw(error)
@@ -16646,7 +16651,7 @@ function compileExternMethodCall(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-): InnerResult {
+): InnerResult | undefined {
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
   const className = receiverType.getSymbol()?.name;
   const methodName = propAccess.name.text;
@@ -16657,20 +16662,26 @@ function compileExternMethodCall(
   const resolvedInfo = findExternInfoForMember(ctx, className, methodName, "method");
   const externInfo = resolvedInfo ?? ctx.externClasses.get(className);
   if (!externInfo) {
-    ctx.errors.push({
-      message: `Unknown extern class: ${className}`,
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
-    return null;
+    // Unknown extern class — fall through to generic handlers
+    return undefined;
+  }
+
+  // Check if the method actually has a registered import before emitting code.
+  // If not, return undefined so the caller can try generic fallback handlers
+  // (e.g. hasOwnProperty, toString, isPrototypeOf are handled generically).
+  const methodOwner = resolvedInfo ?? externInfo;
+  const methodInfo = methodOwner.methods.get(methodName);
+  const importName = `${methodOwner.importPrefix}_${methodName}`;
+  const funcIdx = ctx.funcMap.get(importName);
+  if (funcIdx === undefined && !resolvedInfo) {
+    // Method not found in extern class hierarchy and no import registered — fall through
+    return undefined;
   }
 
   // Push 'this' (the receiver object)
   compileExpression(ctx, fctx, propAccess.expression);
 
   // Push arguments with type hints (params[0] is 'this', args start at [1])
-  const methodOwner = resolvedInfo ?? externInfo;
-  const methodInfo = methodOwner.methods.get(methodName);
   const extMethodParamCount = methodInfo ? methodInfo.params.length - 1 : callExpr.arguments.length;
   for (let i = 0; i < callExpr.arguments.length; i++) {
     if (i < extMethodParamCount) {
@@ -16692,8 +16703,6 @@ function compileExternMethodCall(
     }
   }
 
-  const importName = `${methodOwner.importPrefix}_${methodName}`;
-  const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx === undefined) {
     ctx.errors.push({
       message: `Missing import for method: ${importName}`,
