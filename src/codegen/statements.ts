@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { isStringType, isVoidType } from "../checker/type-mapper.js";
+import { isStringType, isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { emitGuardedRefCast } from "./type-coercion.js";
 import {
@@ -3811,9 +3811,9 @@ function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
     const caseClause = clause as ts.CaseClause;
 
     // if (target == sentinel) { if (tmp == caseExpr) { target = ci; } }
-    const checkBody: Instr[] = [];
-    const outerBody = fctx.body;
-    fctx.body = checkBody;
+    // Use pushBody/popBody so the outer body stays reachable for global-index
+    // fixups when new string-constant imports are added during case compilation.
+    const savedCaseBody = pushBody(fctx);
 
     fctx.body.push({ op: "local.get", index: tmpLocalIdx });
     if (switchIsString && ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
@@ -3841,7 +3841,8 @@ function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
       then: setTarget,
     });
 
-    fctx.body = outerBody;
+    const checkBody = fctx.body;
+    popBody(fctx, savedCaseBody);
 
     // Guard: only check if target is still sentinel (no match found yet)
     fctx.body.push({ op: "local.get", index: targetLocalIdx });
@@ -3911,10 +3912,10 @@ function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
     });
 
     // Emit body: if (running) { <statements> }
+    // Use pushBody/popBody so the outer body stays reachable for global-index
+    // fixups when new string-constant imports are added during case compilation.
     if (clause.statements.length > 0) {
-      const bodyInstrs: Instr[] = [];
-      const outerBody = fctx.body;
-      fctx.body = bodyInstrs;
+      const savedSwitchBody = pushBody(fctx);
 
       // Adjust outer entries for the if-wrapping (+1 nesting level).
       for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!++;
@@ -3932,7 +3933,8 @@ function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
       if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
       adjustRethrowDepth(fctx, -1);
 
-      fctx.body = outerBody;
+      const bodyInstrs = fctx.body;
+      popBody(fctx, savedSwitchBody);
 
       fctx.body.push({ op: "local.get", index: runningLocalIdx });
       fctx.body.push({
@@ -6747,13 +6749,25 @@ function compileNestedFunctionDeclaration(
   if (isGenerator) {
     ctx.generatorFunctions.add(funcName);
   }
+  // Detect async functions — their TS return type is Promise<T> but the
+  // Wasm return should be T (matching the unwrap that top-level async functions use).
+  const isAsync =
+    stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+  if (isAsync) {
+    ctx.asyncFunctions.add(funcName);
+  }
+
   const sig = ctx.checker.getSignatureFromDeclaration(stmt);
   let returnType: ValType | null = null;
   if (isGenerator) {
     // Generator functions return externref (JS Generator object)
     returnType = { kind: "externref" };
   } else if (sig) {
-    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    let retType = ctx.checker.getReturnTypeOfSignature(sig);
+    // For async functions, unwrap Promise<T> to get T
+    if (isAsync) {
+      retType = unwrapPromiseType(retType, ctx.checker);
+    }
     if (!isVoidType(retType)) {
       returnType = resolveWasmType(ctx, retType);
     }

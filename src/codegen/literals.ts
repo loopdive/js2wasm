@@ -28,7 +28,7 @@ import {
   destructureParamArray,
   destructureParamObject,
 } from "./index.js";
-import { isVoidType } from "../checker/type-mapper.js";
+import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { compileStatement, bodyUsesArguments, emitArgumentsObject } from "./statements.js";
 import { compileExpression, getLine, getCol, VOID_RESULT } from "./shared.js";
@@ -869,7 +869,16 @@ export function compileObjectLiteralForStruct(
       }
 
       const sig = ctx.checker.getSignatureFromDeclaration(prop);
-      const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
+      // For async methods, unwrap Promise<T> to get T (matching top-level handling)
+      const isAsyncMethod =
+        prop.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+      if (isAsyncMethod) {
+        ctx.asyncFunctions.add(fullName);
+      }
+      let retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
+      if (isAsyncMethod && retType) {
+        retType = unwrapPromiseType(retType, ctx.checker);
+      }
       const methodResults: ValType[] = isGeneratorMethod
         ? [{ kind: "externref" }]
         : retType && !isVoidType(retType)

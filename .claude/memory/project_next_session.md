@@ -1,31 +1,41 @@
 ---
 name: project_next_session
-description: Session state: 15,160 pass after macOS runner repair; Sprint 31 resumed
+description: Session state — 17,822 pass (41.3%), cache disabled, sprint 36 in progress
 type: project
 ---
 
-## Final state (2026-04-01)
+## Final state (2026-04-04)
 
-**Git:** main at `bd26b5f5`
-**Test262:** `15,160 / 48,174` pass (31.5%) from `benchmarks/results/test262-report.json`
+**Git:** main at `448bef79`
+**Test262:** `17,822 / 43,120` official pass (41.3%) — cache disabled, honest result
+**Report:** `benchmarks/results/test262-report-20260404-033322.json`
 
-### What changed this session
-1. **macOS test262 runner repaired**:
-   - explicit `esbuild` devDependency
-   - native macOS reinstall of `node_modules`
-   - portable lock/worktree/esbuild handling in `scripts/run-test262-vitest.sh`
-2. **Root-cause fix for fake compile timeouts**:
-   - `scripts/compiler-pool.ts` did not call `dispatch()` when the first worker sent `ready`
-   - queued jobs could sit idle until the parent 30s timeout fired
-   - after the fix, isolated formerly timing-out tests pass in under 1s
-3. **Full test262 usable again on macOS**:
-   - final run completed all `48,174` tests instead of stalling at startup
+### Session totals (sprints 31-36)
+- Start: 15,103 pass (35.2%)
+- End: 17,822 pass (41.3%)
+- Improvement: +2,719 pass (+6.1%)
 
-### Important conclusion
-- The earlier 30s `compile_timeout` pattern on macOS was mostly a **queue-dispatch bug**, not evidence that the compiler itself was hanging on those files.
+### Key lesson: cache was hiding truth
+- The test262 disk cache caused false baselines (17,782 was cache-inflated)
+- Cache now permanently disabled — every test compiled fresh
+- Proposals pre-filtered at file level (not just skipped in JSONL)
 
-### Sprint 31 state now
-- Already merged on `main`: `#839`, `#866`, `#876`, `#877`
-- Next issue in queue: `#854`
-- Still risky / redesign-heavy: `#826`, `#862`
-- `#822` remains the biggest CE bucket and still needs careful staged work
+### Sprint 36 (in progress)
+Done: #914, #915, #916, #917, #918, #920, #922, #932, #942, #944
+Merging: #921 (test-and-merge script running)
+Pending merge: #919, #927, #931
+Pending work: #923 (state leakage), #933 (shared charts)
+Deferred: #910-#913 (refactoring → sprint 37)
+
+### Sprint 37 (planned)
+Property descriptors (#797), prototype chain (#799), runner stability (#943),
+compiler state leakage (#923), refactoring (#910-#913).
+Target: 55-60% conformance.
+
+### Process changes this session
+- test-and-merge.sh replaces tester agents (zero tokens)
+- developer.md model: sonnet (was opus)
+- senior-developer.md for hard issues (opus + max effort)
+- reasoning_effort field in all issue files
+- Never dismiss regressions — always bisect
+- Cache disabled permanently
