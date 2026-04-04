@@ -441,7 +441,7 @@
       }
 
       .diagram-panel {
-        padding: 40px;
+        padding: 0;
         background: transparent;
         position: relative;
         overflow: hidden;
@@ -460,8 +460,11 @@
       /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
 
       .benchmark-chart {
+        padding: 0;
+      }
+
+      .edition-chart {
         margin-top: 56px;
-        padding: 40px;
       }
 
       .benchmark-bars {
@@ -504,9 +507,6 @@
       .bench-fill {
         height: 100%;
         border-radius: 4px;
-        transition:
-          width 0.6s ease,
-          left 0.6s ease;
         position: absolute;
         top: 0;
       }
@@ -563,11 +563,11 @@
 
       @media (max-width: 720px) {
         .diagram-panel {
-          padding: 28px 20px;
+          padding: 0;
         }
 
         .benchmark-chart {
-          padding: 28px 20px;
+          padding: 0;
         }
 
         .bench-row {
@@ -942,45 +942,49 @@
             ></t262-donut>
           </div>
           <div class="diagram-panel">
-            <h3 class="diagram-title">ECMAScript Edition Coverage</h3>
-            <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
+            <div class="benchmark-chart" id="benchmark-chart">
+              <h3 class="diagram-title">Benchmark Performance (Wasm vs JS)</h3>
+              <div class="benchmark-bars-wrap" style="position: relative; padding-top: 24px">
+                <div
+                  id="bench-js-label"
+                  style="
+                    position: absolute;
+                    top: 4px;
+                    font-family: var(--mono);
+                    font-size: 11px;
+                    color: var(--fg-soft);
+                    letter-spacing: 0.05em;
+                  "
+                >
+                  JS
+                </div>
+                <div
+                  id="bench-js-line"
+                  style="
+                    position: absolute;
+                    top: 24px;
+                    bottom: 0;
+                    width: 2px;
+                    background: var(--fg-soft);
+                    opacity: 0.5;
+                    z-index: 1;
+                  "
+                ></div>
+                <div class="benchmark-bars" id="benchmark-bars"></div>
+              </div>
+              <p class="benchmark-legend">
+                JS line = native JS speed (1x). Right of JS = faster than JS.
+                <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline"
+                  >Full report</a
+                >
+              </p>
+            </div>
           </div>
         </div>
 
-        <div class="benchmark-chart" id="benchmark-chart">
-          <h3 class="diagram-title">Benchmark Performance (Wasm vs JS)</h3>
-          <div class="benchmark-bars-wrap" style="position: relative; padding-top: 24px">
-            <div
-              id="bench-js-label"
-              style="
-                position: absolute;
-                top: 4px;
-                font-family: var(--mono);
-                font-size: 11px;
-                color: var(--fg-soft);
-                letter-spacing: 0.05em;
-              "
-            >
-              JS
-            </div>
-            <div
-              id="bench-js-line"
-              style="
-                position: absolute;
-                top: 24px;
-                bottom: 0;
-                width: 2px;
-                background: var(--fg-soft);
-                opacity: 0.5;
-                z-index: 1;
-              "
-            ></div>
-            <div class="benchmark-bars" id="benchmark-bars"></div>
-          </div>
-          <p class="benchmark-legend">
-            JS line = native JS speed (1x). Right of JS = faster than JS.
-            <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline">Full report</a>
-          </p>
+        <div class="edition-chart">
+          <h3 class="diagram-title">ECMAScript Edition Coverage</h3>
+          <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
         </div>
       </section>
 
@@ -1410,53 +1414,121 @@
           const scaleMax = Math.ceil(maxPct / 100) * 100; // round up to nearest 100%
           const jsPos = (100 / scaleMax) * 100; // JS baseline position as % of track width
 
+          // Build bar rows — start at 0 width, animate later
+          const barData = [];
           for (const row of ratios) {
             const ratio = row.ratio;
             const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
-            const scoreText = ratio >= 10 ? `${Math.round(ratio)}x` : `${ratio.toFixed(1)}x`;
 
             // Bar extends FROM the JS baseline (100%) TO the wasm ratio.
             // Faster = bar extends right from baseline. Slower = bar extends left.
-            let left, width;
+            let targetLeft, targetWidth;
             if (ratio >= 1) {
-              left = jsPos;
-              width = ((ratio - 1) / (scaleMax / 100 - 1)) * (100 - jsPos);
+              targetLeft = jsPos;
+              targetWidth = ((ratio - 1) / (scaleMax / 100 - 1)) * (100 - jsPos);
             } else {
               const wasmPos = (ratio / (scaleMax / 100)) * 100;
-              left = wasmPos;
-              width = jsPos - wasmPos;
+              targetLeft = wasmPos;
+              targetWidth = jsPos - wasmPos;
             }
 
             // Gradient bar: opacity 0.1 at JS baseline, 1.0 at extremes (0% or max%)
-            // Distance from baseline determines opacity intensity
             const dist = Math.abs(ratio - 1) / Math.max(maxRatio - 1, 1); // 0..1
             const edgeOpacity = (0.1 + dist * 0.9).toFixed(2); // 0.1..1.0
             const baseOpacity = "0.1";
-            // Gradient direction: from baseline edge toward the extreme
             const gradDir = ratio >= 1 ? "to right" : "to left";
-            const grad = `linear-gradient(${gradDir}, rgba(255,255,255,${baseOpacity}), rgba(255,255,255,${edgeOpacity}))`;
             const textOpacity = (0.4 + dist * 0.6).toFixed(2);
-
-            // Position label at the end of the bar (right edge for faster, left edge for slower)
-            const barEnd = ratio >= 1 ? left + width : left;
-            const labelAlign = ratio >= 1 ? "left" : "right";
-            const labelOffset =
-              ratio >= 1 ? `left: ${barEnd}%; padding-left: 6px` : `right: ${100 - barEnd}%; padding-right: 6px`;
 
             const rowEl = document.createElement("div");
             rowEl.className = "bench-row";
+            // Start with width 0 at the JS baseline position
             rowEl.innerHTML = `
               <span class="bench-name">${label}</span>
               <div class="bench-track">
                 <div class="bench-track-bg" style="width: ${jsPos}%"></div>
-                <div class="bench-fill" style="left: ${left}%; width: ${width}%; background: ${grad}; border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
-                <span class="bench-value" style="position: absolute; ${labelOffset}; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,${textOpacity}); font-family: var(--mono); font-size: 12px; font-weight: 600; z-index: 2; white-space: nowrap">${scoreText}</span>
+                <div class="bench-fill" style="left: ${jsPos}%; width: 0%; background: linear-gradient(${gradDir}, rgba(255,255,255,${baseOpacity}), rgba(255,255,255,0.1)); border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
+                <span class="bench-value" style="position: absolute; left: ${jsPos}%; padding-left: 6px; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,0); font-family: var(--mono); font-size: 12px; font-weight: 600; z-index: 2; white-space: nowrap">0.0x</span>
               </div>
             `;
             container.appendChild(rowEl);
+
+            barData.push({
+              ratio,
+              targetLeft,
+              targetWidth,
+              gradDir,
+              baseOpacity,
+              edgeOpacity,
+              textOpacity,
+              fillEl: rowEl.querySelector(".bench-fill"),
+              valueEl: rowEl.querySelector(".bench-value"),
+            });
           }
+
+          // Animate bars from 0 to target — same parameters as the donut chart
+          const duration = 3293;
+          const ease = (t) => 1 - (1 - t) * (1 - t); // ease-out quad
+
+          function animateBars(ts) {
+            if (!animateBars._start) animateBars._start = ts;
+            const elapsed = ts - animateBars._start;
+            const progress = Math.min(elapsed / duration, 1);
+            const t = ease(progress);
+
+            for (const d of barData) {
+              const curWidth = t * d.targetWidth;
+              // For slower bars (ratio < 1), left moves from jsPos toward targetLeft
+              const curLeft = d.ratio >= 1 ? d.targetLeft : jsPos - t * (jsPos - d.targetLeft);
+              const curRatio = t * d.ratio;
+              const scoreText = curRatio >= 10 ? `${Math.round(curRatio)}x` : `${curRatio.toFixed(1)}x`;
+
+              // Interpolate edge opacity from 0.1 to target
+              const curEdgeOp = (0.1 + t * (parseFloat(d.edgeOpacity) - 0.1)).toFixed(2);
+              const curTextOp = (t * parseFloat(d.textOpacity)).toFixed(2);
+
+              d.fillEl.style.left = curLeft + "%";
+              d.fillEl.style.width = curWidth + "%";
+              d.fillEl.style.background = `linear-gradient(${d.gradDir}, rgba(255,255,255,${d.baseOpacity}), rgba(255,255,255,${curEdgeOp}))`;
+
+              // Position label at the end of the bar
+              const barEnd = d.ratio >= 1 ? curLeft + curWidth : curLeft;
+              if (d.ratio >= 1) {
+                d.valueEl.style.left = barEnd + "%";
+                d.valueEl.style.right = "";
+                d.valueEl.style.paddingLeft = "6px";
+                d.valueEl.style.paddingRight = "";
+              } else {
+                d.valueEl.style.left = "";
+                d.valueEl.style.right = 100 - barEnd + "%";
+                d.valueEl.style.paddingLeft = "";
+                d.valueEl.style.paddingRight = "6px";
+              }
+              d.valueEl.style.color = `rgba(255,255,255,${curTextOp})`;
+              d.valueEl.textContent = scoreText;
+            }
+
+            if (progress < 1) {
+              requestAnimationFrame(animateBars);
+            }
+          }
+
+          // Start animation when chart enters viewport (same as donut: threshold 0.3)
+          const benchObserver = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  benchObserver.disconnect();
+                  requestAnimationFrame(animateBars);
+                }
+              }
+            },
+            { threshold: 0.3 },
+          );
+          const benchChart = document.getElementById("benchmark-chart");
+          if (benchChart) benchObserver.observe(benchChart);
+
           // Position the JS parity line at the natural 100% position
-          requestAnimationFrame(() => {
+          function positionBaseline() {
             const track = container.querySelector(".bench-track");
             const wrap = document.querySelector(".benchmark-bars-wrap");
             const label = document.getElementById("bench-js-label");
@@ -1469,7 +1541,9 @@
               label.style.transform = "translateX(-50%)";
               line.style.left = jsX + "px";
             }
-          });
+          }
+          requestAnimationFrame(positionBaseline);
+          window.addEventListener("resize", positionBaseline);
         } catch {
           document.getElementById("benchmark-chart")?.remove();
         }
