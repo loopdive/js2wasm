@@ -37,30 +37,50 @@ export function clearSavedLayout(): void {
   try {
     localStorage.removeItem(LAYOUT_KEY);
     localStorage.removeItem(LEGACY_LAYOUT_KEY);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 // ─── Default layout ──────────────────────────────────────────────────────
 
 export function getDefaultLayout(): LayoutNode {
   return {
-    type: "split", direction: "horizontal", ratio: 0.18,
+    type: "split",
+    direction: "horizontal",
+    ratio: 0.18,
     children: [
       { type: "leaf", id: "sidebar-left", tabs: ["test262"], activeTab: "test262" },
-      { type: "split", direction: "vertical", ratio: 0.6, children: [
-        { type: "split", direction: "horizontal", ratio: 0.5,
-          children: [
-            { type: "leaf", id: "editor-left", tabs: ["ts-source"], activeTab: "ts-source" },
-            { type: "leaf", id: "editor-right", tabs: ["wat-output", "wasm-hex", "modular-ts"], activeTab: "wat-output" },
-          ],
-        },
-        { type: "split", direction: "horizontal", ratio: 0.5,
-          children: [
-            { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console"], activeTab: "preview" },
-            { type: "leaf", id: "output-right", tabs: ["treemap"], activeTab: "treemap" },
-          ],
-        },
-      ]},
+      {
+        type: "split",
+        direction: "vertical",
+        ratio: 0.6,
+        children: [
+          {
+            type: "split",
+            direction: "horizontal",
+            ratio: 0.5,
+            children: [
+              { type: "leaf", id: "editor-left", tabs: ["ts-source"], activeTab: "ts-source" },
+              {
+                type: "leaf",
+                id: "editor-right",
+                tabs: ["wat-output", "wasm-hex", "modular-ts"],
+                activeTab: "wat-output",
+              },
+            ],
+          },
+          {
+            type: "split",
+            direction: "horizontal",
+            ratio: 0.5,
+            children: [
+              { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console"], activeTab: "preview" },
+              { type: "leaf", id: "output-right", tabs: ["treemap"], activeTab: "treemap" },
+            ],
+          },
+        ],
+      },
     ],
   };
 }
@@ -71,7 +91,10 @@ export class LayoutManager {
   private root: LayoutNode;
   private container: HTMLElement;
   private tabs = new Map<string, TabItem>();
-  private panelEls = new Map<string, { panel: HTMLElement; tabBar: HTMLElement; content: HTMLElement; activeTab: string }>();
+  private panelEls = new Map<
+    string,
+    { panel: HTMLElement; tabBar: HTMLElement; content: HTMLElement; activeTab: string }
+  >();
   private panelCounter = 100;
 
   // Drag state
@@ -105,7 +128,9 @@ export class LayoutManager {
     this.render();
   }
 
-  getRoot(): LayoutNode { return this.root; }
+  getRoot(): LayoutNode {
+    return this.root;
+  }
 
   // ─── Queries ─────────────────────────────────────────────────────────
 
@@ -232,9 +257,7 @@ export class LayoutManager {
     panel.style.overflow = "hidden";
 
     // Tab bar
-    const hideTabBar = leaf.id === "sidebar-left"
-      && leaf.tabs.length === 1
-      && leaf.tabs[0] === "test262";
+    const hideTabBar = leaf.id === "sidebar-left" && leaf.tabs.length === 1 && leaf.tabs[0] === "test262";
     const tabBar = document.createElement("div");
     tabBar.className = "panel-tab-bar";
     if (!hideTabBar) {
@@ -268,7 +291,9 @@ export class LayoutManager {
             tabEl.draggable = true;
           }
         });
-        tabEl.addEventListener("mouseup", () => { tabEl.draggable = false; });
+        tabEl.addEventListener("mouseup", () => {
+          tabEl.draggable = false;
+        });
         tabEl.addEventListener("click", () => this.switchTab(leaf.id, tabId));
         this.setupTabDrag(tabEl, tabId, leaf.id);
         tabBar.appendChild(tabEl);
@@ -526,8 +551,7 @@ export class LayoutManager {
         activeTab: targetLeaf.activeTab,
       };
 
-      const direction: "horizontal" | "vertical" =
-        zone === "left" || zone === "right" ? "horizontal" : "vertical";
+      const direction: "horizontal" | "vertical" = zone === "left" || zone === "right" ? "horizontal" : "vertical";
       const first = zone === "left" || zone === "top" ? newLeaf : targetCopy;
       const second = zone === "left" || zone === "top" ? targetCopy : newLeaf;
 
@@ -638,7 +662,10 @@ export class LayoutManager {
   }
 
   private forEachLeaf(node: LayoutNode, fn: (leaf: LeafNode) => void): void {
-    if (node.type === "leaf") { fn(node); return; }
+    if (node.type === "leaf") {
+      fn(node);
+      return;
+    }
     this.forEachLeaf(node.children[0], fn);
     this.forEachLeaf(node.children[1], fn);
   }
@@ -648,7 +675,9 @@ export class LayoutManager {
   saveLayout(): void {
     try {
       localStorage.setItem(LAYOUT_KEY, JSON.stringify(this.serializeNode(this.root)));
-    } catch { /* quota exceeded */ }
+    } catch {
+      /* quota exceeded */
+    }
   }
 
   static loadLayout(allTabIds: Set<string>): LayoutNode | null {
