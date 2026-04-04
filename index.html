@@ -906,6 +906,7 @@
             <h3 class="diagram-title">Test262 Conformance</h3>
             <t262-donut
               src="./benchmarks/results/test262-report.json"
+              strict-only
               style="--t262-bg: var(--bg, #060a14)"
             ></t262-donut>
           </div>
@@ -1276,12 +1277,14 @@
           const resp = await fetch("./benchmarks/results/test262-report.json");
           if (!resp.ok) return;
           const report = await resp.json();
-          const pass = Number(report?.summary?.pass ?? 0);
-          const total = Number(report?.summary?.total ?? 0);
+          // Use strict-mode summary (tests compatible with ES modules) when available
+          const s = report?.strict_summary ?? report?.summary;
+          const pass = Number(s?.pass ?? 0);
+          const total = Number(s?.total ?? 0);
           if (!Number.isFinite(pass) || !Number.isFinite(total) || total <= 0) return;
           const pct = ((pass / total) * 100).toFixed(1);
           rateEl.textContent = `${pct}%`;
-          labelEl.textContent = "compatible with the official ECMAScript Test Suite";
+          labelEl.textContent = "compatible with the official ECMAScript Test Suite (strict mode)";
         } catch {
           // Keep the build-time fallback when the report file is unavailable.
         }
