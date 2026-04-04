@@ -2475,8 +2475,22 @@ function compileDestructuringAssignment(
     return resultType;
   }
 
-  const structTypeIdx = ctx.structMap.get(typeName)!;
-  const fields = ctx.structFields.get(typeName)!;
+  // Prefer the typeIdx from the RHS result over the TS-checker-derived typeName.
+  // The RHS compilation may have created a different struct type than the one
+  // the TS checker maps to (e.g., nested destructuring creates a struct with
+  // ref-typed fields, but the TS checker sees externref fields). (#822)
+  let structTypeIdx: number;
+  let fields: { name: string; type: ValType; mutable?: boolean }[];
+  const actualTypeIdx = (resultType as any).typeIdx as number | undefined;
+  const actualName = actualTypeIdx !== undefined ? ctx.typeIdxToStructName.get(actualTypeIdx) : undefined;
+  const actualFields = actualName ? ctx.structFields.get(actualName) : undefined;
+  if (actualTypeIdx !== undefined && actualFields) {
+    structTypeIdx = actualTypeIdx;
+    fields = actualFields;
+  } else {
+    structTypeIdx = ctx.structMap.get(typeName)!;
+    fields = ctx.structFields.get(typeName)!;
+  }
 
   // Save the struct ref in a temp local
   const tmpLocal = allocLocal(fctx, `__destruct_assign_${fctx.locals.length}`, resultType);
