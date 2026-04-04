@@ -213,11 +213,18 @@ function jsAdler32Run(dataSize: number): number {
     else buf.push((i * 31 + 17) & 255);
   }
 
-  let s1 = 1, s2 = 0, pos = 0, n = 0, len = dataSize;
+  let s1 = 1,
+    s2 = 0,
+    pos = 0,
+    n = 0,
+    len = dataSize;
   while (len !== 0) {
     n = len > 2000 ? 2000 : len;
     len -= n;
-    do { s1 += buf[pos++]; s2 += s1; } while (--n);
+    do {
+      s1 += buf[pos++];
+      s2 += s1;
+    } while (--n);
     s1 %= 65521;
     s2 %= 65521;
   }
@@ -230,7 +237,7 @@ function jsCrc32Run(dataSize: number): number {
   for (let n = 0; n < 256; n++) {
     let c = n;
     for (let k = 0; k < 8; k++) {
-      c = (c & 1) ? (c >>> 1) ^ 0xEDB88320 : c >>> 1;
+      c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
     }
     table.push(c);
   }
@@ -244,7 +251,7 @@ function jsCrc32Run(dataSize: number): number {
 
   let crc = -1;
   for (let i = 0; i < dataSize; i++) {
-    crc = (crc >>> 8) ^ table[(crc ^ buf[i]!) & 0xFF]!;
+    crc = (crc >>> 8) ^ table[(crc ^ buf[i]!) & 0xff]!;
   }
   return crc ^ -1;
 }
@@ -262,7 +269,8 @@ function jsLz77Run(windowSize: number): number {
 
   const maxDist = Math.min(windowSize, 256);
   const maxLen = 258;
-  let bestLen = 0, bestDist = 0;
+  let bestLen = 0,
+    bestDist = 0;
 
   for (let dist = 1; dist <= maxDist && dist <= windowSize; dist++) {
     let len = 0;
@@ -271,7 +279,10 @@ function jsLz77Run(windowSize: number): number {
       if (win[start + (len % dist)] !== lookahead[len]) break;
       len++;
     }
-    if (len > bestLen) { bestLen = len; bestDist = dist; }
+    if (len > bestLen) {
+      bestLen = len;
+      bestDist = dist;
+    }
   }
   return bestLen * 65536 + bestDist;
 }
@@ -284,14 +295,23 @@ function jsInflateBitsRun(dataSize: number): number {
     else input.push((i * 31 + 17) & 255);
   }
 
-  let hold = 0, bits = 0, pos = 0, result = 0;
+  let hold = 0,
+    bits = 0,
+    pos = 0,
+    result = 0;
   while (pos < dataSize) {
-    while (bits < 16 && pos < dataSize) { hold += input[pos++]! << bits; bits += 8; }
+    while (bits < 16 && pos < dataSize) {
+      hold += input[pos++]! << bits;
+      bits += 8;
+    }
     while (bits >= 8) {
-      const code = hold & 0xFF;
-      hold >>>= 8; bits -= 8;
+      const code = hold & 0xff;
+      hold >>>= 8;
+      bits -= 8;
       if (code < 128) result += code;
-      else { result += (code & 0x0F) + ((code >>> 4) & 0x07); }
+      else {
+        result += (code & 0x0f) + ((code >>> 4) & 0x07);
+      }
     }
   }
   return result;
@@ -307,10 +327,7 @@ interface WasmModule {
   compileMs: number;
 }
 
-async function compileModule(
-  source: string,
-  fast: boolean,
-): Promise<WasmModule | null> {
+async function compileModule(source: string, fast: boolean): Promise<WasmModule | null> {
   try {
     const t0 = performance.now();
     const result = compile(source, { fast });
@@ -334,10 +351,7 @@ async function compileModule(
       compileMs,
     };
   } catch (err) {
-    console.error(
-      `  Module error (fast=${fast}):`,
-      err instanceof Error ? err.message : err,
-    );
+    console.error(`  Module error (fast=${fast}):`, err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -372,9 +386,7 @@ function runTimed(
   timings.sort((a, b) => a - b);
   const totalMs = timings.reduce((s, t) => s + t, 0);
   const mid = timings.length >> 1;
-  const medianMs = timings.length % 2
-    ? timings[mid]!
-    : (timings[mid - 1]! + timings[mid]!) / 2;
+  const medianMs = timings.length % 2 ? timings[mid]! : (timings[mid - 1]! + timings[mid]!) / 2;
 
   return { totalMs, avgMs: totalMs / iterations, medianMs };
 }
@@ -432,17 +444,26 @@ async function main() {
 
     // JS baseline
     const jsTime = runTimed(() => jsAdler32Run(size), ITERATIONS);
-    results.push({ name: `adler32-${sizeName}`, strategy: "js", medianMs: jsTime.medianMs,
-      throughputMBs: throughputBase / (jsTime.medianMs / 1000) });
+    results.push({
+      name: `adler32-${sizeName}`,
+      strategy: "js",
+      medianMs: jsTime.medianMs,
+      throughputMBs: throughputBase / (jsTime.medianMs / 1000),
+    });
 
     // Wasm host-call
     const hostMod = await compileModule(makeAdler32Source(size), false);
     if (hostMod) {
       const fn = hostMod.exports.run as Function;
       const t = runTimed(() => fn(), ITERATIONS);
-      results.push({ name: `adler32-${sizeName}`, strategy: "host-call", medianMs: t.medianMs,
+      results.push({
+        name: `adler32-${sizeName}`,
+        strategy: "host-call",
+        medianMs: t.medianMs,
         throughputMBs: throughputBase / (t.medianMs / 1000),
-        binarySize: hostMod.binarySize, compileMs: hostMod.compileMs });
+        binarySize: hostMod.binarySize,
+        compileMs: hostMod.compileMs,
+      });
     }
 
     // Wasm gc-native
@@ -450,16 +471,23 @@ async function main() {
     if (gcMod) {
       const fn = gcMod.exports.run as Function;
       const t = runTimed(() => fn(), ITERATIONS);
-      results.push({ name: `adler32-${sizeName}`, strategy: "gc-native", medianMs: t.medianMs,
+      results.push({
+        name: `adler32-${sizeName}`,
+        strategy: "gc-native",
+        medianMs: t.medianMs,
         throughputMBs: throughputBase / (t.medianMs / 1000),
-        binarySize: gcMod.binarySize, compileMs: gcMod.compileMs });
+        binarySize: gcMod.binarySize,
+        compileMs: gcMod.compileMs,
+      });
     }
 
-    const host = results.find(r => r.name === `adler32-${sizeName}` && r.strategy === "host-call");
-    const gc = results.find(r => r.name === `adler32-${sizeName}` && r.strategy === "gc-native");
-    console.log(`  ${sizeName}: JS=${jsTime.medianMs.toFixed(3)}ms` +
-      (host ? ` Host=${host.medianMs.toFixed(3)}ms(${(jsTime.medianMs / host.medianMs).toFixed(2)}x)` : "") +
-      (gc ? ` GC=${gc.medianMs.toFixed(3)}ms(${(jsTime.medianMs / gc.medianMs).toFixed(2)}x)` : ""));
+    const host = results.find((r) => r.name === `adler32-${sizeName}` && r.strategy === "host-call");
+    const gc = results.find((r) => r.name === `adler32-${sizeName}` && r.strategy === "gc-native");
+    console.log(
+      `  ${sizeName}: JS=${jsTime.medianMs.toFixed(3)}ms` +
+        (host ? ` Host=${host.medianMs.toFixed(3)}ms(${(jsTime.medianMs / host.medianMs).toFixed(2)}x)` : "") +
+        (gc ? ` GC=${gc.medianMs.toFixed(3)}ms(${(jsTime.medianMs / gc.medianMs).toFixed(2)}x)` : ""),
+    );
   }
 
   // --- CRC32 ---
@@ -469,17 +497,28 @@ async function main() {
     const throughputBase = size / 1024 / 1024;
 
     const jsTime = runTimed(() => jsCrc32Run(size), ITERATIONS);
-    results.push({ name: `crc32-${sizeName}`, strategy: "js", medianMs: jsTime.medianMs,
-      throughputMBs: throughputBase / (jsTime.medianMs / 1000) });
+    results.push({
+      name: `crc32-${sizeName}`,
+      strategy: "js",
+      medianMs: jsTime.medianMs,
+      throughputMBs: throughputBase / (jsTime.medianMs / 1000),
+    });
 
     const gcMod = await compileModule(makeCrc32Source(size), true);
     if (gcMod) {
       const fn = gcMod.exports.run as Function;
       const t = runTimed(() => fn(), ITERATIONS);
-      results.push({ name: `crc32-${sizeName}`, strategy: "gc-native", medianMs: t.medianMs,
+      results.push({
+        name: `crc32-${sizeName}`,
+        strategy: "gc-native",
+        medianMs: t.medianMs,
         throughputMBs: throughputBase / (t.medianMs / 1000),
-        binarySize: gcMod.binarySize, compileMs: gcMod.compileMs });
-      console.log(`  ${sizeName}: JS=${jsTime.medianMs.toFixed(3)}ms GC=${t.medianMs.toFixed(3)}ms ratio=${(jsTime.medianMs / t.medianMs).toFixed(2)}x`);
+        binarySize: gcMod.binarySize,
+        compileMs: gcMod.compileMs,
+      });
+      console.log(
+        `  ${sizeName}: JS=${jsTime.medianMs.toFixed(3)}ms GC=${t.medianMs.toFixed(3)}ms ratio=${(jsTime.medianMs / t.medianMs).toFixed(2)}x`,
+      );
     } else {
       console.log(`  ${sizeName}: JS=${jsTime.medianMs.toFixed(3)}ms GC=FAIL`);
     }
@@ -495,9 +534,16 @@ async function main() {
     if (gcMod) {
       const fn = gcMod.exports.run as Function;
       const t = runTimed(() => fn(), ITERATIONS);
-      results.push({ name: `lz77-w${ws}`, strategy: "gc-native", medianMs: t.medianMs,
-        binarySize: gcMod.binarySize, compileMs: gcMod.compileMs });
-      console.log(`  window=${ws}: JS=${jsTime.medianMs.toFixed(3)}ms GC=${t.medianMs.toFixed(3)}ms ratio=${(jsTime.medianMs / t.medianMs).toFixed(2)}x`);
+      results.push({
+        name: `lz77-w${ws}`,
+        strategy: "gc-native",
+        medianMs: t.medianMs,
+        binarySize: gcMod.binarySize,
+        compileMs: gcMod.compileMs,
+      });
+      console.log(
+        `  window=${ws}: JS=${jsTime.medianMs.toFixed(3)}ms GC=${t.medianMs.toFixed(3)}ms ratio=${(jsTime.medianMs / t.medianMs).toFixed(2)}x`,
+      );
     } else {
       console.log(`  window=${ws}: JS=${jsTime.medianMs.toFixed(3)}ms GC=FAIL`);
     }
@@ -515,9 +561,16 @@ async function main() {
     if (gcMod) {
       const fn = gcMod.exports.run as Function;
       const t = runTimed(() => fn(), ITERATIONS);
-      results.push({ name: `inflate-bits-${sizeName}`, strategy: "gc-native", medianMs: t.medianMs,
-        binarySize: gcMod.binarySize, compileMs: gcMod.compileMs });
-      console.log(`  ${sizeName}: JS=${jsTime.medianMs.toFixed(3)}ms GC=${t.medianMs.toFixed(3)}ms ratio=${(jsTime.medianMs / t.medianMs).toFixed(2)}x`);
+      results.push({
+        name: `inflate-bits-${sizeName}`,
+        strategy: "gc-native",
+        medianMs: t.medianMs,
+        binarySize: gcMod.binarySize,
+        compileMs: gcMod.compileMs,
+      });
+      console.log(
+        `  ${sizeName}: JS=${jsTime.medianMs.toFixed(3)}ms GC=${t.medianMs.toFixed(3)}ms ratio=${(jsTime.medianMs / t.medianMs).toFixed(2)}x`,
+      );
     } else {
       console.log(`  ${sizeName}: JS=${jsTime.medianMs.toFixed(3)}ms GC=FAIL`);
     }
@@ -528,22 +581,22 @@ async function main() {
   console.log("Kernel              | JS (ms)  | GC (ms)  | Ratio | Throughput");
   console.log("--------------------|----------|----------|-------|----------");
 
-  const allNames = [...new Set(results.map(r => r.name))];
+  const allNames = [...new Set(results.map((r) => r.name))];
   for (const name of allNames) {
-    const js = results.find(r => r.name === name && r.strategy === "js");
-    const gc = results.find(r => r.name === name && r.strategy === "gc-native");
+    const js = results.find((r) => r.name === name && r.strategy === "js");
+    const gc = results.find((r) => r.name === name && r.strategy === "gc-native");
     if (!js) continue;
 
     const ratio = gc ? (js.medianMs / gc.medianMs).toFixed(2) + "x" : "N/A";
     const tp = gc?.throughputMBs ? gc.throughputMBs.toFixed(1) + " MB/s" : "-";
     console.log(
-      `${name.padEnd(20)}| ${js.medianMs.toFixed(3).padStart(8)} | ${gc ? gc.medianMs.toFixed(3).padStart(8) : "     N/A"} | ${ratio.padStart(5)} | ${tp}`
+      `${name.padEnd(20)}| ${js.medianMs.toFixed(3).padStart(8)} | ${gc ? gc.medianMs.toFixed(3).padStart(8) : "     N/A"} | ${ratio.padStart(5)} | ${tp}`,
     );
   }
 
   // === Wasm Module Sizes ===
   console.log("\n=== Wasm Module Sizes (gc-native) ===\n");
-  for (const r of results.filter(r => r.strategy === "gc-native" && r.binarySize)) {
+  for (const r of results.filter((r) => r.strategy === "gc-native" && r.binarySize)) {
     console.log(`  ${r.name}: ${r.binarySize} bytes (compiled in ${r.compileMs!.toFixed(1)}ms)`);
   }
 
