@@ -42,7 +42,13 @@ import type {
   OptionalParamInfo,
   RestParamInfo,
 } from "./context/types.js";
-import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
+import {
+  addImport,
+  addStringConstantGlobal,
+  ensureExnTag,
+  localGlobalIdx,
+  nextModuleGlobalIdx,
+} from "./registry/imports.js";
 import {
   addFuncType,
   funcTypeEq,
@@ -2066,7 +2072,12 @@ function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorState, nod
     if (name === "parseInt" || name === "parseFloat") {
       state.parseNeeded.add(name);
     }
-    if (name === "decodeURI" || name === "decodeURIComponent" || name === "encodeURI" || name === "encodeURIComponent") {
+    if (
+      name === "decodeURI" ||
+      name === "decodeURIComponent" ||
+      name === "encodeURI" ||
+      name === "encodeURIComponent"
+    ) {
       state.uriNeeded.add(name);
     }
     if (name === "Number") {
@@ -3911,11 +3922,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   );
 
   // Generic numeric binary op helper generator
-  function addNumericBinaryHelper(
-    name: string,
-    i32op: "i32.sub" | "i32.mul",
-    f64op: "f64.sub" | "f64.mul",
-  ): void {
+  function addNumericBinaryHelper(name: string, i32op: "i32.sub" | "i32.mul", f64op: "f64.sub" | "f64.mul"): void {
     addHelper(
       name,
       [anyRefNull, anyRefNull],
@@ -4304,10 +4311,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
 
   // Comparison helpers: __any_lt, __any_gt, __any_le, __any_ge
   // All use numeric comparison (convert to f64, compare)
-  function addComparisonHelper(
-    name: string,
-    f64op: "f64.lt" | "f64.gt" | "f64.le" | "f64.ge",
-  ): void {
+  function addComparisonHelper(name: string, f64op: "f64.lt" | "f64.gt" | "f64.le" | "f64.ge"): void {
     addHelper(
       name,
       [anyRefNull, anyRefNull],
@@ -9099,7 +9103,10 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
 // ── Built-in extern class registration ───────────────────────────────
 
 /** Helper to create an extern method signature with externref params and results */
-function externMethod(paramCount: number, returnsExternref = true): { params: ValType[]; results: ValType[]; requiredParams: number } {
+function externMethod(
+  paramCount: number,
+  returnsExternref = true,
+): { params: ValType[]; results: ValType[]; requiredParams: number } {
   const params: ValType[] = [];
   for (let i = 0; i <= paramCount; i++) params.push({ kind: "externref" }); // self + args
   return {
@@ -9120,22 +9127,22 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
   if (!ctx.externClasses.has("Set")) {
     const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
     // ES2015 methods
-    methods.set("add", externMethod(1));       // add(value) → Set
-    methods.set("has", externMethod(1));        // has(value) → boolean (externref)
-    methods.set("delete", externMethod(1));     // delete(value) → boolean (externref)
+    methods.set("add", externMethod(1)); // add(value) → Set
+    methods.set("has", externMethod(1)); // has(value) → boolean (externref)
+    methods.set("delete", externMethod(1)); // delete(value) → boolean (externref)
     methods.set("clear", externMethod(0, false)); // clear() → void
-    methods.set("forEach", externMethod(1));    // forEach(callback) → void (externref for simplicity)
-    methods.set("entries", externMethod(0));    // entries() → Iterator
-    methods.set("keys", externMethod(0));       // keys() → Iterator
-    methods.set("values", externMethod(0));     // values() → Iterator
+    methods.set("forEach", externMethod(1)); // forEach(callback) → void (externref for simplicity)
+    methods.set("entries", externMethod(0)); // entries() → Iterator
+    methods.set("keys", externMethod(0)); // keys() → Iterator
+    methods.set("values", externMethod(0)); // values() → Iterator
     // ES2025 Set methods
-    methods.set("union", externMethod(1));               // union(other) → Set
-    methods.set("intersection", externMethod(1));        // intersection(other) → Set
-    methods.set("difference", externMethod(1));          // difference(other) → Set
+    methods.set("union", externMethod(1)); // union(other) → Set
+    methods.set("intersection", externMethod(1)); // intersection(other) → Set
+    methods.set("difference", externMethod(1)); // difference(other) → Set
     methods.set("symmetricDifference", externMethod(1)); // symmetricDifference(other) → Set
-    methods.set("isSubsetOf", externMethod(1));          // isSubsetOf(other) → boolean (externref)
-    methods.set("isSupersetOf", externMethod(1));        // isSupersetOf(other) → boolean (externref)
-    methods.set("isDisjointFrom", externMethod(1));      // isDisjointFrom(other) → boolean (externref)
+    methods.set("isSubsetOf", externMethod(1)); // isSubsetOf(other) → boolean (externref)
+    methods.set("isSupersetOf", externMethod(1)); // isSupersetOf(other) → boolean (externref)
+    methods.set("isDisjointFrom", externMethod(1)); // isDisjointFrom(other) → boolean (externref)
 
     ctx.externClasses.set("Set", {
       importPrefix: "Set",
@@ -9143,9 +9150,7 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
       className: "Set",
       constructorParams: [{ kind: "externref" }], // new Set(iterable?)
       methods,
-      properties: new Map([
-        ["size", { type: { kind: "externref" }, readonly: true }],
-      ]),
+      properties: new Map([["size", { type: { kind: "externref" }, readonly: true }]]),
     });
   }
 
@@ -9168,9 +9173,7 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
       className: "Map",
       constructorParams: [{ kind: "externref" }],
       methods,
-      properties: new Map([
-        ["size", { type: { kind: "externref" }, readonly: true }],
-      ]),
+      properties: new Map([["size", { type: { kind: "externref" }, readonly: true }]]),
     });
   }
 
@@ -10100,8 +10103,7 @@ export function collectClassDeclaration(
       }
 
       // Detect async methods — unwrap Promise<T> to T for Wasm return type
-      const isAsyncMethod =
-        member.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+      const isAsyncMethod = member.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
       if (isAsyncMethod) {
         ctx.asyncFunctions.add(fullName);
       }
@@ -11953,7 +11955,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
       // Fix array.new_default: length must be i32, not externref
       if (instr.op === "array.new_default" && i > 0) {
         const prev = instrs[i - 1]!;
-        if (prev.op === "ref.null.extern" ) {
+        if (prev.op === "ref.null.extern") {
           instrs[i - 1] = { op: "i32.const", value: 0 } as Instr;
         } else {
           let isExternref = false;
@@ -12019,7 +12021,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
         let isFuncref = false;
         if (prev.op === "extern.convert_any") {
           isAlreadyExternref = true;
-        } else if (prev.op === "ref.null.extern" ) {
+        } else if (prev.op === "ref.null.extern") {
           isAlreadyExternref = true;
         } else if (prev.op === "ref.func") {
           isFuncref = true;
@@ -12113,7 +12115,7 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
 
       if (prev.op === "extern.convert_any") {
         isAlreadyExternref = true;
-      } else if (prev.op === "ref.null.extern" ) {
+      } else if (prev.op === "ref.null.extern") {
         isAlreadyExternref = true;
       } else if (prev.op === "ref.func") {
         isFuncref = true;
@@ -12272,10 +12274,7 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
         }
 
         const paramType = params[pi]!;
-        if (
-          (argInstr.op === "ref.null.extern" ) &&
-          (paramType.kind === "ref" || paramType.kind === "ref_null")
-        ) {
+        if (argInstr.op === "ref.null.extern" && (paramType.kind === "ref" || paramType.kind === "ref_null")) {
           // Replace ref.null extern with ref.null of the correct type
           instrs[pos] = { op: "ref.null", typeIdx: (paramType as any).typeIdx } as unknown as Instr;
         }
@@ -13262,7 +13261,7 @@ function needsTdzFlag(ctx: CodegenContext, decl: ts.VariableDeclaration): boolea
 
   // Collect all references to this symbol in the containing function
   // We walk the function body checking every identifier that resolves to this symbol
-  const funcBody = declFunc && 'body' in declFunc ? (declFunc as any).body : undefined;
+  const funcBody = declFunc && "body" in declFunc ? (declFunc as any).body : undefined;
   const scope = funcBody || decl.getSourceFile();
 
   let needsFlag = false;
@@ -13274,18 +13273,31 @@ function needsTdzFlag(ctx: CodegenContext, decl: ts.VariableDeclaration): boolea
         const accessPos = node.getStart();
         const accessFunc = getContainingFunctionForTdz(node);
         // Cross-function access (closure) — needs flag
-        if (accessFunc !== declFunc) { needsFlag = true; return; }
+        if (accessFunc !== declFunc) {
+          needsFlag = true;
+          return;
+        }
         // Access before declaration — needs flag
-        if (accessPos < declEnd) { needsFlag = true; return; }
+        if (accessPos < declEnd) {
+          needsFlag = true;
+          return;
+        }
         // Check loop safety: if access is inside a loop containing the decl,
         // it's only safe if decl is in the loop body and access is after decl
-        if (isInsideLoopContainingForTdz(node, decl)) { needsFlag = true; return; }
+        if (isInsideLoopContainingForTdz(node, decl)) {
+          needsFlag = true;
+          return;
+        }
       }
     }
     // Don't recurse into nested functions (they have their own scope)
-    if (node !== scope &&
-        (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
-         ts.isArrowFunction(node) || ts.isMethodDeclaration(node))) {
+    if (
+      node !== scope &&
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node))
+    ) {
       // But DO check if they reference our symbol (closure capture)
       ts.forEachChild(node, visit);
       return;
@@ -13300,10 +13312,16 @@ function needsTdzFlag(ctx: CodegenContext, decl: ts.VariableDeclaration): boolea
 function getContainingFunctionForTdz(node: ts.Node): ts.Node | undefined {
   let current = node.parent;
   while (current) {
-    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-        ts.isArrowFunction(current) || ts.isMethodDeclaration(current) ||
-        ts.isConstructorDeclaration(current) || ts.isGetAccessorDeclaration(current) ||
-        ts.isSetAccessorDeclaration(current) || ts.isSourceFile(current)) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isConstructorDeclaration(current) ||
+      ts.isGetAccessorDeclaration(current) ||
+      ts.isSetAccessorDeclaration(current) ||
+      ts.isSourceFile(current)
+    ) {
       return current;
     }
     current = current.parent;
@@ -13315,24 +13333,33 @@ function getContainingFunctionForTdz(node: ts.Node): ts.Node | undefined {
 function isInsideLoopContainingForTdz(access: ts.Node, decl: ts.Node): boolean {
   let current = access.parent;
   while (current) {
-    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-        ts.isArrowFunction(current) || ts.isMethodDeclaration(current) ||
-        ts.isSourceFile(current)) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isSourceFile(current)
+    ) {
       return false;
     }
-    if (ts.isForStatement(current) || ts.isForInStatement(current) ||
-        ts.isForOfStatement(current) || ts.isWhileStatement(current) ||
-        ts.isDoStatement(current)) {
+    if (
+      ts.isForStatement(current) ||
+      ts.isForInStatement(current) ||
+      ts.isForOfStatement(current) ||
+      ts.isWhileStatement(current) ||
+      ts.isDoStatement(current)
+    ) {
       if (isDescendantOfNode(decl, current)) {
         // For-initializer variables (e.g. `for (let i = 0; ...)`) are always
         // initialized before the body/condition/incrementor execute
-        if (ts.isForStatement(current) && current.initializer &&
-            isDescendantOfNode(decl, current.initializer)) {
+        if (ts.isForStatement(current) && current.initializer && isDescendantOfNode(decl, current.initializer)) {
           return false;
         }
         // For-in/for-of loop variables are initialized each iteration
-        if ((ts.isForInStatement(current) || ts.isForOfStatement(current)) &&
-            isDescendantOfNode(decl, current.initializer)) {
+        if (
+          (ts.isForInStatement(current) || ts.isForOfStatement(current)) &&
+          isDescendantOfNode(decl, current.initializer)
+        ) {
           return false;
         }
         // Both in loop — check if decl is in loop body and access after decl
@@ -14853,7 +14880,13 @@ export { createCodegenContext } from "./context/create-context.js";
 export { reportError } from "./context/errors.js";
 export { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
 export { attachSourcePos, getSourcePos } from "./context/source-pos.js";
-export { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
+export {
+  addImport,
+  addStringConstantGlobal,
+  ensureExnTag,
+  localGlobalIdx,
+  nextModuleGlobalIdx,
+} from "./registry/imports.js";
 export {
   addFuncType,
   funcTypeEq,

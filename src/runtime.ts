@@ -906,6 +906,32 @@ function resolveImport(
           }
           return undefined; // not an own property
         };
+      if (name === "__getOwnPropertyNames")
+        return (obj: any) => {
+          if (obj == null) return [];
+          if (!_isWasmStruct(obj)) return Object.getOwnPropertyNames(obj);
+          const exports = callbackState?.getExports();
+          const fieldNames: string[] = _getStructFieldNames(obj, exports) ?? [];
+          // Also include sidecar property names (string keys only)
+          const sc = _wasmStructProps.get(obj);
+          if (sc) {
+            for (const k of Object.getOwnPropertyNames(sc)) {
+              if (!fieldNames.includes(k)) fieldNames.push(k);
+            }
+          }
+          return fieldNames;
+        };
+      if (name === "__getOwnPropertySymbols")
+        return (obj: any) => {
+          if (!_isWasmStruct(obj)) return Object.getOwnPropertySymbols(obj);
+          const sc = _wasmStructProps.get(obj);
+          return sc ? Object.getOwnPropertySymbols(sc) : [];
+        };
+      if (name === "__getPrototypeOf")
+        return (obj: any) => {
+          if (obj == null) return null;
+          try { return Object.getPrototypeOf(obj); } catch { return null; }
+        };
       // __create_descriptor(value, flags) → {value, writable, enumerable, configurable}
       // flags: bit 0 = writable, bit 1 = enumerable, bit 2 = configurable
       if (name === "__create_descriptor")

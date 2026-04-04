@@ -10,11 +10,7 @@ import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
-import {
-  resolveWasmType,
-  addStringImports,
-  addArrayIteratorImports,
-} from "./index.js";
+import { resolveWasmType, addStringImports, addArrayIteratorImports } from "./index.js";
 import { isStringType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, compileArrowAsClosure, VOID_RESULT, getLine, getCol } from "./shared.js";
@@ -119,7 +115,12 @@ function guardedFuncRefCastInstrs(fctx: FunctionContext, funcTypeIdx: number): I
  * Stack: [ref_null] -> [ref_null]  (value is still on stack, unchanged)
  * The local already holds the value via local.tee before this call.
  */
-function emitReceiverNullGuard(ctx: CodegenContext, fctx: FunctionContext, localIdx: number, receiverExpr?: ts.Expression): void {
+function emitReceiverNullGuard(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  localIdx: number,
+  receiverExpr?: ts.Expression,
+): void {
   // Skip null guard if receiver is provably non-null (e.g. const initialized from array literal)
   if (receiverExpr && isReceiverNonNull(receiverExpr, ctx.checker)) return;
   // Check if the value in the local is null

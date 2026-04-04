@@ -1,10 +1,4 @@
-import type {
-  FuncTypeDef,
-  GlobalDef,
-  Instr,
-  ValType,
-  WasmModule,
-} from "../ir/types.js";
+import type { FuncTypeDef, GlobalDef, Instr, ValType, WasmModule } from "../ir/types.js";
 
 /** Heap starts at byte offset 1024 (leave low addresses for null/sentinel) */
 const HEAP_START = 1024;
