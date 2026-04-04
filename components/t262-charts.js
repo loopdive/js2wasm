@@ -143,7 +143,7 @@ class T262Donut extends HTMLElement {
           aspect-ratio: 1 / 1;
           border-radius: 50%;
           background: conic-gradient(
-            rgba(255,255,255,0) 0deg,
+            rgba(255,255,255,0.2) 0deg,
             rgba(255,255,255,1) ${passDeg}deg,
             rgba(255,255,255,0.2) ${passDeg}deg ${failDeg}deg,
             rgba(255,255,255,0.1) ${failDeg}deg ${ceDeg}deg,
