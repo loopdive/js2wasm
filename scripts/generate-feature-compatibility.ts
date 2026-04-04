@@ -47,10 +47,7 @@ const FEATURES: FeatureDef[] = [
     name: "Functions",
     importance: "critical",
     categories: ["language/function-code", "built-ins/Function"],
-    filePaths: [
-      "test/language/statements/function/",
-      "test/language/expressions/function/",
-    ],
+    filePaths: ["test/language/statements/function/", "test/language/expressions/function/"],
     featureTags: [],
   },
   {
@@ -122,10 +119,7 @@ const FEATURES: FeatureDef[] = [
     name: "Error Handling (try/catch/throw)",
     importance: "critical",
     categories: ["built-ins/Error", "built-ins/NativeErrors", "built-ins/AggregateError"],
-    filePaths: [
-      "test/language/statements/try/",
-      "test/language/statements/throw/",
-    ],
+    filePaths: ["test/language/statements/try/", "test/language/statements/throw/"],
     featureTags: [],
   },
   {
@@ -199,10 +193,7 @@ const FEATURES: FeatureDef[] = [
     name: "Classes",
     importance: "high",
     categories: [],
-    filePaths: [
-      "test/language/statements/class/",
-      "test/language/expressions/class/",
-    ],
+    filePaths: ["test/language/statements/class/", "test/language/expressions/class/"],
     featureTags: [],
   },
   {
@@ -256,10 +247,7 @@ const FEATURES: FeatureDef[] = [
     name: "Modules (import/export)",
     importance: "high",
     categories: ["language/import", "language/export", "language/module-code"],
-    filePaths: [
-      "test/language/expressions/dynamic-import/",
-      "test/language/expressions/import.meta/",
-    ],
+    filePaths: ["test/language/expressions/dynamic-import/", "test/language/expressions/import.meta/"],
     featureTags: [],
   },
   {
@@ -310,20 +298,14 @@ const FEATURES: FeatureDef[] = [
     name: "Generators",
     importance: "medium",
     categories: ["built-ins/GeneratorFunction", "built-ins/GeneratorPrototype"],
-    filePaths: [
-      "test/language/expressions/generators/",
-      "test/language/statements/generators/",
-    ],
+    filePaths: ["test/language/expressions/generators/", "test/language/statements/generators/"],
     featureTags: [],
   },
   {
     name: "Iterators & for-of",
     importance: "medium",
     categories: [],
-    filePaths: [
-      "test/language/statements/for-of/",
-      "test/language/statements/for-await-of/",
-    ],
+    filePaths: ["test/language/statements/for-of/", "test/language/statements/for-await-of/"],
     featureTags: [],
   },
   {
@@ -406,11 +388,13 @@ const FEATURES: FeatureDef[] = [
   {
     name: "Async Generators",
     importance: "medium",
-    categories: ["built-ins/AsyncGeneratorFunction", "built-ins/AsyncGeneratorPrototype", "built-ins/AsyncFromSyncIteratorPrototype", "built-ins/AsyncIteratorPrototype"],
-    filePaths: [
-      "test/language/statements/async-generator/",
-      "test/language/expressions/async-generator/",
+    categories: [
+      "built-ins/AsyncGeneratorFunction",
+      "built-ins/AsyncGeneratorPrototype",
+      "built-ins/AsyncFromSyncIteratorPrototype",
+      "built-ins/AsyncIteratorPrototype",
     ],
+    filePaths: ["test/language/statements/async-generator/", "test/language/expressions/async-generator/"],
     featureTags: [],
   },
   {
@@ -496,10 +480,7 @@ const FEATURES: FeatureDef[] = [
     name: "Explicit Resource Management",
     importance: "low",
     categories: ["built-ins/DisposableStack", "built-ins/AsyncDisposableStack"],
-    filePaths: [
-      "test/language/statements/using/",
-      "test/language/statements/await-using/",
-    ],
+    filePaths: ["test/language/statements/using/", "test/language/statements/await-using/"],
     featureTags: [],
   },
   {
@@ -561,9 +542,7 @@ interface FeatureResult {
 }
 
 function matchesCategory(testCategory: string, patterns: string[]): boolean {
-  return patterns.some(
-    (p) => testCategory === p || testCategory.startsWith(p + "/"),
-  );
+  return patterns.some((p) => testCategory === p || testCategory.startsWith(p + "/"));
 }
 
 const IMPORTANCE_RANK: Record<Importance, number> = {
@@ -573,10 +552,7 @@ const IMPORTANCE_RANK: Record<Importance, number> = {
   low: 3,
 };
 
-function deriveStatus(
-  passRate: number,
-  total: number,
-): FeatureResult["status"] {
+function deriveStatus(passRate: number, total: number): FeatureResult["status"] {
   if (total === 0) return "skip";
   if (passRate > 0.8) return "full";
   if (passRate > 0.3) return "partial";
@@ -634,8 +610,7 @@ function aggregate(results: TestResult[]): FeatureResult[] {
     for (const t of tests) {
       if (t.status === "pass") pass++;
       else if (t.status === "fail") fail++;
-      else if (t.status === "compile_error" || t.status === "compile_timeout")
-        ce++;
+      else if (t.status === "compile_error" || t.status === "compile_timeout") ce++;
       else if (t.status === "skip") skip++;
     }
 
@@ -658,8 +633,7 @@ function aggregate(results: TestResult[]): FeatureResult[] {
 
   // Sort by importance rank, then pass rate descending
   output.sort((a, b) => {
-    if (a.importanceRank !== b.importanceRank)
-      return a.importanceRank - b.importanceRank;
+    if (a.importanceRank !== b.importanceRank) return a.importanceRank - b.importanceRank;
     return b.passRate - a.passRate;
   });
 
@@ -690,31 +664,19 @@ const output = {
   totalTests: results.length,
   summary: {
     critical: {
-      passRate:
-        totals.critical > 0
-          ? Math.round((passing.critical / totals.critical) * 10000) / 100
-          : 0,
+      passRate: totals.critical > 0 ? Math.round((passing.critical / totals.critical) * 10000) / 100 : 0,
       features: features.filter((f) => f.importance === "critical").length,
     },
     high: {
-      passRate:
-        totals.high > 0
-          ? Math.round((passing.high / totals.high) * 10000) / 100
-          : 0,
+      passRate: totals.high > 0 ? Math.round((passing.high / totals.high) * 10000) / 100 : 0,
       features: features.filter((f) => f.importance === "high").length,
     },
     medium: {
-      passRate:
-        totals.medium > 0
-          ? Math.round((passing.medium / totals.medium) * 10000) / 100
-          : 0,
+      passRate: totals.medium > 0 ? Math.round((passing.medium / totals.medium) * 10000) / 100 : 0,
       features: features.filter((f) => f.importance === "medium").length,
     },
     low: {
-      passRate:
-        totals.low > 0
-          ? Math.round((passing.low / totals.low) * 10000) / 100
-          : 0,
+      passRate: totals.low > 0 ? Math.round((passing.low / totals.low) * 10000) / 100 : 0,
       features: features.filter((f) => f.importance === "low").length,
     },
   },
@@ -725,18 +687,10 @@ const outPath = join(RESULTS_DIR, "feature-compatibility.json");
 writeFileSync(outPath, JSON.stringify(output, null, 2) + "\n");
 console.log(`\nWrote ${outPath}`);
 console.log(`\nFeature compatibility summary:`);
-console.log(
-  `  Critical: ${output.summary.critical.passRate}% (${output.summary.critical.features} features)`,
-);
-console.log(
-  `  High:     ${output.summary.high.passRate}% (${output.summary.high.features} features)`,
-);
-console.log(
-  `  Medium:   ${output.summary.medium.passRate}% (${output.summary.medium.features} features)`,
-);
-console.log(
-  `  Low:      ${output.summary.low.passRate}% (${output.summary.low.features} features)`,
-);
+console.log(`  Critical: ${output.summary.critical.passRate}% (${output.summary.critical.features} features)`);
+console.log(`  High:     ${output.summary.high.passRate}% (${output.summary.high.features} features)`);
+console.log(`  Medium:   ${output.summary.medium.passRate}% (${output.summary.medium.features} features)`);
+console.log(`  Low:      ${output.summary.low.passRate}% (${output.summary.low.features} features)`);
 
 // Print table
 console.log(`\n${"Feature".padEnd(35)} ${"Imp".padEnd(9)} ${"Status".padEnd(8)} ${"Rate".padEnd(7)} Tests`);

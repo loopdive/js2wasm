@@ -74,7 +74,7 @@ describe("Issue #927 — early error detection", () => {
     it("return outside function", () => {
       const r = compile(`return 1;`);
       expect(r.success).toBe(false);
-      expect(r.errors.some(e => e.message.includes("return"))).toBe(true);
+      expect(r.errors.some((e) => e.message.includes("return"))).toBe(true);
     });
 
     it("arguments in class field initializer", () => {
@@ -85,7 +85,7 @@ describe("Issue #927 — early error detection", () => {
         export function test(): number { return 1; }
       `);
       expect(r.success).toBe(false);
-      expect(r.errors.some(e => e.message.includes("arguments"))).toBe(true);
+      expect(r.errors.some((e) => e.message.includes("arguments"))).toBe(true);
     });
 
     it("duplicate export names", () => {
@@ -96,7 +96,7 @@ describe("Issue #927 — early error detection", () => {
         export { b as z };
       `);
       expect(r.success).toBe(false);
-      expect(r.errors.some(e => e.message.includes("Duplicate export"))).toBe(true);
+      expect(r.errors.some((e) => e.message.includes("Duplicate export"))).toBe(true);
     });
   });
 
