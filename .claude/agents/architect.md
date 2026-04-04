@@ -2,6 +2,7 @@
 name: architect
 description: Software Architect for analyzing compiler internals and writing implementation specs in issue files. Spawn before dev work to plan hard issues.
 model: opus
+reasoning_effort: max
 tools: Read, Bash, Grep, Glob, Edit, Write
 ---
 

@@ -1,5 +1,5 @@
 /**
- * Benchmark harness for ts2wasm.
+ * Benchmark harness for js2wasm.
  *
  * Compares four strategies:
  *   1. Pure JS          — run TypeScript source directly via eval
@@ -76,11 +76,7 @@ interface CompiledModule {
 
 const compileCache = new Map<string, CompiledModule>();
 
-function compileSource(
-  source: string,
-  fast: boolean,
-  target?: "gc" | "linear",
-): CompiledModule {
+function compileSource(source: string, fast: boolean, target?: "gc" | "linear"): CompiledModule {
   const key = `${fast}:${target ?? "gc"}:${source}`;
   const cached = compileCache.get(key);
   if (cached) return cached;
@@ -91,8 +87,7 @@ function compileSource(
 
   if (!result.success) {
     throw new Error(
-      `Compilation failed (fast=${fast}, target=${target}):\n` +
-        result.errors.map((e) => `  ${e.message}`).join("\n"),
+      `Compilation failed (fast=${fast}, target=${target}):\n` + result.errors.map((e) => `  ${e.message}`).join("\n"),
     );
   }
 
@@ -110,10 +105,7 @@ function compileSource(
 // Runner
 // ---------------------------------------------------------------------------
 
-async function runStrategy(
-  def: BenchmarkDef,
-  strategy: Strategy,
-): Promise<BenchmarkResult | null> {
+async function runStrategy(def: BenchmarkDef, strategy: Strategy): Promise<BenchmarkResult | null> {
   if (def.skip?.includes(strategy)) return null;
 
   const iterations = def.iterations ?? 100;
@@ -136,11 +128,7 @@ async function runStrategy(
         binarySize = mod.binary.byteLength;
         compileMs = mod.compileMs;
         const imports = buildImports(mod.imports, def.deps ?? {}, mod.stringPool);
-        const { instance } = await instantiateWasm(
-          mod.binary,
-          imports.env,
-          imports.string_constants,
-        );
+        const { instance } = await instantiateWasm(mod.binary, imports.env, imports.string_constants);
         if (imports.setExports) imports.setExports(instance.exports as Record<string, Function>);
         const run = (instance.exports as Record<string, Function>).run;
         if (!run) throw new Error(`No "run" export in host-call module for "${def.name}"`);
@@ -153,11 +141,7 @@ async function runStrategy(
         binarySize = mod.binary.byteLength;
         compileMs = mod.compileMs;
         const imports = buildImports(mod.imports, def.deps ?? {}, mod.stringPool);
-        const { instance } = await instantiateWasm(
-          mod.binary,
-          imports.env,
-          imports.string_constants,
-        );
+        const { instance } = await instantiateWasm(mod.binary, imports.env, imports.string_constants);
         if (imports.setExports) imports.setExports(instance.exports as Record<string, Function>);
         const run = (instance.exports as Record<string, Function>).run;
         if (!run) throw new Error(`No "run" export in gc-native module for "${def.name}"`);
@@ -170,11 +154,7 @@ async function runStrategy(
         binarySize = mod.binary.byteLength;
         compileMs = mod.compileMs;
         const imports = buildImports(mod.imports, def.deps ?? {}, mod.stringPool);
-        const { instance } = await instantiateWasm(
-          mod.binary,
-          imports.env,
-          imports.string_constants,
-        );
+        const { instance } = await instantiateWasm(mod.binary, imports.env, imports.string_constants);
         if (imports.setExports) imports.setExports(instance.exports as Record<string, Function>);
         const run = (instance.exports as Record<string, Function>).run;
         if (!run) throw new Error(`No "run" export in linear-memory module for "${def.name}"`);

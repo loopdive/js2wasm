@@ -10,10 +10,20 @@ import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
 
-async function compileAndValidate(source: string): Promise<{ valid: boolean; instance?: WebAssembly.Instance; error?: string }> {
+async function compileAndValidate(
+  source: string,
+): Promise<{ valid: boolean; instance?: WebAssembly.Instance; error?: string }> {
   const result = compile(source, { fileName: "test.ts" });
-  if (!result.success || result.errors.some(e => e.severity === "error")) {
-    return { valid: false, error: "compile: " + result.errors.filter(e => e.severity === "error").map(e => e.message).join("; ") };
+  if (!result.success || result.errors.some((e) => e.severity === "error")) {
+    return {
+      valid: false,
+      error:
+        "compile: " +
+        result.errors
+          .filter((e) => e.severity === "error")
+          .map((e) => e.message)
+          .join("; "),
+    };
   }
   const valid = WebAssembly.validate(result.binary);
   if (!valid) {

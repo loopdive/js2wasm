@@ -2,7 +2,7 @@
  * React Scheduler Min-Heap Benchmark: JS vs WasmGC
  *
  * Compares performance of the React scheduler min-heap implementation
- * running natively in JS vs compiled to WasmGC via ts2wasm.
+ * running natively in JS vs compiled to WasmGC via js2wasm.
  *
  * Usage: npx tsx benchmarks/react-scheduler-bench.ts
  */
@@ -406,9 +406,7 @@ async function main() {
   let correct = true;
   for (let i = 0; i < RUNS; i++) {
     if (jsChecksums[i] !== wasmChecksums[i]) {
-      console.error(
-        `CHECKSUM MISMATCH at run ${i}: JS=${jsChecksums[i]}, Wasm=${wasmChecksums[i]}`,
-      );
+      console.error(`CHECKSUM MISMATCH at run ${i}: JS=${jsChecksums[i]}, Wasm=${wasmChecksums[i]}`);
       correct = false;
     }
   }
@@ -546,7 +544,9 @@ async function main() {
     }
 
     console.log();
-    console.log(`  Correctness: ${internalCorrect ? "PASS (checksums match)" : `FAIL (JS=${jsCheck}, Wasm=${wasmCheck})`}`);
+    console.log(
+      `  Correctness: ${internalCorrect ? "PASS (checksums match)" : `FAIL (JS=${jsCheck}, Wasm=${wasmCheck})`}`,
+    );
     console.log();
 
     console.log("  Per-run times (ms):");

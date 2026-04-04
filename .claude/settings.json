@@ -64,22 +64,34 @@
         ]
       },
       {
-        "matcher": "SendMessage",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/pre-shutdown.sh",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "matcher": "Agent",
         "hooks": [
           {
             "type": "command",
             "command": ".claude/hooks/pre-agent-spawn.sh",
             "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-file-edit.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-file-edit.sh",
+            "timeout": 10
           }
         ]
       }

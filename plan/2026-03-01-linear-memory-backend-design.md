@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add a second compilation target to ts2wasm that emits standard Wasm with linear
+Add a second compilation target to js2wasm that emits standard Wasm with linear
 memory instead of WasmGC. The primary use-case is compiling `src/link/` into a
 portable `linker.wasm` that runs in any Wasm runtime (Wasmtime, Wasmer, Wamr,
 browsers).

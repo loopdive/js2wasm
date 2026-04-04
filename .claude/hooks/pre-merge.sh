@@ -20,8 +20,19 @@ source /workspace/.claude/hooks/event-log.sh
 # ff-only anywhere in the command = merging to main
 if echo "$CMD" | grep -q '\-\-ff-only'; then
   # Merging TO main — require test proof
-  PROOF="/workspace/.claude/nonces/merge-proof.json"
-  if [ ! -f "$PROOF" ]; then
+  # Check both the main workspace and the branch's worktree for the proof file
+  PROOF=""
+  BRANCH=$(echo "$CMD" | sed 's/.*--ff-only[[:space:]]*//' | awk '{print $1}')
+  # Try worktree path for the branch
+  for candidate in \
+    "/workspace/.claude/worktrees/$BRANCH/.claude/nonces/merge-proof.json" \
+    "/workspace/.claude/nonces/merge-proof.json"; do
+    if [ -f "$candidate" ]; then
+      PROOF="$candidate"
+      break
+    fi
+  done
+  if [ -z "$PROOF" ]; then
     log_event "merge_blocked" "reason=no_proof"
     cat >&2 <<'MSG'
 BLOCKED: No test proof found. Before merging to main:

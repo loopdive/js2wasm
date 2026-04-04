@@ -9,9 +9,7 @@ describe("error reporting with source locations", () => {
 }`;
     const result = compile(source);
     // The compiler may or may not succeed overall, but it should collect errors
-    const codegenErrors = result.errors.filter((e) =>
-      e.message.includes("Unsupported statement"),
-    );
+    const codegenErrors = result.errors.filter((e) => e.message.includes("Unsupported statement"));
     expect(codegenErrors.length).toBeGreaterThan(0);
     const err = codegenErrors[0]!;
     expect(err.line).toBeGreaterThan(0);
@@ -63,9 +61,7 @@ describe("error reporting with source locations", () => {
 }`;
     const result = compile(source);
     // Errors should be propagated (not silently swallowed)
-    const hasCodegenError = result.errors.some(
-      (e) => e.message.includes("Unsupported"),
-    );
+    const hasCodegenError = result.errors.some((e) => e.message.includes("Unsupported"));
     expect(hasCodegenError).toBe(true);
   });
 
@@ -86,9 +82,7 @@ describe("error reporting with source locations", () => {
     const result = compile(source);
     expect(result.success).toBe(true);
     // There should be no errors with "Unsupported" in them
-    const codegenErrors = result.errors.filter(
-      (e) => e.message.includes("Unsupported"),
-    );
+    const codegenErrors = result.errors.filter((e) => e.message.includes("Unsupported"));
     expect(codegenErrors.length).toBe(0);
   });
 

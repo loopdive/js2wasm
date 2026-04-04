@@ -36,8 +36,7 @@ describe("escapeWatString", () => {
   });
 
   it("handles mixed special characters", () => {
-    expect(escapeWatString('a\\b\n"c"\td\x00'))
-      .toBe('a\\\\b\\n\\"c\\"\\td\\00');
+    expect(escapeWatString('a\\b\n"c"\td\x00')).toBe('a\\\\b\\n\\"c\\"\\td\\00');
   });
 
   it("handles empty string", () => {

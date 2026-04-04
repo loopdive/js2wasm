@@ -32,13 +32,16 @@ log "=== RESULTS ==="
 python3 -c "
 import json
 d = json.load(open('/workspace/benchmarks/results/test262-report.json'))
-s = d['summary']
+s = d.get('official_summary', d['summary'])
+full = d.get('full_summary', d['summary'])
 print(f'Total: {s[\"total\"]}')
 print(f'Pass:  {s[\"pass\"]}')
 print(f'Fail:  {s[\"fail\"]}')
 print(f'CE:    {s[\"compile_error\"]}')
 print(f'Skip:  {s[\"skip\"]}')
 print(f'Rate:  {s[\"pass\"]/s[\"total\"]*100:.1f}%')
+if full['total'] != s['total']:
+    print(f'Full suite total: {full[\"total\"]}')
 " | tee -a "$LOGFILE"
 
 log ""

@@ -55,10 +55,7 @@ export interface IsolationViolation {
 /**
  * Validate isolation properties across a set of linked wasm modules.
  */
-export function validateIsolation(
-  objects: ParsedObject[],
-  resolution: Resolution,
-): IsolationReport {
+export function validateIsolation(objects: ParsedObject[], resolution: Resolution): IsolationReport {
   const modules = objects.map((o) => o.name);
   const violations: IsolationViolation[] = [];
 
@@ -71,21 +68,11 @@ export function validateIsolation(
   return {
     modules,
     properties: {
-      importExportOnly: !violations.some(
-        (v) => v.property === "importExportOnly",
-      ),
-      noSharedGlobals: !violations.some(
-        (v) => v.property === "noSharedGlobals",
-      ),
-      memoryIsolation: !violations.some(
-        (v) => v.property === "memoryIsolation",
-      ),
-      noPrivateFunctionAccess: !violations.some(
-        (v) => v.property === "noPrivateFunctionAccess",
-      ),
-      tableIsolation: !violations.some(
-        (v) => v.property === "tableIsolation",
-      ),
+      importExportOnly: !violations.some((v) => v.property === "importExportOnly"),
+      noSharedGlobals: !violations.some((v) => v.property === "noSharedGlobals"),
+      memoryIsolation: !violations.some((v) => v.property === "memoryIsolation"),
+      noPrivateFunctionAccess: !violations.some((v) => v.property === "noPrivateFunctionAccess"),
+      tableIsolation: !violations.some((v) => v.property === "tableIsolation"),
     },
     violations,
   };
@@ -116,11 +103,7 @@ function checkImportExportOnly(
 
       // Check that the target symbol is exported
       const targetObj = objects[target.targetModule]!;
-      const targetSym = findDefinedSymbol(
-        targetObj,
-        sym.name,
-        sym.kind,
-      );
+      const targetSym = findDefinedSymbol(targetObj, sym.name, sym.kind);
       if (targetSym && !(targetSym.flags & SYMBOL_EXPORTED)) {
         violations.push({
           property: "importExportOnly",
@@ -139,15 +122,9 @@ function checkImportExportOnly(
 /**
  * No two modules should define mutable globals with the same symbol name.
  */
-function checkNoSharedGlobals(
-  objects: ParsedObject[],
-  violations: IsolationViolation[],
-): void {
+function checkNoSharedGlobals(objects: ParsedObject[], violations: IsolationViolation[]): void {
   // Collect all mutable global definitions with their names
-  const globalDefs = new Map<
-    string,
-    { moduleIdx: number; moduleName: string }[]
-  >();
+  const globalDefs = new Map<string, { moduleIdx: number; moduleName: string }[]>();
 
   for (let modIdx = 0; modIdx < objects.length; modIdx++) {
     const obj = objects[modIdx]!;
@@ -159,14 +136,9 @@ function checkNoSharedGlobals(
 
       // Check if this global is mutable
       const globalIdx = sym.index;
-      const numImportGlobals = obj.imports.filter(
-        (imp) => imp.kind === 3,
-      ).length;
+      const numImportGlobals = obj.imports.filter((imp) => imp.kind === 3).length;
       const localGlobalIdx = globalIdx - numImportGlobals;
-      if (
-        localGlobalIdx >= 0 &&
-        localGlobalIdx < obj.globals.length
-      ) {
+      if (localGlobalIdx >= 0 && localGlobalIdx < obj.globals.length) {
         const globalDef = obj.globals[localGlobalIdx]!;
         if (globalDef.mutable) {
           let list = globalDefs.get(sym.name);
@@ -208,10 +180,7 @@ function checkNoSharedGlobals(
  * memory indices per module, this is inherently guaranteed. We validate
  * that each module defines at most one memory (the expected input format).
  */
-function checkMemoryIsolation(
-  objects: ParsedObject[],
-  violations: IsolationViolation[],
-): void {
+function checkMemoryIsolation(objects: ParsedObject[], violations: IsolationViolation[]): void {
   // Memory isolation is structurally guaranteed by the linker: each
   // module's memory 0 gets a unique index in the merged output.
   // We just verify the input is well-formed (each module has <= 1 memory).
@@ -250,11 +219,7 @@ function checkNoPrivateFunctionAccess(
       if (target.targetModule === modIdx) continue;
 
       const targetObj = objects[target.targetModule]!;
-      const targetSym = findDefinedSymbol(
-        targetObj,
-        sym.name,
-        sym.kind,
-      );
+      const targetSym = findDefinedSymbol(targetObj, sym.name, sym.kind);
       if (targetSym && targetSym.flags & SYMBOL_BINDING_LOCAL) {
         violations.push({
           property: "noPrivateFunctionAccess",
@@ -274,11 +239,7 @@ function checkNoPrivateFunctionAccess(
  * Each module's call_indirect should only use its own table.
  * No cross-module table element references.
  */
-function checkTableIsolation(
-  objects: ParsedObject[],
-  resolution: Resolution,
-  violations: IsolationViolation[],
-): void {
+function checkTableIsolation(objects: ParsedObject[], resolution: Resolution, violations: IsolationViolation[]): void {
   for (let modIdx = 0; modIdx < objects.length; modIdx++) {
     const obj = objects[modIdx]!;
 
@@ -316,15 +277,6 @@ function checkTableIsolation(
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-function findDefinedSymbol(
-  obj: ParsedObject,
-  name: string,
-  kind: number,
-): SymbolInfo | undefined {
-  return obj.symbols.find(
-    (s) =>
-      s.name === name &&
-      s.kind === kind &&
-      !(s.flags & SYMBOL_UNDEFINED),
-  );
+function findDefinedSymbol(obj: ParsedObject, name: string, kind: number): SymbolInfo | undefined {
+  return obj.symbols.find((s) => s.name === name && s.kind === kind && !(s.flags & SYMBOL_UNDEFINED));
 }

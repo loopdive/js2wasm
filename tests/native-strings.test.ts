@@ -9,7 +9,7 @@ import { buildImports, instantiateWasm } from "../src/runtime.js";
 async function runFast(source: string, exportName = "test"): Promise<any> {
   const result = compile(source, { fast: true });
   if (!result.success) {
-    throw new Error(result.errors.map(e => `L${e.line}: ${e.message}`).join("\n"));
+    throw new Error(result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n"));
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await instantiateWasm(result.binary, imports.env, imports.string_constants);
@@ -25,7 +25,7 @@ async function runFast(source: string, exportName = "test"): Promise<any> {
 async function runFastWithArgs(source: string, args: any[], exportName = "test"): Promise<any> {
   const result = compile(source, { fast: true });
   if (!result.success) {
-    throw new Error(result.errors.map(e => `L${e.line}: ${e.message}`).join("\n"));
+    throw new Error(result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n"));
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await instantiateWasm(result.binary, imports.env, imports.string_constants);
@@ -39,18 +39,12 @@ describe("fast mode: native strings", () => {
   // ── String literal and identity ──────────────────────────────────
 
   it("compiles without errors", () => {
-    const result = compile(
-      `export function test(): string { return "hello"; }`,
-      { fast: true },
-    );
-    expect(result.success, result.errors.map(e => e.message).join("\n")).toBe(true);
+    const result = compile(`export function test(): string { return "hello"; }`, { fast: true });
+    expect(result.success, result.errors.map((e) => e.message).join("\n")).toBe(true);
   });
 
   it("WAT contains NativeString struct type", () => {
-    const result = compile(
-      `export function test(): string { return "hello"; }`,
-      { fast: true },
-    );
+    const result = compile(`export function test(): string { return "hello"; }`, { fast: true });
     expect(result.success).toBe(true);
     expect(result.wat).toContain("__str_data");
     expect(result.wat).toContain("NativeString");
@@ -61,10 +55,7 @@ describe("fast mode: native strings", () => {
   });
 
   it("WAT uses struct.new for string literals", () => {
-    const result = compile(
-      `export function test(): string { return "hi"; }`,
-      { fast: true },
-    );
+    const result = compile(`export function test(): string { return "hi"; }`, { fast: true });
     expect(result.success).toBe(true);
     expect(result.wat).toContain("struct.new");
     expect(result.wat).toContain("array.new_fixed");
@@ -644,9 +635,7 @@ describe("fast mode: native strings", () => {
   // ── Existing tests must still pass in non-fast mode ──────────────
 
   it("non-fast mode still uses externref strings", () => {
-    const result = compile(
-      `export function test(): string { return "hello"; }`,
-    );
+    const result = compile(`export function test(): string { return "hello"; }`);
     expect(result.success).toBe(true);
     expect(result.wat).toContain("externref");
     expect(result.wat).toContain("string_constants");

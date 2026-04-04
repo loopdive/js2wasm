@@ -14,7 +14,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("issue 582: tuple struct type mismatch in class methods", () => {
   it("method with destructured array default", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class C {
         method([x, y, z]: [number, number, number] = [1, 2, 3]): number {
           return x + y + z;
@@ -23,7 +24,9 @@ describe("issue 582: tuple struct type mismatch in class methods", () => {
       export function test(): number {
         return new C().method();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(6);
   });
 });

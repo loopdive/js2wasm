@@ -13,11 +13,9 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
     );
   }
   // Check for codegen errors (severity "error") that would block test262
-  const codegenErrors = result.errors.filter(e => e.severity === "error");
+  const codegenErrors = result.errors.filter((e) => e.severity === "error");
   if (codegenErrors.length > 0) {
-    throw new Error(
-      `Codegen errors:\n${codegenErrors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Codegen errors:\n${codegenErrors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
@@ -29,12 +27,11 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
  */
 function compileNoErrors(source: string, options?: { fileName?: string }): void {
   const result = compile(source, options);
-  const codegenErrors = result.errors.filter(e => e.severity === "error");
+  const codegenErrors = result.errors.filter((e) => e.severity === "error");
   expect(codegenErrors).toEqual([]);
 }
 
 describe("issue-263: dynamic property access", () => {
-
   describe("Function.name property", () => {
     it("compiles function.name without codegen errors", () => {
       compileNoErrors(`
@@ -44,10 +41,13 @@ describe("issue-263: dynamic property access", () => {
     });
 
     it("function.name returns the function name", async () => {
-      const result = await run(`
+      const result = await run(
+        `
         function myFunc() {}
         export function test(): string { return myFunc.name; }
-      `, "test");
+      `,
+        "test",
+      );
       expect(result).toBe("myFunc");
     });
 
@@ -75,24 +75,30 @@ describe("issue-263: dynamic property access", () => {
     });
 
     it("class.name returns the class name", async () => {
-      const result = await run(`
+      const result = await run(
+        `
         class MyClass {}
         export function test(): string { return MyClass.name; }
-      `, "test");
+      `,
+        "test",
+      );
       expect(result).toBe("MyClass");
     });
   });
 
   describe("Constructor.length property", () => {
     it("compiles class.length (constructor arity)", async () => {
-      const result = await run(`
+      const result = await run(
+        `
         class Bar {
           x: number;
           y: number;
           constructor(a: number, b: number) { this.x = a; this.y = b; }
         }
         export function test(): number { return Bar.length; }
-      `, "test");
+      `,
+        "test",
+      );
       expect(result).toBe(2);
     });
   });

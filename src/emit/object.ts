@@ -9,23 +9,9 @@
  * linker can combine multiple .o files into a single executable Wasm module.
  */
 
-import type {
-  WasmModule,
-  WasmFunction,
-  Instr,
-  Import,
-} from "../ir/types.js";
+import type { WasmModule, WasmFunction, Instr, Import } from "../ir/types.js";
 import { WasmEncoder } from "./encoder.js";
-import {
-  OP,
-  GC,
-  TYPE,
-  SECTION,
-  RELOC,
-  SYM_FLAGS,
-  SYMTAB,
-  LINKING_SUBSECTION,
-} from "./opcodes.js";
+import { OP, GC, TYPE, SECTION, RELOC, SYM_FLAGS, SYMTAB, LINKING_SUBSECTION } from "./opcodes.js";
 import {
   encodeTypeDef,
   encodeImport,
@@ -39,16 +25,16 @@ import {
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface RelocEntry {
-  type: number;        // RELOC.R_WASM_*
-  offset: number;      // byte offset within the section
-  symbolIndex: number;  // index into linking symbol table
+  type: number; // RELOC.R_WASM_*
+  offset: number; // byte offset within the section
+  symbolIndex: number; // index into linking symbol table
 }
 
 export interface SymbolInfo {
-  kind: number;   // SYMTAB.*
+  kind: number; // SYMTAB.*
   name: string;
-  index: number;  // function/global/tag index in the wasm index space
-  flags: number;  // SYM_FLAGS bitmask
+  index: number; // function/global/tag index in the wasm index space
+  flags: number; // SYM_FLAGS bitmask
 }
 
 // ── emitObject ───────────────────────────────────────────────────────
@@ -264,7 +250,8 @@ export function emitObject(mod: WasmModule): Uint8Array {
     enc.section(SECTION.element, (s) => {
       s.vector(mod.elements, (elem, e) => {
         e.byte(0x00);
-        for (const instr of elem.offset) encodeInstrWithReloc(instr, e, [], 0, funcIdxToSymIdx, globalIdxToSymIdx, tagIdxToSymIdx);
+        for (const instr of elem.offset)
+          encodeInstrWithReloc(instr, e, [], 0, funcIdxToSymIdx, globalIdxToSymIdx, tagIdxToSymIdx);
         e.byte(OP.end);
         e.vector(elem.funcIndices, (idx, enc2) => enc2.u32(idx));
       });
@@ -284,14 +271,7 @@ export function emitObject(mod: WasmModule): Uint8Array {
     codeSec.u32(mod.functions.length); // vector count
 
     for (const f of mod.functions) {
-      encodeFunctionWithReloc(
-        f,
-        codeSec,
-        relocs,
-        funcIdxToSymIdx,
-        globalIdxToSymIdx,
-        tagIdxToSymIdx,
-      );
+      encodeFunctionWithReloc(f, codeSec, relocs, funcIdxToSymIdx, globalIdxToSymIdx, tagIdxToSymIdx);
     }
 
     const codeBytes = codeSec.finish();

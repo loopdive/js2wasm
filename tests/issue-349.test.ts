@@ -16,92 +16,128 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("issue-349: String() constructor as function", () => {
   it("String(42) returns '42'", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(42); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("42");
   });
 
   it("String(0) returns '0'", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(0); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("0");
   });
 
   it("String(-1) returns '-1'", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(-1); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("-1");
   });
 
   it("String(3.14) returns '3.14'", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(3.14); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("3.14");
   });
 
   it("String(true) returns 'true'", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(true); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("true");
   });
 
   it("String(false) returns 'false'", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(false); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("false");
   });
 
   it("String(null) returns 'null'", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(null); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("null");
   });
 
   it("String(undefined) returns 'undefined'", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(undefined); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("undefined");
   });
 
   it("String() with no args returns empty string", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String(); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("");
   });
 
   it("String('hello') returns 'hello' (passthrough)", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string { return String("hello"); }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("hello");
   });
 
   it("String with boolean variable", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string {
         const b: boolean = true;
         return String(b);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("true");
   });
 
   it("String with number variable", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): string {
         const n: number = 123;
         return String(n);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe("123");
   });
 });

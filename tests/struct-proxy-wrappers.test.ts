@@ -13,7 +13,7 @@ import { buildImports } from "../src/runtime.ts";
 
 async function instantiate(src: string) {
   const r = compile(src, { fileName: "test.ts" });
-  if (!r.success) throw new Error("CE: " + r.errors.map(e => e.message).join("\n"));
+  if (!r.success) throw new Error("CE: " + r.errors.map((e) => e.message).join("\n"));
   const imports = buildImports(r.imports, undefined, r.stringPool);
   const { instance } = await WebAssembly.instantiate(r.binary, imports as any);
   if (imports.setExports) imports.setExports(instance.exports as any);

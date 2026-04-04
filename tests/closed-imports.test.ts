@@ -19,7 +19,7 @@ describe("ImportDescriptor manifest", () => {
     `);
     expect(result.success).toBe(true);
     // Math.exp is now inlined as pure Wasm — no host import
-    const mathImport = result.imports.find(i => i.name === "Math_exp");
+    const mathImport = result.imports.find((i) => i.name === "Math_exp");
     expect(mathImport).toBeUndefined();
   });
 
@@ -28,7 +28,7 @@ describe("ImportDescriptor manifest", () => {
       export function f(): void { console.log(42); }
     `);
     expect(result.success).toBe(true);
-    const logImport = result.imports.find(i => i.name === "console_log_number");
+    const logImport = result.imports.find((i) => i.name === "console_log_number");
     expect(logImport).toBeDefined();
     expect(logImport!.intent).toEqual({ type: "console_log", variant: "number" });
   });
@@ -44,10 +44,13 @@ describe("ImportDescriptor manifest", () => {
       }
     `);
     expect(result.success).toBe(true);
-    const getImport = result.imports.find(i => i.name === "Element_get_textContent");
+    const getImport = result.imports.find((i) => i.name === "Element_get_textContent");
     expect(getImport).toBeDefined();
     expect(getImport!.intent).toEqual({
-      type: "extern_class", className: "Element", action: "get", member: "textContent"
+      type: "extern_class",
+      className: "Element",
+      action: "get",
+      member: "textContent",
     });
   });
 
@@ -56,7 +59,7 @@ describe("ImportDescriptor manifest", () => {
       export function f(s: string): string { return s.trim(); }
     `);
     expect(result.success).toBe(true);
-    const trimImport = result.imports.find(i => i.name === "string_trim");
+    const trimImport = result.imports.find((i) => i.name === "string_trim");
     expect(trimImport).toBeDefined();
     expect(trimImport!.intent).toEqual({ type: "string_method", method: "trim" });
   });
@@ -66,7 +69,7 @@ describe("ImportDescriptor manifest", () => {
       export function f(x: number): string { return x.toString(); }
     `);
     expect(result.success).toBe(true);
-    const imp = result.imports.find(i => i.name === "number_toString");
+    const imp = result.imports.find((i) => i.name === "number_toString");
     expect(imp).toBeDefined();
     expect(imp!.intent).toEqual({ type: "builtin", name: "number_toString" });
   });
@@ -76,7 +79,7 @@ describe("ImportDescriptor manifest", () => {
       export function f(): string { return "a" + "b"; }
     `);
     expect(result.success).toBe(true);
-    const jsStringImports = result.imports.filter(i => i.module === "wasm:js-string");
+    const jsStringImports = result.imports.filter((i) => i.module === "wasm:js-string");
     expect(jsStringImports.length).toBe(0);
   });
 });
@@ -100,7 +103,12 @@ describe("closed buildImports", () => {
 
   it("builds env from manifest with extern class get", () => {
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Foo_get_bar", kind: "func", intent: { type: "extern_class", className: "Foo", action: "get", member: "bar" } },
+      {
+        module: "env",
+        name: "Foo_get_bar",
+        kind: "func",
+        intent: { type: "extern_class", className: "Foo", action: "get", member: "bar" },
+      },
     ];
     const imports = buildImports(manifest);
     expect(imports.env.Foo_get_bar({ bar: 42 })).toBe(42);
@@ -117,9 +125,19 @@ describe("closed buildImports", () => {
   });
 
   it("extern class new uses deps", () => {
-    class MyWidget { x: number; constructor(x: number) { this.x = x; } }
+    class MyWidget {
+      x: number;
+      constructor(x: number) {
+        this.x = x;
+      }
+    }
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Widget_new", kind: "func", intent: { type: "extern_class", className: "Widget", action: "new" } },
+      {
+        module: "env",
+        name: "Widget_new",
+        kind: "func",
+        intent: { type: "extern_class", className: "Widget", action: "new" },
+      },
     ];
     const imports = buildImports(manifest, { Widget: MyWidget });
     const w = imports.env.Widget_new(7);
@@ -165,8 +183,12 @@ describe("security: closed import surface", () => {
 
   it("extern class get only accesses the declared member", () => {
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_get_textContent", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" } },
+      {
+        module: "env",
+        name: "Element_get_textContent",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" },
+      },
     ];
     const imports = buildImports(manifest);
     const fake = { textContent: "hello", __proto__: "evil" };
@@ -183,10 +205,7 @@ describe("security: closed import surface", () => {
     // Math.exp is now inlined as pure Wasm — may have zero host imports
 
     const imports = buildImports(result.imports);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary as BufferSource,
-      imports as WebAssembly.Imports,
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary as BufferSource, imports as WebAssembly.Imports);
     expect((instance.exports as any).f(0)).toBeCloseTo(1, 5);
   });
 

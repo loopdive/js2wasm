@@ -17,7 +17,7 @@ Tests must run AFTER merging main to catch integration issues. Use the test lock
 ### Before every test run
 
 3. [ ] Check free RAM: `free -m | awk '/Mem/{print $4}'` — need **>2GB free** to proceed. If <2GB, message tech lead and wait.
-4. [ ] Acquire test lock: `mkdir /tmp/ts2wasm-test-lock 2>/dev/null` — if it fails, another agent is testing. Wait and retry.
+4. [ ] Acquire test lock: `mkdir /tmp/js2wasm-test-lock 2>/dev/null` — if it fails, another agent is testing. Wait and retry.
 5. [ ] Message tech lead: `"Running tests for #N"`
 
 ### Test sequence (run in order, stop on failure)
@@ -35,7 +35,7 @@ Tests must run AFTER merging main to catch integration issues. Use the test lock
 
 ### After testing
 
-9. [ ] Release test lock: `rmdir /tmp/ts2wasm-test-lock`
+9. [ ] Release test lock: `rmdir /tmp/js2wasm-test-lock`
 10. [ ] Message tech lead: `"Tests done for #N"`
 
 ## Finalize

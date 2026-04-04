@@ -4,9 +4,7 @@ import { emitBinary } from "../src/emit/binary.js";
 import { addRuntime } from "../src/codegen-linear/runtime.js";
 
 /** Build a minimal module with just the runtime, compile and instantiate it */
-async function buildRuntimeModule(
-  setup?: (mod: ReturnType<typeof createEmptyModule>) => void,
-) {
+async function buildRuntimeModule(setup?: (mod: ReturnType<typeof createEmptyModule>) => void) {
   const mod = createEmptyModule();
   addRuntime(mod);
   if (setup) setup(mod);
@@ -26,9 +24,7 @@ describe("linear-runtime: bump allocator", () => {
     const mod = createEmptyModule();
     addRuntime(mod);
     // Export __malloc for testing
-    const mallocFuncIdx = mod.functions.findIndex(
-      (f) => f.name === "__malloc",
-    );
+    const mallocFuncIdx = mod.functions.findIndex((f) => f.name === "__malloc");
     mod.exports.push({
       name: "__malloc",
       desc: { kind: "func", index: mallocFuncIdx },
@@ -55,9 +51,7 @@ describe("linear-runtime: bump allocator", () => {
   it("__malloc aligns to 8 bytes", async () => {
     const mod = createEmptyModule();
     addRuntime(mod);
-    const mallocFuncIdx = mod.functions.findIndex(
-      (f) => f.name === "__malloc",
-    );
+    const mallocFuncIdx = mod.functions.findIndex((f) => f.name === "__malloc");
     mod.exports.push({
       name: "__malloc",
       desc: { kind: "func", index: mallocFuncIdx },

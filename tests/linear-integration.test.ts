@@ -3,7 +3,8 @@ import { compile } from "../src/index.js";
 
 describe("linear-memory integration", { timeout: 30_000 }, () => {
   it("compiles a LEB128 decoder (linker-like code)", async () => {
-    const result = compile(`
+    const result = compile(
+      `
       class ByteReader {
         data: number[];
         pos: number;
@@ -42,7 +43,9 @@ describe("linear-memory integration", { timeout: 30_000 }, () => {
         reader.byte();
         return reader.remaining;
       }
-    `, { target: "linear" });
+    `,
+      { target: "linear" },
+    );
     expect(result.success).toBe(true);
     const { instance } = await WebAssembly.instantiate(result.binary);
     const { decodeLEB, remaining } = instance.exports as any;
@@ -57,7 +60,8 @@ describe("linear-memory integration", { timeout: 30_000 }, () => {
   });
 
   it("compiles a Map-based counter (linker-like pattern)", async () => {
-    const result = compile(`
+    const result = compile(
+      `
       export function test(): number {
         const counts = new Map<number, number>();
         const items = [1, 2, 1, 3, 2, 1];
@@ -71,14 +75,17 @@ describe("linear-memory integration", { timeout: 30_000 }, () => {
         // item 1 appears 3 times
         return counts.get(1)!;
       }
-    `, { target: "linear" });
+    `,
+      { target: "linear" },
+    );
     expect(result.success).toBe(true);
     const { instance } = await WebAssembly.instantiate(result.binary);
     expect((instance.exports as any).test()).toBe(3);
   });
 
   it("compiles class with field mutation and multiple methods", async () => {
-    const result = compile(`
+    const result = compile(
+      `
       class Stack {
         items: number[];
         constructor() {
@@ -105,7 +112,9 @@ describe("linear-memory integration", { timeout: 30_000 }, () => {
         const top = s.pop();
         return top + s.size();
       }
-    `, { target: "linear" });
+    `,
+      { target: "linear" },
+    );
     expect(result.success).toBe(true);
     const { instance } = await WebAssembly.instantiate(result.binary);
     // top=30, size=3 → 33

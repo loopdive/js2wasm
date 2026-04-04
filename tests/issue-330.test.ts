@@ -5,7 +5,7 @@ import { buildImports } from "../src/runtime.js";
 function compileAndRun(code: string) {
   const result = compile(code);
   if (!result.success) {
-    throw new Error(`Compilation failed: ${result.errors.map(e => e.message).join(", ")}`);
+    throw new Error(`Compilation failed: ${result.errors.map((e) => e.message).join(", ")}`);
   }
   const mod = new WebAssembly.Module(result.binary);
   const inst = new WebAssembly.Instance(mod, buildImports(result.imports, undefined, result.stringPool));
@@ -38,7 +38,7 @@ describe("Issue #330: ClassExpression in unsupported positions", () => {
       export function test(): number { return 1; }
     `);
     // The class expression should not produce an "Unsupported expression" error
-    const classExprErrors = result.errors.filter(e => e.message.includes("ClassExpression"));
+    const classExprErrors = result.errors.filter((e) => e.message.includes("ClassExpression"));
     expect(classExprErrors).toHaveLength(0);
   });
 
@@ -52,7 +52,7 @@ describe("Issue #330: ClassExpression in unsupported positions", () => {
       };
       export function test(): number { return 1; }
     `);
-    const classExprErrors = result.errors.filter(e => e.message.includes("ClassExpression"));
+    const classExprErrors = result.errors.filter((e) => e.message.includes("ClassExpression"));
     expect(classExprErrors).toHaveLength(0);
   });
 
@@ -62,7 +62,7 @@ describe("Issue #330: ClassExpression in unsupported positions", () => {
       cls = class {};
       export function test(): number { return 1; }
     `);
-    const classExprErrors = result.errors.filter(e => e.message.includes("ClassExpression"));
+    const classExprErrors = result.errors.filter((e) => e.message.includes("ClassExpression"));
     expect(classExprErrors).toHaveLength(0);
   });
 

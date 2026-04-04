@@ -15,6 +15,7 @@ export type ImportIntent =
   | { type: "truthy_check" }
   | { type: "date_new" }
   | { type: "date_method"; method: string }
+  | { type: "date_now" }
   | { type: "declared_global"; name: string }
   | { type: "dynamic_import" }
   | { type: "proxy_create" };
@@ -49,6 +50,10 @@ export interface CompileResult {
   cHeader?: string;
   /** WIT interface definition (only present when wit option is enabled) */
   wit?: string;
+  /** Whether the source declares an exported main() function */
+  hasMain: boolean;
+  /** Whether the source has top-level executable statements (module init code) */
+  hasTopLevelStatements: boolean;
 }
 
 export interface CompileError {
@@ -147,10 +152,7 @@ import { treeshake, getEntryExportNames } from "./treeshake.js";
  * }
  * ```
  */
-export function compile(
-  source: string,
-  options?: CompileOptions,
-): CompileResult {
+export function compile(source: string, options?: CompileOptions): CompileResult {
   return compileSource(source, options);
 }
 
@@ -183,10 +185,7 @@ export function compileMulti(
  * // TypeScript resolves src/utils.ts automatically
  * ```
  */
-export function compileFiles(
-  entryPath: string,
-  options?: CompileOptions,
-): CompileResult {
+export function compileFiles(entryPath: string, options?: CompileOptions): CompileResult {
   return compileFilesSource(entryPath, options);
 }
 
@@ -201,10 +200,7 @@ export function compileToWat(source: string): string {
  * The output contains LLVM-style linking and relocation metadata
  * suitable for use with a Wasm linker.
  */
-export function compileToObject(
-  source: string,
-  options?: CompileOptions,
-) {
+export function compileToObject(source: string, options?: CompileOptions) {
   return compileToObjectSource(source, options);
 }
 
@@ -216,10 +212,7 @@ export function compileToObject(
  * @param entryFile - Absolute or relative path to the entry .ts file
  * @param options - Compile options including resolve and externals settings
  */
-export function compileProject(
-  entryFile: string,
-  options?: CompileOptions,
-): CompileResult {
+export function compileProject(entryFile: string, options?: CompileOptions): CompileResult {
   const resolvedEntry = path.resolve(entryFile);
   const rootDir = path.dirname(resolvedEntry);
 

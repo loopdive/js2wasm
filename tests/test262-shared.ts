@@ -10,25 +10,19 @@
  * memory reclaim of the vitest process itself.
  */
 import { createHash } from "crypto";
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeSync as fdWrite,
-  fsyncSync,
-  openSync,
-} from "fs";
+import { closeSync, existsSync, mkdirSync, readFileSync, writeSync as fdWrite, fsyncSync, openSync } from "fs";
 import { dirname, join, relative } from "path";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { availableParallelism } from "os";
 import { CompilerPool, type TestResult } from "../scripts/compiler-pool.js";
 import {
   classifyError,
+  classifyTestScope,
   findTestFiles,
   parseMeta,
   shouldSkip,
   TEST_CATEGORIES,
+  type Test262Scope,
   wrapTest,
 } from "./test262-runner.js";
 
@@ -51,8 +45,7 @@ async function getCompileMulti() {
 function resolveFixtures(source: string, testFilePath: string): string[] {
   const fixtures: string[] = [];
   const dir = dirname(testFilePath);
-  const importRe =
-    /(?:import|export)\s+.*?from\s+['"]([^'"]*_FIXTURE\.js)['"]/g;
+  const importRe = /(?:import|export)\s+.*?from\s+['"]([^'"]*_FIXTURE\.js)['"]/g;
   let m;
   while ((m = importRe.exec(source)) !== null) {
     const resolved = join(dir, m[1]!);
@@ -69,19 +62,28 @@ mkdirSync(CACHE_DIR, { recursive: true });
 function buildCompilerHash(): string {
   const h = createHash("md5");
   const root = join(import.meta.dirname ?? ".", "..");
-  try { h.update(readFileSync(join(root, "scripts", "compiler-bundle.mjs"))); } catch { h.update("no-bundle"); }
-  try { h.update(readFileSync(join(import.meta.dirname ?? ".", "test262-runner.ts"))); } catch { h.update("no-runner"); }
-  try { h.update(readFileSync(join(root, "src", "runtime.ts"))); } catch { h.update("no-runtime"); }
+  try {
+    h.update(readFileSync(join(root, "scripts", "compiler-bundle.mjs")));
+  } catch {
+    h.update("no-bundle");
+  }
+  try {
+    h.update(readFileSync(join(import.meta.dirname ?? ".", "test262-runner.ts")));
+  } catch {
+    h.update("no-runner");
+  }
+  try {
+    h.update(readFileSync(join(root, "src", "runtime.ts")));
+  } catch {
+    h.update("no-runtime");
+  }
   return h.digest("hex").slice(0, 12);
 }
 
 const compilerHash = buildCompilerHash();
 
 function getCachePaths(wrappedSource: string): { wasmPath: string; metaPath: string } {
-  const hash = createHash("md5")
-    .update(wrappedSource)
-    .update(compilerHash)
-    .digest("hex");
+  const hash = createHash("md5").update(wrappedSource).update(compilerHash).digest("hex");
   return {
     wasmPath: join(CACHE_DIR, `${hash}.wasm`),
     metaPath: join(CACHE_DIR, `${hash}.json`),
@@ -90,26 +92,18 @@ function getCachePaths(wrappedSource: string): { wasmPath: string; metaPath: str
 
 // ── Pool setup ─────────────────────────────────────────────────────
 
-const POOL_SIZE = parseInt(
-  process.env.COMPILER_POOL_SIZE || String(Math.max(1, availableParallelism() - 1)),
-  10,
-);
+const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || String(Math.max(1, availableParallelism() - 1)), 10);
 
 let pool: CompilerPool | null = null;
 
 // ── Result tracking (JSONL output for report.html) ──────────────────
 
-const RESULTS_DIR = join(
-  import.meta.dirname ?? ".",
-  "..",
-  "benchmarks",
-  "results",
-);
+const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
 mkdirSync(RESULTS_DIR, { recursive: true });
 
 // Timestamped filename — env var from run-test262-vitest.sh, or generate one
-const RUN_TIMESTAMP = process.env.RUN_TIMESTAMP
-  || new Date().toISOString().replace(/[-:T]/g, "").replace(/\..+/, "").slice(0, 15);
+const RUN_TIMESTAMP =
+  process.env.RUN_TIMESTAMP || new Date().toISOString().replace(/[-:T]/g, "").replace(/\..+/, "").slice(0, 15);
 const JSONL_PATH = join(RESULTS_DIR, `test262-results-${RUN_TIMESTAMP}.jsonl`);
 
 // Open results JSONL — each chunk appends independently
@@ -124,10 +118,27 @@ const summary = {
   compile_timeout: 0,
   skip: 0,
 };
-const catCounts: Record<
-  string,
-  { pass: number; fail: number; compile_error: number; skip: number; total: number }
-> = {};
+type StatusCounts = {
+  pass: number;
+  fail: number;
+  compile_error: number;
+  compile_timeout: number;
+  skip: number;
+  total: number;
+};
+
+function createEmptyCounts(): StatusCounts {
+  return {
+    pass: 0,
+    fail: 0,
+    compile_error: 0,
+    compile_timeout: 0,
+    skip: 0,
+    total: 0,
+  };
+}
+
+const catCounts: Record<string, StatusCounts> = {};
 
 const errorCategoryCounts: Record<string, number> = {};
 const skipReasonCounts: Record<string, number> = {};
@@ -145,11 +156,9 @@ function recordResult(
   status: string,
   error?: string,
   timing?: { compileMs?: number; execMs?: number },
+  scopeInfo?: { scope: Test262Scope; official: boolean; reason?: string },
 ) {
-  const errorCategory =
-    status === "fail" || status === "compile_error"
-      ? classifyError(error)
-      : undefined;
+  const errorCategory = status === "fail" || status === "compile_error" ? classifyError(error) : undefined;
 
   const entry = JSON.stringify({
     timestamp: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
@@ -160,12 +169,14 @@ function recordResult(
     error_category: errorCategory,
     compile_ms: timing?.compileMs !== undefined ? Math.round(timing.compileMs) : undefined,
     exec_ms: timing?.execMs !== undefined ? Math.round(timing.execMs) : undefined,
+    scope: scopeInfo?.scope ?? "standard",
+    scope_official: scopeInfo?.official ?? true,
+    scope_reason: scopeInfo?.reason,
   });
   fdWrite(jsonlFd, entry + "\n");
   summary.total++;
   (summary as any)[status]++;
-  if (!catCounts[category])
-    catCounts[category] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
+  if (!catCounts[category]) catCounts[category] = createEmptyCounts();
   (catCounts[category] as any)[status]++;
   catCounts[category].total++;
 
@@ -178,7 +189,9 @@ function recordResult(
 
   flushCount++;
   if (flushCount % 50 === 0) {
-    try { fsyncSync(jsonlFd); } catch {}
+    try {
+      fsyncSync(jsonlFd);
+    } catch {}
   }
 
   if (status !== "pass") {
@@ -205,7 +218,10 @@ function findNthAssert(source: string, retVal: number): string {
   const assertStarts: { line: number; text: string }[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (/\bassert\b/.test(lines[i])) {
-      const text = lines.slice(i, Math.min(i + 3, lines.length)).join(" ").trim();
+      const text = lines
+        .slice(i, Math.min(i + 3, lines.length))
+        .join(" ")
+        .trim();
       assertStarts.push({ line: i + 1, text: text.substring(0, 120) });
     }
   }
@@ -229,10 +245,16 @@ const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
  * the test in one process. No separate Phase 1 needed.
  */
 export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
-  // Build full test list, then round-robin across chunks
+  // Build full test list, filtering out proposals unless explicitly included.
+  // This avoids registering ~5,200 proposal tests that would be skipped anyway,
+  // saving ~10% of run time and keeping the statusline total accurate.
+  const includeProposals = process.env.TEST262_INCLUDE_PROPOSALS === "1";
   const allTests: { category: string; filePath: string }[] = [];
   for (const category of TEST_CATEGORIES) {
     for (const filePath of findTestFiles(category)) {
+      // Skip staging/ and proposal-tagged tests at the file level
+      const relPath = filePath.replace(/.*test262\//, "");
+      if (!includeProposals && (relPath.startsWith("test/staging/") || relPath.startsWith("staging/"))) continue;
       allTests.push({ category, filePath });
     }
   }
@@ -241,7 +263,10 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
   const byCategory = new Map<string, string[]>();
   for (const { category, filePath } of myTests) {
     let arr = byCategory.get(category);
-    if (!arr) { arr = []; byCategory.set(category, arr); }
+    if (!arr) {
+      arr = [];
+      byCategory.set(category, arr);
+    }
     arr.push(filePath);
   }
 
@@ -251,8 +276,13 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
   }, 30_000);
 
   afterAll(() => {
-    try { pool?.shutdown(); pool = null; } catch {}
-    try { closeSync(jsonlFd); } catch {}
+    try {
+      pool?.shutdown();
+      pool = null;
+    } catch {}
+    try {
+      closeSync(jsonlFd);
+    } catch {}
 
     const ecEntries = Object.entries(errorCategoryCounts).sort((a, b) => b[1] - a[1]);
     if (ecEntries.length > 0) {
@@ -285,10 +315,11 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
           async () => {
             const source = readFileSync(filePath, "utf-8");
             const meta = parseMeta(source);
+            const scopeInfo = classifyTestScope(source, meta, filePath);
 
             const filter = shouldSkip(source, meta, filePath);
             if (filter.skip) {
-              recordResult(relPath, category, "skip", filter.reason);
+              recordResult(relPath, category, "skip", filter.reason, undefined, scopeInfo);
               return;
             }
 
@@ -307,8 +338,7 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
               try {
                 const vfiles: Record<string, string> = { "./test.ts": wrapped };
                 for (const fixPath of fixtures) {
-                  vfiles["./" + relative(dirname(filePath), fixPath)] =
-                    readFileSync(fixPath, "utf-8");
+                  vfiles["./" + relative(dirname(filePath), fixPath)] = readFileSync(fixPath, "utf-8");
                 }
                 const multiCompile = await getCompileMulti();
                 const result = multiCompile(vfiles, "./test.ts", {
@@ -316,45 +346,57 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
                 });
                 if (!result.success || result.binary.length === 0) {
                   if (isNegative) {
-                    recordResult(relPath, category, "pass");
+                    recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
                   } else {
-                    const errMsg = result.errors
-                      .map((e: any) => `L${e.line}:${e.column} ${e.message}`)
-                      .join("; ");
-                    recordResult(relPath, category, "compile_error", errMsg);
+                    const errMsg = result.errors.map((e: any) => `L${e.line}:${e.column} ${e.message}`).join("; ");
+                    recordResult(relPath, category, "compile_error", errMsg, undefined, scopeInfo);
                   }
                   return;
                 }
                 // For fixture tests, we'd need to execute in-process too.
                 // This is rare enough that we accept it.
-                recordResult(relPath, category, "compile_error", "fixture tests not supported in unified mode");
+                recordResult(
+                  relPath,
+                  category,
+                  "compile_error",
+                  "fixture tests not supported in unified mode",
+                  undefined,
+                  scopeInfo,
+                );
               } catch (e: any) {
-                recordResult(relPath, category, "compile_error", e.message ?? String(e));
+                recordResult(relPath, category, "compile_error", e.message ?? String(e), undefined, scopeInfo);
               }
               return;
             }
 
             // ── Normal path: unified compile+execute in fork ────────
-            const { wasmPath, metaPath } = getCachePaths(wrapped);
-            const r = await pool!.runTest(wrapped, {
-              isNegative: isNegative || false,
-              isRuntimeNegative: isRuntimeNegative || false,
-              wasmPath,
-              metaPath,
-              label: relPath,
-            }, 30_000);
+            // Cache disabled — stale cache entries caused false baselines.
+            // Every test is compiled and executed fresh each run.
+            const wasmPath = "";
+            const metaPath = "";
+            const r = await pool!.runTest(
+              wrapped,
+              {
+                isNegative: isNegative || false,
+                isRuntimeNegative: isRuntimeNegative || false,
+                wasmPath,
+                metaPath,
+                label: relPath,
+              },
+              30_000,
+            );
 
             const timing = { compileMs: r.compileMs, execMs: r.execMs };
 
             // Map worker result to recordResult
             if (r.status === "pass") {
-              recordResult(relPath, category, "pass", undefined, timing);
+              recordResult(relPath, category, "pass", undefined, timing, scopeInfo);
               return;
             }
 
             if (r.status === "compile_error" || r.status === "compile_timeout") {
               const error = r.error ? adjustErrorLines(r.error, wrapOffset) : r.status;
-              recordResult(relPath, category, r.status, error, timing);
+              recordResult(relPath, category, r.status, error, timing, scopeInfo);
               return;
             }
 
@@ -371,10 +413,7 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
                     for (let i = 0; i < lines.length; i++) {
                       if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
                         const ctx = lines[i].trim().substring(0, 80);
-                        error = error.replace(
-                          `[in ${fname}()]`,
-                          `[in ${fname}() at L${i + 1}: ${ctx}]`,
-                        );
+                        error = error.replace(`[in ${fname}()]`, `[in ${fname}() at L${i + 1}: ${ctx}]`);
                         break;
                       }
                     }
@@ -403,12 +442,12 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
                 }
               }
 
-              recordResult(relPath, category, "fail", error, timing);
+              recordResult(relPath, category, "fail", error, timing, scopeInfo);
               return;
             }
 
             // Fallback
-            recordResult(relPath, category, r.status || "fail", r.error || "unknown", timing);
+            recordResult(relPath, category, r.status || "fail", r.error || "unknown", timing, scopeInfo);
           },
           90_000,
         );

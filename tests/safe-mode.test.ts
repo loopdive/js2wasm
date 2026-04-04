@@ -4,38 +4,30 @@ import { compile } from "../src/index.js";
 describe("safe mode", () => {
   describe("clean code passes", () => {
     it("pure compute code compiles in safe mode", () => {
-      const result = compile(
-        `export function add(a: number, b: number): number { return a + b; }`,
-        { safe: true },
-      );
+      const result = compile(`export function add(a: number, b: number): number { return a + b; }`, { safe: true });
       expect(result.success).toBe(true);
     });
 
     it("string operations compile in safe mode", () => {
-      const result = compile(
-        `export function greet(name: string): string { return "hello " + name; }`,
-        { safe: true },
-      );
+      const result = compile(`export function greet(name: string): string { return "hello " + name; }`, { safe: true });
       expect(result.success).toBe(true);
     });
 
     it("Math functions compile in safe mode", () => {
-      const result = compile(
-        `export function area(r: number): number { return Math.PI * r * r; }`,
-        { safe: true },
-      );
+      const result = compile(`export function area(r: number): number { return Math.PI * r * r; }`, { safe: true });
       expect(result.success).toBe(true);
     });
   });
 
   describe("declare const globals", () => {
     it("rejects undeclared globals", () => {
-      const result = compile(
-        `declare const document: any;\nexport function test(): number { return 1; }`,
-        { safe: true },
-      );
+      const result = compile(`declare const document: any;\nexport function test(): number { return 1; }`, {
+        safe: true,
+      });
       expect(result.success).toBe(false);
-      expect(result.errors.some(e => e.message.includes("declared global") && e.message.includes("document"))).toBe(true);
+      expect(result.errors.some((e) => e.message.includes("declared global") && e.message.includes("document"))).toBe(
+        true,
+      );
     });
 
     it("allows explicitly allowlisted globals", () => {
@@ -47,12 +39,12 @@ describe("safe mode", () => {
     });
 
     it("rejects any type on declared globals", () => {
-      const result = compile(
-        `declare const myGlobal: any;\nexport function test(): number { return 1; }`,
-        { safe: true, allowedGlobals: ["myGlobal"] },
-      );
+      const result = compile(`declare const myGlobal: any;\nexport function test(): number { return 1; }`, {
+        safe: true,
+        allowedGlobals: ["myGlobal"],
+      });
       expect(result.success).toBe(false);
-      expect(result.errors.some(e => e.message.includes('"any" type'))).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('"any" type'))).toBe(true);
     });
   });
 
@@ -63,7 +55,7 @@ describe("safe mode", () => {
         { safe: true },
       );
       expect(result.success).toBe(false);
-      expect(result.errors.some(e => e.message.includes("__proto__") && e.message.includes("blocked"))).toBe(true);
+      expect(result.errors.some((e) => e.message.includes("__proto__") && e.message.includes("blocked"))).toBe(true);
     });
 
     it("rejects innerHTML on extern classes", () => {
@@ -72,7 +64,7 @@ describe("safe mode", () => {
         { safe: true },
       );
       expect(result.success).toBe(false);
-      expect(result.errors.some(e => e.message.includes("innerHTML"))).toBe(true);
+      expect(result.errors.some((e) => e.message.includes("innerHTML"))).toBe(true);
     });
 
     it("allows members in the allowlist", () => {
@@ -89,16 +81,19 @@ describe("safe mode", () => {
         { safe: true, allowedExternMembers: { Element: ["textContent"] } },
       );
       expect(result.success).toBe(false);
-      expect(result.errors.some(e => e.message.includes("className") && e.message.includes("not in allowedExternMembers"))).toBe(true);
+      expect(
+        result.errors.some((e) => e.message.includes("className") && e.message.includes("not in allowedExternMembers")),
+      ).toBe(true);
     });
 
     it("rejects any type on extern class members", () => {
-      const result = compile(
-        `declare class MyObj { data: any; }\nexport function test(): number { return 1; }`,
-        { safe: true },
-      );
+      const result = compile(`declare class MyObj { data: any; }\nexport function test(): number { return 1; }`, {
+        safe: true,
+      });
       expect(result.success).toBe(false);
-      expect(result.errors.some(e => e.message.includes('"any" type') && e.message.includes("MyObj.data"))).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('"any" type') && e.message.includes("MyObj.data"))).toBe(
+        true,
+      );
     });
   });
 
@@ -109,7 +104,7 @@ describe("safe mode", () => {
         { safe: true, allowedGlobals: ["c"], allowedExternMembers: { Collection: ["length"] } },
       );
       expect(result.success).toBe(false);
-      expect(result.errors.some(e => e.message.includes("dynamic property access"))).toBe(true);
+      expect(result.errors.some((e) => e.message.includes("dynamic property access"))).toBe(true);
     });
   });
 
@@ -120,7 +115,7 @@ describe("safe mode", () => {
         { safe: true },
       );
       expect(result.success).toBe(false);
-      const err = result.errors.find(e => e.message.includes("declared global"));
+      const err = result.errors.find((e) => e.message.includes("declared global"));
       expect(err).toBeDefined();
       expect(err!.line).toBe(3);
       expect(err!.column).toBeGreaterThan(0);
@@ -133,7 +128,7 @@ describe("safe mode", () => {
         `declare const document: any;\ndeclare class Element { innerHTML: string; __proto__: number; }\nexport function test(): number { return 1; }`,
       );
       // Should compile (may have type errors but not safe mode errors)
-      expect(result.errors.every(e => !e.message.includes("Safe mode"))).toBe(true);
+      expect(result.errors.every((e) => !e.message.includes("Safe mode"))).toBe(true);
     });
   });
 });

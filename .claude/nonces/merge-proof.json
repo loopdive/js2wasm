@@ -1,0 +1,8 @@
+{
+  "branch": "issue-923-state-leak",
+  "commit": "2ba762fa",
+  "equivPass": 1131,
+  "equivFail": 93,
+  "timestamp": "2026-04-04T06:10:22Z",
+  "tester": "dev-state-2"
+}

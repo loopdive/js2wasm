@@ -11,10 +11,7 @@ import type { Instr } from "../ir/types.js";
  * Recursively walk all instructions in `instrs`, calling `visitor` on each one.
  * Automatically recurses into nested blocks: body, then, else, catches, catchAll.
  */
-export function walkInstructions(
-  instrs: Instr[],
-  visitor: (instr: Instr) => void,
-): void {
+export function walkInstructions(instrs: Instr[], visitor: (instr: Instr) => void): void {
   for (const instr of instrs) {
     visitor(instr);
     walkChildren(instr, (child) => walkInstructions(child, visitor));
@@ -26,10 +23,7 @@ export function walkInstructions(
  * found on a single instruction. Does NOT recurse -- the caller is responsible for
  * driving recursion (e.g. by calling walkChildren again inside fn).
  */
-export function walkChildren(
-  instr: Instr,
-  fn: (children: Instr[]) => void,
-): void {
+export function walkChildren(instr: Instr, fn: (children: Instr[]) => void): void {
   const a = instr as any;
   if (a.body && Array.isArray(a.body)) fn(a.body);
   if (a.then && Array.isArray(a.then)) fn(a.then);

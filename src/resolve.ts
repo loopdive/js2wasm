@@ -1,9 +1,16 @@
 import ts from "typescript";
 import * as path from "path";
-// Lazy-load fs for browser compatibility (Vite externalizes Node.js modules)
+// Lazy-load fs for browser compatibility.
+// Dynamic import avoids bundlers resolving it at build time and avoids
+// eval("require") warnings. The top-level await resolves before any
+// sync getFs() call since module evaluation completes before exports are used.
 let _fs: typeof import("fs") | null = null;
+try {
+  _fs = await import("node:fs");
+} catch {
+  _fs = null;
+}
 function getFs() {
-  if (!_fs) { try { _fs = eval('require')('fs'); } catch { _fs = null; } }
   return _fs;
 }
 import type { CompileOptions } from "./index.js";
@@ -36,9 +43,7 @@ export class ModuleResolver {
       baseUrl: rootDir,
       rootDir,
       // Allow TS to find types in the specified module directories
-      typeRoots: moduleDirs.map((d) =>
-        path.isAbsolute(d) ? d : path.resolve(rootDir, d),
-      ),
+      typeRoots: moduleDirs.map((d) => (path.isAbsolute(d) ? d : path.resolve(rootDir, d))),
       // Try to load tsconfig.json paths if available
       ...this.loadTsconfigPaths(),
     };
@@ -97,16 +102,10 @@ export class ModuleResolver {
       return {};
     }
 
-    const configFile = ts.readConfigFile(tsconfigPath, (p) =>
-      getFs()!.readFileSync(p, "utf-8"),
-    );
+    const configFile = ts.readConfigFile(tsconfigPath, (p) => getFs()!.readFileSync(p, "utf-8"));
     if (configFile.error || !configFile.config) return {};
 
-    const parsed = ts.parseJsonConfigFileContent(
-      configFile.config,
-      ts.sys,
-      this.rootDir,
-    );
+    const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, this.rootDir);
     const result: Partial<ts.CompilerOptions> = {};
     if (parsed.options.paths) {
       result.paths = parsed.options.paths;
@@ -138,12 +137,7 @@ export class ModuleResolver {
     }
 
     // Use TypeScript's module resolution
-    const result = ts.resolveModuleName(
-      specifier,
-      containingFile,
-      this.compilerOptions,
-      this.host,
-    );
+    const result = ts.resolveModuleName(specifier, containingFile, this.compilerOptions, this.host);
 
     let resolved: string | null = null;
     if (result.resolvedModule) {
@@ -203,10 +197,7 @@ export function getBarePackageName(specifier: string): string | null {
  *
  * @returns A map of file paths to source contents (including the entry file)
  */
-export function resolveAllImports(
-  entryFile: string,
-  resolver: ModuleResolver,
-): Map<string, string> {
+export function resolveAllImports(entryFile: string, resolver: ModuleResolver): Map<string, string> {
   const resolved = new Map<string, string>();
   const visited = new Set<string>();
   const queue: string[] = [path.resolve(entryFile)];

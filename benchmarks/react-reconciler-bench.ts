@@ -82,11 +82,7 @@ function jsBuildTree(n: number, seed: number): FiberNode[] {
 }
 
 // Apply ~updateCount random prop changes
-function jsApplyUpdates(
-  nodes: FiberNode[],
-  updateCount: number,
-  rng: number,
-): number {
+function jsApplyUpdates(nodes: FiberNode[], updateCount: number, rng: number): number {
   for (let i = 0; i < updateCount; i++) {
     rng = (rng * 1103 + 12345) % 100000;
     const idx = rng % nodes.length;
@@ -142,12 +138,7 @@ function jsChecksum(nodes: FiberNode[]): number {
   return sum;
 }
 
-function jsRunBenchmark(
-  nodeCount: number,
-  iterations: number,
-  updatePercent: number,
-  seed: number,
-): number {
+function jsRunBenchmark(nodeCount: number, iterations: number, updatePercent: number, seed: number): number {
   const nodes = jsBuildTree(nodeCount, seed);
   const updateCount = Math.floor((nodeCount * updatePercent) / 100);
   let rng = seed;
@@ -164,7 +155,7 @@ function jsRunBenchmark(
 }
 
 // ---------------------------------------------------------------------------
-// Wasm source — same algorithm, written in the subset ts2wasm compiles
+// Wasm source — same algorithm, written in the subset js2wasm compiles
 // ---------------------------------------------------------------------------
 const WASM_SOURCE = `
 class FiberNode {
@@ -373,12 +364,7 @@ async function main() {
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
   const wasmExports = instance.exports as {
-    runBenchmark: (
-      n: number,
-      iterations: number,
-      updatePercent: number,
-      seed: number,
-    ) => number;
+    runBenchmark: (n: number, iterations: number, updatePercent: number, seed: number) => number;
   };
 
   if (typeof wasmExports.runBenchmark !== "function") {
@@ -397,20 +383,11 @@ async function main() {
 
   // --- Verify correctness: both implementations should produce same result ---
   const jsVerify = jsRunBenchmark(NODES, ITERATIONS, UPDATE_PERCENT, 77777);
-  const wasmVerify = wasmExports.runBenchmark(
-    NODES,
-    ITERATIONS,
-    UPDATE_PERCENT,
-    77777,
-  );
+  const wasmVerify = wasmExports.runBenchmark(NODES, ITERATIONS, UPDATE_PERCENT, 77777);
   const correct = jsVerify === wasmVerify;
   if (!correct) {
-    console.log(
-      `  WARNING: Checksum mismatch — JS=${jsVerify}, Wasm=${wasmVerify}`,
-    );
-    console.log(
-      "  (Minor floating-point differences in integer division are expected)",
-    );
+    console.log(`  WARNING: Checksum mismatch — JS=${jsVerify}, Wasm=${wasmVerify}`);
+    console.log("  (Minor floating-point differences in integer division are expected)");
   } else {
     console.log("  Correctness verified: JS and Wasm checksums match.");
   }
@@ -459,9 +436,7 @@ async function main() {
   }
 
   console.log();
-  console.log(
-    `  Correctness: ${correct ? "PASS (checksums match)" : "WARN (checksums differ — see above)"}`,
-  );
+  console.log(`  Correctness: ${correct ? "PASS (checksums match)" : "WARN (checksums differ — see above)"}`);
   console.log();
 
   // Per-run details
@@ -480,7 +455,9 @@ async function main() {
   console.log(`  1000-node fiber tree reconciliation (${ITERATIONS} iterations x ${RUNS} runs)`);
   console.log(`  JS avg:   ${jsStats.avg.toFixed(2)}ms`);
   console.log(`  Wasm avg: ${wasmStats.avg.toFixed(2)}ms`);
-  console.log(`  Speedup:  ${ratio > 1 ? ratio.toFixed(2) + "x (Wasm faster)" : (1 / ratio).toFixed(2) + "x (JS faster)"}`);
+  console.log(
+    `  Speedup:  ${ratio > 1 ? ratio.toFixed(2) + "x (Wasm faster)" : (1 / ratio).toFixed(2) + "x (JS faster)"}`,
+  );
 }
 
 main().catch((err) => {

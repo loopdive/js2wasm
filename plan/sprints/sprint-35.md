@@ -1,86 +1,108 @@
-# Sprint 35
+# Sprint 35 — Push Toward 43%
 
-**Date**: TBD (after sprint-34 completes)
-**Goal**: Tackle #822 (biggest CE), push toward 45% pass rate (~21,640 pass needed)
-**Baseline**: TBD (sprint-34 final numbers)
+**Date**: 2026-04-03
+**Goal**: Push toward 43% — medium-difficulty high-impact runtime fixes
+**Baseline**: 17,583 pass / 43,120 official (40.8%) — post sprint-33
 
-## Team
+## Context
 
-| Role | Agent | Notes |
-|------|-------|-------|
-| Tech Lead | (orchestrator) | Merges, dispatches, test262 |
-| Architect | architect | Fresh analysis of #822, spec #855 |
-| dev-1 | developer | #822 → spillover |
-| dev-2 | developer | #855 → #864 |
-| dev-3 | developer | Spillover from sprint 32 (#845, #849) |
+After sprints 31/35 (CE reduction + incremental fixes) and 33 (benchmark recovery), this sprint targets the medium-difficulty runtime failures that don't require full architectural features.
 
-## Candidate issues (priority order)
+## Task queue
 
-### Tier 1: High-impact, architect-guided
+Issues already completed in sprint 35 are removed. Remaining:
 
-| Issue | Impact | Feasibility | Notes |
-|-------|--------|-------------|-------|
-| **#822** | **907 CE** | Hard | Biggest single issue. Prior repair-pass approach regressed. Needs fresh architect strategy. |
-| **#855** | **210 FAIL** | Hard | Promise/async handling. Simple cases pass, complex async-gen/combinator cases still fail. |
-| **#845** | **340 CE** (spillover) | Hard | If not completed in sprint 32. Multiple sub-patterns. |
-| **#849** | **200 FAIL** (spillover) | Medium | If not completed in sprint 32. Mapped arguments sync. |
+| Order | Issue | Impact | Notes |
+|-------|-------|--------|-------|
+| 1 | #858 | 182 FAIL | Worker/timeout exits + eval null deref |
+| 2 | #863 | 70 FAIL | decodeURI/encodeURI missing |
+| 3 | #845 | 340 CE | Misc CE: object literals, RegExp, for-in/of edges (needs architect) |
+| 4 | #855 | 210 FAIL | Promise/async error handling |
+| 5 | #853 | 58 FAIL | Opaque Wasm objects in for-in/Object.create |
+| 6 | #849 | 200 FAIL | Mapped arguments object sync (needs architect) |
+| 7 | #822 WI4 | 17 CE | struct.new type stack inference (deferred from s31) |
+| 8 | #924 | infra | Vite dev server 9GB OOM — playground unusable locally |
+| 9 | #925 | presentation | Landing page: conformance circle + ES edition timeline diagrams |
 
-### Tier 2: Medium-impact, dev-ready
+### Already done (removed from queue)
+- ~~#856~~ — done in sprint 35 (ValidateAndApplyPropertyDescriptor)
+- ~~#844~~ — done (prior session)
+- ~~#831~~ — done in sprint 35 (negative test early error detection)
+- ~~#840~~ — done in sprint 35 (array 0-arg)
+- ~~#829~~ — done (prior session)
 
-| Issue | Impact | Feasibility | Notes |
-|-------|--------|-------------|-------|
-| **#853** | 58 FAIL | Medium | Opaque Wasm objects in for-in/Object.create |
-| **#864** | 45 FAIL | Easy | WeakMap/WeakSet invalid key errors |
-| **#841** | 19 CE | Easy | Math methods (sumPrecise, cosh, sinh, tanh) |
-| **#836** | 20 CE | Easy | Tagged templates with non-PropertyAccess tags |
-| **#843** | 20 CE | Easy | super keyword in object literals |
-| **#842** | 14 CE | Easy | new Array() with non-literal/spread args |
+### Stretch / architectural (not in this sprint)
+- #797 — Property descriptor subsystem (~5,000 FAIL) — needs full architect spec
+- #799 — Prototype chain (~2,500 FAIL) — needs full architect spec
+- #831 remaining — yield-as-id, await-as-id patterns (159/242 done, 83 remain)
 
-### Tier 3: Infrastructure
+## Dev paths
 
-| Issue | Impact | Notes |
-|-------|--------|-------|
-| **#872** | Tooling | Test262 report only updates on complete runs |
-| **#865** | Platform | Console wrapper for fd_write in JS environments |
-
-## Preliminary task queue
-
-Exact queue depends on sprint 34 results and architect specs. Tentative:
-
-| Task | Issue | Impact | Dev | Notes |
-|------|-------|--------|-----|-------|
-| #1 | #822 | 907 CE | dev-1 | Needs fresh architect spec |
-| #2 | #855 | 210 FAIL | dev-2 | Needs architect spec |
-| #3 | #845 or #849 | 340/200 | dev-3 | Sprint 34 spillover |
-| #4 | #864 | 45 FAIL | dev-2 (after #2) | Easy, quick win |
-| #5 | #841 + #836 + #843 + #842 | 73 CE | dev-1 (after #1) | Bundle easy CE fixes |
-| #6 | #853 | 58 FAIL | dev-3 (after #3) | Opaque objects |
+**Dev-1**: #858 → #863 → #853 (runtime error fixes)
+**Dev-2**: #845 (needs architect first) → #855 → #849
 
 ## Expected impact
 
-| Category | Est. tests fixed |
-|----------|------------------|
-| #822 (if architect succeeds) | ~500-700 |
+| Issue | Est. tests fixed |
+|-------|-----------------|
+| #858 | ~100 |
+| #863 | ~50 |
+| #845 | ~200 |
 | #855 | ~100 |
-| Sprint 34 spillover | ~350 |
-| Easy CE bundle | ~73 |
-| #864 + #853 | ~100 |
-| **Total potential** | **~1,100-1,300** |
-
-## Path to 45%
-
-From sprint 31 baseline of 18,599:
-- Sprint 31 in-progress: ~+755 → ~19,354 (40.2%)
-- Sprint 34 committed: ~+486 → ~19,840 (41.3%)
-- Sprint 35 target: ~+1,100 → ~20,940 (43.5%)
-
-To reach 45% (21,640): need ~700 more beyond sprint 33. Sprint 34 candidates: #797 (property descriptors, ~5,000 FAIL), #799 (prototype chain, ~2,500 FAIL) — these are the high-leverage items after the CE backlog is cleared.
+| #853 | ~40 |
+| #849 | ~100 |
+| **Total** | **~590** |
 
 ## Results
 
-**Final numbers**: (pending)
-**Delta from baseline**: (pending)
+**Baseline**: 17,583 pass / 43,120 official (40.8%)
+**Final**: 17,717 pass / 43,120 official (41.1%) — pending #831 v2 merge
+
+| Issue | Pre-merge | Post-merge | Delta | Status |
+|-------|-----------|------------|-------|--------|
+| #858 + #863 | 17,583 | 17,782 | +199 | merged (globalThis + URI encoding) |
+| #853 | 17,782 | 17,782 | +0 (runtime fix) | merged (opaque object enumeration) |
+| #855 | 17,583 | 17,717 | +134 | merged (Promise resolution + async) |
+| #845 | — | — | — | already fixed by prior work |
+| #849 | — | — | — | already fixed by prior work |
+| #822 WI4 | — | — | — | already fixed by prior work |
+| #924 | — | — | infra | merged (Vite OOM → 84MB) |
+| #925 | — | — | frontend | merged (chart web components) |
+| #831 v2 | 17,717 | ~17,717 (runner unstable) | +150 est. (negative tests) | merged (equiv-only due to runner instability #943) |
+
+**Additional work completed:**
+- #926-#931: PO error pattern analysis, 6 new issues created
+- #932: Issue for feature coverage % on landing page
+- #933: Issue for shared chart web components
+- #934: Issue for array benchmark f64 conversion churn
+- Landing page: mission subtitle, donut chart, ES edition bars, typewriter fix
+- Vite watcher: excluded worktrees to prevent delayed OOM
+- Compiler: top-level await for Node builtins, removed eval("require")
+- Report data: fixed dangling symlink, added public/ symlinks
 
 ## Retrospective
 
-(To be filled by SM after sprint completion)
+### What went well
+- **Merge protocol followed** — testers spawned for #855 and #831, with full test262 runs. Caught the #855 baseline comparison mistake before bad data hit main.
+- **5 devs in parallel** at peak — #855, #845, #849, #853, #924 all running concurrently with no file conflicts.
+- **3 issues found already fixed** (#845, #849, #822 WI4) — devs smoke-tested and confirmed, saving implementation time.
+- **PO error analysis** produced 6 actionable issues (#926-#931) with data-driven prioritization.
+- **Vite OOM fixed properly** — compilerBundlePlugin serves bundle via middleware (84MB vs 9.4GB), watcher excludes worktrees.
+
+### What went wrong
+- **Premature test262 reject** — compared #855 results against wrong baseline (17,782 vs 17,583). Almost blocked a +134 pass improvement. Need to always verify which baseline to compare against.
+- **Told tester to rerun entire test262 unnecessarily** — the first run was valid, just compared wrong. Wasted ~10 min of compute.
+- **#831 v2 had 6 false positives** — for-in/for-of LHS validation rejected valid destructuring patterns. Required a fix dev + re-test cycle. Fixed by adding `allowDestructuring` parameter.
+- **Test262 runner instability** — 1,400+ pass variance between identical runs (#943 created). Made it impossible to reliably validate #831 v2. Had to fall back to equiv-only proof.
+- **Bundle node: imports caused browser CORS errors** — three iterations to fix (createRequire → eval → top-level await → string replacement in plugin). Should have tested in browser earlier.
+- **report.json corrupted by cat > same_file** — hardlink trap. Need atomic writes.
+- **report.json overwritten by partial test262 run** — landing page showed 0.0% mid-run. Runner writes to the live file during execution, not atomically at completion.
+- **Task list not maintained** — forgot to create tasks at sprint start, only added them mid-sprint when asked.
+
+### Process improvements
+1. **Always verify baseline before rejecting** — document the exact baseline commit/run in the tester prompt
+2. **Test in browser after any Node import changes** — playground is the canary
+3. **Merge proof in worktree** — testers write proof to their own `.claude/nonces/` instead of main workspace. Hook updated to check both locations.
+4. **Runner instability is a blocker** — created #943. Must fix before CI can be trusted.
+3. **Use atomic writes for report.json** — write to .tmp, then rename
+4. **Create task list at sprint start, not mid-sprint** (reinforcing existing memory)

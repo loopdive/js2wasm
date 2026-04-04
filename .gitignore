@@ -1,6 +1,7 @@
 node_modules/
 dist/
 playground-dist/
+pages-dist/
 output/
 *.tsbuildinfo
 .vite/
@@ -8,6 +9,7 @@ output/
 .file-registry.json
 .worktrees/
 benchmarks/results/*.json
+!benchmarks/results/test262-report.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
 .pnpm-store/
@@ -20,6 +22,9 @@ scripts/compiler-bundle.mjs
 scripts/runtime-bundle.mjs
 tmp_*.ts
 tmp_*.mts
+_tmp_*.ts
+tests/_tmp_*
+tests/test*_check*.ts
 isolate-*.log
 tests/fixtures/*.wasm
 tests/fixtures/*.wat
@@ -27,3 +32,5 @@ tests/fixtures/*.d.ts
 tests/fixtures/*.imports.js
 .claude/nonces/
 benchmarks/results/test262-results-*.jsonl
+benchmarks/results/memory-monitor-*.jsonl
+.playwright-cli/

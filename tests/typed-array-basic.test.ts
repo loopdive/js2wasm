@@ -4,7 +4,9 @@ import { compile } from "../src/index.js";
 async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(`Compile failed:\n${result.errors.map(e => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`);
+    throw new Error(
+      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
+    );
   }
   const { instance } = await WebAssembly.instantiate(result.binary, {
     env: { console_log_number: () => {}, console_log_bool: () => {}, console_log_string: () => {} },
@@ -79,7 +81,7 @@ describe("TypedArray basic support", () => {
         return arr[0] + arr[1];
       }
     `;
-    const result = await run(src, "test") as number;
+    const result = (await run(src, "test")) as number;
     expect(result).toBeCloseTo(5.858, 5);
   });
 

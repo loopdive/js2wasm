@@ -10,9 +10,7 @@ import { buildImports } from "./helpers.js";
 async function compileFast(source: string) {
   const result = compile(source, { fast: true });
   if (!result.success) {
-    throw new Error(
-      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
   const mod = await WebAssembly.compile(result.binary as BufferSource);
   const baseImports = buildImports(result);

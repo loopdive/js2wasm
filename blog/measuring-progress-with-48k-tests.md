@@ -8,7 +8,7 @@
 
 When you're building a compiler, "it works" is meaningless without a number. A TypeScript-to-WebAssembly compiler might handle `2 + 2` perfectly and crash on every `for...of` loop with destructuring. You need a test suite large enough to surface the patterns you haven't thought of.
 
-We use the [test262 ECMAScript conformance suite](https://github.com/nicolo-ribaudo/tc39-proposal-test262) — 47,797 tests covering every corner of the JavaScript specification. Every `assert.throws(TypeError, ...)`, every `for-of` edge case with generators, every `Object.defineProperty` constraint. It's the closest thing to a ground-truth measurement of "how much of JavaScript does this compiler actually handle?"
+We use the [test262 ECMAScript conformance suite](https://github.com/tc39/test262) — 47,797 tests covering every corner of the JavaScript specification. Every `assert.throws(TypeError, ...)`, every `for-of` edge case with generators, every `Object.defineProperty` constraint. It's the closest thing to a ground-truth measurement of "how much of JavaScript does this compiler actually handle?"
 
 Our current score: **18,167 pass (38%)**. That number was **550** when we started. Getting from 550 to 18,167 required closing over 768 issues across dozens of sprint sessions — and a project management approach built specifically for a codebase where every fix can be precisely measured.
 
@@ -286,4 +286,4 @@ Our trajectory: 550 → 9,270 → 13,226 → 14,720 → 18,167. Each jump corres
 
 ---
 
-*ts2wasm is an open-source TypeScript-to-WebAssembly compiler measuring progress against the 47,797-test ECMAScript conformance suite. Project management artifacts — issues, goals, backlogs, dependency graphs — are all plain markdown files in the `plan/` directory.*
+*js2wasm is an open-source TypeScript-to-WebAssembly compiler measuring progress against the 47,797-test ECMAScript conformance suite. Project management artifacts — issues, goals, backlogs, dependency graphs — are all plain markdown files in the `plan/` directory.*

@@ -1,29 +1,29 @@
-import { describe, it, expect } from 'vitest';
-import { compile } from '../src/index.ts';
-import { buildImports } from '../src/runtime.ts';
+import { describe, it, expect } from "vitest";
+import { compile } from "../src/index.ts";
+import { buildImports } from "../src/runtime.ts";
 
 async function runTS(src: string): Promise<any> {
-  const r = compile(src, { fileName: 'test.ts' });
-  if (!r.success) throw new Error('CE: ' + r.errors[0]?.message);
+  const r = compile(src, { fileName: "test.ts" });
+  if (!r.success) throw new Error("CE: " + r.errors[0]?.message);
   const imports = buildImports(r.imports, undefined, r.stringPool);
   const { instance } = await WebAssembly.instantiate(r.binary, imports);
   return (instance.exports as any).test();
 }
 
 async function runTSNoTrap(src: string): Promise<any> {
-  const r = compile(src, { fileName: 'test.ts' });
-  if (!r.success) return { error: 'CE', message: r.errors[0]?.message };
+  const r = compile(src, { fileName: "test.ts" });
+  if (!r.success) return { error: "CE", message: r.errors[0]?.message };
   try {
     const imports = buildImports(r.imports, undefined, r.stringPool);
     const { instance } = await WebAssembly.instantiate(r.binary, imports);
     return (instance.exports as any).test();
   } catch (e: any) {
-    return { error: 'trap', message: e.message };
+    return { error: "trap", message: e.message };
   }
 }
 
-describe('issue-820 null deref', () => {
-  it('class method via prototype', async () => {
+describe("issue-820 null deref", () => {
+  it("class method via prototype", async () => {
     const ret = await runTS(`
       class C {
         method(): number { return 42; }
@@ -36,7 +36,7 @@ describe('issue-820 null deref', () => {
     expect(ret).toBe(1);
   });
 
-  it('class method via instance', async () => {
+  it("class method via instance", async () => {
     const ret = await runTS(`
       class C {
         method(): number { return 42; }
@@ -49,7 +49,7 @@ describe('issue-820 null deref', () => {
     expect(ret).toBe(1);
   });
 
-  it('generator method next()', async () => {
+  it("generator method next()", async () => {
     const ret = await runTSNoTrap(`
       class C {
         *gen(): Generator<number> {
@@ -66,7 +66,7 @@ describe('issue-820 null deref', () => {
     expect(ret).toBe(1);
   });
 
-  it('arguments.length in class method with declared params', async () => {
+  it("arguments.length in class method with declared params", async () => {
     const ret = await runTSNoTrap(`
       class C {
         method(a: number, b: number): number {
@@ -78,11 +78,11 @@ describe('issue-820 null deref', () => {
         return c.method(1, 2) === 2 ? 1 : 0;
       }
     `);
-    console.log('arguments.length:', ret);
+    console.log("arguments.length:", ret);
     expect(ret).toBe(1);
   });
 
-  it('arguments[0] in class method', async () => {
+  it("arguments[0] in class method", async () => {
     const ret = await runTSNoTrap(`
       class C {
         method(a: number, b: number): number {
@@ -94,11 +94,11 @@ describe('issue-820 null deref', () => {
         return c.method(10, 32) === 42 ? 1 : 0;
       }
     `);
-    console.log('arguments[0]+[1]:', ret);
+    console.log("arguments[0]+[1]:", ret);
     expect(ret).toBe(1);
   });
 
-  it('function expression default params', async () => {
+  it("function expression default params", async () => {
     const ret = await runTSNoTrap(`
       var f = function(a: number = 42): number {
         return a;
@@ -110,7 +110,7 @@ describe('issue-820 null deref', () => {
     expect(ret).toBe(1);
   });
 
-  it('class with accessor', async () => {
+  it("class with accessor", async () => {
     const ret = await runTSNoTrap(`
       class C {
         get x(): number { return 42; }
@@ -123,7 +123,7 @@ describe('issue-820 null deref', () => {
     expect(ret).toBe(1);
   });
 
-  it('object method with arguments (declared params)', async () => {
+  it("object method with arguments (declared params)", async () => {
     const ret = await runTSNoTrap(`
       var callCount = 0;
       var obj = {
@@ -136,11 +136,11 @@ describe('issue-820 null deref', () => {
         return callCount === 1 ? 1 : 0;
       }
     `);
-    console.log('object method args:', ret);
+    console.log("object method args:", ret);
     expect(ret).toBe(1);
   });
 
-  it('static method as value does not crash', async () => {
+  it("static method as value does not crash", async () => {
     const ret = await runTSNoTrap(`
       class C {
         static method(x: number): number { return x + 1; }
@@ -153,7 +153,7 @@ describe('issue-820 null deref', () => {
     expect(ret).toBe(1);
   });
 
-  it('instance method as value does not crash', async () => {
+  it("instance method as value does not crash", async () => {
     const ret = await runTSNoTrap(`
       class C {
         method(x: number): number { return x + 1; }
@@ -167,7 +167,7 @@ describe('issue-820 null deref', () => {
     expect(ret).toBe(1);
   });
 
-  it('class expression instance method as value does not crash', async () => {
+  it("class expression instance method as value does not crash", async () => {
     const ret = await runTSNoTrap(`
       var C = class {
         method(x: number): number { return x + 1; }

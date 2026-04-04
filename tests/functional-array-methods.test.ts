@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 
-
 /**
  * Helper: compile source, instantiate with callback support, call exported function.
  * Sets up __make_callback and __call_1_f64/__call_2_f64 bridges needed for
@@ -10,10 +9,13 @@ import { compile } from "../src/index.js";
 async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(`Compile failed:\n${result.errors.map(e => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`);
+    throw new Error(
+      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
+    );
   }
 
   // Late-binding reference for __make_callback to call back into exports
+  // biome-ignore lint/style/useConst: assigned later in beforeAll
   let wasmExports: Record<string, Function>;
 
   const env: Record<string, Function> = {
@@ -32,8 +34,10 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
   env["number_toString"] = (v: number) => String(v);
 
   // Callback support: __make_callback wraps a wasm callback as a JS function
-  env["__make_callback"] = (id: number, captures: any) =>
-    (...args: any[]) => wasmExports[`__cb_${id}`](captures, ...args);
+  env["__make_callback"] =
+    (id: number, captures: any) =>
+    (...args: any[]) =>
+      wasmExports[`__cb_${id}`](captures, ...args);
 
   // Callback bridges for functional array methods
   env["__call_1_f64"] = (fn: Function, a: number) => fn(a);

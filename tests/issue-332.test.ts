@@ -65,11 +65,7 @@ describe("issue-332: FIXTURE files excluded from test262 discovery", () => {
 
   it("filter does not exclude files with fixture in lowercase or other positions", () => {
     // These should NOT be filtered
-    const normalNames = [
-      "test-fixture-setup.js",
-      "fixture-test.js",
-      "my_test.js",
-    ];
+    const normalNames = ["test-fixture-setup.js", "fixture-test.js", "my_test.js"];
 
     for (const name of normalNames) {
       expect(name.includes("_FIXTURE")).toBe(false);

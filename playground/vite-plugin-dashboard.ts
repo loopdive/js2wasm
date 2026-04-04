@@ -17,10 +17,7 @@ function parseFrontmatter(text: string): Record<string, any> {
     if (idx < 0) continue;
     const key = line.slice(0, idx).trim();
     let val: any = line.slice(idx + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    )
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
       val = val.slice(1, -1);
     if (val.startsWith("[") && val.endsWith("]"))
       val = val
@@ -94,16 +91,17 @@ function loadRuns(): any[] {
   if (!existsSync(runsPath)) return [];
   try {
     const all = JSON.parse(readFileSync(runsPath, "utf-8")) as any[];
-    // Before Mar 20: smaller suite (~23K), keep all runs > 20K
-    // After Mar 19: suite expanded to ~48K, filter out partial/crashed runs (< 90% of max)
-    let maxTotal = 0;
-    return all.filter((r: any) => {
-      const ts = r.timestamp || "";
-      const isEarly = ts < "2026-03-20";
-      if (isEarly) return r.total >= 20000;
-      if (r.total > maxTotal) maxTotal = r.total;
-      return r.total >= maxTotal * 0.9;
-    });
+    // Before Mar 20: smaller suite (~23K), keep all runs > 20K.
+    // After the suite expansion, keep only full conformance runs and exclude
+    // tiny crash artifacts, but do not require totals to stay near the old
+    // proposal-inclusive 48K size because official-scope runs are lower.
+    return all
+      .filter((r: any) => {
+        const ts = r.timestamp || "";
+        if (ts < "2026-03-20") return r.total >= 20000;
+        return r.total >= 40000;
+      })
+      .sort((a: any, b: any) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")));
   } catch {
     return [];
   }
@@ -124,9 +122,7 @@ function loadSprints(): any[] {
     const name = f.replace(".md", "").replace(/-/g, " ");
     const dateM = text.match(/\*\*Date\*\*:\s*(.+)/);
     const baseM = text.match(/\*\*Baseline\*\*:\s*(.+)/);
-    const resultM =
-      text.match(/\*\*Final numbers?\*\*:\s*(.+)/i) ||
-      text.match(/\*\*Result\*\*:\s*(.+)/i);
+    const resultM = text.match(/\*\*Final numbers?\*\*:\s*(.+)/i) || text.match(/\*\*Result\*\*:\s*(.+)/i);
     const mergedCount = (text.match(/\*\*Merged\*\*/gi) || []).length;
     sprints.push({
       name,
@@ -147,24 +143,26 @@ function loadBurndown(): { timestamps: string[]; remaining: number[]; completed:
   const doneFiles = readdirSync(doneDir).filter((f) => f.endsWith(".md"));
   const readyFiles = readdirSync(join(projectRoot, "plan/issues/ready")).filter((f) => f.endsWith(".md"));
   const blockedDir = join(projectRoot, "plan/issues/blocked");
-  const blockedFiles = existsSync(blockedDir)
-    ? readdirSync(blockedDir).filter((f) => f.endsWith(".md"))
-    : [];
+  const blockedFiles = existsSync(blockedDir) ? readdirSync(blockedDir).filter((f) => f.endsWith(".md")) : [];
 
   const totalIssues = doneFiles.length + readyFiles.length + blockedFiles.length;
   const doneIssueIds = new Set(doneFiles.map((f) => f.replace(".md", "")));
 
   // Parse git log for issue-closing commits
-  interface IssueCompletion { issueId: string; timestamp: Date; }
+  interface IssueCompletion {
+    issueId: string;
+    timestamp: Date;
+  }
   const completions: IssueCompletion[] = [];
   const seenIssues = new Set<string>();
 
   try {
     // execSync imported at top level from node:child_process
-    const log = execSync(
-      "git log --format='%aI %s' --reverse",
-      { cwd: projectRoot, encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }
-    );
+    const log = execSync("git log --format='%aI %s' --reverse", {
+      cwd: projectRoot,
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024,
+    });
     for (const line of log.split("\n")) {
       if (!line.trim()) continue;
       const spaceIdx = line.indexOf(" ");
@@ -247,10 +245,7 @@ export function dashboardPlugin(): Plugin {
     name: "dashboard",
     configureServer(server: ViteDevServer) {
       // Watch project dirs for changes
-      const watchDirs = [
-        join(projectRoot, "plan"),
-        join(projectRoot, "benchmarks/results"),
-      ];
+      const watchDirs = [join(projectRoot, "plan"), join(projectRoot, "benchmarks/results")];
 
       for (const dir of watchDirs) {
         if (existsSync(dir)) {
@@ -284,7 +279,7 @@ export function dashboardPlugin(): Plugin {
             "Upgrade: websocket\r\n" +
             "Connection: Upgrade\r\n" +
             `Sec-WebSocket-Accept: ${accept}\r\n` +
-            "\r\n"
+            "\r\n",
         );
 
         // Wrap raw socket in a minimal WS-like interface
@@ -317,10 +312,7 @@ export function dashboardPlugin(): Plugin {
 
         // Serve dashboard HTML
         if (url.pathname === "/dashboard" || url.pathname === "/dashboard/") {
-          const dashHtml = readFileSync(
-            join(projectRoot, "dashboard/index.html"),
-            "utf-8"
-          );
+          const dashHtml = readFileSync(join(projectRoot, "dashboard/index.html"), "utf-8");
           // Inject live-reload WebSocket client and API-based data loading
           const injectedHtml = dashHtml
             .replace(
@@ -328,23 +320,17 @@ export function dashboardPlugin(): Plugin {
               `<script>
 // Live dashboard — data loaded via API, auto-refreshes via WebSocket
 window.__DASHBOARD_API__ = true;
-</script>`
+</script>`,
             )
-            .replace(
-              "runs = await loadJSON('data/runs.json');",
-              "runs = await loadJSON('/api/dashboard/runs');"
-            )
-            .replace(
-              "if (!runs) runs = await loadJSON('../benchmarks/results/runs/index.json');",
-              ""
-            )
+            .replace("runs = await loadJSON('data/runs.json');", "runs = await loadJSON('/api/dashboard/runs');")
+            .replace("if (!runs) runs = await loadJSON('../benchmarks/results/runs/index.json');", "")
             .replace(
               "const issueIndex = await loadJSON('./data/issues.json');",
-              "const issueIndex = await loadJSON('/api/dashboard/issues');"
+              "const issueIndex = await loadJSON('/api/dashboard/issues');",
             )
             .replace(
               "const sprintIndex = await loadJSON('./data/sprints.json');",
-              "const sprintIndex = await loadJSON('/api/dashboard/sprints');"
+              "const sprintIndex = await loadJSON('/api/dashboard/sprints');",
             )
             .replace(
               "main().catch(err => console.error('Dashboard error:', err));",
@@ -388,7 +374,7 @@ loadBurndown();
   };
   ws.onclose = () => setTimeout(connectWS, 3000);
   ws.onerror = () => ws.close();
-})();`
+})();`,
             );
           res.setHeader("Content-Type", "text/html");
           res.end(injectedHtml);

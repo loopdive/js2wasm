@@ -3,7 +3,7 @@ import { compile } from "../src/index.js";
 
 async function run(source: string, fn: string, args: unknown[]): Promise<unknown> {
   const result = compile(source);
-  if (!result.success) throw new Error(result.errors.map(e => `L${e.line}: ${e.message}`).join("\n"));
+  if (!result.success) throw new Error(result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n"));
   const { instance } = await WebAssembly.instantiate(result.binary, {
     env: {
       console_log_number: () => {},
@@ -23,7 +23,7 @@ describe("do-while", () => {
       }
     `;
     expect(await run(src, "countUp", [5])).toBe(5);
-    expect(await run(src, "countUp", [0])).toBe(1);  // runs once even when cond is false
+    expect(await run(src, "countUp", [0])).toBe(1); // runs once even when cond is false
     expect(await run(src, "countUp", [1])).toBe(1);
   });
 

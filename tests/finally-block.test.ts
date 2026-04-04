@@ -54,7 +54,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
 
 async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
-  if (!result.success) throw new Error(result.errors.map(e => `L${e.line}: ${e.message}`).join("\n"));
+  if (!result.success) throw new Error(result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n"));
   const imports = buildImports(result);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
   return (instance.exports as any)[fn](...args);

@@ -10,8 +10,16 @@ import { buildImports } from "./equivalence/helpers.js";
 
 async function compileAndRun(source: string): Promise<{ success: boolean; result?: number; error?: string }> {
   const result = compile(source, { fileName: "test.ts" });
-  if (!result.success || result.errors.some(e => e.severity === "error")) {
-    return { success: false, error: "compile: " + result.errors.filter(e => e.severity === "error").map(e => e.message).join("; ") };
+  if (!result.success || result.errors.some((e) => e.severity === "error")) {
+    return {
+      success: false,
+      error:
+        "compile: " +
+        result.errors
+          .filter((e) => e.severity === "error")
+          .map((e) => e.message)
+          .join("; "),
+    };
   }
   const valid = WebAssembly.validate(result.binary);
   if (!valid) {

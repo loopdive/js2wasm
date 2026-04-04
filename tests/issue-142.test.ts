@@ -10,10 +10,9 @@ const defaultImports = {
 
 async function compileAndRun(source: string, imports?: Record<string, any>): Promise<any> {
   const result = compile(source);
-  expect(
-    result.success,
-    `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-  ).toBe(true);
+  expect(result.success, `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`).toBe(
+    true,
+  );
 
   const { instance } = await WebAssembly.instantiate(result.binary, imports ?? defaultImports);
   return instance.exports as any;

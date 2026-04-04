@@ -83,14 +83,13 @@ export interface OptimizeResult {
   warning?: string;
 }
 
+let _binaryenModulePromise: Promise<any | null> | null = null;
+
 /**
  * Optimize a Wasm binary using Binaryen.
  * Returns the optimized binary, or the original if optimization is unavailable.
  */
-export function optimizeBinary(
-  binary: Uint8Array,
-  options: OptimizeOptions = {},
-): OptimizeResult {
+export function optimizeBinary(binary: Uint8Array, options: OptimizeOptions = {}): OptimizeResult {
   const level = options.level ?? 3;
   const gc = options.gc !== false;
   const referenceTypes = options.referenceTypes !== false;
@@ -115,8 +114,50 @@ export function optimizeBinary(
   return {
     binary,
     optimized: false,
-    warning: "wasm-opt not available: install the 'binaryen' npm package or add wasm-opt to PATH. Skipping optimization.",
+    warning:
+      "wasm-opt not available: install the 'binaryen' npm package or add wasm-opt to PATH. Skipping optimization.",
   };
+}
+
+/**
+ * Async optimizer variant for environments that can lazy-load the ESM
+ * `binaryen` package (for example the browser playground via Vite).
+ */
+export async function optimizeBinaryAsync(binary: Uint8Array, options: OptimizeOptions = {}): Promise<OptimizeResult> {
+  const level = options.level ?? 3;
+  const gc = options.gc !== false;
+  const referenceTypes = options.referenceTypes !== false;
+  const exceptionHandling = options.exceptionHandling !== false;
+
+  try {
+    const binaryen = await getBinaryenModule();
+    if (binaryen) {
+      const result = optimizeWithBinaryenModule(binaryen, binary, level, gc, referenceTypes, exceptionHandling);
+      if (result) return result;
+    }
+  } catch {
+    // Fall through to sync system-binary fallback in Node.js
+  }
+
+  try {
+    const result = optimizeWithSystemBinary(binary, level, gc, referenceTypes, exceptionHandling);
+    if (result) return result;
+  } catch {
+    // Fall through to warning
+  }
+
+  return {
+    binary,
+    optimized: false,
+    warning:
+      "wasm-opt not available: install the 'binaryen' npm package or add wasm-opt to PATH. Skipping optimization.",
+  };
+}
+
+async function getBinaryenModule(): Promise<any | null> {
+  if (_binaryenModulePromise) return _binaryenModulePromise;
+  _binaryenModulePromise = import("binaryen").then((mod: any) => mod.default ?? mod).catch(() => null);
+  return _binaryenModulePromise;
 }
 
 function optimizeWithBinaryenPackage(
@@ -134,8 +175,19 @@ function optimizeWithBinaryenPackage(
     return null;
   }
 
-  // Enable features before reading the module
-  if (gc) binaryen.setFeatures(binaryen.features.All);
+  return optimizeWithBinaryenModule(binaryen, binary, level, gc, referenceTypes, exceptionHandling);
+}
+
+function optimizeWithBinaryenModule(
+  binaryen: any,
+  binary: Uint8Array,
+  level: number,
+  gc: boolean,
+  referenceTypes: boolean,
+  exceptionHandling: boolean,
+): OptimizeResult | null {
+  const featureFlags = binaryen.Features ?? binaryen.features;
+  if (!featureFlags) return null;
 
   let mod: any;
   try {
@@ -146,23 +198,39 @@ function optimizeWithBinaryenPackage(
   }
 
   try {
+    const previousOptimizeLevel =
+      typeof binaryen.getOptimizeLevel === "function" ? binaryen.getOptimizeLevel() : undefined;
+    const previousShrinkLevel = typeof binaryen.getShrinkLevel === "function" ? binaryen.getShrinkLevel() : undefined;
+
     // Set features on the module
     let features = 0;
-    if (gc) features |= binaryen.features.GC | binaryen.features.ReferenceTypes;
-    if (referenceTypes) features |= binaryen.features.ReferenceTypes;
-    if (exceptionHandling) features |= binaryen.features.ExceptionHandling;
-    features |= binaryen.features.BulkMemory;
-    features |= binaryen.features.MutableGlobals;
+    if (gc) features |= featureFlags.GC | featureFlags.ReferenceTypes;
+    if (referenceTypes) features |= featureFlags.ReferenceTypes;
+    if (exceptionHandling) features |= featureFlags.ExceptionHandling;
+    features |= featureFlags.BulkMemory;
+    features |= featureFlags.MutableGlobals;
     mod.setFeatures(features);
 
-    // Run optimization
-    if (level >= 4) {
+    // Match the requested optimization level more closely than a bare optimize() call.
+    // Binaryen's npm API exposes global optimize/shrink settings that affect mod.optimize().
+    if (typeof binaryen.setOptimizeLevel === "function") {
+      binaryen.setOptimizeLevel(level >= 4 ? 3 : level);
+    }
+    if (typeof binaryen.setShrinkLevel === "function") {
+      binaryen.setShrinkLevel(level >= 4 ? 1 : 0);
+    }
+
+    try {
+      // Run optimization
       mod.optimize();
-      mod.optimize(); // Two passes for -O4
-    } else {
-      mod.setOptimizeLevel(level);
-      mod.setShrinkLevel(level >= 3 ? 1 : 0);
-      mod.optimize();
+      if (level >= 4) mod.optimize();
+    } finally {
+      if (typeof binaryen.setOptimizeLevel === "function" && previousOptimizeLevel !== undefined) {
+        binaryen.setOptimizeLevel(previousOptimizeLevel);
+      }
+      if (typeof binaryen.setShrinkLevel === "function" && previousShrinkLevel !== undefined) {
+        binaryen.setShrinkLevel(previousShrinkLevel);
+      }
     }
 
     const optimizedBinary = mod.emitBinary();
@@ -200,11 +268,7 @@ function optimizeWithSystemBinary(
   try {
     n.writeFileSync(inputPath, binary);
 
-    const args: string[] = [
-      inputPath,
-      `-O${level}`,
-      "-o", outputPath,
-    ];
+    const args: string[] = [inputPath, `-O${level}`, "-o", outputPath];
 
     if (gc) {
       args.push("--enable-gc");
@@ -225,13 +289,25 @@ function optimizeWithSystemBinary(
     return { binary: new Uint8Array(optimizedBinary), optimized: true };
   } finally {
     // Cleanup temp files
-    try { n.unlinkSync(inputPath); } catch { /* ignore */ }
-    try { n.unlinkSync(outputPath); } catch { /* ignore */ }
-    try { n.unlinkSync(tmpDir); } catch {
+    try {
+      n.unlinkSync(inputPath);
+    } catch {
+      /* ignore */
+    }
+    try {
+      n.unlinkSync(outputPath);
+    } catch {
+      /* ignore */
+    }
+    try {
+      n.unlinkSync(tmpDir);
+    } catch {
       try {
         const fs = require("node:fs");
         fs.rmdirSync(tmpDir);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

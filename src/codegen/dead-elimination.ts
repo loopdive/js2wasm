@@ -9,24 +9,12 @@
  * to determine which function indices and type indices are actually referenced,
  * then removes the dead ones and remaps all surviving indices.
  */
-import type {
-  Instr,
-  TypeDef,
-  ValType,
-  WasmModule,
-  StructTypeDef,
-  SubTypeDef,
-  ArrayTypeDef,
-} from "../ir/types.js";
+import type { Instr, TypeDef, ValType, WasmModule, StructTypeDef, SubTypeDef, ArrayTypeDef } from "../ir/types.js";
 import { walkInstructions } from "./walk-instructions.js";
 
 // --- Reference collection ---
 
-function collectRefsFromBody(
-  body: Instr[],
-  usedFuncs: Set<number>,
-  usedTypes: Set<number>,
-): void {
+function collectRefsFromBody(body: Instr[], usedFuncs: Set<number>, usedTypes: Set<number>): void {
   for (const instr of body) {
     switch (instr.op) {
       case "call":
@@ -83,10 +71,8 @@ function collectRefsFromBody(
       case "try":
         collectBlockTypeRefs(instr.blockType, usedTypes);
         collectRefsFromBody(instr.body, usedFuncs, usedTypes);
-        for (const c of instr.catches)
-          collectRefsFromBody(c.body, usedFuncs, usedTypes);
-        if (instr.catchAll)
-          collectRefsFromBody(instr.catchAll, usedFuncs, usedTypes);
+        for (const c of instr.catches) collectRefsFromBody(c.body, usedFuncs, usedTypes);
+        if (instr.catchAll) collectRefsFromBody(instr.catchAll, usedFuncs, usedTypes);
         break;
       default: {
         // Catch-all for instructions cast via `as unknown as Instr`
@@ -103,10 +89,7 @@ function collectRefsFromBody(
   }
 }
 
-function collectBlockTypeRefs(
-  bt: { kind: string; typeIdx?: number; type?: ValType },
-  usedTypes: Set<number>,
-): void {
+function collectBlockTypeRefs(bt: { kind: string; typeIdx?: number; type?: ValType }, usedTypes: Set<number>): void {
   if (bt.kind === "type" && typeof bt.typeIdx === "number") {
     usedTypes.add(bt.typeIdx);
   }
@@ -115,22 +98,13 @@ function collectBlockTypeRefs(
   }
 }
 
-function collectRefsFromValType(
-  vt: ValType,
-  used: Set<number>,
-): void {
-  if (
-    (vt.kind === "ref" || vt.kind === "ref_null") &&
-    typeof (vt as any).typeIdx === "number"
-  ) {
+function collectRefsFromValType(vt: ValType, used: Set<number>): void {
+  if ((vt.kind === "ref" || vt.kind === "ref_null") && typeof (vt as any).typeIdx === "number") {
     used.add((vt as { typeIdx: number }).typeIdx);
   }
 }
 
-function collectRefsFromTypeDef(
-  td: TypeDef,
-  used: Set<number>,
-): void {
+function collectRefsFromTypeDef(td: TypeDef, used: Set<number>): void {
   switch (td.kind) {
     case "func":
       for (const p of td.params) collectRefsFromValType(p, used);
@@ -155,10 +129,7 @@ function collectRefsFromTypeDef(
 
 // --- Remapping ---
 
-function remapFuncIdxInBody(
-  body: Instr[],
-  remap: Map<number, number>,
-): void {
+function remapFuncIdxInBody(body: Instr[], remap: Map<number, number>): void {
   walkInstructions(body, (instr) => {
     const a = instr as any;
     if (typeof a.funcIdx === "number" && remap.has(a.funcIdx)) {
@@ -167,10 +138,7 @@ function remapFuncIdxInBody(
   });
 }
 
-function remapTypeIdxInBody(
-  body: Instr[],
-  remap: Map<number, number>,
-): void {
+function remapTypeIdxInBody(body: Instr[], remap: Map<number, number>): void {
   walkInstructions(body, (instr) => {
     const a = instr as any;
     if (typeof a.typeIdx === "number" && remap.has(a.typeIdx)) {
@@ -194,14 +162,8 @@ function remapTypeIdxInBody(
   });
 }
 
-function remapVT(
-  vt: ValType,
-  remap: Map<number, number>,
-): ValType {
-  if (
-    (vt.kind === "ref" || vt.kind === "ref_null") &&
-    typeof (vt as any).typeIdx === "number"
-  ) {
+function remapVT(vt: ValType, remap: Map<number, number>): ValType {
+  if ((vt.kind === "ref" || vt.kind === "ref_null") && typeof (vt as any).typeIdx === "number") {
     const old = (vt as any).typeIdx as number;
     if (remap.has(old)) {
       return { ...vt, typeIdx: remap.get(old)! } as ValType;
@@ -210,10 +172,7 @@ function remapVT(
   return vt;
 }
 
-function remapTD(
-  td: TypeDef,
-  remap: Map<number, number>,
-): TypeDef {
+function remapTD(td: TypeDef, remap: Map<number, number>): TypeDef {
   switch (td.kind) {
     case "func":
       return {
@@ -258,9 +217,7 @@ function remapTD(
  * from a compiled WasmModule. Mutates the module in place.
  */
 export function eliminateDeadImports(mod: WasmModule): void {
-  const numImpF = mod.imports.filter(
-    (i) => i.desc.kind === "func",
-  ).length;
+  const numImpF = mod.imports.filter((i) => i.desc.kind === "func").length;
   const usedF = new Set<number>();
   const usedT = new Set<number>();
 
@@ -302,8 +259,7 @@ export function eliminateDeadImports(mod: WasmModule): void {
   // Non-func import descriptors reference types
   for (const imp of mod.imports) {
     if (imp.desc.kind === "tag") usedT.add(imp.desc.typeIdx);
-    if (imp.desc.kind === "global")
-      collectRefsFromValType(imp.desc.type, usedT);
+    if (imp.desc.kind === "global") collectRefsFromValType(imp.desc.type, usedT);
   }
 
   // --- Phase 2: Determine dead function imports ---
@@ -368,12 +324,7 @@ export function eliminateDeadImports(mod: WasmModule): void {
     }
   }
 
-  if (
-    fR.size === 0 &&
-    tR.size === 0 &&
-    deadF.size === 0 &&
-    rem === 0
-  ) {
+  if (fR.size === 0 && tR.size === 0 && deadF.size === 0 && rem === 0) {
     return;
   }
 
@@ -394,17 +345,14 @@ export function eliminateDeadImports(mod: WasmModule): void {
 
   // Replace types array
   if (rem > 0) {
-    mod.types = surv.map((td) =>
-      tR.size > 0 ? remapTD(td, tR) : td,
-    );
+    mod.types = surv.map((td) => (tR.size > 0 ? remapTD(td, tR) : td));
   }
 
   // Remap function bodies
   for (const func of mod.functions) {
     if (fR.size > 0) remapFuncIdxInBody(func.body, fR);
     if (tR.size > 0) remapTypeIdxInBody(func.body, tR);
-    if (tR.has(func.typeIdx))
-      func.typeIdx = tR.get(func.typeIdx)!;
+    if (tR.has(func.typeIdx)) func.typeIdx = tR.get(func.typeIdx)!;
     if (tR.size > 0) {
       for (let i = 0; i < func.locals.length; i++) {
         func.locals[i] = {
@@ -455,9 +403,7 @@ export function eliminateDeadImports(mod: WasmModule): void {
   }
 
   // Remap declaredFuncRefs
-  mod.declaredFuncRefs = mod.declaredFuncRefs.map(
-    (f) => fR.get(f) ?? f,
-  );
+  mod.declaredFuncRefs = mod.declaredFuncRefs.map((f) => fR.get(f) ?? f);
 
   // Remap globals
   for (const g of mod.globals) {

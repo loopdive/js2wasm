@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ts2wasm Sprint Dashboard</title>
+<title>js2wasm Sprint Dashboard</title>
 <style>
   :root {
     --bg: #0f1117;
@@ -129,6 +129,69 @@
     margin-bottom: 12px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .panel-head h2 {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .panel-actions a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 12px;
+  }
+
+  .panel-actions a:hover {
+    text-decoration: underline;
+  }
+
+  .sprint-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .sprint-controls label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+  }
+
+  .sprint-controls input,
+  .sprint-controls select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family: var(--font);
+    font-size: 12px;
+  }
+
+  .sprint-controls input {
+    width: 84px;
   }
 
   /* Kanban board */
@@ -346,43 +409,21 @@
   .kanban-col-body::-webkit-scrollbar { width: 4px; }
   .kanban-col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  /* Info notice */
-  .info-notice {
-    background: rgba(107, 138, 255, 0.08);
-    border: 1px solid rgba(107, 138, 255, 0.2);
-    border-radius: var(--radius);
-    padding: 12px 16px;
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-bottom: 24px;
-  }
-
-  .info-notice code {
-    background: var(--surface-2);
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-size: 11px;
-  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>ts2wasm Sprint Dashboard</h1>
+  <h1>js2wasm Sprint Dashboard</h1>
   <div class="meta">
     <div class="updated" id="last-updated">Loading...</div>
     <div id="sprint-label">—</div>
   </div>
 </header>
 
-<div class="info-notice" id="data-notice" style="display:none">
-  Data loaded from local project files. To refresh, reload the page.
-  Serve with <code>npx serve dashboard/</code> for fetch-based loading, or open directly for embedded data.
-</div>
-
 <!-- Metric cards -->
 <div class="metrics-row" id="metrics-row">
-  <div class="metric-card"><div class="label">Test262 Pass Rate</div><div class="value accent" id="m-passrate">—</div><div class="sub" id="m-passrate-sub"></div></div>
+  <div class="metric-card"><div class="label">Official Test262 Pass Rate</div><div class="value accent" id="m-passrate">—</div><div class="sub" id="m-passrate-sub"></div></div>
   <div class="metric-card"><div class="label">Issues Done</div><div class="value green" id="m-done">—</div><div class="sub" id="m-done-sub"></div></div>
   <div class="metric-card"><div class="label">Issues Ready</div><div class="value yellow" id="m-ready">—</div><div class="sub" id="m-ready-sub"></div></div>
   <div class="metric-card"><div class="label">Blocked</div><div class="value red" id="m-blocked">—</div><div class="sub" id="m-blocked-sub"></div></div>
@@ -392,7 +433,17 @@
 
 <!-- Kanban -->
 <div class="panel kanban">
-  <h2>Issue Board</h2>
+  <div class="panel-head">
+    <h2>Issue Board</h2>
+    <div class="panel-actions">
+      <div class="sprint-controls">
+        <label for="sprint-input">Sprint</label>
+        <input id="sprint-input" type="number" min="1" step="1" placeholder="32" />
+        <select id="sprint-select"></select>
+      </div>
+      <a href="../issues-graph.html">dependency graph</a>
+    </div>
+  </div>
   <div class="kanban-board" id="kanban-board">
     <div class="kanban-col">
       <div class="kanban-col-header">Blocked <span class="count" id="col-blocked-count">0</span></div>
@@ -416,7 +467,7 @@
 <!-- Charts row -->
 <div class="grid-2">
   <div class="panel">
-    <h2>Test262 Pass Rate Trend</h2>
+    <h2>Official Test262 Pass Rate Trend</h2>
     <div class="chart-container">
       <canvas id="chart-passrate"></canvas>
     </div>
@@ -712,12 +763,71 @@ function makeCard(id, title, fm) {
   </div>`;
 }
 
+function getLatestSprint(sprints) {
+  return [...sprints]
+    .filter(s => Number.isFinite(s.sprintNumber))
+    .filter(s => !/planning/i.test(s.name || ''))
+    .filter(s => /^\d{4}-\d{2}-\d{2}$/.test((s.date || '').trim()))
+    .sort((a, b) => a.sprintNumber - b.sprintNumber)
+    .at(-1) || null;
+}
+
+function buildSprintOptions(sprints) {
+  const byNumber = new Map();
+  for (const sprint of sprints) {
+    if (!Number.isFinite(sprint.sprintNumber)) continue;
+    const existing = byNumber.get(sprint.sprintNumber);
+    if (!existing) {
+      byNumber.set(sprint.sprintNumber, sprint);
+      continue;
+    }
+    const currentScore = (/planning/i.test(existing.name || '') ? 0 : 1) + (/^\d{4}-\d{2}-\d{2}$/.test((existing.date || '').trim()) ? 1 : 0);
+    const nextScore = (/planning/i.test(sprint.name || '') ? 0 : 1) + (/^\d{4}-\d{2}-\d{2}$/.test((sprint.date || '').trim()) ? 1 : 0);
+    if (nextScore >= currentScore) byNumber.set(sprint.sprintNumber, sprint);
+  }
+  return [...byNumber.values()].sort((a, b) => a.sprintNumber - b.sprintNumber);
+}
+
+function filterIssuesForSprint(issues, sprint) {
+  if (!sprint || !Array.isArray(sprint.issueIds) || sprint.issueIds.length === 0) return issues;
+  const allowed = new Set(sprint.issueIds.map(String));
+  return {
+    blocked: (issues.blocked || []).filter(iss => allowed.has(String(iss.id))),
+    ready: (issues.ready || []).filter(iss => allowed.has(String(iss.id))),
+    inprogress: (issues.inprogress || []).filter(iss => allowed.has(String(iss.id))),
+    done: (issues.done || []).filter(iss => allowed.has(String(iss.id))),
+  };
+}
+
+function renderIssueBoard(issues) {
+  const cols = {
+    blocked: { el: document.getElementById('col-blocked'), count: document.getElementById('col-blocked-count') },
+    ready: { el: document.getElementById('col-ready'), count: document.getElementById('col-ready-count') },
+    inprogress: { el: document.getElementById('col-inprogress'), count: document.getElementById('col-inprogress-count') },
+    done: { el: document.getElementById('col-done'), count: document.getElementById('col-done-count') },
+  };
+
+  for (const [status, col] of Object.entries(cols)) {
+    const list = issues[status] || [];
+    col.count.textContent = list.length;
+    const display = status === 'done' ? list.slice(-20).reverse() : list.slice(0, 30);
+    col.el.innerHTML = display.map(iss =>
+      makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)
+    ).join('');
+    if (list.length > display.length) {
+      col.el.innerHTML += `<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:8px">
+        +${list.length - display.length} more
+      </div>`;
+    }
+  }
+}
+
 // ── Main ─────────────────────────────────────────────────────
 async function main() {
   // Load test262 run data
   let runs = null;
-  runs = await loadJSON('data/runs.json');
-  if (!runs) runs = await loadJSON('../benchmarks/results/runs/index.json');
+  runs = await loadJSON('../benchmarks/results/runs/index.json');
+  if (!runs) runs = await loadJSON('data/runs.json');
   if (!runs && EMBEDDED_DATA) runs = EMBEDDED_DATA.runs;
   if (!runs) runs = [];
 
@@ -744,6 +854,9 @@ async function main() {
     const sprintIndex = await loadJSON('./data/sprints.json');
     if (sprintIndex) sprints = sprintIndex;
   }
+  sprints = sprints
+    .map(s => ({ ...s, sprintNumber: Number(s.sprintNumber ?? String(s.name).match(/(\d+)/)?.[1] ?? NaN) }))
+    .sort((a, b) => (a.sprintNumber || 0) - (b.sprintNumber || 0));
 
   // ── Update timestamp ──
   document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleString();
@@ -751,10 +864,13 @@ async function main() {
   // ── Metrics ──
   if (runs.length > 0) {
     const latest = runs[runs.length - 1];
-    const passRate = ((latest.pass / latest.total) * 100).toFixed(1);
+    // Use strict-mode pass rate (ES module compatible) when available, fall back to all tests
+    const strictPass = latest.strict_pass ?? latest.pass;
+    const strictTotal = latest.strict_total ?? latest.total;
+    const passRate = ((strictPass / strictTotal) * 100).toFixed(1);
     document.getElementById('m-passrate').textContent = passRate + '%';
     document.getElementById('m-passrate-sub').textContent =
-      `${latest.pass.toLocaleString()} / ${latest.total.toLocaleString()} tests`;
+      `${strictPass.toLocaleString()} / ${strictTotal.toLocaleString()} tests (strict mode)`;
 
     document.getElementById('m-ce').textContent = latest.ce.toLocaleString();
     document.getElementById('m-ce').className = 'value ' + (latest.ce > 2000 ? 'red' : latest.ce > 500 ? 'yellow' : 'green');
@@ -782,27 +898,49 @@ async function main() {
   document.getElementById('m-blocked-sub').textContent = 'waiting on deps';
 
   // ── Kanban board ──
-  const cols = {
-    blocked: { el: document.getElementById('col-blocked'), count: document.getElementById('col-blocked-count') },
-    ready: { el: document.getElementById('col-ready'), count: document.getElementById('col-ready-count') },
-    inprogress: { el: document.getElementById('col-inprogress'), count: document.getElementById('col-inprogress-count') },
-    done: { el: document.getElementById('col-done'), count: document.getElementById('col-done-count') },
-  };
+  const sprintLabel = document.getElementById('sprint-label');
+  const sprintInput = document.getElementById('sprint-input');
+  const sprintSelect = document.getElementById('sprint-select');
+  const sprintOptions = buildSprintOptions(sprints);
+  const latestSprint = getLatestSprint(sprintOptions);
+  let selectedSprint = latestSprint;
 
-  for (const [status, col] of Object.entries(cols)) {
-    const list = issues[status] || [];
-    col.count.textContent = list.length;
-    // Show at most 30 cards (done can be huge)
-    const display = status === 'done' ? list.slice(-20).reverse() : list.slice(0, 30);
-    col.el.innerHTML = display.map(iss =>
-      makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)
-    ).join('');
-    if (list.length > display.length) {
-      col.el.innerHTML += `<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:8px">
-        +${list.length - display.length} more
-      </div>`;
-    }
+  sprintSelect.innerHTML = sprintOptions
+    .filter(s => Number.isFinite(s.sprintNumber))
+    .map(s => `<option value="${s.sprintNumber}">Sprint ${s.sprintNumber}</option>`)
+    .join('');
+
+  function syncSprintControls(numberValue) {
+    sprintInput.value = numberValue ? String(numberValue) : '';
+    sprintSelect.value = numberValue ? String(numberValue) : '';
   }
+
+  function renderSprintBoard() {
+    const scopedIssues = filterIssuesForSprint(issues, selectedSprint);
+    renderIssueBoard(scopedIssues);
+    sprintLabel.textContent = selectedSprint
+      ? `Board: Sprint ${selectedSprint.sprintNumber}`
+      : 'Board: All issues';
+    syncSprintControls(selectedSprint?.sprintNumber ?? '');
+  }
+
+  function setSprintByNumber(numberValue) {
+    const sprintNumber = Number(numberValue);
+    const found = sprintOptions.find(s => s.sprintNumber === sprintNumber) || null;
+    if (!found) return;
+    selectedSprint = found;
+    renderSprintBoard();
+  }
+
+  if (latestSprint) {
+    renderSprintBoard();
+  } else {
+    renderIssueBoard(issues);
+    sprintLabel.textContent = 'Board: All issues';
+  }
+
+  sprintInput.addEventListener('change', () => setSprintByNumber(sprintInput.value));
+  sprintSelect.addEventListener('change', () => setSprintByNumber(sprintSelect.value));
 
   // ── Test262 Charts ──
   if (runs.length > 0) {
@@ -889,8 +1027,6 @@ async function main() {
       return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="${s.name}: ${s.issueCount || 0} issues"></div>`;
     }).join('');
   }
-
-  document.getElementById('data-notice').style.display = 'block';
 }
 
 // ── Run on load ──

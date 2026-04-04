@@ -23,6 +23,7 @@ if [ "$BRANCH" = "main" ] && [ "$PWD" != "/workspace" ]; then
 fi
 
 # For git commit: check code word and inject guidance
+# NOTE: formatting + linting now handled by husky + lint-staged (git pre-commit hook)
 if echo "$CMD" | grep -q 'git commit'; then
   # Verify code word from pre-commit checklist
   if ! echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then

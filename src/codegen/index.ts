@@ -20,25 +20,65 @@ import type {
   FuncTypeDef,
   Import,
   Instr,
-  LocalDef,
-  SourcePos,
   StructTypeDef,
-  TagDef,
   ValType,
   WasmFunction,
   WasmModule,
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
-import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./expressions.js";
+import { createCodegenContext } from "./context/create-context.js";
+import { popBody, pushBody } from "./context/bodies.js";
+import { reportError } from "./context/errors.js";
+import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
+import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
+import type {
+  ClosureInfo,
+  CodegenContext,
+  CodegenOptions,
+  CodegenResult,
+  ExternClassInfo,
+  FunctionContext,
+  InlinableFunctionInfo,
+  OptionalParamInfo,
+  RestParamInfo,
+} from "./context/types.js";
+import {
+  addImport,
+  addStringConstantGlobal,
+  ensureExnTag,
+  localGlobalIdx,
+  nextModuleGlobalIdx,
+} from "./registry/imports.js";
+import {
+  addFuncType,
+  funcTypeEq,
+  getArrTypeIdxFromVec,
+  getOrRegisterArrayType,
+  getOrRegisterRefCellType,
+  getOrRegisterTemplateVecType,
+  getOrRegisterVecType,
+} from "./registry/types.js";
+import {
+  compileExpression,
+  resolveComputedKeyExpression,
+  coerceType,
+  valTypesMatch,
+  emitBoundsCheckedArrayGet,
+  ensureLateImport,
+  flushLateImportShifts,
+  shiftLateImportIndices,
+  emitUndefined,
+} from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault, emitDefaultValueCheck, emitArgumentsObject } from "./statements.js";
+import {
+  compileStatement,
+  ensureBindingLocals,
+  hoistFunctionDeclarations,
+  emitNestedBindingDefault,
+  emitDefaultValueCheck,
+  emitArgumentsObject,
+} from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
-
-/** Result returned by generateModule / generateMultiModule */
-export interface CodegenResult {
-  module: WasmModule;
-  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
-}
 
 /**
  * Post-processing pass: mark leaf struct types in subtype hierarchies as final.
@@ -115,12 +155,8 @@ function repairStructTypeMismatches(mod: WasmModule): number {
   for (const func of mod.functions) {
     // Build local type map: params from func type, then locals
     const funcType = mod.types[func.typeIdx];
-    const paramTypes: ValType[] =
-      funcType && funcType.kind === "func" ? funcType.params : [];
-    const localTypes: ValType[] = [
-      ...paramTypes,
-      ...func.locals.map((l) => l.type),
-    ];
+    const paramTypes: ValType[] = funcType && funcType.kind === "func" ? funcType.params : [];
+    const localTypes: ValType[] = [...paramTypes, ...func.locals.map((l) => l.type)];
 
     totalFixed += repairBody(func.body, localTypes, mod);
   }
@@ -128,11 +164,7 @@ function repairStructTypeMismatches(mod: WasmModule): number {
   return totalFixed;
 }
 
-function repairBody(
-  body: Instr[],
-  localTypes: ValType[],
-  mod: WasmModule,
-): number {
+function repairBody(body: Instr[], localTypes: ValType[], mod: WasmModule): number {
   let fixed = 0;
 
   // Recurse into nested blocks first
@@ -181,7 +213,9 @@ function repairBody(
       const idx = (curr as { index: number }).index;
       const localType = localTypes[idx];
       if (localType && localType.kind === "externref") {
-        body.splice(i + 1, 0,
+        body.splice(
+          i + 1,
+          0,
           { op: "any.convert_extern" } as unknown as Instr,
           { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
         );
@@ -196,7 +230,9 @@ function repairBody(
       const idx = (curr as { index: number }).index;
       const localType = localTypes[idx];
       if (localType && localType.kind === "externref") {
-        body.splice(i + 1, 0,
+        body.splice(
+          i + 1,
+          0,
           { op: "any.convert_extern" } as unknown as Instr,
           { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
         );
@@ -223,7 +259,9 @@ function repairBody(
         if (ft?.kind === "func" && ft.results.length > 0) retType = ft.results[0];
       }
       if (retType && retType.kind === "externref") {
-        body.splice(i + 1, 0,
+        body.splice(
+          i + 1,
+          0,
           { op: "any.convert_extern" } as unknown as Instr,
           { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
         );
@@ -278,7 +316,9 @@ function repairBody(
         const idx = (refProducer as { index: number }).index;
         const localType = localTypes[idx];
         if (localType && localType.kind === "externref") {
-          body.splice(refIdx + 1, 0,
+          body.splice(
+            refIdx + 1,
+            0,
             { op: "any.convert_extern" } as unknown as Instr,
             { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
           );
@@ -500,51 +540,6 @@ function instrStackDelta(instr: Instr, mod: WasmModule): number {
  * Report a codegen error with source location extracted from an AST node.
  * Pushes the error into ctx.errors so it can be propagated to the caller.
  */
-export function reportError(
-  ctx: CodegenContext,
-  node: ts.Node,
-  message: string,
-): void {
-  try {
-    const sf = node.getSourceFile();
-    if (sf) {
-      const { line, character } = sf.getLineAndCharacterOfPosition(
-        node.getStart(),
-      );
-      ctx.errors.push({ message, line: line + 1, column: character + 1 });
-    } else {
-      ctx.errors.push({ message, line: 0, column: 0 });
-    }
-  } catch {
-    ctx.errors.push({ message, line: 0, column: 0 });
-  }
-}
-
-/** Info about an externally declared class */
-export interface ExternClassInfo {
-  importPrefix: string;
-  namespacePath: string[];
-  className: string;
-  constructorParams: ValType[];
-  methods: Map<
-    string,
-    { params: ValType[]; results: ValType[]; requiredParams: number }
-  >;
-  properties: Map<string, { type: ValType; readonly: boolean }>;
-}
-
-/** Info about an optional parameter */
-export interface OptionalParamInfo {
-  index: number;
-  type: ValType;
-  /** If the default is a compile-time constant, its value is stored here.
-   *  Callers emit this value directly instead of the sNaN sentinel (#869). */
-  constantDefault?: { kind: "f64"; value: number } | { kind: "i32"; value: number };
-  /** True when the default is a non-constant expression (needs callee-side evaluation).
-   *  Callers emit the sNaN sentinel and callee checks + evaluates the expression. */
-  hasExpressionDefault?: boolean;
-}
-
 /**
  * Extract a compile-time constant from a parameter initializer (#869).
  * Returns the constant default info if the initializer is a numeric/boolean literal,
@@ -566,8 +561,10 @@ export function extractConstantDefault(
       return { kind: "f64", value: 0 };
     }
     // undefined → NaN in f64 context
-    if (initializer.kind === ts.SyntaxKind.UndefinedKeyword ||
-        (ts.isIdentifier(initializer) && initializer.text === "undefined")) {
+    if (
+      initializer.kind === ts.SyntaxKind.UndefinedKeyword ||
+      (ts.isIdentifier(initializer) && initializer.text === "undefined")
+    ) {
       return { kind: "f64", value: NaN };
     }
     // null → 0 in f64 context
@@ -575,15 +572,19 @@ export function extractConstantDefault(
       return { kind: "f64", value: 0 };
     }
     // Unary minus: -42
-    if (ts.isPrefixUnaryExpression(initializer) &&
-        initializer.operator === ts.SyntaxKind.MinusToken &&
-        ts.isNumericLiteral(initializer.operand)) {
+    if (
+      ts.isPrefixUnaryExpression(initializer) &&
+      initializer.operator === ts.SyntaxKind.MinusToken &&
+      ts.isNumericLiteral(initializer.operand)
+    ) {
       return { kind: "f64", value: -Number(initializer.operand.text) };
     }
     // Unary plus: +42
-    if (ts.isPrefixUnaryExpression(initializer) &&
-        initializer.operator === ts.SyntaxKind.PlusToken &&
-        ts.isNumericLiteral(initializer.operand)) {
+    if (
+      ts.isPrefixUnaryExpression(initializer) &&
+      initializer.operator === ts.SyntaxKind.PlusToken &&
+      ts.isNumericLiteral(initializer.operand)
+    ) {
       return { kind: "f64", value: Number(initializer.operand.text) };
     }
     return undefined;
@@ -598,526 +599,24 @@ export function extractConstantDefault(
     if (initializer.kind === ts.SyntaxKind.FalseKeyword) {
       return { kind: "i32", value: 0 };
     }
-    if (initializer.kind === ts.SyntaxKind.NullKeyword ||
-        initializer.kind === ts.SyntaxKind.UndefinedKeyword ||
-        (ts.isIdentifier(initializer) && initializer.text === "undefined")) {
+    if (
+      initializer.kind === ts.SyntaxKind.NullKeyword ||
+      initializer.kind === ts.SyntaxKind.UndefinedKeyword ||
+      (ts.isIdentifier(initializer) && initializer.text === "undefined")
+    ) {
       return { kind: "i32", value: 0 };
     }
-    if (ts.isPrefixUnaryExpression(initializer) &&
-        initializer.operator === ts.SyntaxKind.MinusToken &&
-        ts.isNumericLiteral(initializer.operand)) {
-      return { kind: "i32", value: (-Number(initializer.operand.text)) | 0 };
+    if (
+      ts.isPrefixUnaryExpression(initializer) &&
+      initializer.operator === ts.SyntaxKind.MinusToken &&
+      ts.isNumericLiteral(initializer.operand)
+    ) {
+      return { kind: "i32", value: -Number(initializer.operand.text) | 0 };
     }
     return undefined;
   }
   // For ref types (externref, ref_null, etc.), constant defaults not supported yet
   return undefined;
-}
-
-/** Info about a rest parameter */
-export interface RestParamInfo {
-  /** Index of the rest parameter in the original TS signature */
-  restIndex: number;
-  /** Element type of the rest array (e.g. f64 for number[]) */
-  elemType: ValType;
-  /** Array type index in the module types */
-  arrayTypeIdx: number;
-  /** Vec struct type index wrapping the array */
-  vecTypeIdx: number;
-}
-
-/** Context shared across all codegen */
-export interface CodegenContext {
-  mod: WasmModule;
-  checker: ts.TypeChecker;
-  /** Map from function name to its absolute index (imports + locals) */
-  funcMap: Map<string, number>;
-  /** Map from struct/interface name to type index */
-  structMap: Map<string, number>;
-  /** Reverse map from type index to struct/interface name (O(1) reverse lookup) */
-  typeIdxToStructName: Map<number, string>;
-  /** Map from struct name to field info */
-  structFields: Map<string, FieldDef[]>;
-  /** Number of imported functions */
-  numImportFuncs: number;
-  /** Current function context (set during function compilation) */
-  currentFunc: FunctionContext | null;
-  /** Stack of parent function contexts saved during nested closure compilation.
-   *  Used by addUnionImports to shift func indices in all in-flight bodies. */
-  funcStack: FunctionContext[];
-  /** Errors accumulated during codegen */
-  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
-  /** Registry of external declared classes */
-  externClasses: Map<string, ExternClassInfo>;
-  /** Optional parameter info per function */
-  funcOptionalParams: Map<string, OptionalParamInfo[]>;
-  /** Map from anonymous ts.Type → generated struct name */
-  anonTypeMap: Map<ts.Type, string>;
-  /** Counter for generating anonymous struct names */
-  anonTypeCounter: number;
-  /** Map from string literal value → import func name (legacy, unused with importedStringConstants) */
-  stringLiteralMap: Map<string, string>;
-  /** Map from import name → string literal value (for .d.ts comments) */
-  stringLiteralValues: Map<string, string>;
-  /** Counter for string literal imports */
-  stringLiteralCounter: number;
-  /** Map from string literal value → global import index (for importedStringConstants) */
-  stringGlobalMap: Map<string, number>;
-  /** Number of imported globals (string constants) — offsets module-defined global indices */
-  numImportGlobals: number;
-  /** Whether wasm:js-string imports have been registered */
-  hasStringImports: boolean;
-  /** Map from "EnumName.Member" → numeric value */
-  enumValues: Map<string, number>;
-  /** Map from "EnumName.Member" → string value (for string enums) */
-  enumStringValues: Map<string, string>;
-  /** Map from element kind (e.g. "f64") → registered array type index */
-  arrayTypeMap: Map<string, number>;
-  /** Map from element kind (e.g. "f64") → registered vec struct type index */
-  vecTypeMap: Map<string, number>;
-  /** Map from className → parent className (for inheritance chain walk) */
-  externClassParent: Map<string, string>;
-  /** Map from global name (e.g. "document") → import info */
-  declaredGlobals: Map<string, { type: ValType; funcIdx: number }>;
-  /** Counter for generated callback functions (__cb_0, __cb_1, ...) */
-  callbackCounter: number;
-  /** Map from captured variable name → global index in mod.globals */
-  capturedGlobals: Map<string, number>;
-  /** Captured globals whose type was widened from ref to ref_null for null init */
-  capturedGlobalsWidened: Set<string>;
-  /** Set of class names (local classes compiled to Wasm GC structs) */
-  classSet: Set<string>;
-  /** Classes that must throw TypeError at evaluation time (e.g. static 'prototype' method) */
-  classThrowsOnEval: Set<string>;
-  /** Map from "ClassName_methodName" → method info for local classes */
-  classMethodSet: Set<string>;
-  /** Classes inside function bodies whose body compilation is deferred
-   *  until the enclosing function is compiled (so captured locals are available) */
-  deferredClassBodies: Set<string>;
-  /** Set of "ClassName_propName" for getter/setter accessor properties */
-  classAccessorSet: Set<string>;
-  /** Set of "ClassName_propName" for static getter/setter accessor properties */
-  staticAccessorSet: Set<string>;
-  /** Set of "ClassName_methodName" for static methods (no self param) */
-  staticMethodSet: Set<string>;
-  /** Map from "ClassName_propName" → global index for static properties */
-  staticProps: Map<string, number>;
-  /** Static property initializer expressions to compile into __module_init */
-  staticInitExprs: { globalIdx: number; initializer: ts.Expression }[];
-  /** Counter for generated closure types/functions */
-  closureCounter: number;
-  /** Map from local variable name → closure metadata (for call_ref dispatch) */
-  closureMap: Map<string, ClosureInfo>;
-  /** Map from closure struct type index → closure metadata (for anonymous closures) */
-  closureInfoByTypeIdx: Map<number, ClosureInfo>;
-  /** Resolved concrete types for generic functions (from call-site analysis) */
-  genericResolved: Map<string, { params: ValType[]; results: ValType[] }>;
-  /** Rest parameter info per function (functions with ...rest syntax) */
-  funcRestParams: Map<string, RestParamInfo>;
-  /** Map from struct name → set of closure type indices used for valueOf fields */
-  valueOfClosureTypes: Map<string, number[]>;
-  /** Tag index for the exception tag (-1 if not yet registered) */
-  exnTagIdx: number;
-  /** Whether union type helper imports have been registered */
-  hasUnionImports: boolean;
-  /** Set of function names that are async (for .d.ts generation) */
-  asyncFunctions: Set<string>;
-  /** Set of function names that are generators (function*) */
-  generatorFunctions: Set<string>;
-  /** Map from generator function name → yield element type (wasm ValType kind for the yielded values) */
-  generatorYieldType: Map<string, ValType>;
-  /** Map from module-level variable name → global index in mod.globals */
-  moduleGlobals: Map<string, number>;
-  /** Module-level variable initializers (compiled into __module_init) */
-  moduleInitStatements: ts.Statement[];
-  /** Nested function capture info: funcName → list of captures with outer local indices */
-  nestedFuncCaptures: Map<string, { name: string; outerLocalIdx: number; mutable?: boolean; valType?: ValType }[]>;
-  /** Map from child className → parent className (for local class inheritance) */
-  classParentMap: Map<string, string>;
-  /** Counter for assigning unique class tags (for instanceof support) */
-  classTagCounter: number;
-  /** Map from class name → unique tag value (for instanceof support) */
-  classTagMap: Map<string, number>;
-  /** Map from TS symbol name (e.g. "__class") → synthetic class name for class expressions */
-  classExprNameMap: Map<string, string>;
-  /** Map from ClassExpression AST node → synthetic class name for anonymous class in new expressions */
-  anonClassExprNames: Map<ts.ClassExpression, string>;
-  /** Map from function/class identifier → its ES-spec .name string value */
-  functionNameMap: Map<string, string>;
-  /** Whether to attach source positions for source map generation */
-  sourceMap: boolean;
-  /** Map from tuple type signature key → type index of the tuple struct */
-  tupleTypeMap: Map<string, number>;
-  /** Fast mode: default number to i32, promote to f64 only when needed */
-  fast: boolean;
-  /** Use WasmGC-native strings instead of wasm:js-string imports */
-  nativeStrings: boolean;
-  /** Native string support (fast mode): type index for $__str_data (array (mut i16)) */
-  nativeStrDataTypeIdx: number;
-  /** Type index for $AnyString (struct { len: i32 }) — base type for rope subtyping */
-  anyStrTypeIdx: number;
-  /** Native string support (fast mode): type index for $NativeString (struct { len: i32, off: i32, data: ref $__str_data }) */
-  nativeStrTypeIdx: number;
-  /** Type index for $ConsString (struct { len: i32, left: ref $AnyString, right: ref $AnyString }) */
-  consStrTypeIdx: number;
-  /** Whether native string helper functions have been emitted */
-  nativeStrHelpersEmitted: boolean;
-  /** Map from native string helper name → function index */
-  nativeStrHelpers: Map<string, number>;
-  /** Map from value type kind → ref cell struct type index (for mutable closure captures) */
-  refCellTypeMap: Map<string, number>;
-  /** Type index of the $AnyValue boxed-any struct (-1 if not registered) */
-  anyValueTypeIdx: number;
-  /** Map from any-value helper name → function index */
-  anyHelpers: Map<string, number>;
-  /** Whether any-value helper functions have been emitted */
-  anyHelpersEmitted: boolean;
-  /** Shape-inferred array-like variables: varName → { vecTypeIdx, arrTypeIdx, elemType } */
-  shapeMap: Map<string, { vecTypeIdx: number; arrTypeIdx: number; elemType: ValType }>;
-  /** Set of function names that failed during hoisting pre-pass (to avoid re-emitting errors) */
-  hoistFailedFuncs?: Set<string>;
-  /** Counter for unique tagged template cache global variables */
-  templateCacheCounter: number;
-  /** Type index for template vec struct (vec + raw field), -1 if not yet registered */
-  templateVecTypeIdx: number;
-  /** Extra properties for empty object variables (varName -> props to add) */
-  widenedTypeProperties: Map<string, { name: string; type: ValType }[]>;
-  /** Map from widened variable name to its registered struct name */
-  widenedVarStructMap: Map<string, string>;
-  /** Math methods that need inline Wasm implementations (filled by collectMathImports, consumed by emitInlineMathFunctions) */
-  pendingMathMethods: Set<string>;
-  /** Map from class name → class AST declaration node (for inherited field initializers) */
-  classDeclarationMap: Map<string, ts.ClassDeclaration | ts.ClassExpression>;
-  /** Cache for function type deduplication: signature key → type index */
-  funcTypeCache: Map<string, number>;
-  /** Type index for $WrapperNumber struct (-1 if not registered) */
-  wrapperNumberTypeIdx: number;
-  /** Type index for $WrapperString struct (-1 if not registered) */
-  wrapperStringTypeIdx: number;
-  /** Type index for $WrapperBoolean struct (-1 if not registered) */
-  wrapperBooleanTypeIdx: number;
-  /** Cache for function reference wrappers: signature key → ClosureInfo */
-  funcRefWrapperCache: Map<string, ClosureInfo>;
-  /** Pending module-init body (not yet in mod.functions) that needs global index fixup */
-  pendingInitBody: Instr[] | null;
-  /** Map from function name to inlinable function info (small functions eligible for call-site inlining) */
-  inlinableFunctions: Map<string, InlinableFunctionInfo>;
-  /** Global index of the __symbol_counter (mutable i32, starts at 100). -1 if not yet registered. */
-  symbolCounterGlobalIdx: number;
-  /** Stack of in-progress parent function bodies for addUnionImports index shifting during closure compilation */
-  parentBodiesStack: Instr[][];
-  /** Hash-based lookup for anonymous struct deduplication: fields hash key → struct name */
-  anonStructHash: Map<string, string>;
-  /** Pending late import shift: importsBefore value captured when first deferred import was added. */
-  pendingLateImportShift: { importsBefore: number } | null;
-  /** Map from class name → global index of the prototype externref singleton */
-  protoGlobals: Map<string, number>;
-  /** Whether targeting WASI (use fd_write/proc_exit instead of JS host imports) */
-  wasi: boolean;
-  /** WASI fd_write function index (-1 if not registered) */
-  wasiFdWriteIdx: number;
-  /** WASI proc_exit function index (-1 if not registered) */
-  wasiProcExitIdx: number;
-  /** WASI: bump allocator pointer for linear memory string data */
-  wasiBumpPtrGlobalIdx: number;
-  /** Map from let/const module global variable name → global index of its i32 TDZ flag (0 = uninitialized) */
-  tdzGlobals: Map<string, number>;
-  /** Set of let/const module global variable names (for TDZ tracking) */
-  tdzLetConstNames: Set<string>;
-  /** Compile-time property descriptor flags for Object.defineProperty validation.
-   *  Key: "varName:propName", Value: flags bitmask (see PROP_FLAG_* in expressions.ts) */
-  definedPropertyFlags: Map<string, number>;
-  /** Set of variable names marked as non-extensible via Object.preventExtensions/freeze/seal */
-  nonExtensibleVars: Set<string>;
-  /** Set of variable names marked as frozen via Object.freeze (no property writes allowed) */
-  frozenVars: Set<string>;
-  /** Set of variable names marked as sealed via Object.seal (writes OK, but no add/delete/reconfigure) */
-  sealedVars: Set<string>;
-  /**
-   * Per-shape default property flags table.
-   * Maps struct type index → Uint8Array of per-field default descriptor flags.
-   * One byte per user-visible field (excludes internal fields like __tag).
-   * Flag encoding per byte: bit 0 = writable, bit 1 = enumerable, bit 2 = configurable, bit 3 = accessor.
-   * Default 0x07 = writable + enumerable + configurable (data property).
-   * Populated after struct types are finalized; consumed by Object.defineProperty (#797c) and
-   * Object.keys/getOwnPropertyDescriptor (#797d) at runtime.
-   */
-  shapePropFlags: Map<number, Uint8Array>;
-  /** Cache for function-constructor struct types: funcName → { structTypeIdx, ctorFuncName } */
-  funcConstructorMap: Map<string, { structTypeIdx: number; ctorFuncName: string }>;
-}
-
-/** Metadata for a function eligible for call-site inlining */
-export interface InlinableFunctionInfo {
-  /** The compiled body instructions (shallow copy, safe to re-emit) */
-  body: Instr[];
-  /** Number of parameters */
-  paramCount: number;
-  /** Parameter types (for allocating temp locals) */
-  paramTypes: ValType[];
-  /** Return type (null = void) */
-  returnType: ValType | null;
-}
-
-/** Metadata for a closure stored in a local variable */
-export interface ClosureInfo {
-  /** Type index of the closure struct */
-  structTypeIdx: number;
-  /** Type index of the inner function type (for call_ref) */
-  funcTypeIdx: number;
-  /** Return type of the closure */
-  returnType: ValType | null;
-  /** Parameter types of the closure (excluding the closure struct self param) */
-  paramTypes: ValType[];
-}
-
-/** Per-function context */
-export interface FunctionContext {
-  /** Function name */
-  name: string;
-  /** Parameters (these are the first N locals) */
-  params: { name: string; type: ValType }[];
-  /** Additional locals declared in the body */
-  locals: LocalDef[];
-  /** All local names → index (params first, then locals) */
-  localMap: Map<string, number>;
-  /** Return type */
-  returnType: ValType | null; // null = void
-  /** Accumulated body instructions */
-  body: Instr[];
-  /** Block depth for br labels */
-  blockDepth: number;
-  /** Break label depth stack */
-  breakStack: number[];
-  /** Continue label depth stack */
-  continueStack: number[];
-  /** Map from label name to break/continue stack indices for labeled break/continue */
-  labelMap: Map<string, { breakIdx: number; continueIdx: number }>;
-  /** Depth for `return` inside generator body -- adjusted by loop/block nesting */
-  generatorReturnDepth?: number;
-  /** Map from variable name → ref cell info (for mutable closure captures) */
-  boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
-  /** Whether this function is a class constructor (for new.target support) */
-  isConstructor?: boolean;
-  /** Whether this function is a generator (function*) */
-  isGenerator?: boolean;
-  /** Set of variable names that are read-only bindings (e.g. named function expression name) */
-  readOnlyBindings?: Set<string>;
-  /** Set of variable names that are const bindings — assignment throws TypeError at runtime */
-  constBindings?: Set<string>;
-  /** Stack of saved body arrays for addUnionImports index shifting */
-  savedBodies: Instr[][];
-  /** Set of function names successfully hoisted during THIS function body's hoisting pass */
-  hoistedFuncs?: Set<string>;
-  /** Enclosing class name — propagated to closures for super keyword resolution */
-  enclosingClassName?: string;
-  /** Set of variable names known to be non-null in the current scope (type narrowing) */
-  narrowedNonNull?: Set<string>;
-  /**
-   * Set of "arrayVar:indexVar" keys where bounds checks can be elided.
-   * Populated when a for-loop condition guarantees indexVar < arrayVar.length.
-   */
-  safeIndexedArrays?: Set<string>;
-  /**
-   * Free list for temporary locals, keyed by ValType key string.
-   * Used by allocTempLocal/releaseTempLocal to reuse locals of the same type.
-   */
-  tempFreeList?: Map<string, number[]>;
-  /** Map from let/const local variable name → local index of its i32 TDZ flag (0 = uninitialized) */
-  tdzFlagLocals?: Map<string, number>;
-  /**
-   * Stack of catch rethrow info. Each entry tracks a catch variable name and the
-   * current depth (number of block-like structures) from the catch boundary.
-   * Used to emit `rethrow` instead of `throw $tag` when re-throwing the caught exception.
-   */
-  catchRethrowStack?: { varName: string; depth: number }[];
-  /**
-   * Stack of pending finally blocks. When a return/break/continue exits a try
-   * block that has a finally clause, the finally instructions must be inlined
-   * before the control-flow transfer. Each entry stores a clone function for
-   * the finally instructions and the breakStack/continueStack lengths at the
-   * time the try was entered, so break/continue can determine which finally
-   * blocks they need to run.
-   */
-  finallyStack?: {
-    cloneFinally: () => Instr[];
-    breakStackLen: number;
-    continueStackLen: number;
-  }[];
-  /**
-   * Pending writeback instructions for mutable callback captures (#859).
-   * After a host call (e.g. map.forEach) that received a callback with mutable
-   * captures via ref cells, these instructions read the ref cell values back
-   * into the outer locals.
-   */
-  pendingCallbackWritebacks?: Instr[];
-}
-
-/**
- * Swap fctx.body to a fresh array, pushing the current body onto the
- * savedBodies stack so that addUnionImports (and any other late import
- * addition) can shift function indices in the saved body too.
- * Returns the saved body reference for later restoration via popBody().
- */
-export function pushBody(fctx: FunctionContext): Instr[] {
-  const saved = fctx.body;
-  fctx.savedBodies.push(saved);
-  fctx.body = [];
-  return saved;
-}
-
-/**
- * Restore fctx.body from a previously-saved reference, popping the
- * savedBodies stack.
- */
-export function popBody(fctx: FunctionContext, saved: Instr[]): void {
-  fctx.savedBodies.pop();
-  fctx.body = saved;
-}
-
-/** Options for code generation */
-export interface CodegenResult {
-  module: WasmModule;
-  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
-}
-
-export interface CodegenOptions {
-  /** Whether to generate source positions for source map */
-  sourceMap?: boolean;
-  /** Fast mode: i32 default numbers */
-  fast?: boolean;
-  /** Use WasmGC-native strings instead of wasm:js-string imports */
-  nativeStrings?: boolean;
-  /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
-  wasi?: boolean;
-}
-
-/**
- * Create a fresh CodegenContext with all fields initialized.
- * Shared by generateModule and generateMultiModule to avoid duplication (#636).
- */
-export function createCodegenContext(
-  mod: WasmModule,
-  checker: ts.TypeChecker,
-  options?: CodegenOptions,
-): CodegenContext {
-  const ctx: CodegenContext = {
-    mod,
-    checker,
-    funcMap: new Map(),
-    structMap: new Map(),
-    typeIdxToStructName: new Map(),
-    structFields: new Map(),
-    numImportFuncs: 0,
-    currentFunc: null,
-    funcStack: [],
-    errors: [],
-    externClasses: new Map(),
-    funcOptionalParams: new Map(),
-    anonTypeMap: new Map(),
-    anonTypeCounter: 0,
-    stringLiteralMap: new Map(),
-    stringLiteralValues: new Map(),
-    stringLiteralCounter: 0,
-    stringGlobalMap: new Map(),
-    numImportGlobals: 0,
-    hasStringImports: false,
-    enumValues: new Map(),
-    enumStringValues: new Map(),
-    arrayTypeMap: new Map(),
-    vecTypeMap: new Map(),
-    externClassParent: new Map(),
-    declaredGlobals: new Map(),
-    callbackCounter: 0,
-    capturedGlobals: new Map(),
-    capturedGlobalsWidened: new Set(),
-    classSet: new Set(),
-    classThrowsOnEval: new Set(),
-    classMethodSet: new Set(),
-    deferredClassBodies: new Set(),
-    classAccessorSet: new Set(),
-    staticAccessorSet: new Set(),
-    staticMethodSet: new Set(),
-    staticProps: new Map(),
-    staticInitExprs: [],
-    closureCounter: 0,
-    closureMap: new Map(),
-    closureInfoByTypeIdx: new Map(),
-    genericResolved: new Map(),
-    funcRestParams: new Map(),
-    valueOfClosureTypes: new Map(),
-    exnTagIdx: -1,
-    hasUnionImports: false,
-    asyncFunctions: new Set(),
-    generatorFunctions: new Set(),
-    generatorYieldType: new Map(),
-    moduleGlobals: new Map(),
-    moduleInitStatements: [],
-    nestedFuncCaptures: new Map(),
-    classParentMap: new Map(),
-    classTagCounter: 0,
-    classTagMap: new Map(),
-    classExprNameMap: new Map(),
-    anonClassExprNames: new Map(),
-    functionNameMap: new Map(),
-    sourceMap: options?.sourceMap ?? false,
-    tupleTypeMap: new Map(),
-    fast: options?.fast ?? false,
-    nativeStrings: options?.nativeStrings ?? options?.fast ?? options?.wasi ?? false,
-    nativeStrDataTypeIdx: -1,
-    anyStrTypeIdx: -1,
-    nativeStrTypeIdx: -1,
-    consStrTypeIdx: -1,
-    nativeStrHelpersEmitted: false,
-    nativeStrHelpers: new Map(),
-    refCellTypeMap: new Map(),
-    anyValueTypeIdx: -1,
-    anyHelpers: new Map(),
-    anyHelpersEmitted: false,
-    shapeMap: new Map(),
-    templateCacheCounter: 0,
-    templateVecTypeIdx: -1,
-    widenedTypeProperties: new Map(),
-    widenedVarStructMap: new Map(),
-    pendingMathMethods: new Set(),
-    classDeclarationMap: new Map(),
-    wrapperNumberTypeIdx: -1,
-    wrapperStringTypeIdx: -1,
-    wrapperBooleanTypeIdx: -1,
-    funcRefWrapperCache: new Map(),
-    pendingInitBody: null,
-    inlinableFunctions: new Map(),
-    symbolCounterGlobalIdx: -1,
-    parentBodiesStack: [],
-    anonStructHash: new Map(),
-    funcTypeCache: new Map(),
-    pendingLateImportShift: null,
-    protoGlobals: new Map(),
-    wasi: options?.wasi ?? false,
-    wasiFdWriteIdx: -1,
-    wasiProcExitIdx: -1,
-    wasiBumpPtrGlobalIdx: -1,
-    tdzGlobals: new Map(),
-    tdzLetConstNames: new Set(),
-    definedPropertyFlags: new Map(),
-    nonExtensibleVars: new Set(),
-    frozenVars: new Set(),
-    sealedVars: new Set(),
-    shapePropFlags: new Map(),
-    funcConstructorMap: new Map(),
-  };
-
-  // Pre-register common vec types so they're available during early compilation (#647)
-  // Without this, methods compiled before array literals wouldn't know about __vec_f64.
-  getOrRegisterVecType(ctx, "externref", { kind: "externref" });
-  getOrRegisterVecType(ctx, "f64", { kind: "f64" });
-
-  // Register native string types if native strings enabled (fast mode, WASI, or explicit)
-  if (ctx.nativeStrings) {
-    registerNativeStringTypes(ctx);
-  }
-
-  return ctx;
 }
 
 /** Compile a typed AST into a WasmModule IR */
@@ -1153,6 +652,9 @@ export function generateModule(
       }
     }
   }
+
+  // Register built-in collection types as extern classes if not already collected from lib files
+  registerBuiltinExternClasses(ctx);
 
   // Pre-pass: detect empty object literals that get properties assigned later
   // Must run before import collectors so that widened types are known
@@ -1203,7 +705,7 @@ export function generateModule(
   // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
   const importNames = mod.imports.map((imp) => imp.name);
   for (const [key, info] of ctx.externClasses) {
-    const prefix = info.importPrefix + "_";
+    const prefix = `${info.importPrefix}_`;
     const isUsed = importNames.some((n) => n.startsWith(prefix));
     if (key === info.className && isUsed) {
       mod.externClasses.push({
@@ -1342,8 +844,13 @@ function _emitStructFieldGettersInner(ctx: CodegenContext): void {
     if (typeIdx === undefined) continue;
 
     // Skip internal/wrapper types
-    if (structName.startsWith("Wrapper") || structName === "$AnyValue" ||
-        structName.startsWith("__vec_") || structName.startsWith("__arr_")) continue;
+    if (
+      structName.startsWith("Wrapper") ||
+      structName === "$AnyValue" ||
+      structName.startsWith("__vec_") ||
+      structName.startsWith("__arr_")
+    )
+      continue;
 
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i];
@@ -1352,7 +859,10 @@ function _emitStructFieldGettersInner(ctx: CodegenContext): void {
       if (!field.name || field.name.startsWith("$")) continue;
 
       let entries = fieldMap.get(field.name);
-      if (!entries) { entries = []; fieldMap.set(field.name, entries); }
+      if (!entries) {
+        entries = [];
+        fieldMap.set(field.name, entries);
+      }
       entries.push({ typeIdx, fieldIdx: i, fieldType: field.type });
     }
   }
@@ -1370,9 +880,9 @@ function _emitStructFieldGettersInner(ctx: CodegenContext): void {
   for (const [fieldName, entries] of fieldMap) {
     // Determine the "best" return type — if all entries for this field are
     // the same kind we can use a specific return type; if mixed, use externref.
-    const hasF64 = entries.some(e => e.fieldType.kind === "f64");
-    const hasI32 = entries.some(e => e.fieldType.kind === "i32");
-    const hasRef = entries.some(e => e.fieldType.kind !== "f64" && e.fieldType.kind !== "i32");
+    const hasF64 = entries.some((e) => e.fieldType.kind === "f64");
+    const hasI32 = entries.some((e) => e.fieldType.kind === "i32");
+    const hasRef = entries.some((e) => e.fieldType.kind !== "f64" && e.fieldType.kind !== "i32");
     const allF64 = hasF64 && !hasI32 && !hasRef;
     const allI32 = hasI32 && !hasF64 && !hasRef;
 
@@ -1431,8 +941,13 @@ function emitStructFieldNamesExport(
   for (const [structName, fields] of ctx.structFields) {
     const typeIdx = ctx.structMap.get(structName);
     if (typeIdx === undefined) continue;
-    if (structName.startsWith("Wrapper") || structName === "$AnyValue" ||
-        structName.startsWith("__vec_") || structName.startsWith("__arr_")) continue;
+    if (
+      structName.startsWith("Wrapper") ||
+      structName === "$AnyValue" ||
+      structName.startsWith("__vec_") ||
+      structName.startsWith("__arr_")
+    )
+      continue;
 
     const names: string[] = [];
     for (const field of fields) {
@@ -1474,9 +989,7 @@ function emitStructFieldNamesExport(
 
   for (let i = typeEntries.length - 1; i >= 0; i--) {
     const [typeIdx, globalIdx] = typeEntries[i]!;
-    const thenBranch: Instr[] = [
-      { op: "global.get", index: globalIdx } as Instr,
-    ];
+    const thenBranch: Instr[] = [{ op: "global.get", index: globalIdx } as Instr];
 
     const ifInstr: Instr = {
       op: "if",
@@ -1485,11 +998,7 @@ function emitStructFieldNamesExport(
       else: fallback,
     } as unknown as Instr;
 
-    fallback = [
-      { op: "local.get", index: anyLocal } as Instr,
-      { op: "ref.test", typeIdx } as Instr,
-      ifInstr,
-    ];
+    fallback = [{ op: "local.get", index: anyLocal } as Instr, { op: "ref.test", typeIdx } as Instr, ifInstr];
   }
 
   body.push(...fallback);
@@ -1530,8 +1039,13 @@ function emitIteratorMethodExport(ctx: CodegenContext): void {
     for (const [structName] of ctx.structFields) {
       const typeIdx = ctx.structMap.get(structName);
       if (typeIdx === undefined) continue;
-      if (structName.startsWith("Wrapper") || structName === "$AnyValue" ||
-          structName.startsWith("__vec_") || structName.startsWith("__arr_")) continue;
+      if (
+        structName.startsWith("Wrapper") ||
+        structName === "$AnyValue" ||
+        structName.startsWith("__vec_") ||
+        structName.startsWith("__arr_")
+      )
+        continue;
 
       const methodFullName = `${structName}_${methodSuffix}`;
       const funcIdx = ctx.funcMap.get(methodFullName);
@@ -1539,9 +1053,10 @@ function emitIteratorMethodExport(ctx: CodegenContext): void {
 
       const funcDef = mod.functions[funcIdx - ctx.numImportFuncs];
       const funcType = funcDef ? mod.types[funcDef.typeIdx] : undefined;
-      const resultType: ValType = (funcType && funcType.kind === "func" && funcType.results.length > 0)
-        ? funcType.results[0]!
-        : { kind: "externref" };
+      const resultType: ValType =
+        funcType && funcType.kind === "func" && funcType.results.length > 0
+          ? funcType.results[0]!
+          : { kind: "externref" };
 
       entries.push({ structName, typeIdx, funcIdx, resultType });
     }
@@ -1721,9 +1236,7 @@ function emitClosureCallExport(ctx: CodegenContext): void {
   mod.functions.push({
     name: "__call_fn_0",
     typeIdx: exportFuncTypeIdx,
-    locals: [
-      { name: "__any", type: { kind: "anyref" } },
-    ],
+    locals: [{ name: "__any", type: { kind: "anyref" } }],
     body,
     exported: true,
   } as WasmFunction);
@@ -1748,28 +1261,35 @@ function emitToPrimitiveMethodExports(ctx: CodegenContext): void {
   const dispatchTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }], "$call_toPrim_type");
 
   const emitDispatchForMethod = (methodName: string, exportName: string) => {
-    type DispatchEntry = {
-      structName: string;
-      typeIdx: number;
-      mode: "standalone";
-      funcIdx: number;
-      resultType: ValType;
-    } | {
-      structName: string;
-      typeIdx: number;
-      mode: "closure";
-      fieldIdx: number;
-      closureTypeIdx: number;
-      closureInfo: ClosureInfo;
-    };
+    type DispatchEntry =
+      | {
+          structName: string;
+          typeIdx: number;
+          mode: "standalone";
+          funcIdx: number;
+          resultType: ValType;
+        }
+      | {
+          structName: string;
+          typeIdx: number;
+          mode: "closure";
+          fieldIdx: number;
+          closureTypeIdx: number;
+          closureInfo: ClosureInfo;
+        };
 
     const entries: DispatchEntry[] = [];
 
     for (const [structName, fields] of ctx.structFields) {
       const typeIdx = ctx.structMap.get(structName);
       if (typeIdx === undefined) continue;
-      if (structName.startsWith("Wrapper") || structName === "$AnyValue" ||
-          structName.startsWith("__vec_") || structName.startsWith("__arr_")) continue;
+      if (
+        structName.startsWith("Wrapper") ||
+        structName === "$AnyValue" ||
+        structName.startsWith("__vec_") ||
+        structName.startsWith("__arr_")
+      )
+        continue;
 
       // 1. Check for standalone method: StructName_toString
       const methodFullName = `${structName}_${methodName}`;
@@ -1777,15 +1297,16 @@ function emitToPrimitiveMethodExports(ctx: CodegenContext): void {
       if (funcIdx !== undefined) {
         const funcDef = mod.functions[funcIdx - ctx.numImportFuncs];
         const funcType = funcDef ? mod.types[funcDef.typeIdx] : undefined;
-        const resultType: ValType = (funcType && funcType.kind === "func" && funcType.results.length > 0)
-          ? funcType.results[0]!
-          : { kind: "externref" };
+        const resultType: ValType =
+          funcType && funcType.kind === "func" && funcType.results.length > 0
+            ? funcType.results[0]!
+            : { kind: "externref" };
         entries.push({ structName, typeIdx, mode: "standalone", funcIdx, resultType });
         continue;
       }
 
       // 2. Check for closure field
-      const fieldIdx = fields.findIndex(f => f.name === methodName);
+      const fieldIdx = fields.findIndex((f) => f.name === methodName);
       if (fieldIdx < 0) continue;
       const field = fields[fieldIdx]!;
 
@@ -1821,12 +1342,18 @@ function emitToPrimitiveMethodExports(ctx: CodegenContext): void {
       if (resultType.kind === "f64") {
         const boxIdx = ctx.funcMap.get("__box_number");
         if (boxIdx !== undefined) instrs.push({ op: "call", funcIdx: boxIdx } as Instr);
-        else { instrs.push({ op: "drop" } as Instr); instrs.push({ op: "ref.null.extern" } as Instr); }
+        else {
+          instrs.push({ op: "drop" } as Instr);
+          instrs.push({ op: "ref.null.extern" } as Instr);
+        }
       } else if (resultType.kind === "i32") {
         instrs.push({ op: "f64.convert_i32_s" } as Instr);
         const boxIdx = ctx.funcMap.get("__box_number");
         if (boxIdx !== undefined) instrs.push({ op: "call", funcIdx: boxIdx } as Instr);
-        else { instrs.push({ op: "drop" } as Instr); instrs.push({ op: "ref.null.extern" } as Instr); }
+        else {
+          instrs.push({ op: "drop" } as Instr);
+          instrs.push({ op: "ref.null.extern" } as Instr);
+        }
       } else if (resultType.kind === "ref" || resultType.kind === "ref_null") {
         instrs.push({ op: "extern.convert_any" } as Instr);
       }
@@ -1878,15 +1405,18 @@ function emitToPrimitiveMethodExports(ctx: CodegenContext): void {
       return [
         { op: "local.get", index: anyLocal } as Instr,
         { op: "ref.test", typeIdx: entry.typeIdx } as unknown as Instr,
-        { op: "if", blockType: { kind: "val" as const, type: { kind: "externref" as const } }, then: thenInstrs, else: buildDispatch(idx + 1) } as Instr,
+        {
+          op: "if",
+          blockType: { kind: "val" as const, type: { kind: "externref" as const } },
+          then: thenInstrs,
+          else: buildDispatch(idx + 1),
+        } as Instr,
       ];
     };
 
     // Determine locals: param 0 (externref), local 1 (anyref), local 2 (eqref for closure)
-    const hasClosureEntry = entries.some(e => e.mode === "closure");
-    const locals: { name: string; type: ValType }[] = [
-      { name: "__any", type: { kind: "anyref" } },
-    ];
+    const hasClosureEntry = entries.some((e) => e.mode === "closure");
+    const locals: { name: string; type: ValType }[] = [{ name: "__any", type: { kind: "anyref" } }];
     if (hasClosureEntry) {
       locals.push({ name: "__closure", type: { kind: "eqref" } });
     }
@@ -1937,7 +1467,8 @@ function emitVecAccessExports(ctx: CodegenContext): void {
   // Emit vec access exports when the runtime may need to introspect WasmGC arrays:
   // - for-of iteration on non-array types (__iterator)
   // - JSON.stringify on arrays of structs (JSON_stringify)
-  if (!ctx.funcMap.has("__iterator") && !ctx.funcMap.has("JSON_stringify") && !ctx.funcMap.has("__make_iterable")) return;
+  if (!ctx.funcMap.has("__iterator") && !ctx.funcMap.has("JSON_stringify") && !ctx.funcMap.has("__make_iterable"))
+    return;
   try {
     _emitVecAccessExportsInner(ctx);
   } catch {
@@ -2031,7 +1562,7 @@ function _emitVecAccessExportsInner(ctx: CodegenContext): void {
       const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
       if (arrTypeIdx < 0) continue;
       // Skip numeric element types if __box_number is not available
-      if ((elemKey === "f64" || elemKey === "i32") && boxNumIdx === undefined) continue;
+      if ((elemKey === "f64" || elemKey === "i32" || elemKey === "i32_byte") && boxNumIdx === undefined) continue;
 
       // Inline boxing: avoid calling addUnionImports late
       let boxInstrs: Instr[];
@@ -2040,10 +1571,18 @@ function _emitVecAccessExportsInner(ctx: CodegenContext): void {
       } else if (elemKey === "f64" && boxNumIdx !== undefined) {
         boxInstrs = [{ op: "call", funcIdx: boxNumIdx } as Instr];
       } else if (elemKey === "i32" && boxNumIdx !== undefined) {
-        boxInstrs = [
-          { op: "f64.convert_i32_s" } as Instr,
-          { op: "call", funcIdx: boxNumIdx } as Instr,
-        ];
+        boxInstrs = [{ op: "f64.convert_i32_s" } as Instr, { op: "call", funcIdx: boxNumIdx } as Instr];
+      } else if (elemKey === "i32_byte" && boxNumIdx !== undefined) {
+        // ArrayBuffer/DataView byte elements (i32, unsigned 0-255) — convert unsigned then box
+        boxInstrs = [{ op: "f64.convert_i32_u" } as Instr, { op: "call", funcIdx: boxNumIdx } as Instr];
+      } else if (elemKey === "i64") {
+        // i64 (BigInt) is a value type, not a ref type — extern.convert_any expects anyref.
+        // Convert i64 -> f64 (lossy for large values) then box, or drop and return null.
+        if (boxNumIdx !== undefined) {
+          boxInstrs = [{ op: "f64.convert_i64_s" } as Instr, { op: "call", funcIdx: boxNumIdx } as Instr];
+        } else {
+          boxInstrs = [{ op: "drop" } as Instr, { op: "ref.null.extern" } as Instr];
+        }
       } else {
         boxInstrs = [{ op: "extern.convert_any" } as Instr];
       }
@@ -2052,7 +1591,7 @@ function _emitVecAccessExportsInner(ctx: CodegenContext): void {
         { op: "local.get", index: 2 } as Instr,
         { op: "ref.cast", typeIdx: vecTypeIdx } as Instr,
         { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 } as Instr,
-        { op: "local.get", index: 1 } as Instr,  // index
+        { op: "local.get", index: 1 } as Instr, // index
         { op: "array.get", typeIdx: arrTypeIdx } as Instr,
         ...boxInstrs,
         { op: "return" } as Instr,
@@ -2235,9 +1774,7 @@ export function generateMultiModule(
 
   // Scan lib files for DOM extern classes + globals (only if any user code uses DOM)
   // After lib.d.ts refactoring, TS loads individual lib files (lib.es5.d.ts, etc.)
-  const anyUsesDom = multiAst.sourceFiles.some((sf) =>
-    sourceUsesLibGlobals(sf),
-  );
+  const anyUsesDom = multiAst.sourceFiles.some((sf) => sourceUsesLibGlobals(sf));
   if (anyUsesDom) {
     for (const libSf of multiAst.program.getSourceFiles()) {
       const baseName = libSf.fileName.split("/").pop() ?? libSf.fileName;
@@ -2251,6 +1788,9 @@ export function generateMultiModule(
       }
     }
   }
+
+  // Register built-in collection types as extern classes if not already collected from lib files
+  registerBuiltinExternClasses(ctx);
 
   // Pre-pass: detect empty object literals that get properties assigned later
   // Must run before import collectors so that widened types are known
@@ -2304,7 +1844,7 @@ export function generateMultiModule(
   // Copy metadata for .d.ts / helper generation
   const importNames = mod.imports.map((imp) => imp.name);
   for (const [key, info] of ctx.externClasses) {
-    const prefix = info.importPrefix + "_";
+    const prefix = `${info.importPrefix}_`;
     const isUsed = importNames.some((n) => n.startsWith(prefix));
     if (key === info.className && isUsed) {
       mod.externClasses.push({
@@ -2382,8 +1922,11 @@ interface UnifiedCollectorState {
   mathNeedsToUint32: boolean;
   // -- collectParseImports --
   parseNeeded: Set<string>;
+  // -- collectURIImports --
+  uriNeeded: Set<string>;
   // -- collectStringStaticImports --
   needsFromCharCode: boolean;
+  needsFromCodePoint: boolean;
   // -- collectPromiseImports --
   promiseNeeded: Set<string>;
   promiseNeedConstructor: boolean;
@@ -2434,7 +1977,9 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
     mathNeeded: new Set(),
     mathNeedsToUint32: false,
     parseNeeded: new Set(),
+    uriNeeded: new Set(),
     needsFromCharCode: false,
+    needsFromCodePoint: false,
     promiseNeeded: new Set(),
     promiseNeedConstructor: false,
     jsonNeedStringify: false,
@@ -2458,11 +2003,7 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
 }
 
 /** Single-pass visitor called on every AST node */
-function unifiedVisitNode(
-  ctx: CodegenContext,
-  state: UnifiedCollectorState,
-  node: ts.Node,
-): void {
+function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorState, node: ts.Node): void {
   // ── collectStringLiterals (skip computed property names) ──
   if (state.insideComputedPropertyName === 0) {
     if (ts.isStringLiteral(node)) {
@@ -2502,9 +2043,7 @@ function unifiedVisitNode(
     if (ts.isTypeOfExpression(node)) {
       state.hasTypeofExprForStrings = true;
     }
-    if (ts.isMetaProperty(node) &&
-        node.keywordToken === ts.SyntaxKind.ImportKeyword &&
-        node.name.text === "meta") {
+    if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword && node.name.text === "meta") {
       state.stringLiterals.add("module.wasm");
       state.stringLiterals.add("[object Object]");
     }
@@ -2537,10 +2076,7 @@ function unifiedVisitNode(
   }
 
   // ── collectPrimitiveMethodImports ──
-  if (
-    ts.isCallExpression(node) &&
-    ts.isPropertyAccessExpression(node.expression)
-  ) {
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
     const prop = node.expression;
     const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
     const methodName = prop.name.text;
@@ -2560,9 +2096,15 @@ function unifiedVisitNode(
     if (isStringType(receiverType) && Object.prototype.hasOwnProperty.call(STRING_METHODS, methodName)) {
       state.stringMethodNeeded.add(methodName);
       // Track if the method is called with a RegExp arg (replace, replaceAll, split, match, search)
-      if ((methodName === "replace" || methodName === "replaceAll" || methodName === "split" ||
-           methodName === "match" || methodName === "search") &&
-          ts.isCallExpression(node) && node.arguments.length > 0) {
+      if (
+        (methodName === "replace" ||
+          methodName === "replaceAll" ||
+          methodName === "split" ||
+          methodName === "match" ||
+          methodName === "search") &&
+        ts.isCallExpression(node) &&
+        node.arguments.length > 0
+      ) {
         const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
         const symName = argType.getSymbol()?.getName();
         if (symName === "RegExp") {
@@ -2595,8 +2137,7 @@ function unifiedVisitNode(
   // String + non-string concatenation
   if (
     ts.isBinaryExpression(node) &&
-    (node.operatorToken.kind === ts.SyntaxKind.PlusToken ||
-     node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken)
+    (node.operatorToken.kind === ts.SyntaxKind.PlusToken || node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken)
   ) {
     const leftType = ctx.checker.getTypeAtLocation(node.left);
     const rightType = ctx.checker.getTypeAtLocation(node.right);
@@ -2618,9 +2159,9 @@ function unifiedVisitNode(
   if (
     ts.isBinaryExpression(node) &&
     (node.operatorToken.kind === ts.SyntaxKind.LessThanToken ||
-     node.operatorToken.kind === ts.SyntaxKind.LessThanEqualsToken ||
-     node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken ||
-     node.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken)
+      node.operatorToken.kind === ts.SyntaxKind.LessThanEqualsToken ||
+      node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken ||
+      node.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken)
   ) {
     const leftType = ctx.checker.getTypeAtLocation(node.left);
     if (isStringType(leftType)) {
@@ -2636,11 +2177,7 @@ function unifiedVisitNode(
     node.expression.expression.text === "Math"
   ) {
     const method = node.expression.name.text;
-    if (
-      MATH_HOST_METHODS_1ARG.has(method) ||
-      MATH_HOST_METHODS_2ARG.has(method) ||
-      method === "random"
-    ) {
+    if (MATH_HOST_METHODS_1ARG.has(method) || MATH_HOST_METHODS_2ARG.has(method) || method === "random") {
       state.mathNeeded.add(method);
     }
     if (method === "clz32" || method === "imul") {
@@ -2656,13 +2193,18 @@ function unifiedVisitNode(
   }
 
   // ── collectParseImports ──
-  if (
-    ts.isCallExpression(node) &&
-    ts.isIdentifier(node.expression)
-  ) {
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
     const name = node.expression.text;
     if (name === "parseInt" || name === "parseFloat") {
       state.parseNeeded.add(name);
+    }
+    if (
+      name === "decodeURI" ||
+      name === "decodeURIComponent" ||
+      name === "encodeURI" ||
+      name === "encodeURIComponent"
+    ) {
+      state.uriNeeded.add(name);
     }
     if (name === "Number") {
       state.parseNeeded.add("parseFloat");
@@ -2682,7 +2224,7 @@ function unifiedVisitNode(
   if (
     ts.isBinaryExpression(node) &&
     (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken ||
-     node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken)
+      node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken)
   ) {
     try {
       const leftType = ctx.checker.getTypeAtLocation(node.left);
@@ -2725,15 +2267,15 @@ function unifiedVisitNode(
     }
   }
 
-  // ── collectStringStaticImports (String.fromCharCode) ──
+  // ── collectStringStaticImports (String.fromCharCode / String.fromCodePoint) ──
   if (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
     ts.isIdentifier(node.expression.expression) &&
-    node.expression.expression.text === "String" &&
-    node.expression.name.text === "fromCharCode"
+    node.expression.expression.text === "String"
   ) {
-    state.needsFromCharCode = true;
+    if (node.expression.name.text === "fromCharCode") state.needsFromCharCode = true;
+    if (node.expression.name.text === "fromCodePoint") state.needsFromCodePoint = true;
   }
 
   // ── collectPromiseImports ──
@@ -2748,11 +2290,7 @@ function unifiedVisitNode(
       state.promiseNeeded.add(method);
     }
   }
-  if (
-    ts.isNewExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    node.expression.text === "Promise"
-  ) {
+  if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
     state.promiseNeedConstructor = true;
   }
 
@@ -2776,10 +2314,7 @@ function unifiedVisitNode(
   }
 
   // ── collectFunctionalArrayImports ──
-  if (
-    ts.isCallExpression(node) &&
-    ts.isPropertyAccessExpression(node.expression)
-  ) {
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
     const method = node.expression.name.text;
     if (FUNCTIONAL_ARRAY_METHODS.has(method)) {
       if (method === "reduce") {
@@ -2820,7 +2355,13 @@ function unifiedVisitNode(
     if (!state.unionFound && ts.isTypeOfExpression(node)) {
       state.unionFound = true;
     }
-    if (!state.unionFound && ts.isFunctionDeclaration(node) && node.asteriskToken && node.body && !hasDeclareModifier(node)) {
+    if (
+      !state.unionFound &&
+      ts.isFunctionDeclaration(node) &&
+      node.asteriskToken &&
+      node.body &&
+      !hasDeclareModifier(node)
+    ) {
       state.unionFound = true;
     }
     if (!state.unionFound && ts.isFunctionExpression(node) && node.asteriskToken) {
@@ -2840,12 +2381,7 @@ function unifiedVisitNode(
 
   // ── collectGeneratorImports ──
   if (!state.generatorFound) {
-    if (
-      ts.isFunctionDeclaration(node) &&
-      node.asteriskToken &&
-      node.body &&
-      !hasDeclareModifier(node)
-    ) {
+    if (ts.isFunctionDeclaration(node) && node.asteriskToken && node.body && !hasDeclareModifier(node)) {
       state.generatorFound = true;
     }
     if (!state.generatorFound && ts.isFunctionExpression(node) && node.asteriskToken) {
@@ -2871,8 +2407,7 @@ function unifiedVisitNode(
   // ── collectIteratorImports ──
   if (!state.iteratorFound && ts.isForOfStatement(node)) {
     const exprType = ctx.checker.getTypeAtLocation(node.expression);
-    const sym =
-      (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
+    const sym = (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
     if (sym?.name !== "Array") {
       if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 && isStringType(exprType)) {
         // In fast mode, strings are iterated natively
@@ -2909,10 +2444,13 @@ function unifiedVisitNode(
     ts.isPropertyAccessExpression(node.expression) &&
     ts.isIdentifier(node.expression.expression) &&
     node.expression.expression.text === "Object" &&
-    (node.expression.name.text === "keys" || node.expression.name.text === "values" || node.expression.name.text === "entries") &&
+    (node.expression.name.text === "keys" ||
+      node.expression.name.text === "values" ||
+      node.expression.name.text === "entries") &&
     node.arguments.length === 1
   ) {
-    if (node.expression.name.text === "values" || node.expression.name.text === "entries") state.objectMethodHasValues = true;
+    if (node.expression.name.text === "values" || node.expression.name.text === "entries")
+      state.objectMethodHasValues = true;
     const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
     const props = argType.getProperties();
     for (const prop of props) {
@@ -2934,9 +2472,10 @@ function unifiedVisitNode(
     if (!KNOWN_CONSTRUCTORS.has(name)) {
       const sym = ctx.checker.getSymbolAtLocation(node.expression);
       const decls = sym?.getDeclarations() ?? [];
-      const isLocalClass = decls.some(d => {
+      const isLocalClass = decls.some((d) => {
         if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) return d.getSourceFile() === state.sourceFile;
-        if (ts.isVariableDeclaration(d) && d.initializer && ts.isClassExpression(d.initializer)) return d.getSourceFile() === state.sourceFile;
+        if (ts.isVariableDeclaration(d) && d.initializer && ts.isClassExpression(d.initializer))
+          return d.getSourceFile() === state.sourceFile;
         return false;
       });
       const isExtern = ctx.externClasses.has(name);
@@ -2981,35 +2520,29 @@ function unifiedVisitNode(
   }
   // Method declarations: { method() {} } → name = "method"
   if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
-    const prefix = node.modifiers?.some(m => m.kind === ts.SyntaxKind.GetKeyword) ? "get "
-      : node.modifiers?.some(m => m.kind === ts.SyntaxKind.SetKeyword) ? "set "
-      : "";
-    state.stringLiterals.add(prefix + node.name.text);
+    state.stringLiterals.add(node.name.text);
   }
   // Getter/setter declarations
   if (ts.isGetAccessorDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
-    state.stringLiterals.add("get " + node.name.text);
+    state.stringLiterals.add(`get ${node.name.text}`);
   }
   if (ts.isSetAccessorDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
-    state.stringLiterals.add("set " + node.name.text);
+    state.stringLiterals.add(`set ${node.name.text}`);
   }
 
   // ── Recurse into children ──
   // Track computed property name depth for string literal collection
   if (ts.isComputedPropertyName(node)) {
     state.insideComputedPropertyName++;
-    ts.forEachChild(node, child => unifiedVisitNode(ctx, state, child));
+    ts.forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
     state.insideComputedPropertyName--;
     return; // already recursed
   }
-  ts.forEachChild(node, child => unifiedVisitNode(ctx, state, child));
+  ts.forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
 }
 
 /** Run all post-walk finalization (register imports based on collected state) */
-function finalizeUnifiedCollector(
-  ctx: CodegenContext,
-  state: UnifiedCollectorState,
-): void {
+function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorState): void {
   // ── collectConsoleImports finalize ──
   const CONSOLE_METHODS = ["log", "warn", "error"] as const;
   for (const method of CONSOLE_METHODS) {
@@ -3090,11 +2623,26 @@ function finalizeUnifiedCollector(
   // ── collectStringMethodImports finalize ──
   {
     const NATIVE_STR_METHODS = new Set([
-      "charAt", "substring", "slice", "at",
-      "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
-      "trim", "trimStart", "trimEnd",
-      "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
-      "replace", "replaceAll", "split",
+      "charAt",
+      "substring",
+      "slice",
+      "at",
+      "indexOf",
+      "lastIndexOf",
+      "includes",
+      "startsWith",
+      "endsWith",
+      "trim",
+      "trimStart",
+      "trimEnd",
+      "repeat",
+      "padStart",
+      "padEnd",
+      "toLowerCase",
+      "toUpperCase",
+      "replace",
+      "replaceAll",
+      "split",
     ]);
     for (const method of state.stringMethodNeeded) {
       if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method) && !state.stringRegexpMethodNeeded.has(method)) {
@@ -3147,12 +2695,27 @@ function finalizeUnifiedCollector(
     }
   }
 
+  // ── collectURIImports finalize ──
+  for (const name of state.uriNeeded) {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", name, { kind: "func", typeIdx });
+  }
+
   // ── collectStringStaticImports finalize ──
   if (state.needsFromCharCode) {
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
+    }
+  }
+  if (state.needsFromCodePoint) {
+    if (ctx.nativeStrings) {
+      // Native strings mode: use pure-Wasm helper, no host import needed
+      ensureNativeStringHelpers(ctx);
+    } else {
+      const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "String_fromCodePoint", { kind: "func", typeIdx });
     }
   }
 
@@ -3175,7 +2738,11 @@ function finalizeUnifiedCollector(
   }
   if (state.jsonNeedStringify) {
     // (value: externref, replacer: externref, space: externref) -> externref
-    const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
     addImport(ctx, "env", "JSON_stringify", { kind: "func", typeIdx });
   }
   if (state.jsonNeedParse) {
@@ -3185,11 +2752,7 @@ function finalizeUnifiedCollector(
 
   // ── collectCallbackImports finalize ──
   if (state.callbackFound) {
-    const typeIdx = addFuncType(
-      ctx,
-      [{ kind: "i32" }, { kind: "externref" }],
-      [{ kind: "externref" }],
-    );
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
   }
 
@@ -3308,13 +2871,8 @@ function finalizeUnifiedCollector(
       }
     } else {
       addStringImports(ctx);
-      const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
       for (const value of state.objectMethodLiterals) {
-        const name = `__str_${ctx.stringLiteralCounter++}`;
-        addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-        ctx.stringLiteralMap.set(value, name);
-        ctx.stringLiteralValues.set(name, value);
-        ctx.mod.stringPool.push(value);
+        addStringConstantGlobal(ctx, value);
       }
     }
   }
@@ -3328,7 +2886,7 @@ function finalizeUnifiedCollector(
   for (const [name, argCount] of state.unknownCtorNeeded) {
     const importName = `__new_${name}`;
     if (ctx.funcMap.has(importName)) continue;
-    const params: ValType[] = Array.from({ length: argCount }, () => ({ kind: "externref" } as ValType));
+    const params: ValType[] = Array.from({ length: argCount }, () => ({ kind: "externref" }) as ValType);
     const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
     addImport(ctx, "env", importName, { kind: "func", typeIdx });
   }
@@ -3339,20 +2897,14 @@ function finalizeUnifiedCollector(
  * Replaces 19 separate collect* passes with one O(n) traversal.
  * (#592)
  */
-function collectAllSourceImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectAllSourceImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const state = createUnifiedCollectorState(sourceFile);
-  ts.forEachChild(sourceFile, node => unifiedVisitNode(ctx, state, node));
+  ts.forEachChild(sourceFile, (node) => unifiedVisitNode(ctx, state, node));
   finalizeUnifiedCollector(ctx, state);
 }
 
 /** Scan source for console.log/warn/error() calls and register only needed import variants */
-function collectConsoleImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectConsoleImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const CONSOLE_METHODS = ["log", "warn", "error"] as const;
   // Track needed variants per console method
   const neededByMethod = new Map<string, Set<"number" | "bool" | "string" | "externref">>();
@@ -3414,10 +2966,7 @@ function collectConsoleImports(
 }
 
 /** Register WASI imports: fd_write, proc_exit, linear memory, bump pointer global */
-function registerWasiImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   // Add linear memory (1 page = 64KB) for string data + iovec structs
   ctx.mod.memories.push({ min: 1 });
   // WASI requires the memory to be exported as "memory"
@@ -3439,10 +2988,7 @@ function registerWasiImports(
   let needsProcExit = false;
 
   function visit(node: ts.Node) {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression)
-    ) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const propAccess = node.expression;
       if (
         ts.isIdentifier(propAccess.expression) &&
@@ -3477,12 +3023,7 @@ function registerWasiImports(
 
   // proc_exit(code: i32) -> void
   if (needsProcExit) {
-    const procExitType = addFuncType(
-      ctx,
-      [{ kind: "i32" }],
-      [],
-      "$wasi_proc_exit",
-    );
+    const procExitType = addFuncType(ctx, [{ kind: "i32" }], [], "$wasi_proc_exit");
     addImport(ctx, "wasi_snapshot_preview1", "proc_exit", { kind: "func", typeIdx: procExitType });
     ctx.wasiProcExitIdx = ctx.funcMap.get("proc_exit")!;
   }
@@ -3513,12 +3054,12 @@ function emitWasiWriteStringHelper(ctx: CodegenContext): void {
     { op: "local.get", index: 1 } as Instr,
     { op: "i32.store", align: 2, offset: 0 } as Instr,
     // Call fd_write(fd=1, iovs=0, iovs_len=1, nwritten=8)
-    { op: "i32.const", value: 1 } as Instr,   // fd = stdout
-    { op: "i32.const", value: 0 } as Instr,   // iovs pointer
-    { op: "i32.const", value: 1 } as Instr,   // iovs_len = 1
-    { op: "i32.const", value: 8 } as Instr,   // nwritten pointer
+    { op: "i32.const", value: 1 } as Instr, // fd = stdout
+    { op: "i32.const", value: 0 } as Instr, // iovs pointer
+    { op: "i32.const", value: 1 } as Instr, // iovs_len = 1
+    { op: "i32.const", value: 8 } as Instr, // nwritten pointer
     { op: "call", funcIdx: ctx.wasiFdWriteIdx } as Instr,
-    { op: "drop" } as Instr,  // drop the return value (errno)
+    { op: "drop" } as Instr, // drop the return value (errno)
   ];
 
   ctx.mod.functions.push({
@@ -3531,17 +3072,11 @@ function emitWasiWriteStringHelper(ctx: CodegenContext): void {
 }
 
 /** Scan source for .toString() / .toFixed() on number types and register needed imports */
-function collectPrimitiveMethodImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectPrimitiveMethodImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const needed = new Set<string>();
 
   function visit(node: ts.Node) {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression)
-    ) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const prop = node.expression;
       const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
       const methodName = prop.name.text;
@@ -3558,14 +3093,15 @@ function collectPrimitiveMethodImports(
         needed.add("number_toExponential");
       }
       // Detect Number.prototype.method.call/apply patterns
-      if ((methodName === "call" || methodName === "apply") &&
-          ts.isPropertyAccessExpression(prop.expression)) {
+      if ((methodName === "call" || methodName === "apply") && ts.isPropertyAccessExpression(prop.expression)) {
         const innerProp = prop.expression;
         const innerMethodName = innerProp.name.text;
-        if (ts.isPropertyAccessExpression(innerProp.expression) &&
-            innerProp.expression.name.text === "prototype" &&
-            ts.isIdentifier(innerProp.expression.expression) &&
-            innerProp.expression.expression.text === "Number") {
+        if (
+          ts.isPropertyAccessExpression(innerProp.expression) &&
+          innerProp.expression.name.text === "prototype" &&
+          ts.isIdentifier(innerProp.expression.expression) &&
+          innerProp.expression.expression.text === "Number"
+        ) {
           if (innerMethodName === "toString") needed.add("number_toString");
           if (innerMethodName === "toFixed") needed.add("number_toFixed");
           if (innerMethodName === "toPrecision") needed.add("number_toPrecision");
@@ -3599,8 +3135,7 @@ function collectPrimitiveMethodImports(
     // other is not (could be number, any, boolean — all may produce f64 at wasm level).
     if (
       ts.isBinaryExpression(node) &&
-      (node.operatorToken.kind === ts.SyntaxKind.PlusToken ||
-       node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken)
+      (node.operatorToken.kind === ts.SyntaxKind.PlusToken || node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken)
     ) {
       const leftType = ctx.checker.getTypeAtLocation(node.left);
       const rightType = ctx.checker.getTypeAtLocation(node.right);
@@ -3626,9 +3161,9 @@ function collectPrimitiveMethodImports(
     if (
       ts.isBinaryExpression(node) &&
       (node.operatorToken.kind === ts.SyntaxKind.LessThanToken ||
-       node.operatorToken.kind === ts.SyntaxKind.LessThanEqualsToken ||
-       node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken ||
-       node.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken)
+        node.operatorToken.kind === ts.SyntaxKind.LessThanEqualsToken ||
+        node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken ||
+        node.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken)
     ) {
       const leftType = ctx.checker.getTypeAtLocation(node.left);
       if (isStringType(leftType)) {
@@ -3645,27 +3180,15 @@ function collectPrimitiveMethodImports(
     addImport(ctx, "env", "number_toString", { kind: "func", typeIdx: t });
   }
   if (needed.has("number_toFixed")) {
-    const t = addFuncType(
-      ctx,
-      [{ kind: "f64" }, { kind: "f64" }],
-      [{ kind: "externref" }],
-    );
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
   }
   if (needed.has("number_toPrecision")) {
-    const t = addFuncType(
-      ctx,
-      [{ kind: "f64" }, { kind: "f64" }],
-      [{ kind: "externref" }],
-    );
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toPrecision", { kind: "func", typeIdx: t });
   }
   if (needed.has("number_toExponential")) {
-    const t = addFuncType(
-      ctx,
-      [{ kind: "f64" }, { kind: "f64" }],
-      [{ kind: "externref" }],
-    );
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
   if (needed.has("string_compare")) {
@@ -3721,28 +3244,27 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
 };
 
 /** Scan source for method calls on string types and register needed imports */
-function collectStringMethodImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectStringMethodImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const needed = new Set<string>();
   /** Methods called with RegExp args — need host import even in native strings mode */
   const regexpArgMethods = new Set<string>();
 
   function visit(node: ts.Node) {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression)
-    ) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const prop = node.expression;
       const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
       const methodName = prop.name.text;
       if (isStringType(receiverType) && Object.prototype.hasOwnProperty.call(STRING_METHODS, methodName)) {
         needed.add(methodName);
         // Track if the method has a RegExp arg (replace, replaceAll, split, match, search)
-        if ((methodName === "replace" || methodName === "replaceAll" || methodName === "split" ||
-             methodName === "match" || methodName === "search") &&
-            node.arguments.length > 0) {
+        if (
+          (methodName === "replace" ||
+            methodName === "replaceAll" ||
+            methodName === "split" ||
+            methodName === "match" ||
+            methodName === "search") &&
+          node.arguments.length > 0
+        ) {
           const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
           const symName = argType.getSymbol()?.getName();
           if (symName === "RegExp") {
@@ -3752,15 +3274,16 @@ function collectStringMethodImports(
       }
       // Detect String.prototype.method.call(str, ...) and String.prototype.method.apply(str, ...)
       // These patterns rewrite to str.method(...) at compile time, so we need the import
-      if ((methodName === "call" || methodName === "apply") &&
-          ts.isPropertyAccessExpression(prop.expression)) {
+      if ((methodName === "call" || methodName === "apply") && ts.isPropertyAccessExpression(prop.expression)) {
         const innerProp = prop.expression;
         const innerMethodName = innerProp.name.text;
-        if (ts.isPropertyAccessExpression(innerProp.expression) &&
-            innerProp.expression.name.text === "prototype" &&
-            ts.isIdentifier(innerProp.expression.expression) &&
-            innerProp.expression.expression.text === "String" &&
-            Object.prototype.hasOwnProperty.call(STRING_METHODS, innerMethodName)) {
+        if (
+          ts.isPropertyAccessExpression(innerProp.expression) &&
+          innerProp.expression.name.text === "prototype" &&
+          ts.isIdentifier(innerProp.expression.expression) &&
+          innerProp.expression.expression.text === "String" &&
+          Object.prototype.hasOwnProperty.call(STRING_METHODS, innerMethodName)
+        ) {
           needed.add(innerMethodName);
         }
       }
@@ -3784,12 +3307,28 @@ function collectStringMethodImports(
 
   // Native string methods handled in wasm (native strings mode)
   const NATIVE_STR_METHODS = new Set([
-    "charAt", "substring", "slice", "at",
-    "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
-    "trim", "trimStart", "trimEnd",
-    "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
-    "replace", "replaceAll", "split",
-    "codePointAt", "normalize",
+    "charAt",
+    "substring",
+    "slice",
+    "at",
+    "indexOf",
+    "lastIndexOf",
+    "includes",
+    "startsWith",
+    "endsWith",
+    "trim",
+    "trimStart",
+    "trimEnd",
+    "repeat",
+    "padStart",
+    "padEnd",
+    "toLowerCase",
+    "toUpperCase",
+    "replace",
+    "replaceAll",
+    "split",
+    "codePointAt",
+    "normalize",
   ]);
 
   for (const method of needed) {
@@ -3833,33 +3372,21 @@ export function addStringImports(ctx: CodegenContext): void {
   const importsBefore = ctx.numImportFuncs;
 
   // concat: (externref, externref) -> (ref extern)
-  const concatType = addFuncType(
-    ctx,
-    [{ kind: "externref" }, { kind: "externref" }],
-    [{ kind: "ref_extern" }],
-  );
+  const concatType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "ref_extern" }]);
   addImport(ctx, "wasm:js-string", "concat", {
     kind: "func",
     typeIdx: concatType,
   });
 
   // length: (externref) -> i32
-  const lengthType = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "i32" }],
-  );
+  const lengthType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
   addImport(ctx, "wasm:js-string", "length", {
     kind: "func",
     typeIdx: lengthType,
   });
 
   // equals: (externref, externref) -> i32
-  const equalsType = addFuncType(
-    ctx,
-    [{ kind: "externref" }, { kind: "externref" }],
-    [{ kind: "i32" }],
-  );
+  const equalsType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
   addImport(ctx, "wasm:js-string", "equals", {
     kind: "func",
     typeIdx: equalsType,
@@ -3877,11 +3404,7 @@ export function addStringImports(ctx: CodegenContext): void {
   });
 
   // charCodeAt: (externref, i32) -> i32
-  const charCodeAtType = addFuncType(
-    ctx,
-    [{ kind: "externref" }, { kind: "i32" }],
-    [{ kind: "i32" }],
-  );
+  const charCodeAtType = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], [{ kind: "i32" }]);
   addImport(ctx, "wasm:js-string", "charCodeAt", {
     kind: "func",
     typeIdx: charCodeAtType,
@@ -3891,9 +3414,7 @@ export function addStringImports(ctx: CodegenContext): void {
   // shift all defined-function indices.
   const delta = ctx.numImportFuncs - importsBefore;
   if (delta > 0 && ctx.mod.functions.length > 0) {
-    const newImportNames = new Set([
-      "concat", "length", "equals", "substring", "charCodeAt",
-    ]);
+    const newImportNames = new Set(["concat", "length", "equals", "substring", "charCodeAt"]);
     for (const [name, idx] of ctx.funcMap) {
       if (!newImportNames.has(name) && idx >= importsBefore) {
         ctx.funcMap.set(name, idx + delta);
@@ -3981,72 +3502,9 @@ export function addStringImports(ctx: CodegenContext): void {
       }
     }
     if (ctx.mod.declaredFuncRefs.length > 0) {
-      ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map(
-        idx => idx >= importsBefore ? idx + delta : idx,
-      );
+      ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map((idx) => (idx >= importsBefore ? idx + delta : idx));
     }
   }
-}
-
-// ── Native string support (fast mode) ────────────────────────────────
-
-/**
- * Register the WasmGC types for native strings (rope/cons-string support):
- *   $__str_data   = (array (mut i16))
- *   $AnyString    = (sub (struct (field $len i32)))                                   -- non-final base
- *   $NativeString = (sub $AnyString (struct (field $len i32) (field $off i32) (field $data (ref $__str_data))))
- *   $ConsString   = (sub $AnyString (struct (field $len i32) (field $left (ref $AnyString)) (field $right (ref $AnyString))))
- *
- * Field layout: len is always field 0 (shared via AnyString prefix).
- * NativeString: field 0 = len, field 1 = off, field 2 = data
- * ConsString:   field 0 = len, field 1 = left, field 2 = right
- */
-function registerNativeStringTypes(ctx: CodegenContext): void {
-  // $__str_data: array of mutable i16 (WTF-16 code units)
-  ctx.nativeStrDataTypeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "array",
-    name: "__str_data",
-    element: { kind: "i16" },
-    mutable: true,
-  });
-
-  // $AnyString: base type with just len (non-final, superTypeIdx = -1 means root)
-  ctx.anyStrTypeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "struct",
-    name: "AnyString",
-    fields: [
-      { name: "len", type: { kind: "i32" }, mutable: false },
-    ],
-    superTypeIdx: -1, // non-final root
-  });
-
-  // $NativeString (FlatString): sub $AnyString, fields: len, off, data
-  ctx.nativeStrTypeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "struct",
-    name: "NativeString",
-    fields: [
-      { name: "len", type: { kind: "i32" }, mutable: false },
-      { name: "off", type: { kind: "i32" }, mutable: false },
-      { name: "data", type: { kind: "ref", typeIdx: ctx.nativeStrDataTypeIdx }, mutable: false },
-    ],
-    superTypeIdx: ctx.anyStrTypeIdx,
-  });
-
-  // $ConsString: sub $AnyString, fields: len, left, right
-  ctx.consStrTypeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "struct",
-    name: "ConsString",
-    fields: [
-      { name: "len", type: { kind: "i32" }, mutable: false },
-      { name: "left", type: { kind: "ref", typeIdx: ctx.anyStrTypeIdx }, mutable: false },
-      { name: "right", type: { kind: "ref", typeIdx: ctx.anyStrTypeIdx }, mutable: false },
-    ],
-    superTypeIdx: ctx.anyStrTypeIdx,
-  });
 }
 
 /**
@@ -4086,15 +3544,11 @@ export function ensureWrapperTypes(ctx: CodegenContext): void {
   ctx.mod.types.push({
     kind: "struct",
     name: "WrapperNumber",
-    fields: [
-      { name: "value", type: { kind: "f64" }, mutable: false },
-    ],
+    fields: [{ name: "value", type: { kind: "f64" }, mutable: false }],
   } as StructTypeDef);
   ctx.structMap.set("WrapperNumber", ctx.wrapperNumberTypeIdx);
   ctx.typeIdxToStructName.set(ctx.wrapperNumberTypeIdx, "WrapperNumber");
-  ctx.structFields.set("WrapperNumber", [
-    { name: "value", type: { kind: "f64" }, mutable: false },
-  ]);
+  ctx.structFields.set("WrapperNumber", [{ name: "value", type: { kind: "f64" }, mutable: false }]);
 
   // $WrapperString: struct { value: externref }
   ctx.wrapperStringTypeIdx = ctx.mod.types.length;
@@ -4102,30 +3556,22 @@ export function ensureWrapperTypes(ctx: CodegenContext): void {
   ctx.mod.types.push({
     kind: "struct",
     name: "WrapperString",
-    fields: [
-      { name: "value", type: strValType, mutable: false },
-    ],
+    fields: [{ name: "value", type: strValType, mutable: false }],
   } as StructTypeDef);
   ctx.structMap.set("WrapperString", ctx.wrapperStringTypeIdx);
   ctx.typeIdxToStructName.set(ctx.wrapperStringTypeIdx, "WrapperString");
-  ctx.structFields.set("WrapperString", [
-    { name: "value", type: strValType, mutable: false },
-  ]);
+  ctx.structFields.set("WrapperString", [{ name: "value", type: strValType, mutable: false }]);
 
   // $WrapperBoolean: struct { value: i32 }
   ctx.wrapperBooleanTypeIdx = ctx.mod.types.length;
   ctx.mod.types.push({
     kind: "struct",
     name: "WrapperBoolean",
-    fields: [
-      { name: "value", type: { kind: "i32" }, mutable: false },
-    ],
+    fields: [{ name: "value", type: { kind: "i32" }, mutable: false }],
   } as StructTypeDef);
   ctx.structMap.set("WrapperBoolean", ctx.wrapperBooleanTypeIdx);
   ctx.typeIdxToStructName.set(ctx.wrapperBooleanTypeIdx, "WrapperBoolean");
-  ctx.structFields.set("WrapperBoolean", [
-    { name: "value", type: { kind: "i32" }, mutable: false },
-  ]);
+  ctx.structFields.set("WrapperBoolean", [{ name: "value", type: { kind: "i32" }, mutable: false }]);
 }
 
 /**
@@ -4233,7 +3679,13 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   const anyRefNull: ValType = { kind: "ref_null", typeIdx: anyTypeIdx };
 
   // Helper to register a helper function
-  function addHelper(name: string, params: ValType[], results: ValType[], body: Instr[], locals?: { name: string; type: ValType }[]): void {
+  function addHelper(
+    name: string,
+    params: ValType[],
+    results: ValType[],
+    body: Instr[],
+    locals?: { name: string; type: ValType }[],
+  ): void {
     const typeIdx = addFuncType(ctx, params, results, name);
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
     ctx.mod.functions.push({
@@ -4253,179 +3705,244 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
 
   // __any_box_null() -> ref $AnyValue
   // tag=0, i32val=0, f64val=0.0, refval=null, externval=null
-  addHelper("__any_box_null", [], [anyRef], [
-    { op: "i32.const", value: 0 },
-    { op: "i32.const", value: 0 },
-    { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
-    { op: "ref.null.extern" },
-    { op: "struct.new", typeIdx: anyTypeIdx },
-  ]);
+  addHelper(
+    "__any_box_null",
+    [],
+    [anyRef],
+    [
+      { op: "i32.const", value: 0 },
+      { op: "i32.const", value: 0 },
+      { op: "f64.const", value: 0 },
+      { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
+      { op: "ref.null.extern" },
+      { op: "struct.new", typeIdx: anyTypeIdx },
+    ],
+  );
 
   // __any_box_undefined() -> ref $AnyValue
   // tag=1
-  addHelper("__any_box_undefined", [], [anyRef], [
-    { op: "i32.const", value: 1 },
-    { op: "i32.const", value: 0 },
-    { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
-    { op: "ref.null.extern" },
-    { op: "struct.new", typeIdx: anyTypeIdx },
-  ]);
+  addHelper(
+    "__any_box_undefined",
+    [],
+    [anyRef],
+    [
+      { op: "i32.const", value: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "f64.const", value: 0 },
+      { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
+      { op: "ref.null.extern" },
+      { op: "struct.new", typeIdx: anyTypeIdx },
+    ],
+  );
 
   // __any_box_i32(val: i32) -> ref $AnyValue
   // tag=2, i32val=val, f64val=0.0, refval=null, externval=null
-  addHelper("__any_box_i32", [{ kind: "i32" }], [anyRef], [
-    { op: "i32.const", value: 2 },
-    { op: "local.get", index: 0 },
-    { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
-    { op: "ref.null.extern" },
-    { op: "struct.new", typeIdx: anyTypeIdx },
-  ]);
+  addHelper(
+    "__any_box_i32",
+    [{ kind: "i32" }],
+    [anyRef],
+    [
+      { op: "i32.const", value: 2 },
+      { op: "local.get", index: 0 },
+      { op: "f64.const", value: 0 },
+      { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
+      { op: "ref.null.extern" },
+      { op: "struct.new", typeIdx: anyTypeIdx },
+    ],
+  );
 
   // __any_box_f64(val: f64) -> ref $AnyValue
   // tag=3, i32val=0, f64val=val, refval=null, externval=null
-  addHelper("__any_box_f64", [{ kind: "f64" }], [anyRef], [
-    { op: "i32.const", value: 3 },
-    { op: "i32.const", value: 0 },
-    { op: "local.get", index: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
-    { op: "ref.null.extern" },
-    { op: "struct.new", typeIdx: anyTypeIdx },
-  ]);
+  addHelper(
+    "__any_box_f64",
+    [{ kind: "f64" }],
+    [anyRef],
+    [
+      { op: "i32.const", value: 3 },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 0 },
+      { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
+      { op: "ref.null.extern" },
+      { op: "struct.new", typeIdx: anyTypeIdx },
+    ],
+  );
 
   // __any_box_bool(val: i32) -> ref $AnyValue
   // tag=4, i32val=val, f64val=0.0, refval=null, externval=null
-  addHelper("__any_box_bool", [{ kind: "i32" }], [anyRef], [
-    { op: "i32.const", value: 4 },
-    { op: "local.get", index: 0 },
-    { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
-    { op: "ref.null.extern" },
-    { op: "struct.new", typeIdx: anyTypeIdx },
-  ]);
+  addHelper(
+    "__any_box_bool",
+    [{ kind: "i32" }],
+    [anyRef],
+    [
+      { op: "i32.const", value: 4 },
+      { op: "local.get", index: 0 },
+      { op: "f64.const", value: 0 },
+      { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
+      { op: "ref.null.extern" },
+      { op: "struct.new", typeIdx: anyTypeIdx },
+    ],
+  );
 
   // __any_box_string(val: externref) -> ref $AnyValue
   // tag=5, i32val=0, f64val=0.0, refval=null, externval=val
-  addHelper("__any_box_string", [{ kind: "externref" }], [anyRef], [
-    { op: "i32.const", value: 5 },
-    { op: "i32.const", value: 0 },
-    { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
-    { op: "local.get", index: 0 },
-    { op: "struct.new", typeIdx: anyTypeIdx },
-  ]);
+  addHelper(
+    "__any_box_string",
+    [{ kind: "externref" }],
+    [anyRef],
+    [
+      { op: "i32.const", value: 5 },
+      { op: "i32.const", value: 0 },
+      { op: "f64.const", value: 0 },
+      { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
+      { op: "local.get", index: 0 },
+      { op: "struct.new", typeIdx: anyTypeIdx },
+    ],
+  );
 
   // __any_box_ref(val: eqref) -> ref $AnyValue
   // tag=6, i32val=0, f64val=0.0, refval=val, externval=null
-  addHelper("__any_box_ref", [{ kind: "eqref" }], [anyRef], [
-    { op: "i32.const", value: 6 },
-    { op: "i32.const", value: 0 },
-    { op: "f64.const", value: 0 },
-    { op: "local.get", index: 0 },
-    { op: "ref.null.extern" },
-    { op: "struct.new", typeIdx: anyTypeIdx },
-  ]);
+  addHelper(
+    "__any_box_ref",
+    [{ kind: "eqref" }],
+    [anyRef],
+    [
+      { op: "i32.const", value: 6 },
+      { op: "i32.const", value: 0 },
+      { op: "f64.const", value: 0 },
+      { op: "local.get", index: 0 },
+      { op: "ref.null.extern" },
+      { op: "struct.new", typeIdx: anyTypeIdx },
+    ],
+  );
 
   // __any_unbox_i32(val: ref $AnyValue) -> i32
   // Returns i32val field; if tag==3 (f64), truncate f64val
-  addHelper("__any_unbox_i32", [anyRefNull], [{ kind: "i32" }], [
-    // Check if tag == 3 (f64 number)
-    { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "i32.const", value: 3 },
-    { op: "i32.eq" },
-    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-      then: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-        { op: "i32.trunc_sat_f64_s" },
-      ],
-      else: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-      ],
-    },
-  ]);
+  addHelper(
+    "__any_unbox_i32",
+    [anyRefNull],
+    [{ kind: "i32" }],
+    [
+      // Check if tag == 3 (f64 number)
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "i32.const", value: 3 },
+      { op: "i32.eq" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+          { op: "i32.trunc_sat_f64_s" },
+        ],
+        else: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+        ],
+      },
+    ],
+  );
 
   // __any_unbox_f64(val: ref $AnyValue) -> f64
   // Returns f64val field; if tag==2 (i32 number), convert i32val
-  addHelper("__any_unbox_f64", [anyRefNull], [{ kind: "f64" }], [
-    // Check if tag == 2 (i32 number)
-    { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "i32.const", value: 2 },
-    { op: "i32.eq" },
-    { op: "if", blockType: { kind: "val", type: { kind: "f64" } },
-      then: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-        { op: "f64.convert_i32_s" },
-      ],
-      else: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-      ],
-    },
-  ]);
+  addHelper(
+    "__any_unbox_f64",
+    [anyRefNull],
+    [{ kind: "f64" }],
+    [
+      // Check if tag == 2 (i32 number)
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "i32.const", value: 2 },
+      { op: "i32.eq" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "f64" } },
+        then: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+          { op: "f64.convert_i32_s" },
+        ],
+        else: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+        ],
+      },
+    ],
+  );
 
   // __any_unbox_bool(val: ref $AnyValue) -> i32
   // Truthiness check: tag 4 → i32val, tag 2 → i32val!=0, tag 3 → f64val!=0,
   // tag 0/1 → 0 (null/undefined), tag >= 5 → 1 (truthy object)
-  addHelper("__any_unbox_bool", [anyRefNull], [{ kind: "i32" }], [
-    { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "i32.const", value: 4 },
-    { op: "i32.eq" },
-    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-      then: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-      ],
-      else: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-        { op: "i32.const", value: 2 },
-        { op: "i32.eq" },
-        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-          then: [
-            { op: "local.get", index: 0 },
-            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-            { op: "i32.const", value: 0 },
-            { op: "i32.ne" },
-          ],
-          else: [
-            { op: "local.get", index: 0 },
-            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-            { op: "i32.const", value: 3 },
-            { op: "i32.eq" },
-            { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-              then: [
-                { op: "local.get", index: 0 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-                { op: "f64.const", value: 0 },
-                { op: "f64.ne" },
-              ],
-              else: [
-                { op: "local.get", index: 0 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-                { op: "i32.const", value: 5 },
-                { op: "i32.ge_s" },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ]);
+  addHelper(
+    "__any_unbox_bool",
+    [anyRefNull],
+    [{ kind: "i32" }],
+    [
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "i32.const", value: 4 },
+      { op: "i32.eq" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+        ],
+        else: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+          { op: "i32.const", value: 2 },
+          { op: "i32.eq" },
+          {
+            op: "if",
+            blockType: { kind: "val", type: { kind: "i32" } },
+            then: [
+              { op: "local.get", index: 0 },
+              { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+              { op: "i32.const", value: 0 },
+              { op: "i32.ne" },
+            ],
+            else: [
+              { op: "local.get", index: 0 },
+              { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+              { op: "i32.const", value: 3 },
+              { op: "i32.eq" },
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [
+                  { op: "local.get", index: 0 },
+                  { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                  { op: "f64.const", value: 0 },
+                  { op: "f64.ne" },
+                ],
+                else: [
+                  { op: "local.get", index: 0 },
+                  { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+                  { op: "i32.const", value: 5 },
+                  { op: "i32.ge_s" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  );
 
   // __any_unbox_extern(val: ref $AnyValue) -> externref
   // Returns externval field
-  addHelper("__any_unbox_extern", [anyRefNull], [{ kind: "externref" }], [
-    { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
-  ]);
+  addHelper(
+    "__any_unbox_extern",
+    [anyRefNull],
+    [{ kind: "externref" }],
+    [
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+    ],
+  );
 
   // ── Phase 2: Runtime dispatch operators ──────────────────────────
 
@@ -4435,45 +3952,51 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   // Returns f64 per JS ToNumber semantics:
   //   tag 0 (null) → 0, tag 1 (undefined) → NaN, tag 2 (i32) → f64(i32val),
   //   tag 3 (f64) → f64val, tag 4 (bool) → f64(i32val)
-  addHelper("__any_to_f64", [anyRefNull], [{ kind: "f64" }], [
-    // tag = a.tag
-    { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 1 },
-    // if tag == 1 (undefined) → NaN
-    { op: "local.get", index: 1 },
-    { op: "i32.const", value: 1 },
-    { op: "i32.eq" },
-    { op: "if", blockType: { kind: "val", type: { kind: "f64" } },
-      then: [
-        { op: "f64.const", value: NaN },
-      ],
-      else: [
-        // if tag == 2 (i32) or tag == 4 (bool) → convert i32val to f64
-        { op: "local.get", index: 1 },
-        { op: "i32.const", value: 2 },
-        { op: "i32.eq" },
-        { op: "local.get", index: 1 },
-        { op: "i32.const", value: 4 },
-        { op: "i32.eq" },
-        { op: "i32.or" },
-        { op: "if", blockType: { kind: "val", type: { kind: "f64" } },
-          then: [
-            { op: "local.get", index: 0 },
-            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-            { op: "f64.convert_i32_s" },
-          ],
-          else: [
-            // tag 0 (null) → f64val (0.0), tag 3 (f64) → f64val
-            { op: "local.get", index: 0 },
-            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-          ],
-        },
-      ],
-    },
-  ], [
-    { name: "tag", type: { kind: "i32" } },
-  ]);
+  addHelper(
+    "__any_to_f64",
+    [anyRefNull],
+    [{ kind: "f64" }],
+    [
+      // tag = a.tag
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 },
+      // if tag == 1 (undefined) → NaN
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 1 },
+      { op: "i32.eq" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "f64" } },
+        then: [{ op: "f64.const", value: NaN }],
+        else: [
+          // if tag == 2 (i32) or tag == 4 (bool) → convert i32val to f64
+          { op: "local.get", index: 1 },
+          { op: "i32.const", value: 2 },
+          { op: "i32.eq" },
+          { op: "local.get", index: 1 },
+          { op: "i32.const", value: 4 },
+          { op: "i32.eq" },
+          { op: "i32.or" },
+          {
+            op: "if",
+            blockType: { kind: "val", type: { kind: "f64" } },
+            then: [
+              { op: "local.get", index: 0 },
+              { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+              { op: "f64.convert_i32_s" },
+            ],
+            else: [
+              // tag 0 (null) → f64val (0.0), tag 3 (f64) → f64val
+              { op: "local.get", index: 0 },
+              { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+            ],
+          },
+        ],
+      },
+    ],
+    [{ name: "tag", type: { kind: "i32" } }],
+  );
 
   const toF64Idx = ctx.funcMap.get("__any_to_f64")!;
   const boxI32Idx = ctx.funcMap.get("__any_box_i32")!;
@@ -4484,54 +4007,11 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   // If both are numeric (tag 2 or 3): convert to f64, f64.add, box as f64
   // Otherwise: trap (string concat via any not supported yet for simplicity)
   // params: a(0), b(1)  locals: tagA(2), tagB(3)
-  addHelper("__any_add", [anyRefNull, anyRefNull], [anyRef], [
-    // tagA = a.tag
-    { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 2 },
-    // tagB = b.tag
-    { op: "local.get", index: 1 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 3 },
-    // if tagA == 2 && tagB == 2 → i32 add
-    { op: "local.get", index: 2 },
-    { op: "i32.const", value: 2 },
-    { op: "i32.eq" },
-    { op: "local.get", index: 3 },
-    { op: "i32.const", value: 2 },
-    { op: "i32.eq" },
-    { op: "i32.and" },
-    { op: "if", blockType: { kind: "val", type: anyRef },
-      then: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-        { op: "local.get", index: 1 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-        { op: "i32.add" },
-        { op: "call", funcIdx: boxI32Idx },
-      ],
-      else: [
-        // f64 path: convert both to f64, add, box as f64
-        { op: "local.get", index: 0 },
-        { op: "call", funcIdx: toF64Idx },
-        { op: "local.get", index: 1 },
-        { op: "call", funcIdx: toF64Idx },
-        { op: "f64.add" },
-        { op: "call", funcIdx: boxF64Idx },
-      ],
-    },
-  ], [
-    { name: "tagA", type: { kind: "i32" } },
-    { name: "tagB", type: { kind: "i32" } },
-  ]);
-
-  // Generic numeric binary op helper generator
-  function addNumericBinaryHelper(
-    name: string,
-    i32op: string,
-    f64op: string,
-  ): void {
-    addHelper(name, [anyRefNull, anyRefNull], [anyRef], [
+  addHelper(
+    "__any_add",
+    [anyRefNull, anyRefNull],
+    [anyRef],
+    [
       // tagA = a.tag
       { op: "local.get", index: 0 },
       { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
@@ -4540,7 +4020,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 1 },
       { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
       { op: "local.set", index: 3 },
-      // if tagA == 2 && tagB == 2 → i32 op
+      // if tagA == 2 && tagB == 2 → i32 add
       { op: "local.get", index: 2 },
       { op: "i32.const", value: 2 },
       { op: "i32.eq" },
@@ -4548,334 +4028,437 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
       { op: "i32.const", value: 2 },
       { op: "i32.eq" },
       { op: "i32.and" },
-      { op: "if", blockType: { kind: "val", type: anyRef },
+      {
+        op: "if",
+        blockType: { kind: "val", type: anyRef },
         then: [
           { op: "local.get", index: 0 },
           { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
           { op: "local.get", index: 1 },
           { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-          { op: i32op },
+          { op: "i32.add" },
           { op: "call", funcIdx: boxI32Idx },
         ],
         else: [
-          // f64 path
+          // f64 path: convert both to f64, add, box as f64
           { op: "local.get", index: 0 },
           { op: "call", funcIdx: toF64Idx },
           { op: "local.get", index: 1 },
           { op: "call", funcIdx: toF64Idx },
-          { op: f64op },
+          { op: "f64.add" },
           { op: "call", funcIdx: boxF64Idx },
         ],
       },
-    ], [
+    ],
+    [
       { name: "tagA", type: { kind: "i32" } },
       { name: "tagB", type: { kind: "i32" } },
-    ]);
+    ],
+  );
+
+  // Generic numeric binary op helper generator
+  function addNumericBinaryHelper(name: string, i32op: "i32.sub" | "i32.mul", f64op: "f64.sub" | "f64.mul"): void {
+    addHelper(
+      name,
+      [anyRefNull, anyRefNull],
+      [anyRef],
+      [
+        // tagA = a.tag
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 2 },
+        // tagB = b.tag
+        { op: "local.get", index: 1 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 3 },
+        // if tagA == 2 && tagB == 2 → i32 op
+        { op: "local.get", index: 2 },
+        { op: "i32.const", value: 2 },
+        { op: "i32.eq" },
+        { op: "local.get", index: 3 },
+        { op: "i32.const", value: 2 },
+        { op: "i32.eq" },
+        { op: "i32.and" },
+        {
+          op: "if",
+          blockType: { kind: "val", type: anyRef },
+          then: [
+            { op: "local.get", index: 0 },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+            { op: "local.get", index: 1 },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+            { op: i32op } as Instr,
+            { op: "call", funcIdx: boxI32Idx },
+          ],
+          else: [
+            // f64 path
+            { op: "local.get", index: 0 },
+            { op: "call", funcIdx: toF64Idx },
+            { op: "local.get", index: 1 },
+            { op: "call", funcIdx: toF64Idx },
+            { op: f64op } as Instr,
+            { op: "call", funcIdx: boxF64Idx },
+          ],
+        },
+      ],
+      [
+        { name: "tagA", type: { kind: "i32" } },
+        { name: "tagB", type: { kind: "i32" } },
+      ],
+    );
   }
 
   addNumericBinaryHelper("__any_sub", "i32.sub", "f64.sub");
   addNumericBinaryHelper("__any_mul", "i32.mul", "f64.mul");
 
   // __any_div: always use f64 (division can produce fractions)
-  addHelper("__any_div", [anyRefNull, anyRefNull], [anyRef], [
-    { op: "local.get", index: 0 },
-    { op: "call", funcIdx: toF64Idx },
-    { op: "local.get", index: 1 },
-    { op: "call", funcIdx: toF64Idx },
-    { op: "f64.div" },
-    { op: "call", funcIdx: boxF64Idx },
-  ]);
-
-  // __any_mod: i32.rem_s for i32, otherwise f64 approximation via floor division
-  addHelper("__any_mod", [anyRefNull, anyRefNull], [anyRef], [
-    // tagA = a.tag
-    { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 2 },
-    // tagB = b.tag
-    { op: "local.get", index: 1 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 3 },
-    // if tagA == 2 && tagB == 2 → i32 rem_s
-    { op: "local.get", index: 2 },
-    { op: "i32.const", value: 2 },
-    { op: "i32.eq" },
-    { op: "local.get", index: 3 },
-    { op: "i32.const", value: 2 },
-    { op: "i32.eq" },
-    { op: "i32.and" },
-    { op: "if", blockType: { kind: "val", type: anyRef },
-      then: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-        { op: "local.get", index: 1 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-        { op: "i32.rem_s" },
-        { op: "call", funcIdx: boxI32Idx },
-      ],
-      else: [
-        // f64 path: a - floor(a/b) * b
-        { op: "local.get", index: 0 },
-        { op: "call", funcIdx: toF64Idx },
-        { op: "local.set", index: 4 }, // fA
-        { op: "local.get", index: 1 },
-        { op: "call", funcIdx: toF64Idx },
-        { op: "local.set", index: 5 }, // fB
-        // result = fA - floor(fA / fB) * fB
-        { op: "local.get", index: 4 },
-        { op: "local.get", index: 4 },
-        { op: "local.get", index: 5 },
-        { op: "f64.div" },
-        { op: "f64.floor" },
-        { op: "local.get", index: 5 },
-        { op: "f64.mul" },
-        { op: "f64.sub" },
-        { op: "call", funcIdx: boxF64Idx },
-      ],
-    },
-  ], [
-    { name: "tagA", type: { kind: "i32" } },
-    { name: "tagB", type: { kind: "i32" } },
-    { name: "fA", type: { kind: "f64" } },
-    { name: "fB", type: { kind: "f64" } },
-  ]);
-
-  // __any_eq(a, b) -> i32
-  // Same tag: compare values. Different tag: return 0.
-  addHelper("__any_eq", [anyRefNull, anyRefNull], [{ kind: "i32" }], [
-    // Fast path: if both refs point to the same AnyValue struct, they are equal.
-    { op: "local.get", index: 0 },
-    { op: "local.get", index: 1 },
-    { op: "ref.eq" },
-    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-      then: [
-        { op: "i32.const", value: 1 },
-      ],
-      else: [
-        // tagA = a.tag
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-        { op: "local.set", index: 2 },
-        // tagB = b.tag
-        { op: "local.get", index: 1 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-        { op: "local.set", index: 3 },
-        // if tagA != tagB → 0
-        { op: "local.get", index: 2 },
-        { op: "local.get", index: 3 },
-        { op: "i32.ne" },
-        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-          then: [
-            // Cross-tag numeric equality: if one is i32(2) and other is f64(3), compare as f64
-            { op: "local.get", index: 2 },
-            { op: "local.get", index: 3 },
-            { op: "i32.add" },
-            { op: "i32.const", value: 5 }, // 2+3 = 5
-            { op: "i32.eq" },
-            { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-              then: [
-                { op: "local.get", index: 0 },
-                { op: "call", funcIdx: toF64Idx },
-                { op: "local.get", index: 1 },
-                { op: "call", funcIdx: toF64Idx },
-                { op: "f64.eq" },
-              ],
-              else: [
-                { op: "i32.const", value: 0 },
-              ],
-            },
-          ],
-          else: [
-            // Same tag — compare by tag type
-            { op: "local.get", index: 2 },
-            { op: "i32.const", value: 2 },
-            { op: "i32.eq" },
-            { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-              then: [
-                // i32 eq
-                { op: "local.get", index: 0 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                { op: "local.get", index: 1 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                { op: "i32.eq" },
-              ],
-              else: [
-                { op: "local.get", index: 2 },
-                { op: "i32.const", value: 3 },
-                { op: "i32.eq" },
-                { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-                  then: [
-                    // f64 eq
-                    { op: "local.get", index: 0 },
-                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-                    { op: "local.get", index: 1 },
-                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-                    { op: "f64.eq" },
-                  ],
-                  else: [
-                    { op: "local.get", index: 2 },
-                    { op: "i32.const", value: 4 },
-                    { op: "i32.eq" },
-                    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-                      then: [
-                        // bool eq (compare i32val)
-                        { op: "local.get", index: 0 },
-                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                        { op: "local.get", index: 1 },
-                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                        { op: "i32.eq" },
-                      ],
-                      else: [
-                        // tag 6 (ref): compare refval (eqref) with ref.eq
-                        { op: "local.get", index: 2 },
-                        { op: "i32.const", value: 6 },
-                        { op: "i32.eq" },
-                        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-                          then: [
-                            { op: "local.get", index: 0 },
-                            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
-                            { op: "local.get", index: 1 },
-                            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
-                            { op: "ref.eq" },
-                          ],
-                          else: [
-                            // null/undefined (tag < 2): both same tag → equal
-                            { op: "local.get", index: 2 },
-                            { op: "i32.const", value: 2 },
-                            { op: "i32.lt_s" },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ], [
-    { name: "tagA", type: { kind: "i32" } },
-    { name: "tagB", type: { kind: "i32" } },
-  ]);
-
-  // __any_strict_eq(a, b) -> i32
-  // Strict equality (===): different tags always return 0 (no cross-type coercion). (#296)
-  addHelper("__any_strict_eq", [anyRefNull, anyRefNull], [{ kind: "i32" }], [
-    // Fast path: if both refs point to the same AnyValue struct, they are equal.
-    // This handles object identity (var b = a) for all tag types.
-    { op: "local.get", index: 0 },
-    { op: "local.get", index: 1 },
-    { op: "ref.eq" },
-    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-      then: [
-        { op: "i32.const", value: 1 },
-      ],
-      else: [
-        // tagA = a.tag
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-        { op: "local.set", index: 2 },
-        // tagB = b.tag
-        { op: "local.get", index: 1 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-        { op: "local.set", index: 3 },
-        // if tagA != tagB → 0 (strict: no cross-type coercion)
-        { op: "local.get", index: 2 },
-        { op: "local.get", index: 3 },
-        { op: "i32.ne" },
-        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-          then: [
-            { op: "i32.const", value: 0 },
-          ],
-          else: [
-            // Same tag — compare by tag type
-            { op: "local.get", index: 2 },
-            { op: "i32.const", value: 2 },
-            { op: "i32.eq" },
-            { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-              then: [
-                // i32 eq
-                { op: "local.get", index: 0 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                { op: "local.get", index: 1 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                { op: "i32.eq" },
-              ],
-              else: [
-                { op: "local.get", index: 2 },
-                { op: "i32.const", value: 3 },
-                { op: "i32.eq" },
-                { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-                  then: [
-                    // f64 eq
-                    { op: "local.get", index: 0 },
-                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-                    { op: "local.get", index: 1 },
-                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-                    { op: "f64.eq" },
-                  ],
-                  else: [
-                    { op: "local.get", index: 2 },
-                    { op: "i32.const", value: 4 },
-                    { op: "i32.eq" },
-                    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-                      then: [
-                        // bool eq (compare i32val)
-                        { op: "local.get", index: 0 },
-                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                        { op: "local.get", index: 1 },
-                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                        { op: "i32.eq" },
-                      ],
-                      else: [
-                        // tag 6 (ref): compare refval (eqref) with ref.eq
-                        { op: "local.get", index: 2 },
-                        { op: "i32.const", value: 6 },
-                        { op: "i32.eq" },
-                        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-                          then: [
-                            { op: "local.get", index: 0 },
-                            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
-                            { op: "local.get", index: 1 },
-                            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
-                            { op: "ref.eq" },
-                          ],
-                          else: [
-                            // null/undefined (tag < 2): both same tag → equal
-                            // string (tag 5): different AnyValue boxes → not same ref
-                            // (string content equality is handled by string-specific codepaths)
-                            { op: "local.get", index: 2 },
-                            { op: "i32.const", value: 2 },
-                            { op: "i32.lt_s" },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ], [
-    { name: "tagA", type: { kind: "i32" } },
-    { name: "tagB", type: { kind: "i32" } },
-  ]);
-
-  // Comparison helpers: __any_lt, __any_gt, __any_le, __any_ge
-  // All use numeric comparison (convert to f64, compare)
-  function addComparisonHelper(name: string, f64op: string): void {
-    addHelper(name, [anyRefNull, anyRefNull], [{ kind: "i32" }], [
+  addHelper(
+    "__any_div",
+    [anyRefNull, anyRefNull],
+    [anyRef],
+    [
       { op: "local.get", index: 0 },
       { op: "call", funcIdx: toF64Idx },
       { op: "local.get", index: 1 },
       { op: "call", funcIdx: toF64Idx },
-      { op: f64op },
-    ]);
+      { op: "f64.div" },
+      { op: "call", funcIdx: boxF64Idx },
+    ],
+  );
+
+  // __any_mod: i32.rem_s for i32, otherwise f64 approximation via floor division
+  addHelper(
+    "__any_mod",
+    [anyRefNull, anyRefNull],
+    [anyRef],
+    [
+      // tagA = a.tag
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 },
+      // tagB = b.tag
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+      // if tagA == 2 && tagB == 2 → i32 rem_s
+      { op: "local.get", index: 2 },
+      { op: "i32.const", value: 2 },
+      { op: "i32.eq" },
+      { op: "local.get", index: 3 },
+      { op: "i32.const", value: 2 },
+      { op: "i32.eq" },
+      { op: "i32.and" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: anyRef },
+        then: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+          { op: "local.get", index: 1 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+          { op: "i32.rem_s" },
+          { op: "call", funcIdx: boxI32Idx },
+        ],
+        else: [
+          // f64 path: a - floor(a/b) * b
+          { op: "local.get", index: 0 },
+          { op: "call", funcIdx: toF64Idx },
+          { op: "local.set", index: 4 }, // fA
+          { op: "local.get", index: 1 },
+          { op: "call", funcIdx: toF64Idx },
+          { op: "local.set", index: 5 }, // fB
+          // result = fA - floor(fA / fB) * fB
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 5 },
+          { op: "f64.div" },
+          { op: "f64.floor" },
+          { op: "local.get", index: 5 },
+          { op: "f64.mul" },
+          { op: "f64.sub" },
+          { op: "call", funcIdx: boxF64Idx },
+        ],
+      },
+    ],
+    [
+      { name: "tagA", type: { kind: "i32" } },
+      { name: "tagB", type: { kind: "i32" } },
+      { name: "fA", type: { kind: "f64" } },
+      { name: "fB", type: { kind: "f64" } },
+    ],
+  );
+
+  // __any_eq(a, b) -> i32
+  // Same tag: compare values. Different tag: return 0.
+  addHelper(
+    "__any_eq",
+    [anyRefNull, anyRefNull],
+    [{ kind: "i32" }],
+    [
+      // Fast path: if both refs point to the same AnyValue struct, they are equal.
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 1 },
+      { op: "ref.eq" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
+        then: [{ op: "i32.const", value: 1 }],
+        else: [
+          // tagA = a.tag
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 2 },
+          // tagB = b.tag
+          { op: "local.get", index: 1 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 3 },
+          // if tagA != tagB → 0
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 3 },
+          { op: "i32.ne" },
+          {
+            op: "if",
+            blockType: { kind: "val", type: { kind: "i32" } },
+            then: [
+              // Cross-tag numeric equality: if one is i32(2) and other is f64(3), compare as f64
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 3 },
+              { op: "i32.add" },
+              { op: "i32.const", value: 5 }, // 2+3 = 5
+              { op: "i32.eq" },
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [
+                  { op: "local.get", index: 0 },
+                  { op: "call", funcIdx: toF64Idx },
+                  { op: "local.get", index: 1 },
+                  { op: "call", funcIdx: toF64Idx },
+                  { op: "f64.eq" },
+                ],
+                else: [{ op: "i32.const", value: 0 }],
+              },
+            ],
+            else: [
+              // Same tag — compare by tag type
+              { op: "local.get", index: 2 },
+              { op: "i32.const", value: 2 },
+              { op: "i32.eq" },
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [
+                  // i32 eq
+                  { op: "local.get", index: 0 },
+                  { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                  { op: "local.get", index: 1 },
+                  { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                  { op: "i32.eq" },
+                ],
+                else: [
+                  { op: "local.get", index: 2 },
+                  { op: "i32.const", value: 3 },
+                  { op: "i32.eq" },
+                  {
+                    op: "if",
+                    blockType: { kind: "val", type: { kind: "i32" } },
+                    then: [
+                      // f64 eq
+                      { op: "local.get", index: 0 },
+                      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                      { op: "local.get", index: 1 },
+                      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                      { op: "f64.eq" },
+                    ],
+                    else: [
+                      { op: "local.get", index: 2 },
+                      { op: "i32.const", value: 4 },
+                      { op: "i32.eq" },
+                      {
+                        op: "if",
+                        blockType: { kind: "val", type: { kind: "i32" } },
+                        then: [
+                          // bool eq (compare i32val)
+                          { op: "local.get", index: 0 },
+                          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                          { op: "local.get", index: 1 },
+                          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                          { op: "i32.eq" },
+                        ],
+                        else: [
+                          // tag 6 (ref): compare refval (eqref) with ref.eq
+                          { op: "local.get", index: 2 },
+                          { op: "i32.const", value: 6 },
+                          { op: "i32.eq" },
+                          {
+                            op: "if",
+                            blockType: { kind: "val", type: { kind: "i32" } },
+                            then: [
+                              { op: "local.get", index: 0 },
+                              { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
+                              { op: "local.get", index: 1 },
+                              { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
+                              { op: "ref.eq" },
+                            ],
+                            else: [
+                              // null/undefined (tag < 2): both same tag → equal
+                              { op: "local.get", index: 2 },
+                              { op: "i32.const", value: 2 },
+                              { op: "i32.lt_s" },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    [
+      { name: "tagA", type: { kind: "i32" } },
+      { name: "tagB", type: { kind: "i32" } },
+    ],
+  );
+
+  // __any_strict_eq(a, b) -> i32
+  // Strict equality (===): different tags always return 0 (no cross-type coercion). (#296)
+  addHelper(
+    "__any_strict_eq",
+    [anyRefNull, anyRefNull],
+    [{ kind: "i32" }],
+    [
+      // Fast path: if both refs point to the same AnyValue struct, they are equal.
+      // This handles object identity (var b = a) for all tag types.
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 1 },
+      { op: "ref.eq" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
+        then: [{ op: "i32.const", value: 1 }],
+        else: [
+          // tagA = a.tag
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 2 },
+          // tagB = b.tag
+          { op: "local.get", index: 1 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 3 },
+          // if tagA != tagB → 0 (strict: no cross-type coercion)
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 3 },
+          { op: "i32.ne" },
+          {
+            op: "if",
+            blockType: { kind: "val", type: { kind: "i32" } },
+            then: [{ op: "i32.const", value: 0 }],
+            else: [
+              // Same tag — compare by tag type
+              { op: "local.get", index: 2 },
+              { op: "i32.const", value: 2 },
+              { op: "i32.eq" },
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [
+                  // i32 eq
+                  { op: "local.get", index: 0 },
+                  { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                  { op: "local.get", index: 1 },
+                  { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                  { op: "i32.eq" },
+                ],
+                else: [
+                  { op: "local.get", index: 2 },
+                  { op: "i32.const", value: 3 },
+                  { op: "i32.eq" },
+                  {
+                    op: "if",
+                    blockType: { kind: "val", type: { kind: "i32" } },
+                    then: [
+                      // f64 eq
+                      { op: "local.get", index: 0 },
+                      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                      { op: "local.get", index: 1 },
+                      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                      { op: "f64.eq" },
+                    ],
+                    else: [
+                      { op: "local.get", index: 2 },
+                      { op: "i32.const", value: 4 },
+                      { op: "i32.eq" },
+                      {
+                        op: "if",
+                        blockType: { kind: "val", type: { kind: "i32" } },
+                        then: [
+                          // bool eq (compare i32val)
+                          { op: "local.get", index: 0 },
+                          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                          { op: "local.get", index: 1 },
+                          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                          { op: "i32.eq" },
+                        ],
+                        else: [
+                          // tag 6 (ref): compare refval (eqref) with ref.eq
+                          { op: "local.get", index: 2 },
+                          { op: "i32.const", value: 6 },
+                          { op: "i32.eq" },
+                          {
+                            op: "if",
+                            blockType: { kind: "val", type: { kind: "i32" } },
+                            then: [
+                              { op: "local.get", index: 0 },
+                              { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
+                              { op: "local.get", index: 1 },
+                              { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
+                              { op: "ref.eq" },
+                            ],
+                            else: [
+                              // null/undefined (tag < 2): both same tag → equal
+                              // string (tag 5): different AnyValue boxes → not same ref
+                              // (string content equality is handled by string-specific codepaths)
+                              { op: "local.get", index: 2 },
+                              { op: "i32.const", value: 2 },
+                              { op: "i32.lt_s" },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    [
+      { name: "tagA", type: { kind: "i32" } },
+      { name: "tagB", type: { kind: "i32" } },
+    ],
+  );
+
+  // Comparison helpers: __any_lt, __any_gt, __any_le, __any_ge
+  // All use numeric comparison (convert to f64, compare)
+  function addComparisonHelper(name: string, f64op: "f64.lt" | "f64.gt" | "f64.le" | "f64.ge"): void {
+    addHelper(
+      name,
+      [anyRefNull, anyRefNull],
+      [{ kind: "i32" }],
+      [
+        { op: "local.get", index: 0 },
+        { op: "call", funcIdx: toF64Idx },
+        { op: "local.get", index: 1 },
+        { op: "call", funcIdx: toF64Idx },
+        { op: f64op } as Instr,
+      ],
+    );
   }
 
   addComparisonHelper("__any_lt", "f64.lt");
@@ -4885,27 +4468,34 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
 
   // __any_neg(a) -> ref $AnyValue
   // Negate numeric value: tag 2 → negate i32, tag 3 → negate f64
-  addHelper("__any_neg", [anyRefNull], [anyRef], [
-    { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "i32.const", value: 2 },
-    { op: "i32.eq" },
-    { op: "if", blockType: { kind: "val", type: anyRef },
-      then: [
-        { op: "i32.const", value: 0 },
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-        { op: "i32.sub" },
-        { op: "call", funcIdx: boxI32Idx },
-      ],
-      else: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-        { op: "f64.neg" },
-        { op: "call", funcIdx: boxF64Idx },
-      ],
-    },
-  ]);
+  addHelper(
+    "__any_neg",
+    [anyRefNull],
+    [anyRef],
+    [
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "i32.const", value: 2 },
+      { op: "i32.eq" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: anyRef },
+        then: [
+          { op: "i32.const", value: 0 },
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+          { op: "i32.sub" },
+          { op: "call", funcIdx: boxI32Idx },
+        ],
+        else: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+          { op: "f64.neg" },
+          { op: "call", funcIdx: boxF64Idx },
+        ],
+      },
+    ],
+  );
 
   // __any_typeof(a) -> ref $AnyString (native string in fast mode)
   // Returns "number", "string", "boolean", "object", "undefined" as native strings
@@ -4932,58 +4522,70 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
 
     const anyStrRef: ValType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
 
-    addHelper("__any_typeof", [anyRefNull], [anyStrRef], [
-      // Check tag and return corresponding string
-      { op: "local.get", index: 0 },
-      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-      { op: "local.set", index: 1 }, // tag in local 1
+    addHelper(
+      "__any_typeof",
+      [anyRefNull],
+      [anyStrRef],
+      [
+        // Check tag and return corresponding string
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 1 }, // tag in local 1
 
-      // tag == 0 (null) → "object"
-      { op: "local.get", index: 1 },
-      { op: "i32.const", value: 0 },
-      { op: "i32.eq" },
-      { op: "if", blockType: { kind: "val", type: anyStrRef },
-        then: nativeStrConstInstrs("object"),
-        else: [
-          // tag == 1 (undefined) → "undefined"
-          { op: "local.get", index: 1 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.eq" },
-          { op: "if", blockType: { kind: "val", type: anyStrRef },
-            then: nativeStrConstInstrs("undefined"),
-            else: [
-              // tag == 2 or tag == 3 (i32/f64) → "number"
-              { op: "local.get", index: 1 },
-              { op: "i32.const", value: 2 },
-              { op: "i32.eq" },
-              { op: "local.get", index: 1 },
-              { op: "i32.const", value: 3 },
-              { op: "i32.eq" },
-              { op: "i32.or" },
-              { op: "if", blockType: { kind: "val", type: anyStrRef },
-                then: nativeStrConstInstrs("number"),
-                else: [
-                  // tag == 4 (bool) → "boolean"
-                  { op: "local.get", index: 1 },
-                  { op: "i32.const", value: 4 },
-                  { op: "i32.eq" },
-                  { op: "if", blockType: { kind: "val", type: anyStrRef },
-                    then: nativeStrConstInstrs("boolean"),
-                    else: [
-                      // tag == 5 (string/externref) or tag == 6 (gcref) — default to "object"
-                      // (In practice tag 5 would be "string" but we don't use it in fast mode)
-                      ...nativeStrConstInstrs("object"),
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ], [
-      { name: "tag", type: { kind: "i32" } },
-    ]);
+        // tag == 0 (null) → "object"
+        { op: "local.get", index: 1 },
+        { op: "i32.const", value: 0 },
+        { op: "i32.eq" },
+        {
+          op: "if",
+          blockType: { kind: "val", type: anyStrRef },
+          then: nativeStrConstInstrs("object"),
+          else: [
+            // tag == 1 (undefined) → "undefined"
+            { op: "local.get", index: 1 },
+            { op: "i32.const", value: 1 },
+            { op: "i32.eq" },
+            {
+              op: "if",
+              blockType: { kind: "val", type: anyStrRef },
+              then: nativeStrConstInstrs("undefined"),
+              else: [
+                // tag == 2 or tag == 3 (i32/f64) → "number"
+                { op: "local.get", index: 1 },
+                { op: "i32.const", value: 2 },
+                { op: "i32.eq" },
+                { op: "local.get", index: 1 },
+                { op: "i32.const", value: 3 },
+                { op: "i32.eq" },
+                { op: "i32.or" },
+                {
+                  op: "if",
+                  blockType: { kind: "val", type: anyStrRef },
+                  then: nativeStrConstInstrs("number"),
+                  else: [
+                    // tag == 4 (bool) → "boolean"
+                    { op: "local.get", index: 1 },
+                    { op: "i32.const", value: 4 },
+                    { op: "i32.eq" },
+                    {
+                      op: "if",
+                      blockType: { kind: "val", type: anyStrRef },
+                      then: nativeStrConstInstrs("boolean"),
+                      else: [
+                        // tag == 5 (string/externref) or tag == 6 (gcref) — default to "object"
+                        // (In practice tag 5 would be "string" but we don't use it in fast mode)
+                        ...nativeStrConstInstrs("object"),
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      [{ name: "tag", type: { kind: "i32" } }],
+    );
   }
 }
 
@@ -5022,13 +4624,13 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
   ctx.nativeStrHelpersEmitted = true;
 
   const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
-  const strTypeIdx = ctx.nativeStrTypeIdx;    // NativeString (FlatString) struct type index
-  const anyStrTypeIdx = ctx.anyStrTypeIdx;    // AnyString base type index
-  const consStrTypeIdx = ctx.consStrTypeIdx;  // ConsString type index
+  const strTypeIdx = ctx.nativeStrTypeIdx; // NativeString (FlatString) struct type index
+  const anyStrTypeIdx = ctx.anyStrTypeIdx; // AnyString base type index
+  const consStrTypeIdx = ctx.consStrTypeIdx; // ConsString type index
   // strRef = ref $AnyString — used in all helper function signatures (params and results).
   // All string values in the system can be either FlatString or ConsString.
   const strRef: ValType = { kind: "ref", typeIdx: anyStrTypeIdx };
-  const flatStrRef: ValType = { kind: "ref", typeIdx: strTypeIdx };  // ref $NativeString
+  const flatStrRef: ValType = { kind: "ref", typeIdx: strTypeIdx }; // ref $NativeString
   const strDataRef: ValType = { kind: "ref", typeIdx: strDataTypeIdx };
 
   // ── Step 1: Register ALL host imports first ──────────────────────
@@ -5127,7 +4729,9 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       // if node is FlatString: array.copy and return pos + len
       { op: "local.get", index: 0 },
       { op: "ref.test", typeIdx: strTypeIdx },
-      { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
         then: [
           // flat = ref.cast $NativeString node
           { op: "local.get", index: 0 },
@@ -5145,12 +4749,12 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
           { op: "local.set", index: 5 },
 
           // array.copy(buf, pos, flat.data, flatOff, flatLen)
-          { op: "local.get", index: 1 },       // dst = buf
-          { op: "local.get", index: 2 },       // dstOffset = pos
-          { op: "local.get", index: 3 },       // flat
+          { op: "local.get", index: 1 }, // dst = buf
+          { op: "local.get", index: 2 }, // dstOffset = pos
+          { op: "local.get", index: 3 }, // flat
           { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // flat.data
-          { op: "local.get", index: 4 },       // srcOffset = flatOff
-          { op: "local.get", index: 5 },       // length = flatLen
+          { op: "local.get", index: 4 }, // srcOffset = flatOff
+          { op: "local.get", index: 5 }, // length = flatLen
           { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
 
           // return pos + flatLen
@@ -5164,29 +4768,29 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
           { op: "local.get", index: 0 },
           { op: "ref.cast", typeIdx: consStrTypeIdx },
           { op: "struct.get", typeIdx: consStrTypeIdx, fieldIdx: 1 }, // left
-          { op: "local.set", index: 6 },  // left
+          { op: "local.set", index: 6 }, // left
 
           // right = cons.right
           { op: "local.get", index: 0 },
           { op: "ref.cast", typeIdx: consStrTypeIdx },
           { op: "struct.get", typeIdx: consStrTypeIdx, fieldIdx: 2 }, // right
-          { op: "local.set", index: 7 },  // right
+          { op: "local.set", index: 7 }, // right
 
           // pos = copy_tree(left, buf, pos)
           { op: "local.get", index: 6 },
           { op: "ref.as_non_null" },
           { op: "local.get", index: 1 },
           { op: "local.get", index: 2 },
-          { op: "call", funcIdx },  // recursive call to self
+          { op: "call", funcIdx }, // recursive call to self
 
           // return copy_tree(right, buf, pos)
           // pos is now the return value on the stack — use it directly
-          { op: "local.set", index: 2 },  // update pos
+          { op: "local.set", index: 2 }, // update pos
           { op: "local.get", index: 7 },
           { op: "ref.as_non_null" },
           { op: "local.get", index: 1 },
           { op: "local.get", index: 2 },
-          { op: "call", funcIdx },  // recursive call to self
+          { op: "call", funcIdx }, // recursive call to self
         ],
       },
     ];
@@ -5221,7 +4825,9 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       // if s is already a FlatString, return it
       { op: "local.get", index: 0 },
       { op: "ref.test", typeIdx: strTypeIdx },
-      { op: "if", blockType: { kind: "val", type: flatStrRef },
+      {
+        op: "if",
+        blockType: { kind: "val", type: flatStrRef },
         then: [
           { op: "local.get", index: 0 },
           { op: "ref.cast", typeIdx: strTypeIdx },
@@ -5242,12 +4848,12 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
           { op: "local.get", index: 2 },
           { op: "i32.const", value: 0 },
           { op: "call", funcIdx: copyTreeIdx },
-          { op: "drop" },  // discard returned position
+          { op: "drop" }, // discard returned position
 
           // return struct.new $NativeString(len, 0, buf)
-          { op: "local.get", index: 1 },  // len
-          { op: "i32.const", value: 0 },  // off = 0
-          { op: "local.get", index: 2 },  // data = buf
+          { op: "local.get", index: 1 }, // len
+          { op: "i32.const", value: 0 }, // off = 0
+          { op: "local.get", index: 2 }, // data = buf
           { op: "struct.new", typeIdx: strTypeIdx },
         ],
       },
@@ -5297,12 +4903,14 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 4 },
       { op: "i32.const", value: 64 },
       { op: "i32.ge_u" },
-      { op: "if", blockType: { kind: "val", type: strRef },
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
         then: [
           // struct.new $ConsString(newLen, a, b)
-          { op: "local.get", index: 4 },  // len = newLen
-          { op: "local.get", index: 0 },  // left = a
-          { op: "local.get", index: 1 },  // right = b
+          { op: "local.get", index: 4 }, // len = newLen
+          { op: "local.get", index: 0 }, // left = a
+          { op: "local.get", index: 1 }, // right = b
           { op: "struct.new", typeIdx: consStrTypeIdx },
         ],
         else: [
@@ -5323,35 +4931,35 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
           { op: "local.set", index: 5 },
 
           // array.copy(newArr, 0, flatA.data, flatA.off, lenA)
-          { op: "local.get", index: 5 },       // dst
+          { op: "local.get", index: 5 }, // dst
           { op: "ref.as_non_null" },
-          { op: "i32.const", value: 0 },        // dstOffset
-          { op: "local.get", index: 6 },        // flatA
+          { op: "i32.const", value: 0 }, // dstOffset
+          { op: "local.get", index: 6 }, // flatA
           { op: "ref.as_non_null" },
           { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // flatA.data
-          { op: "local.get", index: 6 },        // flatA
+          { op: "local.get", index: 6 }, // flatA
           { op: "ref.as_non_null" },
           { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }, // flatA.off
-          { op: "local.get", index: 2 },        // lenA
+          { op: "local.get", index: 2 }, // lenA
           { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
 
           // array.copy(newArr, lenA, flatB.data, flatB.off, lenB)
-          { op: "local.get", index: 5 },       // dst
+          { op: "local.get", index: 5 }, // dst
           { op: "ref.as_non_null" },
-          { op: "local.get", index: 2 },        // dstOffset = lenA
-          { op: "local.get", index: 7 },        // flatB
+          { op: "local.get", index: 2 }, // dstOffset = lenA
+          { op: "local.get", index: 7 }, // flatB
           { op: "ref.as_non_null" },
           { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // flatB.data
-          { op: "local.get", index: 7 },        // flatB
+          { op: "local.get", index: 7 }, // flatB
           { op: "ref.as_non_null" },
           { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }, // flatB.off
-          { op: "local.get", index: 3 },        // lenB
+          { op: "local.get", index: 3 }, // lenB
           { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
 
           // result = struct.new $NativeString(newLen, 0, newArr)
-          { op: "local.get", index: 4 },        // len = newLen
-          { op: "i32.const", value: 0 },        // off = 0
-          { op: "local.get", index: 5 },        // data = newArr
+          { op: "local.get", index: 4 }, // len = newLen
+          { op: "i32.const", value: 0 }, // off = 0
+          { op: "local.get", index: 5 }, // data = newArr
           { op: "ref.as_non_null" },
           { op: "struct.new", typeIdx: strTypeIdx },
         ],
@@ -5392,9 +5000,7 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 1 },
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
       { op: "i32.ne" },
-      { op: "if", blockType: { kind: "empty" },
-        then: [{ op: "i32.const", value: 0 }, { op: "return" }],
-      },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
 
       // aOff = a.off
       { op: "local.get", index: 0 },
@@ -5421,38 +5027,44 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.set", index: 3 },
 
       // loop: compare element by element
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          // if i >= len, break (strings are equal)
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 2 },
-          { op: "i32.ge_u" },
-          { op: "br_if", depth: 1 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i >= len, break (strings are equal)
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 2 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
 
-          // if aData[aOff + i] != bData[bOff + i], return 0
-          { op: "local.get", index: 4 },
-          { op: "local.get", index: 6 },
-          { op: "local.get", index: 3 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "local.get", index: 5 },
-          { op: "local.get", index: 7 },
-          { op: "local.get", index: 3 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "i32.ne" },
-          { op: "if", blockType: { kind: "empty" },
-            then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+              // if aData[aOff + i] != bData[bOff + i], return 0
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 6 },
+              { op: "local.get", index: 3 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 7 },
+              { op: "local.get", index: 3 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "i32.ne" },
+              { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+
+              // i++
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 3 },
+              { op: "br", depth: 0 },
+            ],
           },
-
-          // i++
-          { op: "local.get", index: 3 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 3 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+        ],
+      },
 
       // return 1 (equal)
       { op: "i32.const", value: 1 },
@@ -5527,71 +5139,71 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.set", index: 5 },
 
       // loop: compare element by element
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          // if i >= minLen, break (common prefix is equal)
-          { op: "local.get", index: 5 },
-          { op: "local.get", index: 4 },
-          { op: "i32.ge_u" },
-          { op: "br_if", depth: 1 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i >= minLen, break (common prefix is equal)
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 4 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
 
-          // ca = aData[aOff + i]
-          { op: "local.get", index: 6 },
-          { op: "local.get", index: 8 },
-          { op: "local.get", index: 5 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "local.set", index: 10 },
+              // ca = aData[aOff + i]
+              { op: "local.get", index: 6 },
+              { op: "local.get", index: 8 },
+              { op: "local.get", index: 5 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "local.set", index: 10 },
 
-          // cb = bData[bOff + i]
-          { op: "local.get", index: 7 },
-          { op: "local.get", index: 9 },
-          { op: "local.get", index: 5 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "local.set", index: 11 },
+              // cb = bData[bOff + i]
+              { op: "local.get", index: 7 },
+              { op: "local.get", index: 9 },
+              { op: "local.get", index: 5 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "local.set", index: 11 },
 
-          // if ca < cb return -1
-          { op: "local.get", index: 10 },
-          { op: "local.get", index: 11 },
-          { op: "i32.lt_u" },
-          { op: "if", blockType: { kind: "empty" },
-            then: [{ op: "i32.const", value: -1 }, { op: "return" }],
+              // if ca < cb return -1
+              { op: "local.get", index: 10 },
+              { op: "local.get", index: 11 },
+              { op: "i32.lt_u" },
+              { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: -1 }, { op: "return" }] },
+
+              // if ca > cb return 1
+              { op: "local.get", index: 10 },
+              { op: "local.get", index: 11 },
+              { op: "i32.gt_u" },
+              { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 1 }, { op: "return" }] },
+
+              // i++
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 5 },
+              { op: "br", depth: 0 },
+            ],
           },
-
-          // if ca > cb return 1
-          { op: "local.get", index: 10 },
-          { op: "local.get", index: 11 },
-          { op: "i32.gt_u" },
-          { op: "if", blockType: { kind: "empty" },
-            then: [{ op: "i32.const", value: 1 }, { op: "return" }],
-          },
-
-          // i++
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 5 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+        ],
+      },
 
       // Common prefix is equal; compare by length
       // if lenA < lenB return -1
       { op: "local.get", index: 2 },
       { op: "local.get", index: 3 },
       { op: "i32.lt_u" },
-      { op: "if", blockType: { kind: "empty" },
-        then: [{ op: "i32.const", value: -1 }, { op: "return" }],
-      },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: -1 }, { op: "return" }] },
 
       // if lenA > lenB return 1
       { op: "local.get", index: 2 },
       { op: "local.get", index: 3 },
       { op: "i32.gt_u" },
-      { op: "if", blockType: { kind: "empty" },
-        then: [{ op: "i32.const", value: 1 }, { op: "return" }],
-      },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 1 }, { op: "return" }] },
 
       // return 0 (equal)
       { op: "i32.const", value: 0 },
@@ -5643,13 +5255,13 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "i32.const", value: 0 },
       { op: "i32.gt_s" },
       { op: "select" },
-      { op: "local.tee", index: 1 },  // start = max(0, start)
+      { op: "local.tee", index: 1 }, // start = max(0, start)
       { op: "local.get", index: 4 },
       { op: "local.get", index: 1 },
       { op: "local.get", index: 4 },
       { op: "i32.lt_s" },
       { op: "select" },
-      { op: "local.set", index: 1 },  // start = min(start, sLen)
+      { op: "local.set", index: 1 }, // start = min(start, sLen)
 
       // Clamp end: max(0, min(end, sLen))
       { op: "local.get", index: 2 },
@@ -5658,19 +5270,21 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "i32.const", value: 0 },
       { op: "i32.gt_s" },
       { op: "select" },
-      { op: "local.tee", index: 2 },  // end = max(0, end)
+      { op: "local.tee", index: 2 }, // end = max(0, end)
       { op: "local.get", index: 4 },
       { op: "local.get", index: 2 },
       { op: "local.get", index: 4 },
       { op: "i32.lt_s" },
       { op: "select" },
-      { op: "local.set", index: 2 },  // end = min(end, sLen)
+      { op: "local.set", index: 2 }, // end = min(end, sLen)
 
       // Swap if start > end (JS substring semantics)
       { op: "local.get", index: 1 },
       { op: "local.get", index: 2 },
       { op: "i32.gt_s" },
-      { op: "if", blockType: { kind: "empty" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
         then: [
           { op: "local.get", index: 2 },
           { op: "local.get", index: 1 },
@@ -5680,13 +5294,13 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       },
 
       // struct.new(len = end - start, off = sOff + start, s.data)
-      { op: "local.get", index: 2 },   // end
-      { op: "local.get", index: 1 },   // start
-      { op: "i32.sub" },               // len = end - start
-      { op: "local.get", index: 3 },   // sOff
-      { op: "local.get", index: 1 },   // start
-      { op: "i32.add" },               // off = sOff + start
-      { op: "local.get", index: 0 },   // s
+      { op: "local.get", index: 2 }, // end
+      { op: "local.get", index: 1 }, // start
+      { op: "i32.sub" }, // len = end - start
+      { op: "local.get", index: 3 }, // sOff
+      { op: "local.get", index: 1 }, // start
+      { op: "i32.add" }, // off = sOff + start
+      { op: "local.get", index: 0 }, // s
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // s.data
       { op: "struct.new", typeIdx: strTypeIdx },
     ];
@@ -5719,7 +5333,9 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
       { op: "i32.ge_s" },
       { op: "i32.or" },
-      { op: "if", blockType: { kind: "val", type: strRef },
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
         then: [
           // empty string: off=0, len=0, empty array
           { op: "i32.const", value: 0 },
@@ -5775,7 +5391,9 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 1 },
       { op: "i32.const", value: 0 },
       { op: "i32.lt_s" },
-      { op: "if", blockType: { kind: "empty" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
         then: [
           { op: "local.get", index: 3 }, // len
           { op: "local.get", index: 1 }, // start (negative)
@@ -5787,7 +5405,9 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 1 },
       { op: "i32.const", value: 0 },
       { op: "i32.lt_s" },
-      { op: "if", blockType: { kind: "empty" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
         then: [
           { op: "i32.const", value: 0 },
           { op: "local.set", index: 1 },
@@ -5798,7 +5418,9 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 2 },
       { op: "i32.const", value: 0 },
       { op: "i32.lt_s" },
-      { op: "if", blockType: { kind: "empty" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
         then: [
           { op: "local.get", index: 3 }, // len
           { op: "local.get", index: 2 }, // end (negative)
@@ -5810,7 +5432,9 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 2 },
       { op: "i32.const", value: 0 },
       { op: "i32.lt_s" },
-      { op: "if", blockType: { kind: "empty" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
         then: [
           { op: "i32.const", value: 0 },
           { op: "local.set", index: 2 },
@@ -5827,9 +5451,7 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
     ctx.mod.functions.push({
       name: "__str_slice",
       typeIdx,
-      locals: [
-        { name: "len", type: { kind: "i32" } },
-      ],
+      locals: [{ name: "len", type: { kind: "i32" } }],
       body: wrapBodyWithFlatten(body, [0]),
       exported: false,
     });
@@ -5855,21 +5477,25 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       // if nLen == 0, return clamp(fromIndex, 0, hLen)
       { op: "local.get", index: 4 },
       { op: "i32.eqz" },
-      { op: "if", blockType: { kind: "empty" }, then: [
-        { op: "local.get", index: 2 },
-        { op: "i32.const", value: 0 },
-        { op: "local.get", index: 2 },
-        { op: "i32.const", value: 0 },
-        { op: "i32.gt_s" },
-        { op: "select" },
-        { op: "local.tee", index: 5 },
-        { op: "local.get", index: 3 },
-        { op: "local.get", index: 5 },
-        { op: "local.get", index: 3 },
-        { op: "i32.lt_s" },
-        { op: "select" },
-        { op: "return" },
-      ] },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 2 },
+          { op: "i32.const", value: 0 },
+          { op: "local.get", index: 2 },
+          { op: "i32.const", value: 0 },
+          { op: "i32.gt_s" },
+          { op: "select" },
+          { op: "local.tee", index: 5 },
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 5 },
+          { op: "local.get", index: 3 },
+          { op: "i32.lt_s" },
+          { op: "select" },
+          { op: "return" },
+        ],
+      },
       // hOff = haystack.off
       { op: "local.get", index: 0 },
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
@@ -5895,59 +5521,76 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "select" },
       { op: "local.set", index: 5 },
       // outer loop: scan i from fromIndex to hLen - nLen
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          // if i > hLen - nLen, break
-          { op: "local.get", index: 5 },
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 4 },
-          { op: "i32.sub" },
-          { op: "i32.gt_s" },
-          { op: "br_if", depth: 1 },
-          // j = 0; inner loop to compare needle chars
-          { op: "i32.const", value: 0 },
-          { op: "local.set", index: 6 },
-          { op: "block", blockType: { kind: "empty" }, body: [
-            { op: "loop", blockType: { kind: "empty" }, body: [
-              // if j >= nLen, match found — return i
-              { op: "local.get", index: 6 },
-              { op: "local.get", index: 4 },
-              { op: "i32.ge_s" },
-              { op: "if", blockType: { kind: "empty" }, then: [
-                { op: "local.get", index: 5 },
-                { op: "return" },
-              ] },
-              // if hData[hOff + i + j] != nData[nOff + j], break inner
-              { op: "local.get", index: 7 },
-              { op: "local.get", index: 9 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i > hLen - nLen, break
               { op: "local.get", index: 5 },
-              { op: "i32.add" },
-              { op: "local.get", index: 6 },
-              { op: "i32.add" },
-              { op: "array.get_u", typeIdx: strDataTypeIdx },
-              { op: "local.get", index: 8 },
-              { op: "local.get", index: 10 },
-              { op: "local.get", index: 6 },
-              { op: "i32.add" },
-              { op: "array.get_u", typeIdx: strDataTypeIdx },
-              { op: "i32.ne" },
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 4 },
+              { op: "i32.sub" },
+              { op: "i32.gt_s" },
               { op: "br_if", depth: 1 },
-              // j++
-              { op: "local.get", index: 6 },
+              // j = 0; inner loop to compare needle chars
+              { op: "i32.const", value: 0 },
+              { op: "local.set", index: 6 },
+              {
+                op: "block",
+                blockType: { kind: "empty" },
+                body: [
+                  {
+                    op: "loop",
+                    blockType: { kind: "empty" },
+                    body: [
+                      // if j >= nLen, match found — return i
+                      { op: "local.get", index: 6 },
+                      { op: "local.get", index: 4 },
+                      { op: "i32.ge_s" },
+                      {
+                        op: "if",
+                        blockType: { kind: "empty" },
+                        then: [{ op: "local.get", index: 5 }, { op: "return" }],
+                      },
+                      // if hData[hOff + i + j] != nData[nOff + j], break inner
+                      { op: "local.get", index: 7 },
+                      { op: "local.get", index: 9 },
+                      { op: "local.get", index: 5 },
+                      { op: "i32.add" },
+                      { op: "local.get", index: 6 },
+                      { op: "i32.add" },
+                      { op: "array.get_u", typeIdx: strDataTypeIdx },
+                      { op: "local.get", index: 8 },
+                      { op: "local.get", index: 10 },
+                      { op: "local.get", index: 6 },
+                      { op: "i32.add" },
+                      { op: "array.get_u", typeIdx: strDataTypeIdx },
+                      { op: "i32.ne" },
+                      { op: "br_if", depth: 1 },
+                      // j++
+                      { op: "local.get", index: 6 },
+                      { op: "i32.const", value: 1 },
+                      { op: "i32.add" },
+                      { op: "local.set", index: 6 },
+                      { op: "br", depth: 0 },
+                    ],
+                  },
+                ],
+              },
+              // i++
+              { op: "local.get", index: 5 },
               { op: "i32.const", value: 1 },
               { op: "i32.add" },
-              { op: "local.set", index: 6 },
+              { op: "local.set", index: 5 },
               { op: "br", depth: 0 },
-            ]},
-          ]},
-          // i++
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 5 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+            ],
+          },
+        ],
+      },
       // not found
       { op: "i32.const", value: -1 },
     ];
@@ -5988,15 +5631,19 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       // if nLen == 0, return min(fromIndex, hLen)
       { op: "local.get", index: 4 },
       { op: "i32.eqz" },
-      { op: "if", blockType: { kind: "empty" }, then: [
-        { op: "local.get", index: 2 },
-        { op: "local.get", index: 3 },
-        { op: "local.get", index: 2 },
-        { op: "local.get", index: 3 },
-        { op: "i32.lt_s" },
-        { op: "select" },
-        { op: "return" },
-      ] },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 3 },
+          { op: "i32.lt_s" },
+          { op: "select" },
+          { op: "return" },
+        ],
+      },
       // hOff, nOff
       { op: "local.get", index: 0 },
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
@@ -6023,53 +5670,70 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "select" },
       { op: "local.set", index: 5 },
       // reverse scan
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 0 },
-          { op: "i32.lt_s" },
-          { op: "br_if", depth: 1 },
-          { op: "i32.const", value: 0 },
-          { op: "local.set", index: 6 },
-          { op: "block", blockType: { kind: "empty" }, body: [
-            { op: "loop", blockType: { kind: "empty" }, body: [
-              { op: "local.get", index: 6 },
-              { op: "local.get", index: 4 },
-              { op: "i32.ge_s" },
-              { op: "if", blockType: { kind: "empty" }, then: [
-                { op: "local.get", index: 5 },
-                { op: "return" },
-              ] },
-              // hData[hOff + i + j]
-              { op: "local.get", index: 7 },
-              { op: "local.get", index: 9 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
               { op: "local.get", index: 5 },
-              { op: "i32.add" },
-              { op: "local.get", index: 6 },
-              { op: "i32.add" },
-              { op: "array.get_u", typeIdx: strDataTypeIdx },
-              // nData[nOff + j]
-              { op: "local.get", index: 8 },
-              { op: "local.get", index: 10 },
-              { op: "local.get", index: 6 },
-              { op: "i32.add" },
-              { op: "array.get_u", typeIdx: strDataTypeIdx },
-              { op: "i32.ne" },
+              { op: "i32.const", value: 0 },
+              { op: "i32.lt_s" },
               { op: "br_if", depth: 1 },
-              { op: "local.get", index: 6 },
-              { op: "i32.const", value: 1 },
-              { op: "i32.add" },
+              { op: "i32.const", value: 0 },
               { op: "local.set", index: 6 },
+              {
+                op: "block",
+                blockType: { kind: "empty" },
+                body: [
+                  {
+                    op: "loop",
+                    blockType: { kind: "empty" },
+                    body: [
+                      { op: "local.get", index: 6 },
+                      { op: "local.get", index: 4 },
+                      { op: "i32.ge_s" },
+                      {
+                        op: "if",
+                        blockType: { kind: "empty" },
+                        then: [{ op: "local.get", index: 5 }, { op: "return" }],
+                      },
+                      // hData[hOff + i + j]
+                      { op: "local.get", index: 7 },
+                      { op: "local.get", index: 9 },
+                      { op: "local.get", index: 5 },
+                      { op: "i32.add" },
+                      { op: "local.get", index: 6 },
+                      { op: "i32.add" },
+                      { op: "array.get_u", typeIdx: strDataTypeIdx },
+                      // nData[nOff + j]
+                      { op: "local.get", index: 8 },
+                      { op: "local.get", index: 10 },
+                      { op: "local.get", index: 6 },
+                      { op: "i32.add" },
+                      { op: "array.get_u", typeIdx: strDataTypeIdx },
+                      { op: "i32.ne" },
+                      { op: "br_if", depth: 1 },
+                      { op: "local.get", index: 6 },
+                      { op: "i32.const", value: 1 },
+                      { op: "i32.add" },
+                      { op: "local.set", index: 6 },
+                      { op: "br", depth: 0 },
+                    ],
+                  },
+                ],
+              },
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.sub" },
+              { op: "local.set", index: 5 },
               { op: "br", depth: 0 },
-            ]},
-          ]},
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.sub" },
-          { op: "local.set", index: 5 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+            ],
+          },
+        ],
+      },
       // not found
       { op: "i32.const", value: -1 },
     ];
@@ -6139,10 +5803,7 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "i32.add" },
       { op: "local.get", index: 3 },
       { op: "i32.gt_s" },
-      { op: "if", blockType: { kind: "empty" }, then: [
-        { op: "i32.const", value: 0 },
-        { op: "return" },
-      ] },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
       // sOff, pOff
       { op: "local.get", index: 0 },
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
@@ -6160,38 +5821,43 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "i32.const", value: 0 },
       { op: "local.set", index: 5 },
       // compare loop
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          { op: "local.get", index: 5 },
-          { op: "local.get", index: 4 },
-          { op: "i32.ge_s" },
-          { op: "if", blockType: { kind: "empty" }, then: [
-            { op: "i32.const", value: 1 },
-            { op: "return" },
-          ] },
-          // sData[sOff + position + i]
-          { op: "local.get", index: 6 },
-          { op: "local.get", index: 8 },
-          { op: "local.get", index: 2 },
-          { op: "i32.add" },
-          { op: "local.get", index: 5 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          // pData[pOff + i]
-          { op: "local.get", index: 7 },
-          { op: "local.get", index: 9 },
-          { op: "local.get", index: 5 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "i32.ne" },
-          { op: "br_if", depth: 1 },
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 5 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 4 },
+              { op: "i32.ge_s" },
+              { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 1 }, { op: "return" }] },
+              // sData[sOff + position + i]
+              { op: "local.get", index: 6 },
+              { op: "local.get", index: 8 },
+              { op: "local.get", index: 2 },
+              { op: "i32.add" },
+              { op: "local.get", index: 5 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              // pData[pOff + i]
+              { op: "local.get", index: 7 },
+              { op: "local.get", index: 9 },
+              { op: "local.get", index: 5 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "i32.ne" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 5 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
       // mismatch found
       { op: "i32.const", value: 0 },
     ];
@@ -6246,10 +5912,7 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 7 },
       { op: "i32.const", value: 0 },
       { op: "i32.lt_s" },
-      { op: "if", blockType: { kind: "empty" }, then: [
-        { op: "i32.const", value: 0 },
-        { op: "return" },
-      ] },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
       // sOff, xOff
       { op: "local.get", index: 0 },
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
@@ -6266,38 +5929,43 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.set", index: 6 },
       { op: "i32.const", value: 0 },
       { op: "local.set", index: 4 },
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          { op: "local.get", index: 4 },
-          { op: "local.get", index: 3 },
-          { op: "i32.ge_s" },
-          { op: "if", blockType: { kind: "empty" }, then: [
-            { op: "i32.const", value: 1 },
-            { op: "return" },
-          ] },
-          // sData[sOff + startPos + i]
-          { op: "local.get", index: 5 },
-          { op: "local.get", index: 9 },
-          { op: "local.get", index: 7 },
-          { op: "i32.add" },
-          { op: "local.get", index: 4 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          // xData[xOff + i]
-          { op: "local.get", index: 6 },
-          { op: "local.get", index: 10 },
-          { op: "local.get", index: 4 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "i32.ne" },
-          { op: "br_if", depth: 1 },
-          { op: "local.get", index: 4 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 4 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 3 },
+              { op: "i32.ge_s" },
+              { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 1 }, { op: "return" }] },
+              // sData[sOff + startPos + i]
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 9 },
+              { op: "local.get", index: 7 },
+              { op: "i32.add" },
+              { op: "local.get", index: 4 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              // xData[xOff + i]
+              { op: "local.get", index: 6 },
+              { op: "local.get", index: 10 },
+              { op: "local.get", index: 4 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "i32.ne" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: 4 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 4 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
       { op: "i32.const", value: 0 },
     ];
 
@@ -6336,16 +6004,16 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "i32.const", value: 0x09 },
       { op: "i32.ge_u" },
       { op: "local.get", index: 0 },
-      { op: "i32.const", value: 0x0D },
+      { op: "i32.const", value: 0x0d },
       { op: "i32.le_u" },
       { op: "i32.and" },
       { op: "i32.or" },
       { op: "local.get", index: 0 },
-      { op: "i32.const", value: 0xA0 },
+      { op: "i32.const", value: 0xa0 },
       { op: "i32.eq" },
       { op: "i32.or" },
       { op: "local.get", index: 0 },
-      { op: "i32.const", value: 0xFEFF },
+      { op: "i32.const", value: 0xfeff },
       { op: "i32.eq" },
       { op: "i32.or" },
     ];
@@ -6383,28 +6051,36 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "i32.const", value: 0 },
       { op: "local.set", index: 2 },
       // scan forward while whitespace
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          { op: "local.get", index: 2 },
-          { op: "local.get", index: 1 },
-          { op: "i32.ge_s" },
-          { op: "br_if", depth: 1 },
-          // sData[sOff + i]
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 4 },
-          { op: "local.get", index: 2 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "call", funcIdx: isWsIdx },
-          { op: "i32.eqz" },
-          { op: "br_if", depth: 1 },
-          { op: "local.get", index: 2 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 2 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_s" },
+              { op: "br_if", depth: 1 },
+              // sData[sOff + i]
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 2 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "call", funcIdx: isWsIdx },
+              { op: "i32.eqz" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: 2 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 2 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
       // return substring(s, i, len)
       { op: "local.get", index: 0 },
       { op: "local.get", index: 2 },
@@ -6448,30 +6124,38 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
       { op: "local.set", index: 2 }, // sData
       // scan backward while whitespace
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          { op: "local.get", index: 1 },
-          { op: "i32.const", value: 0 },
-          { op: "i32.le_s" },
-          { op: "br_if", depth: 1 },
-          // sData[sOff + end - 1]
-          { op: "local.get", index: 2 },
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 1 },
-          { op: "i32.add" },
-          { op: "i32.const", value: 1 },
-          { op: "i32.sub" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "call", funcIdx: isWsIdx },
-          { op: "i32.eqz" },
-          { op: "br_if", depth: 1 },
-          { op: "local.get", index: 1 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.sub" },
-          { op: "local.set", index: 1 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 1 },
+              { op: "i32.const", value: 0 },
+              { op: "i32.le_s" },
+              { op: "br_if", depth: 1 },
+              // sData[sOff + end - 1]
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 1 },
+              { op: "i32.add" },
+              { op: "i32.const", value: 1 },
+              { op: "i32.sub" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "call", funcIdx: isWsIdx },
+              { op: "i32.eqz" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: 1 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.sub" },
+              { op: "local.set", index: 1 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
       // return substring(s, 0, end)
       { op: "local.get", index: 0 },
       { op: "i32.const", value: 0 },
@@ -6534,78 +6218,96 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 1 },
       { op: "i32.const", value: 0 },
       { op: "i32.le_s" },
-      { op: "if", blockType: { kind: "val", type: strRef }, then: [
-        { op: "i32.const", value: 0 },  // off = 0
-        { op: "i32.const", value: 0 },  // len = 0
-        { op: "i32.const", value: 0 },
-        { op: "array.new_default", typeIdx: strDataTypeIdx },
-        { op: "struct.new", typeIdx: strTypeIdx },
-      ], else: [
-        { op: "local.get", index: 2 },
-        { op: "i32.eqz" },
-        { op: "if", blockType: { kind: "val", type: strRef }, then: [
-          { op: "i32.const", value: 0 },  // off = 0
-          { op: "i32.const", value: 0 },  // len = 0
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
+        then: [
+          { op: "i32.const", value: 0 }, // off = 0
+          { op: "i32.const", value: 0 }, // len = 0
           { op: "i32.const", value: 0 },
           { op: "array.new_default", typeIdx: strDataTypeIdx },
           { op: "struct.new", typeIdx: strTypeIdx },
-        ], else: [
-          // sOff = s.off
-          { op: "local.get", index: 0 },
-          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
-          { op: "local.set", index: 8 },
-
-          // newLen = sLen * count
+        ],
+        else: [
           { op: "local.get", index: 2 },
-          { op: "local.get", index: 1 },
-          { op: "i32.mul" },
-          { op: "local.tee", index: 3 },
+          { op: "i32.eqz" },
+          {
+            op: "if",
+            blockType: { kind: "val", type: strRef },
+            then: [
+              { op: "i32.const", value: 0 }, // off = 0
+              { op: "i32.const", value: 0 }, // len = 0
+              { op: "i32.const", value: 0 },
+              { op: "array.new_default", typeIdx: strDataTypeIdx },
+              { op: "struct.new", typeIdx: strTypeIdx },
+            ],
+            else: [
+              // sOff = s.off
+              { op: "local.get", index: 0 },
+              { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+              { op: "local.set", index: 8 },
 
-          // newArr = array.new_default(newLen)
-          { op: "array.new_default", typeIdx: strDataTypeIdx },
-          { op: "local.set", index: 4 },
-
-          // srcData = s.data
-          { op: "local.get", index: 0 },
-          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
-          { op: "local.set", index: 6 },
-
-          // dst = 0
-          { op: "i32.const", value: 0 },
-          { op: "local.set", index: 5 },
-
-          // outer loop: repeat count times
-          { op: "block", blockType: { kind: "empty" }, body: [
-            { op: "loop", blockType: { kind: "empty" }, body: [
-              { op: "local.get", index: 5 },
-              { op: "local.get", index: 3 },
-              { op: "i32.ge_u" },
-              { op: "br_if", depth: 1 },
-
-              // array.copy newArr[dst..] <- srcData[sOff..sOff+sLen]
-              { op: "local.get", index: 4 },   // dst array
-              { op: "local.get", index: 5 },   // dst offset
-              { op: "local.get", index: 6 },   // src array
-              { op: "local.get", index: 8 },   // src offset = sOff
-              { op: "local.get", index: 2 },   // length = sLen
-              { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
-
-              // dst += sLen
-              { op: "local.get", index: 5 },
+              // newLen = sLen * count
               { op: "local.get", index: 2 },
-              { op: "i32.add" },
-              { op: "local.set", index: 5 },
-              { op: "br", depth: 0 },
-            ]},
-          ]},
+              { op: "local.get", index: 1 },
+              { op: "i32.mul" },
+              { op: "local.tee", index: 3 },
 
-          // return struct.new(newLen, 0, newArr)
-          { op: "local.get", index: 3 },  // len = newLen
-          { op: "i32.const", value: 0 },  // off = 0
-          { op: "local.get", index: 4 },  // data = newArr
-          { op: "struct.new", typeIdx: strTypeIdx },
-        ]},
-      ]},
+              // newArr = array.new_default(newLen)
+              { op: "array.new_default", typeIdx: strDataTypeIdx },
+              { op: "local.set", index: 4 },
+
+              // srcData = s.data
+              { op: "local.get", index: 0 },
+              { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+              { op: "local.set", index: 6 },
+
+              // dst = 0
+              { op: "i32.const", value: 0 },
+              { op: "local.set", index: 5 },
+
+              // outer loop: repeat count times
+              {
+                op: "block",
+                blockType: { kind: "empty" },
+                body: [
+                  {
+                    op: "loop",
+                    blockType: { kind: "empty" },
+                    body: [
+                      { op: "local.get", index: 5 },
+                      { op: "local.get", index: 3 },
+                      { op: "i32.ge_u" },
+                      { op: "br_if", depth: 1 },
+
+                      // array.copy newArr[dst..] <- srcData[sOff..sOff+sLen]
+                      { op: "local.get", index: 4 }, // dst array
+                      { op: "local.get", index: 5 }, // dst offset
+                      { op: "local.get", index: 6 }, // src array
+                      { op: "local.get", index: 8 }, // src offset = sOff
+                      { op: "local.get", index: 2 }, // length = sLen
+                      { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
+
+                      // dst += sLen
+                      { op: "local.get", index: 5 },
+                      { op: "local.get", index: 2 },
+                      { op: "i32.add" },
+                      { op: "local.set", index: 5 },
+                      { op: "br", depth: 0 },
+                    ],
+                  },
+                ],
+              },
+
+              // return struct.new(newLen, 0, newArr)
+              { op: "local.get", index: 3 }, // len = newLen
+              { op: "i32.const", value: 0 }, // off = 0
+              { op: "local.get", index: 4 }, // data = newArr
+              { op: "struct.new", typeIdx: strTypeIdx },
+            ],
+          },
+        ],
+      },
     ];
 
     ctx.mod.functions.push({
@@ -6647,47 +6349,53 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 3 },
       { op: "local.get", index: 1 },
       { op: "i32.ge_s" },
-      { op: "if", blockType: { kind: "val", type: strRef }, then: [
-        { op: "local.get", index: 0 },
-      ], else: [
-        // padLen = padStr.len
-        { op: "local.get", index: 2 },
-        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
-        { op: "local.set", index: 4 },
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
+        then: [{ op: "local.get", index: 0 }],
+        else: [
+          // padLen = padStr.len
+          { op: "local.get", index: 2 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 4 },
 
-        // if padLen == 0, return s
-        { op: "local.get", index: 4 },
-        { op: "i32.eqz" },
-        { op: "if", blockType: { kind: "val", type: strRef }, then: [
-          { op: "local.get", index: 0 },
-        ], else: [
-          // fillLen = targetLen - sLen
-          { op: "local.get", index: 1 },
-          { op: "local.get", index: 3 },
-          { op: "i32.sub" },
-          { op: "local.set", index: 5 },
-
-          // repeated = repeat(padStr, ceil(fillLen / padLen))
-          { op: "local.get", index: 2 },  // padStr (1st arg)
-          { op: "local.get", index: 5 },   // fillLen
-          { op: "local.get", index: 4 },   // padLen
-          { op: "i32.add" },
-          { op: "i32.const", value: 1 },
-          { op: "i32.sub" },
+          // if padLen == 0, return s
           { op: "local.get", index: 4 },
-          { op: "i32.div_u" },             // count (2nd arg)
-          { op: "call", funcIdx: repeatIdx },
+          { op: "i32.eqz" },
+          {
+            op: "if",
+            blockType: { kind: "val", type: strRef },
+            then: [{ op: "local.get", index: 0 }],
+            else: [
+              // fillLen = targetLen - sLen
+              { op: "local.get", index: 1 },
+              { op: "local.get", index: 3 },
+              { op: "i32.sub" },
+              { op: "local.set", index: 5 },
 
-          // prefix = repeated.substring(0, fillLen)
-          { op: "i32.const", value: 0 },
-          { op: "local.get", index: 5 },
-          { op: "call", funcIdx: substringIdx },
+              // repeated = repeat(padStr, ceil(fillLen / padLen))
+              { op: "local.get", index: 2 }, // padStr (1st arg)
+              { op: "local.get", index: 5 }, // fillLen
+              { op: "local.get", index: 4 }, // padLen
+              { op: "i32.add" },
+              { op: "i32.const", value: 1 },
+              { op: "i32.sub" },
+              { op: "local.get", index: 4 },
+              { op: "i32.div_u" }, // count (2nd arg)
+              { op: "call", funcIdx: repeatIdx },
 
-          // return concat(prefix, s)
-          { op: "local.get", index: 0 },
-          { op: "call", funcIdx: concatIdx },
-        ]},
-      ]},
+              // prefix = repeated.substring(0, fillLen)
+              { op: "i32.const", value: 0 },
+              { op: "local.get", index: 5 },
+              { op: "call", funcIdx: substringIdx },
+
+              // return concat(prefix, s)
+              { op: "local.get", index: 0 },
+              { op: "call", funcIdx: concatIdx },
+            ],
+          },
+        ],
+      },
     ];
 
     ctx.mod.functions.push({
@@ -6727,51 +6435,57 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 3 },
       { op: "local.get", index: 1 },
       { op: "i32.ge_s" },
-      { op: "if", blockType: { kind: "val", type: strRef }, then: [
-        { op: "local.get", index: 0 },
-      ], else: [
-        // padLen = padStr.len
-        { op: "local.get", index: 2 },
-        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
-        { op: "local.set", index: 4 },
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
+        then: [{ op: "local.get", index: 0 }],
+        else: [
+          // padLen = padStr.len
+          { op: "local.get", index: 2 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 4 },
 
-        // if padLen == 0, return s
-        { op: "local.get", index: 4 },
-        { op: "i32.eqz" },
-        { op: "if", blockType: { kind: "val", type: strRef }, then: [
-          { op: "local.get", index: 0 },
-        ], else: [
-          // fillLen = targetLen - sLen
-          { op: "local.get", index: 1 },
-          { op: "local.get", index: 3 },
-          { op: "i32.sub" },
-          { op: "local.set", index: 5 },
-
-          // repeated = repeat(padStr, ceil(fillLen / padLen))
-          { op: "local.get", index: 2 },  // padStr (1st arg)
-          { op: "local.get", index: 5 },   // fillLen
-          { op: "local.get", index: 4 },   // padLen
-          { op: "i32.add" },
-          { op: "i32.const", value: 1 },
-          { op: "i32.sub" },
+          // if padLen == 0, return s
           { op: "local.get", index: 4 },
-          { op: "i32.div_u" },             // count (2nd arg)
-          { op: "call", funcIdx: repeatIdx },
+          { op: "i32.eqz" },
+          {
+            op: "if",
+            blockType: { kind: "val", type: strRef },
+            then: [{ op: "local.get", index: 0 }],
+            else: [
+              // fillLen = targetLen - sLen
+              { op: "local.get", index: 1 },
+              { op: "local.get", index: 3 },
+              { op: "i32.sub" },
+              { op: "local.set", index: 5 },
 
-          // suffix = repeated.substring(0, fillLen)
-          { op: "i32.const", value: 0 },
-          { op: "local.get", index: 5 },
-          { op: "call", funcIdx: substringIdx },
+              // repeated = repeat(padStr, ceil(fillLen / padLen))
+              { op: "local.get", index: 2 }, // padStr (1st arg)
+              { op: "local.get", index: 5 }, // fillLen
+              { op: "local.get", index: 4 }, // padLen
+              { op: "i32.add" },
+              { op: "i32.const", value: 1 },
+              { op: "i32.sub" },
+              { op: "local.get", index: 4 },
+              { op: "i32.div_u" }, // count (2nd arg)
+              { op: "call", funcIdx: repeatIdx },
 
-          // return concat(s, suffix)
-          // stack has: suffix on top. Store it, push s, push suffix back
-          { op: "local.set", index: 6 },   // suffix -> local 6
-          { op: "local.get", index: 0 },   // s (1st arg to concat)
-          { op: "local.get", index: 6 },   // suffix (2nd arg to concat)
-          { op: "ref.as_non_null" },
-          { op: "call", funcIdx: concatIdx },
-        ]},
-      ]},
+              // suffix = repeated.substring(0, fillLen)
+              { op: "i32.const", value: 0 },
+              { op: "local.get", index: 5 },
+              { op: "call", funcIdx: substringIdx },
+
+              // return concat(s, suffix)
+              // stack has: suffix on top. Store it, push s, push suffix back
+              { op: "local.set", index: 6 }, // suffix -> local 6
+              { op: "local.get", index: 0 }, // s (1st arg to concat)
+              { op: "local.get", index: 6 }, // suffix (2nd arg to concat)
+              { op: "ref.as_non_null" },
+              { op: "call", funcIdx: concatIdx },
+            ],
+          },
+        ],
+      },
     ];
 
     ctx.mod.functions.push({
@@ -6823,53 +6537,60 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.set", index: 4 },
 
       // loop over each code unit
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          { op: "local.get", index: 4 },
-          { op: "local.get", index: 1 },
-          { op: "i32.ge_u" },
-          { op: "br_if", depth: 1 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
 
-          // ch = srcData[sOff + i]
-          { op: "local.get", index: 2 },
-          { op: "local.get", index: 6 },
-          { op: "local.get", index: 4 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "local.set", index: 5 },
+              // ch = srcData[sOff + i]
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 6 },
+              { op: "local.get", index: 4 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "local.set", index: 5 },
 
-          // newArr[i] = (ch >= 65 && ch <= 90) ? ch + 32 : ch
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 4 },
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 65 },
-          { op: "i32.ge_u" },
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 90 },
-          { op: "i32.le_u" },
-          { op: "i32.and" },
-          { op: "if", blockType: { kind: "val", type: { kind: "i32" } }, then: [
-            { op: "local.get", index: 5 },
-            { op: "i32.const", value: 32 },
-            { op: "i32.add" },
-          ], else: [
-            { op: "local.get", index: 5 },
-          ]},
-          { op: "array.set", typeIdx: strDataTypeIdx },
+              // newArr[i] = (ch >= 65 && ch <= 90) ? ch + 32 : ch
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 65 },
+              { op: "i32.ge_u" },
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 90 },
+              { op: "i32.le_u" },
+              { op: "i32.and" },
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [{ op: "local.get", index: 5 }, { op: "i32.const", value: 32 }, { op: "i32.add" }],
+                else: [{ op: "local.get", index: 5 }],
+              },
+              { op: "array.set", typeIdx: strDataTypeIdx },
 
-          // i++
-          { op: "local.get", index: 4 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 4 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+              // i++
+              { op: "local.get", index: 4 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 4 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
 
       // return struct.new(len, 0, newArr)
-      { op: "local.get", index: 1 },  // len
-      { op: "i32.const", value: 0 },  // off = 0
-      { op: "local.get", index: 3 },  // data = newArr
+      { op: "local.get", index: 1 }, // len
+      { op: "i32.const", value: 0 }, // off = 0
+      { op: "local.get", index: 3 }, // data = newArr
       { op: "struct.new", typeIdx: strTypeIdx },
     ];
 
@@ -6924,53 +6645,60 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.set", index: 4 },
 
       // loop
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          { op: "local.get", index: 4 },
-          { op: "local.get", index: 1 },
-          { op: "i32.ge_u" },
-          { op: "br_if", depth: 1 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
 
-          // ch = srcData[sOff + i]
-          { op: "local.get", index: 2 },
-          { op: "local.get", index: 6 },
-          { op: "local.get", index: 4 },
-          { op: "i32.add" },
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "local.set", index: 5 },
+              // ch = srcData[sOff + i]
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 6 },
+              { op: "local.get", index: 4 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "local.set", index: 5 },
 
-          // newArr[i] = (ch >= 97 && ch <= 122) ? ch - 32 : ch
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 4 },
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 97 },
-          { op: "i32.ge_u" },
-          { op: "local.get", index: 5 },
-          { op: "i32.const", value: 122 },
-          { op: "i32.le_u" },
-          { op: "i32.and" },
-          { op: "if", blockType: { kind: "val", type: { kind: "i32" } }, then: [
-            { op: "local.get", index: 5 },
-            { op: "i32.const", value: 32 },
-            { op: "i32.sub" },
-          ], else: [
-            { op: "local.get", index: 5 },
-          ]},
-          { op: "array.set", typeIdx: strDataTypeIdx },
+              // newArr[i] = (ch >= 97 && ch <= 122) ? ch - 32 : ch
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 97 },
+              { op: "i32.ge_u" },
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 122 },
+              { op: "i32.le_u" },
+              { op: "i32.and" },
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [{ op: "local.get", index: 5 }, { op: "i32.const", value: 32 }, { op: "i32.sub" }],
+                else: [{ op: "local.get", index: 5 }],
+              },
+              { op: "array.set", typeIdx: strDataTypeIdx },
 
-          // i++
-          { op: "local.get", index: 4 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 4 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+              // i++
+              { op: "local.get", index: 4 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 4 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
 
       // return struct.new(len, 0, newArr)
-      { op: "local.get", index: 1 },  // len
-      { op: "i32.const", value: 0 },  // off = 0
-      { op: "local.get", index: 3 },  // data = newArr
+      { op: "local.get", index: 1 }, // len
+      { op: "i32.const", value: 0 }, // off = 0
+      { op: "local.get", index: 3 }, // data = newArr
       { op: "struct.new", typeIdx: strTypeIdx },
     ];
 
@@ -7015,39 +6743,42 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.get", index: 3 },
       { op: "i32.const", value: -1 },
       { op: "i32.eq" },
-      { op: "if", blockType: { kind: "val", type: strRef }, then: [
-        { op: "local.get", index: 0 },
-      ], else: [
-        // searchLen = search.len
-        { op: "local.get", index: 1 },
-        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
-        { op: "local.set", index: 4 },
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
+        then: [{ op: "local.get", index: 0 }],
+        else: [
+          // searchLen = search.len
+          { op: "local.get", index: 1 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 4 },
 
-        // prefix = s.substring(0, idx)
-        { op: "local.get", index: 0 },
-        { op: "i32.const", value: 0 },
-        { op: "local.get", index: 3 },
-        { op: "call", funcIdx: substringIdx },
-        { op: "local.set", index: 5 },
+          // prefix = s.substring(0, idx)
+          { op: "local.get", index: 0 },
+          { op: "i32.const", value: 0 },
+          { op: "local.get", index: 3 },
+          { op: "call", funcIdx: substringIdx },
+          { op: "local.set", index: 5 },
 
-        // suffix = s.substring(idx + searchLen, MAX)
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: 3 },
-        { op: "local.get", index: 4 },
-        { op: "i32.add" },
-        { op: "i32.const", value: 0x7FFFFFFF },
-        { op: "call", funcIdx: substringIdx },
-        { op: "local.set", index: 6 },
+          // suffix = s.substring(idx + searchLen, MAX)
+          { op: "local.get", index: 0 },
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "i32.add" },
+          { op: "i32.const", value: 0x7fffffff },
+          { op: "call", funcIdx: substringIdx },
+          { op: "local.set", index: 6 },
 
-        // return concat(concat(prefix, replacement), suffix)
-        { op: "local.get", index: 5 },
-        { op: "ref.as_non_null" },
-        { op: "local.get", index: 2 },
-        { op: "call", funcIdx: concatIdx },
-        { op: "local.get", index: 6 },
-        { op: "ref.as_non_null" },
-        { op: "call", funcIdx: concatIdx },
-      ]},
+          // return concat(concat(prefix, replacement), suffix)
+          { op: "local.get", index: 5 },
+          { op: "ref.as_non_null" },
+          { op: "local.get", index: 2 },
+          { op: "call", funcIdx: concatIdx },
+          { op: "local.get", index: 6 },
+          { op: "ref.as_non_null" },
+          { op: "call", funcIdx: concatIdx },
+        ],
+      },
     ];
 
     ctx.mod.functions.push({
@@ -7086,77 +6817,88 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       // If searchLen == 0, return s unchanged (avoid infinite loop)
       { op: "local.get", index: 6 },
       { op: "i32.eqz" },
-      { op: "if", blockType: { kind: "val", type: strRef }, then: [
-        { op: "local.get", index: 0 },
-      ], else: [
-        // Build an empty result string (len=0, off=0, empty array)
-        { op: "i32.const", value: 0 },
-        { op: "i32.const", value: 0 },
-        { op: "i32.const", value: 0 },
-        { op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx },
-        { op: "struct.new", typeIdx: strTypeIdx },
-        { op: "local.set", index: 3 },
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
+        then: [{ op: "local.get", index: 0 }],
+        else: [
+          // Build an empty result string (len=0, off=0, empty array)
+          { op: "i32.const", value: 0 },
+          { op: "i32.const", value: 0 },
+          { op: "i32.const", value: 0 },
+          { op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx },
+          { op: "struct.new", typeIdx: strTypeIdx },
+          { op: "local.set", index: 3 },
 
-        // pos = 0
-        { op: "i32.const", value: 0 },
-        { op: "local.set", index: 4 },
+          // pos = 0
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: 4 },
 
-        // loop: find next occurrence
-        { op: "block", blockType: { kind: "empty" }, body: [
-          { op: "loop", blockType: { kind: "empty" }, body: [
-            // idx = indexOf(s, search, pos)
-            { op: "local.get", index: 0 },
-            { op: "local.get", index: 1 },
-            { op: "local.get", index: 4 },
-            { op: "call", funcIdx: indexOfIdx },
-            { op: "local.set", index: 5 },
+          // loop: find next occurrence
+          {
+            op: "block",
+            blockType: { kind: "empty" },
+            body: [
+              {
+                op: "loop",
+                blockType: { kind: "empty" },
+                body: [
+                  // idx = indexOf(s, search, pos)
+                  { op: "local.get", index: 0 },
+                  { op: "local.get", index: 1 },
+                  { op: "local.get", index: 4 },
+                  { op: "call", funcIdx: indexOfIdx },
+                  { op: "local.set", index: 5 },
 
-            // if idx == -1, break
-            { op: "local.get", index: 5 },
-            { op: "i32.const", value: -1 },
-            { op: "i32.eq" },
-            { op: "br_if", depth: 1 },
+                  // if idx == -1, break
+                  { op: "local.get", index: 5 },
+                  { op: "i32.const", value: -1 },
+                  { op: "i32.eq" },
+                  { op: "br_if", depth: 1 },
 
-            // prefix = s.substring(pos, idx)
-            { op: "local.get", index: 0 },
-            { op: "local.get", index: 4 },
-            { op: "local.get", index: 5 },
-            { op: "call", funcIdx: substringIdx },
-            { op: "local.set", index: 7 },
+                  // prefix = s.substring(pos, idx)
+                  { op: "local.get", index: 0 },
+                  { op: "local.get", index: 4 },
+                  { op: "local.get", index: 5 },
+                  { op: "call", funcIdx: substringIdx },
+                  { op: "local.set", index: 7 },
 
-            // result = concat(result, prefix)
-            { op: "local.get", index: 3 },
-            { op: "ref.as_non_null" },
-            { op: "local.get", index: 7 },
-            { op: "ref.as_non_null" },
-            { op: "call", funcIdx: concatIdx },
+                  // result = concat(result, prefix)
+                  { op: "local.get", index: 3 },
+                  { op: "ref.as_non_null" },
+                  { op: "local.get", index: 7 },
+                  { op: "ref.as_non_null" },
+                  { op: "call", funcIdx: concatIdx },
 
-            // result = concat(result, replacement)
-            { op: "local.get", index: 2 },
-            { op: "call", funcIdx: concatIdx },
-            { op: "local.set", index: 3 },
+                  // result = concat(result, replacement)
+                  { op: "local.get", index: 2 },
+                  { op: "call", funcIdx: concatIdx },
+                  { op: "local.set", index: 3 },
 
-            // pos = idx + searchLen
-            { op: "local.get", index: 5 },
-            { op: "local.get", index: 6 },
-            { op: "i32.add" },
-            { op: "local.set", index: 4 },
+                  // pos = idx + searchLen
+                  { op: "local.get", index: 5 },
+                  { op: "local.get", index: 6 },
+                  { op: "i32.add" },
+                  { op: "local.set", index: 4 },
 
-            // continue loop
-            { op: "br", depth: 0 },
-          ]},
-        ]},
+                  // continue loop
+                  { op: "br", depth: 0 },
+                ],
+              },
+            ],
+          },
 
-        // Append remainder: result = concat(result, s.substring(pos, MAX))
-        { op: "local.get", index: 3 },
-        { op: "ref.as_non_null" },
-        { op: "local.get", index: 0 },
-        { op: "local.get", index: 4 },
-        { op: "i32.const", value: 0x7FFFFFFF },
-        { op: "call", funcIdx: substringIdx },
-        { op: "ref.as_non_null" },
-        { op: "call", funcIdx: concatIdx },
-      ]},
+          // Append remainder: result = concat(result, s.substring(pos, MAX))
+          { op: "local.get", index: 3 },
+          { op: "ref.as_non_null" },
+          { op: "local.get", index: 0 },
+          { op: "local.get", index: 4 },
+          { op: "i32.const", value: 0x7fffffff },
+          { op: "call", funcIdx: substringIdx },
+          { op: "ref.as_non_null" },
+          { op: "call", funcIdx: concatIdx },
+        ],
+      },
     ];
 
     ctx.mod.functions.push({
@@ -7196,9 +6938,17 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
     // params: s(0), sep(1)
     // locals: sLen(2), sepLen(3), pos(4), idx(5), part(6-nullable),
     //         resultArr(7-nullable), resultLen(8), resultCap(9), newArr(10-nullable)
-    const S = 0, SEP = 1;
-    const SLEN = 2, SEPLEN = 3, POS = 4, IDX = 5, PART = 6;
-    const RARR = 7, RLEN = 8, RCAP = 9, NEWARR = 10;
+    const S = 0,
+      SEP = 1;
+    const SLEN = 2,
+      SEPLEN = 3,
+      POS = 4,
+      IDX = 5,
+      PART = 6;
+    const RARR = 7,
+      RLEN = 8,
+      RCAP = 9,
+      NEWARR = 10;
 
     const body: Instr[] = [
       // sLen = s.len
@@ -7227,165 +6977,197 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       // Handle empty separator: return array with single element (the whole string)
       { op: "local.get", index: SEPLEN },
       { op: "i32.eqz" },
-      { op: "if", blockType: { kind: "empty" }, then: [
-        // For empty sep, split each character (like JS)
-        // But for simplicity and correctness, match JS: "abc".split("") => ["a","b","c"]
-        // Realloc if needed for sLen elements
-        { op: "local.get", index: SLEN },
-        { op: "array.new_default", typeIdx: nstrArrTypeIdx },
-        { op: "local.set", index: RARR },
-        { op: "local.get", index: SLEN },
-        { op: "local.set", index: RCAP },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          // For empty sep, split each character (like JS)
+          // But for simplicity and correctness, match JS: "abc".split("") => ["a","b","c"]
+          // Realloc if needed for sLen elements
+          { op: "local.get", index: SLEN },
+          { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+          { op: "local.set", index: RARR },
+          { op: "local.get", index: SLEN },
+          { op: "local.set", index: RCAP },
 
-        // Loop: for each character, create a single-char NativeString
-        { op: "i32.const", value: 0 },
-        { op: "local.set", index: POS },
-        { op: "block", blockType: { kind: "empty" }, body: [
-          { op: "loop", blockType: { kind: "empty" }, body: [
-            { op: "local.get", index: POS },
-            { op: "local.get", index: SLEN },
-            { op: "i32.ge_s" },
-            { op: "br_if", depth: 1 },
+          // Loop: for each character, create a single-char NativeString
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: POS },
+          {
+            op: "block",
+            blockType: { kind: "empty" },
+            body: [
+              {
+                op: "loop",
+                blockType: { kind: "empty" },
+                body: [
+                  { op: "local.get", index: POS },
+                  { op: "local.get", index: SLEN },
+                  { op: "i32.ge_s" },
+                  { op: "br_if", depth: 1 },
 
-            // part = substring(s, pos, pos+1)
-            { op: "local.get", index: S },
-            { op: "local.get", index: POS },
-            { op: "local.get", index: POS },
-            { op: "i32.const", value: 1 },
-            { op: "i32.add" },
-            { op: "call", funcIdx: substringIdx },
-            { op: "local.set", index: PART },
+                  // part = substring(s, pos, pos+1)
+                  { op: "local.get", index: S },
+                  { op: "local.get", index: POS },
+                  { op: "local.get", index: POS },
+                  { op: "i32.const", value: 1 },
+                  { op: "i32.add" },
+                  { op: "call", funcIdx: substringIdx },
+                  { op: "local.set", index: PART },
 
-            // resultArr[pos] = part
-            { op: "local.get", index: RARR },
-            { op: "local.get", index: POS },
-            { op: "local.get", index: PART },
-            { op: "array.set", typeIdx: nstrArrTypeIdx },
+                  // resultArr[pos] = part
+                  { op: "local.get", index: RARR },
+                  { op: "local.get", index: POS },
+                  { op: "local.get", index: PART },
+                  { op: "array.set", typeIdx: nstrArrTypeIdx },
 
-            { op: "local.get", index: POS },
-            { op: "i32.const", value: 1 },
-            { op: "i32.add" },
-            { op: "local.set", index: POS },
-            { op: "br", depth: 0 },
-          ] as Instr[] },
-        ] as Instr[] },
+                  { op: "local.get", index: POS },
+                  { op: "i32.const", value: 1 },
+                  { op: "i32.add" },
+                  { op: "local.set", index: POS },
+                  { op: "br", depth: 0 },
+                ] as Instr[],
+              },
+            ] as Instr[],
+          },
 
-        // return struct.new(sLen, resultArr)
-        { op: "local.get", index: SLEN },
-        { op: "local.get", index: RARR },
-        { op: "ref.as_non_null" },
-        { op: "struct.new", typeIdx: nstrVecTypeIdx },
-        { op: "return" },
-      ] as Instr[] },
+          // return struct.new(sLen, resultArr)
+          { op: "local.get", index: SLEN },
+          { op: "local.get", index: RARR },
+          { op: "ref.as_non_null" },
+          { op: "struct.new", typeIdx: nstrVecTypeIdx },
+          { op: "return" },
+        ] as Instr[],
+      },
 
       // Main split loop: find sep occurrences and extract substrings
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          // idx = indexOf(s, sep, pos)
-          { op: "local.get", index: S },
-          { op: "local.get", index: SEP },
-          { op: "local.get", index: POS },
-          { op: "call", funcIdx: indexOfIdx },
-          { op: "local.set", index: IDX },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // idx = indexOf(s, sep, pos)
+              { op: "local.get", index: S },
+              { op: "local.get", index: SEP },
+              { op: "local.get", index: POS },
+              { op: "call", funcIdx: indexOfIdx },
+              { op: "local.set", index: IDX },
 
-          // if idx == -1: add final part and break
-          { op: "local.get", index: IDX },
-          { op: "i32.const", value: -1 },
-          { op: "i32.eq" },
-          { op: "if", blockType: { kind: "empty" }, then: [
-            // part = substring(s, pos, sLen)
-            { op: "local.get", index: S },
-            { op: "local.get", index: POS },
-            { op: "local.get", index: SLEN },
-            { op: "call", funcIdx: substringIdx },
-            { op: "local.set", index: PART },
+              // if idx == -1: add final part and break
+              { op: "local.get", index: IDX },
+              { op: "i32.const", value: -1 },
+              { op: "i32.eq" },
+              {
+                op: "if",
+                blockType: { kind: "empty" },
+                then: [
+                  // part = substring(s, pos, sLen)
+                  { op: "local.get", index: S },
+                  { op: "local.get", index: POS },
+                  { op: "local.get", index: SLEN },
+                  { op: "call", funcIdx: substringIdx },
+                  { op: "local.set", index: PART },
 
-            // Grow result if needed
-            { op: "local.get", index: RLEN },
-            { op: "local.get", index: RCAP },
-            { op: "i32.ge_s" },
-            { op: "if", blockType: { kind: "empty" }, then: [
-              // newCap = cap * 2
-              { op: "local.get", index: RCAP },
-              { op: "i32.const", value: 2 },
-              { op: "i32.mul" },
-              { op: "local.set", index: RCAP },
-              // newArr = array.new_default(newCap)
-              { op: "local.get", index: RCAP },
-              { op: "array.new_default", typeIdx: nstrArrTypeIdx },
-              { op: "local.set", index: NEWARR },
-              // array.copy(newArr, 0, resultArr, 0, resultLen)
-              { op: "local.get", index: NEWARR },
-              { op: "i32.const", value: 0 },
-              { op: "local.get", index: RARR },
-              { op: "i32.const", value: 0 },
+                  // Grow result if needed
+                  { op: "local.get", index: RLEN },
+                  { op: "local.get", index: RCAP },
+                  { op: "i32.ge_s" },
+                  {
+                    op: "if",
+                    blockType: { kind: "empty" },
+                    then: [
+                      // newCap = cap * 2
+                      { op: "local.get", index: RCAP },
+                      { op: "i32.const", value: 2 },
+                      { op: "i32.mul" },
+                      { op: "local.set", index: RCAP },
+                      // newArr = array.new_default(newCap)
+                      { op: "local.get", index: RCAP },
+                      { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+                      { op: "local.set", index: NEWARR },
+                      // array.copy(newArr, 0, resultArr, 0, resultLen)
+                      { op: "local.get", index: NEWARR },
+                      { op: "i32.const", value: 0 },
+                      { op: "local.get", index: RARR },
+                      { op: "i32.const", value: 0 },
+                      { op: "local.get", index: RLEN },
+                      { op: "array.copy", dstTypeIdx: nstrArrTypeIdx, srcTypeIdx: nstrArrTypeIdx },
+                      { op: "local.get", index: NEWARR },
+                      { op: "local.set", index: RARR },
+                    ] as Instr[],
+                  },
+
+                  // resultArr[resultLen] = part
+                  { op: "local.get", index: RARR },
+                  { op: "local.get", index: RLEN },
+                  { op: "local.get", index: PART },
+                  { op: "array.set", typeIdx: nstrArrTypeIdx },
+                  { op: "local.get", index: RLEN },
+                  { op: "i32.const", value: 1 },
+                  { op: "i32.add" },
+                  { op: "local.set", index: RLEN },
+
+                  { op: "br", depth: 2 }, // break outer block
+                ] as Instr[],
+              },
+
+              // Found separator: part = substring(s, pos, idx)
+              { op: "local.get", index: S },
+              { op: "local.get", index: POS },
+              { op: "local.get", index: IDX },
+              { op: "call", funcIdx: substringIdx },
+              { op: "local.set", index: PART },
+
+              // Grow result if needed
               { op: "local.get", index: RLEN },
-              { op: "array.copy", dstTypeIdx: nstrArrTypeIdx, srcTypeIdx: nstrArrTypeIdx },
-              { op: "local.get", index: NEWARR },
-              { op: "local.set", index: RARR },
-            ] as Instr[] },
+              { op: "local.get", index: RCAP },
+              { op: "i32.ge_s" },
+              {
+                op: "if",
+                blockType: { kind: "empty" },
+                then: [
+                  { op: "local.get", index: RCAP },
+                  { op: "i32.const", value: 2 },
+                  { op: "i32.mul" },
+                  { op: "local.set", index: RCAP },
+                  { op: "local.get", index: RCAP },
+                  { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+                  { op: "local.set", index: NEWARR },
+                  { op: "local.get", index: NEWARR },
+                  { op: "i32.const", value: 0 },
+                  { op: "local.get", index: RARR },
+                  { op: "i32.const", value: 0 },
+                  { op: "local.get", index: RLEN },
+                  { op: "array.copy", dstTypeIdx: nstrArrTypeIdx, srcTypeIdx: nstrArrTypeIdx },
+                  { op: "local.get", index: NEWARR },
+                  { op: "local.set", index: RARR },
+                ] as Instr[],
+              },
 
-            // resultArr[resultLen] = part
-            { op: "local.get", index: RARR },
-            { op: "local.get", index: RLEN },
-            { op: "local.get", index: PART },
-            { op: "array.set", typeIdx: nstrArrTypeIdx },
-            { op: "local.get", index: RLEN },
-            { op: "i32.const", value: 1 },
-            { op: "i32.add" },
-            { op: "local.set", index: RLEN },
+              // resultArr[resultLen] = part
+              { op: "local.get", index: RARR },
+              { op: "local.get", index: RLEN },
+              { op: "local.get", index: PART },
+              { op: "array.set", typeIdx: nstrArrTypeIdx },
+              { op: "local.get", index: RLEN },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: RLEN },
 
-            { op: "br", depth: 2 }, // break outer block
-          ] as Instr[] },
+              // pos = idx + sepLen
+              { op: "local.get", index: IDX },
+              { op: "local.get", index: SEPLEN },
+              { op: "i32.add" },
+              { op: "local.set", index: POS },
 
-          // Found separator: part = substring(s, pos, idx)
-          { op: "local.get", index: S },
-          { op: "local.get", index: POS },
-          { op: "local.get", index: IDX },
-          { op: "call", funcIdx: substringIdx },
-          { op: "local.set", index: PART },
-
-          // Grow result if needed
-          { op: "local.get", index: RLEN },
-          { op: "local.get", index: RCAP },
-          { op: "i32.ge_s" },
-          { op: "if", blockType: { kind: "empty" }, then: [
-            { op: "local.get", index: RCAP },
-            { op: "i32.const", value: 2 },
-            { op: "i32.mul" },
-            { op: "local.set", index: RCAP },
-            { op: "local.get", index: RCAP },
-            { op: "array.new_default", typeIdx: nstrArrTypeIdx },
-            { op: "local.set", index: NEWARR },
-            { op: "local.get", index: NEWARR },
-            { op: "i32.const", value: 0 },
-            { op: "local.get", index: RARR },
-            { op: "i32.const", value: 0 },
-            { op: "local.get", index: RLEN },
-            { op: "array.copy", dstTypeIdx: nstrArrTypeIdx, srcTypeIdx: nstrArrTypeIdx },
-            { op: "local.get", index: NEWARR },
-            { op: "local.set", index: RARR },
-          ] as Instr[] },
-
-          // resultArr[resultLen] = part
-          { op: "local.get", index: RARR },
-          { op: "local.get", index: RLEN },
-          { op: "local.get", index: PART },
-          { op: "array.set", typeIdx: nstrArrTypeIdx },
-          { op: "local.get", index: RLEN },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: RLEN },
-
-          // pos = idx + sepLen
-          { op: "local.get", index: IDX },
-          { op: "local.get", index: SEPLEN },
-          { op: "i32.add" },
-          { op: "local.set", index: POS },
-
-          { op: "br", depth: 0 }, // continue loop
-        ] as Instr[] },
-      ] as Instr[] },
+              { op: "br", depth: 0 }, // continue loop
+            ] as Instr[],
+          },
+        ] as Instr[],
+      },
 
       // return struct.new(resultLen, resultArr)
       { op: "local.get", index: RLEN },
@@ -7449,33 +7231,41 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.set", index: 2 }, // i
 
       // loop: copy code units from GC array to linear memory
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          // if i >= len, break
-          { op: "local.get", index: 2 },
-          { op: "local.get", index: 1 },
-          { op: "i32.ge_u" },
-          { op: "br_if", depth: 1 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i >= len, break
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
 
-          // memory[i*2] = data[sOff + i] (i32.store16)
-          { op: "local.get", index: 2 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.shl" },          // ptr = i * 2
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 4 },
-          { op: "local.get", index: 2 },
-          { op: "i32.add" },          // sOff + i
-          { op: "array.get_u", typeIdx: strDataTypeIdx },
-          { op: "i32.store16", align: 1, offset: 0 },
+              // memory[i*2] = data[sOff + i] (i32.store16)
+              { op: "local.get", index: 2 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.shl" }, // ptr = i * 2
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 2 },
+              { op: "i32.add" }, // sOff + i
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "i32.store16", align: 1, offset: 0 },
 
-          // i++
-          { op: "local.get", index: 2 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 2 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+              // i++
+              { op: "local.get", index: 2 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 2 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
 
       // return __str_from_mem(0, len)
       { op: "i32.const", value: 0 },
@@ -7530,36 +7320,44 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       { op: "local.set", index: 3 }, // i
 
       // loop: copy from linear memory to GC array
-      { op: "block", blockType: { kind: "empty" }, body: [
-        { op: "loop", blockType: { kind: "empty" }, body: [
-          // if i >= len, break
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 1 },
-          { op: "i32.ge_u" },
-          { op: "br_if", depth: 1 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i >= len, break
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
 
-          // arr[i] = memory[i*2] (i32.load16_u)
-          { op: "local.get", index: 2 },
-          { op: "local.get", index: 3 },
-          { op: "local.get", index: 3 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.shl" },          // ptr = i * 2
-          { op: "i32.load16_u", align: 1, offset: 0 },
-          { op: "array.set", typeIdx: strDataTypeIdx },
+              // arr[i] = memory[i*2] (i32.load16_u)
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.shl" }, // ptr = i * 2
+              { op: "i32.load16_u", align: 1, offset: 0 },
+              { op: "array.set", typeIdx: strDataTypeIdx },
 
-          // i++
-          { op: "local.get", index: 3 },
-          { op: "i32.const", value: 1 },
-          { op: "i32.add" },
-          { op: "local.set", index: 3 },
-          { op: "br", depth: 0 },
-        ]},
-      ]},
+              // i++
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 3 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
 
       // struct.new(len, 0, arr)
-      { op: "local.get", index: 1 },  // len
-      { op: "i32.const", value: 0 },  // off = 0
-      { op: "local.get", index: 2 },  // data = arr
+      { op: "local.get", index: 1 }, // len
+      { op: "i32.const", value: 0 }, // off = 0
+      { op: "local.get", index: 2 }, // data = arr
       { op: "struct.new", typeIdx: strTypeIdx },
     ];
 
@@ -7571,6 +7369,66 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
         { name: "arr", type: strDataRef },
         { name: "i", type: { kind: "i32" } },
       ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_fromCodePoint(cp: i32) -> ref $NativeString ---
+  // Creates a NativeString from a Unicode code point.
+  // BMP (cp <= 0xFFFF): 1-element array.
+  // Supplementary (cp > 0xFFFF): 2-element surrogate pair.
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_fromCodePoint", funcIdx);
+
+    // params: cp(0)
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0xffff },
+      { op: "i32.gt_u" },
+      {
+        op: "if",
+        blockType: { kind: "val", type: strRef },
+        then: [
+          // Surrogate pair: len=2, off=0, [high, low]
+          { op: "i32.const", value: 2 }, // len
+          { op: "i32.const", value: 0 }, // off
+          // high = ((cp - 0x10000) >> 10) + 0xD800
+          { op: "local.get", index: 0 },
+          { op: "i32.const", value: 0x10000 },
+          { op: "i32.sub" },
+          { op: "i32.const", value: 10 },
+          { op: "i32.shr_u" },
+          { op: "i32.const", value: 0xd800 },
+          { op: "i32.add" },
+          // low = ((cp - 0x10000) & 0x3FF) + 0xDC00
+          { op: "local.get", index: 0 },
+          { op: "i32.const", value: 0x10000 },
+          { op: "i32.sub" },
+          { op: "i32.const", value: 0x3ff },
+          { op: "i32.and" },
+          { op: "i32.const", value: 0xdc00 },
+          { op: "i32.add" },
+          { op: "array.new_fixed", typeIdx: strDataTypeIdx, length: 2 },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ],
+        else: [
+          // BMP: len=1, off=0, [cp]
+          { op: "i32.const", value: 1 }, // len
+          { op: "i32.const", value: 0 }, // off
+          { op: "local.get", index: 0 }, // cp
+          { op: "array.new_fixed", typeIdx: strDataTypeIdx, length: 1 },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ],
+      } as Instr,
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_fromCodePoint",
+      typeIdx,
+      locals: [],
       body,
       exported: false,
     });
@@ -7589,10 +7447,7 @@ export function parseRegExpLiteral(text: string): { pattern: string; flags: stri
 
 /** Scan source for string literals and register env imports for each unique one */
 /** Scan source for string literals and register string_constants global imports */
-function collectStringLiterals(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectStringLiterals(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const literals = new Set<string>();
   let hasTypeofExpr = false;
   let hasTaggedTemplate = false;
@@ -7647,9 +7502,7 @@ function collectStringLiterals(
       hasTypeofExpr = true;
     }
     // import.meta needs placeholder strings
-    if (ts.isMetaProperty(node) &&
-        node.keywordToken === ts.SyntaxKind.ImportKeyword &&
-        node.name.text === "meta") {
+    if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword && node.name.text === "meta") {
       literals.add("module.wasm");
       literals.add("[object Object]");
     }
@@ -7698,10 +7551,7 @@ function collectStringLiterals(
 
 /** Register struct field names as string literals for for-in loops.
  *  Uses the type checker to get property names (runs before collectDeclarations). */
-function collectForInStringLiterals(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectForInStringLiterals(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const literals = new Set<string>();
 
   function visit(node: ts.Node) {
@@ -7750,10 +7600,7 @@ function collectForInStringLiterals(
 /** Register struct field names as string literals for `key in obj` expressions
  *  where the key is a dynamic (non-literal) value. Pre-registers field names
  *  so they can be used for runtime string comparison. */
-function collectInExprStringLiterals(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectInExprStringLiterals(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const literals = new Set<string>();
 
   function visit(node: ts.Node) {
@@ -7803,10 +7650,7 @@ function collectInExprStringLiterals(
 /** Register struct field names as string literals for Object.keys() / Object.values() calls.
  *  Detects Object.keys(expr) and Object.values(expr) patterns and pre-registers
  *  the field names from the argument's type as string thunks. */
-function collectObjectMethodStringLiterals(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectObjectMethodStringLiterals(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const literals = new Set<string>();
   let hasValues = false;
 
@@ -7816,7 +7660,9 @@ function collectObjectMethodStringLiterals(
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
       node.expression.expression.text === "Object" &&
-      (node.expression.name.text === "keys" || node.expression.name.text === "values" || node.expression.name.text === "entries") &&
+      (node.expression.name.text === "keys" ||
+        node.expression.name.text === "values" ||
+        node.expression.name.text === "entries") &&
       node.arguments.length === 1
     ) {
       if (node.expression.name.text === "values" || node.expression.name.text === "entries") hasValues = true;
@@ -7863,13 +7709,8 @@ function collectObjectMethodStringLiterals(
   // Ensure wasm:js-string imports exist (may already be registered)
   addStringImports(ctx);
 
-  const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
   for (const value of literals) {
-    const name = `__str_${ctx.stringLiteralCounter++}`;
-    addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-    ctx.stringLiteralMap.set(value, name);
-    ctx.stringLiteralValues.set(name, value);
-    ctx.mod.stringPool.push(value);
+    addStringConstantGlobal(ctx, value);
   }
 }
 
@@ -7898,10 +7739,7 @@ const MATH_HOST_METHODS_1ARG = new Set([
 const MATH_HOST_METHODS_2ARG = new Set(["pow", "atan2"]);
 
 /** Scan source for Math.xxx() calls that need host imports */
-function collectMathImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const needed = new Set<string>();
 
   let needsToUint32 = false;
@@ -7914,11 +7752,7 @@ function collectMathImports(
       node.expression.expression.text === "Math"
     ) {
       const method = node.expression.name.text;
-      if (
-        MATH_HOST_METHODS_1ARG.has(method) ||
-        MATH_HOST_METHODS_2ARG.has(method) ||
-        method === "random"
-      ) {
+      if (MATH_HOST_METHODS_1ARG.has(method) || MATH_HOST_METHODS_2ARG.has(method) || method === "random") {
         needed.add(method);
       }
       // clz32 and imul need __toUint32 for spec-correct ToUint32 conversion
@@ -7959,17 +7793,11 @@ function collectMathImports(
 }
 
 /** Scan source for parseInt / parseFloat / Number() / unary + on strings and register host imports */
-function collectParseImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectParseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const needed = new Set<string>();
 
   function visit(node: ts.Node) {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression)
-    ) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const name = node.expression.text;
       if (name === "parseInt" || name === "parseFloat") {
         needed.add(name);
@@ -7997,7 +7825,7 @@ function collectParseImports(
     if (
       ts.isBinaryExpression(node) &&
       (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken ||
-       node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken)
+        node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken)
     ) {
       try {
         const leftType = ctx.checker.getTypeAtLocation(node.left);
@@ -8061,14 +7889,44 @@ function collectParseImports(
 
 /** Known constructors handled natively (not needing __new_ imports) */
 const KNOWN_CONSTRUCTORS = new Set([
-  "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError",
-  "SyntaxError", "URIError", "EvalError", "ReferenceError", "Test262Error",
-  "Object", "Function", "Promise", "WeakMap", "WeakSet", "WeakRef",
-  "Number", "String", "Boolean",
-  "ArrayBuffer", "DataView", "Proxy",
-  "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
-  "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
-  "SyntaxError", "URIError", "EvalError", "ReferenceError",
+  "Array",
+  "Date",
+  "Map",
+  "Set",
+  "RegExp",
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "ReferenceError",
+  "Test262Error",
+  "Object",
+  "Function",
+  "Promise",
+  "WeakMap",
+  "WeakSet",
+  "WeakRef",
+  "Number",
+  "String",
+  "Boolean",
+  "ArrayBuffer",
+  "DataView",
+  "Proxy",
+  "Int8Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float32Array",
+  "Float64Array",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "ReferenceError",
 ]);
 
 /**
@@ -8076,10 +7934,7 @@ const KNOWN_CONSTRUCTORS = new Set([
  * or known extern class, and register `__new_X` host imports so the runtime
  * can provide the constructor.
  */
-function collectUnknownConstructorImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectUnknownConstructorImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   // Map from constructor name to arg count (max seen)
   const needed = new Map<string, number>();
 
@@ -8090,10 +7945,11 @@ function collectUnknownConstructorImports(
         // Check if it's a class declared in this source file
         const sym = ctx.checker.getSymbolAtLocation(node.expression);
         const decls = sym?.getDeclarations() ?? [];
-        const isLocalClass = decls.some(d => {
+        const isLocalClass = decls.some((d) => {
           if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) return d.getSourceFile() === sourceFile;
           // const Vec2 = class { ... } — variable whose initializer is a class expression
-          if (ts.isVariableDeclaration(d) && d.initializer && ts.isClassExpression(d.initializer)) return d.getSourceFile() === sourceFile;
+          if (ts.isVariableDeclaration(d) && d.initializer && ts.isClassExpression(d.initializer))
+            return d.getSourceFile() === sourceFile;
           return false;
         });
         const isExtern = ctx.externClasses.has(name);
@@ -8112,7 +7968,7 @@ function collectUnknownConstructorImports(
   for (const [name, argCount] of needed) {
     const importName = `__new_${name}`;
     if (ctx.funcMap.has(importName)) continue;
-    const params: ValType[] = Array.from({ length: argCount }, () => ({ kind: "externref" } as ValType));
+    const params: ValType[] = Array.from({ length: argCount }, () => ({ kind: "externref" }) as ValType);
     const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
     addImport(ctx, "env", importName, { kind: "func", typeIdx });
   }
@@ -8123,10 +7979,7 @@ function collectUnknownConstructorImports(
  * register wrapper struct types so that resolveWasmType returns the correct
  * ref type for wrapper-typed variables.
  */
-function collectWrapperConstructors(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectWrapperConstructors(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   let found = false;
 
   function visit(node: ts.Node) {
@@ -8149,10 +8002,7 @@ function collectWrapperConstructors(
 }
 
 /** Scan source for String.fromCharCode() calls and register host import */
-function collectStringStaticImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectStringStaticImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   let needsFromCharCode = false;
 
   function visit(node: ts.Node) {
@@ -8198,10 +8048,7 @@ function collectStringStaticImports(
 
 /** Scan source for Promise.all / Promise.race / Promise.resolve / Promise.reject
  *  calls and `new Promise(...)` constructor usage, and register host imports */
-function collectPromiseImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const needed = new Set<string>();
   let needConstructor = false;
 
@@ -8218,10 +8065,7 @@ function collectPromiseImports(
       }
     }
     // Detect .then() / .catch() on Promise-typed values
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression)
-    ) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const method = node.expression.name.text;
       if (method === "then" || method === "catch") {
         const receiverType = ctx.checker.getTypeAtLocation(node.expression.expression);
@@ -8237,11 +8081,7 @@ function collectPromiseImports(
       }
     }
     // Detect `new Promise(...)`
-    if (
-      ts.isNewExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "Promise"
-    ) {
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
       needConstructor = true;
     }
     ts.forEachChild(node, visit);
@@ -8278,11 +8118,7 @@ function collectPromiseImports(
   for (const method of needed) {
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
-      const typeIdx = addFuncType(
-        ctx,
-        [{ kind: "externref" }],
-        [{ kind: "externref" }],
-      );
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
   }
@@ -8295,11 +8131,7 @@ function collectPromiseImports(
       if (!ctx.funcMap.has(importName)) {
         // Promise_then(promise, callback) -> promise
         // Promise_catch(promise, callback) -> promise
-        const typeIdx = addFuncType(
-          ctx,
-          [{ kind: "externref" }, { kind: "externref" }],
-          [{ kind: "externref" }],
-        );
+        const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
         addImport(ctx, "env", importName, { kind: "func", typeIdx });
       }
     }
@@ -8307,20 +8139,13 @@ function collectPromiseImports(
 
   // Register new Promise() constructor import: (externref) -> externref
   if (needConstructor && !ctx.funcMap.has("Promise_new")) {
-    const typeIdx = addFuncType(
-      ctx,
-      [{ kind: "externref" }],
-      [{ kind: "externref" }],
-    );
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "Promise_new", { kind: "func", typeIdx });
   }
 }
 
 /** Scan source for JSON.parse / JSON.stringify calls and register host imports */
-function collectJsonImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectJsonImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   let needStringify = false;
   let needParse = false;
 
@@ -8361,7 +8186,11 @@ function collectJsonImports(
   }
   if (needStringify) {
     // (value: externref, replacer: externref, space: externref) -> externref
-    const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
     addImport(ctx, "env", "JSON_stringify", { kind: "func", typeIdx });
   }
   if (needParse) {
@@ -8371,10 +8200,7 @@ function collectJsonImports(
 }
 
 /** Scan source for arrow functions used as call arguments and register __make_callback import */
-function collectCallbackImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectCallbackImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   let found = false;
 
   function visit(node: ts.Node) {
@@ -8403,31 +8229,19 @@ function collectCallbackImports(
 
   if (found) {
     // __make_callback: (i32, externref) → externref
-    const typeIdx = addFuncType(
-      ctx,
-      [{ kind: "i32" }, { kind: "externref" }],
-      [{ kind: "externref" }],
-    );
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
   }
 }
 
 /** Scan source for generator functions (function*) and register generator host imports */
-function collectGeneratorImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectGeneratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   let found = false;
 
   function visitNode(node: ts.Node): void {
     if (found) return;
     // Generator function declarations: function* foo() { ... }
-    if (
-      ts.isFunctionDeclaration(node) &&
-      node.asteriskToken &&
-      node.body &&
-      !hasDeclareModifier(node)
-    ) {
+    if (ts.isFunctionDeclaration(node) && node.asteriskToken && node.body && !hasDeclareModifier(node)) {
       found = true;
       return;
     }
@@ -8458,33 +8272,21 @@ function collectGeneratorImports(
     });
 
     // __gen_push_f64: (externref, f64) → void  (pushes a number to the buffer)
-    const pushF64Type = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "f64" }],
-      [],
-    );
+    const pushF64Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], []);
     addImport(ctx, "env", "__gen_push_f64", {
       kind: "func",
       typeIdx: pushF64Type,
     });
 
     // __gen_push_i32: (externref, i32) → void  (pushes a boolean to the buffer)
-    const pushI32Type = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "i32" }],
-      [],
-    );
+    const pushI32Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], []);
     addImport(ctx, "env", "__gen_push_i32", {
       kind: "func",
       typeIdx: pushI32Type,
     });
 
     // __gen_push_ref: (externref, externref) → void  (pushes a string/object to the buffer)
-    const pushRefType = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "externref" }],
-      [],
-    );
+    const pushRefType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
     addImport(ctx, "env", "__gen_push_ref", {
       kind: "func",
       typeIdx: pushRefType,
@@ -8492,11 +8294,7 @@ function collectGeneratorImports(
 
     // __create_generator: (externref) → externref
     // Takes a JS array of yielded values, returns a Generator-like object
-    const genType = addFuncType(
-      ctx,
-      [{ kind: "externref" }],
-      [{ kind: "externref" }],
-    );
+    const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__create_generator", {
       kind: "func",
       typeIdx: genType,
@@ -8509,11 +8307,7 @@ function collectGeneratorImports(
     });
 
     // __gen_return: (generator: externref, value: externref) → externref (calls gen.return(value), returns IteratorResult)
-    const genReturnType = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "externref" }],
-      [{ kind: "externref" }],
-    );
+    const genReturnType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__gen_return", {
       kind: "func",
       typeIdx: genReturnType,
@@ -8532,22 +8326,14 @@ function collectGeneratorImports(
     });
 
     // __gen_result_value_f64: (result: externref) → f64 (returns result.value as number)
-    const resultValF64Type = addFuncType(
-      ctx,
-      [{ kind: "externref" }],
-      [{ kind: "f64" }],
-    );
+    const resultValF64Type = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
     addImport(ctx, "env", "__gen_result_value_f64", {
       kind: "func",
       typeIdx: resultValF64Type,
     });
 
     // __gen_result_done: (result: externref) → i32 (returns result.done as boolean)
-    const resultDoneType = addFuncType(
-      ctx,
-      [{ kind: "externref" }],
-      [{ kind: "i32" }],
-    );
+    const resultDoneType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "__gen_result_done", {
       kind: "func",
       typeIdx: resultDoneType,
@@ -8556,22 +8342,15 @@ function collectGeneratorImports(
 }
 
 /** Functional array methods that need host callback bridges */
-const FUNCTIONAL_ARRAY_METHODS = new Set([
-  "filter", "map", "reduce", "forEach", "find", "findIndex", "some", "every",
-]);
+const FUNCTIONAL_ARRAY_METHODS = new Set(["filter", "map", "reduce", "forEach", "find", "findIndex", "some", "every"]);
 
 /** Scan source for functional array methods (filter, map, etc.) and register __call_Nf64 imports */
-function collectFunctionalArrayImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectFunctionalArrayImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   let need1 = false;
   let need2 = false;
 
   function visit(node: ts.Node) {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression)) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const method = node.expression.name.text;
       if (FUNCTIONAL_ARRAY_METHODS.has(method)) {
         if (method === "reduce") {
@@ -8612,19 +8391,11 @@ function collectFunctionalArrayImports(
   if (need1) {
     if (ctx.fast) {
       // __call_1_i32: (externref, i32) → i32 — invoke callback with 1 i32 arg (fast mode)
-      const typeIdx = addFuncType(
-        ctx,
-        [{ kind: "externref" }, { kind: "i32" }],
-        [{ kind: "i32" }],
-      );
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], [{ kind: "i32" }]);
       addImport(ctx, "env", "__call_1_i32", { kind: "func", typeIdx });
     } else {
       // __call_1_f64: (externref, f64) → f64 — invoke callback with 1 f64 arg
-      const typeIdx = addFuncType(
-        ctx,
-        [{ kind: "externref" }, { kind: "f64" }],
-        [{ kind: "f64" }],
-      );
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", "__call_1_f64", { kind: "func", typeIdx });
     }
   }
@@ -8632,29 +8403,18 @@ function collectFunctionalArrayImports(
   if (need2) {
     if (ctx.fast) {
       // __call_2_i32: (externref, i32, i32) → i32 — invoke callback with 2 i32 args (fast mode)
-      const typeIdx = addFuncType(
-        ctx,
-        [{ kind: "externref" }, { kind: "i32" }, { kind: "i32" }],
-        [{ kind: "i32" }],
-      );
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }]);
       addImport(ctx, "env", "__call_2_i32", { kind: "func", typeIdx });
     } else {
       // __call_2_f64: (externref, f64, f64) → f64 — invoke callback with 2 f64 args
-      const typeIdx = addFuncType(
-        ctx,
-        [{ kind: "externref" }, { kind: "f64" }, { kind: "f64" }],
-        [{ kind: "f64" }],
-      );
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }, { kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", "__call_2_f64", { kind: "func", typeIdx });
     }
   }
 }
 
 /** Scan source for union types (number | string, etc.) and register needed helper imports */
-function collectUnionImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectUnionImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   let found = false;
 
   function visit(node: ts.Node) {
@@ -8739,11 +8499,7 @@ export function addUnionImports(ctx: CodegenContext): void {
   const importsBefore = ctx.numImportFuncs;
 
   // __typeof_number: (externref) → i32
-  const typeofType = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "i32" }],
-  );
+  const typeofType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
   addImport(ctx, "env", "__typeof_number", {
     kind: "func",
     typeIdx: typeofType,
@@ -8773,11 +8529,7 @@ export function addUnionImports(ctx: CodegenContext): void {
   addImport(ctx, "env", "__is_truthy", { kind: "func", typeIdx: typeofType });
 
   // __unbox_number: (externref) → f64
-  const unboxNumType = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "f64" }],
-  );
+  const unboxNumType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
   addImport(ctx, "env", "__unbox_number", {
     kind: "func",
     typeIdx: unboxNumType,
@@ -8790,30 +8542,18 @@ export function addUnionImports(ctx: CodegenContext): void {
   });
 
   // __box_number: (f64) → externref
-  const boxNumType = addFuncType(
-    ctx,
-    [{ kind: "f64" }],
-    [{ kind: "externref" }],
-  );
+  const boxNumType = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__box_number", { kind: "func", typeIdx: boxNumType });
 
   // __box_boolean: (i32) → externref
-  const boxBoolType = addFuncType(
-    ctx,
-    [{ kind: "i32" }],
-    [{ kind: "externref" }],
-  );
+  const boxBoolType = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__box_boolean", {
     kind: "func",
     typeIdx: boxBoolType,
   });
 
   // __typeof: (externref) → externref (returns type string)
-  const typeofStrType = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "externref" }],
-  );
+  const typeofStrType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__typeof", {
     kind: "func",
     typeIdx: typeofStrType,
@@ -8828,10 +8568,18 @@ export function addUnionImports(ctx: CodegenContext): void {
   if (delta > 0 && ctx.mod.functions.length > 0) {
     // Build a set of the new import names to skip them during funcMap update
     const newImportNames = new Set([
-      "__typeof_number", "__typeof_string", "__typeof_boolean",
-      "__typeof_undefined", "__typeof_object", "__typeof_function",
-      "__is_truthy", "__unbox_number", "__unbox_boolean",
-      "__box_number", "__box_boolean", "__typeof",
+      "__typeof_number",
+      "__typeof_string",
+      "__typeof_boolean",
+      "__typeof_undefined",
+      "__typeof_object",
+      "__typeof_function",
+      "__is_truthy",
+      "__unbox_number",
+      "__unbox_boolean",
+      "__box_number",
+      "__box_boolean",
+      "__typeof",
     ]);
     // Update funcMap entries for defined functions (not imports)
     for (const [name, idx] of ctx.funcMap) {
@@ -8945,9 +8693,7 @@ export function addUnionImports(ctx: CodegenContext): void {
     }
     // Update declaredFuncRefs
     if (ctx.mod.declaredFuncRefs.length > 0) {
-      ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map(
-        idx => idx >= importsBefore ? idx + delta : idx,
-      );
+      ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map((idx) => (idx >= importsBefore ? idx + delta : idx));
     }
   }
 }
@@ -8956,10 +8702,7 @@ export function addUnionImports(ctx: CodegenContext): void {
  * Scan source for for...of on non-array types (strings, externref iterables)
  * and register the host-delegated iterator protocol imports.
  */
-function collectIteratorImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectIteratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   let found = false;
 
   function visit(node: ts.Node) {
@@ -8967,8 +8710,7 @@ function collectIteratorImports(
     if (ts.isForOfStatement(node)) {
       const exprType = ctx.checker.getTypeAtLocation(node.expression);
       // Array types use the existing index-based loop — no iterator imports needed
-      const sym =
-        (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
+      const sym = (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
       if (sym?.name !== "Array") {
         // In fast mode, strings are iterated natively — no iterator imports needed
         if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 && isStringType(exprType)) {
@@ -8992,10 +8734,7 @@ function collectIteratorImports(
     } else if (ts.isClassDeclaration(stmt)) {
       for (const member of stmt.members) {
         if (found) break;
-        if (
-          (ts.isMethodDeclaration(member) || ts.isConstructorDeclaration(member)) &&
-          member.body
-        ) {
+        if ((ts.isMethodDeclaration(member) || ts.isConstructorDeclaration(member)) && member.body) {
           visit(member.body);
         }
       }
@@ -9017,11 +8756,7 @@ export function addIteratorImports(ctx: CodegenContext): void {
   if (ctx.funcMap.has("__iterator")) return;
 
   // __iterator: (externref) → externref — calls obj[Symbol.iterator]()
-  const extToExt = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "externref" }],
-  );
+  const extToExt = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__iterator", { kind: "func", typeIdx: extToExt });
 
   // __iterator_next: (externref) → externref — calls iter.next()
@@ -9031,11 +8766,7 @@ export function addIteratorImports(ctx: CodegenContext): void {
   });
 
   // __iterator_done: (externref) → i32 — returns result.done ? 1 : 0
-  const extToI32 = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "i32" }],
-  );
+  const extToI32 = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
   addImport(ctx, "env", "__iterator_done", {
     kind: "func",
     typeIdx: extToI32,
@@ -9048,11 +8779,7 @@ export function addIteratorImports(ctx: CodegenContext): void {
   });
 
   // __iterator_return: (externref) → void — calls iter.return() if it exists
-  const extToVoid = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [],
-  );
+  const extToVoid = addFuncType(ctx, [{ kind: "externref" }], []);
   addImport(ctx, "env", "__iterator_return", {
     kind: "func",
     typeIdx: extToVoid,
@@ -9064,11 +8791,7 @@ export function addArrayIteratorImports(ctx: CodegenContext): void {
   if (ctx.funcMap.has("__array_entries")) return;
 
   // All three: (externref) → externref — take a vec struct, return a JS iterator
-  const extToExt = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "externref" }],
-  );
+  const extToExt = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__array_entries", { kind: "func", typeIdx: extToExt });
   addImport(ctx, "env", "__array_keys", { kind: "func", typeIdx: extToExt });
   addImport(ctx, "env", "__array_values", { kind: "func", typeIdx: extToExt });
@@ -9080,11 +8803,7 @@ export function addForInImports(ctx: CodegenContext): void {
   if (ctx.funcMap.has("__for_in_keys")) return;
 
   // __for_in_keys: (externref) -> externref — returns JS array of enumerable string keys
-  const extToExt = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "externref" }],
-  );
+  const extToExt = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__for_in_keys", { kind: "func", typeIdx: extToExt });
 
   // __for_in_len: (externref) -> i32 — returns keys.length
@@ -9094,452 +8813,6 @@ export function addForInImports(ctx: CodegenContext): void {
   // __for_in_get: (externref, i32) -> externref — returns keys[i]
   const extI32ToExt = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__for_in_get", { kind: "func", typeIdx: extI32ToExt });
-}
-
-export function addImport(
-  ctx: CodegenContext,
-  module: string,
-  name: string,
-  desc: Import["desc"],
-): void {
-  ctx.mod.imports.push({ module, name, desc });
-  if (desc.kind === "func") {
-    ctx.funcMap.set(name, ctx.numImportFuncs);
-    ctx.numImportFuncs++;
-  }
-  if (desc.kind === "global") {
-    ctx.numImportGlobals++;
-  }
-}
-
-/**
- * Register a string literal as a global import from the "string_constants" namespace.
- * Uses importedStringConstants: the import name is the literal string value itself,
- * and the global type is (ref extern) (non-nullable externref).
- */
-export function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
-  if (ctx.stringGlobalMap.has(value)) return; // already registered
-
-  // If module-defined globals already exist, adding a new import global
-  // shifts their absolute indices by 1. Fix up all existing instructions.
-  const hasModuleGlobals = ctx.mod.globals.length > 0 || ctx.mod.functions.length > 0;
-  const oldNumImportGlobals = ctx.numImportGlobals;
-
-  const globalIdx = ctx.numImportGlobals; // next global import index
-  addImport(ctx, "string_constants", value, {
-    kind: "global",
-    type: { kind: "externref" },
-    mutable: false,
-  });
-  ctx.stringGlobalMap.set(value, globalIdx);
-  ctx.stringLiteralMap.set(value, `__str_${ctx.stringLiteralCounter}`);
-  ctx.stringLiteralValues.set(`__str_${ctx.stringLiteralCounter}`, value);
-  ctx.stringLiteralCounter++;
-  ctx.mod.stringPool.push(value);
-
-  // Fix up global indices in already-compiled function bodies and the
-  // current function being compiled. Any global.get/global.set with
-  // index >= oldNumImportGlobals was referencing a module-defined global
-  // and must be shifted by +1 since we just inserted a new import global.
-  if (hasModuleGlobals) {
-    fixupModuleGlobalIndices(ctx, oldNumImportGlobals, 1);
-  }
-}
-
-/** Return the absolute Wasm global index for a new module-defined global. */
-export function nextModuleGlobalIdx(ctx: CodegenContext): number {
-  return ctx.numImportGlobals + ctx.mod.globals.length;
-}
-
-/** Convert an absolute Wasm global index to a local module-globals array index. */
-export function localGlobalIdx(ctx: CodegenContext, absIdx: number): number {
-  return absIdx - ctx.numImportGlobals;
-}
-
-/**
- * Fix up module-global absolute indices in all compiled function bodies.
- * When addStringConstantGlobal is called during codegen (e.g. from emitBoolToString
- * or function .name access), numImportGlobals increases, shifting the absolute
- * indices of all module-defined globals. This function walks all instructions
- * and adjusts global.get/global.set indices that reference module globals.
- *
- * @param ctx - codegen context
- * @param threshold - the numImportGlobals value at the time module globals were allocated
- * @param delta - how many new import globals were added (shift amount)
- */
-function fixupModuleGlobalIndices(
-  ctx: CodegenContext,
-  threshold: number,
-  delta: number,
-): void {
-  function shiftGlobalIndices(instrs: Instr[]): void {
-    for (const instr of instrs) {
-      if (
-        (instr.op === "global.get" || instr.op === "global.set") &&
-        instr.index >= threshold
-      ) {
-        instr.index += delta;
-      }
-      // Recurse into nested instruction arrays (if/else/block/loop)
-      if ("body" in instr && Array.isArray((instr as any).body)) {
-        shiftGlobalIndices((instr as any).body);
-      }
-      if ("then" in instr && Array.isArray((instr as any).then)) {
-        shiftGlobalIndices((instr as any).then);
-      }
-      if ("else" in instr && Array.isArray((instr as any).else)) {
-        shiftGlobalIndices((instr as any).else);
-      }
-      if ("catches" in instr && Array.isArray((instr as any).catches)) {
-        for (const c of (instr as any).catches) {
-          if (Array.isArray(c.body)) shiftGlobalIndices(c.body);
-        }
-      }
-      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
-        shiftGlobalIndices((instr as any).catchAll);
-      }
-    }
-  }
-
-  // Track which body arrays have been shifted to prevent double-shifting.
-  const shifted = new Set<Instr[]>();
-  for (const func of ctx.mod.functions) {
-    if (!shifted.has(func.body)) {
-      shiftGlobalIndices(func.body);
-      shifted.add(func.body);
-    }
-  }
-
-  // Also fix up the current function being compiled (its body is not yet
-  // in ctx.mod.functions — it's in the FunctionContext's body array)
-  if (ctx.currentFunc) {
-    if (!shifted.has(ctx.currentFunc.body)) {
-      shiftGlobalIndices(ctx.currentFunc.body);
-      shifted.add(ctx.currentFunc.body);
-    }
-    // Also shift any saved body arrays (from savedBody swap pattern).
-    // When fctx.body is swapped to a fresh [] for inner block compilation
-    // (e.g. try/catch, if/else), the outer body is pushed onto savedBodies.
-    // Without shifting these, global indices in the outer body become stale.
-    for (const sb of ctx.currentFunc.savedBodies) {
-      if (shifted.has(sb)) continue;
-      shiftGlobalIndices(sb);
-      shifted.add(sb);
-    }
-  }
-
-  // Shift parent function contexts saved on the funcStack during nested
-  // closure/method compilation. These are in-flight function bodies that are
-  // NOT in ctx.mod.functions and NOT ctx.currentFunc, so they would otherwise
-  // be missed by the global index shift.
-  for (const parentFctx of ctx.funcStack) {
-    if (!shifted.has(parentFctx.body)) {
-      shiftGlobalIndices(parentFctx.body);
-      shifted.add(parentFctx.body);
-    }
-    for (const sb of parentFctx.savedBodies) {
-      if (!shifted.has(sb)) {
-        shiftGlobalIndices(sb);
-        shifted.add(sb);
-      }
-    }
-  }
-
-  // Shift parent function bodies still being compiled (parentBodiesStack).
-  for (const pb of ctx.parentBodiesStack) {
-    if (!shifted.has(pb)) {
-      shiftGlobalIndices(pb);
-      shifted.add(pb);
-    }
-  }
-
-  // Also fix up the pending module-init body (compiled but not yet in ctx.mod.functions)
-  if (ctx.pendingInitBody && !shifted.has(ctx.pendingInitBody)) {
-    shiftGlobalIndices(ctx.pendingInitBody);
-    shifted.add(ctx.pendingInitBody);
-  }
-
-  // Also fix up global init expressions (e.g. globals that reference other globals)
-  for (const g of ctx.mod.globals) {
-    if (g.init) shiftGlobalIndices(g.init);
-  }
-
-  // Fix up index maps that store absolute global indices.
-  // Without this, code compiled after the shift would use stale indices
-  // from these maps, emitting global.get/set with wrong targets.
-  function shiftMap(map: Map<string, number>): void {
-    for (const [key, idx] of map) {
-      if (idx >= threshold) {
-        map.set(key, idx + delta);
-      }
-    }
-  }
-  shiftMap(ctx.moduleGlobals);
-  shiftMap(ctx.capturedGlobals);
-  shiftMap(ctx.staticProps);
-  shiftMap(ctx.protoGlobals);
-  shiftMap(ctx.tdzGlobals);
-
-  // Shift global indices stored in staticInitExprs (deferred static property initializers)
-  for (const entry of ctx.staticInitExprs) {
-    if (entry.globalIdx >= threshold) {
-      entry.globalIdx += delta;
-    }
-  }
-
-  // Shift scalar global indices stored on ctx
-  if (ctx.symbolCounterGlobalIdx >= threshold) {
-    ctx.symbolCounterGlobalIdx += delta;
-  }
-  if (ctx.wasiBumpPtrGlobalIdx >= threshold) {
-    ctx.wasiBumpPtrGlobalIdx += delta;
-  }
-}
-
-/**
- * Lazily register the exception tag used by throw/try-catch.
- * The tag has signature (externref) — all thrown values are externref.
- * Returns the tag index (currently always 0 since we only have one tag).
- */
-export function ensureExnTag(ctx: CodegenContext): number {
-  if (ctx.exnTagIdx >= 0) return ctx.exnTagIdx;
-  // Create a func type for the tag: (param externref) — no results
-  const typeIdx = addFuncType(ctx, [{ kind: "externref" }], []);
-  const tagDef: TagDef = { name: "__exn", typeIdx };
-  ctx.exnTagIdx = ctx.mod.tags.length;
-  ctx.mod.tags.push(tagDef);
-  return ctx.exnTagIdx;
-}
-
-/** Build a cache key for a function type signature (params + results). */
-function funcTypeKey(params: ValType[], results: ValType[]): string {
-  let key = "";
-  for (let i = 0; i < params.length; i++) {
-    const p = params[i]!;
-    if (i > 0) key += ",";
-    key += p.kind;
-    if (p.kind === "ref" || p.kind === "ref_null") key += ":" + (p as { typeIdx: number }).typeIdx;
-  }
-  key += "|";
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i]!;
-    if (i > 0) key += ",";
-    key += r.kind;
-    if (r.kind === "ref" || r.kind === "ref_null") key += ":" + (r as { typeIdx: number }).typeIdx;
-  }
-  return key;
-}
-
-export function addFuncType(
-  ctx: CodegenContext,
-  params: ValType[],
-  results: ValType[],
-  name?: string,
-): number {
-  const key = funcTypeKey(params, results);
-  const cached = ctx.funcTypeCache.get(key);
-  if (cached !== undefined) return cached;
-  const idx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "func",
-    name: name ?? `type${idx}`,
-    params,
-    results,
-  });
-  ctx.funcTypeCache.set(key, idx);
-  return idx;
-}
-
-function funcTypeEq(
-  t: FuncTypeDef,
-  params: ValType[],
-  results: ValType[],
-): boolean {
-  if (t.params.length !== params.length) return false;
-  if (t.results.length !== results.length) return false;
-  for (let i = 0; i < params.length; i++) {
-    if (!valTypeEq(t.params[i]!, params[i]!)) return false;
-  }
-  for (let i = 0; i < results.length; i++) {
-    if (!valTypeEq(t.results[i]!, results[i]!)) return false;
-  }
-  return true;
-}
-
-function valTypeEq(a: ValType, b: ValType): boolean {
-  if (a.kind !== b.kind) return false;
-  if (
-    (a.kind === "ref" || a.kind === "ref_null") &&
-    (b.kind === "ref" || b.kind === "ref_null")
-  ) {
-    return a.typeIdx === (b as { typeIdx: number }).typeIdx;
-  }
-  return true;
-}
-
-// ── Type resolution ──────────────────────────────────────────────────
-
-/**
- * Get or register a Wasm array type for a given element kind.
- * Reuses existing registrations so each element type only gets one array type.
- */
-export function getOrRegisterArrayType(
-  ctx: CodegenContext,
-  elemKind: string,
-  elemTypeOverride?: ValType,
-): number {
-  if (ctx.arrayTypeMap.has(elemKind)) return ctx.arrayTypeMap.get(elemKind)!;
-  let elemType: ValType =
-    elemTypeOverride ??
-    (elemKind === "f64"
-      ? { kind: "f64" }
-      : elemKind === "i32"
-        ? { kind: "i32" }
-        : { kind: "externref" });
-  // WasmGC: array.new_default requires a defaultable element type.
-  // `ref $T` is NOT defaultable, but `ref null $T` IS (defaults to null).
-  // Convert non-nullable struct refs to nullable so array.new_default works.
-  if (elemType.kind === "ref") {
-    elemType = { kind: "ref_null", typeIdx: (elemType as { typeIdx: number }).typeIdx };
-  }
-  const idx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "array",
-    name: `__arr_${elemKind}`,
-    element: elemType,
-    mutable: true,
-  } as ArrayTypeDef);
-  ctx.arrayTypeMap.set(elemKind, idx);
-  return idx;
-}
-
-/**
- * Get or register a vec struct type wrapping a Wasm GC array.
- * The vec struct has {length: i32, data: (ref $__arr_<elemKind>)}.
- * Reuses existing registrations so each element type only gets one vec type.
- */
-export function getOrRegisterVecType(
-  ctx: CodegenContext,
-  elemKind: string,
-  elemTypeOverride?: ValType,
-): number {
-  const existing = ctx.vecTypeMap.get(elemKind);
-  if (existing !== undefined) return existing;
-
-  const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind, elemTypeOverride);
-  const vecIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "struct",
-    name: `__vec_${elemKind}`,
-    fields: [
-      { name: "length", type: { kind: "i32" }, mutable: true },
-      {
-        name: "data",
-        type: { kind: "ref", typeIdx: arrTypeIdx },
-        mutable: true,
-      },
-    ],
-  });
-  ctx.vecTypeMap.set(elemKind, vecIdx);
-
-  // Register vec struct fields so emitStructFieldGetters can export __sget_length.
-  // This allows the runtime __iterator fallback to detect WasmGC array structs.
-  const vecStructName = `__vec_${elemKind}`;
-  ctx.structMap.set(vecStructName, vecIdx);
-  ctx.typeIdxToStructName.set(vecIdx, vecStructName);
-  ctx.structFields.set(vecStructName, [
-    { name: "length", type: { kind: "i32" as const }, mutable: true },
-    { name: "data", type: { kind: "ref" as const, typeIdx: arrTypeIdx }, mutable: true },
-  ]);
-
-  return vecIdx;
-}
-
-/**
- * Get or register the template vec struct type for tagged template string arrays.
- * This is a vec struct with an additional `raw` field pointing to another vec:
- *   (struct (field $length (mut i32)) (field $data (ref $arr)) (field $raw (ref_null $vec)))
- *
- * The `raw` field holds the unprocessed (raw) template strings.
- */
-export function getOrRegisterTemplateVecType(ctx: CodegenContext): number {
-  if (ctx.templateVecTypeIdx >= 0) return ctx.templateVecTypeIdx;
-
-  // Ensure the base vec type for externref exists
-  const baseVecTypeIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
-  const arrTypeIdx = getArrTypeIdxFromVec(ctx, baseVecTypeIdx);
-
-  // Mark the base vec struct as non-final so template vec can subtype it
-  const baseVecDef = ctx.mod.types[baseVecTypeIdx];
-  if (baseVecDef && baseVecDef.kind === "struct" && baseVecDef.superTypeIdx === undefined) {
-    baseVecDef.superTypeIdx = -1; // non-final root
-  }
-
-  // Register template vec as subtype of base vec: { length: i32, data: ref $arr, raw: ref_null $vec }
-  const templateVecIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "struct",
-    name: "__template_vec_externref",
-    superTypeIdx: baseVecTypeIdx,
-    fields: [
-      { name: "length", type: { kind: "i32" }, mutable: true },
-      {
-        name: "data",
-        type: { kind: "ref", typeIdx: arrTypeIdx },
-        mutable: true,
-      },
-      {
-        name: "raw",
-        type: { kind: "ref_null", typeIdx: baseVecTypeIdx },
-        mutable: false,
-      },
-    ],
-  });
-  ctx.templateVecTypeIdx = templateVecIdx;
-  return templateVecIdx;
-}
-
-/**
- * Get or register a ref cell struct type for mutable closure captures.
- * A ref cell is a 1-field mutable struct: (struct (field $value (mut T)))
- */
-export function getOrRegisterRefCellType(
-  ctx: CodegenContext,
-  valType: ValType,
-): number {
-  const key =
-    (valType.kind === "ref" || valType.kind === "ref_null")
-      ? `${valType.kind}_${(valType as { typeIdx: number }).typeIdx}`
-      : valType.kind;
-  const existing = ctx.refCellTypeMap.get(key);
-  if (existing !== undefined) return existing;
-
-  const typeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "struct",
-    name: `__ref_cell_${key}`,
-    fields: [
-      { name: "value", type: valType, mutable: true },
-    ],
-  });
-  ctx.refCellTypeMap.set(key, typeIdx);
-  return typeIdx;
-}
-
-/** Get the raw array type index from a vec struct type index. */
-export function getArrTypeIdxFromVec(
-  ctx: CodegenContext,
-  vecTypeIdx: number,
-): number {
-  const vecDef = ctx.mod.types[vecTypeIdx];
-  if (!vecDef || vecDef.kind !== "struct") return -1;
-  const dataField = vecDef.fields[1];
-  if (!dataField) return -1;
-  // data field may use ref_null instead of ref (e.g. for nullable element types)
-  if (dataField.type.kind !== "ref" && dataField.type.kind !== "ref_null") {
-    return -1;
-  }
-  return (dataField.type as { typeIdx: number }).typeIdx;
 }
 
 /**
@@ -9566,10 +8839,7 @@ function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
     addUnionImports(ctx);
     const boxIdx = ctx.funcMap.get("__box_number");
     if (boxIdx !== undefined) {
-      return [
-        { op: "f64.convert_i32_s" } as Instr,
-        { op: "call", funcIdx: boxIdx } as Instr,
-      ];
+      return [{ op: "f64.convert_i32_s" } as Instr, { op: "call", funcIdx: boxIdx } as Instr];
     }
     return [{ op: "drop" } as Instr, { op: "ref.null.extern" }];
   }
@@ -9601,10 +8871,7 @@ export function isTupleType(type: ts.Type): boolean {
  * Get the element types of a tuple type.
  * Returns the resolved ValType for each element position.
  */
-export function getTupleElementTypes(
-  ctx: CodegenContext,
-  tsType: ts.Type,
-): ValType[] {
+export function getTupleElementTypes(ctx: CodegenContext, tsType: ts.Type): ValType[] {
   const typeRef = tsType as ts.TypeReference;
   const typeArgs = ctx.checker.getTypeArguments(typeRef);
   return typeArgs.map((t) => resolveWasmType(ctx, t));
@@ -9628,10 +8895,7 @@ function tupleTypeKey(elemTypes: ValType[]): string {
  * Each unique tuple signature (e.g. [f64, externref]) maps to one struct type
  * with fields named _0, _1, etc.
  */
-export function getOrRegisterTupleType(
-  ctx: CodegenContext,
-  elemTypes: ValType[],
-): number {
+export function getOrRegisterTupleType(ctx: CodegenContext, elemTypes: ValType[]): number {
   const key = tupleTypeKey(elemTypes);
   const existing = ctx.tupleTypeMap.get(key);
   if (existing !== undefined) return existing;
@@ -9654,11 +8918,14 @@ export function getOrRegisterTupleType(
 
   // Register in structFields so emitStructFieldGetters can export __sget_0, __sget_1 etc.
   // This enables the runtime to introspect tuple elements (needed for Map/Set iterables).
-  ctx.structFields.set(structName, fields.map(f => ({
-    name: f.name,
-    type: f.type,
-    mutable: f.mutable ?? false,
-  })));
+  ctx.structFields.set(
+    structName,
+    fields.map((f) => ({
+      name: f.name,
+      type: f.type,
+      mutable: f.mutable ?? false,
+    })),
+  );
 
   return typeIdx;
 }
@@ -9670,11 +8937,11 @@ export function getOrRegisterTupleType(
  */
 const NATIVE_TYPE_MAP: Record<string, ValType> = {
   i32: { kind: "i32" },
-  u8: { kind: "i32" },   // unsigned 8-bit — stored as i32 (masked at boundaries)
-  u16: { kind: "i32" },  // unsigned 16-bit — stored as i32 (masked at boundaries)
-  u32: { kind: "i32" },  // unsigned 32-bit — stored as i32
-  i8: { kind: "i32" },   // signed 8-bit — stored as i32
-  i16: { kind: "i32" },  // signed 16-bit — stored as i32
+  u8: { kind: "i32" }, // unsigned 8-bit — stored as i32 (masked at boundaries)
+  u16: { kind: "i32" }, // unsigned 16-bit — stored as i32 (masked at boundaries)
+  u32: { kind: "i32" }, // unsigned 32-bit — stored as i32
+  i8: { kind: "i32" }, // signed 8-bit — stored as i32
+  i16: { kind: "i32" }, // signed 16-bit — stored as i32
   f32: { kind: "f32" },
   f64: { kind: "f64" },
   // i64 intentionally omitted — requires BigInt integration, not yet supported
@@ -9735,8 +9002,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
   // Check Array<T> / T[] BEFORE isExternalDeclaredClass, because Array is declared
   // in the lib as `declare var Array: ArrayConstructor` which would match externref
   if (tsType.flags & ts.TypeFlags.Object) {
-    const sym =
-      (tsType as ts.TypeReference).symbol ?? (tsType as ts.Type).symbol;
+    const sym = (tsType as ts.TypeReference).symbol ?? (tsType as ts.Type).symbol;
     if (sym?.name === "Array") {
       const typeArgs = ctx.checker.getTypeArguments(tsType as ts.TypeReference);
       const elemTsType = typeArgs[0];
@@ -9754,13 +9020,13 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
 
     // Wrapper types (Number, String, Boolean) — map to externref.
     // new Number(x), new String(x), new Boolean(x) are wrapper objects (typeof "object").
-    if (sym?.name === "Number" && (tsType.flags & ts.TypeFlags.Object)) {
+    if (sym?.name === "Number" && tsType.flags & ts.TypeFlags.Object) {
       return { kind: "externref" };
     }
-    if (sym?.name === "String" && (tsType.flags & ts.TypeFlags.Object)) {
+    if (sym?.name === "String" && tsType.flags & ts.TypeFlags.Object) {
       return { kind: "externref" };
     }
-    if (sym?.name === "Boolean" && (tsType.flags & ts.TypeFlags.Object)) {
+    if (sym?.name === "Boolean" && tsType.flags & ts.TypeFlags.Object) {
       return { kind: "externref" };
     }
 
@@ -9780,10 +9046,15 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
     // Covers: Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array,
     //         Int32Array, Uint32Array, Float32Array, Float64Array
     const TYPED_ARRAY_NAMES = new Set([
-      "Int8Array", "Uint8Array", "Uint8ClampedArray",
-      "Int16Array", "Uint16Array",
-      "Int32Array", "Uint32Array",
-      "Float32Array", "Float64Array",
+      "Int8Array",
+      "Uint8Array",
+      "Uint8ClampedArray",
+      "Int16Array",
+      "Uint16Array",
+      "Int32Array",
+      "Uint32Array",
+      "Float32Array",
+      "Float64Array",
     ]);
     if (sym?.name && TYPED_ARRAY_NAMES.has(sym.name)) {
       const elemWasm: ValType = { kind: "f64" };
@@ -9798,8 +9069,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
     }
 
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
-    if (isExternalDeclaredClass(tsType, ctx.checker))
-      return { kind: "externref" };
+    if (isExternalDeclaredClass(tsType, ctx.checker)) return { kind: "externref" };
 
     let name = sym?.name;
     // Map class expression symbol names to their synthetic names
@@ -9807,12 +9077,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
       name = ctx.classExprNameMap.get(name) ?? name;
     }
     // Check named structs (interfaces, type aliases)
-    if (
-      name &&
-      name !== "__type" &&
-      name !== "__object" &&
-      ctx.structMap.has(name)
-    ) {
+    if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
       return { kind: "ref", typeIdx: ctx.structMap.get(name)! };
     }
     // Check anonymous type registry
@@ -9823,11 +9088,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
 
     // Auto-register anonymous object types that look like plain data objects
     // (name is __type or __object, has properties, not a class/function/external type)
-    if (
-      !anonName &&
-      (name === "__type" || name === "__object") &&
-      tsType.getProperties().length > 0
-    ) {
+    if (!anonName && (name === "__type" || name === "__object") && tsType.getProperties().length > 0) {
       ensureStructForType(ctx, tsType);
       const registeredName = ctx.anonTypeMap.get(tsType);
       if (registeredName && ctx.structMap.has(registeredName)) {
@@ -9839,13 +9100,11 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
   // Handle unions (T | undefined) — resolve inner type
   if (tsType.isUnion()) {
     const nonNullish = tsType.types.filter(
-      (t) =>
-        !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined),
+      (t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined),
     );
     if (nonNullish.length === 1 && tsType.types.length === 2) {
       const inner = resolveWasmType(ctx, nonNullish[0]!, _depth + 1, _visited);
-      if (inner.kind === "ref")
-        return { kind: "ref_null", typeIdx: inner.typeIdx };
+      if (inner.kind === "ref") return { kind: "ref_null", typeIdx: inner.typeIdx };
       return inner;
     }
   }
@@ -9853,10 +9112,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
   // any/unknown → ref_null $AnyValue (boxed any) when available.
   // Only in fast mode where there are no host-imported extern classes to conflict with.
   // In non-fast mode, any/unknown falls through to mapTsTypeToWasm → externref.
-  if (
-    ctx.fast &&
-    (tsType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))
-  ) {
+  if (ctx.fast && tsType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) {
     ensureAnyValueType(ctx);
     return { kind: "ref_null", typeIdx: ctx.anyValueTypeIdx };
   }
@@ -9903,7 +9159,6 @@ function ensureDateStructForCtx(ctx: CodegenContext): number {
  * For named types already in structMap, this is a no-op.
  * For anonymous types, auto-registers them with a generated name.
  */
-const _ensureStructPending = new WeakSet<ts.Type>();
 export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
   if (!(tsType.flags & ts.TypeFlags.Object)) return;
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
@@ -9911,20 +9166,16 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   if (isTupleType(tsType)) return;
   // Callable types (functions) are compiled as closures, not structs
   if (tsType.getCallSignatures().length > 0) return;
-  // Guard against infinite recursion on circular/self-referencing types
-  if (_ensureStructPending.has(tsType)) return;
-  _ensureStructPending.add(tsType);
+  // Guard against infinite recursion on circular/self-referencing types.
+  // Uses per-compilation ctx.ensureStructPending (not module-scoped) to avoid
+  // leaking state between compile() calls in the same process (#923).
+  if (ctx.ensureStructPending.has(tsType)) return;
+  ctx.ensureStructPending.add(tsType);
 
   const name = tsType.symbol?.name;
 
   // Already registered as named struct
-  if (
-    name &&
-    name !== "__type" &&
-    name !== "__object" &&
-    ctx.structMap.has(name)
-  )
-    return;
+  if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) return;
 
   // Already registered as anonymous struct
   if (ctx.anonTypeMap.has(tsType)) return;
@@ -9941,8 +9192,11 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     let wasmType = resolveWasmType(ctx, propType);
     // For valueOf/toString callable properties, store as eqref instead of externref
     // so coercion can recover the closure and call it via call_ref
-    if (wasmType.kind === "externref" && propType.getCallSignatures().length > 0 &&
-        (prop.name === "valueOf" || prop.name === "toString")) {
+    if (
+      wasmType.kind === "externref" &&
+      propType.getCallSignatures().length > 0 &&
+      (prop.name === "valueOf" || prop.name === "toString")
+    ) {
       wasmType = { kind: "eqref" };
     }
     fields.push({ name: prop.name, type: wasmType, mutable: true });
@@ -9964,7 +9218,6 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
       field.type = { kind: "ref_null", typeIdx: field.type.typeIdx };
     }
   }
-
 
   const structName = `__anon_${ctx.anonTypeCounter++}`;
   const typeIdx = ctx.mod.types.length;
@@ -10024,9 +9277,9 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
     const methodResults: ValType[] = isGenMethod
       ? [{ kind: "externref" }]
-      : (retType && !isVoidType(retType)
+      : retType && !isVoidType(retType)
         ? [resolveWasmType(ctx, retType)]
-        : []);
+        : [];
 
     const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
     const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
@@ -10043,12 +9296,122 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   }
 }
 
+// ── Built-in extern class registration ───────────────────────────────
+
+/** Helper to create an extern method signature with externref params and results */
+function externMethod(
+  paramCount: number,
+  returnsExternref = true,
+): { params: ValType[]; results: ValType[]; requiredParams: number } {
+  const params: ValType[] = [];
+  for (let i = 0; i <= paramCount; i++) params.push({ kind: "externref" }); // self + args
+  return {
+    params,
+    results: returnsExternref ? [{ kind: "externref" }] : [],
+    requiredParams: params.length,
+  };
+}
+
+/**
+ * Register built-in collection types (Set, Map, WeakMap, WeakSet) as extern classes
+ * if they weren't already collected from lib .d.ts files. This ensures these types
+ * are available for extern class method dispatch even when lib file scanning fails
+ * (e.g., bundled/browser environments where readLibFile returns empty strings).
+ */
+function registerBuiltinExternClasses(ctx: CodegenContext): void {
+  // Set methods — all take (self: externref, ...args: externref) → externref
+  if (!ctx.externClasses.has("Set")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    // ES2015 methods
+    methods.set("add", externMethod(1)); // add(value) → Set
+    methods.set("has", externMethod(1)); // has(value) → boolean (externref)
+    methods.set("delete", externMethod(1)); // delete(value) → boolean (externref)
+    methods.set("clear", externMethod(0, false)); // clear() → void
+    methods.set("forEach", externMethod(1)); // forEach(callback) → void (externref for simplicity)
+    methods.set("entries", externMethod(0)); // entries() → Iterator
+    methods.set("keys", externMethod(0)); // keys() → Iterator
+    methods.set("values", externMethod(0)); // values() → Iterator
+    // ES2025 Set methods
+    methods.set("union", externMethod(1)); // union(other) → Set
+    methods.set("intersection", externMethod(1)); // intersection(other) → Set
+    methods.set("difference", externMethod(1)); // difference(other) → Set
+    methods.set("symmetricDifference", externMethod(1)); // symmetricDifference(other) → Set
+    methods.set("isSubsetOf", externMethod(1)); // isSubsetOf(other) → boolean (externref)
+    methods.set("isSupersetOf", externMethod(1)); // isSupersetOf(other) → boolean (externref)
+    methods.set("isDisjointFrom", externMethod(1)); // isDisjointFrom(other) → boolean (externref)
+
+    ctx.externClasses.set("Set", {
+      importPrefix: "Set",
+      namespacePath: [],
+      className: "Set",
+      constructorParams: [{ kind: "externref" }], // new Set(iterable?)
+      methods,
+      properties: new Map([["size", { type: { kind: "externref" }, readonly: true }]]),
+    });
+  }
+
+  // Map methods
+  if (!ctx.externClasses.has("Map")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("get", externMethod(1));
+    methods.set("set", externMethod(2));
+    methods.set("has", externMethod(1));
+    methods.set("delete", externMethod(1));
+    methods.set("clear", externMethod(0, false));
+    methods.set("forEach", externMethod(1));
+    methods.set("entries", externMethod(0));
+    methods.set("keys", externMethod(0));
+    methods.set("values", externMethod(0));
+
+    ctx.externClasses.set("Map", {
+      importPrefix: "Map",
+      namespacePath: [],
+      className: "Map",
+      constructorParams: [{ kind: "externref" }],
+      methods,
+      properties: new Map([["size", { type: { kind: "externref" }, readonly: true }]]),
+    });
+  }
+
+  // WeakMap methods
+  if (!ctx.externClasses.has("WeakMap")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("get", externMethod(1));
+    methods.set("set", externMethod(2));
+    methods.set("has", externMethod(1));
+    methods.set("delete", externMethod(1));
+
+    ctx.externClasses.set("WeakMap", {
+      importPrefix: "WeakMap",
+      namespacePath: [],
+      className: "WeakMap",
+      constructorParams: [{ kind: "externref" }],
+      methods,
+      properties: new Map(),
+    });
+  }
+
+  // WeakSet methods
+  if (!ctx.externClasses.has("WeakSet")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("add", externMethod(1));
+    methods.set("has", externMethod(1));
+    methods.set("delete", externMethod(1));
+
+    ctx.externClasses.set("WeakSet", {
+      importPrefix: "WeakSet",
+      namespacePath: [],
+      className: "WeakSet",
+      constructorParams: [{ kind: "externref" }],
+      methods,
+      properties: new Map(),
+    });
+  }
+}
+
 // ── Extern class collection ──────────────────────────────────────────
 
-function collectExternDeclarations(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectExternDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   for (const stmt of sourceFile.statements) {
     if (ts.isModuleDeclaration(stmt) && hasDeclareModifier(stmt)) {
       collectDeclareNamespace(ctx, stmt, []);
@@ -10063,10 +9426,7 @@ function collectExternDeclarations(
       for (const decl of stmt.declarationList.declarations) {
         if (!decl.name || !ts.isIdentifier(decl.name) || !decl.type) continue;
         // Inline type literal with construct signature
-        if (
-          ts.isTypeLiteralNode(decl.type) &&
-          decl.type.members.some((m) => ts.isConstructSignatureDeclaration(m))
-        ) {
+        if (ts.isTypeLiteralNode(decl.type) && decl.type.members.some((m) => ts.isConstructSignatureDeclaration(m))) {
           collectExternFromDeclareVar(ctx, decl);
         }
         // Type reference to interface with construct signature (e.g. declare var Date: DateConstructor)
@@ -10115,11 +9475,7 @@ function collectExternDeclarations(
   }
 }
 
-function collectDeclareNamespace(
-  ctx: CodegenContext,
-  decl: ts.ModuleDeclaration,
-  parentPath: string[],
-): void {
+function collectDeclareNamespace(ctx: CodegenContext, decl: ts.ModuleDeclaration, parentPath: string[]): void {
   const nsName = decl.name.text;
   const path = [...parentPath, nsName];
 
@@ -10135,11 +9491,7 @@ function collectDeclareNamespace(
   }
 }
 
-function collectExternClass(
-  ctx: CodegenContext,
-  decl: ts.ClassDeclaration,
-  namespacePath: string[],
-): void {
+function collectExternClass(ctx: CodegenContext, decl: ts.ClassDeclaration, namespacePath: string[]): void {
   const className = decl.name!.text;
   if (ERROR_TYPES_SKIP.has(className)) return;
   const prefix = [...namespacePath, className].join("_");
@@ -10172,9 +9524,7 @@ function collectExternClass(
           if (!p.questionToken && !p.initializer) requiredParams++;
         }
         const retType = ctx.checker.getReturnTypeOfSignature(sig);
-        const results: ValType[] = isVoidType(retType)
-          ? []
-          : [mapTsTypeToWasm(retType, ctx.checker)];
+        const results: ValType[] = isVoidType(retType) ? [] : [mapTsTypeToWasm(retType, ctx.checker)];
         info.methods.set(methodName, { params, results, requiredParams });
       }
     }
@@ -10182,10 +9532,7 @@ function collectExternClass(
       const propName = (member.name as ts.Identifier).text;
       const propType = ctx.checker.getTypeAtLocation(member);
       const wasmType = mapTsTypeToWasm(propType, ctx.checker);
-      const isReadonly =
-        member.modifiers?.some(
-          (m) => m.kind === ts.SyntaxKind.ReadonlyKeyword,
-        ) ?? false;
+      const isReadonly = member.modifiers?.some((m) => m.kind === ts.SyntaxKind.ReadonlyKeyword) ?? false;
       info.properties.set(propName, { type: wasmType, readonly: isReadonly });
     }
   }
@@ -10209,16 +9556,18 @@ function collectExternClass(
 
 /** Types handled natively — skip extern class registration */
 const ERROR_TYPES_SKIP = new Set([
-  "Error", "TypeError", "RangeError", "SyntaxError",
-  "URIError", "EvalError", "ReferenceError",
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "ReferenceError",
   "Date",
 ]);
 
 /** Collect extern class info from a `declare var X: { prototype: X; new(): X }` (lib.dom.d.ts pattern) */
-function collectExternFromDeclareVar(
-  ctx: CodegenContext,
-  decl: ts.VariableDeclaration,
-): void {
+function collectExternFromDeclareVar(ctx: CodegenContext, decl: ts.VariableDeclaration): void {
   const className = (decl.name as ts.Identifier).text;
   if (ERROR_TYPES_SKIP.has(className)) return;
   if (ctx.externClasses.has(className)) return;
@@ -10242,9 +9591,7 @@ function collectExternFromDeclareVar(
         if (ts.isConstructSignatureDeclaration(member)) {
           for (const param of member.parameters) {
             const paramType = ctx.checker.getTypeAtLocation(param);
-            info.constructorParams.push(
-              mapTsTypeToWasm(paramType, ctx.checker),
-            );
+            info.constructorParams.push(mapTsTypeToWasm(paramType, ctx.checker));
           }
           break;
         }
@@ -10255,10 +9602,10 @@ function collectExternFromDeclareVar(
       const constructSigs = refType.getConstructSignatures();
       // Use the constructor with the most parameters so all overloads can be
       // served.  Missing args at call sites are padded with defaults.
-      const sig = constructSigs.length > 0
-        ? constructSigs.reduce((a, b) =>
-            b.parameters.length > a.parameters.length ? b : a)
-        : undefined;
+      const sig =
+        constructSigs.length > 0
+          ? constructSigs.reduce((a, b) => (b.parameters.length > a.parameters.length ? b : a))
+          : undefined;
       if (sig) {
         for (const param of sig.parameters) {
           const paramType = ctx.checker.getTypeOfSymbol(param);
@@ -10310,11 +9657,7 @@ function collectInterfaceMembers(
 ): void {
   for (const member of iface.members) {
     // Method signatures
-    if (
-      ts.isMethodSignature(member) &&
-      member.name &&
-      ts.isIdentifier(member.name)
-    ) {
+    if (ts.isMethodSignature(member) && member.name && ts.isIdentifier(member.name)) {
       const methodName = member.name.text;
       if (info.methods.has(methodName)) continue;
       const sig = ctx.checker.getSignatureFromDeclaration(member);
@@ -10327,44 +9670,28 @@ function collectInterfaceMembers(
           if (!p.questionToken && !p.initializer) requiredParams++;
         }
         const retType = ctx.checker.getReturnTypeOfSignature(sig);
-        const results: ValType[] = isVoidType(retType)
-          ? []
-          : [mapTsTypeToWasm(retType, ctx.checker)];
+        const results: ValType[] = isVoidType(retType) ? [] : [mapTsTypeToWasm(retType, ctx.checker)];
         info.methods.set(methodName, { params, results, requiredParams });
       }
     }
     // Property signatures
-    if (
-      ts.isPropertySignature(member) &&
-      member.name &&
-      ts.isIdentifier(member.name)
-    ) {
+    if (ts.isPropertySignature(member) && member.name && ts.isIdentifier(member.name)) {
       const propName = member.name.text;
       if (info.properties.has(propName)) continue;
       const propType = ctx.checker.getTypeAtLocation(member);
       const wasmType = mapTsTypeToWasm(propType, ctx.checker);
-      const isReadonly =
-        member.modifiers?.some(
-          (m) => m.kind === ts.SyntaxKind.ReadonlyKeyword,
-        ) ?? false;
+      const isReadonly = member.modifiers?.some((m) => m.kind === ts.SyntaxKind.ReadonlyKeyword) ?? false;
       info.properties.set(propName, { type: wasmType, readonly: isReadonly });
     }
     // Getter accessors (e.g. `get style(): CSSStyleDeclaration`)
-    if (
-      ts.isGetAccessorDeclaration(member) &&
-      member.name &&
-      ts.isIdentifier(member.name)
-    ) {
+    if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       const propName = member.name.text;
       if (info.properties.has(propName)) continue;
       const propType = ctx.checker.getTypeAtLocation(member);
       const wasmType = mapTsTypeToWasm(propType, ctx.checker);
       // Check if there's a matching setter
       const hasSetter = iface.members.some(
-        (m) =>
-          ts.isSetAccessorDeclaration(m) &&
-          ts.isIdentifier(m.name) &&
-          m.name.text === propName,
+        (m) => ts.isSetAccessorDeclaration(m) && ts.isIdentifier(m.name) && m.name.text === propName,
       );
       info.properties.set(propName, { type: wasmType, readonly: !hasSetter });
     }
@@ -10403,14 +9730,9 @@ function collectMixinMembers(
   }
 }
 
-function registerExternClassImports(
-  ctx: CodegenContext,
-  info: ExternClassInfo,
-): void {
+function registerExternClassImports(ctx: CodegenContext, info: ExternClassInfo): void {
   // Constructor
-  const ctorTypeIdx = addFuncType(ctx, info.constructorParams, [
-    { kind: "externref" },
-  ]);
+  const ctorTypeIdx = addFuncType(ctx, info.constructorParams, [{ kind: "externref" }]);
   addImport(ctx, "env", `${info.importPrefix}_new`, {
     kind: "func",
     typeIdx: ctorTypeIdx,
@@ -10427,22 +9749,14 @@ function registerExternClassImports(
 
   // Property getters and setters
   for (const [propName, propInfo] of info.properties) {
-    const getterTypeIdx = addFuncType(
-      ctx,
-      [{ kind: "externref" }],
-      [propInfo.type],
-    );
+    const getterTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [propInfo.type]);
     addImport(ctx, "env", `${info.importPrefix}_get_${propName}`, {
       kind: "func",
       typeIdx: getterTypeIdx,
     });
 
     if (!propInfo.readonly) {
-      const setterTypeIdx = addFuncType(
-        ctx,
-        [{ kind: "externref" }, propInfo.type],
-        [],
-      );
+      const setterTypeIdx = addFuncType(ctx, [{ kind: "externref" }, propInfo.type], []);
       addImport(ctx, "env", `${info.importPrefix}_set_${propName}`, {
         kind: "func",
         typeIdx: setterTypeIdx,
@@ -10452,17 +9766,10 @@ function registerExternClassImports(
 }
 
 /** Scan user code and register only the extern class imports actually used */
-function collectUsedExternImports(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectUsedExternImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const registered = new Set<string>();
 
-  function resolveExtern(
-    className: string,
-    memberName: string,
-    kind: "method" | "property",
-  ): ExternClassInfo | null {
+  function resolveExtern(className: string, memberName: string, kind: "method" | "property"): ExternClassInfo | null {
     let current: string | undefined = className;
     while (current) {
       const info = ctx.externClasses.get(current);
@@ -10489,10 +9796,7 @@ function collectUsedExternImports(
       const className = type.getSymbol()?.name;
       if (className) {
         const info = ctx.externClasses.get(className);
-        if (info)
-          register(`${info.importPrefix}_new`, info.constructorParams, [
-            { kind: "externref" },
-          ]);
+        if (info) register(`${info.importPrefix}_new`, info.constructorParams, [{ kind: "externref" }]);
       }
     }
 
@@ -10500,9 +9804,7 @@ function collectUsedExternImports(
     if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
       const info = ctx.externClasses.get("RegExp");
       if (info) {
-        register(`${info.importPrefix}_new`, info.constructorParams, [
-          { kind: "externref" },
-        ]);
+        register(`${info.importPrefix}_new`, info.constructorParams, [{ kind: "externref" }]);
       }
     }
 
@@ -10520,29 +9822,18 @@ function collectUsedExternImports(
         const className = objType.getSymbol()?.name;
         const memberName = node.name.text;
         if (className) {
-          const isCall =
-            node.parent &&
-            ts.isCallExpression(node.parent) &&
-            node.parent.expression === node;
+          const isCall = node.parent && ts.isCallExpression(node.parent) && node.parent.expression === node;
           if (isCall) {
             const info = resolveExtern(className, memberName, "method");
             if (info) {
               const sig = info.methods.get(memberName)!;
-              register(
-                `${info.importPrefix}_${memberName}`,
-                sig.params,
-                sig.results,
-              );
+              register(`${info.importPrefix}_${memberName}`, sig.params, sig.results);
             }
           } else {
             const info = resolveExtern(className, memberName, "property");
             if (info) {
               const propInfo = info.properties.get(memberName)!;
-              register(
-                `${info.importPrefix}_get_${memberName}`,
-                [{ kind: "externref" }],
-                [propInfo.type],
-              );
+              register(`${info.importPrefix}_get_${memberName}`, [{ kind: "externref" }], [propInfo.type]);
             }
           }
         }
@@ -10562,11 +9853,7 @@ function collectUsedExternImports(
         const info = resolveExtern(className, propName, "property");
         if (info) {
           const propInfo = info.properties.get(propName)!;
-          register(
-            `${info.importPrefix}_set_${propName}`,
-            [{ kind: "externref" }, propInfo.type],
-            [],
-          );
+          register(`${info.importPrefix}_set_${propName}`, [{ kind: "externref" }, propInfo.type], []);
         }
       }
     }
@@ -10581,14 +9868,17 @@ function collectUsedExternImports(
       // Skip Array and tuple types — those use Wasm GC struct/array ops, not host import
       // Skip widened empty objects — those use struct.get, not host import
       const isWidenedVar = ts.isIdentifier(node.expression) && ctx.widenedVarStructMap.has(node.expression.text);
-      if (!isCallCallee && sym?.name !== "Array" && sym?.name !== "__type" && sym?.name !== "__object" && !isTupleType(objType) && !isWidenedVar) {
+      if (
+        !isCallCallee &&
+        sym?.name !== "Array" &&
+        sym?.name !== "__type" &&
+        sym?.name !== "__object" &&
+        !isTupleType(objType) &&
+        !isWidenedVar
+      ) {
         const wasmType = mapTsTypeToWasm(objType, ctx.checker);
         if (wasmType.kind === "externref") {
-          register(
-            "__extern_get",
-            [{ kind: "externref" }, { kind: "externref" }],
-            [{ kind: "externref" }],
-          );
+          register("__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
         }
       }
     }
@@ -10603,11 +9893,7 @@ function collectUsedExternImports(
 
 // ── Declared globals (e.g. declare const document: Document) ────────
 
-function collectDeclaredGlobals(
-  ctx: CodegenContext,
-  libFile: ts.SourceFile,
-  userFile: ts.SourceFile,
-): void {
+function collectDeclaredGlobals(ctx: CodegenContext, libFile: ts.SourceFile, userFile: ts.SourceFile): void {
   // First collect identifiers referenced in user source
   const referencedNames = new Set<string>();
   const collectRefs = (node: ts.Node): void => {
@@ -10681,10 +9967,7 @@ function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {
 // ── Regular declaration collection ───────────────────────────────────
 
 /** Collect enum declarations into ctx.enumValues / ctx.enumStringValues */
-function collectEnumDeclarations(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function collectEnumDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const stringEnumLiterals: string[] = [];
   for (const stmt of sourceFile.statements) {
     if (!ts.isEnumDeclaration(stmt)) continue;
@@ -10710,9 +9993,7 @@ function collectEnumDeclarations(
           member.initializer.operator === ts.SyntaxKind.MinusToken &&
           ts.isNumericLiteral(member.initializer.operand)
         ) {
-          nextValue = -Number(
-            (member.initializer.operand as ts.NumericLiteral).text.replace(/_/g, ""),
-          );
+          nextValue = -Number((member.initializer.operand as ts.NumericLiteral).text.replace(/_/g, ""));
         }
       }
       ctx.enumValues.set(key, nextValue);
@@ -10766,7 +10047,7 @@ export function collectClassDeclaration(
   // Register the class .name value for ES-spec compliance
   // Named class expressions keep their declared name (class X {} → name = "X")
   // Anonymous class expressions get the variable name (const C = class {} → name = "C")
-  const esName = decl.name ? decl.name.text : syntheticName ?? "";
+  const esName = decl.name ? decl.name.text : (syntheticName ?? "");
   ctx.functionNameMap.set(className, esName);
 
   // For class expressions, map the TS symbol name to the synthetic class name
@@ -10785,10 +10066,7 @@ export function collectClassDeclaration(
   let parentFields: FieldDef[] = [];
   if (decl.heritageClauses) {
     for (const clause of decl.heritageClauses) {
-      if (
-        clause.token === ts.SyntaxKind.ExtendsKeyword &&
-        clause.types.length > 0
-      ) {
+      if (clause.token === ts.SyntaxKind.ExtendsKeyword && clause.types.length > 0) {
         const baseExpr = clause.types[0]!.expression;
         if (ts.isIdentifier(baseExpr)) {
           parentClassName = baseExpr.text;
@@ -10803,9 +10081,7 @@ export function collectClassDeclaration(
           ctx.classParentMap.set(className, parentClassName);
           // Mark parent struct as non-final so it can be extended
           if (parentStructTypeIdx !== undefined) {
-            const parentTypeDef = ctx.mod.types[
-              parentStructTypeIdx
-            ] as StructTypeDef;
+            const parentTypeDef = ctx.mod.types[parentStructTypeIdx] as StructTypeDef;
             if (parentTypeDef && parentTypeDef.superTypeIdx === undefined) {
               // Mark parent as extensible (superTypeIdx = -1 means "sub with no super")
               parentTypeDef.superTypeIdx = -1;
@@ -10827,9 +10103,7 @@ export function collectClassDeclaration(
   ctx.typeIdxToStructName.set(structTypeIdx, className);
 
   // Find the constructor to determine struct fields from `this.x = ...` assignments
-  const ctor = decl.members.find(ts.isConstructorDeclaration) as
-    | ts.ConstructorDeclaration
-    | undefined;
+  const ctor = decl.members.find(ts.isConstructorDeclaration) as ts.ConstructorDeclaration | undefined;
   const ownFields: FieldDef[] = [];
 
   if (ctor?.body) {
@@ -10865,10 +10139,7 @@ export function collectClassDeclaration(
   // Also collect fields from property declarations (class Point { x: number; y: number; })
   // Skip static properties — they become module globals, not struct fields
   for (const member of decl.members) {
-    if (
-      ts.isPropertyDeclaration(member) &&
-      member.name
-    ) {
+    if (ts.isPropertyDeclaration(member) && member.name) {
       const fieldName = resolveClassMemberName(ctx, member.name);
       if (!fieldName) continue; // dynamic computed name — skip
       if (hasStaticModifier(member)) continue; // handled below
@@ -10941,9 +10212,10 @@ export function collectClassDeclaration(
         const typeArgs = ctx.checker.getTypeArguments(paramType as ts.TypeReference);
         const elemTsType = typeArgs[0];
         const elemType: ValType = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "f64" };
-        const elemKey = (elemType.kind === "ref" || elemType.kind === "ref_null")
-          ? `ref_${(elemType as { typeIdx: number }).typeIdx}`
-          : elemType.kind;
+        const elemKey =
+          elemType.kind === "ref" || elemType.kind === "ref_null"
+            ? `ref_${(elemType as { typeIdx: number }).typeIdx}`
+            : elemType.kind;
         const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemType);
         const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
         ctorParams.push({ kind: "ref_null", typeIdx: vecTypeIdx });
@@ -10965,12 +10237,7 @@ export function collectClassDeclaration(
     }
   }
   const ctorResults: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
-  const ctorTypeIdx = addFuncType(
-    ctx,
-    ctorParams,
-    ctorResults,
-    `${className}_new_type`,
-  );
+  const ctorTypeIdx = addFuncType(ctx, ctorParams, ctorResults, `${className}_new_type`);
   const ctorFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
   ctx.funcMap.set(ctorName, ctorFuncIdx);
 
@@ -10986,10 +10253,7 @@ export function collectClassDeclaration(
   // Skip abstract methods — they have no body and are implemented by subclasses
   const ownMethodNames = new Set<string>();
   for (const member of decl.members) {
-    if (
-      ts.isMethodDeclaration(member) &&
-      member.name
-    ) {
+    if (ts.isMethodDeclaration(member) && member.name) {
       const methodName = resolveClassMemberName(ctx, member.name);
       if (!methodName) continue; // dynamic computed name — skip
       ownMethodNames.add(methodName);
@@ -11023,9 +10287,7 @@ export function collectClassDeclaration(
       if (ctx.funcMap.has(fullName)) continue;
 
       // Static methods have no self parameter; instance methods get self: (ref $structTypeIdx)
-      const methodParams: ValType[] = isStatic
-        ? []
-        : [{ kind: "ref", typeIdx: structTypeIdx }];
+      const methodParams: ValType[] = isStatic ? [] : [{ kind: "ref", typeIdx: structTypeIdx }];
       for (const param of member.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
@@ -11036,24 +10298,29 @@ export function collectClassDeclaration(
         methodParams.push(wasmType);
       }
 
+      // Detect async methods — unwrap Promise<T> to T for Wasm return type
+      // Exclude async generators: they return AsyncGenerator objects, not Promises.
+      const isAsyncMethod = member.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+      if (isAsyncMethod && !isGeneratorMethod) {
+        ctx.asyncFunctions.add(fullName);
+      }
+
       const sig = ctx.checker.getSignatureFromDeclaration(member);
       let methodResults: ValType[] = [];
       if (isGeneratorMethod) {
         // Generator methods return externref (JS Generator object)
         methodResults = [{ kind: "externref" }];
       } else if (sig) {
-        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        let retType = ctx.checker.getReturnTypeOfSignature(sig);
+        if (isAsyncMethod) {
+          retType = unwrapPromiseType(retType, ctx.checker);
+        }
         if (!isVoidType(retType)) {
           methodResults = [resolveWasmType(ctx, retType)];
         }
       }
 
-      const methodTypeIdx = addFuncType(
-        ctx,
-        methodParams,
-        methodResults,
-        `${fullName}_type`,
-      );
+      const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
       const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
       ctx.funcMap.set(fullName, methodFuncIdx);
 
@@ -11070,18 +10337,18 @@ export function collectClassDeclaration(
   // Register getter/setter accessor functions
   for (const member of decl.members) {
     // ES2015 14.5.14 step 21: static accessors cannot be named 'prototype'
-    if ((ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) &&
-        member.name && hasStaticModifier(member)) {
+    if (
+      (ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) &&
+      member.name &&
+      hasStaticModifier(member)
+    ) {
       const accName = resolveClassMemberName(ctx, member.name);
       if (accName === "prototype") {
         ctx.classThrowsOnEval.add(className);
       }
     }
 
-    if (
-      ts.isGetAccessorDeclaration(member) &&
-      member.name
-    ) {
+    if (ts.isGetAccessorDeclaration(member) && member.name) {
       const propName = resolveClassMemberName(ctx, member.name);
       if (!propName) continue; // dynamic computed name — skip
       const accessorKey = `${className}_${propName}`;
@@ -11107,12 +10374,7 @@ export function collectClassDeclaration(
         }
       }
 
-      const getterTypeIdx = addFuncType(
-        ctx,
-        getterParams,
-        getterResults,
-        `${getterName}_type`,
-      );
+      const getterTypeIdx = addFuncType(ctx, getterParams, getterResults, `${getterName}_type`);
       const getterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
       ctx.funcMap.set(getterName, getterFuncIdx);
 
@@ -11125,10 +10387,7 @@ export function collectClassDeclaration(
       });
     }
 
-    if (
-      ts.isSetAccessorDeclaration(member) &&
-      member.name
-    ) {
+    if (ts.isSetAccessorDeclaration(member) && member.name) {
       const propName = resolveClassMemberName(ctx, member.name);
       if (!propName) continue; // dynamic computed name — skip
       const accessorKey = `${className}_${propName}`;
@@ -11147,12 +10406,7 @@ export function collectClassDeclaration(
         setterParams.push(resolveWasmType(ctx, paramType));
       }
 
-      const setterTypeIdx = addFuncType(
-        ctx,
-        setterParams,
-        [],
-        `${setterName}_type`,
-      );
+      const setterTypeIdx = addFuncType(ctx, setterParams, [], `${setterName}_type`);
       const setterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
       ctx.funcMap.set(setterName, setterFuncIdx);
 
@@ -11186,11 +10440,7 @@ export function collectClassDeclaration(
       visitedAncestors.add(ancestor);
       // Inherit methods
       for (const [key, funcIdx] of ctx.funcMap) {
-        if (
-          key.startsWith(`${ancestor}_`) &&
-          !key.endsWith("_new") &&
-          !key.endsWith("_type")
-        ) {
+        if (key.startsWith(`${ancestor}_`) && !key.endsWith("_new") && !key.endsWith("_type")) {
           const suffix = key.substring(ancestor.length + 1);
           // Skip constructor-related entries
           if (suffix === "new" || suffix.startsWith("new_")) continue;
@@ -11215,21 +10465,14 @@ export function collectClassDeclaration(
           } else if (!suffix.includes("_")) {
             // Regular method (no underscores in method name)
             const childFullName = `${className}_${suffix}`;
-            if (
-              !ownMethodNames.has(suffix) &&
-              !ctx.funcMap.has(childFullName)
-            ) {
+            if (!ownMethodNames.has(suffix) && !ctx.funcMap.has(childFullName)) {
               ctx.funcMap.set(childFullName, funcIdx);
               ctx.classMethodSet.add(childFullName);
             }
           } else {
             // Method name contains underscore (e.g., my_method) — still inherit it
             const childFullName = `${className}_${suffix}`;
-            if (
-              !ownMethodNames.has(suffix) &&
-              !ctx.funcMap.has(childFullName) &&
-              ctx.classMethodSet.has(key)
-            ) {
+            if (!ownMethodNames.has(suffix) && !ctx.funcMap.has(childFullName) && ctx.classMethodSet.has(key)) {
               ctx.funcMap.set(childFullName, funcIdx);
               ctx.classMethodSet.add(childFullName);
             }
@@ -11242,11 +10485,7 @@ export function collectClassDeclaration(
 
   // Register static properties as module globals
   for (const member of decl.members) {
-    if (
-      ts.isPropertyDeclaration(member) &&
-      member.name &&
-      hasStaticModifier(member)
-    ) {
+    if (ts.isPropertyDeclaration(member) && member.name && hasStaticModifier(member)) {
       const propName = resolveClassMemberName(ctx, member.name);
       if (!propName) continue; // dynamic computed name — skip
       const fullName = `${className}_${propName}`;
@@ -11315,11 +10554,7 @@ function resolveGenericCallSiteTypes(
 
   function visit(node: ts.Node) {
     if (found) return;
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === funcName
-    ) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === funcName) {
       const sig = ctx.checker.getResolvedSignature(node);
       if (sig) {
         const params: ValType[] = [];
@@ -11329,9 +10564,7 @@ function resolveGenericCallSiteTypes(
           params.push(resolveWasmType(ctx, paramType));
         }
         const retType = ctx.checker.getReturnTypeOfSignature(sig);
-        const results: ValType[] = isVoidType(retType)
-          ? []
-          : [resolveWasmType(ctx, retType)];
+        const results: ValType[] = isVoidType(retType) ? [] : [resolveWasmType(ctx, retType)];
         found = { params, results };
       }
     }
@@ -11360,11 +10593,7 @@ function inferParamTypeFromCallSites(
 
   function visit(node: ts.Node) {
     if (conflict) return;
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === funcName
-    ) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === funcName) {
       const arg = node.arguments[paramIndex];
       if (arg) {
         const argType = ctx.checker.getTypeAtLocation(arg);
@@ -11402,11 +10631,7 @@ function inferParamTypeFromCallSites(
  * This runs *before* collectDeclarations so the struct type is correct from
  * the start.
  */
-function collectEmptyObjectWidening(
-  ctx: CodegenContext,
-  checker: ts.TypeChecker,
-  sourceFile: ts.SourceFile,
-): void {
+function collectEmptyObjectWidening(ctx: CodegenContext, checker: ts.TypeChecker, sourceFile: ts.SourceFile): void {
   // Scan all statements (top-level and inside function bodies)
   function scanStatements(stmts: readonly ts.Statement[]): void {
     for (const stmt of stmts) {
@@ -11430,7 +10655,7 @@ function collectEmptyObjectWidening(
 
             // Register the struct type now so that collectDeclarations
             // can resolve the variable type to a struct ref instead of externref
-            const fields: FieldDef[] = extraProps.map(wp => ({
+            const fields: FieldDef[] = extraProps.map((wp) => ({
               name: wp.name,
               type: wp.type,
               mutable: true,
@@ -11487,10 +10712,12 @@ function collectPropsFromStatements(
     // ExpressionStatement: obj.prop = value
     if (ts.isExpressionStatement(s) && ts.isBinaryExpression(s.expression)) {
       const bin = s.expression;
-      if (bin.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-          ts.isPropertyAccessExpression(bin.left) &&
-          ts.isIdentifier(bin.left.expression) &&
-          bin.left.expression.text === varName) {
+      if (
+        bin.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(bin.left) &&
+        ts.isIdentifier(bin.left.expression) &&
+        bin.left.expression.text === varName
+      ) {
         const propName = bin.left.name.text;
         if (!seenProps.has(propName)) {
           seenProps.add(propName);
@@ -11515,11 +10742,7 @@ function collectPropsFromStatements(
         const objArg = call.arguments[0]!;
         const propArg = call.arguments[1]!;
         const descArg = call.arguments[2]!;
-        if (
-          ts.isIdentifier(objArg) &&
-          objArg.text === varName &&
-          ts.isStringLiteral(propArg)
-        ) {
+        if (ts.isIdentifier(objArg) && objArg.text === varName && ts.isStringLiteral(propArg)) {
           const propName = propArg.text;
           if (!seenProps.has(propName)) {
             seenProps.add(propName);
@@ -11527,11 +10750,7 @@ function collectPropsFromStatements(
             let wasmType: ValType = { kind: "externref" };
             if (ts.isObjectLiteralExpression(descArg)) {
               for (const prop of descArg.properties) {
-                if (
-                  ts.isPropertyAssignment(prop) &&
-                  ts.isIdentifier(prop.name) &&
-                  prop.name.text === "value"
-                ) {
+                if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") {
                   const rhsType = checker.getTypeAtLocation(prop.initializer);
                   wasmType = resolveWasmType(ctx, rhsType);
                   break;
@@ -11559,22 +10778,14 @@ function collectPropsFromStatements(
             const objArg = call.arguments[0]!;
             const propArg = call.arguments[1]!;
             const descArg = call.arguments[2]!;
-            if (
-              ts.isIdentifier(objArg) &&
-              objArg.text === varName &&
-              ts.isStringLiteral(propArg)
-            ) {
+            if (ts.isIdentifier(objArg) && objArg.text === varName && ts.isStringLiteral(propArg)) {
               const propName = propArg.text;
               if (!seenProps.has(propName)) {
                 seenProps.add(propName);
                 let wasmType: ValType = { kind: "externref" };
                 if (ts.isObjectLiteralExpression(descArg)) {
                   for (const prop of descArg.properties) {
-                    if (
-                      ts.isPropertyAssignment(prop) &&
-                      ts.isIdentifier(prop.name) &&
-                      prop.name.text === "value"
-                    ) {
+                    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") {
                       const rhsType = checker.getTypeAtLocation(prop.initializer);
                       wasmType = resolveWasmType(ctx, rhsType);
                       break;
@@ -11611,7 +10822,13 @@ function collectPropsFromStatements(
       }
     }
     // Recurse into for/while/do-while/switch bodies
-    if (ts.isForStatement(s) || ts.isForInStatement(s) || ts.isForOfStatement(s) || ts.isWhileStatement(s) || ts.isDoStatement(s)) {
+    if (
+      ts.isForStatement(s) ||
+      ts.isForInStatement(s) ||
+      ts.isForOfStatement(s) ||
+      ts.isWhileStatement(s) ||
+      ts.isDoStatement(s)
+    ) {
       if (ts.isBlock(s.statement)) {
         collectPropsFromStatements(checker, ctx, s.statement.statements, varName, extraProps, seenProps);
       }
@@ -11629,11 +10846,7 @@ function collectPropsFromStatements(
  * and override their global types from externref/AnyValue to vec struct types.
  * Must be called after collectDeclarations (which registers module globals).
  */
-function applyShapeInference(
-  ctx: CodegenContext,
-  checker: ts.TypeChecker,
-  sourceFile: ts.SourceFile,
-): void {
+function applyShapeInference(ctx: CodegenContext, checker: ts.TypeChecker, sourceFile: ts.SourceFile): void {
   const shapes = collectShapes(checker, sourceFile);
   if (shapes.size === 0) return;
 
@@ -11685,11 +10898,7 @@ function applyShapeInference(
   }
 }
 
-function collectDeclarations(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-  isEntryFile = true,
-): void {
+function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isEntryFile = true): void {
   // First: collect enum declarations (so enum values are available)
   collectEnumDeclarations(ctx, sourceFile);
 
@@ -11775,11 +10984,7 @@ function collectDeclarations(
         ctx.functionNameMap.set(stmt.name.text, stmt.name.text);
       } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
-          if (
-            ts.isIdentifier(decl.name) &&
-            decl.initializer &&
-            ts.isClassExpression(decl.initializer)
-          ) {
+          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
             collectClassDeclaration(ctx, decl.initializer, decl.name.text);
             // Register class expression .name: named class keeps its own name, anonymous gets variable name
             const esName = decl.initializer.name ? decl.initializer.name.text : decl.name.text;
@@ -11802,7 +11007,13 @@ function collectDeclarations(
         }
       } else if (ts.isBlock(stmt)) {
         collectClassesFromStatements(stmt.statements);
-      } else if (ts.isForStatement(stmt) || ts.isForInStatement(stmt) || ts.isForOfStatement(stmt) || ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+      } else if (
+        ts.isForStatement(stmt) ||
+        ts.isForInStatement(stmt) ||
+        ts.isForOfStatement(stmt) ||
+        ts.isWhileStatement(stmt) ||
+        ts.isDoStatement(stmt)
+      ) {
         const body = stmt.statement;
         if (ts.isBlock(body)) {
           collectClassesFromStatements(body.statements);
@@ -11861,21 +11072,20 @@ function collectDeclarations(
 
       // Check if this is a generic function — resolve types from call site
       const isGeneric = stmt.typeParameters && stmt.typeParameters.length > 0;
-      const resolved = isGeneric
-        ? resolveGenericCallSiteTypes(ctx, name, sourceFile)
-        : null;
+      const resolved = isGeneric ? resolveGenericCallSiteTypes(ctx, name, sourceFile) : null;
       if (resolved) {
         ctx.genericResolved.set(name, resolved);
       }
 
       // Track async functions — unwrap Promise<T> for Wasm return type
+      // Exclude async generators: they return AsyncGenerator objects, not Promises.
       const isAsync = hasAsyncModifier(stmt);
-      if (isAsync) {
+      const isGenerator = isGeneratorFunction(stmt);
+      if (isAsync && !isGenerator) {
         ctx.asyncFunctions.add(name);
       }
 
       // Track generator functions (function*)
-      const isGenerator = isGeneratorFunction(stmt);
       if (isGenerator) {
         ctx.generatorFunctions.add(name);
         // Determine yield element type from Generator<T> return annotation
@@ -11887,11 +11097,8 @@ function collectDeclarations(
       // Ensure anonymous types in signature are registered as structs
       const retType = ctx.checker.getReturnTypeOfSignature(sig);
       // For async functions, unwrap Promise<T> to get T for struct registration
-      const unwrappedRetType = isAsync
-        ? unwrapPromiseType(retType, ctx.checker)
-        : retType;
-      if (!isGenerator && !isVoidType(unwrappedRetType))
-        ensureStructForType(ctx, unwrappedRetType);
+      const unwrappedRetType = isAsync ? unwrapPromiseType(retType, ctx.checker) : retType;
+      if (!isGenerator && !isVoidType(unwrappedRetType)) ensureStructForType(ctx, unwrappedRetType);
       for (const p of stmt.parameters) {
         const pt = ctx.checker.getTypeAtLocation(p);
         ensureStructForType(ctx, pt);
@@ -11915,9 +11122,10 @@ function collectDeclarations(
           // Infer untyped any params from call sites (same as non-generator path)
           if (
             !param.type &&
-            (paramType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) &&
+            paramType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown) &&
             (wasmType.kind === "externref" ||
-              (wasmType.kind === "ref_null" && ctx.anyValueTypeIdx >= 0 &&
+              (wasmType.kind === "ref_null" &&
+                ctx.anyValueTypeIdx >= 0 &&
                 (wasmType as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx))
           ) {
             const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
@@ -11939,18 +11147,12 @@ function collectDeclarations(
           if (param.dotDotDotToken) {
             // Rest parameter: ...args: T[] → single (ref $__vec_elemKind) param
             const paramType = ctx.checker.getTypeAtLocation(param);
-            const typeArgs = ctx.checker.getTypeArguments(
-              paramType as ts.TypeReference,
-            );
+            const typeArgs = ctx.checker.getTypeArguments(paramType as ts.TypeReference);
             const elemTsType = typeArgs[0];
-            const elemType: ValType = elemTsType
-              ? resolveWasmType(ctx, elemTsType)
-              : { kind: "f64" };
+            const elemType: ValType = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "f64" };
             // Use a unique key for ref element types so each struct gets its own array type
             const elemKey =
-              elemType.kind === "ref" || elemType.kind === "ref_null"
-                ? `ref_${elemType.typeIdx}`
-                : elemType.kind;
+              elemType.kind === "ref" || elemType.kind === "ref_null" ? `ref_${elemType.typeIdx}` : elemType.kind;
             const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemType);
             const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
             params.push({ kind: "ref_null", typeIdx: vecTypeIdx });
@@ -11972,9 +11174,10 @@ function collectDeclarations(
             // externref (from `any`), try to infer a concrete type from call sites.
             if (
               !param.type &&
-              (paramType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) &&
+              paramType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown) &&
               (wasmType.kind === "externref" ||
-                (wasmType.kind === "ref_null" && ctx.anyValueTypeIdx >= 0 &&
+                (wasmType.kind === "ref_null" &&
+                  ctx.anyValueTypeIdx >= 0 &&
                   (wasmType as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx))
             ) {
               const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
@@ -11988,9 +11191,7 @@ function collectDeclarations(
         const r = ctx.checker.getReturnTypeOfSignature(sig);
         // For async functions, unwrap Promise<T> to get T for Wasm return type
         const rUnwrapped = isAsync ? unwrapPromiseType(r, ctx.checker) : r;
-        results = isVoidType(rUnwrapped)
-          ? []
-          : [resolveWasmType(ctx, rUnwrapped)];
+        results = isVoidType(rUnwrapped) ? [] : [resolveWasmType(ctx, rUnwrapped)];
       }
 
       const optionalParams: OptionalParamInfo[] = [];
@@ -12200,8 +11401,13 @@ function collectDeclarations(
     // For control-flow statements at module level, recursively scan for
     // `var` declarations (JavaScript var-hoisting) and collect the statement
     // for init compilation so it executes at module load time.
-    if (ts.isForStatement(stmt) || ts.isForInStatement(stmt) || ts.isForOfStatement(stmt)
-        || ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+    if (
+      ts.isForStatement(stmt) ||
+      ts.isForInStatement(stmt) ||
+      ts.isForOfStatement(stmt) ||
+      ts.isWhileStatement(stmt) ||
+      ts.isDoStatement(stmt)
+    ) {
       walkModuleStmtForVars(stmt);
       ctx.moduleInitStatements.push(stmt);
       continue;
@@ -12229,7 +11435,6 @@ function collectDeclarations(
     if (ts.isBlock(stmt)) {
       walkModuleStmtForVars(stmt);
       ctx.moduleInitStatements.push(stmt);
-      continue;
     }
   }
 
@@ -12263,18 +11468,19 @@ function collectDeclarations(
     // Accept all assignment operators (=, +=, -=, etc.) and any binary op that
     // might have side effects on module globals
     const opKind = expr.operatorToken.kind;
-    const isAssignOp = opKind === ts.SyntaxKind.EqualsToken
-      || opKind === ts.SyntaxKind.PlusEqualsToken
-      || opKind === ts.SyntaxKind.MinusEqualsToken
-      || opKind === ts.SyntaxKind.AsteriskEqualsToken
-      || opKind === ts.SyntaxKind.SlashEqualsToken
-      || opKind === ts.SyntaxKind.PercentEqualsToken
-      || opKind === ts.SyntaxKind.AmpersandEqualsToken
-      || opKind === ts.SyntaxKind.BarEqualsToken
-      || opKind === ts.SyntaxKind.CaretEqualsToken
-      || opKind === ts.SyntaxKind.LessThanLessThanEqualsToken
-      || opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken
-      || opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
+    const isAssignOp =
+      opKind === ts.SyntaxKind.EqualsToken ||
+      opKind === ts.SyntaxKind.PlusEqualsToken ||
+      opKind === ts.SyntaxKind.MinusEqualsToken ||
+      opKind === ts.SyntaxKind.AsteriskEqualsToken ||
+      opKind === ts.SyntaxKind.SlashEqualsToken ||
+      opKind === ts.SyntaxKind.PercentEqualsToken ||
+      opKind === ts.SyntaxKind.AmpersandEqualsToken ||
+      opKind === ts.SyntaxKind.BarEqualsToken ||
+      opKind === ts.SyntaxKind.CaretEqualsToken ||
+      opKind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
+      opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
+      opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
     if (!isAssignOp) continue;
     // Check if the left side references a known module global
     let targetName: string | undefined;
@@ -12289,10 +11495,7 @@ function collectDeclarations(
   }
 }
 
-function collectInterface(
-  ctx: CodegenContext,
-  decl: ts.InterfaceDeclaration,
-): void {
+function collectInterface(ctx: CodegenContext, decl: ts.InterfaceDeclaration): void {
   const name = decl.name.text;
   const fields: FieldDef[] = [];
 
@@ -12308,7 +11511,6 @@ function collectInterface(
       });
     }
   }
-
 
   const typeIdx = ctx.mod.types.length;
   ctx.mod.types.push({
@@ -12326,10 +11528,7 @@ function collectInterface(
  * that were initially mapped to externref but should be ref $struct.
  * This handles cross-references between interfaces regardless of declaration order.
  */
-function resolveStructFieldTypes(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function resolveStructFieldTypes(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   for (const stmt of sourceFile.statements) {
     if (!ts.isInterfaceDeclaration(stmt) && !ts.isTypeAliasDeclaration(stmt)) continue;
 
@@ -12384,11 +11583,7 @@ function resolveStructFieldTypes(
   }
 }
 
-function collectObjectType(
-  ctx: CodegenContext,
-  name: string,
-  type: ts.Type,
-): void {
+function collectObjectType(ctx: CodegenContext, name: string, type: ts.Type): void {
   const fields: FieldDef[] = [];
   for (const prop of type.getProperties()) {
     const propType = ctx.checker.getTypeOfSymbol(prop);
@@ -12401,7 +11596,6 @@ function collectObjectType(
   }
 
   if (fields.length > 0) {
-
     const typeIdx = ctx.mod.types.length;
     ctx.mod.types.push({
       kind: "struct",
@@ -12415,10 +11609,7 @@ function collectObjectType(
 }
 
 /** Compile all function bodies (including class constructors and methods) */
-function compileDeclarations(
-  ctx: CodegenContext,
-  sourceFile: ts.SourceFile,
-): void {
+function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   // Build a map from function name → index within ctx.mod.functions
   const funcByName = new Map<string, number>();
   for (let i = 0; i < ctx.mod.functions.length; i++) {
@@ -12428,7 +11619,10 @@ function compileDeclarations(
   // Compile class constructors and methods
   // Also compile class expressions in variable declarations
   // Scan recursively into function bodies for class expressions
-  function compileClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[], insideFunction = false): void {
+  function compileClassesFromStatements(
+    stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[],
+    insideFunction = false,
+  ): void {
     for (const stmt of stmts) {
       if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
         if (insideFunction) {
@@ -12445,11 +11639,7 @@ function compileDeclarations(
         }
       } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
-          if (
-            ts.isIdentifier(decl.name) &&
-            decl.initializer &&
-            ts.isClassExpression(decl.initializer)
-          ) {
+          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
             if (insideFunction) {
               ctx.deferredClassBodies.add(decl.name.text);
             } else {
@@ -12477,7 +11667,13 @@ function compileDeclarations(
         }
       } else if (ts.isBlock(stmt)) {
         compileClassesFromStatements(stmt.statements);
-      } else if (ts.isForStatement(stmt) || ts.isForInStatement(stmt) || ts.isForOfStatement(stmt) || ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+      } else if (
+        ts.isForStatement(stmt) ||
+        ts.isForInStatement(stmt) ||
+        ts.isForOfStatement(stmt) ||
+        ts.isWhileStatement(stmt) ||
+        ts.isDoStatement(stmt)
+      ) {
         const body = stmt.statement;
         if (ts.isBlock(body)) {
           compileClassesFromStatements(body.statements);
@@ -12576,7 +11772,7 @@ function compileDeclarations(
   const hasStaticInits = ctx.staticInitExprs.length > 0;
   let compiledInitFctx: FunctionContext | null = null;
 
-  if (hasModuleInits || hasStaticInits) {
+  function compileModuleInitBody(): FunctionContext {
     const initFctx: FunctionContext = {
       name: "__module_init",
       params: [],
@@ -12605,19 +11801,19 @@ function compileDeclarations(
     }
 
     ctx.currentFunc = null;
-    compiledInitFctx = initFctx;
+    return initFctx;
+  }
+
+  if (hasModuleInits || hasStaticInits) {
+    compiledInitFctx = compileModuleInitBody();
     // Expose the pending init body so fixupModuleGlobalIndices can adjust it
     // when addStringConstantGlobal is called during function body compilation.
-    ctx.pendingInitBody = initFctx.body;
+    ctx.pendingInitBody = compiledInitFctx.body;
   }
 
   // Compile top-level function declarations
   for (const stmt of sourceFile.statements) {
-    if (
-      ts.isFunctionDeclaration(stmt) &&
-      stmt.name &&
-      !hasDeclareModifier(stmt)
-    ) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
       if (stmt.body) {
         const idx = funcByName.get(stmt.name.text);
         if (idx !== undefined) {
@@ -12634,6 +11830,14 @@ function compileDeclarations(
     }
   }
 
+  // Recompile module init after top-level functions are compiled so call sites
+  // inside module-level code can see the final inlinable-function registry.
+  // The first compile above still serves early closure/setup discovery.
+  if (hasModuleInits || hasStaticInits) {
+    compiledInitFctx = compileModuleInitBody();
+    ctx.pendingInitBody = compiledInitFctx.body;
+  }
+
   // Clear pendingInitBody before injection (it will be in mod.functions or main body after this)
   ctx.pendingInitBody = null;
 
@@ -12641,9 +11845,7 @@ function compileDeclarations(
   function shiftLocalIndices(instrs: Instr[], shift: number): void {
     for (const instr of instrs) {
       if (
-        (instr.op === "local.get" ||
-          instr.op === "local.set" ||
-          instr.op === "local.tee") &&
+        (instr.op === "local.get" || instr.op === "local.set" || instr.op === "local.tee") &&
         typeof (instr as any).index === "number"
       ) {
         (instr as any).index += shift;
@@ -12659,6 +11861,7 @@ function compileDeclarations(
 
   // Inject the compiled init body into the appropriate location
   if (compiledInitFctx && compiledInitFctx.body.length > 0) {
+    ctx.mod.hasTopLevelStatements = true;
     const mainIdx = funcByName.get("main");
     if (mainIdx !== undefined) {
       const mainFunc = ctx.mod.functions[mainIdx]!;
@@ -12706,7 +11909,9 @@ function compileDeclarations(
           const guardPreamble: Instr[] = [
             { op: "global.get", index: guardGlobalIdx },
             { op: "i32.eqz" },
-            { op: "if", blockType: { kind: "empty" },
+            {
+              op: "if",
+              blockType: { kind: "empty" },
               then: [
                 { op: "i32.const", value: 1 } as Instr,
                 { op: "global.set", index: guardGlobalIdx } as Instr,
@@ -12753,10 +11958,7 @@ function fixupStructNewArgCounts(ctx: CodegenContext): void {
       case "externref":
         return [{ op: "ref.null.extern" }];
       case "ref":
-        return [
-          { op: "ref.null", typeIdx: (type as { typeIdx: number }).typeIdx },
-          { op: "ref.as_non_null" } as Instr,
-        ];
+        return [{ op: "ref.null", typeIdx: (type as { typeIdx: number }).typeIdx }, { op: "ref.as_non_null" } as Instr];
       case "ref_null":
         return [{ op: "ref.null", typeIdx: (type as { typeIdx: number }).typeIdx }];
       default:
@@ -12818,8 +12020,12 @@ function fixupStructNewArgCounts(ctx: CodegenContext): void {
         const prev = instrs[j]!;
         const op = prev.op;
         if (
-          op === "f64.const" || op === "i32.const" || op === "i64.const" ||
-          op === "ref.null" || op === "ref.null.extern" || op === "ref.null.eq" ||
+          op === "f64.const" ||
+          op === "i32.const" ||
+          op === "i64.const" ||
+          op === "ref.null" ||
+          op === "ref.null.extern" ||
+          op === "ref.null.eq" ||
           op === "ref.as_non_null"
         ) {
           // ref.as_non_null doesn't push a new value, it converts the top.
@@ -12895,7 +12101,7 @@ function buildShapePropFlagsTable(ctx: CodegenContext): void {
     if (!fields || fields.length === 0) continue;
 
     // Count user-visible fields (exclude internal fields)
-    const userFields = fields.filter(f => !INTERNAL_FIELD_NAMES.has(f.name));
+    const userFields = fields.filter((f) => !INTERNAL_FIELD_NAMES.has(f.name));
     if (userFields.length === 0) continue;
 
     // All user-visible properties get default flags (writable + enumerable + configurable)
@@ -12947,7 +12153,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
       // Fix array.new_default: length must be i32, not externref
       if (instr.op === "array.new_default" && i > 0) {
         const prev = instrs[i - 1]!;
-        if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+        if (prev.op === "ref.null.extern") {
           instrs[i - 1] = { op: "i32.const", value: 0 } as Instr;
         } else {
           let isExternref = false;
@@ -12962,10 +12168,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
           if (isExternref) {
             const unboxIdx = ctx.funcMap.get("__unbox_number");
             if (unboxIdx !== undefined) {
-              instrs.splice(i, 0,
-                { op: "call", funcIdx: unboxIdx } as Instr,
-                { op: "i32.trunc_sat_f64_s" } as Instr,
-              );
+              instrs.splice(i, 0, { op: "call", funcIdx: unboxIdx } as Instr, { op: "i32.trunc_sat_f64_s" } as Instr);
               i += 2;
             } else {
               instrs[i - 1] = { op: "i32.const", value: 0 } as Instr;
@@ -13016,7 +12219,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
         let isFuncref = false;
         if (prev.op === "extern.convert_any") {
           isAlreadyExternref = true;
-        } else if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+        } else if (prev.op === "ref.null.extern") {
           isAlreadyExternref = true;
         } else if (prev.op === "ref.func") {
           isFuncref = true;
@@ -13110,7 +12313,7 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
 
       if (prev.op === "extern.convert_any") {
         isAlreadyExternref = true;
-      } else if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+      } else if (prev.op === "ref.null.extern") {
         isAlreadyExternref = true;
       } else if (prev.op === "ref.func") {
         isFuncref = true;
@@ -13247,7 +12450,10 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
               let ci = 0;
               for (const imp of ctx.mod.imports) {
                 if ((imp as any).desc?.kind === "func") {
-                  if (ci === callFuncIdx) { callTargetTypeIdx = (imp as any).desc.typeIdx; break; }
+                  if (ci === callFuncIdx) {
+                    callTargetTypeIdx = (imp as any).desc.typeIdx;
+                    break;
+                  }
                   ci++;
                 }
               }
@@ -13266,8 +12472,7 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
         }
 
         const paramType = params[pi]!;
-        if ((argInstr.op === "ref.null.extern" || argInstr.op === "ref.null extern") &&
-            (paramType.kind === "ref" || paramType.kind === "ref_null")) {
+        if (argInstr.op === "ref.null.extern" && (paramType.kind === "ref" || paramType.kind === "ref_null")) {
           // Replace ref.null extern with ref.null of the correct type
           instrs[pos] = { op: "ref.null", typeIdx: (paramType as any).typeIdx } as unknown as Instr;
         }
@@ -13338,9 +12543,7 @@ export function compileClassBodies(
   }
 
   // Compile constructor
-  const ctor = decl.members.find(ts.isConstructorDeclaration) as
-    | ts.ConstructorDeclaration
-    | undefined;
+  const ctor = decl.members.find(ts.isConstructorDeclaration) as ts.ConstructorDeclaration | undefined;
   const ctorName = `${className}_new`;
   const ctorLocalIdx = funcByName.get(ctorName);
   if (ctorLocalIdx !== undefined) {
@@ -13461,10 +12664,7 @@ export function compileClassBodies(
             blockType: { kind: "empty" },
             then: thenInstrs,
           });
-        } else if (
-          paramType.kind === "ref_null" ||
-          paramType.kind === "ref"
-        ) {
+        } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "ref.is_null" });
           fctx.body.push({
@@ -13514,12 +12714,7 @@ export function compileClassBodies(
           const ancDecl = ctx.classDeclarationMap.get(ancName);
           if (!ancDecl) continue;
           for (const member of ancDecl.members) {
-            if (
-              ts.isPropertyDeclaration(member) &&
-              member.name &&
-              member.initializer &&
-              !hasStaticModifier(member)
-            ) {
+            if (ts.isPropertyDeclaration(member) && member.name && member.initializer && !hasStaticModifier(member)) {
               const fieldName = resolveClassMemberName(ctx, member.name);
               if (!fieldName) continue;
               const fieldIdx = fields.findIndex((f) => f.name === fieldName);
@@ -13549,7 +12744,9 @@ export function compileClassBodies(
                 stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
               ) {
                 const rawName = stmt.expression.left.name.text;
-                const fieldName = ts.isPrivateIdentifier(stmt.expression.left.name) ? "__priv_" + rawName.slice(1) : rawName;
+                const fieldName = ts.isPrivateIdentifier(stmt.expression.left.name)
+                  ? "__priv_" + rawName.slice(1)
+                  : rawName;
                 const fieldIdx = fields.findIndex((f) => f.name === fieldName);
                 if (fieldIdx !== -1) {
                   fctx.body.push({ op: "local.get", index: selfLocal });
@@ -13565,12 +12762,7 @@ export function compileClassBodies(
 
     // Compile field initializers from property declarations (e.g., x: number = 42, #x: number = 42)
     for (const member of decl.members) {
-      if (
-        ts.isPropertyDeclaration(member) &&
-        member.name &&
-        member.initializer &&
-        !hasStaticModifier(member)
-      ) {
+      if (ts.isPropertyDeclaration(member) && member.name && member.initializer && !hasStaticModifier(member)) {
         const fieldName = resolveClassMemberName(ctx, member.name);
         if (!fieldName) continue; // dynamic computed name — skip
         const fieldIdx = fields.findIndex((f) => f.name === fieldName);
@@ -13590,14 +12782,7 @@ export function compileClassBodies(
           ts.isCallExpression(stmt.expression) &&
           stmt.expression.expression.kind === ts.SyntaxKind.SuperKeyword
         ) {
-          compileSuperCall(
-            ctx,
-            fctx,
-            className,
-            selfLocal,
-            stmt.expression,
-            fields,
-          );
+          compileSuperCall(ctx, fctx, className, selfLocal, stmt.expression, fields);
           continue;
         }
         compileStatement(ctx, fctx, stmt);
@@ -13618,10 +12803,7 @@ export function compileClassBodies(
   // both static and instance methods share the same name.
   const compiledMethods = new Set<string>();
   for (const member of decl.members) {
-    if (
-      ts.isMethodDeclaration(member) &&
-      member.name
-    ) {
+    if (ts.isMethodDeclaration(member) && member.name) {
       const methodName = resolveClassMemberName(ctx, member.name);
       if (!methodName) continue; // dynamic computed name — skip
       const fullName = `${className}_${methodName}`;
@@ -13633,9 +12815,7 @@ export function compileClassBodies(
 
       const func = ctx.mod.functions[methodLocalIdx]!;
       const sig = ctx.checker.getSignatureFromDeclaration(member);
-      const retType = sig
-        ? ctx.checker.getReturnTypeOfSignature(sig)
-        : undefined;
+      const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
 
       // Static methods have no self param; instance methods get self as first param
       const params: { name: string; type: ValType }[] = isStatic
@@ -13663,9 +12843,9 @@ export function compileClassBodies(
         localMap: new Map(),
         returnType: isGeneratorMethod
           ? { kind: "externref" }
-          : (retType && !isVoidType(retType)
+          : retType && !isVoidType(retType)
             ? resolveWasmType(ctx, retType)
-            : null),
+            : null,
         body: [],
         blockDepth: 0,
         breakStack: [],
@@ -13722,10 +12902,7 @@ export function compileClassBodies(
             blockType: { kind: "empty" },
             then: thenInstrs,
           });
-        } else if (
-          paramType.kind === "ref_null" ||
-          paramType.kind === "ref"
-        ) {
+        } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
           fctx.body.push({ op: "ref.is_null" });
           fctx.body.push({
@@ -13769,7 +12946,7 @@ export function compileClassBodies(
       // Class methods (like standalone functions) need an arguments vec struct
       // so that `arguments.length` and `arguments[n]` work at runtime.
       if (member.body && bodyUsesArguments(member.body)) {
-        const methodParamTypes = params.slice(isStatic ? 0 : 1).map(p => p.type);
+        const methodParamTypes = params.slice(isStatic ? 0 : 1).map((p) => p.type);
         const paramOffset = isStatic ? 0 : 1; // skip 'this' param for instance methods
         emitArgumentsObject(ctx, fctx, methodParamTypes, paramOffset);
       }
@@ -13783,9 +12960,9 @@ export function compileClassBodies(
         fctx.body.push({ op: "local.set", index: bufferLocal });
 
         // Wrap body in a block so return can br out
-        const bodyInstrs: Instr[] = [];
-        const outerBody = fctx.body;
-        fctx.body = bodyInstrs;
+        // Use pushBody/popBody so the outer body stays reachable for global-index
+        // fixups when new string-constant imports are added during body compilation.
+        const savedGenBody = pushBody(fctx);
 
         fctx.generatorReturnDepth = 0;
         fctx.blockDepth++;
@@ -13801,7 +12978,8 @@ export function compileClassBodies(
         for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
         fctx.generatorReturnDepth = undefined;
 
-        fctx.body = outerBody;
+        const bodyInstrs = fctx.body;
+        popBody(fctx, savedGenBody);
         fctx.body.push({
           op: "block",
           blockType: { kind: "empty" },
@@ -13828,10 +13006,7 @@ export function compileClassBodies(
             fctx.body.push({ op: "i32.const", value: 0 });
           } else if (fctx.returnType.kind === "externref") {
             fctx.body.push({ op: "ref.null.extern" });
-          } else if (
-            fctx.returnType.kind === "ref" ||
-            fctx.returnType.kind === "ref_null"
-          ) {
+          } else if (fctx.returnType.kind === "ref" || fctx.returnType.kind === "ref_null") {
             fctx.body.push({
               op: "ref.null",
               typeIdx: fctx.returnType.typeIdx,
@@ -13852,10 +13027,7 @@ export function compileClassBodies(
   // both static and instance accessors share the same computed property name.
   const compiledAccessors = new Set<string>();
   for (const member of decl.members) {
-    if (
-      ts.isGetAccessorDeclaration(member) &&
-      member.name
-    ) {
+    if (ts.isGetAccessorDeclaration(member) && member.name) {
       const propName = resolveClassMemberName(ctx, member.name);
       if (!propName) continue; // dynamic computed name — skip
       const getterName = `${className}_get_${propName}`;
@@ -13866,9 +13038,7 @@ export function compileClassBodies(
 
       const func = ctx.mod.functions[getterLocalIdx]!;
       const sig = ctx.checker.getSignatureFromDeclaration(member);
-      const retType = sig
-        ? ctx.checker.getReturnTypeOfSignature(sig)
-        : undefined;
+      const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
 
       const params: { name: string; type: ValType }[] = [
         { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
@@ -13879,10 +13049,7 @@ export function compileClassBodies(
         params,
         locals: [],
         localMap: new Map(),
-        returnType:
-          retType && !isVoidType(retType)
-            ? resolveWasmType(ctx, retType)
-            : null,
+        returnType: retType && !isVoidType(retType) ? resolveWasmType(ctx, retType) : null,
         body: [],
         blockDepth: 0,
         breakStack: [],
@@ -13923,10 +13090,7 @@ export function compileClassBodies(
             fctx.body.push({ op: "i32.const", value: 0 });
           } else if (fctx.returnType.kind === "externref") {
             fctx.body.push({ op: "ref.null.extern" });
-          } else if (
-            fctx.returnType.kind === "ref" ||
-            fctx.returnType.kind === "ref_null"
-          ) {
+          } else if (fctx.returnType.kind === "ref" || fctx.returnType.kind === "ref_null") {
             fctx.body.push({
               op: "ref.null",
               typeIdx: fctx.returnType.typeIdx,
@@ -13941,10 +13105,7 @@ export function compileClassBodies(
       ctx.currentFunc = null;
     }
 
-    if (
-      ts.isSetAccessorDeclaration(member) &&
-      member.name
-    ) {
+    if (ts.isSetAccessorDeclaration(member) && member.name) {
       const propName = resolveClassMemberName(ctx, member.name);
       if (!propName) continue; // dynamic computed name — skip
       const setterName = `${className}_set_${propName}`;
@@ -14096,12 +13257,16 @@ function compileSuperCall(
         fctx.body.push({ op: "local.set", index: vecLocal });
         const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecType.typeIdx);
         if (arrTypeIdx < 0) continue;
-        const dataLocal = allocLocal(fctx, `__super_spread_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+        const dataLocal = allocLocal(fctx, `__super_spread_data_${fctx.locals.length}`, {
+          kind: "ref_null",
+          typeIdx: arrTypeIdx,
+        });
         fctx.body.push({ op: "local.get", index: vecLocal });
         fctx.body.push({ op: "struct.get", typeIdx: vecType.typeIdx, fieldIdx: 1 });
         fctx.body.push({ op: "local.set", index: dataLocal });
         const arrDefSpread = ctx.mod.types[arrTypeIdx];
-        const spreadElemType = arrDefSpread && arrDefSpread.kind === "array" ? arrDefSpread.element : { kind: "f64" as const };
+        const spreadElemType =
+          arrDefSpread && arrDefSpread.kind === "array" ? arrDefSpread.element : { kind: "f64" as const };
         const remaining = assignableParentFields.length - fieldIdx2;
         for (let i = 0; i < remaining; i++) {
           const { fieldIdx } = assignableParentFields[fieldIdx2]!;
@@ -14123,11 +13288,7 @@ function compileSuperCall(
       }
     }
   } else {
-    for (
-      let i = 0;
-      i < callExpr.arguments.length && i < assignableParentFields.length;
-      i++
-    ) {
+    for (let i = 0; i < callExpr.arguments.length && i < assignableParentFields.length; i++) {
       const { field, fieldIdx } = assignableParentFields[i]!;
       fctx.body.push({ op: "local.get", index: selfLocal });
       compileExpression(ctx, fctx, callExpr.arguments[i]!, field.type);
@@ -14156,11 +13317,7 @@ export function hoistVarDeclarations(
  * Walk a binding pattern and hoist all bound identifiers as locals.
  * Handles nested patterns: var { a, b: { c } } = obj; var [x, [y, z]] = arr;
  */
-function hoistBindingPattern(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  pattern: ts.BindingPattern,
-): void {
+function hoistBindingPattern(ctx: CodegenContext, fctx: FunctionContext, pattern: ts.BindingPattern): void {
   for (const element of pattern.elements) {
     if (ts.isOmittedExpression(element)) continue;
     if (ts.isIdentifier(element.name)) {
@@ -14182,11 +13339,7 @@ function hoistBindingPattern(
 }
 
 /** Hoist a single variable declaration (handles both simple identifiers and binding patterns). */
-function hoistVarDecl(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  decl: ts.VariableDeclaration,
-): void {
+function hoistVarDecl(ctx: CodegenContext, fctx: FunctionContext, decl: ts.VariableDeclaration): void {
   if (ts.isIdentifier(decl.name)) {
     const name = decl.name.text;
     if (fctx.localMap.has(name)) return;
@@ -14208,11 +13361,7 @@ function hoistVarDecl(
   }
 }
 
-function walkStmtForVars(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  stmt: ts.Statement,
-): void {
+function walkStmtForVars(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
   if (ts.isVariableStatement(stmt)) {
     const list = stmt.declarationList;
     // Only hoist `var` (not let/const)
@@ -14297,11 +13446,152 @@ export function hoistLetConstWithTdz(
   }
 }
 
-function walkStmtForLetConst(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  stmt: ts.Statement,
-): void {
+/**
+ * Check if a let/const variable needs a TDZ flag by analyzing all references.
+ * Returns false if every access to the symbol is provably after the declaration
+ * in straight-line code (same function, no closures, loop-local safe).
+ */
+function needsTdzFlag(ctx: CodegenContext, decl: ts.VariableDeclaration): boolean {
+  const symbol = ctx.checker.getSymbolAtLocation(decl.name);
+  if (!symbol) return true;
+  const declEnd = decl.getEnd();
+  const declFunc = getContainingFunctionForTdz(decl);
+
+  // Collect all references to this symbol in the containing function
+  // We walk the function body checking every identifier that resolves to this symbol
+  const funcBody = declFunc && "body" in declFunc ? (declFunc as any).body : undefined;
+  const scope = funcBody || decl.getSourceFile();
+
+  let needsFlag = false;
+  function visit(node: ts.Node): void {
+    if (needsFlag) return;
+    if (ts.isIdentifier(node) && node !== decl.name) {
+      const sym = ctx.checker.getSymbolAtLocation(node);
+      if (sym === symbol) {
+        const accessPos = node.getStart();
+        const accessFunc = getContainingFunctionForTdz(node);
+        // Cross-function access (closure) — needs flag
+        if (accessFunc !== declFunc) {
+          needsFlag = true;
+          return;
+        }
+        // Access before declaration — needs flag
+        if (accessPos < declEnd) {
+          needsFlag = true;
+          return;
+        }
+        // Check loop safety: if access is inside a loop containing the decl,
+        // it's only safe if decl is in the loop body and access is after decl
+        if (isInsideLoopContainingForTdz(node, decl)) {
+          needsFlag = true;
+          return;
+        }
+      }
+    }
+    // Don't recurse into nested functions (they have their own scope)
+    if (
+      node !== scope &&
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node))
+    ) {
+      // But DO check if they reference our symbol (closure capture)
+      ts.forEachChild(node, visit);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  ts.forEachChild(scope, visit);
+  return needsFlag;
+}
+
+/** Walk up to find nearest containing function (TDZ analysis version for index.ts). */
+function getContainingFunctionForTdz(node: ts.Node): ts.Node | undefined {
+  let current = node.parent;
+  while (current) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isConstructorDeclaration(current) ||
+      ts.isGetAccessorDeclaration(current) ||
+      ts.isSetAccessorDeclaration(current) ||
+      ts.isSourceFile(current)
+    ) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
+/** Check if access is inside a loop containing decl (TDZ version for index.ts). */
+function isInsideLoopContainingForTdz(access: ts.Node, decl: ts.Node): boolean {
+  let current = access.parent;
+  while (current) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isSourceFile(current)
+    ) {
+      return false;
+    }
+    if (
+      ts.isForStatement(current) ||
+      ts.isForInStatement(current) ||
+      ts.isForOfStatement(current) ||
+      ts.isWhileStatement(current) ||
+      ts.isDoStatement(current)
+    ) {
+      if (isDescendantOfNode(decl, current)) {
+        // For-initializer variables (e.g. `for (let i = 0; ...)`) are always
+        // initialized before the body/condition/incrementor execute
+        if (ts.isForStatement(current) && current.initializer && isDescendantOfNode(decl, current.initializer)) {
+          return false;
+        }
+        // For-in/for-of loop variables are initialized each iteration
+        if (
+          (ts.isForInStatement(current) || ts.isForOfStatement(current)) &&
+          isDescendantOfNode(decl, current.initializer)
+        ) {
+          return false;
+        }
+        // Both in loop — check if decl is in loop body and access after decl
+        const body = getLoopBodyNode(current);
+        if (body && isDescendantOfNode(decl, body) && access.getStart() >= decl.getEnd()) {
+          return false; // loop-local, access after decl — safe per iteration
+        }
+        return true;
+      }
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+function isDescendantOfNode(node: ts.Node, ancestor: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function getLoopBodyNode(loop: ts.Node): ts.Node | undefined {
+  if (ts.isForStatement(loop)) return loop.statement;
+  if (ts.isForInStatement(loop)) return loop.statement;
+  if (ts.isForOfStatement(loop)) return loop.statement;
+  if (ts.isWhileStatement(loop)) return loop.statement;
+  if (ts.isDoStatement(loop)) return loop.statement;
+  return undefined;
+}
+
+function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
   if (ts.isVariableStatement(stmt)) {
     const list = stmt.declarationList;
     // Only hoist `let`/`const` (not var — var is already hoisted)
@@ -14314,10 +13604,12 @@ function walkStmtForLetConst(
         const varType = ctx.checker.getTypeAtLocation(decl);
         const wasmType = resolveWasmType(ctx, varType);
         allocLocal(fctx, name, wasmType);
-        // Add a TDZ flag local (i32, init 0 = uninitialized)
-        if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
-        const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
-        fctx.tdzFlagLocals.set(name, flagIdx);
+        // Only add TDZ flag if static analysis can't prove all accesses are safe
+        if (needsTdzFlag(ctx, decl)) {
+          if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+          const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+          fctx.tdzFlagLocals.set(name, flagIdx);
+        }
       }
     }
     return;
@@ -14343,9 +13635,11 @@ function walkStmtForLetConst(
             const varType = ctx.checker.getTypeAtLocation(decl);
             const wasmType = resolveWasmType(ctx, varType);
             allocLocal(fctx, name, wasmType);
-            if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
-            const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
-            fctx.tdzFlagLocals.set(name, flagIdx);
+            if (needsTdzFlag(ctx, decl)) {
+              if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+              const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+              fctx.tdzFlagLocals.set(name, flagIdx);
+            }
           }
         }
       }
@@ -14387,17 +13681,27 @@ function bodyUsesArguments(node: ts.Node): boolean {
   return ts.forEachChild(node, bodyUsesArguments) ?? false;
 }
 
-
 /** Maximum number of instructions for a function body to be considered inlinable */
 const INLINE_MAX_INSTRS = 10;
 
 /** Set of instruction ops that disqualify a function body from inlining */
 const INLINE_DISALLOWED_OPS = new Set([
-  "block", "loop", "if", "br", "br_if", "return",
-  "try", "throw", "rethrow", "unreachable",
-  "call", "call_ref", "call_indirect",
-  "return_call", "return_call_ref",
-  "local.set", "local.tee",
+  "block",
+  "loop",
+  "if",
+  "br",
+  "br_if",
+  "try",
+  "throw",
+  "rethrow",
+  "unreachable",
+  "call",
+  "call_ref",
+  "call_indirect",
+  "return_call",
+  "return_call_ref",
+  "local.set",
+  "local.tee",
 ]);
 
 /**
@@ -14408,11 +13712,7 @@ const INLINE_DISALLOWED_OPS = new Set([
  * - No extra locals beyond parameters
  * - Not a rest-param or capture function
  */
-function registerInlinableFunction(
-  ctx: CodegenContext,
-  funcName: string,
-  func: WasmFunction,
-): void {
+function registerInlinableFunction(ctx: CodegenContext, funcName: string, func: WasmFunction): void {
   // Skip functions with rest params or captures
   if (ctx.funcRestParams.has(funcName)) return;
   if (ctx.nestedFuncCaptures.has(funcName)) return;
@@ -14421,8 +13721,13 @@ function registerInlinableFunction(
   if (body.length === 0 || body.length > INLINE_MAX_INSTRS) return;
 
   // Filter out nop instructions (source position markers)
-  const realBody = body.filter(instr => instr.op !== "nop");
+  const realBody = body.filter((instr) => instr.op !== "nop");
   if (realBody.length === 0 || realBody.length > INLINE_MAX_INSTRS) return;
+
+  // Allow expression-shaped functions to end in a single trailing return.
+  const normalizedBody =
+    realBody.length > 0 && realBody[realBody.length - 1]?.op === "return" ? realBody.slice(0, -1) : realBody;
+  if (normalizedBody.length === 0 || normalizedBody.length > INLINE_MAX_INSTRS) return;
 
   // Get param count from type definition
   const funcType = ctx.mod.types[func.typeIdx];
@@ -14433,7 +13738,7 @@ function registerInlinableFunction(
   if (func.locals.length > 0) return;
 
   // Check all instructions are safe to inline
-  for (const instr of realBody) {
+  for (const instr of normalizedBody) {
     if (INLINE_DISALLOWED_OPS.has(instr.op)) return;
 
     // local.get must reference params only (index < paramCount)
@@ -14446,17 +13751,13 @@ function registerInlinableFunction(
   const returnType = funcType.results.length > 0 ? funcType.results[0]! : null;
 
   ctx.inlinableFunctions.set(funcName, {
-    body: realBody,
+    body: normalizedBody,
     paramCount,
     paramTypes: funcType.params.slice(),
     returnType,
   });
 }
-function compileFunctionBody(
-  ctx: CodegenContext,
-  decl: ts.FunctionDeclaration,
-  func: WasmFunction,
-): void {
+function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclaration, func: WasmFunction): void {
   const sig = ctx.checker.getSignatureFromDeclaration(decl);
   if (!sig) {
     reportError(ctx, decl, `Cannot resolve signature for function '${func.name}'`);
@@ -14467,9 +13768,7 @@ function compileFunctionBody(
   // For async functions, unwrap Promise<T> to get T
   const isAsync = ctx.asyncFunctions.has(func.name);
   const isGenerator = ctx.generatorFunctions.has(func.name);
-  const effectiveRetType = isAsync
-    ? unwrapPromiseType(retType, ctx.checker)
-    : retType;
+  const effectiveRetType = isAsync ? unwrapPromiseType(retType, ctx.checker) : retType;
 
   // Use call-site resolved types for generic functions
   const resolved = ctx.genericResolved.get(func.name);
@@ -14490,9 +13789,8 @@ function compileFunctionBody(
       // may have been inferred from call sites for untyped params).
       const funcType = ctx.mod.types[func.typeIdx];
       const sigParamType = funcType?.kind === "func" ? funcType.params[i] : undefined;
-      const paramType = resolved?.params[i]
-        ?? sigParamType
-        ?? resolveWasmType(ctx, ctx.checker.getTypeAtLocation(param));
+      const paramType =
+        resolved?.params[i] ?? sigParamType ?? resolveWasmType(ctx, ctx.checker.getTypeAtLocation(param));
       params.push({ name: paramName, type: paramType });
     }
   }
@@ -14504,9 +13802,7 @@ function compileFunctionBody(
   } else if (resolved) {
     returnType = resolved.results.length > 0 ? (resolved.results[0] ?? null) : null;
   } else {
-    returnType = isVoidType(effectiveRetType)
-      ? null
-      : resolveWasmType(ctx, effectiveRetType);
+    returnType = isVoidType(effectiveRetType) ? null : resolveWasmType(ctx, effectiveRetType);
   }
 
   const fctx: FunctionContext = {
@@ -14548,7 +13844,7 @@ function compileFunctionBody(
     if (!param.initializer) continue;
 
     // Skip callee-side check for constant defaults — caller inlined the value (#869)
-    const optEntry = funcOptInfo?.find(o => o.index === i);
+    const optEntry = funcOptInfo?.find((o) => o.index === i);
     if (optEntry?.constantDefault) continue;
 
     const paramIdx = i;
@@ -14574,10 +13870,7 @@ function compileFunctionBody(
         blockType: { kind: "empty" },
         then: thenInstrs,
       });
-    } else if (
-      paramType.kind === "ref_null" ||
-      paramType.kind === "ref"
-    ) {
+    } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" });
       fctx.body.push({
@@ -14599,7 +13892,7 @@ function compileFunctionBody(
       // Sentinel: 0x7FF00000DEADC0DE (emitted by pushParamSentinel).
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "i64.reinterpret_f64" } as unknown as Instr);
-      fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+      fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
       fctx.body.push({ op: "i64.eq" });
       fctx.body.push({
         op: "if",
@@ -14627,12 +13920,11 @@ function compileFunctionBody(
   // Use externref elements so that all parameter types (numbers, strings, objects)
   // are preserved — matching the closure version in closures.ts (#771).
   if (decl.body && bodyUsesArguments(decl.body)) {
-    // Ensure __box_number is available for boxing numeric params to externref
-    const hasNumericParam = params.some(
-      (p) => p.type.kind === "f64" || p.type.kind === "i32",
-    );
+    // Ensure __box_number and __unbox_number are available for mapped arguments sync
+    const hasNumericParam = params.some((p) => p.type.kind === "f64" || p.type.kind === "i32");
     if (hasNumericParam) {
       ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+      ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
       flushLateImportShifts(ctx, fctx);
     }
 
@@ -14643,6 +13935,22 @@ function compileFunctionBody(
 
     const argsLocal = allocLocal(fctx, "arguments", vecRef);
     const arrTmp = allocLocal(fctx, "__args_arr_tmp", { kind: "ref", typeIdx: arrTypeIdx });
+
+    // Check if all params are simple identifiers (not destructuring patterns).
+    // Mapped arguments only applies to simple parameter lists in non-strict mode.
+    const allSimpleParams = decl.parameters.every((p) => ts.isIdentifier(p.name) && !p.dotDotDotToken);
+
+    // Set up mapped arguments info for param ↔ arguments sync (#849)
+    if (allSimpleParams && params.length > 0) {
+      fctx.mappedArgsInfo = {
+        argsLocalIdx: argsLocal,
+        arrTypeIdx,
+        vecTypeIdx,
+        paramCount: params.length,
+        paramOffset: 0,
+        paramTypes: params.map((p) => p.type),
+      };
+    }
 
     // Create backing array from parameters: push each param coerced to externref
     for (let i = 0; i < params.length; i++) {
@@ -14693,9 +14001,9 @@ function compileFunctionBody(
     // Wrap the generator body in a block so that `return` statements inside
     // the body can `br` out to the generator creation code instead of
     // using the wasm `return` opcode (which would skip __create_generator).
-    const bodyInstrs: Instr[] = [];
-    const outerBody = fctx.body;
-    fctx.body = bodyInstrs;
+    // Use pushBody/popBody so the outer body stays reachable for global-index
+    // fixups when new string-constant imports are added during body compilation.
+    const savedGenBody = pushBody(fctx);
 
     // Set generator return depth for correct `br` depth in nested contexts
     fctx.generatorReturnDepth = 0;
@@ -14720,7 +14028,8 @@ function compileFunctionBody(
     fctx.generatorReturnDepth = undefined;
 
     // Restore outer body and wrap compiled body in a block
-    fctx.body = outerBody;
+    const bodyInstrs = fctx.body;
+    popBody(fctx, savedGenBody);
     fctx.body.push({
       op: "block",
       blockType: { kind: "empty" },
@@ -14761,10 +14070,7 @@ function compileFunctionBody(
           fctx.body.push({ op: "i32.const", value: 0 });
         } else if (fctx.returnType.kind === "externref") {
           fctx.body.push({ op: "ref.null.extern" });
-        } else if (
-          fctx.returnType.kind === "ref" ||
-          fctx.returnType.kind === "ref_null"
-        ) {
+        } else if (fctx.returnType.kind === "ref" || fctx.returnType.kind === "ref_null") {
           fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
         }
       }
@@ -14787,10 +14093,7 @@ function buildDestructureNullThrow(ctx: CodegenContext): Instr[] {
   addStringConstantGlobal(ctx, msg);
   const strIdx = ctx.stringGlobalMap.get(msg)!;
   const tagIdx = ensureExnTag(ctx);
-  return [
-    { op: "global.get", index: strIdx } as Instr,
-    { op: "throw", tagIdx } as Instr,
-  ];
+  return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
 }
 
 /**
@@ -14854,8 +14157,7 @@ function destructureParamObjectExternref(
         const tmpElem = allocLocal(fctx, `__ext_dparam_dflt_${fctx.locals.length}`, elemType);
         fctx.body.push({ op: "local.tee", index: tmpElem });
 
-        const undefIdx = ensureLateImport(ctx, "__extern_is_undefined",
-          [{ kind: "externref" }], [{ kind: "i32" }]);
+        const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
         if (undefIdx !== undefined) {
           flushLateImportShifts(ctx, fctx);
           getIdx = ctx.funcMap.get("__extern_get");
@@ -14917,19 +14219,14 @@ function destructureParamObjectExternref(
  * Checks both ref.is_null (Wasm null) and __extern_is_undefined (JS undefined).
  * Throws TypeError if either is true.
  */
-function emitExternrefDestructureGuard(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  paramIdx: number,
-): void {
+function emitExternrefDestructureGuard(ctx: CodegenContext, fctx: FunctionContext, paramIdx: number): void {
   // Check ref.is_null first (handles null)
   fctx.body.push({ op: "local.get", index: paramIdx });
   fctx.body.push({ op: "ref.is_null" } as Instr);
   fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: [] });
 
   // Also check JS undefined via __extern_is_undefined import
-  const undefIdx = ensureLateImport(ctx, "__extern_is_undefined",
-    [{ kind: "externref" }], [{ kind: "i32" }]);
+  const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
   if (undefIdx !== undefined) {
     flushLateImportShifts(ctx, fctx);
     fctx.body.push({ op: "local.get", index: paramIdx });
@@ -14966,9 +14263,7 @@ export function destructureParamObject(
       let structTypeIdx: number | undefined;
       if (tsType) {
         ensureStructForType(ctx, tsType);
-        const typeName = ctx.anonTypeMap.get(tsType)
-          ?? tsType.getSymbol()?.name
-          ?? tsType.aliasSymbol?.name;
+        const typeName = ctx.anonTypeMap.get(tsType) ?? tsType.getSymbol()?.name ?? tsType.aliasSymbol?.name;
         structTypeIdx = typeName ? ctx.structMap.get(typeName) : undefined;
       }
 
@@ -15070,8 +14365,11 @@ export function destructureParamObject(
         // Handle default initializer for nested object destructuring (#794)
         if (element.initializer) {
           (ctx as any)._arrayLiteralForceVec = true;
-          try { emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer); }
-          finally { (ctx as any)._arrayLiteralForceVec = false; }
+          try {
+            emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer);
+          } finally {
+            (ctx as any)._arrayLiteralForceVec = false;
+          }
         }
         if (ts.isObjectBindingPattern(element.name)) {
           destructureParamObject(ctx, fctx, tmpLocal, element.name, fieldType);
@@ -15117,7 +14415,12 @@ export function destructureParamObject(
     if (destructInstrs.length > 0) {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: destructInstrs });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: buildDestructureNullThrow(ctx),
+        else: destructInstrs,
+      });
     }
   }
 }
@@ -15174,9 +14477,15 @@ export function destructureParamArray(
         if (!dataField || dataField.name !== "data") continue;
         const srcArrTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
 
-        const cvtTmp = allocLocal(fctx, `__dparam_src_${key}_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecIdx });
+        const cvtTmp = allocLocal(fctx, `__dparam_src_${key}_${fctx.locals.length}`, {
+          kind: "ref_null",
+          typeIdx: vecIdx,
+        });
         const lenTmp = allocLocal(fctx, `__dparam_len_${key}_${fctx.locals.length}`, { kind: "i32" });
-        const dstArrTmp = allocLocal(fctx, `__dparam_darr_${key}_${fctx.locals.length}`, { kind: "ref", typeIdx: extArrTypeIdx });
+        const dstArrTmp = allocLocal(fctx, `__dparam_darr_${key}_${fctx.locals.length}`, {
+          kind: "ref",
+          typeIdx: extArrTypeIdx,
+        });
         const idxTmp = allocLocal(fctx, `__dparam_idx_${key}_${fctx.locals.length}`, { kind: "i32" });
 
         const thenInstrs: Instr[] = [
@@ -15195,33 +14504,37 @@ export function destructureParamArray(
           { op: "i32.const", value: 0 } as Instr,
           { op: "local.set", index: idxTmp } as Instr,
           {
-            op: "block", blockType: { kind: "empty" },
-            body: [{
-              op: "loop", blockType: { kind: "empty" },
-              body: [
-                // if idx >= len, break
-                { op: "local.get", index: idxTmp } as Instr,
-                { op: "local.get", index: lenTmp } as Instr,
-                { op: "i32.ge_s" } as Instr,
-                { op: "br_if", depth: 1 } as Instr,
-                // dstArr[idx] = extern.convert_any(srcArr[idx])
-                { op: "local.get", index: dstArrTmp } as Instr,
-                { op: "local.get", index: idxTmp } as Instr,
-                { op: "local.get", index: cvtTmp } as Instr,
-                { op: "struct.get", typeIdx: vecIdx, fieldIdx: 1 } as Instr, // src data
-                { op: "local.get", index: idxTmp } as Instr,
-                { op: "array.get", typeIdx: srcArrTypeIdx } as Instr,
-                // Box primitive types before storing as externref
-                ...boxToExternref(ctx, key),
-                { op: "array.set", typeIdx: extArrTypeIdx } as Instr,
-                // idx++
-                { op: "local.get", index: idxTmp } as Instr,
-                { op: "i32.const", value: 1 } as Instr,
-                { op: "i32.add" } as Instr,
-                { op: "local.set", index: idxTmp } as Instr,
-                { op: "br", depth: 0 } as Instr,
-              ],
-            } as Instr],
+            op: "block",
+            blockType: { kind: "empty" },
+            body: [
+              {
+                op: "loop",
+                blockType: { kind: "empty" },
+                body: [
+                  // if idx >= len, break
+                  { op: "local.get", index: idxTmp } as Instr,
+                  { op: "local.get", index: lenTmp } as Instr,
+                  { op: "i32.ge_s" } as Instr,
+                  { op: "br_if", depth: 1 } as Instr,
+                  // dstArr[idx] = extern.convert_any(srcArr[idx])
+                  { op: "local.get", index: dstArrTmp } as Instr,
+                  { op: "local.get", index: idxTmp } as Instr,
+                  { op: "local.get", index: cvtTmp } as Instr,
+                  { op: "struct.get", typeIdx: vecIdx, fieldIdx: 1 } as Instr, // src data
+                  { op: "local.get", index: idxTmp } as Instr,
+                  { op: "array.get", typeIdx: srcArrTypeIdx } as Instr,
+                  // Box primitive types before storing as externref
+                  ...boxToExternref(ctx, key),
+                  { op: "array.set", typeIdx: extArrTypeIdx } as Instr,
+                  // idx++
+                  { op: "local.get", index: idxTmp } as Instr,
+                  { op: "i32.const", value: 1 } as Instr,
+                  { op: "i32.add" } as Instr,
+                  { op: "local.set", index: idxTmp } as Instr,
+                  { op: "br", depth: 0 } as Instr,
+                ],
+              } as Instr,
+            ],
           } as Instr,
           // Create __vec_externref: struct.new(len, dstArr)
           { op: "local.get", index: lenTmp } as Instr,
@@ -15266,8 +14579,7 @@ export function destructureParamArray(
   if (!arrDef || arrDef.kind !== "array") {
     // Not a vec array — check if it's a tuple struct (fields named _0, _1, ...)
     const tupleDef = ctx.mod.types[vecTypeIdx];
-    if (tupleDef && tupleDef.kind === "struct" && tupleDef.fields.length > 0 &&
-        tupleDef.fields[0]!.name === "_0") {
+    if (tupleDef && tupleDef.kind === "struct" && tupleDef.fields.length > 0 && tupleDef.fields[0]!.name === "_0") {
       // Tuple struct destructuring: extract positional fields via struct.get
       // Always treat as nullable — callers may pass empty/mismatched arrays that
       // compile to ref.null even when the declared type is non-nullable ref (#852).
@@ -15290,8 +14602,10 @@ export function destructureParamArray(
         const fieldType = tupleDef.fields[i]!.type;
 
         // Handle nested binding patterns
-        if (ts.isBindingElement(element) &&
-            (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+        if (
+          ts.isBindingElement(element) &&
+          (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))
+        ) {
           const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, fieldType);
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
@@ -15299,8 +14613,11 @@ export function destructureParamArray(
           // Handle default initializer for tuple destructuring (#794)
           if (element.initializer) {
             (ctx as any)._arrayLiteralForceVec = true;
-            try { emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer); }
-            finally { (ctx as any)._arrayLiteralForceVec = false; }
+            try {
+              emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer);
+            } finally {
+              (ctx as any)._arrayLiteralForceVec = false;
+            }
           }
           if (ts.isObjectBindingPattern(element.name)) {
             destructureParamObject(ctx, fctx, tmpLocal, element.name, fieldType);
@@ -15356,7 +14673,12 @@ export function destructureParamArray(
           }
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "ref.is_null" } as Instr);
-          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: nullDefaultInstrs.length > 0 ? nullDefaultInstrs : buildDestructureNullThrow(ctx), else: destructInstrs });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: nullDefaultInstrs.length > 0 ? nullDefaultInstrs : buildDestructureNullThrow(ctx),
+            else: destructInstrs,
+          });
         }
       }
       return;
@@ -15396,8 +14718,10 @@ export function destructureParamArray(
     if (ts.isOmittedExpression(element)) continue;
 
     // Handle nested binding patterns
-    if (ts.isBindingElement(element) &&
-        (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+    if (
+      ts.isBindingElement(element) &&
+      (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))
+    ) {
       const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, elemType);
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
@@ -15407,8 +14731,11 @@ export function destructureParamArray(
       // Handle default initializer: [[x, y] = [4, 5]] — use default when element is null/undefined (#794)
       if (element.initializer) {
         (ctx as any)._arrayLiteralForceVec = true;
-        try { emitNestedBindingDefault(ctx, fctx, tmpLocal, elemType, element.initializer); }
-        finally { (ctx as any)._arrayLiteralForceVec = false; }
+        try {
+          emitNestedBindingDefault(ctx, fctx, tmpLocal, elemType, element.initializer);
+        } finally {
+          (ctx as any)._arrayLiteralForceVec = false;
+        }
       }
       if (ts.isObjectBindingPattern(element.name)) {
         destructureParamObject(ctx, fctx, tmpLocal, element.name, elemType);
@@ -15509,68 +14836,14 @@ export function destructureParamArray(
     if (destructInstrs.length > 0) {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: destructInstrs });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: buildDestructureNullThrow(ctx),
+        else: destructInstrs,
+      });
     }
   }
-}
-
-/** Allocate a new local in the current function */
-export function allocLocal(
-  fctx: FunctionContext,
-  name: string,
-  type: ValType,
-): number {
-  const index = fctx.params.length + fctx.locals.length;
-  fctx.locals.push({ name, type });
-  fctx.localMap.set(name, index);
-  return index;
-}
-
-/** Canonical string key for a ValType, used for temp local free-list bucketing */
-function valTypeKey(type: ValType): string {
-  switch (type.kind) {
-    case "ref":
-      return `ref:${type.typeIdx}`;
-    case "ref_null":
-      return `ref_null:${type.typeIdx}`;
-    default:
-      return type.kind;
-  }
-}
-
-/**
- * Allocate a temporary local, reusing one from the free list if available.
- * Call releaseTempLocal when the temp is no longer needed.
- */
-export function allocTempLocal(fctx: FunctionContext, type: ValType): number {
-  if (!fctx.tempFreeList) fctx.tempFreeList = new Map();
-  const key = valTypeKey(type);
-  const bucket = fctx.tempFreeList.get(key);
-  if (bucket && bucket.length > 0) {
-    return bucket.pop()!;
-  }
-  return allocLocal(fctx, `__tmp_${fctx.locals.length}`, type);
-}
-
-/** Release a temporary local back to the free list for reuse */
-export function releaseTempLocal(fctx: FunctionContext, index: number): void {
-  const type = getLocalType(fctx, index);
-  if (!type) return;
-  if (!fctx.tempFreeList) fctx.tempFreeList = new Map();
-  const key = valTypeKey(type);
-  let bucket = fctx.tempFreeList.get(key);
-  if (!bucket) {
-    bucket = [];
-    fctx.tempFreeList.set(key, bucket);
-  }
-  bucket.push(index);
-}
-
-/** Get the ValType of a local by index (param or local slot) */
-export function getLocalType(fctx: FunctionContext, index: number): ValType | undefined {
-  if (index < fctx.params.length) return fctx.params[index]!.type;
-  const localIdx = index - fctx.params.length;
-  return fctx.locals[localIdx]?.type;
 }
 
 /**
@@ -15586,10 +14859,7 @@ export function getLocalType(fctx: FunctionContext, index: number): ValType | un
  * This avoids repeated import calls for the same string literal, which is
  * especially beneficial inside loops.
  */
-export function cacheStringLiterals(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-): void {
+export function cacheStringLiterals(ctx: CodegenContext, fctx: FunctionContext): void {
   // Build a set of funcIdx values that correspond to string literal thunks
   const strFuncIdxSet = new Set<number>();
   for (const [, importName] of ctx.stringLiteralMap) {
@@ -15627,11 +14897,7 @@ export function cacheStringLiterals(
 }
 
 /** Recursively scan instructions to find call instructions targeting string thunks. */
-function collectStringCalls(
-  instrs: Instr[],
-  strFuncIdxSet: Set<number>,
-  found: Set<number>,
-): void {
+function collectStringCalls(instrs: Instr[], strFuncIdxSet: Set<number>, found: Set<number>): void {
   for (const instr of instrs) {
     if ((instr.op === "call" || instr.op === "return_call") && strFuncIdxSet.has(instr.funcIdx)) {
       found.add(instr.funcIdx);
@@ -15653,10 +14919,7 @@ function collectStringCalls(
 }
 
 /** Recursively replace call instructions matching the cache map with local.get. */
-function replaceStringCalls(
-  instrs: Instr[],
-  cacheMap: Map<number, number>,
-): void {
+function replaceStringCalls(instrs: Instr[], cacheMap: Map<number, number>): void {
   for (let i = 0; i < instrs.length; i++) {
     const instr = instrs[i]!;
     if ((instr.op === "call" || instr.op === "return_call") && cacheMap.has(instr.funcIdx)) {
@@ -15681,44 +14944,26 @@ function replaceStringCalls(
 }
 
 function hasExportModifier(node: ts.Node): boolean {
-  const modifiers = ts.canHaveModifiers(node)
-    ? ts.getModifiers(node)
-    : undefined;
-  return (
-    modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false
-  );
+  const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+  return modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 }
 
 function hasDeclareModifier(node: ts.Node): boolean {
-  const modifiers = ts.canHaveModifiers(node)
-    ? ts.getModifiers(node)
-    : undefined;
-  return (
-    modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) ?? false
-  );
+  const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+  return modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) ?? false;
 }
 
 function hasAsyncModifier(node: ts.Node): boolean {
-  const modifiers = ts.canHaveModifiers(node)
-    ? ts.getModifiers(node)
-    : undefined;
+  const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
   return modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
 }
 
 function hasAbstractModifier(node: ts.Node): boolean {
-  return (
-    (ts.getCombinedModifierFlags(node as ts.Declaration) &
-      ts.ModifierFlags.Abstract) !==
-    0
-  );
+  return (ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Abstract) !== 0;
 }
 
 function hasStaticModifier(node: ts.Node): boolean {
-  return (
-    (ts.getCombinedModifierFlags(node as ts.Declaration) &
-      ts.ModifierFlags.Static) !==
-    0
-  );
+  return (ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Static) !== 0;
 }
 
 /** Check if a function declaration is a generator (function*) */
@@ -15753,11 +14998,7 @@ function unwrapGeneratorYieldType(type: ts.Type, ctx: CodegenContext): ValType {
  * Ensure the stack top is an i32 suitable for use as a condition.
  * Handles: f64 (truthy != 0), externref (JS truthiness via __is_truthy), null (push 0).
  */
-export function ensureI32Condition(
-  fctx: FunctionContext,
-  condType: ValType | null,
-  ctx?: CodegenContext,
-): void {
+export function ensureI32Condition(fctx: FunctionContext, condType: ValType | null, ctx?: CodegenContext): void {
   if (!condType) {
     // Expression compilation failed — push false to keep Wasm valid
     fctx.body.push({ op: "i32.const", value: 0 });
@@ -15813,8 +15054,7 @@ export function ensureI32Condition(
     // Fallback: non-null → true
     fctx.body.push({ op: "ref.is_null" });
     fctx.body.push({ op: "i32.eqz" });
-  }
-  else if (condType.kind === "i64") {
+  } else if (condType.kind === "i64") {
     // i64 truthiness: nonzero → true
     fctx.body.push({ op: "i64.eqz" });
     fctx.body.push({ op: "i32.eqz" });
@@ -15822,32 +15062,37 @@ export function ensureI32Condition(
   // i32 is already valid as-is
 }
 
-/** Get source position from a TS AST node (returns undefined if sourceMap is disabled) */
-export function getSourcePos(
-  ctx: CodegenContext,
-  node: ts.Node,
-): SourcePos | undefined {
-  if (!ctx.sourceMap) return undefined;
-  try {
-    const sf = node.getSourceFile();
-    if (!sf) return undefined;
-    const pos = sf.getLineAndCharacterOfPosition(node.getStart());
-    return { file: sf.fileName, line: pos.line, column: pos.character };
-  } catch {
-    return undefined;
-  }
-}
-
-/** Attach a source position to an instruction (mutates in place) */
-export function attachSourcePos(
-  instr: Instr,
-  sourcePos: SourcePos | undefined,
-): Instr {
-  if (sourcePos) {
-    (instr as Instr).sourcePos = sourcePos;
-  }
-  return instr;
-}
-
+export type {
+  ClosureInfo,
+  CodegenContext,
+  CodegenOptions,
+  CodegenResult,
+  ExternClassInfo,
+  FunctionContext,
+  InlinableFunctionInfo,
+  OptionalParamInfo,
+  RestParamInfo,
+} from "./context/types.js";
+export { popBody, pushBody } from "./context/bodies.js";
+export { createCodegenContext } from "./context/create-context.js";
+export { reportError } from "./context/errors.js";
+export { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
+export { attachSourcePos, getSourcePos } from "./context/source-pos.js";
+export {
+  addImport,
+  addStringConstantGlobal,
+  ensureExnTag,
+  localGlobalIdx,
+  nextModuleGlobalIdx,
+} from "./registry/imports.js";
+export {
+  addFuncType,
+  funcTypeEq,
+  getArrTypeIdxFromVec,
+  getOrRegisterArrayType,
+  getOrRegisterRefCellType,
+  getOrRegisterTemplateVecType,
+  getOrRegisterVecType,
+} from "./registry/types.js";
 export { compileExpression } from "./expressions.js";
 export { compileStatement } from "./statements.js";

@@ -16,36 +16,43 @@ async function run(source: string, fn: string = "test", args: unknown[] = []): P
 
 describe("issue-367: string variable concatenation in comparisons", () => {
   it("concatenates two string variables", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): string {
         var a = "hello";
         var b = "world";
         return a + b;
       }
-    `)).toBe("helloworld");
+    `),
+    ).toBe("helloworld");
   });
 
   it("concatenates string variable with literal", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): string {
         var a = "hello";
         return a + " world";
       }
-    `)).toBe("hello world");
+    `),
+    ).toBe("hello world");
   });
 
   it("three-part concatenation", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): string {
         var a = "hello";
         var b = "world";
         return a + " " + b;
       }
-    `)).toBe("hello world");
+    `),
+    ).toBe("hello world");
   });
 
   it("concatenated string equals literal with ===", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var a = "hello";
         var b = "world";
@@ -53,33 +60,39 @@ describe("issue-367: string variable concatenation in comparisons", () => {
         if (result === "hello world") return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("concatenated string used directly in === comparison", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var a = "hello";
         var b = "world";
         if (a + " " + b === "hello world") return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("concatenated string not equal to wrong value", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var a = "hello";
         var b = "world";
         if (a + " " + b !== "hello world") return 0;
         return 1;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("multiple concatenations compared", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var x = "ab";
         var y = "cd";
@@ -88,43 +101,51 @@ describe("issue-367: string variable concatenation in comparisons", () => {
         if (result === "abcdef") return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("concatenation with empty string", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var a = "hello";
         var b = "";
         if (a + b === "hello") return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("string += concatenation", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): string {
         var result = "hello";
         result += " world";
         return result;
       }
-    `)).toBe("hello world");
+    `),
+    ).toBe("hello world");
   });
 
   it("string += with variable", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): string {
         var result = "hello";
         var suffix = " world";
         result += suffix;
         return result;
       }
-    `)).toBe("hello world");
+    `),
+    ).toBe("hello world");
   });
 
   it("string += then compare with ===", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var result = "";
         result += "hello";
@@ -133,11 +154,13 @@ describe("issue-367: string variable concatenation in comparisons", () => {
         if (result === "hello world") return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("string += in loop", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): string {
         var result = "";
         var items = "abc";
@@ -146,11 +169,13 @@ describe("issue-367: string variable concatenation in comparisons", () => {
         }
         return result;
       }
-    `)).toBe("abc");
+    `),
+    ).toBe("abc");
   });
 
   it("string var initialized then += variable", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var s = "a";
         var t = "b";
@@ -158,11 +183,13 @@ describe("issue-367: string variable concatenation in comparisons", () => {
         if (s === "ab") return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("string += builds up and compares with sameValue pattern", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var result = "";
         result += "x";
@@ -172,11 +199,13 @@ describe("issue-367: string variable concatenation in comparisons", () => {
         if (result === "xyz") return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("string += with number coercion", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         var s: string = "";
         s += 1;
@@ -185,12 +214,14 @@ describe("issue-367: string variable concatenation in comparisons", () => {
         if (s === "123") return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("string var with non-string += elsewhere (false positive pattern)", async () => {
     // This is the test262 pattern: a string var exists, but += is on a different numeric var
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         let length: string = "outer";
         var iterCount: number = 0;
@@ -198,6 +229,7 @@ describe("issue-367: string variable concatenation in comparisons", () => {
         if (length === "outer" && iterCount === 1) return 1;
         return 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 });

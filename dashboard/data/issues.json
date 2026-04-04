@@ -5,9 +5,7 @@
       "title": "#762 -- Generator .next(value) arguments are silently ignored",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "680"
-      ],
+      "depends_on": ["680"],
       "goal": "",
       "status": null
     },
@@ -43,9 +41,7 @@
       "title": "Extract and refactor compileCallExpression (3,350 lines)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "688"
-      ],
+      "depends_on": ["688"],
       "goal": "",
       "status": null
     },
@@ -54,10 +50,7 @@
       "title": "#735 -- Async iteration correctness (329 tests)",
       "priority": "medium",
       "feasibility": "hard",
-      "depends_on": [
-        "680",
-        "681"
-      ],
+      "depends_on": ["680", "681"],
       "goal": "",
       "status": null
     },
@@ -66,14 +59,408 @@
       "title": "Reuse ts.CompilerHost across compilations (~25% speedup)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "699"
-      ],
+      "depends_on": ["699"],
       "goal": "",
       "status": null
     }
   ],
   "ready": [
+    {
+      "id": "922",
+      "title": "Add a reproducible test262 baseline-diff workflow so regressions are compared against current clean HEAD",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "test262-infrastructure",
+      "status": null
+    },
+    {
+      "id": "921",
+      "title": "Fix class destructuring generator/private-method codegen that now yields Wasm type mismatches",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-correctness",
+      "status": null
+    },
+    {
+      "id": "920",
+      "title": "Recover RegExp feature acceptance regressions relative to the April 1 test262 baseline",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-correctness",
+      "status": null
+    },
+    {
+      "id": "919",
+      "title": "Fix direct-eval arguments regressions introduced since the April 1 test262 baseline",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-correctness",
+      "status": null
+    },
+    {
+      "id": "918",
+      "title": "Create a curated batch of contributor-friendly starter issues with exact file ownership and acceptance criteria",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": ["914", "915"],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "917",
+      "title": "Make lint, format, and typecheck apply consistently across the whole source tree",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "916",
+      "title": "Clean contributor-facing repo hygiene and remove misleading clutter",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "915",
+      "title": "Add CONTRIBUTING.md with the minimum safe contributor workflow",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "914",
+      "title": "Add a short compiler architecture overview for contributors",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "913",
+      "title": "Split compiler.ts into validation, orchestration, and output modules",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "912",
+      "title": "Remove circular dependencies from the core codegen backend",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": ["909", "910", "911"],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "911",
+      "title": "Split statements.ts into control-flow, variables, destructuring, loops, and functions modules",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": ["909"],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "910",
+      "title": "Split expressions.ts into syntax-family modules",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": ["909"],
+      "goal": "contributor-readiness",
+      "status": null
+    },
+    {
+      "id": "908",
+      "title": "Remove redundant codegen in inlined top-level numeric loops",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": ["906", "907"],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "907",
+      "title": "Replace __init_done runtime guards with start/init entry semantics",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": ["900"],
+      "goal": "runtime-simplicity",
+      "status": null
+    },
+    {
+      "id": "906",
+      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": ["800", "898"],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "905",
+      "title": "Support versioned shapes for compile-time-known prototype mutation",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": ["743", "746"],
+      "goal": "property-model",
+      "status": null
+    },
+    {
+      "id": "904",
+      "title": "Add link-time specialization after separate compilation",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": ["33", "743"],
+      "goal": "compiler-architecture",
+      "status": null
+    },
+    {
+      "id": "903",
+      "title": "Add typed host import contracts and effect summaries",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "compiler-architecture",
+      "status": null
+    },
+    {
+      "id": "902",
+      "title": "Remove helper-call coercion from pure numeric recursive call/return paths",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": ["897"],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "901",
+      "title": "Remove helper-call coercion from numeric GC-array element access",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": ["896"],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "900",
+      "title": "Move missing-main handling out of runtime execution",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "runtime-simplicity",
+      "status": null
+    },
+    {
+      "id": "899",
+      "title": "Extend compile-time TDZ elimination to provably safe closure captures",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "898",
+      "title": "Extend compile-time TDZ elimination to loop-local accesses",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "897",
+      "title": "Restore direct numeric recursion codegen for fib hot path",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "896",
+      "title": "Restore direct numeric GC-array codegen in hot loops",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "893",
+      "title": "ES version filtering and Baseline compatibility mode for test262",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "",
+      "status": null
+    },
+    {
+      "id": "892",
+      "title": "Playground crashes: binaryen dependency not resolved by Vite",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "",
+      "status": null
+    },
+    {
+      "id": "891",
+      "title": "Apply test262 infrastructure learnings to equivalence tests",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "",
+      "status": null
+    },
+    {
+      "id": "890",
+      "title": "Update statusline for unified fork test262 runner",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "",
+      "status": null
+    },
+    {
+      "id": "889",
+      "title": "Test262 two-phase runner: compile all first, then execute with GC cleanup",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "888",
+      "title": "Performance benchmark: js2wasm vs StarlingMonkey vs Javy on V8 and Wasmtime",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "887",
+      "title": "Project roadmap document for STF funding application",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "886",
+      "title": "Public test262 conformance report page",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": ["883"],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "885",
+      "title": "README: update with real conformance numbers, architecture diagram, comparison table",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "884",
+      "title": "CI: GitHub Actions test262 on every PR",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": ["882"],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "883",
+      "title": "Deploy playground + dashboard to GitHub Pages",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "882",
+      "title": "Test262 runner: sharded parallel forks — max cores, controlled memory",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
+    },
+    {
+      "id": "881",
+      "title": "Dashboard: real-time resource monitoring — memory graphs, agent widgets, test progress",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": ["876"],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "880",
+      "title": "Dashboard: issue flow visualization — time from ready to done per issue",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": ["876"],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "879",
+      "title": "Dashboard: process health metrics — checklist compliance, merge protocol, hook blocks",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": ["876"],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "878",
+      "title": "Dashboard: active agent status panel with current task and uptime",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": ["876"],
+      "goal": "maintainability",
+      "status": null
+    },
+    {
+      "id": "877",
+      "title": "Agile criteria — Definition of Ready, Definition of Done, velocity tracking",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": "done"
+    },
+    {
+      "id": "876",
+      "title": "Sprint dashboard — kanban board, burndown, agent status, metrics",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": "done"
+    },
     {
       "id": "875",
       "title": "Research: ES standard support matrix for all JS-to-Wasm engines",
@@ -115,9 +502,7 @@
       "title": "Playground: default example throws WebAssembly.Exception at runtime",
       "priority": "critical",
       "feasibility": "medium",
-      "depends_on": [
-        "861"
-      ],
+      "depends_on": ["861"],
       "goal": "maintainability",
       "status": "review"
     },
@@ -126,9 +511,7 @@
       "title": "Playground: Monaco web workers fail to load, UI freezes",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "861"
-      ],
+      "depends_on": ["861"],
       "goal": "maintainability",
       "status": null
     },
@@ -137,9 +520,7 @@
       "title": "Playground: lazy-load test262 tree and file contents on demand",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "867"
-      ],
+      "depends_on": ["867"],
       "goal": "maintainability",
       "status": null
     },
@@ -148,9 +529,7 @@
       "title": "Playground: interactive test262 conformance explorer with inline errors",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "861"
-      ],
+      "depends_on": ["861"],
       "goal": "maintainability",
       "status": null
     },
@@ -182,6 +561,15 @@
       "status": "ready"
     },
     {
+      "id": "862",
+      "title": "Empty error message failures: iterator/destructuring step-err tests (212 FAIL)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "ready"
+    },
+    {
       "id": "861",
       "title": "Playground: fs module externalized error in browser",
       "priority": "high",
@@ -189,6 +577,15 @@
       "depends_on": [],
       "goal": "maintainability",
       "status": null
+    },
+    {
+      "id": "860",
+      "title": "Promise executor and property-assigned functions not compiled as host callbacks",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
     },
     {
       "id": "859",
@@ -209,13 +606,13 @@
       "status": "ready"
     },
     {
-      "id": "856",
-      "title": "Expected TypeError but got wrong error type (136 tests)",
-      "priority": "medium",
+      "id": "857",
+      "title": "wasm_compile: 'fn is not a function' in Array callback methods (247 tests)",
+      "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "ready"
+      "status": "fixed-by-827"
     },
     {
       "id": "855",
@@ -224,7 +621,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "ready"
+      "status": "suspended"
     },
     {
       "id": "854",
@@ -245,13 +642,58 @@
       "status": "ready"
     },
     {
-      "id": "849",
-      "title": "Mapped arguments object does not sync with named parameters (200 tests)",
-      "priority": "medium",
+      "id": "852",
+      "title": "Destructuring parameters cause null_deref and illegal_cast (1,525 tests)",
+      "priority": "critical",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "851",
+      "title": "Iterator close protocol not implemented (147 tests)",
+      "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "ready"
+      "status": "suspended"
+    },
+    {
+      "id": "850",
+      "title": "Object-to-primitive conversion missing: valueOf/toString not called (135 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "fixed-by-866"
+    },
+    {
+      "id": "848",
+      "title": "Class computed property and accessor correctness (1,015 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "847",
+      "title": "for-await-of / for-of destructuring produces wrong values (660 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "846",
+      "title": "assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests)",
+      "priority": "critical",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
     },
     {
       "id": "845",
@@ -263,46 +705,10 @@
       "status": null
     },
     {
-      "id": "844",
-      "title": "Unsupported new expression for built-in classes (85 CE)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
       "id": "843",
       "title": "super keyword in object literals and edge cases (20 CE)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "842",
-      "title": "new Array() with non-literal/spread arguments: invalid vec type (14 CE)",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "841",
-      "title": "Unsupported Math methods: sumPrecise, cosh, sinh, tanh, f16round (19 CE)",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "840",
-      "title": "Array.prototype.concat/push/splice require 0-arg support (31 CE)",
-      "priority": "medium",
-      "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
       "status": null
@@ -319,33 +725,6 @@
     {
       "id": "837",
       "title": "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "836",
-      "title": "Tagged templates with non-PropertyAccess tag expressions (20 CE)",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "835",
-      "title": "Unknown extern class: Error types (32 CE)",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "834",
-      "title": "ES2025 Set methods: union, intersection, difference, symmetricDifference, isSubsetOf, isSupersetOf, isDisjointFrom",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
@@ -371,15 +750,6 @@
       "status": null
     },
     {
-      "id": "831",
-      "title": "Negative test gaps: expected SyntaxError but compiled (242 failures)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": null
-    },
-    {
       "id": "830",
       "title": "DisposableStack extern class missing (38 wasm_compile failures)",
       "priority": "low",
@@ -389,13 +759,22 @@
       "status": null
     },
     {
-      "id": "829",
-      "title": "Unsupported assignment target compile errors (141 tests)",
+      "id": "828",
+      "title": "Unexpected undefined AST node in compileExpression (149 CE)",
       "priority": "medium",
-      "feasibility": "easy",
+      "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "already-fixed"
+    },
+    {
+      "id": "827",
+      "title": "Array callback methods: 'fn is not a function' Wasm compile error (243 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
     },
     {
       "id": "826",
@@ -404,7 +783,25 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "ready"
+      "status": "review"
+    },
+    {
+      "id": "825",
+      "title": "Null dereference failures (1,081 runtime failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "824",
+      "title": "Compilation timeouts: 548 tests exceed 10s compile limit",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": null
     },
     {
       "id": "822",
@@ -413,7 +810,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "suspended"
+      "status": null
     },
     {
       "id": "821",
@@ -600,9 +997,7 @@
       "title": "Shared compiler pool for vitest test262 runner",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "694"
-      ],
+      "depends_on": ["694"],
       "goal": "",
       "status": null
     },
@@ -656,9 +1051,7 @@
       "title": "Pure Wasm iterator protocol (eliminate 5 host imports)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "680"
-      ],
+      "depends_on": ["680"],
       "goal": "",
       "status": null
     },
@@ -712,9 +1105,7 @@
       "title": "Deno/Cloudflare loader plugins",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "599"
-      ],
+      "depends_on": ["599"],
       "goal": "",
       "status": null
     },
@@ -723,10 +1114,7 @@
       "title": "Shopify Functions template",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "578",
-        "599"
-      ],
+      "depends_on": ["578", "599"],
       "goal": "",
       "status": null
     },
@@ -735,9 +1123,7 @@
       "title": "WASI HTTP handler (unlocks serverless edge)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "578"
-      ],
+      "depends_on": ["578"],
       "goal": "",
       "status": null
     },
@@ -746,9 +1132,7 @@
       "title": "Full Component Model adapter (canonical ABI)",
       "priority": "critical",
       "feasibility": "hard",
-      "depends_on": [
-        "600"
-      ],
+      "depends_on": ["600"],
       "goal": "",
       "status": null
     },
@@ -757,9 +1141,7 @@
       "title": "Well-known Symbols for RegExp protocol (87 tests)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "goal": "",
       "status": null
     }
@@ -769,15 +1151,6 @@
       "id": "869",
       "title": "Refactor default params: caller-side insertion instead of sNaN sentinel",
       "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "in-progress"
-    },
-    {
-      "id": "851",
-      "title": "Iterator close protocol not implemented (147 tests)",
-      "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
@@ -826,9 +1199,7 @@
       "title": "#801 -- Array literal type mismatch in nested destructuring defaults (537 fail)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "794"
-      ],
+      "depends_on": ["794"],
       "goal": "core-semantics",
       "status": "done"
     },
@@ -1071,9 +1442,7 @@
       "title": "#769 -- Missing RegExp_new import after lib.d.ts refactoring (~600 CE)",
       "priority": "critical",
       "feasibility": "easy",
-      "depends_on": [
-        "740"
-      ],
+      "depends_on": ["740"],
       "goal": "",
       "status": null
     },
@@ -1082,10 +1451,7 @@
       "title": "#768 -- throwOnNull default regression: ~6400 tests fail with TypeError (null/undefined access)",
       "priority": "critical",
       "feasibility": "easy",
-      "depends_on": [
-        "716",
-        "728"
-      ],
+      "depends_on": ["716", "728"],
       "goal": "",
       "status": null
     },
@@ -1175,9 +1541,7 @@
       "title": "#797b -- Object.getOwnPropertyDescriptor compile-time resolution",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "797a"
-      ],
+      "depends_on": ["797a"],
       "goal": "property-model",
       "status": "done"
     },
@@ -1186,9 +1550,7 @@
       "title": "#797d -- Object.freeze/seal/preventExtensions compile-away",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "797a"
-      ],
+      "depends_on": ["797a"],
       "goal": "property-model",
       "status": "done"
     },
@@ -1206,9 +1568,7 @@
       "title": "#798b -- Catch variable unwrap",
       "priority": "high",
       "feasibility": "easy",
-      "depends_on": [
-        "798a"
-      ],
+      "depends_on": ["798a"],
       "goal": "error-model",
       "status": "done"
     },
@@ -1217,9 +1577,7 @@
       "title": "#798c -- Rethrow instruction for throw-of-catch-variable",
       "priority": "high",
       "feasibility": "easy",
-      "depends_on": [
-        "798a"
-      ],
+      "depends_on": ["798a"],
       "goal": "error-model",
       "status": "done"
     },
@@ -1242,17 +1600,26 @@
       "status": "done"
     },
     {
-      "id": "877",
-      "title": "Agile criteria — Definition of Ready, Definition of Done, velocity tracking",
-      "priority": "medium",
+      "id": "909",
+      "title": "Split codegen/index.ts into context, registry, collect, and api modules",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": "done"
+    },
+    {
+      "id": "895",
+      "title": "CompilerPool fails to dispatch queued jobs when first worker becomes ready",
+      "priority": "critical",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
       "status": "done"
     },
     {
-      "id": "876",
-      "title": "Sprint dashboard — kanban board, burndown, agent status, metrics",
+      "id": "894",
+      "title": "test262 runner fails on macOS due to Linux assumptions and missing direct esbuild dependency",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -1269,8 +1636,17 @@
       "status": "done"
     },
     {
-      "id": "862",
-      "title": "Empty error message failures: iterator/destructuring step-err tests (212 FAIL)",
+      "id": "856",
+      "title": "Expected TypeError but got wrong error type (136 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "in-progress"
+    },
+    {
+      "id": "849",
+      "title": "Mapped arguments object does not sync with named parameters (200 tests)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -1278,67 +1654,49 @@
       "status": "done"
     },
     {
-      "id": "860",
-      "title": "Promise executor and property-assigned functions not compiled as host callbacks",
+      "id": "844",
+      "title": "Unsupported new expression for built-in classes (85 CE)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "review"
+      "status": null
     },
     {
-      "id": "857",
-      "title": "wasm_compile: 'fn is not a function' in Array callback methods (247 tests)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "fixed-by-827"
-    },
-    {
-      "id": "852",
-      "title": "Destructuring parameters cause null_deref and illegal_cast (1,525 tests)",
-      "priority": "critical",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review"
-    },
-    {
-      "id": "850",
-      "title": "Object-to-primitive conversion missing: valueOf/toString not called (135 tests)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "fixed-by-866"
-    },
-    {
-      "id": "848",
-      "title": "Class computed property and accessor correctness (1,015 tests)",
-      "priority": "high",
+      "id": "843",
+      "title": "super keyword in object literals and edge cases (20 CE)",
+      "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
       "status": "review"
     },
     {
-      "id": "847",
-      "title": "for-await-of / for-of destructuring produces wrong values (660 tests)",
-      "priority": "high",
-      "feasibility": "medium",
+      "id": "842",
+      "title": "new Array() with non-literal/spread arguments: invalid vec type (14 CE)",
+      "priority": "low",
+      "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
       "status": "review"
     },
     {
-      "id": "846",
-      "title": "assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests)",
-      "priority": "critical",
-      "feasibility": "hard",
+      "id": "841",
+      "title": "Unsupported Math methods: sumPrecise, cosh, sinh, tanh, f16round (19 CE)",
+      "priority": "low",
+      "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "review"
+      "status": null
+    },
+    {
+      "id": "840",
+      "title": "Array.prototype.concat/push/splice require 0-arg support (31 CE)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": null
     },
     {
       "id": "839",
@@ -1350,39 +1708,48 @@
       "status": "done"
     },
     {
-      "id": "828",
-      "title": "Unexpected undefined AST node in compileExpression (149 CE)",
+      "id": "836",
+      "title": "Tagged templates with non-PropertyAccess tag expressions (20 CE)",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "in-progress"
+    },
+    {
+      "id": "835",
+      "title": "Unknown extern class: Error types (32 CE)",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": null
+    },
+    {
+      "id": "834",
+      "title": "ES2025 Set methods: union, intersection, difference, symmetricDifference, isSubsetOf, isSupersetOf, isDisjointFrom",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": null
+    },
+    {
+      "id": "831",
+      "title": "Negative test gaps: expected SyntaxError but compiled (242 failures)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "done"
+      "status": "in-progress"
     },
     {
-      "id": "827",
-      "title": "Array callback methods: 'fn is not a function' Wasm compile error (243 tests)",
-      "priority": "high",
-      "feasibility": "medium",
+      "id": "829",
+      "title": "Unsupported assignment target compile errors (141 tests)",
+      "priority": "medium",
+      "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "review"
-    },
-    {
-      "id": "825",
-      "title": "Null dereference failures (1,081 runtime failures)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review"
-    },
-    {
-      "id": "824",
-      "title": "Compilation timeouts: 548 tests exceed 10s compile limit",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
       "status": null
     },
     {
@@ -1489,9 +1856,7 @@
       "title": "#738 -- instanceof correctness (276 tests)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "678"
-      ],
+      "depends_on": ["678"],
       "goal": "builtin-methods, class-system",
       "status": "done"
     },
@@ -1536,9 +1901,7 @@
       "title": "#732 -- hasOwnProperty correctness (520 tests)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "678"
-      ],
+      "depends_on": ["678"],
       "goal": "property-model",
       "status": "done"
     },
@@ -1565,9 +1928,7 @@
       "title": "#729 -- Class feature codegen gaps (1,161 tests)",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "678"
-      ],
+      "depends_on": ["678"],
       "goal": "",
       "status": "done"
     },
@@ -1576,9 +1937,7 @@
       "title": "#728 -- Null pointer dereference should throw TypeError, not trap (1,604 tests)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "695"
-      ],
+      "depends_on": ["695"],
       "goal": "",
       "status": null
     },
@@ -1596,10 +1955,7 @@
       "title": "#726 -- TypeError regression: ref.cast guard returns ref.null for valid objects (1,948 tests)",
       "priority": "critical",
       "feasibility": "medium",
-      "depends_on": [
-        "695",
-        "706"
-      ],
+      "depends_on": ["695", "706"],
       "goal": "",
       "status": null
     },
@@ -1788,9 +2144,7 @@
       "title": "Wasm validation: not enough arguments on the stack (361 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "698"
-      ],
+      "depends_on": ["698"],
       "goal": "",
       "status": null
     },
@@ -1835,9 +2189,7 @@
       "title": "#698 -- Call type mismatch residual (1,044 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "659"
-      ],
+      "depends_on": ["659"],
       "goal": "",
       "status": null
     },
@@ -1873,9 +2225,7 @@
       "title": "Migrate test262 runner to vitest with per-test disk cache",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "693"
-      ],
+      "depends_on": ["693"],
       "goal": "",
       "status": null
     },
@@ -1893,11 +2243,7 @@
       "title": "Async pipelined execution: overlap load/compile/run stages",
       "priority": "medium",
       "feasibility": "hard",
-      "depends_on": [
-        "689",
-        "690",
-        "691"
-      ],
+      "depends_on": ["689", "690", "691"],
       "goal": "",
       "status": null
     },
@@ -1906,10 +2252,7 @@
       "title": "Pipeline architecture: interleave stages and minimize memory pressure",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "689",
-        "690"
-      ],
+      "depends_on": ["689", "690"],
       "goal": "",
       "status": null
     },
@@ -1918,9 +2261,7 @@
       "title": "Streaming test results with incremental report updates and zero-copy worker IPC",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "689"
-      ],
+      "depends_on": ["689"],
       "goal": "",
       "status": null
     },
@@ -1956,9 +2297,7 @@
       "title": "Dual string backend: js-host mode vs standalone mode",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "599"
-      ],
+      "depends_on": ["599"],
       "goal": "",
       "status": null
     },
@@ -1967,9 +2306,7 @@
       "title": "Dynamic prototype chain traversal",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "631"
-      ],
+      "depends_on": ["631"],
       "goal": "",
       "status": "superseded"
     },
@@ -1978,9 +2315,7 @@
       "title": "Full property descriptor support (writable/enumerable/configurable)",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "125"
-      ],
+      "depends_on": ["125"],
       "goal": "",
       "status": null
     },
@@ -2025,9 +2360,7 @@
       "title": "Proxy trap execution (beyond pass-through)",
       "priority": "critical",
       "feasibility": "medium",
-      "depends_on": [
-        "498"
-      ],
+      "depends_on": ["498"],
       "goal": "",
       "status": null
     },
@@ -2090,9 +2423,7 @@
       "title": "#663 -- Null pointer dereferences from missing property access (2,050 FAIL)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "647"
-      ],
+      "depends_on": ["647"],
       "goal": "",
       "status": "in-progress"
     },
@@ -2119,9 +2450,7 @@
       "title": "Call type mismatch residual (609 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "626"
-      ],
+      "depends_on": ["626"],
       "goal": "",
       "status": null
     },
@@ -2130,9 +2459,7 @@
       "title": "local.set type mismatch residual (659 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "625"
-      ],
+      "depends_on": ["625"],
       "goal": "",
       "status": "review"
     },
@@ -2141,9 +2468,7 @@
       "title": "Yield outside generator residual (411 CE)",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "628"
-      ],
+      "depends_on": ["628"],
       "goal": "",
       "status": null
     },
@@ -2152,9 +2477,7 @@
       "title": "Null pointer dereferences (2,050 FAIL)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "647"
-      ],
+      "depends_on": ["647"],
       "goal": "",
       "status": null
     },
@@ -2208,9 +2531,7 @@
       "title": "Residual stack underflow (876 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "627"
-      ],
+      "depends_on": ["627"],
       "goal": "",
       "status": null
     },
@@ -2228,9 +2549,7 @@
       "title": "Residual null pointer dereferences (1,374 FAIL)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "622"
-      ],
+      "depends_on": ["622"],
       "goal": "",
       "status": "review"
     },
@@ -2239,9 +2558,7 @@
       "title": "Residual undefined .kind: more AST node handlers (5,329 CE)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "619"
-      ],
+      "depends_on": ["619"],
       "goal": "",
       "status": null
     },
@@ -2250,9 +2567,7 @@
       "title": "Add testTypedArray.js to allowed includes (1,731 skip)",
       "priority": "high",
       "feasibility": "easy",
-      "depends_on": [
-        "608"
-      ],
+      "depends_on": ["608"],
       "goal": "",
       "status": null
     },
@@ -2549,9 +2864,7 @@
       "title": "Post-fix error analysis: create issues from fresh test262 run",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "goal": "",
       "status": "review"
     },
@@ -2587,9 +2900,7 @@
       "title": "Playground: integrate test262 results into test262 browser panel",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "goal": "",
       "status": null
     },
@@ -2598,9 +2909,7 @@
       "title": "Auto-generated README feature coverage + benchmark tables",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "goal": "",
       "status": null
     },
@@ -2618,9 +2927,7 @@
       "title": "Quick wins: narrow stale skip filters (~1,160 tests)",
       "priority": "critical",
       "feasibility": "easy",
-      "depends_on": [
-        "471"
-      ],
+      "depends_on": ["471"],
       "goal": "",
       "status": null
     },
@@ -2647,9 +2954,7 @@
       "title": "with statement via static identifier dispatch (94 tests)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "488"
-      ],
+      "depends_on": ["488"],
       "goal": "",
       "status": null
     },
@@ -2685,9 +2990,7 @@
       "title": "Array-like objects with numeric keys (77 tests)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "488"
-      ],
+      "depends_on": ["488"],
       "goal": "",
       "status": null
     },
@@ -2759,10 +3062,7 @@
       "title": "User Symbol as property key via tagged struct variant (~60 tests)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "481",
-        "483"
-      ],
+      "depends_on": ["481", "483"],
       "goal": "",
       "status": null
     },
@@ -2771,9 +3071,7 @@
       "title": "Well-known Symbol.toStringTag and Symbol.hasInstance (22 tests)",
       "priority": "low",
       "feasibility": "easy",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "goal": "",
       "status": null
     },
@@ -2782,9 +3080,7 @@
       "title": "Well-known Symbol.species for constructor delegation (52 tests)",
       "priority": "medium",
       "feasibility": "hard",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "goal": "",
       "status": null
     },
@@ -2793,9 +3089,7 @@
       "title": "Symbol() constructor and typeof symbol (207 tests)",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "471"
-      ],
+      "depends_on": ["471"],
       "goal": "",
       "status": null
     },
@@ -2804,9 +3098,7 @@
       "title": "Well-known Symbol.toPrimitive for type coercion (113 tests)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "goal": "",
       "status": null
     },
@@ -2923,9 +3215,7 @@
       "title": "React milestone 3: hooks state machine (useState, useEffect)",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "455"
-      ],
+      "depends_on": ["455"],
       "goal": "",
       "status": "ready"
     },
@@ -3060,9 +3350,7 @@
       "title": "Compile pako (zlib) to Wasm and benchmark vs JS",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "450"
-      ],
+      "depends_on": ["450"],
       "goal": "",
       "status": "backlog"
     },
@@ -3314,9 +3602,7 @@
       "title": "Worker timeout: 559 tests killed after 60s",
       "priority": "high",
       "feasibility": "easy",
-      "depends_on": [
-        "610"
-      ],
+      "depends_on": ["610"],
       "goal": "",
       "status": null
     },
@@ -3451,9 +3737,7 @@
       "title": "Test harness gaps: propertyHelper.js, assert.throws, String() indexer (1,105 tests)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "125"
-      ],
+      "depends_on": ["125"],
       "goal": "",
       "status": null
     },
@@ -3507,10 +3791,7 @@
       "title": "Component Model output: WIT interfaces from TypeScript types",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "598",
-        "599"
-      ],
+      "depends_on": ["598", "599"],
       "goal": "",
       "status": "review"
     },
@@ -3591,10 +3872,7 @@
       "title": "Split expressions.ts (24,427 lines) into focused modules",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "586",
-        "587"
-      ],
+      "depends_on": ["586", "587"],
       "goal": "",
       "status": null
     },
@@ -4242,9 +4520,7 @@
       "title": "Generator type mismatch errors (19 CE)",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "287"
-      ],
+      "depends_on": ["287"],
       "goal": "",
       "status": "review"
     },
@@ -4478,9 +4754,7 @@
       "title": "Null pointer dereference in destructuring (118 FAIL)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "394"
-      ],
+      "depends_on": ["394"],
       "goal": "",
       "status": null
     },
@@ -5128,9 +5402,7 @@
       "title": "[ts2wasm] Inline trig/transcendental Math methods as pure Wasm",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "321"
-      ],
+      "depends_on": ["321"],
       "goal": "",
       "status": null
     },
@@ -5148,10 +5420,7 @@
       "title": "[ts2wasm] Codegen: Dead import and type elimination",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "317",
-        "321"
-      ],
+      "depends_on": ["317", "321"],
       "goal": "",
       "status": "review"
     },
@@ -5169,10 +5438,7 @@
       "title": "[ts2wasm] Codegen: Infer parameter types from call-site arguments for untyped functions",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "317",
-        "320"
-      ],
+      "depends_on": ["317", "320"],
       "goal": "",
       "status": null
     },
@@ -5199,10 +5465,7 @@
       "title": "Issue #315: Wasm validation error audit -- systematic fix for type mismatches",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "277",
-        "178"
-      ],
+      "depends_on": ["277", "178"],
       "goal": "",
       "status": null
     },
@@ -5337,10 +5600,7 @@
       "title": "Issue #300: Runtime failures -- object to primitive conversion",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "138",
-        "139"
-      ],
+      "depends_on": ["138", "139"],
       "goal": "",
       "status": null
     },
@@ -5457,10 +5717,7 @@
       "title": "Issue #287: Generator function compile errors -- yield in nested contexts",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "241",
-        "267"
-      ],
+      "depends_on": ["241", "267"],
       "goal": "",
       "status": null
     },
@@ -6486,10 +6743,7 @@
       "title": "Computed property names in class declarations",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "242",
-        "265"
-      ],
+      "depends_on": ["242", "265"],
       "goal": "",
       "status": null
     },
@@ -6498,9 +6752,7 @@
       "title": "Array.isArray edge case",
       "priority": "low",
       "feasibility": "",
-      "depends_on": [
-        "171"
-      ],
+      "depends_on": ["171"],
       "goal": "",
       "status": null
     },
@@ -6671,9 +6923,7 @@
       "title": "#153 -- Iterator protocol for destructuring and for-of",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "268"
-      ],
+      "depends_on": ["268"],
       "goal": "",
       "status": null
     },
@@ -6709,9 +6959,7 @@
       "title": "Unsupported call expression patterns",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "232"
-      ],
+      "depends_on": ["232"],
       "goal": "",
       "status": null
     },
@@ -6891,9 +7139,7 @@
       "title": "propertyHelper.js test262 harness (341 tests)",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "125"
-      ],
+      "depends_on": ["125"],
       "goal": "",
       "status": null
     },
@@ -7343,9 +7589,7 @@
       "title": "Issue 74: WASM SIMD support for string and array operations",
       "priority": "low",
       "feasibility": "",
-      "depends_on": [
-        "70"
-      ],
+      "depends_on": ["70"],
       "goal": "",
       "status": "review"
     },

@@ -118,6 +118,8 @@
 | 117 | 2026-03-11 | String comparison support in test262 harness                                                      | Sprint 2   |
 | 118 | 2026-03-11 | compareArray.js test262 harness include                                                           | Sprint 2   |
 | 119 | 2026-03-11 | assert.throws support in test262 harness                                                          | Sprint 2   |
+| 894 | 2026-04-01 | test262 runner fails on macOS due to Linux assumptions and missing direct esbuild dependency     | Sprint 31  |
+| 895 | 2026-04-01 | CompilerPool fails to dispatch queued jobs when first worker becomes ready                        | Sprint 31  |
 | 120 | 2026-03-11 | undefined/void 0 comparison support                                                               | Sprint 2   |
 | 122 | 2026-03-11 | arguments object                                                                                  | Sprint 2   |
 | 126 | 2026-03-11 | valueOf/toString coercion                                                                         | Sprint 2   |
@@ -493,3 +495,7 @@
 | 813 | 2026-03-26 | gen.next is not a function — 1,164 tests unblocked                                                 | W6-Wave1   |
 | 814 | 2026-03-26 | ArrayBuffer extern class — 413 tests unblocked                                                     | W6-Wave1   |
 
+| 866 | 2026-03-31 | NaN sentinel fix — sNaN check + ToPrimitive toString fallback (71 FAIL restored) | Sprint-31  |
+| 849 | 2026-03-31 | Mapped arguments object sync with named parameters (200 FAIL restored) | Sprint-31  |
+
+| 920 | 2026-04-04 | RegExp regression recovery — disable compiler cache, pre-filter proposals (17,822 pass, 41.3%) | Sprint-36 |

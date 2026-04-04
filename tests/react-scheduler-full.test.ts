@@ -15,11 +15,7 @@ import { buildImports } from "../src/runtime.js";
 // ---------------------------------------------------------------------------
 // Helper: compile + instantiate + call exported function
 // ---------------------------------------------------------------------------
-async function run(
-  source: string,
-  fn: string = "test",
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string = "test", args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -357,12 +353,12 @@ function resetHeap(): void {
 // Tests
 // ---------------------------------------------------------------------------
 describe("React scheduler full min-heap", () => {
-
   // === Section 1: Array-based heap (idiomatic TypeScript) ===
   describe("array-based heap (idiomatic)", () => {
-
     it("compiles the array-based heap source", () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number { return 1; }
 `;
       const result = compile(source);
@@ -376,7 +372,9 @@ export function test(): number { return 1; }
     });
 
     it("peek on empty heap returns -1", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number {
   resetHeap();
   return peekSort();
@@ -386,7 +384,9 @@ export function test(): number {
     });
 
     it("push + peek returns the minimum element", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 10));
@@ -399,7 +399,9 @@ export function test(): number {
     });
 
     it("pop returns elements in priority order (by sortIndex)", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 30));
@@ -420,7 +422,9 @@ export function test(): number {
     });
 
     it("pop on empty heap returns -1", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number {
   resetHeap();
   return popSort();
@@ -430,7 +434,9 @@ export function test(): number {
     });
 
     it("handles tie-breaking by id", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(5, 10));
@@ -451,7 +457,9 @@ export function test(): number {
     });
 
     it("peek returns highest priority without removing", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 50));
@@ -476,7 +484,9 @@ export function test(): number {
     });
 
     it("mixed push/pop maintains heap invariant", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 50));
@@ -505,7 +515,9 @@ export function test(): number {
     });
 
     it("handles 7 elements correctly", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 70));
@@ -531,7 +543,9 @@ export function test(): number {
     });
 
     it("simulates React priority levels", async () => {
-      const source = HEAP_SOURCE_ARRAY + `
+      const source =
+        HEAP_SOURCE_ARRAY +
+        `
 const ImmediatePriority = 1;
 const UserBlockingPriority = 2;
 const NormalPriority = 3;
@@ -568,7 +582,6 @@ export function test(): number {
 
   // === Section 2: Null-check tests (struct ref === null) ===
   describe("null checks on class refs", () => {
-
     it("=== null returns true for null ref", async () => {
       const source = `
 class Foo {
@@ -641,9 +654,10 @@ export function test(): number {
 
   // === Section 3: Global-based heap with direct null checks ===
   describe("globals-based heap with null checks", () => {
-
     it("peekNode returns null on empty heap", async () => {
-      const source = HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS + `
+      const source =
+        HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS +
+        `
 export function test(): number {
   resetHeap();
   const node = peekNode();
@@ -655,7 +669,9 @@ export function test(): number {
     });
 
     it("peekNode returns non-null after push", async () => {
-      const source = HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS + `
+      const source =
+        HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 42));
@@ -668,7 +684,9 @@ export function test(): number {
     });
 
     it("pop returns elements in priority order with null checks", async () => {
-      const source = HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS + `
+      const source =
+        HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 30));
@@ -689,7 +707,9 @@ export function test(): number {
     });
 
     it("pop on fully drained heap returns -1", async () => {
-      const source = HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS + `
+      const source =
+        HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(1, 10));
@@ -701,7 +721,9 @@ export function test(): number {
     });
 
     it("handles tie-breaking by id with null checks", async () => {
-      const source = HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS + `
+      const source =
+        HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS +
+        `
 export function test(): number {
   resetHeap();
   push(new HeapNode(5, 10));
@@ -722,7 +744,9 @@ export function test(): number {
     });
 
     it("simulates React scheduling with null-check based peek/pop", async () => {
-      const source = HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS + `
+      const source =
+        HEAP_SOURCE_GLOBALS_WITH_NULL_CHECKS +
+        `
 export function test(): number {
   resetHeap();
   const now = 1000;

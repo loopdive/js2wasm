@@ -63,7 +63,9 @@ describe("externref host imports", () => {
         console_log_number: () => {},
         console_log_bool: () => {},
         Host_Counter_new: () => ({}),
-        Host_Counter_increment: () => { count++; },
+        Host_Counter_increment: () => {
+          count++;
+        },
         Host_Counter_getValue: () => count,
       },
     });
@@ -98,9 +100,13 @@ describe("externref host imports", () => {
         console_log_bool: () => {},
         Host_Box_new: () => mockBox,
         Host_Box_get_left: () => 0,
-        Host_Box_set_left: (_obj: any, v: number) => { setValues.left = v; },
+        Host_Box_set_left: (_obj: any, v: number) => {
+          setValues.left = v;
+        },
         Host_Box_get_right: () => 0,
-        Host_Box_set_right: (_obj: any, v: number) => { setValues.right = v; },
+        Host_Box_set_right: (_obj: any, v: number) => {
+          setValues.right = v;
+        },
       },
     });
     const exports = instance.exports as any;

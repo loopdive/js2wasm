@@ -3,38 +3,27 @@ import { assertEquivalent } from "./helpers.js";
 
 describe("Strict equality edge cases (#296)", () => {
   it("-0 === 0 returns true", async () => {
-    await assertEquivalent(
-      `export function test(): number { return (-0 === 0) ? 1 : 0; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { return (-0 === 0) ? 1 : 0; }`, [{ fn: "test", args: [] }]);
   });
 
   it("0 === -0 returns true", async () => {
-    await assertEquivalent(
-      `export function test(): number { return (0 === -0) ? 1 : 0; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { return (0 === -0) ? 1 : 0; }`, [{ fn: "test", args: [] }]);
   });
 
   it("NaN === NaN returns false", async () => {
-    await assertEquivalent(
-      `export function test(): number { return (NaN === NaN) ? 1 : 0; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { return (NaN === NaN) ? 1 : 0; }`, [
+      { fn: "test", args: [] },
+    ]);
   });
 
   it("NaN !== NaN returns true", async () => {
-    await assertEquivalent(
-      `export function test(): number { return (NaN !== NaN) ? 1 : 0; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { return (NaN !== NaN) ? 1 : 0; }`, [
+      { fn: "test", args: [] },
+    ]);
   });
 
   it("-0 !== 0 returns false", async () => {
-    await assertEquivalent(
-      `export function test(): number { return (-0 !== 0) ? 1 : 0; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { return (-0 !== 0) ? 1 : 0; }`, [{ fn: "test", args: [] }]);
   });
 
   it("NaN equality in conditional", async () => {

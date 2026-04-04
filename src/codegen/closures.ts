@@ -1,5 +1,5 @@
 /**
- * Closure and arrow-function compilation for ts2wasm.
+ * Closure and arrow-function compilation for js2wasm.
  *
  * Extracted from expressions.ts (issue #688, step 4).
  *
@@ -14,9 +14,11 @@
  */
 
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
+import { reportError } from "./context/errors.js";
+import { pushBody } from "./context/bodies.js";
+import { allocLocal } from "./context/locals.js";
+import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import {
-  allocLocal,
   resolveWasmType,
   getArrTypeIdxFromVec,
   getOrRegisterVecType,
@@ -24,19 +26,20 @@ import {
   nextModuleGlobalIdx,
   ensureStructForType,
   getOrRegisterRefCellType,
-  pushBody,
   destructureParamArray,
   destructureParamObject,
   ensureExnTag,
   addStringConstantGlobal,
   hoistLetConstWithTdz,
 } from "./index.js";
-import {
-  isVoidType,
-  unwrapPromiseType,
-} from "../checker/type-mapper.js";
+import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef, StructTypeDef } from "../ir/types.js";
-import { compileStatement, compileExternrefObjectDestructuringDecl, compileExternrefArrayDestructuringDecl, collectInstrs } from "./statements.js";
+import {
+  compileStatement,
+  compileExternrefObjectDestructuringDecl,
+  compileExternrefArrayDestructuringDecl,
+  collectInstrs,
+} from "./statements.js";
 import { defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
 import {
   compileExpression,
@@ -148,14 +151,14 @@ export function promoteAccessorCapturesToGlobals(
     if (ctx.funcMap.has(name)) continue;
 
     // Get the local's type
-    const localType = localIdx < fctx.params.length
-      ? fctx.params[localIdx]!.type
-      : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" as const };
+    const localType =
+      localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" as const });
 
     // Widen non-nullable ref to ref_null for global init
-    const globalType: ValType = localType.kind === "ref"
-      ? { kind: "ref_null", typeIdx: (localType as { typeIdx: number }).typeIdx }
-      : localType;
+    const globalType: ValType =
+      localType.kind === "ref" ? { kind: "ref_null", typeIdx: (localType as { typeIdx: number }).typeIdx } : localType;
 
     // Create default init for the global
     const init: Instr[] =
@@ -256,10 +259,7 @@ export function emitArrowParamDestructuring(
 
     const symName = tsParamType.symbol?.name;
     let typeName =
-      symName &&
-      symName !== "__type" &&
-      symName !== "__object" &&
-      ctx.structMap.has(symName)
+      symName && symName !== "__type" && symName !== "__object" && ctx.structMap.has(symName)
         ? symName
         : (ctx.anonTypeMap.get(tsParamType) ?? symName);
 
@@ -335,15 +335,7 @@ export function emitArrowParamDestructuring(
 
     // If the parameter is externref but we need a struct, convert it first.
     // This happens in __cb_N callbacks where parameters come from JS host as externref.
-    let structParamIdx = paramIdx;
-    if (paramType.kind === "externref") {
-      const castLocal = allocLocal(fctx, `__destr_cast_${fctx.locals.length}`, { kind: "ref_null", typeIdx: structTypeIdx });
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "any.convert_extern" } as Instr);
-      emitGuardedRefCast(fctx, structTypeIdx);
-      fctx.body.push({ op: "local.set", index: castLocal });
-      structParamIdx = castLocal;
-    }
+    const structParamIdx = paramIdx;
 
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
@@ -373,7 +365,12 @@ export function emitArrowParamDestructuring(
           // Per JS spec: only undefined triggers defaults, NOT null (#796)
           const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
           fctx.body.push({ op: "local.tee", index: tmpField });
-          const isUndefIdx = ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          const isUndefIdx = ensureLateImportShared(
+            ctx,
+            "__extern_is_undefined",
+            [{ kind: "externref" }],
+            [{ kind: "i32" }],
+          );
           flushLateImportShiftsShared(ctx, fctx);
           if (isUndefIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: isUndefIdx });
@@ -389,10 +386,7 @@ export function emitArrowParamDestructuring(
             op: "if",
             blockType: { kind: "empty" },
             then: thenInstrs,
-            else: [
-              { op: "local.get", index: tmpField } as Instr,
-              { op: "local.set", index: localIdx } as Instr,
-            ],
+            else: [{ op: "local.get", index: tmpField } as Instr, { op: "local.set", index: localIdx } as Instr],
           });
         } else if (fieldType.kind === "ref_null" || fieldType.kind === "ref") {
           const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
@@ -407,10 +401,7 @@ export function emitArrowParamDestructuring(
             op: "if",
             blockType: { kind: "empty" },
             then: thenInstrs,
-            else: [
-              { op: "local.get", index: tmpField } as Instr,
-              { op: "local.set", index: localIdx } as Instr,
-            ],
+            else: [{ op: "local.get", index: tmpField } as Instr, { op: "local.set", index: localIdx } as Instr],
           });
         } else if (fieldType.kind === "f64") {
           const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
@@ -426,10 +417,7 @@ export function emitArrowParamDestructuring(
             op: "if",
             blockType: { kind: "empty" },
             then: thenInstrs,
-            else: [
-              { op: "local.get", index: tmpField } as Instr,
-              { op: "local.set", index: localIdx } as Instr,
-            ],
+            else: [{ op: "local.get", index: tmpField } as Instr, { op: "local.set", index: localIdx } as Instr],
           });
         } else {
           fctx.body.push({ op: "local.set", index: localIdx });
@@ -499,7 +487,12 @@ export function emitArrowParamDestructuring(
           // Per JS spec: only undefined triggers defaults, NOT null (#796)
           const tmpElem = allocLocal(fctx, `__ary_dflt_${fctx.locals.length}`, bindingWasmType);
           fctx.body.push({ op: "local.tee", index: tmpElem });
-          const isUndefIdx = ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          const isUndefIdx = ensureLateImportShared(
+            ctx,
+            "__extern_is_undefined",
+            [{ kind: "externref" }],
+            [{ kind: "i32" }],
+          );
           flushLateImportShiftsShared(ctx, fctx);
           if (isUndefIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: isUndefIdx });
@@ -515,10 +508,7 @@ export function emitArrowParamDestructuring(
             op: "if",
             blockType: { kind: "empty" },
             then: thenInstrs,
-            else: [
-              { op: "local.get", index: tmpElem } as Instr,
-              { op: "local.set", index: localIdx } as Instr,
-            ],
+            else: [{ op: "local.get", index: tmpElem } as Instr, { op: "local.set", index: localIdx } as Instr],
           });
         } else if (bindingWasmType.kind === "ref_null" || bindingWasmType.kind === "ref") {
           // Internal struct refs: use ref.is_null for missing values
@@ -534,10 +524,7 @@ export function emitArrowParamDestructuring(
             op: "if",
             blockType: { kind: "empty" },
             then: thenInstrs,
-            else: [
-              { op: "local.get", index: tmpElem } as Instr,
-              { op: "local.set", index: localIdx } as Instr,
-            ],
+            else: [{ op: "local.get", index: tmpElem } as Instr, { op: "local.set", index: localIdx } as Instr],
           });
         } else if (bindingWasmType.kind === "f64") {
           // f64: undefined is NaN, check NaN self-test
@@ -554,10 +541,7 @@ export function emitArrowParamDestructuring(
             op: "if",
             blockType: { kind: "empty" },
             then: thenInstrs,
-            else: [
-              { op: "local.get", index: tmpElem } as Instr,
-              { op: "local.set", index: localIdx } as Instr,
-            ],
+            else: [{ op: "local.get", index: tmpElem } as Instr, { op: "local.set", index: localIdx } as Instr],
           });
         } else {
           // i32/other: no reliable sentinel, just set directly
@@ -822,13 +806,24 @@ export function compileArrowAsClosure(
     arrowParams.push(wasmType);
   }
 
+  // Detect async functions/arrows — their TS return type is Promise<T> but the
+  // Wasm return should be T (matching the unwrap that top-level async functions use).
+  const isAsync = arrow.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+
   const sig = ctx.checker.getSignatureFromDeclaration(arrow);
   let closureReturnType: ValType | null = null;
   if (isGenerator) {
     // Generator function expressions always return externref (JS Generator object)
     closureReturnType = { kind: "externref" };
   } else if (sig) {
-    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    let retType = ctx.checker.getReturnTypeOfSignature(sig);
+    // For async functions, unwrap Promise<T> to get T — matching the top-level
+    // async function handling in index.ts. Without this, async Promise<void>
+    // closures get externref return type and push ref.null.extern, breaking
+    // .then()/.catch() chains that expect a real Promise.
+    if (isAsync) {
+      retType = unwrapPromiseType(retType, ctx.checker);
+    }
     // Treat `never` the same as `void` — a function returning `never` (e.g.
     // always throws) never produces a value, so it should have no Wasm result.
     // Without this, `never` resolves to externref and creates a mismatched
@@ -885,16 +880,18 @@ export function compileArrowAsClosure(
     if (writtenInClosure.has(name)) continue; // Already mutable, no need to check
     try {
       // Find the symbol for this variable
-      const sym = ctx.checker.getSymbolAtLocation(
-        ts.isBlock(body)
-          ? (body.statements[0] ?? body)
-          : body
-      );
+      const sym = ctx.checker.getSymbolAtLocation(ts.isBlock(body) ? (body.statements[0] ?? body) : body);
       // Use the enclosing function body to find all writes to this name
       let enclosing: ts.Node | undefined = arrow.parent;
-      while (enclosing && !ts.isFunctionDeclaration(enclosing) && !ts.isFunctionExpression(enclosing) &&
-             !ts.isArrowFunction(enclosing) && !ts.isMethodDeclaration(enclosing) &&
-             !ts.isConstructorDeclaration(enclosing) && !ts.isSourceFile(enclosing)) {
+      while (
+        enclosing &&
+        !ts.isFunctionDeclaration(enclosing) &&
+        !ts.isFunctionExpression(enclosing) &&
+        !ts.isArrowFunction(enclosing) &&
+        !ts.isMethodDeclaration(enclosing) &&
+        !ts.isConstructorDeclaration(enclosing) &&
+        !ts.isSourceFile(enclosing)
+      ) {
         enclosing = enclosing.parent;
       }
       if (enclosing) {
@@ -917,8 +914,11 @@ export function compileArrowAsClosure(
               }
             }
             // Compound assignments (+=, -=, etc.)
-            if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.PlusEqualsToken &&
-                node.operatorToken.kind <= ts.SyntaxKind.CaretEqualsToken) {
+            if (
+              ts.isBinaryExpression(node) &&
+              node.operatorToken.kind >= ts.SyntaxKind.PlusEqualsToken &&
+              node.operatorToken.kind <= ts.SyntaxKind.CaretEqualsToken
+            ) {
               if (ts.isIdentifier(node.left) && node.left.text === name) {
                 outerWrites.add(name);
               }
@@ -951,9 +951,10 @@ export function compileArrowAsClosure(
     if (isOwnParamName(arrow, name)) continue;
     // Skip if the name is a named function expression's own name (self-reference)
     if (ts.isFunctionExpression(arrow) && arrow.name && arrow.name.text === name) continue;
-    const type = localIdx < fctx.params.length
-      ? fctx.params[localIdx]!.type
-      : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
+    const type =
+      localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
     // A capture is mutable if the closure writes to it OR the outer scope writes to it.
     // Both cases require a ref cell so mutations are visible across scope boundaries.
     const isMutable = writtenInClosure.has(name) || writtenInOuter.has(name);
@@ -981,25 +982,17 @@ export function compileArrowAsClosure(
     if (wrapperTypes) {
       structTypeIdx = wrapperTypes.structTypeIdx;
       liftedFuncTypeIdx = wrapperTypes.liftedFuncTypeIdx;
-      liftedParams = [
-        { kind: "ref", typeIdx: structTypeIdx },
-        ...arrowParams,
-      ];
+      liftedParams = [{ kind: "ref", typeIdx: structTypeIdx }, ...arrowParams];
     } else {
       // Fallback: create a unique struct type
-      const structFields = [
-        { name: "func", type: { kind: "funcref" as const }, mutable: false },
-      ];
+      const structFields = [{ name: "func", type: { kind: "funcref" as const }, mutable: false }];
       structTypeIdx = ctx.mod.types.length;
       ctx.mod.types.push({
         kind: "struct",
         name: `${closureName}_struct`,
         fields: structFields,
       });
-      liftedParams = [
-        { kind: "ref", typeIdx: structTypeIdx },
-        ...arrowParams,
-      ];
+      liftedParams = [{ kind: "ref", typeIdx: structTypeIdx }, ...arrowParams];
       liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
     }
   } else {
@@ -1035,9 +1028,7 @@ export function compileArrowAsClosure(
     // a subtype of the shared wrapper struct so ref.cast at call sites succeeds.
     // Named func exprs need ref_null __self (for var hoisting), so they can't
     // share the wrapper's lifted func type which uses non-null ref.
-    const wrapperTypes = !isNamedFuncExpr
-      ? getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults)
-      : null;
+    const wrapperTypes = !isNamedFuncExpr ? getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults) : null;
 
     structTypeIdx = ctx.mod.types.length;
     if (wrapperTypes) {
@@ -1052,10 +1043,7 @@ export function compileArrowAsClosure(
       // The __self param is (ref $wrapperStruct), and the lifted body will
       // ref.cast to the specific subtype to access captures.
       liftedFuncTypeIdx = wrapperTypes.liftedFuncTypeIdx;
-      liftedParams = [
-        { kind: "ref_null", typeIdx: structTypeIdx },
-        ...arrowParams,
-      ];
+      liftedParams = [{ kind: "ref_null", typeIdx: structTypeIdx }, ...arrowParams];
     } else {
       ctx.mod.types.push({
         kind: "struct",
@@ -1065,10 +1053,7 @@ export function compileArrowAsClosure(
       // 4. Create the lifted function type: (ref_null $closure_struct, ...arrowParams) → results
       // Use ref_null for __self so that var-hoisted variables shadowing the function name
       // (e.g. `var g` inside `function g()`) can be default-initialized to null.
-      liftedParams = [
-        { kind: "ref_null", typeIdx: structTypeIdx },
-        ...arrowParams,
-      ];
+      liftedParams = [{ kind: "ref_null", typeIdx: structTypeIdx }, ...arrowParams];
       liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
     }
   }
@@ -1078,8 +1063,9 @@ export function compileArrowAsClosure(
   // For captured closures sharing wrapper types, self param uses the WRAPPER struct
   // type (non-null ref) — captures are accessed via ref.cast to the subtype.
   // For named func exprs, self param is ref_null (var hoisting support).
-  const usesWrapperFuncType = captures.length > 0 && !isNamedFuncExpr && !!getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults);
-  const selfParamKind = isNamedFuncExpr ? "ref_null" as const : "ref" as const;
+  const usesWrapperFuncType =
+    captures.length > 0 && !isNamedFuncExpr && !!getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults);
+  const selfParamKind = isNamedFuncExpr ? ("ref_null" as const) : ("ref" as const);
   const selfTypeIdx = usesWrapperFuncType
     ? getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults)!.structTypeIdx
     : structTypeIdx;
@@ -1287,7 +1273,10 @@ export function compileArrowAsClosure(
                 liftedFctx.body.push({ op: "local.set", index: restLenLocal });
 
                 // Create new data array
-                const restArrLocal = allocLocal(liftedFctx, `__rest_arr_${liftedFctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+                const restArrLocal = allocLocal(liftedFctx, `__rest_arr_${liftedFctx.locals.length}`, {
+                  kind: "ref",
+                  typeIdx: arrTypeIdx,
+                });
                 liftedFctx.body.push({ op: "local.get", index: restLenLocal });
                 liftedFctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx } as Instr);
                 liftedFctx.body.push({ op: "local.set", index: restArrLocal });
@@ -1322,7 +1311,7 @@ export function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if ((resolvedParamType.kind === "ref_null") && fpadInstrs.length > 0) {
+            if (resolvedParamType.kind === "ref_null" && fpadInstrs.length > 0) {
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
               liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
@@ -1350,7 +1339,7 @@ export function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if ((resolvedParamType.kind === "ref_null") && fpadInstrs.length > 0) {
+            if (resolvedParamType.kind === "ref_null" && fpadInstrs.length > 0) {
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
               liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
@@ -1380,10 +1369,15 @@ export function compileArrowAsClosure(
             if (!ts.isIdentifier(element.name)) continue;
             const localName = element.name.text;
             const propName = element.propertyName
-              ? (ts.isIdentifier(element.propertyName) ? element.propertyName.text : localName)
+              ? ts.isIdentifier(element.propertyName)
+                ? element.propertyName.text
+                : localName
               : localName;
             const fieldIdx = typeDef.fields.findIndex((f: any) => f.name === propName);
-            if (fieldIdx < 0) { allFound = false; continue; }
+            if (fieldIdx < 0) {
+              allFound = false;
+              continue;
+            }
             const fieldType = typeDef.fields[fieldIdx]!.type;
             const localIdx = allocLocal(liftedFctx, localName, fieldType);
             liftedFctx.body.push({ op: "local.get", index: paramIdx });
@@ -1411,9 +1405,7 @@ export function compileArrowAsClosure(
   // Arrow functions don't have their own `arguments` binding in JS.
   if (ts.isFunctionExpression(arrow) && ts.isBlock(body) && closureBodyUsesArguments(body)) {
     // Ensure __box_number is available for boxing numeric params
-    const hasNumericParam = arrowParams.some(
-      (pt) => pt.kind === "f64" || pt.kind === "i32",
-    );
+    const hasNumericParam = arrowParams.some((pt) => pt.kind === "f64" || pt.kind === "i32");
     if (hasNumericParam) {
       ensureLateImportShared(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
       flushLateImportShiftsShared(ctx, liftedFctx);
@@ -1631,10 +1623,7 @@ export function compileArrowAsClosure(
       // It's a local variable (not a boxed capture) — safe to register as closure
       ctx.closureMap.set(assignName, closureInfo);
     }
-  } else if (
-    ts.isPropertyAssignment(parent) &&
-    ts.isIdentifier(parent.name)
-  ) {
+  } else if (ts.isPropertyAssignment(parent) && ts.isIdentifier(parent.name)) {
     // Object literal: { fn: function() { ... } }
     // Don't register in closureMap (property, not variable)
   }
@@ -1680,9 +1669,10 @@ export function compileArrowAsCallback(
     if (ctx.funcMap.has(name)) continue;
     // Skip if the name is the arrow's own parameter (including destructuring bindings)
     if (isOwnParamName(arrow, name)) continue;
-    const type = localIdx < fctx.params.length
-      ? fctx.params[localIdx]!.type
-      : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
+    const type =
+      localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
     const isMutable = writtenInCallback.has(name);
     const alreadyBoxed = !!fctx.boxedCaptures?.has(name);
     captures.push({ name, type, localIdx, mutable: isMutable, alreadyBoxed });
@@ -1864,7 +1854,7 @@ export function compileArrowAsCallback(
     if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
       const resolved = cbResolvedParams[i] ?? { kind: "f64" as const };
       const paramName = cbFctx.params[1 + i]?.name ?? `__param${i}`;
-      const effectiveIdx = cbFctx.localMap.get(paramName) ?? (1 + i);
+      const effectiveIdx = cbFctx.localMap.get(paramName) ?? 1 + i;
       emitArrowParamDestructuring(ctx, cbFctx, param, effectiveIdx, resolved);
     }
   }
@@ -1931,11 +1921,7 @@ export function compileArrowAsCallback(
   // 7. At creation site: push cbId + captures externref, call __make_callback
   const makeCallbackIdx = ctx.funcMap.get("__make_callback");
   if (makeCallbackIdx === undefined) {
-    ctx.errors.push({
-      message: "Missing __make_callback import",
-      line: getLine(arrow),
-      column: getCol(arrow),
-    });
+    reportError(ctx, arrow, "Missing __make_callback import");
     return null;
   }
 
@@ -1944,7 +1930,8 @@ export function compileArrowAsCallback(
   if (captures.length > 0) {
     // Push captured locals and create struct.
     // For mutable captures, create ref cells and keep locals for writeback (#859).
-    const refCellLocals: { refCellLocal: number; outerLocalIdx: number; refCellTypeIdx: number; valType: ValType }[] = [];
+    const refCellLocals: { refCellLocal: number; outerLocalIdx: number; refCellTypeIdx: number; valType: ValType }[] =
+      [];
     for (const cap of captures) {
       if (cap.mutable && !cap.alreadyBoxed) {
         // Create a ref cell: struct.new $ref_cell_T (value)
@@ -1952,7 +1939,10 @@ export function compileArrowAsCallback(
         fctx.body.push({ op: "local.get", index: cap.localIdx });
         fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
         // Keep a local ref to the ref cell for writeback after the host call
-        const refCellLocal = allocLocal(fctx, `__cb_rc_${cap.name}_${cbId}`, { kind: "ref_null", typeIdx: refCellTypeIdx });
+        const refCellLocal = allocLocal(fctx, `__cb_rc_${cap.name}_${cbId}`, {
+          kind: "ref_null",
+          typeIdx: refCellTypeIdx,
+        });
         fctx.body.push({ op: "local.tee", index: refCellLocal });
         // The struct.new result (ref cell) is on the stack for the capture struct
         refCellLocals.push({ refCellLocal, outerLocalIdx: cap.localIdx, refCellTypeIdx, valType: cap.type });
@@ -1988,7 +1978,10 @@ export function compileArrowAsCallback(
 /**
  * Look up a function's parameter and result types from its index.
  */
-export function getFuncSignature(ctx: CodegenContext, funcIdx: number): { params: ValType[]; results: ValType[] } | null {
+export function getFuncSignature(
+  ctx: CodegenContext,
+  funcIdx: number,
+): { params: ValType[]; results: ValType[] } | null {
   if (funcIdx < ctx.numImportFuncs) {
     let importFuncCount = 0;
     for (const imp of ctx.mod.imports) {
@@ -2024,7 +2017,7 @@ export function getOrCreateFuncRefWrapperTypes(
   resultTypes: ValType[],
 ): { structTypeIdx: number; liftedFuncTypeIdx: number; closureInfo: ClosureInfo } | null {
   // Build cache key from param types and result types
-  const sigKey = `${userParams.map(p => p.kind + ((p as any).typeIdx ?? "")).join(",")}->${resultTypes.map(r => r.kind + ((r as any).typeIdx ?? "")).join(",")}`;
+  const sigKey = `${userParams.map((p) => p.kind + ((p as any).typeIdx ?? "")).join(",")}->${resultTypes.map((r) => r.kind + ((r as any).typeIdx ?? "")).join(",")}`;
 
   const cached = ctx.funcRefWrapperCache.get(sigKey);
   if (cached) {
@@ -2035,9 +2028,7 @@ export function getOrCreateFuncRefWrapperTypes(
   // Mark as non-final (superTypeIdx = -1) so closures with captures can be
   // subtypes of this wrapper struct, enabling ref.cast to succeed at call sites.
   const closureName = `__fn_wrap_${ctx.closureCounter++}`;
-  const structFields = [
-    { name: "func", type: { kind: "funcref" as const }, mutable: false },
-  ];
+  const structFields = [{ name: "func", type: { kind: "funcref" as const }, mutable: false }];
   const structTypeIdx = ctx.mod.types.length;
   ctx.mod.types.push({
     kind: "struct",
@@ -2047,10 +2038,7 @@ export function getOrCreateFuncRefWrapperTypes(
   });
 
   // Create the lifted function type: (ref $struct, ...userParams) -> results
-  const liftedParams: ValType[] = [
-    { kind: "ref", typeIdx: structTypeIdx },
-    ...userParams,
-  ];
+  const liftedParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }, ...userParams];
   const liftedFuncTypeIdx = addFuncType(ctx, liftedParams, resultTypes, `${closureName}_type`);
 
   const closureInfo: ClosureInfo = {
@@ -2101,10 +2089,7 @@ export function emitFuncRefAsClosure(
     ctx.mod.types.push({
       kind: "struct",
       name: `${closureName}_struct`,
-      fields: [
-        { name: "func", type: { kind: "funcref" as const }, mutable: false },
-        ...captureFields,
-      ],
+      fields: [{ name: "func", type: { kind: "funcref" as const }, mutable: false }, ...captureFields],
       superTypeIdx: wrapperTypes.structTypeIdx,
     });
 
@@ -2231,10 +2216,7 @@ export function emitFuncRefAsClosure(
  */
 function closureBodyUsesArguments(node: ts.Node): boolean {
   if (ts.isIdentifier(node) && node.text === "arguments") return true;
-  if (
-    ts.isFunctionDeclaration(node) ||
-    ts.isFunctionExpression(node)
-  ) {
+  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
   }
   // Arrow functions do NOT have their own `arguments` — they inherit

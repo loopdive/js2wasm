@@ -34,9 +34,9 @@ describe("Compound assignment on element access for non-ref targets", () => {
         return obj[key] as number;
       }
     `);
-    const obj = { v: 0x0F };
+    const obj = { v: 0x0f };
     const result = exports.test(obj, "v");
-    expect(result).toBe(0xF0);
+    expect(result).toBe(0xf0);
   });
 
   it("compound assignment on array element access", async () => {

@@ -16,7 +16,7 @@ class MockElement {
 
   contains(el: MockElement): boolean {
     if (el === this) return true;
-    return this.children.some(c => c === el || c.contains(el));
+    return this.children.some((c) => c === el || c.contains(el));
   }
 
   querySelector(_sel: string): MockElement | null {
@@ -35,7 +35,7 @@ class MockElement {
 
   remove(): void {
     if (this.parentElement) {
-      this.parentElement.children = this.parentElement.children.filter(c => c !== this);
+      this.parentElement.children = this.parentElement.children.filter((c) => c !== this);
       this.parentElement = null;
     }
   }
@@ -48,8 +48,12 @@ describe("DOM containment", () => {
     container.appendChild(child);
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Document_querySelector", kind: "func",
-        intent: { type: "extern_class", className: "Document", action: "method", member: "querySelector" } },
+      {
+        module: "env",
+        name: "Document_querySelector",
+        kind: "func",
+        intent: { type: "extern_class", className: "Document", action: "method", member: "querySelector" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -63,8 +67,12 @@ describe("DOM containment", () => {
     container.appendChild(child);
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_get_ownerDocument", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "ownerDocument" } },
+      {
+        module: "env",
+        name: "Element_get_ownerDocument",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "ownerDocument" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -78,8 +86,12 @@ describe("DOM containment", () => {
     container.appendChild(child);
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_get_textContent", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" } },
+      {
+        module: "env",
+        name: "Element_get_textContent",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -91,8 +103,12 @@ describe("DOM containment", () => {
     container.textContent = "root";
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_get_textContent", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" } },
+      {
+        module: "env",
+        name: "Element_get_textContent",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -107,8 +123,12 @@ describe("DOM containment", () => {
     container.appendChild(child);
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_get_parentElement", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "parentElement" } },
+      {
+        module: "env",
+        name: "Element_get_parentElement",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "parentElement" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -126,8 +146,12 @@ describe("DOM containment", () => {
     const newChild = new MockElement("p");
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_appendChild", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "method", member: "appendChild" } },
+      {
+        module: "env",
+        name: "Element_appendChild",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "method", member: "appendChild" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -141,21 +165,23 @@ describe("DOM containment", () => {
     // outside is NOT appended to container — it's outside
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_appendChild", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "method", member: "appendChild" } },
+      {
+        module: "env",
+        name: "Element_appendChild",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "method", member: "appendChild" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
-    expect(() => imports.env.Element_appendChild(outside, new MockElement("p")))
-      .toThrow("DOM containment violation");
+    expect(() => imports.env.Element_appendChild(outside, new MockElement("p"))).toThrow("DOM containment violation");
   });
 
   it("redirects declared document global to domRoot", () => {
     const container = new MockElement("div");
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "global_document", kind: "func",
-        intent: { type: "declared_global", name: "document" } },
+      { module: "env", name: "global_document", kind: "func", intent: { type: "declared_global", name: "document" } },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -167,8 +193,12 @@ describe("DOM containment", () => {
     el.textContent = "hello";
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_get_ownerDocument", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "ownerDocument" } },
+      {
+        module: "env",
+        name: "Element_get_ownerDocument",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "ownerDocument" },
+      },
     ];
 
     // No domRoot -> no containment
@@ -183,8 +213,12 @@ describe("DOM containment", () => {
     container.appendChild(child);
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_get_baseURI", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "baseURI" } },
+      {
+        module: "env",
+        name: "Element_get_baseURI",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "baseURI" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -196,13 +230,16 @@ describe("DOM containment", () => {
     const outside = new MockElement("span");
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_set_textContent", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "set", member: "textContent" } },
+      {
+        module: "env",
+        name: "Element_set_textContent",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "set", member: "textContent" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
-    expect(() => imports.env.Element_set_textContent(outside, "evil"))
-      .toThrow("DOM containment violation");
+    expect(() => imports.env.Element_set_textContent(outside, "evil")).toThrow("DOM containment violation");
   });
 
   it("allows property set on contained elements", () => {
@@ -211,8 +248,12 @@ describe("DOM containment", () => {
     container.appendChild(child);
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_set_textContent", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "set", member: "textContent" } },
+      {
+        module: "env",
+        name: "Element_set_textContent",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "set", member: "textContent" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -225,8 +266,12 @@ describe("DOM containment", () => {
     const newChild = new MockElement("p");
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_appendChild", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "method", member: "appendChild" } },
+      {
+        module: "env",
+        name: "Element_appendChild",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "method", member: "appendChild" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -245,8 +290,12 @@ describe("DOM containment", () => {
     (container as any).parentNode = outer;
 
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Element_get_parentNode", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "parentNode" } },
+      {
+        module: "env",
+        name: "Element_get_parentNode",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "parentNode" },
+      },
     ];
 
     const imports = buildImports(manifest, {}, undefined, { domRoot: container as any });
@@ -258,10 +307,18 @@ describe("DOM containment", () => {
 describe("checkPolicy", () => {
   it("detects blocked extern class members", () => {
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Document_get_cookie", kind: "func",
-        intent: { type: "extern_class", className: "Document", action: "get", member: "cookie" } },
-      { module: "env", name: "Element_get_textContent", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" } },
+      {
+        module: "env",
+        name: "Document_get_cookie",
+        kind: "func",
+        intent: { type: "extern_class", className: "Document", action: "get", member: "cookie" },
+      },
+      {
+        module: "env",
+        name: "Element_get_textContent",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" },
+      },
     ];
     const policy: ImportPolicy = { blocked: new Set(["Document.cookie"]) };
     const violations = checkPolicy(manifest, policy);
@@ -270,8 +327,7 @@ describe("checkPolicy", () => {
 
   it("detects blocked globals", () => {
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "global_window", kind: "func",
-        intent: { type: "declared_global", name: "window" } },
+      { module: "env", name: "global_window", kind: "func", intent: { type: "declared_global", name: "window" } },
     ];
     const policy: ImportPolicy = { blocked: new Set(["window"]) };
     const violations = checkPolicy(manifest, policy);
@@ -281,8 +337,12 @@ describe("checkPolicy", () => {
   it("returns empty array when all imports are allowed", () => {
     const manifest: ImportDescriptor[] = [
       { module: "env", name: "Math_floor", kind: "func", intent: { type: "math", method: "floor" } },
-      { module: "env", name: "Element_get_textContent", kind: "func",
-        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" } },
+      {
+        module: "env",
+        name: "Element_get_textContent",
+        kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" },
+      },
     ];
     const policy: ImportPolicy = { blocked: new Set(["Document.cookie"]) };
     expect(checkPolicy(manifest, policy)).toEqual([]);
@@ -290,10 +350,18 @@ describe("checkPolicy", () => {
 
   it("detects multiple violations", () => {
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "Document_get_cookie", kind: "func",
-        intent: { type: "extern_class", className: "Document", action: "get", member: "cookie" } },
-      { module: "env", name: "Window_fetch", kind: "func",
-        intent: { type: "extern_class", className: "Window", action: "method", member: "fetch" } },
+      {
+        module: "env",
+        name: "Document_get_cookie",
+        kind: "func",
+        intent: { type: "extern_class", className: "Document", action: "get", member: "cookie" },
+      },
+      {
+        module: "env",
+        name: "Window_fetch",
+        kind: "func",
+        intent: { type: "extern_class", className: "Window", action: "method", member: "fetch" },
+      },
     ];
     const policy: ImportPolicy = { blocked: new Set(["Document.cookie", "Window.fetch"]) };
     const violations = checkPolicy(manifest, policy);
@@ -304,8 +372,12 @@ describe("checkPolicy", () => {
 
   it("detects blocked class without member (constructor)", () => {
     const manifest: ImportDescriptor[] = [
-      { module: "env", name: "XMLHttpRequest_new", kind: "func",
-        intent: { type: "extern_class", className: "XMLHttpRequest", action: "new" } },
+      {
+        module: "env",
+        name: "XMLHttpRequest_new",
+        kind: "func",
+        intent: { type: "extern_class", className: "XMLHttpRequest", action: "new" },
+      },
     ];
     const policy: ImportPolicy = { blocked: new Set(["XMLHttpRequest"]) };
     const violations = checkPolicy(manifest, policy);

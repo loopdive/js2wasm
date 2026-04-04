@@ -255,9 +255,7 @@ describe("Object file emission", () => {
     expect(undefinedSyms.length).toBeGreaterThanOrEqual(1);
 
     // The "greet" function should be defined and exported
-    const greetSym = symbols.find(
-      (s) => s.kind === SYMTAB.SYMTAB_FUNCTION && s.name === "greet",
-    );
+    const greetSym = symbols.find((s) => s.kind === SYMTAB.SYMTAB_FUNCTION && s.name === "greet");
     expect(greetSym).toBeDefined();
     expect(greetSym!.flags & SYM_FLAGS.WASM_SYM_EXPORTED).toBeTruthy();
   });
@@ -299,9 +297,7 @@ describe("Object file emission", () => {
     const linking = findCustomSection(sections, "linking")!;
     const { symbols } = parseLinkingSection(linking.payload);
 
-    const helperSym = symbols.find(
-      (s) => s.kind === SYMTAB.SYMTAB_FUNCTION && s.name === "helper",
-    );
+    const helperSym = symbols.find((s) => s.kind === SYMTAB.SYMTAB_FUNCTION && s.name === "helper");
     expect(helperSym).toBeDefined();
     expect(helperSym!.flags & SYM_FLAGS.WASM_SYM_BINDING_LOCAL).toBeTruthy();
   });

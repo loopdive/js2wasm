@@ -4,7 +4,7 @@ import { buildImports, instantiateWasm } from "../src/runtime.js";
 
 async function runFast(source: string, exportName = "test"): Promise<any> {
   const result = compile(source, { fast: true });
-  if (!result.success) throw new Error(result.errors.map(e => e.message).join("\n"));
+  if (!result.success) throw new Error(result.errors.map((e) => e.message).join("\n"));
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await instantiateWasm(result.binary, imports.env);
   return (instance.exports[exportName] as Function)();
@@ -60,7 +60,7 @@ describe("fast mode: i32 default numbers", () => {
 
   it("bitwise operations are direct (no f64 conversion)", async () => {
     const src = `export function test(): number { return (0xFF & 0x0F) | 0x30; }`;
-    expect(await runFast(src)).toBe(0x3F);
+    expect(await runFast(src)).toBe(0x3f);
   });
 
   it("negative numbers work", async () => {
@@ -68,10 +68,7 @@ describe("fast mode: i32 default numbers", () => {
   });
 
   it("WAT uses i32 ops instead of f64", () => {
-    const result = compile(
-      `export function test(): number { return 1 + 2; }`,
-      { fast: true },
-    );
+    const result = compile(`export function test(): number { return 1 + 2; }`, { fast: true });
     expect(result.success).toBe(true);
     // WAT should contain i32 operations, not f64
     expect(result.wat).toContain("i32.const");
@@ -81,9 +78,7 @@ describe("fast mode: i32 default numbers", () => {
   });
 
   it("non-fast mode still uses f64", () => {
-    const result = compile(
-      `export function test(): number { return 1 + 2; }`,
-    );
+    const result = compile(`export function test(): number { return 1 + 2; }`);
     expect(result.success).toBe(true);
     expect(result.wat).toContain("f64.const");
     expect(result.wat).toContain("f64.add");

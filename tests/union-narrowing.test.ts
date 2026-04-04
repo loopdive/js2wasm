@@ -9,10 +9,7 @@ async function run(source: string, fn: string, args: unknown[]): Promise<unknown
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   const imports = buildImports(result.imports);
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    imports as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
   return (instance.exports as any)[fn](...args);
 }
 

@@ -4,7 +4,7 @@ import { compileToWasm } from "./helpers.js";
 /**
  * Async iteration equivalence tests.
  *
- * The ts2wasm compiler compiles `for await...of` as regular `for...of`
+ * The js2wasm compiler compiles `for await...of` as regular `for...of`
  * (since async is compiled synchronously). These tests verify that the
  * compiled async iteration patterns produce correct results.
  */

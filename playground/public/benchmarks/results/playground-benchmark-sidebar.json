@@ -1,0 +1,22 @@
+[
+  {
+    "path": "examples/benchmarks/fib.ts",
+    "wasmUs": 10948.22676923077,
+    "jsUs": 22842.672269230774
+  },
+  {
+    "path": "examples/benchmarks/loop.ts",
+    "wasmUs": 1398.9247777777664,
+    "jsUs": 1485.2181666666663
+  },
+  {
+    "path": "examples/benchmarks/string.ts",
+    "wasmUs": 11.867633232526893,
+    "jsUs": 5.183038362455233
+  },
+  {
+    "path": "examples/benchmarks/array.ts",
+    "wasmUs": 37.273830267558516,
+    "jsUs": 112.39916951345758
+  }
+]

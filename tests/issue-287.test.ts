@@ -13,10 +13,7 @@ async function compileAndRun(source: string): Promise<{
     );
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    imports as unknown as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as unknown as WebAssembly.Imports);
   return { exports: instance.exports as any, instance };
 }
 
