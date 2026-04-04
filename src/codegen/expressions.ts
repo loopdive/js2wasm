@@ -20,6 +20,7 @@ import {
 } from "./array-methods.js";
 import { compileBinaryExpression, emitModulo, emitToInt32 } from "./binary-ops.js";
 import { popBody, pushBody } from "./context/bodies.js";
+import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "./context/types.js";
 import {
@@ -571,11 +572,7 @@ export function compileExpression(
   __compileDepth++;
   if (__compileDepth > MAX_COMPILE_DEPTH) {
     __compileDepth--;
-    ctx.errors.push({
-      message: `compilation depth exceeded (${MAX_COMPILE_DEPTH}) — possible infinite recursion`,
-      line: 0,
-      column: 0,
-    });
+    reportError(ctx, expr, `compilation depth exceeded (${MAX_COMPILE_DEPTH}) — possible infinite recursion`);
     const fallbackType = expectedType ?? { kind: "externref" as const };
     if (fallbackType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
     else if (fallbackType.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
@@ -595,14 +592,13 @@ function compileExpressionBody(
   expr: ts.Expression,
   expectedType?: ValType,
 ): ValType | null {
+  // Track the last known good AST node for error location fallback (#931)
+  if (expr) ctx.lastKnownNode = expr;
+
   // Guard: if the AST node is undefined/null, report an error and produce a
   // typed default value instead of crashing with "Cannot read 'kind' of undefined".
   if (!expr) {
-    ctx.errors.push({
-      message: "unexpected undefined AST node in compileExpression",
-      line: 0,
-      column: 0,
-    });
+    reportErrorNoNode(ctx, "unexpected undefined AST node in compileExpression");
     const fallbackType = expectedType ?? { kind: "f64" as const };
     pushDefaultValue(fctx, fallbackType, ctx);
     return fallbackType;
@@ -771,11 +767,7 @@ function compileExpressionBody(
     // Defensive: catch any unhandled crash in expression compilation
     fctx.body.length = bodyLenBefore;
     const msg = e instanceof Error ? e.message : String(e);
-    ctx.errors.push({
-      message: `Internal error compiling expression: ${msg}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportErrorNoNode(ctx, `Internal error compiling expression: ${msg}`);
     const fallbackType = expectedType ?? { kind: "f64" as const };
     pushDefaultValue(fctx, fallbackType, ctx);
     return fallbackType;
@@ -1256,11 +1248,7 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
     return compileExpressionInner(ctx, fctx, (expr as any as ts.SpreadElement).expression);
   }
 
-  ctx.errors.push({
-    message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`);
   return null;
 }
 
@@ -1964,11 +1952,7 @@ export function compileNullishCoalescing(
   // Compile LHS and store in temp
   const leftType = compileExpression(ctx, fctx, expr.left);
   if (!leftType) {
-    ctx.errors.push({
-      message: "Failed to compile nullish coalescing LHS",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Failed to compile nullish coalescing LHS");
     return { kind: "externref" };
   }
   const resultKind: ValType = leftType ?? { kind: "externref" };
@@ -2224,11 +2208,7 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
         // Null-guard: if ref cell local is null, skip struct.set (#702)
         const resultType = compileExpression(ctx, fctx, expr.right, boxed.valType);
         if (!resultType) {
-          ctx.errors.push({
-            message: "Failed to compile assignment value",
-            line: getLine(expr),
-            column: getCol(expr),
-          });
+          reportError(ctx, expr, "Failed to compile assignment value");
           return null;
         }
         const tmpVal = allocLocal(fctx, `__box_tmp_${fctx.locals.length}`, boxed.valType);
@@ -2276,11 +2256,7 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
             : localType;
       const resultType = compileExpression(ctx, fctx, expr.right, typeHint);
       if (!resultType) {
-        ctx.errors.push({
-          message: "Failed to compile assignment value",
-          line: getLine(expr),
-          column: getCol(expr),
-        });
+        reportError(ctx, expr, "Failed to compile assignment value");
         return null;
       }
 
@@ -2335,11 +2311,7 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
       const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
       const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
       if (!resultType) {
-        ctx.errors.push({
-          message: "Failed to compile assignment value",
-          line: getLine(expr),
-          column: getCol(expr),
-        });
+        reportError(ctx, expr, "Failed to compile assignment value");
         return null;
       }
       // Re-read index: RHS compilation may shift globals via addStringConstantGlobal
@@ -2355,11 +2327,7 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
       const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
       const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
       if (!resultType) {
-        ctx.errors.push({
-          message: "Failed to compile assignment value",
-          line: getLine(expr),
-          column: getCol(expr),
-        });
+        reportError(ctx, expr, "Failed to compile assignment value");
         return null;
       }
       // Re-read index: RHS compilation may shift globals via addStringConstantGlobal
@@ -2397,11 +2365,7 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
     return compileArrayDestructuringAssignment(ctx, fctx, expr.left, expr.right);
   }
 
-  ctx.errors.push({
-    message: "Unsupported assignment target",
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, "Unsupported assignment target");
   return null;
 }
 
@@ -2500,11 +2464,7 @@ function compileDestructuringAssignment(
 
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) {
-        ctx.errors.push({
-          message: `Unknown field in destructuring: ${propName}`,
-          line: getLine(prop),
-          column: getCol(prop),
-        });
+        reportError(ctx, prop, `Unknown field in destructuring: ${propName}`);
         continue;
       }
 
@@ -2790,11 +2750,7 @@ function compileArrayDestructuringAssignment(
         });
       }
     }
-    ctx.errors.push({
-      message: "Cannot destructure: not an array type",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Cannot destructure: not an array type");
     return null;
   }
 
@@ -2820,11 +2776,7 @@ function compileArrayDestructuringAssignment(
     arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const ad = ctx.mod.types[arrTypeIdx];
     if (!ad || ad.kind !== "array") {
-      ctx.errors.push({
-        message: "Cannot destructure: vec data is not array",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Cannot destructure: vec data is not array");
       return null;
     }
     arrDef = ad as { kind: string; element: ValType };
@@ -3642,21 +3594,13 @@ function compilePropertyAssignment(
       const setterParamTypes = getFuncParamTypes(ctx, funcIdx);
       const setterObjResult = compileExpression(ctx, fctx, target.expression, setterParamTypes?.[0]);
       if (!setterObjResult) {
-        ctx.errors.push({
-          message: "Failed to compile setter receiver",
-          line: getLine(target),
-          column: getCol(target),
-        });
+        reportError(ctx, target, "Failed to compile setter receiver");
         return null;
       }
       const setterValExpectedType = setterParamTypes?.[1]; // param 0 = self, param 1 = value
       const setterValResult = compileExpression(ctx, fctx, value, setterValExpectedType);
       if (!setterValResult) {
-        ctx.errors.push({
-          message: "Failed to compile setter value",
-          line: getLine(target),
-          column: getCol(target),
-        });
+        reportError(ctx, target, "Failed to compile setter value");
         return null;
       }
       // Save value for assignment expression result
@@ -3684,11 +3628,7 @@ function compilePropertyAssignment(
   const structSelfType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
   const structObjResult = compileExpression(ctx, fctx, target.expression, structSelfType);
   if (!structObjResult) {
-    ctx.errors.push({
-      message: "Failed to compile struct field receiver",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Failed to compile struct field receiver");
     return null;
   }
   const valType = compileExpression(ctx, fctx, value, fields[fieldIdx]!.type);
@@ -3729,21 +3669,13 @@ function compileExternPropertySet(
   // Push object, then value (with type hint from property type)
   const externObjResult = compileExpression(ctx, fctx, target.expression);
   if (!externObjResult) {
-    ctx.errors.push({
-      message: "Failed to compile extern property receiver",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Failed to compile extern property receiver");
     return null;
   }
   const propInfo = propOwner.properties.get(propName);
   const externValResult = compileExpression(ctx, fctx, value, propInfo?.type);
   if (!externValResult) {
-    ctx.errors.push({
-      message: "Failed to compile extern property value",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Failed to compile extern property value");
     return null;
   }
 
@@ -3875,11 +3807,7 @@ function compileElementAssignment(
   // Push array ref
   const arrType = compileExpression(ctx, fctx, target.expression);
   if (!arrType) {
-    ctx.errors.push({
-      message: "Assignment to non-array",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Assignment to non-array");
     return null;
   }
 
@@ -3975,11 +3903,7 @@ function compileElementAssignment(
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const arrDef = ctx.mod.types[arrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {
-      ctx.errors.push({
-        message: "Assignment: vec data is not array",
-        line: 0,
-        column: 0,
-      });
+      reportError(ctx, target, "Assignment: vec data is not array");
       return null;
     }
     // Save vec ref and index in locals for reuse
@@ -4002,11 +3926,7 @@ function compileElementAssignment(
       kind: "f64",
     });
     if (!idxResult) {
-      ctx.errors.push({
-        message: "Failed to compile element index",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Failed to compile element index");
       return null;
     }
     fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -4017,11 +3937,7 @@ function compileElementAssignment(
     // Compile value
     const elemValResult = compileExpression(ctx, fctx, value, arrDef.element);
     if (!elemValResult) {
-      ctx.errors.push({
-        message: "Failed to compile element value",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Failed to compile element value");
       return null;
     }
     const valLocal = allocLocal(fctx, `__val_${fctx.locals.length}`, arrDef.element);
@@ -4238,22 +4154,14 @@ function compileElementAssignment(
   // Push index (as i32)
   const plainIdxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
   if (!plainIdxResult) {
-    ctx.errors.push({
-      message: "Failed to compile element index",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Failed to compile element index");
     return null;
   }
   fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   // Push value
   const plainValResult = compileExpression(ctx, fctx, value, typeDef.element);
   if (!plainValResult) {
-    ctx.errors.push({
-      message: "Failed to compile element value",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Failed to compile element value");
     return null;
   }
   // Save value for assignment expression result
@@ -4299,11 +4207,7 @@ function compileExternSetFallback(
   } else if (objType.kind === "ref" || objType.kind === "ref_null") {
     fctx.body.push({ op: "extern.convert_any" });
   } else {
-    ctx.errors.push({
-      message: "Unsupported element assignment target type",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Unsupported element assignment target type");
     return null;
   }
 
@@ -4370,11 +4274,11 @@ export function compileLogicalAssignment(
   }
 
   if (!ts.isIdentifier(expr.left)) {
-    ctx.errors.push({
-      message: "Logical assignment only supported for simple identifiers, property access, or element access",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(
+      ctx,
+      expr,
+      "Logical assignment only supported for simple identifiers, property access, or element access",
+    );
     return null;
   }
 
@@ -4861,11 +4765,7 @@ function compileElementLogicalAssignment(
   // Compile object expression
   const arrType = compileExpression(ctx, fctx, target.expression);
   if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
-    ctx.errors.push({
-      message: "Logical assignment on non-array element access",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Logical assignment on non-array element access");
     return null;
   }
 
@@ -4930,11 +4830,7 @@ function compileElementLogicalAssignment(
       const dataTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
       const dataDef = ctx.mod.types[dataTypeIdx];
       if (!dataDef || dataDef.kind !== "array") {
-        ctx.errors.push({
-          message: "Vec struct data field is not an array",
-          line: getLine(target),
-          column: getCol(target),
-        });
+        reportError(ctx, target, "Vec struct data field is not an array");
         return null;
       }
       const elemType = dataDef.element;
@@ -4973,11 +4869,7 @@ function compileElementLogicalAssignment(
     }
   }
 
-  ctx.errors.push({
-    message: "Unsupported element access logical assignment target",
-    line: getLine(target),
-    column: getCol(target),
-  });
+  reportError(ctx, target, "Unsupported element access logical assignment target");
   return null;
 }
 
@@ -5127,11 +5019,7 @@ function compileStringCompoundAssignment(
 
   const concatIdx = ctx.funcMap.get("concat");
   if (concatIdx === undefined) {
-    ctx.errors.push({
-      message: "String concat import not available",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "String concat import not available");
     return null;
   }
 
@@ -5160,11 +5048,7 @@ function compileStringCompoundAssignment(
   // Compile RHS, coercing numbers to string
   const rhsType = compileExpression(ctx, fctx, expr.right);
   if (!rhsType) {
-    ctx.errors.push({
-      message: "Failed to compile string += RHS",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Failed to compile string += RHS");
     return null;
   }
   if (rhsType.kind === "f64" || rhsType.kind === "i32") {
@@ -5317,11 +5201,7 @@ export function compileCompoundAssignment(
   }
 
   if (!ts.isIdentifier(expr.left)) {
-    ctx.errors.push({
-      message: "Compound assignment only supported for simple identifiers",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Compound assignment only supported for simple identifiers");
     return null;
   }
 
@@ -5366,11 +5246,7 @@ export function compileCompoundAssignment(
       kind: "f64",
     });
     if (!compoundRhsType1) {
-      ctx.errors.push({
-        message: "Failed to compile compound assignment RHS",
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, "Failed to compile compound assignment RHS");
       return null;
     }
     if (compoundRhsType1.kind !== "f64") coerceType(ctx, fctx, compoundRhsType1, { kind: "f64" });
@@ -5402,11 +5278,7 @@ export function compileCompoundAssignment(
       kind: "f64",
     });
     if (!compoundRhsType2) {
-      ctx.errors.push({
-        message: "Failed to compile compound assignment RHS",
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, "Failed to compile compound assignment RHS");
       return null;
     }
     if (compoundRhsType2.kind !== "f64") coerceType(ctx, fctx, compoundRhsType2, { kind: "f64" });
@@ -5461,11 +5333,7 @@ export function compileCompoundAssignment(
         if (concatIdx !== undefined) {
           const compoundRhsStr = compileExpression(ctx, fctx, expr.right);
           if (!compoundRhsStr) {
-            ctx.errors.push({
-              message: "Failed to compile compound assignment RHS",
-              line: getLine(expr),
-              column: getCol(expr),
-            });
+            reportError(ctx, expr, "Failed to compile compound assignment RHS");
             return null;
           }
           // Coerce RHS to externref if needed (e.g. number → string)
@@ -5509,11 +5377,7 @@ export function compileCompoundAssignment(
       boxedNeedsCoerce ? { kind: "f64" } : boxed.valType,
     );
     if (!compoundRhsBoxed) {
-      ctx.errors.push({
-        message: "Failed to compile compound assignment RHS",
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, "Failed to compile compound assignment RHS");
       return null;
     }
     // Coerce RHS to f64 if needed (#795, #816)
@@ -5590,11 +5454,7 @@ export function compileCompoundAssignment(
     kind: "f64",
   });
   if (!compoundRhsType3) {
-    ctx.errors.push({
-      message: "Failed to compile compound assignment RHS",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Failed to compile compound assignment RHS");
     return null;
   }
   if (compoundRhsType3.kind !== "f64") coerceType(ctx, fctx, compoundRhsType3, { kind: "f64" });
@@ -6016,11 +5876,7 @@ function compilePropertyCompoundAssignmentExternref(
   // Unbox to f64: __unbox_number(externref) -> f64
   const unboxIdx = ctx.funcMap.get("__unbox_number");
   if (unboxIdx === undefined) {
-    ctx.errors.push({
-      message: "Missing __unbox_number for compound externref property assignment",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Missing __unbox_number for compound externref property assignment");
     return null;
   }
   fctx.body.push({ op: "call", funcIdx: unboxIdx });
@@ -6042,11 +5898,7 @@ function compilePropertyCompoundAssignmentExternref(
   fctx.body.push({ op: "local.get", index: resultLocal });
   const boxIdx = ctx.funcMap.get("__box_number");
   if (boxIdx === undefined) {
-    ctx.errors.push({
-      message: "Missing __box_number for compound externref property assignment",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Missing __box_number for compound externref property assignment");
     return null;
   }
   fctx.body.push({ op: "call", funcIdx: boxIdx });
@@ -6128,11 +5980,7 @@ function compileElementCompoundAssignment(
     // Unbox to f64: __unbox_number(externref) -> f64
     const unboxIdx = ctx.funcMap.get("__unbox_number");
     if (unboxIdx === undefined) {
-      ctx.errors.push({
-        message: "Missing __unbox_number for compound externref assignment",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Missing __unbox_number for compound externref assignment");
       return null;
     }
     fctx.body.push({ op: "call", funcIdx: unboxIdx });
@@ -6154,11 +6002,7 @@ function compileElementCompoundAssignment(
     fctx.body.push({ op: "local.get", index: resultLocal });
     const boxIdx = ctx.funcMap.get("__box_number");
     if (boxIdx === undefined) {
-      ctx.errors.push({
-        message: "Missing __box_number for compound externref assignment",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Missing __box_number for compound externref assignment");
       return null;
     }
     fctx.body.push({ op: "call", funcIdx: boxIdx });
@@ -6226,11 +6070,7 @@ function compileElementCompoundAssignment(
     // Unbox to f64
     const unboxIdx = ctx.funcMap.get("__unbox_number");
     if (unboxIdx === undefined) {
-      ctx.errors.push({
-        message: "Missing __unbox_number for compound element assignment",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Missing __unbox_number for compound element assignment");
       return null;
     }
     fctx.body.push({ op: "call", funcIdx: unboxIdx });
@@ -6252,11 +6092,7 @@ function compileElementCompoundAssignment(
     fctx.body.push({ op: "local.get", index: resultLocal });
     const boxIdx = ctx.funcMap.get("__box_number");
     if (boxIdx === undefined) {
-      ctx.errors.push({
-        message: "Missing __box_number for compound element assignment",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Missing __box_number for compound element assignment");
       return null;
     }
     fctx.body.push({ op: "call", funcIdx: boxIdx });
@@ -6286,11 +6122,7 @@ function compileElementCompoundAssignment(
   }
 
   if (objResult.kind !== "ref" && objResult.kind !== "ref_null") {
-    ctx.errors.push({
-      message: "Compound assignment on non-ref element access",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Compound assignment on non-ref element access");
     return null;
   }
 
@@ -6447,11 +6279,7 @@ function compileElementCompoundAssignment(
     }
   }
 
-  ctx.errors.push({
-    message: `Unsupported compound assignment on element access`,
-    line: getLine(target),
-    column: getCol(target),
-  });
+  reportError(ctx, target, `Unsupported compound assignment on element access`);
   return null;
 }
 
@@ -7394,11 +7222,7 @@ function compilePrefixUnary(
     }
   }
 
-  ctx.errors.push({
-    message: `Unsupported prefix unary operator: ${ts.SyntaxKind[expr.operator]}`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, `Unsupported prefix unary operator: ${ts.SyntaxKind[expr.operator]}`);
   return null;
 }
 
@@ -7645,11 +7469,7 @@ function compilePostfixUnary(
     return compilePostfixIncrementElement(ctx, fctx, expr.operand, isIncrement);
   }
 
-  ctx.errors.push({
-    message: "Unsupported postfix unary target",
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, "Unsupported postfix unary target");
   return null;
 }
 
@@ -7668,21 +7488,13 @@ function compilePrefixIncrementProperty(
   const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
   const typeName = resolveStructName(ctx, objType);
   if (!typeName) {
-    ctx.errors.push({
-      message: `Cannot resolve struct for prefix increment on property: ${propName}`,
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, `Cannot resolve struct for prefix increment on property: ${propName}`);
     return null;
   }
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
-    ctx.errors.push({
-      message: `Unknown struct type for prefix increment: ${typeName}`,
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, `Unknown struct type for prefix increment: ${typeName}`);
     return null;
   }
   const fieldIdx = fields.findIndex((f) => f.name === propName);
@@ -7742,11 +7554,7 @@ function compilePrefixIncrementElement(
 ): ValType | null {
   const arrType = compileExpression(ctx, fctx, target.expression);
   if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
-    ctx.errors.push({
-      message: "Prefix increment on non-array element access",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Prefix increment on non-array element access");
     return null;
   }
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
@@ -7789,11 +7597,7 @@ function compilePrefixIncrementElement(
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const arrDef = ctx.mod.types[arrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {
-      ctx.errors.push({
-        message: "Prefix increment: vec data is not array",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Prefix increment: vec data is not array");
       return null;
     }
     const vecLocal = allocLocal(fctx, `__inc_vec_${fctx.locals.length}`, arrType);
@@ -7861,11 +7665,7 @@ function compilePrefixIncrementElement(
     return { kind: "f64" };
   }
 
-  ctx.errors.push({
-    message: "Unsupported prefix increment element access target",
-    line: getLine(target),
-    column: getCol(target),
-  });
+  reportError(ctx, target, "Unsupported prefix increment element access target");
   return null;
 }
 
@@ -7882,21 +7682,13 @@ function compilePostfixIncrementProperty(
   const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
   const typeName = resolveStructName(ctx, objType);
   if (!typeName) {
-    ctx.errors.push({
-      message: `Cannot resolve struct for postfix increment on property: ${propName}`,
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, `Cannot resolve struct for postfix increment on property: ${propName}`);
     return null;
   }
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
-    ctx.errors.push({
-      message: `Unknown struct type for postfix increment: ${typeName}`,
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, `Unknown struct type for postfix increment: ${typeName}`);
     return null;
   }
   const fieldIdx = fields.findIndex((f) => f.name === propName);
@@ -7963,11 +7755,7 @@ function compilePostfixIncrementElement(
 ): ValType | null {
   const arrType = compileExpression(ctx, fctx, target.expression);
   if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
-    ctx.errors.push({
-      message: "Postfix increment on non-array element access",
-      line: getLine(target),
-      column: getCol(target),
-    });
+    reportError(ctx, target, "Postfix increment on non-array element access");
     return null;
   }
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
@@ -8015,11 +7803,7 @@ function compilePostfixIncrementElement(
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const arrDef = ctx.mod.types[arrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {
-      ctx.errors.push({
-        message: "Postfix increment: vec data is not array",
-        line: getLine(target),
-        column: getCol(target),
-      });
+      reportError(ctx, target, "Postfix increment: vec data is not array");
       return null;
     }
     const vecLocal = allocLocal(fctx, `__postinc_vec_${fctx.locals.length}`, arrType);
@@ -8092,11 +7876,7 @@ function compilePostfixIncrementElement(
     return { kind: "f64" };
   }
 
-  ctx.errors.push({
-    message: "Unsupported postfix increment element access target",
-    line: getLine(target),
-    column: getCol(target),
-  });
+  reportError(ctx, target, "Unsupported postfix increment element access target");
   return null;
 }
 
@@ -9756,12 +9536,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       if (argTypeF.kind !== "externref") {
         coerceType(ctx, fctx, argTypeF, { kind: "externref" });
       }
-      const gptFuncIdx = ensureLateImport(
-        ctx,
-        "__getPrototypeOf",
-        [{ kind: "externref" }],
-        [{ kind: "externref" }],
-      );
+      const gptFuncIdx = ensureLateImport(ctx, "__getPrototypeOf", [{ kind: "externref" }], [{ kind: "externref" }]);
       flushLateImportShifts(ctx, fctx);
       if (gptFuncIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: gptFuncIdx });
@@ -10197,12 +9972,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       if (argResult.kind !== "externref") {
         coerceType(ctx, fctx, argResult, { kind: "externref" });
       }
-      const funcIdx = ensureLateImport(
-        ctx,
-        "__getOwnPropertyNames",
-        [{ kind: "externref" }],
-        [{ kind: "externref" }],
-      );
+      const funcIdx = ensureLateImport(ctx, "__getOwnPropertyNames", [{ kind: "externref" }], [{ kind: "externref" }]);
       flushLateImportShifts(ctx, fctx);
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
@@ -14265,11 +14035,7 @@ function compileSuperMethodCall(ctx: CodegenContext, fctx: FunctionContext, expr
   }
 
   if (funcIdx === undefined) {
-    ctx.errors.push({
-      message: `Cannot find method '${methodName}' on parent class '${parentClassName}'`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, `Cannot find method '${methodName}' on parent class '${parentClassName}'`);
     return null;
   }
 
@@ -14359,11 +14125,7 @@ function compileSuperElementMethodCall(
   }
 
   if (funcIdx === undefined) {
-    ctx.errors.push({
-      message: `Cannot find method '${methodName}' on parent class '${parentClassName}'`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, `Cannot find method '${methodName}' on parent class '${parentClassName}'`);
     return null;
   }
 
@@ -15025,11 +14787,7 @@ function compileNewFunctionExpression(
   const flatArgs = flattenCallArgs(rawArgs);
   if (!flatArgs) {
     // Can't flatten spread at compile time — unsupported
-    ctx.errors.push({
-      message: "new FunctionExpression with non-literal spread not supported",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "new FunctionExpression with non-literal spread not supported");
     return null;
   }
 
@@ -15424,11 +15182,7 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
         const ctorName = `${syntheticName}_new`;
         const funcIdx = ctx.funcMap.get(ctorName);
         if (funcIdx === undefined) {
-          ctx.errors.push({
-            message: `Missing constructor for anonymous class`,
-            line: getLine(expr),
-            column: getCol(expr),
-          });
+          reportError(ctx, expr, `Missing constructor for anonymous class`);
           return null;
         }
 
@@ -16236,11 +15990,7 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     const ctorName = `${className}_new`;
     const funcIdx = ctx.funcMap.get(ctorName);
     if (funcIdx === undefined) {
-      ctx.errors.push({
-        message: `Missing constructor for class: ${className}`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, `Missing constructor for class: ${className}`);
       return null;
     }
 
@@ -16322,11 +16072,7 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     const importName = `${externInfo.importPrefix}_new`;
     const funcIdx = ctx.funcMap.get(importName);
     if (funcIdx === undefined) {
-      ctx.errors.push({
-        message: `Missing import for constructor: ${importName}`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, `Missing import for constructor: ${importName}`);
       return null;
     }
     fctx.body.push({ op: "call", funcIdx });
@@ -16683,11 +16429,7 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
-  ctx.errors.push({
-    message: `Unsupported new expression for class: ${className}`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, `Unsupported new expression for class: ${className}`);
   return null;
 }
 
@@ -16774,11 +16516,7 @@ function compileExternMethodCall(
   }
 
   if (funcIdx === undefined) {
-    ctx.errors.push({
-      message: `Missing import for method: ${importName}`,
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
+    reportError(ctx, callExpr, `Missing import for method: ${importName}`);
     return null;
   }
 
@@ -18741,22 +18479,14 @@ export function getIteratorResultValueType(ctx: CodegenContext, type: ts.Type): 
 function compileYieldExpression(ctx: CodegenContext, fctx: FunctionContext, expr: ts.YieldExpression): InnerResult {
   // Ensure we're inside a generator function
   if (!fctx.isGenerator) {
-    ctx.errors.push({
-      message: "yield expression outside of generator function",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "yield expression outside of generator function");
     return null;
   }
 
   // Get the buffer local
   const bufferIdx = fctx.localMap.get("__gen_buffer");
   if (bufferIdx === undefined) {
-    ctx.errors.push({
-      message: "Internal error: __gen_buffer not found in generator function",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Internal error: __gen_buffer not found in generator function");
     return null;
   }
 

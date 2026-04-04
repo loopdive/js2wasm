@@ -4,6 +4,7 @@
  * bitwise, modulo, boolean, and any-typed binary operations.
  */
 import ts from "typescript";
+import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import {
@@ -1253,11 +1254,7 @@ export function compileBinaryExpression(
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
 
-  ctx.errors.push({
-    message: `Unsupported binary operator for type`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, `Unsupported binary operator for type`);
   return null;
 }
 
@@ -1371,11 +1368,7 @@ export function compileNumericBinaryOp(
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "f64" };
       }
-      ctx.errors.push({
-        message: "Math_pow import not found for ** operator",
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, "Math_pow import not found for ** operator");
       return { kind: "f64" };
     }
     case ts.SyntaxKind.SlashToken:
@@ -1420,11 +1413,7 @@ export function compileNumericBinaryOp(
     case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
       return compileBitwiseBinaryOp(fctx, "i32.shr_u", true);
     default:
-      ctx.errors.push({
-        message: `Unsupported numeric binary operator: ${ts.SyntaxKind[op]}`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, `Unsupported numeric binary operator: ${ts.SyntaxKind[op]}`);
       return { kind: "f64" };
   }
 }
@@ -1605,11 +1594,7 @@ function compileI64BinaryOp(
       fctx.body.push({ op: "i64.shr_u" });
       return { kind: "i64" };
     default:
-      ctx.errors.push({
-        message: `Unsupported BigInt binary operator: ${ts.SyntaxKind[op]}`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, `Unsupported BigInt binary operator: ${ts.SyntaxKind[op]}`);
       return { kind: "i64" };
   }
 }

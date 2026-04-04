@@ -3,6 +3,7 @@
  * Extracted from expressions.ts (issue #688 step 5).
  */
 import ts from "typescript";
+import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { addImport } from "./registry/imports.js";
@@ -176,11 +177,7 @@ export function compileRegExpLiteral(ctx: CodegenContext, fctx: FunctionContext,
     funcIdx = ctx.funcMap.get("RegExp_new");
   }
   if (funcIdx === undefined) {
-    ctx.errors.push({
-      message: "Missing RegExp_new import for regex literal",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Missing RegExp_new import for regex literal");
     return null;
   }
   fctx.body.push({ op: "call", funcIdx });
