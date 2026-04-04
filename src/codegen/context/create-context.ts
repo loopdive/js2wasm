@@ -118,6 +118,7 @@ export function createCodegenContext(
     sealedVars: new Set(),
     shapePropFlags: new Map(),
     funcConstructorMap: new Map(),
+    ensureStructPending: new Set(),
   };
 
   getOrRegisterVecType(ctx, "externref", { kind: "externref" });
