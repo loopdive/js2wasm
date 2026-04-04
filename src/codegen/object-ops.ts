@@ -9,12 +9,7 @@ import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.j
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
 import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
-import {
-  resolveWasmType,
-  addUnionImports,
-  getOrRegisterTupleType,
-  cacheStringLiterals,
-} from "./index.js";
+import { resolveWasmType, addUnionImports, getOrRegisterTupleType, cacheStringLiterals } from "./index.js";
 import { isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { compileStatement } from "./statements.js";
@@ -1993,8 +1988,7 @@ export function compilePropertyIntrospection(
   if (receiverWasm.kind === "externref") {
     const isHOP = propAccess.name.text === "hasOwnProperty";
     const importName = isHOP ? "__hasOwnProperty" : "__propertyIsEnumerable";
-    const hopIdx = ensureLateImport(ctx, importName,
-      [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+    const hopIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     flushLateImportShifts(ctx, fctx);
     if (hopIdx !== undefined) {
       // Push receiver
