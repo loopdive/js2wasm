@@ -7844,36 +7844,6 @@ function collectStringStaticImports(ctx: CodegenContext, sourceFile: ts.SourceFi
   }
 }
 
-/** Check if an expression is a Promise host call that returns an externref Promise object.
- *  Used to override type inference for variables initialized from Promise static/instance methods. */
-function isPromiseHostCallExpr(expr: ts.Expression, ctx: CodegenContext): boolean {
-  if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
-    const method = expr.expression.name.text;
-    // Static methods: Promise.resolve/reject/all/race/allSettled/any
-    if (
-      ts.isIdentifier(expr.expression.expression) &&
-      expr.expression.expression.text === "Promise" &&
-      (method === "resolve" || method === "reject" || method === "all" ||
-       method === "race" || method === "allSettled" || method === "any")
-    ) {
-      return true;
-    }
-    // Instance methods: .then/.catch/.finally on Promise-typed receivers
-    if (method === "then" || method === "catch" || method === "finally") {
-      const receiverType = ctx.checker.getTypeAtLocation(expr.expression.expression);
-      const symName = receiverType.getSymbol()?.name;
-      if (symName === "Promise") return true;
-      const apparent = ctx.checker.getApparentType(receiverType);
-      if (apparent.getSymbol()?.name === "Promise") return true;
-    }
-  }
-  // new Promise(executor)
-  if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression) && expr.expression.text === "Promise") {
-    return true;
-  }
-  return false;
-}
-
 /** Scan source for Promise.all / Promise.race / Promise.resolve / Promise.reject
  *  calls and `new Promise(...)` constructor usage, and register host imports */
 function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
@@ -7888,14 +7858,14 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
       node.expression.expression.text === "Promise"
     ) {
       const method = node.expression.name.text;
-      if (method === "all" || method === "race" || method === "allSettled" || method === "any" || method === "resolve" || method === "reject") {
+      if (method === "all" || method === "race" || method === "resolve" || method === "reject") {
         needed.add(method);
       }
     }
     // Detect .then() / .catch() on Promise-typed values
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const method = node.expression.name.text;
-      if (method === "then" || method === "catch" || method === "finally") {
+      if (method === "then" || method === "catch") {
         const receiverType = ctx.checker.getTypeAtLocation(node.expression.expression);
         const symName = receiverType.getSymbol()?.name;
         if (symName === "Promise" || (receiverType as any).resolvedTypeArguments) {
@@ -7943,10 +7913,7 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
     }
   }
 
-  // Register static methods: Promise.all/race/allSettled/any/resolve/reject (1 param)
-  const instanceMethods = new Set(["then", "catch", "finally"]);
   for (const method of needed) {
-    if (instanceMethods.has(method)) continue; // handled below
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
       const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
@@ -7954,12 +7921,14 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
     }
   }
 
-  // Register Promise instance methods: .then(cb), .catch(cb), .finally(cb)
+  // Register Promise instance methods: .then(cb) and .catch(cb)
+  // These are detected from calls on Promise-typed values (e.g. p.then(...))
   for (const method of needed) {
-    if (method === "then" || method === "catch" || method === "finally") {
+    if (method === "then" || method === "catch") {
       const importName = `Promise_${method}`;
       if (!ctx.funcMap.has(importName)) {
-        // Promise_then/catch/finally(promise, callback) -> promise
+        // Promise_then(promise, callback) -> promise
+        // Promise_catch(promise, callback) -> promise
         const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
         addImport(ctx, "env", importName, { kind: "func", typeIdx });
       }
@@ -8861,9 +8830,6 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
 
     // Promise<T> → unwrap to T.
     // Async functions are compiled synchronously, so Promise<T> is just T at the Wasm level.
-    // NOTE: Host Promise objects (from Promise.resolve, Promise.all, etc.) return
-    // externref directly from the expression compiler — the variable assignment
-    // respects the expression result type over this TS-level unwrapping.
     if (sym?.name === "Promise") {
       const typeArgs = ctx.checker.getTypeArguments(tsType as ts.TypeReference);
       if (typeArgs.length > 0) {
@@ -11135,10 +11101,7 @@ function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isE
     for (const decl of list.declarations) {
       if (ts.isIdentifier(decl.name)) {
         const varType = ctx.checker.getTypeAtLocation(decl);
-        // Promise host calls (Promise.resolve, .all, .then, etc.) return externref
-        const wasmType = decl.initializer && isPromiseHostCallExpr(decl.initializer, ctx)
-          ? { kind: "externref" as const }
-          : resolveWasmType(ctx, varType);
+        const wasmType = resolveWasmType(ctx, varType);
         registerModuleGlobal(decl.name.text, wasmType);
       } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
         registerBindingNames(decl.name);
@@ -11214,10 +11177,7 @@ function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isE
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
           const varType = ctx.checker.getTypeAtLocation(decl);
-          // Promise host calls (Promise.resolve, .all, .then, etc.) return externref
-          const wasmType = decl.initializer && isPromiseHostCallExpr(decl.initializer, ctx)
-            ? { kind: "externref" as const }
-            : resolveWasmType(ctx, varType);
+          const wasmType = resolveWasmType(ctx, varType);
           registerModuleGlobal(decl.name.text, wasmType);
           if (isLetOrConst) {
             ctx.tdzLetConstNames.add(decl.name.text);
@@ -13184,10 +13144,7 @@ function hoistVarDecl(ctx: CodegenContext, fctx: FunctionContext, decl: ts.Varia
     if (fctx.localMap.has(name)) return;
     if (ctx.moduleGlobals.has(name)) return;
     const varType = ctx.checker.getTypeAtLocation(decl);
-    // Promise host calls (Promise.resolve, .all, .then, etc.) return externref
-    const wasmType = decl.initializer && isPromiseHostCallExpr(decl.initializer, ctx)
-      ? { kind: "externref" as const }
-      : resolveWasmType(ctx, varType);
+    const wasmType = resolveWasmType(ctx, varType);
     const localIdx = allocLocal(fctx, name, wasmType);
     // In JS, hoisted `var` variables are `undefined` before their declaration,
     // not `null`. For externref locals, emit __get_undefined() + local.set (#737).
@@ -13416,10 +13373,7 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
         if (fctx.localMap.has(name)) continue;
         if (ctx.moduleGlobals.has(name)) continue;
         const varType = ctx.checker.getTypeAtLocation(decl);
-        // Promise host calls (Promise.resolve, .all, .then, etc.) return externref
-        const wasmType = decl.initializer && isPromiseHostCallExpr(decl.initializer, ctx)
-          ? { kind: "externref" as const }
-          : resolveWasmType(ctx, varType);
+        const wasmType = resolveWasmType(ctx, varType);
         allocLocal(fctx, name, wasmType);
         // Only add TDZ flag if static analysis can't prove all accesses are safe
         if (needsTdzFlag(ctx, decl)) {
