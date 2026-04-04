@@ -2264,11 +2264,18 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
         return null;
       }
 
-      // If a closure struct ref was assigned to an externref local, update the local's type
+      // If a closure struct ref was assigned to a local that already has a closure
+      // ref type, update the local's type to match the new struct.
+      // BUT: do NOT update externref locals — hoistVarDecl already emitted externref
+      // init code; changing the type would make that init type-incompatible (#852).
+      // Instead, the safety coercion below (coerceType ref→externref) emits
+      // extern.convert_any, and compileClosureCall handles externref locals with
+      // guarded ref.cast at call sites.
       if (
         (isCallableRHS || localIsClosureRef) &&
         resultType.kind === "ref" &&
-        (localType?.kind === "externref" || localIsClosureRef)
+        localIsClosureRef &&
+        localType?.kind !== "externref"
       ) {
         if (localIdx < fctx.params.length) {
           fctx.params[localIdx]!.type = resultType;
@@ -2329,16 +2336,29 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
     const moduleIdx = ctx.moduleGlobals.get(name);
     if (moduleIdx !== undefined) {
       const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
-      const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
+      const globalType = globalDef?.type;
+      // When assigning a function expression/arrow to a module global,
+      // don't pass externref type hint — let it compile to its native closure
+      // struct ref type. We'll coerce to externref for storage afterward (#852).
+      const isFuncExprRHS = ts.isFunctionExpression(expr.right) || ts.isArrowFunction(expr.right);
+      const isFuncRefRHS = ts.isIdentifier(expr.right) && ctx.funcMap.has(expr.right.text);
+      const typeHint = (isFuncExprRHS || isFuncRefRHS) && globalType?.kind === "externref" ? undefined : globalType;
+      const resultType = compileExpression(ctx, fctx, expr.right, typeHint);
       if (!resultType) {
         reportError(ctx, expr, "Failed to compile assignment value");
         return null;
+      }
+      // Coerce closure struct ref → externref for storage in the global
+      if (globalType?.kind === "externref" && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
+        fctx.body.push({ op: "extern.convert_any" });
+      } else if (globalType && !valTypesMatch(resultType, globalType)) {
+        coerceType(ctx, fctx, resultType, globalType);
       }
       // Re-read index: RHS compilation may shift globals via addStringConstantGlobal
       const moduleIdxPost = ctx.moduleGlobals.get(name)!;
       fctx.body.push({ op: "global.set", index: moduleIdxPost });
       fctx.body.push({ op: "global.get", index: moduleIdxPost });
-      return resultType;
+      return globalType ?? resultType;
     }
     // Graceful fallback for unresolved identifiers: auto-allocate a local
     // so that compilation can continue. This handles class/object method bodies
@@ -8138,8 +8158,9 @@ function compileClosureCall(
   if (localIdx === undefined && moduleIdx === undefined) return null;
 
   // Determine how to push the closure ref (local vs module global).
-  // If the local is externref (e.g. captured in a __cb_N callback), we need to
-  // convert to the expected struct ref type before struct.get can be used.
+  // If the value is externref (e.g. captured in a __cb_N callback or a module
+  // global like `var f; f = () => {...}`), we need to convert to the expected
+  // struct ref type before struct.get can be used.
   let effectiveLocalIdx = localIdx;
   if (localIdx !== undefined) {
     const localType =
@@ -8151,6 +8172,20 @@ function compileClosureCall(
       fctx.body.push({ op: "local.get", index: localIdx });
       fctx.body.push({ op: "any.convert_extern" });
       // Guard cast to avoid illegal cast traps (#778)
+      emitGuardedRefCast(fctx, info.structTypeIdx);
+      fctx.body.push({ op: "local.set", index: castLocal });
+      effectiveLocalIdx = castLocal;
+    }
+  } else if (moduleIdx !== undefined) {
+    // Module global: `var f; f = () => {...}; f(...)` — the global stores
+    // externref. Convert to the expected closure struct ref (#852).
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
+    const globalType = globalDef?.type;
+    if (globalType?.kind === "externref") {
+      const castType: ValType = { kind: "ref_null", typeIdx: info.structTypeIdx };
+      const castLocal = allocLocal(fctx, `__closure_cast_${fctx.locals.length}`, castType);
+      fctx.body.push({ op: "global.get", index: moduleIdx });
+      fctx.body.push({ op: "any.convert_extern" });
       emitGuardedRefCast(fctx, info.structTypeIdx);
       fctx.body.push({ op: "local.set", index: castLocal });
       effectiveLocalIdx = castLocal;
@@ -11890,6 +11925,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
 
     // Check if this is a closure call
     let closureInfo = ctx.closureMap.get(funcName);
+
     if (!closureInfo) {
       // Fallback: if the variable is a local with a ref type, look up closure info
       // by struct type index. This handles cases like:

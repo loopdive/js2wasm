@@ -11571,7 +11571,10 @@ function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isE
     if (!isAssignOp) continue;
     // Check if the left side references a known module global
     let targetName: string | undefined;
-    if (ts.isPropertyAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
+    if (ts.isIdentifier(expr.left)) {
+      // Simple assignment: f = ...
+      targetName = expr.left.text;
+    } else if (ts.isPropertyAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
       targetName = expr.left.expression.text;
     } else if (ts.isElementAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
       targetName = expr.left.expression.text;

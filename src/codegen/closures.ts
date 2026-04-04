@@ -1614,13 +1614,16 @@ export function compileArrowAsClosure(
     ts.isIdentifier(parent.left)
   ) {
     // Assignment expression: f = function() { ... }
-    // Only register if the target variable is a local in the current function context
-    // and not a boxed (mutable) capture, which stores values as externref.
+    // Register if the target variable is a local in the current function context
+    // (not a boxed capture) OR a module-level global variable (#852).
     const assignName = parent.left.text;
     const currentFctx = ctx.currentFunc!;
     const localIdx = currentFctx.localMap.get(assignName);
     if (localIdx !== undefined && !currentFctx.boxedCaptures?.has(assignName)) {
       // It's a local variable (not a boxed capture) — safe to register as closure
+      ctx.closureMap.set(assignName, closureInfo);
+    } else if (ctx.moduleGlobals.has(assignName)) {
+      // Module-level global: `var f; f = () => {...}` — register for closure dispatch
       ctx.closureMap.set(assignName, closureInfo);
     }
   } else if (ts.isPropertyAssignment(parent) && ts.isIdentifier(parent.name)) {
