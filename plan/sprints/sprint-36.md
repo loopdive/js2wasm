@@ -68,4 +68,56 @@ Parallel tracks, refactoring last:
 
 ## Retrospective
 
-(To be filled after sprint completion)
+### Completed
+- #914: Architecture overview (docs/ARCHITECTURE.md)
+- #915: CONTRIBUTING.md
+- #916: Repo hygiene (-1,236 lines of clutter)
+- #917: Lint/format/typecheck consistency + CI workflow
+- #918: 7 contributor-friendly starter issues (#935-#941)
+- #922: Baseline-diff script (scripts/diff-test262.ts)
+- #932: Feature coverage % + benchmark chart on landing page
+- #942: Feature compatibility report (52 features ranked)
+- #944: Regression fix — revert #855, fix #831 LHS validation
+
+### In progress / pending merge
+- #920: RegExp regressions (test-and-merge running)
+- #921: Class dstr type mismatch (branch ready)
+- #919: Eval/args async closure fix (branch ready)
+- #927: Early error detection — 5 commits (branch ready)
+- #931: Error line numbers — 132 calls migrated (branch ready)
+
+### Deferred to sprint 37
+- #923: Compiler state leakage (hard, needs focused attention)
+- #933: Shared chart web components
+- #910-#913: Refactoring (sequential, high-risk)
+
+### Honest baseline
+- Pre-session: 15,526 pass (36.2%)
+- Current (post #944 fix): 16,268 pass (37.7%)
+- Improvement: +742 pass
+- Note: The 17,782 result was cache-inflated and never real
+
+## Retrospective (draft — finalize after all merges)
+
+### What went well
+- **Bisect tool saved the sprint** — scripts/diff-test262.ts identified #855 and #831 as regression culprits within minutes
+- **test-and-merge.sh replaces tester agents** — zero token cost for merge validation
+- **PO error analysis** produced 6 data-driven issues with clear root causes
+- **Contributor docs shipped** — ARCHITECTURE.md, CONTRIBUTING.md, starter issues, CI workflow
+- **9 issues completed** despite regression disruption
+
+### What went wrong
+- **#855 caused 1,451 regressions** — merged without proper test262 validation (equiv-only)
+- **Dismissed regression as "runner instability"** for hours — wasted 4+ test262 runs before bisecting
+- **17,782 baseline was fake** — cache-inflated result accepted as real. Only discovered after reverting #855 showed same 16,268
+- **Tester agents couldn't build from worktrees** — they built from main, testing regressed code repeatedly
+- **30+ opus agents spawned** — burned 25% of weekly token budget in one day
+- **Too many concurrent agents** — OOMed test262, crashed docker
+
+### Process improvements applied
+1. **test-and-merge.sh** — bash script replaces tester agents (zero tokens)
+2. **Developer model selection** — sonnet default, opus for hard issues only
+3. **senior-developer.md** — separate agent role for hard issues
+4. **reasoning_effort in issues** — drives model selection
+5. **Never dismiss regressions** — always bisect first (memory saved)
+6. **Merge proof in worktree** — hook checks both locations
