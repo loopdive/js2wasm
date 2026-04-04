@@ -13,6 +13,7 @@
  */
 
 import ts from "typescript";
+import { reportError } from "./context/errors.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { allocLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
@@ -116,11 +117,7 @@ export function compileObjectLiteral(
       ensureComputedPropertyFields(ctx, fctx, expr, type);
       return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
     }
-    ctx.errors.push({
-      message: "Cannot determine struct type for object literal",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Cannot determine struct type for object literal");
     return null;
   }
 
@@ -147,11 +144,7 @@ export function compileObjectLiteral(
     return compileObjectLiteralForStruct(ctx, fctx, expr, inferredName);
   }
 
-  ctx.errors.push({
-    message: "Object literal type not mapped to struct",
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, "Object literal type not mapped to struct");
   return null;
 }
 
@@ -536,11 +529,7 @@ export function compileObjectLiteralForStruct(
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
-    ctx.errors.push({
-      message: `Unknown struct type: ${typeName}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, `Unknown struct type: ${typeName}`);
     return null;
   }
 
@@ -1138,7 +1127,7 @@ export function compileArrayLiteral(
     const vecTypeIdx = getOrRegisterVecType(ctx, emptyElemKind);
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
     if (arrTypeIdx < 0) {
-      ctx.errors.push({ message: "Empty array literal: invalid vec type", line: getLine(expr), column: getCol(expr) });
+      reportError(ctx, expr, "Empty array literal: invalid vec type");
       return null;
     }
     fctx.body.push({ op: "i32.const", value: 0 }); // length field (field 0)
@@ -1173,7 +1162,7 @@ export function compileArrayLiteral(
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
   if (arrTypeIdx < 0) {
-    ctx.errors.push({ message: "Array literal: invalid vec type", line: getLine(expr), column: getCol(expr) });
+    reportError(ctx, expr, "Array literal: invalid vec type");
     return null;
   }
 
@@ -1334,7 +1323,7 @@ export function compileArrayConstructorCall(
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
   if (arrTypeIdx < 0) {
-    ctx.errors.push({ message: "Array(): invalid vec type", line: getLine(expr), column: getCol(expr) });
+    reportError(ctx, expr, "Array(): invalid vec type");
     return null;
   }
 

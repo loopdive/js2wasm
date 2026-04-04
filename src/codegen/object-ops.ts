@@ -5,6 +5,7 @@
  * Extracted from expressions.ts (#688 step 6).
  */
 import ts from "typescript";
+import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
@@ -1699,11 +1700,7 @@ export function compileObjectKeysOrValues(
   const structTypeIdx = ctx.structMap.get(structName);
   const fields = ctx.structFields.get(structName);
   if (structTypeIdx === undefined || !fields) {
-    ctx.errors.push({
-      message: `Object.${method}(): unknown struct "${structName}"`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, `Object.${method}(): unknown struct "${structName}"`);
     return null;
   }
 
@@ -1735,11 +1732,7 @@ export function compileObjectKeysOrValues(
     const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
     if (arrTypeIdx < 0) {
-      ctx.errors.push({
-        message: `Object.keys(): cannot resolve array type for string[]`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, `Object.keys(): cannot resolve array type for string[]`);
       return null;
     }
 
@@ -1825,11 +1818,7 @@ export function compileObjectKeysOrValues(
     }
 
     if (outerArrTypeIdx < 0) {
-      ctx.errors.push({
-        message: `Object.entries(): cannot resolve outer array type`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, `Object.entries(): cannot resolve outer array type`);
       return null;
     }
 
@@ -1921,11 +1910,7 @@ export function compileObjectKeysOrValues(
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
   if (arrTypeIdx < 0) {
-    ctx.errors.push({
-      message: `Object.values(): cannot resolve array type for values[]`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, `Object.values(): cannot resolve array type for values[]`);
     return null;
   }
 

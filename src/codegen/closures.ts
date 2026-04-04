@@ -14,6 +14,7 @@
  */
 
 import ts from "typescript";
+import { reportError } from "./context/errors.js";
 import { pushBody } from "./context/bodies.js";
 import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
@@ -1920,11 +1921,7 @@ export function compileArrowAsCallback(
   // 7. At creation site: push cbId + captures externref, call __make_callback
   const makeCallbackIdx = ctx.funcMap.get("__make_callback");
   if (makeCallbackIdx === undefined) {
-    ctx.errors.push({
-      message: "Missing __make_callback import",
-      line: getLine(arrow),
-      column: getCol(arrow),
-    });
+    reportError(ctx, arrow, "Missing __make_callback import");
     return null;
   }
 
