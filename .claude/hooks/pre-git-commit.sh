@@ -22,19 +22,9 @@ if [ "$BRANCH" = "main" ] && [ "$PWD" != "/workspace" ]; then
   exit 2
 fi
 
-# For git commit: format, lint, check code word, inject guidance
+# For git commit: check code word and inject guidance
+# NOTE: formatting + linting now handled by husky + lint-staged (git pre-commit hook)
 if echo "$CMD" | grep -q 'git commit'; then
-  # Auto-format staged files with prettier
-  cd /workspace
-  STAGED=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '\.(ts|js|mjs|json)$' | head -50)
-  if [ -n "$STAGED" ]; then
-    echo "$STAGED" | xargs npx prettier --write 2>/dev/null
-    echo "$STAGED" | xargs git add 2>/dev/null
-  fi
-
-  # Lint with biome (error-level only)
-  npx biome lint --diagnostic-level=error 2>/dev/null || true
-
   # Verify code word from pre-commit checklist
   if ! echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
     echo "BLOCKED: Missing code word. Read plan/pre-commit-checklist.md for instructions." >&2
