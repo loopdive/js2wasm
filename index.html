@@ -1420,18 +1420,24 @@
               width = jsPos - wasmPos;
             }
 
-            // White bar with opacity scaled: highest ratio = 1.0, 0% = 0.0
-            const opacity = Math.min(ratio / maxRatio, 1).toFixed(2);
-            const textColor = ratio >= 1 ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)";
+            // Gradient bar: opacity 0.1 at JS baseline, 1.0 at extremes (0% or max%)
+            // Distance from baseline determines opacity intensity
+            const dist = Math.abs(ratio - 1) / Math.max(maxRatio - 1, 1); // 0..1
+            const edgeOpacity = (0.1 + dist * 0.9).toFixed(2); // 0.1..1.0
+            const baseOpacity = "0.1";
+            // Gradient direction: from baseline edge toward the extreme
+            const gradDir = ratio >= 1 ? "to right" : "to left";
+            const grad = `linear-gradient(${gradDir}, rgba(255,255,255,${baseOpacity}), rgba(255,255,255,${edgeOpacity}))`;
+            const textOpacity = (0.4 + dist * 0.6).toFixed(2);
 
             const rowEl = document.createElement("div");
             rowEl.className = "bench-row";
             rowEl.innerHTML = `
               <span class="bench-name">${label}</span>
               <div class="bench-track">
-                <div class="bench-fill" style="left: ${left}%; width: ${width}%; background: rgba(255,255,255,${opacity}); border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
+                <div class="bench-fill" style="left: ${left}%; width: ${width}%; background: ${grad}; border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
               </div>
-              <span class="bench-value" style="color: ${textColor}">${scoreText}</span>
+              <span class="bench-value" style="color: rgba(255,255,255,${textOpacity})">${scoreText}</span>
             `;
             container.appendChild(rowEl);
           }
