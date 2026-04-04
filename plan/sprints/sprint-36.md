@@ -64,7 +64,19 @@ Parallel tracks, refactoring last:
 
 ## Results
 
-(Fill after sprint completion)
+**Baseline (start)**: 15,526 pass (36.2%) — real, cache-disabled
+**Baseline (end)**: 17,822 pass / 43,120 total (41.3%) — confirmed real, cache disabled, proposals pre-filtered
+**Delta**: +2,296 pass (+6.1pp)
+
+**Completed issues**: #914, #915, #916, #917, #918, #920, #922, #932, #942, #944 (regression fix)
+
+**Pending test-and-merge** (branches ready, not yet on main):
+- #919: eval/args async closure fix
+- #921: class dstr generator/private-method type mismatch  
+- #927: early/parse error detection (5 commits)
+- #931: error line numbers (132 ctx.errors.push calls migrated)
+
+**Deferred to sprint 37**: #923 (compiler state leakage), #933 (chart web components), #910-#913 (refactoring)
 
 ## Retrospective
 
