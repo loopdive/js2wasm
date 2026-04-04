@@ -33,7 +33,8 @@
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
     "build:pages": "node dashboard/build-data.js && pnpm run build:playground && node scripts/build-pages.js",
-    "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push"
+    "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
+    "prepare": "husky"
   },
   "dependencies": {
     "binaryen": "^125.0.0",
@@ -44,11 +45,20 @@
     "@types/node": "^22",
     "esbuild": "^0.25.12",
     "eslint": "^10.0.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "monaco-editor": "^0.55.1",
     "prettier": "^3.8.1",
     "vite": "^6",
     "vite-plugin-dts": "^4",
     "vitest": "^3"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs}": [
+      "prettier --write",
+      "biome lint --diagnostic-level=error --no-errors-on-unmatched"
+    ],
+    "*.json": "prettier --write"
   },
   "packageManager": "pnpm@10.30.2+sha512.36cdc707e7b7940a988c9c1ecf88d084f8514b5c3f085f53a2e244c2921d3b2545bc20dd4ebe1fc245feec463bb298aecea7a63ed1f7680b877dc6379d8d0cb4"
 }
