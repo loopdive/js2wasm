@@ -15274,6 +15274,32 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     }
   }
 
+  // Non-identifier constructor: detect non-constructable functions.
+  if (!ts.isIdentifier(expr.expression) && !ts.isFunctionExpression(expr.expression)) {
+    // Pattern 1: `new X.prototype.Y()` — prototype methods are NEVER constructors.
+    // This covers both ES2022 (forEach) and ES2023 (with, toSorted) methods,
+    // even when TypeScript lib doesn't know about the method (type resolves to `any`).
+    if (ts.isPropertyAccessExpression(expr.expression)) {
+      const obj = expr.expression.expression; // e.g. Array.prototype
+      if (ts.isPropertyAccessExpression(obj) && obj.name.text === "prototype") {
+        emitThrowString(ctx, fctx, "TypeError: is not a constructor");
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+    }
+
+    // Pattern 2: TypeScript knows the expression has call sigs but no construct sigs.
+    // e.g. `new decodeURIComponent()`, `new Math.abs()`, `new Array.from()`.
+    const exprType = ctx.checker.getTypeAtLocation(expr.expression);
+    const constructSigs = ctx.checker.getSignaturesOfType(exprType, ts.SignatureKind.Construct);
+    const callSigs = ctx.checker.getSignaturesOfType(exprType, ts.SignatureKind.Call);
+    if (callSigs.length > 0 && constructSigs.length === 0) {
+      emitThrowString(ctx, fctx, "TypeError: is not a constructor");
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+  }
+
   // Handle `new Promise(executor)` — delegate to host import
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Promise") {
     const funcIdx = ctx.funcMap.get("Promise_new");
