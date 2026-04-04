@@ -6,6 +6,7 @@
  * shared.ts (NOT expressions.ts) to avoid circular dependencies.
  */
 import ts from "typescript";
+import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
@@ -404,11 +405,7 @@ function compileArrayPrototypeIndexOf(
 ): ValType | null {
   // callExpr.arguments: [obj, searchValue, ...]
   if (callExpr.arguments.length < 2) {
-    ctx.errors.push({
-      message: "Array.prototype.indexOf.call requires at least 2 arguments",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
+    reportError(ctx, callExpr, "Array.prototype.indexOf.call requires at least 2 arguments");
     return null;
   }
 
@@ -529,11 +526,7 @@ function compileArrayPrototypeIncludes(
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 2) {
-    ctx.errors.push({
-      message: "Array.prototype.includes.call requires at least 2 arguments",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
+    reportError(ctx, callExpr, "Array.prototype.includes.call requires at least 2 arguments");
     return null;
   }
 
@@ -618,11 +611,7 @@ function compileArrayPrototypeEvery(
 ): ValType | null {
   // callExpr.arguments: [obj, callback]
   if (callExpr.arguments.length < 2) {
-    ctx.errors.push({
-      message: "Array.prototype.every.call requires at least 2 arguments",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
+    reportError(ctx, callExpr, "Array.prototype.every.call requires at least 2 arguments");
     return null;
   }
 
@@ -1237,7 +1226,7 @@ function compileArrayAt(
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "at() requires 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
+    reportError(ctx, callExpr, "at() requires 1 argument");
     return null;
   }
 
@@ -1300,7 +1289,7 @@ function compileArrayIndexOf(
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "indexOf requires 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
+    reportError(ctx, callExpr, "indexOf requires 1 argument");
     return null;
   }
 
@@ -1453,7 +1442,7 @@ function compileArrayIncludes(
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "includes requires 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
+    reportError(ctx, callExpr, "includes requires 1 argument");
     return null;
   }
 
@@ -2166,11 +2155,7 @@ function compileArrayJoin(
   const concatIdx = ctx.funcMap.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) {
-    ctx.errors.push({
-      message: "join requires string support (wasm:js-string concat)",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
+    reportError(ctx, callExpr, "join requires string support (wasm:js-string concat)");
     return null;
   }
 
@@ -2444,11 +2429,7 @@ function setupArrayCallback(
     const bridge = bridgeName ?? (ctx.fast ? "__call_1_i32" : "__call_1_f64");
     callBridgeIdx = ctx.funcMap.get(bridge);
     if (callBridgeIdx === undefined) {
-      ctx.errors.push({
-        message: `Missing ${bridge} import for ${methodName}`,
-        line: getLine(callExpr),
-        column: getCol(callExpr),
-      });
+      reportError(ctx, callExpr, `Missing ${bridge} import for ${methodName}`);
       return null;
     }
     cbTmp = allocLocal(fctx, `__arr_${tag}_cb_${fctx.locals.length}`, { kind: "externref" });
@@ -3495,11 +3476,7 @@ function compileArrayFill(
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
-    ctx.errors.push({
-      message: "fill requires at least 1 argument",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
+    reportError(ctx, callExpr, "fill requires at least 1 argument");
     return null;
   }
 
@@ -3607,11 +3584,7 @@ function compileArrayCopyWithin(
   _elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 2) {
-    ctx.errors.push({
-      message: "copyWithin requires at least 2 arguments (target, start)",
-      line: getLine(callExpr),
-      column: getCol(callExpr),
-    });
+    reportError(ctx, callExpr, "copyWithin requires at least 2 arguments (target, start)");
     return null;
   }
 
@@ -3711,7 +3684,7 @@ function compileArrayLastIndexOf(
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "lastIndexOf requires 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
+    reportError(ctx, callExpr, "lastIndexOf requires 1 argument");
     return null;
   }
 

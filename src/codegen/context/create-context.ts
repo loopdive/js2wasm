@@ -25,6 +25,7 @@ export function createCodegenContext(
     currentFunc: null,
     funcStack: [],
     errors: [],
+    lastKnownNode: null,
     externClasses: new Map(),
     funcOptionalParams: new Map(),
     anonTypeMap: new Map(),
