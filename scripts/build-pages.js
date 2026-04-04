@@ -91,7 +91,10 @@ function normalizeSnippet(source) {
   const nonEmpty = lines.filter((line) => line.trim().length > 0);
   if (nonEmpty.length === 0) return source.trim();
   const minIndent = Math.min(...nonEmpty.map((line) => line.match(/^(\s*)/)?.[1].length ?? 0));
-  return lines.map((line) => line.slice(minIndent)).join("\n").trim();
+  return lines
+    .map((line) => line.slice(minIndent))
+    .join("\n")
+    .trim();
 }
 
 function extractEquivTestsFromFile(filePath) {
@@ -166,10 +169,7 @@ function buildStaticTest262Data(resultsJsonlPath) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([category, files]) => [category, [...files].sort()]),
   );
-  const resultsJson = Object.fromEntries(
-    [...resultsByCategory.entries()]
-      .sort(([a], [b]) => a.localeCompare(b)),
-  );
+  const resultsJson = Object.fromEntries([...resultsByCategory.entries()].sort(([a], [b]) => a.localeCompare(b)));
 
   return {
     categories: { categories },
@@ -201,7 +201,10 @@ copyFile(join(PLAN_DIR, "issues-graph.html"), join(PAGES_DIST, "issues-graph.htm
 copyFile(join(PLAN_DIR, "graph-data.json"), join(PAGES_DIST, "graph-data.json"));
 
 // Add the benchmark data files fetched by the public report pages.
-copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "history.json"), join(PAGES_DIST, "benchmarks", "results", "history.json"));
+copyFileIfExists(
+  join(BENCHMARKS_RESULTS_DIR, "history.json"),
+  join(PAGES_DIST, "benchmarks", "results", "history.json"),
+);
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "latest.json"), join(PAGES_DIST, "benchmarks", "results", "latest.json"));
 const test262ReportSource = resolvePreferredFile(
   join(BENCHMARKS_RESULTS_DIR, "test262-report.json"),

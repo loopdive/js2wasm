@@ -41,13 +41,13 @@ function fdow(y: number, m: number): number {
   const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
   let yr = y;
   if (m < 2) yr = yr - 1;
-  const d = (yr + (yr / 4 | 0) - (yr / 100 | 0) + (yr / 400 | 0) + t[m] + 1) % 7;
+  const d = (yr + ((yr / 4) | 0) - ((yr / 100) | 0) + ((yr / 400) | 0) + t[m] + 1) % 7;
   return (d + 6) % 7;
 }
 
 // Deterministic price 100-950
 function priceOf(y: number, m: number, d: number): number {
-  const h = ((y * 373 + m * 631 + d * 997) & 0x7FFFFFFF) % 18;
+  const h = ((y * 373 + m * 631 + d * 997) & 0x7fffffff) % 18;
   return (h + 2) * 50;
 }
 
@@ -72,9 +72,7 @@ function renderCal(): void {
 
   for (let i = 0; i < offset; i++) {
     const d = prevDays - offset + 1 + i;
-    const cell = el("div",
-      "padding:8px 4px;text-align:center;font-size:0.8rem;" +
-      "color:#555;font-style:italic");
+    const cell = el("div", "padding:8px 4px;text-align:center;font-size:0.8rem;" + "color:#555;font-style:italic");
     const dn = el("div", "font-weight:bold");
     dn.textContent = d.toString();
     cell.appendChild(dn);
@@ -96,7 +94,9 @@ function renderCal(): void {
     let priceFg = "#aaa";
     const isToday = d === todayD && curMonth === todayM && curYear === todayY;
     const inRange = selStart > 0 && selEnd > 0 && d >= selStart && d <= selEnd;
-    if (inRange) { bg = "#333"; }
+    if (inRange) {
+      bg = "#333";
+    }
     if (d === selStart) {
       bg = "#fff";
       fg = "#111";
@@ -115,11 +115,19 @@ function renderCal(): void {
     if (isToday && bg !== "#7c3aed") {
       border = "2px solid #7c3aed";
     }
-    const cell = el("div",
+    const cell = el(
+      "div",
       "padding:6px 4px;text-align:center;font-size:0.8rem;" +
-      "cursor:pointer;border-radius:4px;" +
-      "background:" + bg + ";color:" + fg + ";" +
-      "border:" + border + ";transition:background 0.1s");
+        "cursor:pointer;border-radius:4px;" +
+        "background:" +
+        bg +
+        ";color:" +
+        fg +
+        ";" +
+        "border:" +
+        border +
+        ";transition:background 0.1s",
+    );
 
     const dn = el("div", "font-weight:bold");
     dn.textContent = d.toString();
@@ -130,7 +138,9 @@ function renderCal(): void {
 
     const day = d;
     const cellBg = bg;
-    cell.addEventListener("click", () => { onDay(day); });
+    cell.addEventListener("click", () => {
+      onDay(day);
+    });
     cell.addEventListener("mouseenter", () => {
       if (cellBg === "transparent") cell.style.background = "#222";
     });
@@ -145,9 +155,7 @@ function renderCal(): void {
   const nextM = curMonth === 11 ? 0 : curMonth + 1;
   const nextY = curMonth === 11 ? curYear + 1 : curYear;
   for (let i = 1; i <= rem; i++) {
-    const cell = el("div",
-      "padding:8px 4px;text-align:center;font-size:0.8rem;" +
-      "color:#555;font-style:italic");
+    const cell = el("div", "padding:8px 4px;text-align:center;font-size:0.8rem;" + "color:#555;font-style:italic");
     const dn = el("div", "font-weight:bold");
     dn.textContent = i.toString();
     cell.appendChild(dn);
@@ -167,8 +175,13 @@ function onDay(d: number): void {
     selEnd = -1;
   } else if (selEnd < 0) {
     if (d > selStart) selEnd = d;
-    else if (d < selStart) { selEnd = selStart; selStart = d; }
-    else { selStart = -1; selEnd = -1; }
+    else if (d < selStart) {
+      selEnd = selStart;
+      selStart = d;
+    } else {
+      selStart = -1;
+      selEnd = -1;
+    }
   } else {
     selStart = d;
     selEnd = -1;
@@ -195,15 +208,11 @@ function updFoot(): void {
 export function main(): void {
   const host = document.body;
   host.innerHTML = "";
-  host.style.cssText =
-    "margin:0;background:#111;color:#ddd;" +
-    "font-family:system-ui,sans-serif;overflow:hidden";
+  host.style.cssText = "margin:0;background:#111;color:#ddd;" + "font-family:system-ui,sans-serif;overflow:hidden";
 
   const wrap = el("div", "padding:1rem;max-width:420px;margin:0 auto");
 
-  const hdr = el("div",
-    "display:flex;justify-content:space-between;align-items:baseline;" +
-    "margin-bottom:0.5rem");
+  const hdr = el("div", "display:flex;justify-content:space-between;align-items:baseline;" + "margin-bottom:0.5rem");
   monthEl = el("div", "font-size:3.5rem;font-weight:bold;color:#fff;line-height:1");
   yearEl = el("div", "font-size:1.1rem;color:#888");
   hdr.appendChild(monthEl);
@@ -211,9 +220,11 @@ export function main(): void {
   wrap.appendChild(hdr);
 
   const dayNames = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-  const wh = el("div",
+  const wh = el(
+    "div",
     "display:grid;grid-template-columns:repeat(7,1fr);" +
-    "text-align:center;font-size:0.6rem;color:#666;margin-bottom:4px");
+      "text-align:center;font-size:0.6rem;color:#666;margin-bottom:4px",
+  );
   for (let i = 0; i < 7; i++) {
     const c = el("div", "padding:2px");
     c.textContent = dayNames[i];
@@ -221,13 +232,14 @@ export function main(): void {
   }
   wrap.appendChild(wh);
 
-  gridEl = el("div",
-    "display:grid;grid-template-columns:repeat(7,1fr);gap:2px");
+  gridEl = el("div", "display:grid;grid-template-columns:repeat(7,1fr);gap:2px");
   wrap.appendChild(gridEl);
 
-  const wh2 = el("div",
+  const wh2 = el(
+    "div",
     "display:grid;grid-template-columns:repeat(7,1fr);" +
-    "text-align:center;font-size:0.6rem;color:#666;margin-top:4px");
+      "text-align:center;font-size:0.6rem;color:#666;margin-top:4px",
+  );
   for (let i = 0; i < 7; i++) {
     const c = el("div", "padding:2px");
     c.textContent = dayNames[i];
@@ -235,35 +247,50 @@ export function main(): void {
   }
   wrap.appendChild(wh2);
 
-  const nav = el("div",
-    "display:flex;justify-content:space-between;margin:0.75rem 0");
-  const prev = el("div",
-    "cursor:pointer;font-size:1.2rem;color:#888;padding:4px 12px");
+  const nav = el("div", "display:flex;justify-content:space-between;margin:0.75rem 0");
+  const prev = el("div", "cursor:pointer;font-size:1.2rem;color:#888;padding:4px 12px");
   prev.textContent = "\u2190";
   prev.addEventListener("click", () => {
-    if (curMonth === 0) { curMonth = 11; curYear = curYear - 1; }
-    else { curMonth = curMonth - 1; }
-    selStart = -1; selEnd = -1; updFoot(); renderCal();
+    if (curMonth === 0) {
+      curMonth = 11;
+      curYear = curYear - 1;
+    } else {
+      curMonth = curMonth - 1;
+    }
+    selStart = -1;
+    selEnd = -1;
+    updFoot();
+    renderCal();
   });
-  const next = el("div",
-    "cursor:pointer;font-size:1.2rem;color:#888;padding:4px 12px");
+  const next = el("div", "cursor:pointer;font-size:1.2rem;color:#888;padding:4px 12px");
   next.textContent = "\u2192";
   next.addEventListener("click", () => {
-    if (curMonth === 11) { curMonth = 0; curYear = curYear + 1; }
-    else { curMonth = curMonth + 1; }
-    selStart = -1; selEnd = -1; updFoot(); renderCal();
+    if (curMonth === 11) {
+      curMonth = 0;
+      curYear = curYear + 1;
+    } else {
+      curMonth = curMonth + 1;
+    }
+    selStart = -1;
+    selEnd = -1;
+    updFoot();
+    renderCal();
   });
   nav.appendChild(prev);
   nav.appendChild(next);
   wrap.appendChild(nav);
 
-  const foot1 = el("div",
-    "display:flex;align-items:center;justify-content:space-between;" +
-    "margin-top:0.75rem;font-size:0.85rem");
+  const foot1 = el(
+    "div",
+    "display:flex;align-items:center;justify-content:space-between;" + "margin-top:0.75rem;font-size:0.85rem",
+  );
   const clr = el("span", "color:#888;cursor:pointer;text-decoration:underline");
   clr.textContent = "Clear Dates";
   clr.addEventListener("click", () => {
-    selStart = -1; selEnd = -1; updFoot(); renderCal();
+    selStart = -1;
+    selEnd = -1;
+    updFoot();
+    renderCal();
   });
   foot1.appendChild(clr);
   nightsEl = el("span", "color:#aaa");
@@ -271,15 +298,15 @@ export function main(): void {
   foot1.appendChild(nightsEl);
   wrap.appendChild(foot1);
 
-  const foot2 = el("div",
-    "display:flex;align-items:center;justify-content:space-between;" +
-    "margin-top:0.5rem");
+  const foot2 = el("div", "display:flex;align-items:center;justify-content:space-between;" + "margin-top:0.5rem");
   totalEl = el("div", "color:#fff;font-weight:bold;font-size:2rem");
   totalEl.textContent = "";
   foot2.appendChild(totalEl);
-  const saveBtn = el("div",
+  const saveBtn = el(
+    "div",
     "padding:8px 28px;background:#fff;color:#111;" +
-    "border-radius:999px;cursor:pointer;font-size:0.9rem;font-weight:600");
+      "border-radius:999px;cursor:pointer;font-size:0.9rem;font-weight:600",
+  );
   saveBtn.textContent = "Save";
   saveBtn.addEventListener("click", () => {
     console.log("saved " + selStart.toString() + "-" + selEnd.toString());

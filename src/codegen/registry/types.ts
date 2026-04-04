@@ -186,7 +186,11 @@ export function getArrTypeIdxFromVec(ctx: CodegenContext, vecTypeIdx: number): n
   if (dataField.type.kind !== "ref" && dataField.type.kind !== "ref_null") {
     return -1;
   }
-  return (dataField.type as { typeIdx: number }).typeIdx;
+  const arrTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
+  // Verify field 1 actually points to an array type (not a ref cell, closure struct, etc.)
+  const arrDef = ctx.mod.types[arrTypeIdx];
+  if (!arrDef || arrDef.kind !== "array") return -1;
+  return arrTypeIdx;
 }
 
 /**

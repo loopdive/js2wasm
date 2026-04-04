@@ -19,9 +19,7 @@ import { buildImports } from "../src/runtime.js";
 async function compileAndRun(source: string): Promise<Record<string, Function>> {
   const result = compile(source, { fileName: "bench.ts" });
   if (!result.success || !result.binary || result.binary.length === 0) {
-    throw new Error(
-      `Compile failed:\n${result.errors.map((e: any) => `L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Compile failed:\n${result.errors.map((e: any) => `L${e.line}: ${e.message}`).join("\n")}`);
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
@@ -125,41 +123,58 @@ function jsDot(ax: number, ay: number, az: number, bx: number, by: number, bz: n
 }
 
 interface JsMat4 {
-  e0: number; e1: number; e2: number; e3: number;
-  e4: number; e5: number; e6: number; e7: number;
-  e8: number; e9: number; e10: number; e11: number;
-  e12: number; e13: number; e14: number; e15: number;
+  e0: number;
+  e1: number;
+  e2: number;
+  e3: number;
+  e4: number;
+  e5: number;
+  e6: number;
+  e7: number;
+  e8: number;
+  e9: number;
+  e10: number;
+  e11: number;
+  e12: number;
+  e13: number;
+  e14: number;
+  e15: number;
 }
 
 function jsMatMul(a: JsMat4, b: JsMat4): JsMat4 {
   return {
-    e0:  a.e0*b.e0  + a.e1*b.e4  + a.e2*b.e8  + a.e3*b.e12,
-    e1:  a.e0*b.e1  + a.e1*b.e5  + a.e2*b.e9  + a.e3*b.e13,
-    e2:  a.e0*b.e2  + a.e1*b.e6  + a.e2*b.e10 + a.e3*b.e14,
-    e3:  a.e0*b.e3  + a.e1*b.e7  + a.e2*b.e11 + a.e3*b.e15,
-    e4:  a.e4*b.e0  + a.e5*b.e4  + a.e6*b.e8  + a.e7*b.e12,
-    e5:  a.e4*b.e1  + a.e5*b.e5  + a.e6*b.e9  + a.e7*b.e13,
-    e6:  a.e4*b.e2  + a.e5*b.e6  + a.e6*b.e10 + a.e7*b.e14,
-    e7:  a.e4*b.e3  + a.e5*b.e7  + a.e6*b.e11 + a.e7*b.e15,
-    e8:  a.e8*b.e0  + a.e9*b.e4  + a.e10*b.e8  + a.e11*b.e12,
-    e9:  a.e8*b.e1  + a.e9*b.e5  + a.e10*b.e9  + a.e11*b.e13,
-    e10: a.e8*b.e2  + a.e9*b.e6  + a.e10*b.e10 + a.e11*b.e14,
-    e11: a.e8*b.e3  + a.e9*b.e7  + a.e10*b.e11 + a.e11*b.e15,
-    e12: a.e12*b.e0  + a.e13*b.e4  + a.e14*b.e8  + a.e15*b.e12,
-    e13: a.e12*b.e1  + a.e13*b.e5  + a.e14*b.e9  + a.e15*b.e13,
-    e14: a.e12*b.e2  + a.e13*b.e6  + a.e14*b.e10 + a.e15*b.e14,
-    e15: a.e12*b.e3  + a.e13*b.e7  + a.e14*b.e11 + a.e15*b.e15,
+    e0: a.e0 * b.e0 + a.e1 * b.e4 + a.e2 * b.e8 + a.e3 * b.e12,
+    e1: a.e0 * b.e1 + a.e1 * b.e5 + a.e2 * b.e9 + a.e3 * b.e13,
+    e2: a.e0 * b.e2 + a.e1 * b.e6 + a.e2 * b.e10 + a.e3 * b.e14,
+    e3: a.e0 * b.e3 + a.e1 * b.e7 + a.e2 * b.e11 + a.e3 * b.e15,
+    e4: a.e4 * b.e0 + a.e5 * b.e4 + a.e6 * b.e8 + a.e7 * b.e12,
+    e5: a.e4 * b.e1 + a.e5 * b.e5 + a.e6 * b.e9 + a.e7 * b.e13,
+    e6: a.e4 * b.e2 + a.e5 * b.e6 + a.e6 * b.e10 + a.e7 * b.e14,
+    e7: a.e4 * b.e3 + a.e5 * b.e7 + a.e6 * b.e11 + a.e7 * b.e15,
+    e8: a.e8 * b.e0 + a.e9 * b.e4 + a.e10 * b.e8 + a.e11 * b.e12,
+    e9: a.e8 * b.e1 + a.e9 * b.e5 + a.e10 * b.e9 + a.e11 * b.e13,
+    e10: a.e8 * b.e2 + a.e9 * b.e6 + a.e10 * b.e10 + a.e11 * b.e14,
+    e11: a.e8 * b.e3 + a.e9 * b.e7 + a.e10 * b.e11 + a.e11 * b.e15,
+    e12: a.e12 * b.e0 + a.e13 * b.e4 + a.e14 * b.e8 + a.e15 * b.e12,
+    e13: a.e12 * b.e1 + a.e13 * b.e5 + a.e14 * b.e9 + a.e15 * b.e13,
+    e14: a.e12 * b.e2 + a.e13 * b.e6 + a.e14 * b.e10 + a.e15 * b.e14,
+    e15: a.e12 * b.e3 + a.e13 * b.e7 + a.e14 * b.e11 + a.e15 * b.e15,
   };
 }
 
-interface JsQuat { x: number; y: number; z: number; w: number; }
+interface JsQuat {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
 
 function jsQuatMul(a: JsQuat, b: JsQuat): JsQuat {
   return {
-    x: a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
-    y: a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
-    z: a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w,
-    w: a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z,
+    x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+    y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+    z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+    w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
   };
 }
 
@@ -243,8 +258,42 @@ async function benchMatrix4Mul() {
   const wasmMs = performance.now() - wasmStart;
 
   // JS reference
-  const ma: JsMat4 = { e0:1,e1:2,e2:3,e3:4,e4:5,e5:6,e6:7,e7:8,e8:9,e9:10,e10:11,e11:12,e12:13,e13:14,e14:15,e15:16 };
-  const mb: JsMat4 = { e0:17,e1:18,e2:19,e3:20,e4:21,e5:22,e6:23,e7:24,e8:25,e9:26,e10:27,e11:28,e12:29,e13:30,e14:31,e15:32 };
+  const ma: JsMat4 = {
+    e0: 1,
+    e1: 2,
+    e2: 3,
+    e3: 4,
+    e4: 5,
+    e5: 6,
+    e6: 7,
+    e7: 8,
+    e8: 9,
+    e9: 10,
+    e10: 11,
+    e11: 12,
+    e12: 13,
+    e13: 14,
+    e14: 15,
+    e15: 16,
+  };
+  const mb: JsMat4 = {
+    e0: 17,
+    e1: 18,
+    e2: 19,
+    e3: 20,
+    e4: 21,
+    e5: 22,
+    e6: 23,
+    e7: 24,
+    e8: 25,
+    e9: 26,
+    e10: 27,
+    e11: 28,
+    e12: 29,
+    e13: 30,
+    e14: 31,
+    e15: 32,
+  };
 
   // Warm up
   let jsSum = 0;

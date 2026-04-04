@@ -21,11 +21,7 @@ import { resolve } from "node:path";
 const SHIM_ID = "\0compiler-bundle-shim";
 
 // Imports from src/ that should be redirected to the pre-built bundle.
-const REDIRECTED_SOURCES = new Set([
-  "../src/index.js",
-  "../src/optimize.js",
-  "../src/runtime.js",
-]);
+const REDIRECTED_SOURCES = new Set(["../src/index.js", "../src/optimize.js", "../src/runtime.js"]);
 
 export function compilerBundlePlugin(): Plugin {
   let bundleCache: string | null = null;
@@ -79,10 +75,7 @@ export const instantiateWasm = __mod.instantiateWasm;
         if (pathname !== "/@compiler-bundle.mjs") return next();
 
         if (!bundleCache) {
-          const bundlePath = resolve(
-            import.meta.dirname,
-            "../scripts/compiler-bundle.mjs",
-          );
+          const bundlePath = resolve(import.meta.dirname, "../scripts/compiler-bundle.mjs");
 
           // Build the bundle on demand if it doesn't exist (gitignored artifact)
           if (!existsSync(bundlePath)) {
@@ -100,14 +93,8 @@ export const instantiateWasm = __mod.instantiateWasm;
           // typescript: Vite transforms the re-export module and resolves
           //   to its pre-bundled version automatically.
           // path: browser shim with resolve/dirname/relative/join/basename.
-          code = code.replace(
-            /from "typescript"/g,
-            'from "/playground/stubs/typescript-reexport.js"',
-          );
-          code = code.replace(
-            /from "path"/g,
-            'from "/playground/stubs/path-shim.js"',
-          );
+          code = code.replace(/from "typescript"/g, 'from "/playground/stubs/typescript-reexport.js"');
+          code = code.replace(/from "path"/g, 'from "/playground/stubs/path-shim.js"');
 
           // Stub out Node.js built-in references — browsers can't fetch node: URLs.
           // Replace ALL "node:xxx" string literals with empty strings so

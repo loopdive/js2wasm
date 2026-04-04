@@ -133,17 +133,7 @@ monaco.languages.setMonarchTokensProvider("wat", {
     "ref",
     "null",
   ],
-  typeKeywords: [
-    "i32",
-    "i64",
-    "f32",
-    "f64",
-    "funcref",
-    "externref",
-    "anyref",
-    "eqref",
-    "i31ref",
-  ],
+  typeKeywords: ["i32", "i64", "f32", "f64", "funcref", "externref", "anyref", "eqref", "i31ref"],
   instructions: [
     "call",
     "call_indirect",
@@ -252,14 +242,8 @@ monaco.languages.setMonarchTokensProvider("wat", {
       [/[()]/, "delimiter.parenthesis"],
     ],
     instructions: [
-      [
-        /\b(?:call_indirect|call|return|br_table|br_if|br|drop|select|unreachable|nop)\b/,
-        "keyword.instruction",
-      ],
-      [
-        /\b(?:local|global|i32|i64|f32|f64|struct|array|ref)\.[a-z_]+\b/,
-        "keyword.instruction",
-      ],
+      [/\b(?:call_indirect|call|return|br_table|br_if|br|drop|select|unreachable|nop)\b/, "keyword.instruction"],
+      [/\b(?:local|global|i32|i64|f32|f64|struct|array|ref)\.[a-z_]+\b/, "keyword.instruction"],
     ],
     blockComment: [
       [/[^(;]+/, "comment"],
@@ -275,15 +259,30 @@ const WAT_KEYWORD_DOCS: Record<string, { brief: string; url?: string }> = {
   // Value types
   i32: { brief: "32-bit integer", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/i32" },
   i64: { brief: "64-bit integer", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/i64" },
-  f32: { brief: "32-bit IEEE 754 float", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f32" },
-  f64: { brief: "64-bit IEEE 754 float", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f64" },
-  funcref: { brief: "Nullable reference to a function", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types" },
-  externref: { brief: "Opaque host reference — JS object, DOM node, etc.", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types" },
+  f32: {
+    brief: "32-bit IEEE 754 float",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f32",
+  },
+  f64: {
+    brief: "64-bit IEEE 754 float",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f64",
+  },
+  funcref: {
+    brief: "Nullable reference to a function",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types",
+  },
+  externref: {
+    brief: "Opaque host reference — JS object, DOM node, etc.",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types",
+  },
   anyref: { brief: "Reference to any GC-managed value" },
   eqref: { brief: "Reference supporting structural equality" },
   i31ref: { brief: "Unboxed 31-bit integer reference" },
   // Module structure
-  module: { brief: "Top-level container for all definitions", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format" },
+  module: {
+    brief: "Top-level container for all definitions",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format",
+  },
   func: { brief: "Function definition or reference" },
   type: { brief: "Reusable function type signature" },
   param: { brief: "Function parameter" },
@@ -292,17 +291,32 @@ const WAT_KEYWORD_DOCS: Record<string, { brief: string; url?: string }> = {
   global: { brief: "Global variable, accessible from all functions" },
   import: { brief: "Import from the host environment" },
   export: { brief: "Export to the host environment" },
-  memory: { brief: "Linear memory — resizable byte buffer (64KB pages)", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_memory" },
+  memory: {
+    brief: "Linear memory — resizable byte buffer (64KB pages)",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_memory",
+  },
   data: { brief: "Initialize a region of linear memory" },
-  table: { brief: "Typed array of references for indirect calls", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_tables" },
+  table: {
+    brief: "Typed array of references for indirect calls",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_tables",
+  },
   elem: { brief: "Initialize table entries with references" },
   start: { brief: "Function called automatically on instantiation" },
   mut: { brief: "Marks a global as mutable (default is immutable)" },
   offset: { brief: "Memory or table initialization offset" },
   // Control flow
-  block: { brief: "Structured forward-jump target", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/block" },
-  loop: { brief: "Structured backward-jump target", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/loop" },
-  if: { brief: "Pop i32, execute then-branch if non-zero", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/if...else" },
+  block: {
+    brief: "Structured forward-jump target",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/block",
+  },
+  loop: {
+    brief: "Structured backward-jump target",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/loop",
+  },
+  if: {
+    brief: "Pop i32, execute then-branch if non-zero",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/if...else",
+  },
   then: { brief: "True branch of an if" },
   else: { brief: "False branch of an if" },
   end: { brief: "End of block, loop, if, or function body" },
@@ -322,10 +336,16 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
 
   // local.get/set/tee
   const lm = token.match(/^local\.(get|set|tee)$/);
-  if (lm) return { get: { brief: "Push local variable onto the stack" }, set: { brief: "Pop and store into local variable" }, tee: { brief: "Copy top of stack into local (keep on stack)" } }[lm[1]]!;
+  if (lm)
+    return {
+      get: { brief: "Push local variable onto the stack" },
+      set: { brief: "Pop and store into local variable" },
+      tee: { brief: "Copy top of stack into local (keep on stack)" },
+    }[lm[1]]!;
   // global.get/set
   const gm = token.match(/^global\.(get|set)$/);
-  if (gm) return gm[1] === "get" ? { brief: "Push global value onto the stack" } : { brief: "Pop and store into global" };
+  if (gm)
+    return gm[1] === "get" ? { brief: "Push global value onto the stack" } : { brief: "Pop and store into global" };
 
   // type.const
   if (/^(i32|i64|f32|f64)\.const$/.test(token)) return { brief: `Push a constant ${token.split(".")[0]} value` };
@@ -358,17 +378,23 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
     const gcOps: Record<string, string> = {
       "struct.new": "Allocate struct, pop fields from stack",
       "struct.new_default": "Allocate struct with default values",
-      "struct.get": "Read struct field", "struct.get_s": "Read struct field, sign-extend",
-      "struct.get_u": "Read struct field, zero-extend", "struct.set": "Write struct field",
+      "struct.get": "Read struct field",
+      "struct.get_s": "Read struct field, sign-extend",
+      "struct.get_u": "Read struct field, zero-extend",
+      "struct.set": "Write struct field",
       "array.new": "Allocate array, fill with stack value",
       "array.new_default": "Allocate array with defaults",
       "array.new_fixed": "Allocate array from N stack values",
-      "array.get": "Read array element", "array.get_s": "Read array element, sign-extend",
+      "array.get": "Read array element",
+      "array.get_s": "Read array element, sign-extend",
       "array.get_u": "Read array element, zero-extend",
-      "array.set": "Write array element", "array.len": "Push array length",
-      "ref.null": "Push null reference", "ref.is_null": "Test if reference is null → i32",
+      "array.set": "Write array element",
+      "array.len": "Push array length",
+      "ref.null": "Push null reference",
+      "ref.is_null": "Test if reference is null → i32",
       "ref.func": "Push reference to a function",
-      "ref.test": "Test reference type → i32", "ref.cast": "Cast reference (trap on mismatch)",
+      "ref.test": "Test reference type → i32",
+      "ref.cast": "Cast reference (trap on mismatch)",
     };
     return gcOps[token] ? { brief: gcOps[token] } : null;
   }
@@ -376,47 +402,84 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
   const [, ty, op] = dm;
   // Binary arithmetic
   const bin: Record<string, string> = {
-    add: "Add", sub: "Subtract", mul: "Multiply",
-    div_s: "Signed divide", div_u: "Unsigned divide", div: "Divide",
-    rem_s: "Signed remainder", rem_u: "Unsigned remainder",
-    and: "Bitwise AND", or: "Bitwise OR", xor: "Bitwise XOR",
-    shl: "Shift left", shr_s: "Arithmetic shift right", shr_u: "Logical shift right",
-    rotl: "Rotate left", rotr: "Rotate right",
-    min: "Minimum", max: "Maximum", copysign: "Copy sign",
+    add: "Add",
+    sub: "Subtract",
+    mul: "Multiply",
+    div_s: "Signed divide",
+    div_u: "Unsigned divide",
+    div: "Divide",
+    rem_s: "Signed remainder",
+    rem_u: "Unsigned remainder",
+    and: "Bitwise AND",
+    or: "Bitwise OR",
+    xor: "Bitwise XOR",
+    shl: "Shift left",
+    shr_s: "Arithmetic shift right",
+    shr_u: "Logical shift right",
+    rotl: "Rotate left",
+    rotr: "Rotate right",
+    min: "Minimum",
+    max: "Maximum",
+    copysign: "Copy sign",
   };
   if (bin[op]) return { brief: `${bin[op]} — pop two ${ty}, push result` };
 
   // Comparison
   const cmp: Record<string, string> = {
-    eq: "Equal", ne: "Not equal",
-    lt_s: "Less (signed)", lt_u: "Less (unsigned)", lt: "Less than",
-    gt_s: "Greater (signed)", gt_u: "Greater (unsigned)", gt: "Greater than",
-    le_s: "≤ (signed)", le_u: "≤ (unsigned)", le: "≤",
-    ge_s: "≥ (signed)", ge_u: "≥ (unsigned)", ge: "≥",
+    eq: "Equal",
+    ne: "Not equal",
+    lt_s: "Less (signed)",
+    lt_u: "Less (unsigned)",
+    lt: "Less than",
+    gt_s: "Greater (signed)",
+    gt_u: "Greater (unsigned)",
+    gt: "Greater than",
+    le_s: "≤ (signed)",
+    le_u: "≤ (unsigned)",
+    le: "≤",
+    ge_s: "≥ (signed)",
+    ge_u: "≥ (unsigned)",
+    ge: "≥",
   };
   if (cmp[op]) return { brief: `${cmp[op]} — pop two ${ty}, push i32 (0 or 1)` };
 
   // Unary
   const un: Record<string, string> = {
-    eqz: "Is zero? → push i32", clz: "Count leading zeros", ctz: "Count trailing zeros",
-    popcnt: "Count set bits", neg: "Negate", abs: "Absolute value",
-    ceil: "Round up", floor: "Round down", trunc: "Round toward zero",
-    nearest: "Round to nearest even", sqrt: "Square root",
+    eqz: "Is zero? → push i32",
+    clz: "Count leading zeros",
+    ctz: "Count trailing zeros",
+    popcnt: "Count set bits",
+    neg: "Negate",
+    abs: "Absolute value",
+    ceil: "Round up",
+    floor: "Round down",
+    trunc: "Round toward zero",
+    nearest: "Round to nearest even",
+    sqrt: "Square root",
   };
   if (un[op]) return { brief: un[op] };
 
   // Conversion
   const conv: Record<string, string> = {
     wrap_i64: "Truncate i64 → i32 (low 32 bits)",
-    extend_i32_s: "Sign-extend i32 → i64", extend_i32_u: "Zero-extend i32 → i64",
-    trunc_f32_s: "Truncate f32 → signed int", trunc_f32_u: "Truncate f32 → unsigned int",
-    trunc_f64_s: "Truncate f64 → signed int", trunc_f64_u: "Truncate f64 → unsigned int",
-    convert_i32_s: "Convert signed i32 → float", convert_i32_u: "Convert unsigned i32 → float",
-    convert_i64_s: "Convert signed i64 → float", convert_i64_u: "Convert unsigned i64 → float",
-    demote_f64: "f64 → f32 (lossy)", promote_f32: "f32 → f64",
-    reinterpret_i32: "Reinterpret i32 bits as f32", reinterpret_i64: "Reinterpret i64 bits as f64",
-    reinterpret_f32: "Reinterpret f32 bits as i32", reinterpret_f64: "Reinterpret f64 bits as i64",
-    extend8_s: "Sign-extend low 8 bits", extend16_s: "Sign-extend low 16 bits",
+    extend_i32_s: "Sign-extend i32 → i64",
+    extend_i32_u: "Zero-extend i32 → i64",
+    trunc_f32_s: "Truncate f32 → signed int",
+    trunc_f32_u: "Truncate f32 → unsigned int",
+    trunc_f64_s: "Truncate f64 → signed int",
+    trunc_f64_u: "Truncate f64 → unsigned int",
+    convert_i32_s: "Convert signed i32 → float",
+    convert_i32_u: "Convert unsigned i32 → float",
+    convert_i64_s: "Convert signed i64 → float",
+    convert_i64_u: "Convert unsigned i64 → float",
+    demote_f64: "f64 → f32 (lossy)",
+    promote_f32: "f32 → f64",
+    reinterpret_i32: "Reinterpret i32 bits as f32",
+    reinterpret_i64: "Reinterpret i64 bits as f64",
+    reinterpret_f32: "Reinterpret f32 bits as i32",
+    reinterpret_f64: "Reinterpret f64 bits as i64",
+    extend8_s: "Sign-extend low 8 bits",
+    extend16_s: "Sign-extend low 16 bits",
     trunc_sat_f32_s: "Saturating truncate f32 → signed int",
     trunc_sat_f32_u: "Saturating truncate f32 → unsigned int",
     trunc_sat_f64_s: "Saturating truncate f64 → signed int",
@@ -426,10 +489,17 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
 
   // Load/store
   const mem: Record<string, string> = {
-    load: "Load from memory", load8_s: "Load 8-bit, sign-extend", load8_u: "Load 8-bit, zero-extend",
-    load16_s: "Load 16-bit, sign-extend", load16_u: "Load 16-bit, zero-extend",
-    load32_s: "Load 32-bit, sign-extend", load32_u: "Load 32-bit, zero-extend",
-    store: "Store to memory", store8: "Store low 8 bits", store16: "Store low 16 bits", store32: "Store low 32 bits",
+    load: "Load from memory",
+    load8_s: "Load 8-bit, sign-extend",
+    load8_u: "Load 8-bit, zero-extend",
+    load16_s: "Load 16-bit, sign-extend",
+    load16_u: "Load 16-bit, zero-extend",
+    load32_s: "Load 32-bit, sign-extend",
+    load32_u: "Load 32-bit, zero-extend",
+    store: "Store to memory",
+    store8: "Store low 8 bits",
+    store16: "Store low 16 bits",
+    store32: "Store low 32 bits",
   };
   if (mem[op]) return { brief: `${mem[op]} (${ty})` };
 
@@ -439,7 +509,8 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
 /** Extract the full dotted token (e.g. "i32.add") at a cursor column. */
 function getWatTokenAt(line: string, col: number): string {
   const idx = col - 1;
-  let start = idx, end = idx;
+  let start = idx,
+    end = idx;
   while (start > 0 && /[\w.]/.test(line[start - 1])) start--;
   while (end < line.length && /[\w.]/.test(line[end])) end++;
   return line.slice(start, end);
@@ -453,16 +524,16 @@ function describeWatLine(lineText: string): string | null {
   // Type definition
   const typeM = t.match(/^\(type\s+(\$\S+)\s+\(func\s*(.*)\)\s*\)?/);
   if (typeM) {
-    const ps = [...typeM[2].matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
-    const rs = [...typeM[2].matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    const ps = [...typeM[2].matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map((m) => m[1]);
+    const rs = [...typeM[2].matchAll(/\(result\s+(\w+)\)/g)].map((m) => m[1]);
     return `Type **${typeM[1]}** — signature (${ps.join(", ") || "∅"}) → ${rs.join(", ") || "void"}`;
   }
 
   // Function definition
   const funcM = t.match(/^\(func\s+(\$\S+)/);
   if (funcM) {
-    const ps = [...t.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
-    const rs = [...t.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    const ps = [...t.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map((m) => m[1]);
+    const rs = [...t.matchAll(/\(result\s+(\w+)\)/g)].map((m) => m[1]);
     return `Function **${funcM[1]}**(${ps.join(", ")})${rs.length ? " → " + rs.join(", ") : ""}`;
   }
 
@@ -525,15 +596,18 @@ function describeWatLine(lineText: string): string | null {
 }
 
 /** Find a function's name and signature in the WAT model by $name. */
-function findWatFuncSignature(watModel: monaco.editor.ITextModel, funcName: string): { params: string[]; results: string[] } | null {
+function findWatFuncSignature(
+  watModel: monaco.editor.ITextModel,
+  funcName: string,
+): { params: string[]; results: string[] } | null {
   const lineCount = watModel.getLineCount();
   const escaped = funcName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(`\\(func\\s+${escaped}(?:\\s|\\()`);
   for (let i = 1; i <= lineCount; i++) {
     const text = watModel.getLineContent(i);
     if (!re.test(text)) continue;
-    const params = [...text.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
-    const results = [...text.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    const params = [...text.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map((m) => m[1]);
+    const results = [...text.matchAll(/\(result\s+(\w+)\)/g)].map((m) => m[1]);
     return { params, results };
   }
   return null;
@@ -568,8 +642,8 @@ function resolveWatType(watModel: monaco.editor.ITextModel, operand: string): st
 }
 
 function extractTypeSig(typeLineText: string): string {
-  const params = [...typeLineText.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
-  const results = [...typeLineText.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+  const params = [...typeLineText.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map((m) => m[1]);
+  const results = [...typeLineText.matchAll(/\(result\s+(\w+)\)/g)].map((m) => m[1]);
   const nameM = typeLineText.match(/\(type\s+(\$\S+)/);
   const name = nameM ? `**${nameM[1]}**` : "type";
   const ret = results.length ? " → " + results.join(", ") : "";
@@ -608,7 +682,10 @@ function findEnclosingWatFunc(watModel: monaco.editor.ITextModel, lineNumber: nu
 }
 
 /** Cached map of TS declaration name → line range, built from the AST. */
-interface TsSymbolInfo { startLine: number; endLine: number }
+interface TsSymbolInfo {
+  startLine: number;
+  endLine: number;
+}
 let tsSymbolCache: { version: number; map: Map<string, TsSymbolInfo> } | null = null;
 
 function getTsSymbolMap(tsModel: monaco.editor.ITextModel): Map<string, TsSymbolInfo> {
@@ -646,8 +723,12 @@ function getTsSymbolMap(tsModel: monaco.editor.ITextModel): Map<string, TsSymbol
       add(prefix + "set_" + node.name.text, node);
     } else if (ts.isPropertyDeclaration(node) && ts.isIdentifier(node.name)) {
       add(prefix + node.name.text, node);
-    } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
-               node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    ) {
       add(prefix + node.name.text, node);
     }
     ts.forEachChild(node, (child) => visit(child, prefix));
@@ -674,7 +755,10 @@ function findEnclosingTsFunc(tsModel: monaco.editor.ITextModel, lineNumber: numb
   for (const [name, { startLine, endLine }] of map) {
     if (lineNumber >= startLine && lineNumber <= endLine) {
       const size = endLine - startLine;
-      if (size < bestSize) { bestSize = size; best = name; }
+      if (size < bestSize) {
+        bestSize = size;
+        best = name;
+      }
     }
   }
   return best;
@@ -744,9 +828,7 @@ const LEGACY_STORAGE_KEY = "ts2wasm_source";
 const saved = sessionStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(LEGACY_STORAGE_KEY);
 
 function canonicalizeBenchmarkHelperImports(source: string, pathHint?: string | null): string {
-  const replacement = pathHint === "examples/benchmarks.ts"
-    ? "./benchmarks/helpers.ts"
-    : "./helpers.ts";
+  const replacement = pathHint === "examples/benchmarks.ts" ? "./benchmarks/helpers.ts" : "./helpers.ts";
   return source.replace(
     /(["'])(?:\/examples\/benchmarks\/helpers\.ts|examples\/benchmarks\/helpers\.ts|\.\/benchmarks\/helpers\.ts|\.\/helpers\.ts)\1/g,
     `"${replacement}"`,
@@ -859,10 +941,7 @@ function resolveLocalExampleImport(fromPath: string, specifier: string): string 
   return fromParts.join("/");
 }
 
-function getImportSpecifierAtPosition(
-  model: monaco.editor.ITextModel,
-  position: monaco.Position,
-): string | null {
+function getImportSpecifierAtPosition(model: monaco.editor.ITextModel, position: monaco.Position): string | null {
   const line = model.getLineContent(position.lineNumber);
   const matches = [...line.matchAll(/["']([^"']+)["']/g)];
   for (const match of matches) {
@@ -883,9 +962,7 @@ async function openLocalImportedSource(specifier: string): Promise<boolean> {
   if (!resolvedPath) return false;
   if (!(resolvedPath.startsWith("examples/") || resolvedPath.startsWith("input/"))) return false;
   try {
-    const content = resolvedPath.startsWith("examples/")
-      ? await loadBundledExampleSource(resolvedPath)
-      : null;
+    const content = resolvedPath.startsWith("examples/") ? await loadBundledExampleSource(resolvedPath) : null;
     if (content == null) return false;
     t262Loading = true;
     sessionStorage.removeItem(STORAGE_KEY);
@@ -1012,22 +1089,30 @@ test262Panel.innerHTML = `
   </div>
 `;
 
-interface T262Category { name: string; path: string; fileCount: number; files: string[]; }
-interface T262CategorySummary { name: string; path: string; fileCount: number; }
+interface T262Category {
+  name: string;
+  path: string;
+  fileCount: number;
+  files: string[];
+}
+interface T262CategorySummary {
+  name: string;
+  path: string;
+  fileCount: number;
+}
 let t262Index: T262CategorySummary[] | null = null;
 const t262FilesCache = new Map<string, string[]>();
 let staticT262Files: Record<string, string[]> | null = null;
 let staticT262FileResults: Record<string, T262FileResult[]> | null = null;
 let staticEquivTests: { name: string; source: string }[] | null = null;
 const prefersStaticPlaygroundData =
-  location.protocol === "https:"
-  || (location.hostname !== "localhost" && location.hostname !== "127.0.0.1");
+  location.protocol === "https:" || (location.hostname !== "localhost" && location.hostname !== "127.0.0.1");
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
     const resp = await fetch(path);
     if (!resp.ok) return null;
-    return await resp.json() as T;
+    return (await resp.json()) as T;
   } catch {
     return null;
   }
@@ -1045,19 +1130,20 @@ async function fetchText(path: string): Promise<string | null> {
 
 async function loadStaticEquivTests(): Promise<{ name: string; source: string }[]> {
   if (staticEquivTests) return staticEquivTests;
-  staticEquivTests = await fetchJson<{ name: string; source: string }[]>("playground-data/equiv-tests.json") ?? [];
+  staticEquivTests = (await fetchJson<{ name: string; source: string }[]>("playground-data/equiv-tests.json")) ?? [];
   return staticEquivTests;
 }
 
 async function loadStaticT262Files(): Promise<Record<string, string[]>> {
   if (staticT262Files) return staticT262Files;
-  staticT262Files = await fetchJson<Record<string, string[]>>("playground-data/test262-files.json") ?? {};
+  staticT262Files = (await fetchJson<Record<string, string[]>>("playground-data/test262-files.json")) ?? {};
   return staticT262Files;
 }
 
 async function loadStaticT262FileResults(): Promise<Record<string, T262FileResult[]>> {
   if (staticT262FileResults) return staticT262FileResults;
-  staticT262FileResults = await fetchJson<Record<string, T262FileResult[]>>("playground-data/test262-file-results.json") ?? {};
+  staticT262FileResults =
+    (await fetchJson<Record<string, T262FileResult[]>>("playground-data/test262-file-results.json")) ?? {};
   return staticT262FileResults;
 }
 
@@ -1066,7 +1152,11 @@ interface T262Report {
   summary: { total: number; pass: number; fail: number; skip: number; compile_error: number };
   categories: { name: string; pass: number; fail: number; skip: number; compile_error: number }[];
 }
-interface T262FileResult { file: string; status: string; error?: string; }
+interface T262FileResult {
+  file: string;
+  status: string;
+  error?: string;
+}
 type SuiteSummary = T262Report["summary"];
 interface T262TrendRun {
   timestamp: string;
@@ -1095,21 +1185,20 @@ async function loadLatestT262Summary(): Promise<T262Report["summary"] | null> {
 
 async function t262LoadReport(): Promise<T262Report | null> {
   if (t262Report) return t262Report;
-  const latestSummary = prefersStaticPlaygroundData
-    ? await loadLatestT262Summary()
-    : null;
+  const latestSummary = prefersStaticPlaygroundData ? await loadLatestT262Summary() : null;
   const data = prefersStaticPlaygroundData
-    ? await fetchJson<T262Report>("benchmarks/results/test262-report.json")
-      ?? await fetchJson<T262Report | { error: string }>("/api/test262-results")
-    : await fetchJson<T262Report | { error: string }>("/api/test262-results")
-      ?? await fetchJson<T262Report>("benchmarks/results/test262-report.json");
+    ? ((await fetchJson<T262Report>("benchmarks/results/test262-report.json")) ??
+      (await fetchJson<T262Report | { error: string }>("/api/test262-results")))
+    : ((await fetchJson<T262Report | { error: string }>("/api/test262-results")) ??
+      (await fetchJson<T262Report>("benchmarks/results/test262-report.json")));
   if ((!data || "error" in data) && !latestSummary) return null;
-  const report = !data || "error" in data
-    ? { summary: latestSummary!, categories: [] }
-    : {
-      ...(data as T262Report),
-      summary: latestSummary ?? (data as T262Report).summary,
-    };
+  const report =
+    !data || "error" in data
+      ? { summary: latestSummary!, categories: [] }
+      : {
+          ...(data as T262Report),
+          summary: latestSummary ?? (data as T262Report).summary,
+        };
   if (!report.summary || report.summary.total === 0) return null;
   t262Report = report;
   return t262Report;
@@ -1133,18 +1222,25 @@ async function t262LoadFileResults(category: string): Promise<T262FileResult[]> 
   return resolved;
 }
 
-function t262GetCategoryStats(catName: string): { pass: number; fail: number; skip: number; compile_error: number } | null {
+function t262GetCategoryStats(
+  catName: string,
+): { pass: number; fail: number; skip: number; compile_error: number } | null {
   if (!t262Report) return null;
-  return t262Report.categories.find(c => c.name === catName) ?? null;
+  return t262Report.categories.find((c) => c.name === catName) ?? null;
 }
 
 function t262StatusIcon(status: string): string {
   switch (status) {
-    case "pass": return '<span class="t262-file-status t262-status-pass">&#10003;</span>';
-    case "fail": return '<span class="t262-file-status t262-status-fail">&#10007;</span>';
-    case "compile_error": return '<span class="t262-file-status t262-status-ce">&#9888;</span>';
-    case "skip": return '<span class="t262-file-status t262-status-skip">&#9675;</span>';
-    default: return '<span class="t262-file-status" style="color:#555">?</span>';
+    case "pass":
+      return '<span class="t262-file-status t262-status-pass">&#10003;</span>';
+    case "fail":
+      return '<span class="t262-file-status t262-status-fail">&#10007;</span>';
+    case "compile_error":
+      return '<span class="t262-file-status t262-status-ce">&#9888;</span>';
+    case "skip":
+      return '<span class="t262-file-status t262-status-skip">&#9675;</span>';
+    default:
+      return '<span class="t262-file-status" style="color:#555">?</span>';
   }
 }
 
@@ -1156,10 +1252,10 @@ function t262PassRateColor(pct: number): string {
 
 function buildSuiteSummaryHtml(summary: SuiteSummary): string {
   const total = summary.total;
-  const passP = total > 0 ? (summary.pass / total * 100) : 0;
-  const failP = total > 0 ? (summary.fail / total * 100) : 0;
-  const ceP = total > 0 ? (summary.compile_error / total * 100) : 0;
-  const skipP = total > 0 ? (summary.skip / total * 100) : 0;
+  const passP = total > 0 ? (summary.pass / total) * 100 : 0;
+  const failP = total > 0 ? (summary.fail / total) * 100 : 0;
+  const ceP = total > 0 ? (summary.compile_error / total) * 100 : 0;
+  const skipP = total > 0 ? (summary.skip / total) * 100 : 0;
   return `
     <div class="t262-suite-summary">
       <div class="t262-stats-segments">
@@ -1201,10 +1297,10 @@ let t262Loading = false;
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
   const data = prefersStaticPlaygroundData
-    ? await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json")
-      ?? await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")
-    : await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")
-      ?? await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json");
+    ? ((await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json")) ??
+      (await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")))
+    : ((await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")) ??
+      (await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json")));
   t262Index = data?.categories ?? [];
   return t262Index;
 }
@@ -1241,7 +1337,10 @@ async function t262LoadFile(path: string): Promise<string> {
   return "";
 }
 
-interface EquivTest { name: string; index: number; }
+interface EquivTest {
+  name: string;
+  index: number;
+}
 let equivIndex: EquivTest[] | null = null;
 
 async function loadEquivIndex(): Promise<EquivTest[]> {
@@ -1306,10 +1405,10 @@ async function t262LoadAndShow(filePath: string) {
 
 // Build a recursive tree from category paths
 interface T262TreeNode {
-  name: string;       // segment name (e.g. "Math")
-  fullPath: string;   // full path up to this node (e.g. "built-ins/Math")
+  name: string; // segment name (e.g. "Math")
+  fullPath: string; // full path up to this node (e.g. "built-ins/Math")
   children: Map<string, T262TreeNode>;
-  categories: T262CategorySummary[];  // leaf categories at this node
+  categories: T262CategorySummary[]; // leaf categories at this node
 }
 
 interface BenchmarkExample {
@@ -1442,14 +1541,16 @@ async function saveBrowserBenchmarkSidebarResult(snapshot: BenchmarkSidebarSnaps
 
 async function ensureBenchmarkSidebarSnapshot(): Promise<void> {
   if (benchmarkSidebarSnapshotLoaded || benchmarkSidebarResults.size > 0) return;
-  const snapshot = await fetchJson<BenchmarkSidebarSnapshot[]>("../benchmarks/results/playground-benchmark-sidebar.json");
+  const snapshot = await fetchJson<BenchmarkSidebarSnapshot[]>(
+    "../benchmarks/results/playground-benchmark-sidebar.json",
+  );
   const browserSnapshot = await loadBrowserBenchmarkSidebarResults();
   benchmarkSidebarSnapshotLoaded = true;
   for (const item of [...(snapshot ?? []), ...browserSnapshot]) {
     benchmarkSidebarResults.set(item.path, {
       wasmUs: item.wasmUs,
       jsUs: item.jsUs,
-      deltaPct: ((item.jsUs / item.wasmUs) - 1) * 100,
+      deltaPct: (item.jsUs / item.wasmUs - 1) * 100,
     });
   }
 }
@@ -1463,9 +1564,7 @@ function usesBenchmarkHelpers(source: string): boolean {
 }
 
 function normalizeBenchmarkHelperImport(source: string, entryPath: string | null): string {
-  const replacement = entryPath === "examples/benchmarks.ts"
-    ? "./benchmarks/helpers.ts"
-    : "./helpers.ts";
+  const replacement = entryPath === "examples/benchmarks.ts" ? "./benchmarks/helpers.ts" : "./helpers.ts";
   return source.replace(
     /(["'])(?:\/examples\/benchmarks\/helpers\.ts|examples\/benchmarks\/helpers\.ts|\.\/benchmarks\/helpers\.ts|\.\/helpers\.ts)\1/g,
     `"${replacement}"`,
@@ -1475,15 +1574,20 @@ function normalizeBenchmarkHelperImport(source: string, entryPath: string | null
 function buildCompileResultForEditorSource(source: string) {
   const entryPath = isBenchmarkProjectPath(t262ActivePath)
     ? t262ActivePath!
-    : (source.includes("bench_") ? "examples/benchmarks.ts" : "example.ts");
+    : source.includes("bench_")
+      ? "examples/benchmarks.ts"
+      : "example.ts";
   const normalizedSource = normalizeBenchmarkHelperImport(source, entryPath);
   if (!isBenchmarkProjectPath(t262ActivePath) && !usesBenchmarkHelpers(normalizedSource)) {
     return compile(normalizedSource);
   }
-  return compileMulti({
-    [entryPath]: normalizedSource,
-    "examples/benchmarks/helpers.ts": BENCH_HELPERS_SOURCE,
-  }, entryPath);
+  return compileMulti(
+    {
+      [entryPath]: normalizedSource,
+      "examples/benchmarks/helpers.ts": BENCH_HELPERS_SOURCE,
+    },
+    entryPath,
+  );
 }
 
 function buildBenchmarkRuntimeJs(source: string): string {
@@ -1519,9 +1623,7 @@ async function loadBenchmarkJsFunctions(
   try {
     const mod = await import(/* @vite-ignore */ entryUrl);
     const funcs = Object.fromEntries(
-      benchNames
-        .filter((name) => typeof mod[name] === "function")
-        .map((name) => [name, mod[name] as Function]),
+      benchNames.filter((name) => typeof mod[name] === "function").map((name) => [name, mod[name] as Function]),
     );
     return {
       funcs,
@@ -1676,8 +1778,8 @@ async function t262Render() {
     parent.appendChild(entry);
   }
 
-  const anyExampleMatches = exampleGroups.some(g =>
-    !filter || g.folder.includes(filter) || g.files.some(f => f.name.toLowerCase().includes(filter))
+  const anyExampleMatches = exampleGroups.some(
+    (g) => !filter || g.folder.includes(filter) || g.files.some((f) => f.name.toLowerCase().includes(filter)),
   );
   if (anyExampleMatches) {
     const exHeader = document.createElement("div");
@@ -1686,8 +1788,8 @@ async function t262Render() {
     listEl.appendChild(exHeader);
 
     for (const group of exampleGroups) {
-      const groupMatches = !filter || group.folder.includes(filter) ||
-        group.files.some(f => f.name.toLowerCase().includes(filter));
+      const groupMatches =
+        !filter || group.folder.includes(filter) || group.files.some((f) => f.name.toLowerCase().includes(filter));
       if (!groupMatches) continue;
       await renderTopFolder(group.folder, `__ex_${group.folder}__`, listEl, (container) => {
         const filesEl = document.createElement("div");
@@ -1723,7 +1825,7 @@ async function t262Render() {
       if (cat.name.toLowerCase().includes(f) || cat.path.toLowerCase().includes(f)) return true;
       // Check cached file lists (if already loaded)
       const cached = t262FilesCache.get(cat.path);
-      if (cached?.some(file => file.toLowerCase().includes(f))) return true;
+      if (cached?.some((file) => file.toLowerCase().includes(f))) return true;
     }
     for (const child of node.children.values()) {
       if (nodeMatchesFilter(child, f)) return true;
@@ -1733,14 +1835,25 @@ async function t262Render() {
 
   // Aggregate stats for a tree node (sum across all categories in subtree)
   function nodeStats(node: T262TreeNode): { pass: number; fail: number; skip: number; ce: number; total: number } {
-    let pass = 0, fail = 0, skip = 0, ce = 0;
+    let pass = 0,
+      fail = 0,
+      skip = 0,
+      ce = 0;
     for (const cat of node.categories) {
       const s = t262GetCategoryStats(cat.path);
-      if (s) { pass += s.pass; fail += s.fail; skip += s.skip; ce += s.compile_error; }
+      if (s) {
+        pass += s.pass;
+        fail += s.fail;
+        skip += s.skip;
+        ce += s.compile_error;
+      }
     }
     for (const child of node.children.values()) {
       const cs = nodeStats(child);
-      pass += cs.pass; fail += cs.fail; skip += cs.skip; ce += cs.ce;
+      pass += cs.pass;
+      fail += cs.fail;
+      skip += cs.skip;
+      ce += cs.ce;
     }
     return { pass, fail, skip, ce, total: pass + fail + skip + ce };
   }
@@ -1748,7 +1861,7 @@ async function t262Render() {
   // Build a stats badge HTML string
   function statsBadge(stats: { pass: number; fail: number; skip: number; ce: number; total: number }): string {
     if (!report || stats.total === 0) return "";
-    const pct = stats.total > 0 ? (stats.pass / stats.total * 100) : 0;
+    const pct = stats.total > 0 ? (stats.pass / stats.total) * 100 : 0;
     const color = t262PassRateColor(pct);
     return `<span class="t262-cat-stats"><span class="t262-cat-bar"><span class="t262-cat-bar-fill" style="width:${pct.toFixed(0)}%;background:${color}"></span></span><span class="t262-cat-pct" style="color:${color}">${pct.toFixed(0)}%</span></span>`;
   }
@@ -1778,16 +1891,14 @@ async function t262Render() {
 
       const isLeaf = child.children.size === 0 && child.categories.length > 0;
       const folderKey = child.fullPath;
-      const expanded = isLeaf
-        ? t262ExpandedCats.has(child.categories[0]?.path)
-        : t262ExpandedFolders.has(folderKey);
+      const expanded = isLeaf ? t262ExpandedCats.has(child.categories[0]?.path) : t262ExpandedFolders.has(folderKey);
 
       const el = document.createElement("div");
       el.className = "t262-category";
 
       const headerEl = document.createElement("div");
       headerEl.className = "t262-cat-header";
-      headerEl.style.paddingLeft = (10 + depth * 12) + "px";
+      headerEl.style.paddingLeft = 10 + depth * 12 + "px";
       const count = nodeFileCount(child);
       const stats = nodeStats(child);
       const badge = statsBadge(stats);
@@ -1816,13 +1927,11 @@ async function t262Render() {
         for (const cat of child.categories) {
           // Lazy-load file list on demand (#868)
           const allFiles = await t262LoadFiles(cat.path);
-          const displayFiles = filter
-            ? allFiles.filter(f => f.toLowerCase().includes(filter))
-            : allFiles;
+          const displayFiles = filter ? allFiles.filter((f) => f.toLowerCase().includes(filter)) : allFiles;
 
           const filesEl = document.createElement("div");
           filesEl.className = "t262-files";
-          filesEl.style.paddingLeft = (10 + (depth + 1) * 12) + "px";
+          filesEl.style.paddingLeft = 10 + (depth + 1) * 12 + "px";
 
           // Pre-load file results for this category if report is available
           const resultLookup = report ? await getFileResultLookup(cat.path) : null;
@@ -1850,7 +1959,9 @@ async function t262Render() {
 
   // Helper to render a top-level folder
   async function renderTopFolder(
-    name: string, folderKey: string, parent: HTMLElement,
+    name: string,
+    folderKey: string,
+    parent: HTMLElement,
     renderContents: (container: HTMLElement) => void | Promise<void>,
     summaryHtml?: string,
     onOpen?: () => void | Promise<void>,
@@ -1889,36 +2000,40 @@ async function t262Render() {
 
   // ── js2wasm folder (equivalence tests) ──
   const equivTests = await loadEquivIndex();
-  const equivMatches = filter
-    ? equivTests.filter(t => t.name.toLowerCase().includes(filter))
-    : equivTests;
+  const equivMatches = filter ? equivTests.filter((t) => t.name.toLowerCase().includes(filter)) : equivTests;
   if (!filter || equivMatches.length > 0 || "js2wasm test suite".includes(filter)) {
-    await renderTopFolder("js2wasm Test Suite", "__js2wasm__", listEl, (container) => {
-      const filesEl = document.createElement("div");
-      filesEl.className = "t262-files";
-      filesEl.style.paddingLeft = "22px";
-      for (const t of equivMatches) {
-        const path = `equiv:${t.index}`;
-        const fileEl = document.createElement("div");
-        fileEl.className = "t262-file" + (t262ActivePath === path ? " active" : "");
-        fileEl.textContent = t.name;
-        fileEl.title = t.name;
-        fileEl.dataset.path = path;
-        fileEl.addEventListener("click", async () => {
-          const source = await loadEquivSource(t.index);
-          t262Loading = true;
-          sessionStorage.removeItem(STORAGE_KEY);
-          setInputSourceModel("input/example.ts", source);
-          revealSourceTab();
-          t262SetActive(path);
-          updateTabLabel("ts-source", t.name);
-          compileOnly();
-          t262Loading = false;
-        });
-        filesEl.appendChild(fileEl);
-      }
-      container.appendChild(filesEl);
-    }, buildEquivSummaryHtml(equivTests.length));
+    await renderTopFolder(
+      "js2wasm Test Suite",
+      "__js2wasm__",
+      listEl,
+      (container) => {
+        const filesEl = document.createElement("div");
+        filesEl.className = "t262-files";
+        filesEl.style.paddingLeft = "22px";
+        for (const t of equivMatches) {
+          const path = `equiv:${t.index}`;
+          const fileEl = document.createElement("div");
+          fileEl.className = "t262-file" + (t262ActivePath === path ? " active" : "");
+          fileEl.textContent = t.name;
+          fileEl.title = t.name;
+          fileEl.dataset.path = path;
+          fileEl.addEventListener("click", async () => {
+            const source = await loadEquivSource(t.index);
+            t262Loading = true;
+            sessionStorage.removeItem(STORAGE_KEY);
+            setInputSourceModel("input/example.ts", source);
+            revealSourceTab();
+            t262SetActive(path);
+            updateTabLabel("ts-source", t.name);
+            compileOnly();
+            t262Loading = false;
+          });
+          filesEl.appendChild(fileEl);
+        }
+        container.appendChild(filesEl);
+      },
+      buildEquivSummaryHtml(equivTests.length),
+    );
   }
 
   // ── test262 folder ──
@@ -1926,18 +2041,25 @@ async function t262Render() {
   const tree = t262BuildTree(cats);
   const t262Matches = !filter || nodeMatchesFilter(tree, filter) || "ecmascript test suite".includes(filter);
   if (t262Matches) {
-    await renderTopFolder("ECMAScript Test Suite", "__test262__", listEl, async (container) => {
-      await renderNode(tree, container, 1);
-    }, report ? buildT262SummaryHtml(report.summary) : "");
+    await renderTopFolder(
+      "ECMAScript Test Suite",
+      "__test262__",
+      listEl,
+      async (container) => {
+        await renderNode(tree, container, 1);
+      },
+      report ? buildT262SummaryHtml(report.summary) : "",
+    );
   }
 
   // ── BENCHMARKS section ──
-  const benchMatches = benchmarkExamples.filter((bench) =>
-    !filter
-    || "benchmark suite".includes(filter)
-    || bench.name.toLowerCase().includes(filter)
-    || bench.title.toLowerCase().includes(filter)
-    || bench.description.toLowerCase().includes(filter),
+  const benchMatches = benchmarkExamples.filter(
+    (bench) =>
+      !filter ||
+      "benchmark suite".includes(filter) ||
+      bench.name.toLowerCase().includes(filter) ||
+      bench.title.toLowerCase().includes(filter) ||
+      bench.description.toLowerCase().includes(filter),
   );
   if (benchMatches.length > 0) {
     const benchHeader = document.createElement("div");
@@ -1979,8 +2101,8 @@ treemap.onNodeSelect = ({ name, fullPath }) => {
 
 // ─── Cross-highlight state (declared early, used by layout callbacks) ────
 interface HighlightTarget {
-  name: string;           // function name (no $) or section name
-  treemapPath: string;    // e.g. "code/fib", "import", "type"
+  name: string; // function name (no $) or section name
+  treemapPath: string; // e.g. "code/fib", "import", "type"
   kind: "function" | "section" | "import";
 }
 type HighlightSource = "ts" | "wat" | "hex" | "treemap";
@@ -2002,8 +2124,16 @@ const wasmHexModel = fileMap.get("output/example.wasm")!.model;
 // ─── Layout manager ─────────────────────────────────────────────────────
 
 // Tab content definitions
-interface EditorTabDef { kind: "editor"; model: monaco.editor.ITextModel; readOnly: boolean; glyphMargin?: boolean; }
-interface DomTabDef { kind: "dom"; element: HTMLElement; }
+interface EditorTabDef {
+  kind: "editor";
+  model: monaco.editor.ITextModel;
+  readOnly: boolean;
+  glyphMargin?: boolean;
+}
+interface DomTabDef {
+  kind: "dom";
+  element: HTMLElement;
+}
 type TabContentDef = EditorTabDef | DomTabDef;
 
 const tabDefs: Record<string, TabContentDef> = {
@@ -2011,11 +2141,11 @@ const tabDefs: Record<string, TabContentDef> = {
   "wat-output": { kind: "editor", model: watFile.model, readOnly: true, glyphMargin: true },
   "wasm-hex": { kind: "editor", model: wasmHexFile.model, readOnly: true, glyphMargin: true },
   "modular-ts": { kind: "editor", model: modularFile.model, readOnly: true },
-  "errors": { kind: "dom", element: errorsPre },
-  "preview": { kind: "dom", element: previewPanel },
-  "console": { kind: "dom", element: consolePre },
-  "treemap": { kind: "dom", element: treemapPanel },
-  "test262": { kind: "dom", element: test262Panel },
+  errors: { kind: "dom", element: errorsPre },
+  preview: { kind: "dom", element: previewPanel },
+  console: { kind: "dom", element: consolePre },
+  treemap: { kind: "dom", element: treemapPanel },
+  test262: { kind: "dom", element: test262Panel },
 };
 
 const layoutRoot = document.getElementById("layout-root")!;
@@ -2096,10 +2226,7 @@ const savedLayout = LayoutManager.loadLayout(allTabIds);
 layout.init(savedLayout ?? undefined);
 
 function syncSidebarToggleButton(): void {
-  toggleSidebarBtn.setAttribute(
-    "aria-pressed",
-    layout.hasPanel("sidebar-left") ? "true" : "false",
-  );
+  toggleSidebarBtn.setAttribute("aria-pressed", layout.hasPanel("sidebar-left") ? "true" : "false");
 }
 
 function toggleSidebar(): void {
@@ -2111,7 +2238,7 @@ syncSidebarToggleButton();
 
 // ─── Tab size labels ─────────────────────────────────────────────────────
 
-const fmtSize = (b: number) => b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`;
+const fmtSize = (b: number) => (b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`);
 
 const tabBaseTitles: Record<string, string> = {
   "ts-source": "TypeScript (.ts)",
@@ -2142,7 +2269,10 @@ function updateTabSizes() {
     const baseTitle = tabBaseTitles[tabId] ?? tabId;
 
     const raw = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
-    if (raw === 0) { updateTabLabel(tabId, baseTitle); continue; }
+    if (raw === 0) {
+      updateTabLabel(tabId, baseTitle);
+      continue;
+    }
 
     updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)})`);
 
@@ -2204,10 +2334,14 @@ function xHighlightEditors(target: HighlightTarget, pinned: boolean, source: Hig
     if (model === inputFile.model && source !== "ts" && target.kind === "function") {
       const line = findTsSourceLine(inputFile.model, target.name);
       if (line) {
-        xDecos.push(slot.editor.createDecorationsCollection([{
-          range: new monaco.Range(line, 1, line, 1),
-          options: { className: cls, isWholeLine: true },
-        }]));
+        xDecos.push(
+          slot.editor.createDecorationsCollection([
+            {
+              range: new monaco.Range(line, 1, line, 1),
+              options: { className: cls, isWholeLine: true },
+            },
+          ]),
+        );
         slot.editor.revealLineInCenter(line);
       }
     }
@@ -2216,9 +2350,14 @@ function xHighlightEditors(target: HighlightTarget, pinned: boolean, source: Hig
     if (model === wasmHexFile.model && source !== "hex") {
       const range = hexRangeForNode(target.name, target.treemapPath);
       if (range) {
-        xDecos.push(slot.editor.createDecorationsCollection([{
-          range, options: { className: cls, isWholeLine: true },
-        }]));
+        xDecos.push(
+          slot.editor.createDecorationsCollection([
+            {
+              range,
+              options: { className: cls, isWholeLine: true },
+            },
+          ]),
+        );
         slot.editor.revealRangeInCenter(range);
       }
     }
@@ -2228,9 +2367,14 @@ function xHighlightEditors(target: HighlightTarget, pinned: boolean, source: Hig
       const watLine = watLineForNode(target.name, target.treemapPath);
       if (watLine) {
         const range = new monaco.Range(watLine.start, 1, watLine.end, 1);
-        xDecos.push(slot.editor.createDecorationsCollection([{
-          range, options: { className: cls, isWholeLine: true },
-        }]));
+        xDecos.push(
+          slot.editor.createDecorationsCollection([
+            {
+              range,
+              options: { className: cls, isWholeLine: true },
+            },
+          ]),
+        );
         slot.editor.revealRangeInCenter(range);
       }
     }
@@ -2252,7 +2396,10 @@ function setHighlightTarget(target: HighlightTarget | null, source: HighlightSou
   if (xPinned) return;
 
   // Cancel any pending hover
-  if (xHoverTimer !== null) { clearTimeout(xHoverTimer); xHoverTimer = null; }
+  if (xHoverTimer !== null) {
+    clearTimeout(xHoverTimer);
+    xHoverTimer = null;
+  }
 
   if (target?.name === xTarget?.name && source === xSource) return;
 
@@ -2339,18 +2486,22 @@ function applyHexSpanHighlight(offset: number, ed: monaco.editor.IStandaloneCode
   const span = findSpanAt(offset);
   if (span && span === xLastHoveredSpan) return;
   xLastHoveredSpan = span;
-  if (xHexSpanDeco) { xHexSpanDeco.clear(); xHexSpanDeco = null; }
+  if (xHexSpanDeco) {
+    xHexSpanDeco.clear();
+    xHexSpanDeco = null;
+  }
   if (span) {
     const section = findSectionAt(span.offset);
     const cssKey = section ? sectionCssKey(section) : "header";
-    xHexSpanDeco = ed.createDecorationsCollection(
-      spanHighlightDecorations(span, `hex-span-hover-${cssKey}`),
-    );
+    xHexSpanDeco = ed.createDecorationsCollection(spanHighlightDecorations(span, `hex-span-hover-${cssKey}`));
   }
 }
 
 function clearHexSpanHighlight() {
-  if (xHexSpanDeco) { xHexSpanDeco.clear(); xHexSpanDeco = null; }
+  if (xHexSpanDeco) {
+    xHexSpanDeco.clear();
+    xHexSpanDeco = null;
+  }
   xLastHoveredSpan = null;
 }
 
@@ -2358,7 +2509,10 @@ function clearHexSpanHighlight() {
 
 // Treemap hover
 treemap.onNodeHover = (node) => {
-  if (!node) { setHighlightTarget(null, "treemap"); return; }
+  if (!node) {
+    setHighlightTarget(null, "treemap");
+    return;
+  }
   setHighlightTarget(resolveTreemapTarget(node), "treemap");
 };
 
@@ -2416,13 +2570,20 @@ function watLineForNode(name: string, fullPath: string): { start: number; end: n
 
   // Section-level: find section keyword in WAT
   const sectionKeywords: Record<string, string> = {
-    type: "(type ", import: "(import ", func: "(func ", export: "(export ",
-    global: "(global ", table: "(table ", memory: "(memory ", element: "(elem ",
+    type: "(type ",
+    import: "(import ",
+    func: "(func ",
+    export: "(export ",
+    global: "(global ",
+    table: "(table ",
+    memory: "(memory ",
+    element: "(elem ",
   };
   const kw = sectionKeywords[name];
   if (kw) {
     const lines = watText.split("\n");
-    let start = -1, end = -1;
+    let start = -1,
+      end = -1;
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].trimStart().startsWith(kw)) {
         if (start === -1) start = i + 1;
@@ -2438,7 +2599,8 @@ function watLineForNode(name: string, fullPath: string): { start: number; end: n
     idx = watText.indexOf(pattern);
     if (idx !== -1) {
       const lines = watText.split("\n");
-      let start = -1, end = -1;
+      let start = -1,
+        end = -1;
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].includes(`(import "${name}"`)) {
           if (start === -1) start = i + 1;
@@ -2481,22 +2643,22 @@ const DOM_EXTERN_CLASSES = new Set([
 ]);
 
 function detectDomUsage(result: ReturnType<typeof compile>): boolean {
-  if (result.imports.some((imp) =>
-    imp.intent.type === "extern_class" && DOM_EXTERN_CLASSES.has(imp.intent.className)
-  )) {
+  if (
+    result.imports.some((imp) => imp.intent.type === "extern_class" && DOM_EXTERN_CLASSES.has(imp.intent.className))
+  ) {
     return true;
   }
 
-  if (result.imports.some((imp) =>
-    imp.intent.type === "declared_global"
-    && (imp.intent.name === "document" || imp.intent.name === "window")
-  )) {
+  if (
+    result.imports.some(
+      (imp) =>
+        imp.intent.type === "declared_global" && (imp.intent.name === "document" || imp.intent.name === "window"),
+    )
+  ) {
     return true;
   }
 
-  return result.imports.some((imp) =>
-    imp.name === "__get_globalThis" && result.stringPool.includes("document")
-  );
+  return result.imports.some((imp) => imp.name === "__get_globalThis" && result.stringPool.includes("document"));
 }
 
 function generateModularOutput(result: ReturnType<typeof compile>): string {
@@ -2504,30 +2666,25 @@ function generateModularOutput(result: ReturnType<typeof compile>): string {
   const helper = (result.importsHelper ?? "").trim();
   const needsDeps = /\bcreateImports\s*\(\s*deps\s*\)/.test(helper);
   // Parse "export declare function name(params): ret;" into JSDoc-annotated exports
-  const exportLines = [
-    ...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm),
-  ].map(([, name, params, ret]) => {
-    // Build compact JSDoc type annotation
-    const jsParams = params
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean)
-      .map((p) => {
-        const [pName, pType] = p.split(":").map((s) => s.trim());
-        return `${pType || "any"} ${pName}`;
-      })
-      .join(", ");
-    return `/** @type {(${jsParams}) => ${ret}} */\nexport const ${name} = _exports.${name};`;
-  });
+  const exportLines = [...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm)].map(
+    ([, name, params, ret]) => {
+      // Build compact JSDoc type annotation
+      const jsParams = params
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => {
+          const [pName, pType] = p.split(":").map((s) => s.trim());
+          return `${pType || "any"} ${pName}`;
+        })
+        .join(", ");
+      return `/** @type {(${jsParams}) => ${ret}} */\nexport const ${name} = _exports.${name};`;
+    },
+  );
 
-  const exports =
-    exportLines.length > 0
-      ? exportLines.join("\n\n")
-      : `export default instance.exports;`;
+  const exports = exportLines.length > 0 ? exportLines.join("\n\n") : `export default instance.exports;`;
 
-  const importsCall = needsDeps
-    ? "createImports(/* host deps */)"
-    : "createImports()";
+  const importsCall = needsDeps ? "createImports(/* host deps */)" : "createImports()";
 
   return `${helper || `export function createImports() {\n  return { env: {} };\n}`}
 
@@ -2560,7 +2717,6 @@ function sectionCssKey(section: WasmSection): string {
   return key in SECTION_COLORS ? key : "header";
 }
 
-
 // Generate hex viewer CSS from treemap SECTION_COLORS
 {
   const style = document.createElement("style");
@@ -2587,7 +2743,9 @@ function sectionCssKey(section: WasmSection): string {
     rules.push(`.hex-asc-${name} { color: ${asc} !important; }`);
     // Brightness levels 0-10: near-background → section color → white
     const bgVal = 35;
-    const midR = Math.min(255, r + 80), midG = Math.min(255, g + 80), midB = Math.min(255, b + 80);
+    const midR = Math.min(255, r + 80),
+      midG = Math.min(255, g + 80),
+      midB = Math.min(255, b + 80);
     for (let i = 0; i <= 10; i++) {
       const t = i / 10;
       let cr: number, cg: number, cb: number;
@@ -2641,9 +2799,7 @@ function buildHexLineLabels(wasmData: WasmData, totalLines: number): string[] {
 
   // Section lines
   for (const section of wasmData.sections) {
-    const label = section.customName
-      ? `${section.name}:${section.customName}`
-      : section.name;
+    const label = section.customName ? `${section.name}:${section.customName}` : section.name;
     const startLine = Math.floor(section.offset / 16);
     const endLine = Math.floor((section.offset + section.totalSize - 1) / 16);
     for (let l = startLine; l <= Math.min(endLine, totalLines - 1); l++) {
@@ -2674,7 +2830,11 @@ function annotateHexEditor(bin: Uint8Array, wasmData: WasmData, lineLabels: stri
   const sectionKeyIndex = new Map<string, number>([["header", 0]]);
   function getSectionKeyIdx(key: string): number {
     let idx = sectionKeyIndex.get(key);
-    if (idx == null) { idx = sectionKeys.length; sectionKeys.push(key); sectionKeyIndex.set(key, idx); }
+    if (idx == null) {
+      idx = sectionKeys.length;
+      sectionKeys.push(key);
+      sectionKeyIndex.set(key, idx);
+    }
     return idx;
   }
   // Header: bytes 0-7
@@ -2693,8 +2853,7 @@ function annotateHexEditor(bin: Uint8Array, wasmData: WasmData, lineLabels: stri
     let spanIdx = 0;
     for (let i = 0; i < bin.length; i++) {
       // Advance to the span covering this byte
-      while (spanIdx < lastWasmSpans.length &&
-             i >= lastWasmSpans[spanIdx].offset + lastWasmSpans[spanIdx].length) {
+      while (spanIdx < lastWasmSpans.length && i >= lastWasmSpans[spanIdx].offset + lastWasmSpans[spanIdx].length) {
         spanIdx++;
         alt ^= 1;
       }
@@ -2808,7 +2967,8 @@ function applyHexDecorations() {
 /** Binary search for the span containing `offset` */
 function findSpanAt(offset: number): ByteSpan | null {
   const spans = lastWasmSpans;
-  let lo = 0, hi = spans.length - 1;
+  let lo = 0,
+    hi = spans.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     const s = spans[mid];
@@ -2927,8 +3087,10 @@ monaco.languages.registerHoverProvider("text", {
       const bStart = Math.max(span.offset, lineByteStart) - lineByteStart;
       const bEnd = Math.min(span.offset + span.length, lineByteStart + 16) - lineByteStart;
       range = new monaco.Range(
-        position.lineNumber, HEX_DATA_COL + bStart * 3 + 1,
-        position.lineNumber, HEX_DATA_COL + (bEnd - 1) * 3 + 3,
+        position.lineNumber,
+        HEX_DATA_COL + bStart * 3 + 1,
+        position.lineNumber,
+        HEX_DATA_COL + (bEnd - 1) * 3 + 3,
       );
     } else {
       range = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 2);
@@ -2952,7 +3114,11 @@ function setupEditorHandlers(ed: monaco.editor.IStandaloneCodeEditor) {
       setHighlightTarget(resolveTsTarget(e.target.position.lineNumber), "ts");
     } else if (model === wasmHexModel) {
       const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
-      if (offset === null) { clearHexSpanHighlight(); setHighlightTarget(null, "hex"); return; }
+      if (offset === null) {
+        clearHexSpanHighlight();
+        setHighlightTarget(null, "hex");
+        return;
+      }
       applyHexSpanHighlight(offset, ed);
       setHighlightTarget(resolveHexTarget(offset), "hex");
     } else if (model === watFile.model) {
@@ -2999,8 +3165,10 @@ function hasExportedMain(result: ReturnType<typeof compile>): boolean {
 }
 
 function hasTopLevelMainDeclaration(source: string): boolean {
-  return /^\s*(?:export\s+)?(?:async\s+)?function\s+main\s*\(/m.test(source)
-    || /^\s*(?:export\s+)?(?:const|let|var)\s+main\b/m.test(source);
+  return (
+    /^\s*(?:export\s+)?(?:async\s+)?function\s+main\s*\(/m.test(source) ||
+    /^\s*(?:export\s+)?(?:const|let|var)\s+main\b/m.test(source)
+  );
 }
 
 function compileOnly() {
@@ -3039,16 +3207,10 @@ function compileOnly() {
     for (let i = 0; i < bin.length; i += 16) {
       const lineIdx = i / 16;
       const slice = bin.subarray(i, Math.min(i + 16, bin.length));
-      const hex = Array.from(slice, (b) =>
-        b.toString(16).padStart(2, "0"),
-      ).join(" ");
-      const ascii = Array.from(slice, (b) =>
-        b >= 32 && b < 127 ? String.fromCharCode(b) : ".",
-      ).join("");
+      const hex = Array.from(slice, (b) => b.toString(16).padStart(2, "0")).join(" ");
+      const ascii = Array.from(slice, (b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : ".")).join("");
       const label = lineLabels[lineIdx];
-      lines.push(
-        `${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii.padEnd(16)}  ${label}`,
-      );
+      lines.push(`${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii.padEnd(16)}  ${label}`);
     }
     const wasmFile = fileMap.get("output/example.wasm")!;
     wasmFile.model.setValue(lines.join("\n"));
@@ -3056,9 +3218,7 @@ function compileOnly() {
     wasmFile.binaryData = new Uint8Array(bin);
     annotateHexEditor(bin, wasmData, lineLabels);
   }
-  fileMap
-    .get("output/example.js")!
-    .model.setValue(generateModularOutput(result));
+  fileMap.get("output/example.js")!.model.setValue(generateModularOutput(result));
 
   // Mark output files as compiled
   for (const f of files) {
@@ -3066,9 +3226,7 @@ function compileOnly() {
   }
 
   if (result.errors.length > 0) {
-    errorsPre.textContent = result.errors
-      .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
-      .join("\n");
+    errorsPre.textContent = result.errors.map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`).join("\n");
   }
 
   timingSpan.textContent = `compile: ${compileTime.toFixed(1)}ms${result.success ? "" : " (failed)"}`;
@@ -3249,16 +3407,18 @@ async function runOnly() {
         try {
           const payload = e.getArg(tag, 0);
           const payloadText =
-            typeof payload === "string" ? payload
-              : payload instanceof Error ? payload.stack ?? payload.message
-                : payload?.message ? String(payload.message)
-                  : payload === null ? "null"
-                    : payload === undefined ? "undefined"
+            typeof payload === "string"
+              ? payload
+              : payload instanceof Error
+                ? (payload.stack ?? payload.message)
+                : payload?.message
+                  ? String(payload.message)
+                  : payload === null
+                    ? "null"
+                    : payload === undefined
+                      ? "undefined"
                       : String(payload);
-          msg = [
-            `Wasm exception payload: ${payloadText}`,
-            String(e),
-          ].join("\n");
+          msg = [`Wasm exception payload: ${payloadText}`, String(e)].join("\n");
         } catch {
           msg = e.stack ?? String(e);
         }
@@ -3335,7 +3495,9 @@ async function runBenchmark() {
   showOutputPanel("console");
   benchBtn.disabled = true;
 
-  const log = (s: string) => { consolePre.textContent += s + "\n"; };
+  const log = (s: string) => {
+    consolePre.textContent += s + "\n";
+  };
   const yield_ = () => new Promise<void>((r) => setTimeout(r, 0));
 
   // ── WASM setup ──
@@ -3421,7 +3583,10 @@ async function runBenchmark() {
   function calibrate(fn: Function): number {
     let iters = 0;
     const t0 = performance.now();
-    while (performance.now() - t0 < 100) { fn(); iters++; }
+    while (performance.now() - t0 < 100) {
+      fn();
+      iters++;
+    }
     return Math.max(10, Math.ceil((iters / 100) * TARGET_MS));
   }
 
@@ -3437,8 +3602,10 @@ async function runBenchmark() {
   }
 
   type BenchResult = {
-    name: string; iters: number;
-    wasmUs: number; jsUs: number;
+    name: string;
+    iters: number;
+    wasmUs: number;
+    jsUs: number;
   };
   const results: BenchResult[] = [];
 
@@ -3447,7 +3614,10 @@ async function runBenchmark() {
   for (const name of benchNames) {
     const wasmFn = wasmExports[name];
     const jsFn = jsFuncs[name];
-    if (!jsFn) { log(`  ${name}: JS function not found, skipping`); continue; }
+    if (!jsFn) {
+      log(`  ${name}: JS function not found, skipping`);
+      continue;
+    }
 
     consolePre.textContent = consolePre.textContent.replace(/  \w+…\n?$/, "");
     log(`  ${name}…`);
@@ -3455,7 +3625,10 @@ async function runBenchmark() {
 
     try {
       // Warmup both sides
-      for (let i = 0; i < 50; i++) { wasmFn(); jsFn(); }
+      for (let i = 0; i < 50; i++) {
+        wasmFn();
+        jsFn();
+      }
 
       // Calibrate on WASM (usually faster → safe iteration count for JS)
       const iters = calibrate(wasmFn);
@@ -3488,7 +3661,7 @@ async function runBenchmark() {
     benchmarkSidebarResults.set(bench.path, {
       wasmUs: r.wasmUs,
       jsUs: r.jsUs,
-      deltaPct: ((r.jsUs / r.wasmUs) - 1) * 100,
+      deltaPct: (r.jsUs / r.wasmUs - 1) * 100,
     });
     void saveBrowserBenchmarkSidebarResult(snapshot);
   }
@@ -3512,10 +3685,8 @@ async function runBenchmark() {
     let tag: string;
     if (ratio > 1.05) tag = ("WASM " + ratio.toFixed(2) + "\u00d7").padEnd(10);
     else if (ratio < 0.95) tag = ("JS " + (1 / ratio).toFixed(2) + "\u00d7").padEnd(10);
-    else tag = ("\u2248 tied").padEnd(10);
-    lines.push(
-      `  ${r.name}${pad}${wStr}  ${jStr}    ${tag} ${r.iters.toLocaleString()}`,
-    );
+    else tag = "\u2248 tied".padEnd(10);
+    lines.push(`  ${r.name}${pad}${wStr}  ${jStr}    ${tag} ${r.iters.toLocaleString()}`);
   }
 
   consolePre.textContent = lines.join("\n") + "\n";
