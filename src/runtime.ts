@@ -640,7 +640,14 @@ function resolveImport(
           if (_isWasmStruct(obj)) {
             const exports = callbackState?.getExports();
             const fieldNames = _getStructFieldNames(obj, exports);
-            if (fieldNames) return fieldNames;
+            if (fieldNames) {
+              const descs = _wasmPropDescs.get(obj);
+              return fieldNames.filter((k) => {
+                if (!descs) return true;
+                const flags = descs.get(k);
+                return flags === undefined || !!(flags & _SC_ENUMERABLE);
+              });
+            }
           }
           return Object.keys(obj);
         };
@@ -651,10 +658,17 @@ function resolveImport(
             const exports = callbackState?.getExports();
             const fieldNames = _getStructFieldNames(obj, exports);
             if (fieldNames) {
-              return fieldNames.map((key) => {
-                const getter = exports?.[`__sget_${key}`];
-                return typeof getter === "function" ? getter(obj) : undefined;
-              });
+              const descs = _wasmPropDescs.get(obj);
+              return fieldNames
+                .filter((k) => {
+                  if (!descs) return true;
+                  const flags = descs.get(k);
+                  return flags === undefined || !!(flags & _SC_ENUMERABLE);
+                })
+                .map((key) => {
+                  const getter = exports?.[`__sget_${key}`];
+                  return typeof getter === "function" ? getter(obj) : undefined;
+                });
             }
           }
           return Object.values(obj);
@@ -666,11 +680,18 @@ function resolveImport(
             const exports = callbackState?.getExports();
             const fieldNames = _getStructFieldNames(obj, exports);
             if (fieldNames) {
-              return fieldNames.map((key) => {
-                const getter = exports?.[`__sget_${key}`];
-                const val = typeof getter === "function" ? getter(obj) : undefined;
-                return [key, val];
-              });
+              const descs = _wasmPropDescs.get(obj);
+              return fieldNames
+                .filter((k) => {
+                  if (!descs) return true;
+                  const flags = descs.get(k);
+                  return flags === undefined || !!(flags & _SC_ENUMERABLE);
+                })
+                .map((key) => {
+                  const getter = exports?.[`__sget_${key}`];
+                  const val = typeof getter === "function" ? getter(obj) : undefined;
+                  return [key, val];
+                });
             }
           }
           return Object.entries(obj);
@@ -846,7 +867,47 @@ function resolveImport(
       if (name === "__getOwnPropertyDescriptor")
         return (obj: any, prop: any) => {
           if (obj == null) return undefined;
-          return Object.getOwnPropertyDescriptor(obj, prop);
+          // Non-WasmGC objects: native JS handles it
+          if (!_isWasmStruct(obj)) {
+            return Object.getOwnPropertyDescriptor(obj, prop);
+          }
+          // WasmGC struct: check sidecar properties first (dynamically added props)
+          const sc = _wasmStructProps.get(obj);
+          if (sc && prop in sc) {
+            const descs = _wasmPropDescs.get(obj);
+            const flags = descs?.get(prop) ?? (_SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED);
+            if (flags & _SC_ACCESSOR) {
+              return {
+                get: sc[`__get_${prop}`],
+                set: sc[`__set_${prop}`],
+                enumerable: !!(flags & _SC_ENUMERABLE),
+                configurable: !!(flags & _SC_CONFIGURABLE),
+              };
+            }
+            return {
+              value: sc[prop],
+              writable: !!(flags & _SC_WRITABLE),
+              enumerable: !!(flags & _SC_ENUMERABLE),
+              configurable: !!(flags & _SC_CONFIGURABLE),
+            };
+          }
+          // Check struct fields via exported getters
+          const exports = callbackState?.getExports();
+          const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+          const propStr = String(prop);
+          if (fieldNames.includes(propStr)) {
+            const getter = exports?.[`__sget_${propStr}`];
+            const value = typeof getter === "function" ? getter(obj) : undefined;
+            const descs = _wasmPropDescs.get(obj);
+            const flags = descs?.get(propStr) ?? (_SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED);
+            return {
+              value,
+              writable: !!(flags & _SC_WRITABLE),
+              enumerable: !!(flags & _SC_ENUMERABLE),
+              configurable: !!(flags & _SC_CONFIGURABLE),
+            };
+          }
+          return undefined; // not an own property
         };
       // __create_descriptor(value, flags) → {value, writable, enumerable, configurable}
       // flags: bit 0 = writable, bit 1 = enumerable, bit 2 = configurable

@@ -1717,6 +1717,22 @@ export function compileObjectKeysOrValues(
     .map((f, idx) => ({ field: f, fieldIdx: idx }))
     .filter((e) => !e.field.name.startsWith("__"));
 
+  // Per ES spec, keys/values/entries only include enumerable own properties.
+  // definedPropertyFlags is keyed as "varName:propName" and updated at compile time
+  // by Object.defineProperty calls. shapePropFlags is initialized with defaults after
+  // compilation, so it won't reflect defineProperty updates during this pass.
+  const argVarName = ts.isIdentifier(arg) ? arg.text : undefined;
+  const enumUserFields = userFields.filter((e) => {
+    if (argVarName) {
+      const key = `${argVarName}:${e.field.name}`;
+      const flags = ctx.definedPropertyFlags.get(key);
+      if (flags !== undefined) {
+        return !!(flags & PROP_FLAG_ENUMERABLE);
+      }
+    }
+    return true; // no explicit descriptor = enumerable by default
+  });
+
   if (method === "keys") {
     // Build a string[] array from the field names
     // Each field name is already registered as a string literal thunk
@@ -1732,8 +1748,8 @@ export function compileObjectKeysOrValues(
       return null;
     }
 
-    // Push each field name string onto the stack
-    for (const entry of userFields) {
+    // Push each enumerable field name string onto the stack
+    for (const entry of enumUserFields) {
       if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
         compileNativeStringLiteral(ctx, fctx, entry.field.name);
         // Object.keys returns externref strings, convert from native
@@ -1755,7 +1771,7 @@ export function compileObjectKeysOrValues(
     }
 
     // Create the backing array with array.new_fixed
-    const count = userFields.length;
+    const count = enumUserFields.length;
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: count });
     const tmpData = allocLocal(fctx, `__obj_keys_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
     fctx.body.push({ op: "local.set", index: tmpData });
@@ -1831,8 +1847,8 @@ export function compileObjectKeysOrValues(
     // Ensure union boxing imports are registered (needed for boxing primitives)
     addUnionImports(ctx);
 
-    // For each field, create a tuple struct [key, value]
-    for (const entry of userFields) {
+    // For each enumerable field, create a tuple struct [key, value]
+    for (const entry of enumUserFields) {
       // Push key string (field 0 of tuple)
       if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
         compileNativeStringLiteral(ctx, fctx, entry.field.name);
@@ -1884,7 +1900,7 @@ export function compileObjectKeysOrValues(
     }
 
     // Create outer array from the entry tuples on the stack
-    const count = userFields.length;
+    const count = enumUserFields.length;
     fctx.body.push({ op: "array.new_fixed", typeIdx: outerArrTypeIdx, length: count });
     const outerData = allocLocal(fctx, `__obj_entries_data_${fctx.locals.length}`, {
       kind: "ref",
@@ -1921,8 +1937,8 @@ export function compileObjectKeysOrValues(
   // Ensure union boxing imports are registered (needed for boxing primitives)
   addUnionImports(ctx);
 
-  // Push each field value onto the stack, boxing primitives to externref
-  for (const entry of userFields) {
+  // Push each enumerable field value onto the stack, boxing primitives to externref
+  for (const entry of enumUserFields) {
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: entry.fieldIdx });
     // Box primitive values to externref
@@ -1945,7 +1961,7 @@ export function compileObjectKeysOrValues(
   }
 
   // Create the backing array with array.new_fixed
-  const count = userFields.length;
+  const count = enumUserFields.length;
   fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: count });
   const tmpData = allocLocal(fctx, `__obj_vals_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: tmpData });
@@ -2119,16 +2135,29 @@ export function compilePropertyIntrospection(
     }
   }
 
+  const isPropertyIsEnumerable = propAccess.name.text === "propertyIsEnumerable";
+
   if (staticKey !== null) {
     // Static resolution: check if the key is a known own property
     const hasInStruct = structFieldNames !== null && structFieldNames.includes(staticKey);
     const hasInTs = tsProps.has(staticKey);
     const has = hasInStruct || hasInTs;
 
-    // For propertyIsEnumerable, all struct/TS-visible own properties are enumerable
-    // (non-enumerable properties are only created via Object.defineProperty with
-    // enumerable:false, which uses the __pf_ side-table — we can't check that
-    // statically, so for static keys known to be own, return true for both methods)
+    // For propertyIsEnumerable, also check definedPropertyFlags for updated enumerability.
+    // definedPropertyFlags is keyed as "varName:propName" and is the authoritative source
+    // for compile-time flag updates from Object.defineProperty calls.
+    let result = has ? 1 : 0;
+    if (isPropertyIsEnumerable && has) {
+      const recvVarName =
+        ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : undefined;
+      if (recvVarName) {
+        const key = `${recvVarName}:${staticKey}`;
+        const flags = ctx.definedPropertyFlags.get(key);
+        if (flags !== undefined) {
+          result = flags & PROP_FLAG_ENUMERABLE ? 1 : 0;
+        }
+      }
+    }
 
     // Compile receiver and argument for side effects, then drop
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
@@ -2139,7 +2168,7 @@ export function compilePropertyIntrospection(
     if (argResultType) {
       fctx.body.push({ op: "drop" });
     }
-    fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
+    fctx.body.push({ op: "i32.const", value: result });
     return { kind: "i32" };
   }
 
