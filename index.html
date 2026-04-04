@@ -1407,17 +1407,39 @@
             const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
             const pctOfJs = Math.round(ratio * 100);
             const scoreText = `${pctOfJs}%`;
-            const cls = ratio >= 1.1 ? "faster" : ratio >= 0.8 ? "near-parity" : "slower";
-            const barWidth = (ratio / (scaleMax / 100)) * 100; // % of track
+
+            // Bar extends FROM the JS baseline (100%) TO the wasm ratio.
+            // Faster = bar extends right from baseline. Slower = bar extends left.
+            let left, width;
+            if (ratio >= 1) {
+              left = jsPos;
+              width = ((ratio - 1) / (scaleMax / 100 - 1)) * (100 - jsPos);
+            } else {
+              const wasmPos = (ratio / (scaleMax / 100)) * 100;
+              left = wasmPos;
+              width = jsPos - wasmPos;
+            }
+
+            // Color: interpolate green↔red based on distance from 100%
+            // ratio=2 → bright green, ratio=1 → neutral, ratio=0.5 → bright red
+            const dist = Math.min(Math.abs(ratio - 1), 1.5) / 1.5; // 0..1 normalized distance
+            let color;
+            if (ratio >= 1) {
+              const g = Math.round(100 + dist * 155); // 100..255
+              color = `rgb(34, ${g}, 94)`;
+            } else {
+              const r = Math.round(100 + dist * 155); // 100..255
+              color = `rgb(${r}, 50, 50)`;
+            }
 
             const rowEl = document.createElement("div");
             rowEl.className = "bench-row";
             rowEl.innerHTML = `
               <span class="bench-name">${label}</span>
               <div class="bench-track">
-                <div class="bench-fill ${cls}" style="left: 0; width: ${barWidth}%"></div>
+                <div class="bench-fill" style="left: ${left}%; width: ${width}%; background: ${color}; border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
               </div>
-              <span class="bench-value" style="color: ${cls === "faster" ? "#22c55e" : cls === "near-parity" ? "#eab308" : "#ef4444"}">${scoreText}</span>
+              <span class="bench-value" style="color: ${color}">${scoreText}</span>
             `;
             container.appendChild(rowEl);
           }
