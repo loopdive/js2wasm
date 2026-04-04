@@ -17,9 +17,7 @@ export function bench_style(): number {
 export function main(): void {
   const host = document.body;
   host.innerHTML = "";
-  host.style.cssText =
-    "margin:0;background:#111;color:#ddd;" +
-    "font-family:system-ui,sans-serif;overflow-y:auto";
+  host.style.cssText = "margin:0;background:#111;color:#ddd;" + "font-family:system-ui,sans-serif;overflow-y:auto";
   const wrap = el("div", "padding:0.75rem");
   addBenchCard(wrap, "Style: 100 updates", "Host boundary — style.background per iteration", bench_style);
   host.appendChild(wrap);

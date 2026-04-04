@@ -344,26 +344,19 @@ function fmtSpeedup(ratio: number): string {
 // Compile and instantiate a workload
 // ---------------------------------------------------------------------------
 
-async function compileWorkload(
-  source: string,
-): Promise<{ run: () => number; binarySize: number; compileMs: number }> {
+async function compileWorkload(source: string): Promise<{ run: () => number; binarySize: number; compileMs: number }> {
   const t0 = performance.now();
   const result = compile(source, { fast: false });
   const compileMs = performance.now() - t0;
 
   if (!result.success) {
     throw new Error(
-      "Compilation failed:\n" +
-        result.errors.map((e: { message: string }) => `  ${e.message}`).join("\n"),
+      "Compilation failed:\n" + result.errors.map((e: { message: string }) => `  ${e.message}`).join("\n"),
     );
   }
 
   const imports = buildImports(result.imports, {}, result.stringPool);
-  const { instance } = await instantiateWasm(
-    result.binary,
-    imports.env,
-    imports.string_constants,
-  );
+  const { instance } = await instantiateWasm(result.binary, imports.env, imports.string_constants);
   if (imports.setExports) {
     imports.setExports(instance.exports as Record<string, Function>);
   }
@@ -514,8 +507,7 @@ function printReport(results: BenchResult[]): void {
   }
 
   // Summary
-  const avgSpeedup =
-    results.reduce((sum, r) => sum + r.speedup, 0) / results.length;
+  const avgSpeedup = results.reduce((sum, r) => sum + r.speedup, 0) / results.length;
   const geomSpeedup = Math.pow(
     results.reduce((prod, r) => prod * r.speedup, 1),
     1 / results.length,
@@ -538,9 +530,7 @@ async function main() {
 
   let selected = workloads;
   if (nameFilter) {
-    selected = workloads.filter((w) =>
-      w.name.toLowerCase().includes(nameFilter.toLowerCase()),
-    );
+    selected = workloads.filter((w) => w.name.toLowerCase().includes(nameFilter.toLowerCase()));
     if (selected.length === 0) {
       console.error(`No workloads match filter: "${nameFilter}"`);
       process.exit(1);
@@ -557,9 +547,7 @@ async function main() {
     const result = await runWorkload(workload);
     if (result) {
       results.push(result);
-      console.log(
-        ` JS: ${fmtMs(result.jsMedian)} | Wasm: ${fmtMs(result.wasmMedian)} | ${fmtSpeedup(result.speedup)}`,
-      );
+      console.log(` JS: ${fmtMs(result.jsMedian)} | Wasm: ${fmtMs(result.wasmMedian)} | ${fmtSpeedup(result.speedup)}`);
     } else {
       console.log(" SKIPPED");
     }

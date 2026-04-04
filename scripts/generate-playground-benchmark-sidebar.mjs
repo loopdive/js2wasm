@@ -3,11 +3,7 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import * as ts from "typescript";
-import {
-  buildImports,
-  compileMulti,
-  instantiateWasm,
-} from "./compiler-bundle.mjs";
+import { buildImports, compileMulti, instantiateWasm } from "./compiler-bundle.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const HELPERS_PATH = resolve(ROOT, "playground", "examples", "benchmarks", "helpers.ts");
@@ -24,9 +20,7 @@ const BENCHMARKS = [
 ];
 
 function stripImportsAndExports(source) {
-  return source
-    .replace(/^\s*import\s+[^;]+;\s*$/gm, "")
-    .replace(/^export\s+/gm, "");
+  return source.replace(/^\s*import\s+[^;]+;\s*$/gm, "").replace(/^export\s+/gm, "");
 }
 
 function buildJsFactorySource(source, exportName) {
@@ -59,10 +53,13 @@ async function measureBenchmark(entryPath, exportName) {
   const absEntryPath = resolve(ROOT, "playground", entryPath);
   const source = readFileSync(absEntryPath, "utf8");
 
-  const result = compileMulti({
-    [entryPath]: source,
-    "examples/benchmarks/helpers.ts": HELPERS_SOURCE,
-  }, entryPath);
+  const result = compileMulti(
+    {
+      [entryPath]: source,
+      "examples/benchmarks/helpers.ts": HELPERS_SOURCE,
+    },
+    entryPath,
+  );
 
   if (!result.success) {
     throw new Error(`Compilation failed for ${entryPath}:\n${result.errors.map((e) => e.message).join("\n")}`);

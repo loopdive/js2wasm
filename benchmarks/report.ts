@@ -71,12 +71,8 @@ export function generateMarkdown(results: BenchmarkResult[]): string {
 
   // Summary table
   lines.push("## Summary\n");
-  lines.push(
-    "| Benchmark | JS | Host-call | GC-native | Linear | Winner |",
-  );
-  lines.push(
-    "|-----------|-----|-----------|-----------|--------|--------|",
-  );
+  lines.push("| Benchmark | JS | Host-call | GC-native | Linear | Winner |");
+  lines.push("|-----------|-----|-----------|-----------|--------|--------|");
   for (const row of rows) {
     const cols = STRATEGIES.map((s) => {
       const r = row.results.get(s);
@@ -107,9 +103,7 @@ export function generateMarkdown(results: BenchmarkResult[]): string {
   }
 
   // Binary sizes
-  const hasSizes = rows.some((r) =>
-    Array.from(r.results.values()).some((v) => v.binarySize),
-  );
+  const hasSizes = rows.some((r) => Array.from(r.results.values()).some((v) => v.binarySize));
   if (hasSizes) {
     lines.push("\n## Binary sizes\n");
     lines.push("| Benchmark | Host-call | GC-native | Linear |");
@@ -143,10 +137,7 @@ export function generateMarkdown(results: BenchmarkResult[]): string {
 // Save results
 // ---------------------------------------------------------------------------
 
-export function saveResults(
-  results: BenchmarkResult[],
-  outDir: string,
-): void {
+export function saveResults(results: BenchmarkResult[], outDir: string): void {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
   // JSON
@@ -178,15 +169,17 @@ interface HistoryPoint {
 }
 
 function buildHistory(outDir: string): void {
-  const files = fs.readdirSync(outDir)
-    .filter(f => /^\d{4}-\d{2}-\d{2}T[\d-]+Z\.json$/.test(f))
+  const files = fs
+    .readdirSync(outDir)
+    .filter((f) => /^\d{4}-\d{2}-\d{2}T[\d-]+Z\.json$/.test(f))
     .sort();
 
   const history: HistoryPoint[] = [];
 
   for (const file of files) {
     // Parse timestamp from filename: 2026-03-07T23-00-07-232Z → 2026-03-07T23:00:07.232Z
-    const isoTimestamp = file.replace(/\.json$/, "")
+    const isoTimestamp = file
+      .replace(/\.json$/, "")
       .replace(/^(\d{4}-\d{2}-\d{2}T)(\d{2})-(\d{2})-(\d{2})-(\d+)Z$/, "$1$2:$3:$4.$5Z");
 
     try {

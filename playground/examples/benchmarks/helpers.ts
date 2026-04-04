@@ -5,10 +5,12 @@ export function el(tag: string, css: string): HTMLElement {
 }
 
 export function bcrd(title: string, desc: string, parent: HTMLElement): HTMLElement {
-  const card = el("div",
+  const card = el(
+    "div",
     "padding:0.75rem;background:#1a1a35;" +
-    "border-radius:6px;border:1px solid #2a2a4a;" +
-    "margin-bottom:0.5rem;cursor:pointer");
+      "border-radius:6px;border:1px solid #2a2a4a;" +
+      "margin-bottom:0.5rem;cursor:pointer",
+  );
   const t = el("div", "font-size:0.8rem;color:#fff;font-weight:bold");
   t.textContent = title;
   card.appendChild(t);

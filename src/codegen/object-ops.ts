@@ -2127,8 +2127,7 @@ export function compilePropertyIntrospection(
     // for compile-time flag updates from Object.defineProperty calls.
     let result = has ? 1 : 0;
     if (isPropertyIsEnumerable && has) {
-      const recvVarName =
-        ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : undefined;
+      const recvVarName = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : undefined;
       if (recvVarName) {
         const key = `${recvVarName}:${staticKey}`;
         const flags = ctx.definedPropertyFlags.get(key);
