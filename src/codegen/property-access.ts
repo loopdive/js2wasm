@@ -258,6 +258,22 @@ export function emitNullGuardedStructGet(
   // We operate on anyref so we can re-test the same value against multiple
   // struct types without losing it.
   if (propName) {
+    // Optimization: when objType is already the exact target struct type (ref_null typeIdx),
+    // the Wasm type system guarantees the runtime value is typeIdx or null — no multi-struct
+    // dispatch needed.  Use a simple null-check + direct struct.get, skipping ref.test + ref.cast.
+    if (objType.kind === "ref_null" && (objType as { typeIdx: number }).typeIdx === typeIdx) {
+      const tmp = allocLocal(fctx, `__ng_${fctx.locals.length}`, objType);
+      fctx.body.push({ op: "local.tee", index: tmp });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val" as const, type: resultType },
+        then: typeErrorThrowInstrs(ctx),
+        else: [{ op: "local.get", index: tmp } as Instr, { op: "struct.get", typeIdx, fieldIdx } as Instr],
+      });
+      return;
+    }
+
     // Widen the ref_null $T to anyref so we can multi-dispatch
     const tmpAny = allocLocal(fctx, `__ng_any_${fctx.locals.length}`, { kind: "anyref" });
     fctx.body.push({ op: "local.set", index: tmpAny });
