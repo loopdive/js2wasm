@@ -942,7 +942,34 @@
 
         <div class="benchmark-chart" id="benchmark-chart">
           <h3 class="diagram-title">Benchmark Performance (Wasm vs JS)</h3>
-          <div class="benchmark-bars" id="benchmark-bars"></div>
+          <div class="benchmark-bars-wrap" style="position: relative; padding-top: 24px">
+            <div
+              id="bench-js-label"
+              style="
+                position: absolute;
+                top: 4px;
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--fg-soft);
+                letter-spacing: 0.05em;
+              "
+            >
+              JS
+            </div>
+            <div
+              id="bench-js-line"
+              style="
+                position: absolute;
+                top: 24px;
+                bottom: 0;
+                width: 2px;
+                background: var(--fg-soft);
+                opacity: 0.5;
+                z-index: 1;
+              "
+            ></div>
+            <div class="benchmark-bars" id="benchmark-bars"></div>
+          </div>
           <p class="benchmark-legend">
             Center line = JS speed. Right = faster than JS. Left = slower.
             <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline">Full report</a>
@@ -1389,13 +1416,27 @@
             rowEl.innerHTML = `
               <span class="bench-name">${label}</span>
               <div class="bench-track">
-                <div class="bench-parity"></div>
                 <div class="bench-fill ${cls}" style="left: ${left}%; width: ${width}%"></div>
               </div>
               <span class="bench-value" style="color: ${cls === "faster" ? "#22c55e" : cls === "near-parity" ? "#eab308" : "#ef4444"}">${scoreText}</span>
             `;
             container.appendChild(rowEl);
           }
+          // Position the JS parity line and label at 50% of the first track element
+          requestAnimationFrame(() => {
+            const track = container.querySelector(".bench-track");
+            const wrap = document.querySelector(".benchmark-bars-wrap");
+            const label = document.getElementById("bench-js-label");
+            const line = document.getElementById("bench-js-line");
+            if (track && wrap && label && line) {
+              const wrapRect = wrap.getBoundingClientRect();
+              const trackRect = track.getBoundingClientRect();
+              const midX = trackRect.left + trackRect.width / 2 - wrapRect.left;
+              label.style.left = midX + "px";
+              label.style.transform = "translateX(-50%)";
+              line.style.left = midX + "px";
+            }
+          });
         } catch {
           document.getElementById("benchmark-chart")?.remove();
         }
