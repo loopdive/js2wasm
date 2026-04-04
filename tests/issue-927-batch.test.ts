@@ -59,7 +59,7 @@ describe("Issue #927 batch test — negative test rejection rate", () => {
     }
 
     console.log(`\n  Results: ${nowReject} now rejected, ${stillAccept} still accepted, ${fileErrors} file errors`);
-    console.log(`  Rate: ${nowReject}/${lines.length} = ${(nowReject/lines.length*100).toFixed(1)}%`);
+    console.log(`  Rate: ${nowReject}/${lines.length} = ${((nowReject / lines.length) * 100).toFixed(1)}%`);
     if (acceptedTests.length > 0) {
       console.log(`  Still accepted (first ${Math.min(acceptedTests.length, 20)}):`);
       for (const t of acceptedTests.slice(0, 20)) console.log(`    ${t}`);
