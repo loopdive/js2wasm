@@ -64,8 +64,8 @@ class T262Donut extends HTMLElement {
     const segments = [
       { value: pass, color: "rgba(255,255,255,1)", label: "Pass" },
       { value: fail, color: "rgba(255,255,255,0.2)", label: "Fail" },
-      { value: ce, color: "rgba(255,255,255,0.1)", label: "CE" },
-      { value: skip, color: "rgba(255,255,255,0)", label: "Skip" },
+      { value: ce, color: "rgba(255,255,255,0.2)", label: "CE" },
+      { value: skip, color: "rgba(255,255,255,0.2)", label: "Skip" },
     ];
 
     // Build the conic-gradient donut
@@ -82,25 +82,26 @@ class T262Donut extends HTMLElement {
       return { x: centerX + Math.cos(rad) * radius, y: centerY + Math.sin(rad) * radius };
     };
 
-    const makeOrbitStat = (value, label, color, angle, labelRadius) => {
+    const makeOrbitStat = (value, label, color, angle, labelRadius, id) => {
       const lp = orbitPoint(angle, labelRadius);
       const ls = orbitPoint(angle, 126);
       const dx = lp.x - ls.x;
       const dy = lp.y - ls.y;
       const lineLen = Math.max(Math.sqrt(dx * dx + dy * dy) - 34, 0);
+      const dataAttr = id ? ` data-stat="${id}"` : "";
       return `
         <div class="orbit-connector" style="left:${ls.x}px;top:${ls.y}px;width:${lineLen}px;transform:rotate(${angle - 90}deg)"></div>
         <div class="orbit-stat" style="left:${lp.x}px;top:${lp.y}px">
-          <div class="orbit-value" style="color:${color}">${Number(value).toLocaleString()}</div>
+          <div class="orbit-value"${dataAttr} style="color:${color}">${id === "pass" ? "0" : Number(value).toLocaleString()}</div>
           <div class="orbit-label">${label}</div>
         </div>`;
     };
 
     const orbitHTML =
-      makeOrbitStat(pass, "Passed", "rgba(255,255,255,0.9)", passDeg / 2, 184) +
-      makeOrbitStat(fail, "Failed", "rgba(255,255,255,0.4)", (passDeg + failDeg) / 2, 194) +
-      makeOrbitStat(ce, "Compile Errors", "rgba(255,255,255,0.25)", (failDeg + ceDeg) / 2, 180) +
-      makeOrbitStat(skip, "Unsupported", "rgba(255,255,255,0.15)", (ceDeg + 360) / 2, 214);
+      makeOrbitStat(pass, "Passed", "rgba(255,255,255,0.9)", passDeg / 2, 164, "pass") +
+      makeOrbitStat(fail, "Failed", "rgba(255,255,255,0.7)", (passDeg + failDeg) / 2, 170) +
+      makeOrbitStat(ce, "Compile Errors", "rgba(255,255,255,0.7)", (failDeg + ceDeg) / 2, 164) +
+      makeOrbitStat(skip, "Unsupported", "rgba(255,255,255,0.7)", (ceDeg + 360) / 2, 178);
 
     // Build legend
     const legendHTML = segments
@@ -131,8 +132,9 @@ class T262Donut extends HTMLElement {
         .gauge-orbit {
           position: relative;
           width: min(100%, 380px);
-          height: 340px;
+          height: 320px;
           margin: 0 auto;
+          overflow: hidden;
         }
         .gauge-wrap {
           position: relative;
@@ -143,27 +145,25 @@ class T262Donut extends HTMLElement {
           aspect-ratio: 1 / 1;
           border-radius: 50%;
           background: conic-gradient(
-            rgba(255,255,255,0.09) 0deg,
-            rgba(255,255,255,1) ${passDeg - 0.8}deg,
-            var(--_bg) ${passDeg - 0.8}deg ${passDeg + 0.8}deg,
-            rgba(255,255,255,0.06) ${passDeg + 0.8}deg ${failDeg - 0.8}deg,
-            var(--_bg) ${failDeg - 0.8}deg ${failDeg + 0.8}deg,
-            rgba(255,255,255,0.03) ${failDeg + 0.8}deg ${ceDeg - 0.8}deg,
-            var(--_bg) ${ceDeg - 0.8}deg ${ceDeg + 0.8}deg,
-            rgba(255,255,255,0) ${ceDeg + 0.8}deg 360deg
+            var(--_bg) 0deg 1deg,
+            rgba(255,255,255,0.06) 1deg,
+            rgba(255,255,255,0.06) ${failDeg - 1}deg,
+            var(--_bg) ${failDeg - 1}deg ${failDeg + 1}deg,
+            rgba(255,255,255,0.06) ${failDeg + 1}deg ${ceDeg - 1}deg,
+            var(--_bg) ${ceDeg - 1}deg ${ceDeg + 1}deg,
+            rgba(255,255,255,0.06) ${ceDeg + 1}deg ${359}deg,
+            var(--_bg) ${359}deg 360deg
           );
         }
-        .gauge-wrap::after {
-          content: "";
+        .gauge-glow {
           position: absolute;
           inset: -8px;
           border-radius: 50%;
           background: conic-gradient(
             rgba(255,255,255,0) 0deg,
-            rgba(255,255,255,0.4) ${passDeg}deg,
-            rgba(255,255,255,0) ${passDeg + 2}deg 360deg
+            rgba(255,255,255,0) 1deg 360deg
           );
-          filter: blur(12px);
+          filter: blur(6px);
           pointer-events: none;
           z-index: 0;
         }
@@ -174,6 +174,20 @@ class T262Donut extends HTMLElement {
           border-radius: 50%;
           background: var(--_bg);
           border: 1px solid rgba(255,255,255,0.04);
+        }
+        .pass-tick {
+          position: absolute;
+          width: 8px;
+          height: 68px;
+          background: #fff;
+          left: calc(50% - 4px);
+          top: calc(50% - 135px);
+          transform-origin: 4px 135px;
+          transform: rotate(0deg);
+          z-index: 3;
+          clip-path: polygon(35% 0%, 50% -4%, 65% 0%, 95% 100%, 50% 104%, 5% 100%);
+          border-radius: 3px;
+          filter: drop-shadow(0 0 8px rgba(0,0,0,1));
         }
         .gauge-core {
           position: absolute;
@@ -214,25 +228,25 @@ class T262Donut extends HTMLElement {
         .orbit-connector {
           position: absolute;
           height: 1px;
-          background: rgba(255,255,255,0.18);
+          background: rgba(255,255,255,0.06);
           transform-origin: left center;
           pointer-events: none;
         }
         .orbit-stat {
           position: absolute;
           display: grid;
-          gap: 0.15rem;
+          gap: 0.1rem;
           text-align: center;
           font-variant-numeric: tabular-nums;
-          width: 120px;
+          width: 100px;
           transform: translate(-50%, -50%);
         }
         .orbit-value {
-          font-size: 1rem;
+          font-size: 0.85rem;
           font-weight: 700;
         }
         .orbit-label {
-          font-size: 0.68rem;
+          font-size: 0.6rem;
           letter-spacing: 0.06em;
           text-transform: uppercase;
           color: var(--_text-muted);
@@ -266,18 +280,117 @@ class T262Donut extends HTMLElement {
         ${orbitHTML}
         <div class="gauge-core">
           <div class="gauge-wrap">
+            <div class="gauge-glow"></div>
             <div class="gauge-center">
-              <div class="gauge-value">${pct}%</div>
+              <div class="gauge-value">0.0%</div>
               <div class="gauge-caption">
                 <div class="gauge-caption-main">ECMAScript</div>
                 <div class="gauge-caption-sub">conformance</div>
               </div>
             </div>
           </div>
+          <div class="pass-tick"></div>
         </div>
       </div>
-      <div class="legend">${legendHTML}</div>
     `;
+
+    // Animate: sweep tick from 0 to passDeg, count up percentage
+    const tick = this.shadowRoot.querySelector(".pass-tick");
+    const valueEl = this.shadowRoot.querySelector(".gauge-value");
+    const wrap = this.shadowRoot.querySelector(".gauge-wrap");
+    const glow = this.shadowRoot.querySelector(".gauge-glow");
+    const passCountEl = this.shadowRoot.querySelector('[data-stat="pass"]');
+    if (!tick || !valueEl || !wrap) return;
+
+    const duration = 3293;
+    const targetPct = parseFloat(pct);
+    const targetDeg = passDeg;
+    let start = null;
+
+    const ease = (t) => 1 - (1 - t) * (1 - t); // ease-out quad
+
+    const animate = (ts) => {
+      if (!start) start = ts;
+      const elapsed = ts - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const t = ease(progress);
+
+      const curDeg = t * targetDeg;
+      const curPct = (t * targetPct).toFixed(1);
+
+      // Update tick rotation
+      tick.style.transform = "rotate(" + curDeg + "deg)";
+
+      // Update percentage and pass count
+      valueEl.textContent = curPct + "%";
+      if (passCountEl) {
+        passCountEl.textContent = Math.round(t * pass).toLocaleString();
+      }
+
+      // Update conic-gradient to reveal pass segment up to curDeg
+      wrap.style.background =
+        "conic-gradient(" +
+        "var(--_bg) 0deg 1deg," +
+        "rgba(255,255,255,0.06) 1deg," +
+        "rgba(255,255,255,0.9) " +
+        curDeg +
+        "deg," +
+        "rgba(255,255,255,0.06) " +
+        curDeg +
+        "deg " +
+        (failDeg - 1) +
+        "deg," +
+        "var(--_bg) " +
+        (failDeg - 1) +
+        "deg " +
+        (failDeg + 1) +
+        "deg," +
+        "rgba(255,255,255,0.06) " +
+        (failDeg + 1) +
+        "deg " +
+        (ceDeg - 1) +
+        "deg," +
+        "var(--_bg) " +
+        (ceDeg - 1) +
+        "deg " +
+        (ceDeg + 1) +
+        "deg," +
+        "rgba(255,255,255,0.06) " +
+        (ceDeg + 1) +
+        "deg 359deg," +
+        "var(--_bg) 359deg 360deg)";
+
+      // Update glow to follow the needle
+      if (glow) {
+        glow.style.background =
+          "conic-gradient(" +
+          "rgba(255,255,255,0) 0deg," +
+          "rgba(255,255,255,0.25) " +
+          curDeg +
+          "deg," +
+          "rgba(255,255,255,0) " +
+          (curDeg + 1) +
+          "deg 360deg)";
+      }
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    // Start animation when element enters viewport
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            observer.disconnect();
+            requestAnimationFrame(animate);
+          }
+        }
+      },
+      { threshold: 0.3 },
+    );
+    observer.observe(this);
   }
 }
 
@@ -315,81 +428,182 @@ class T262EditionBars extends HTMLElement {
       return;
     }
 
-    const rowsHTML = editions
-      .filter((ed) => ed && ed.total > 0)
-      .map(
-        (ed) => `
-        <div class="es-row">
-          <span class="es-label">${ed.edition}</span>
-          <div class="es-bar-track">
-            <div class="es-bar-fill" style="width:${ed.pct}%"></div>
-          </div>
-          <span class="es-pct">${ed.pct}%</span>
-        </div>`,
-      )
-      .join("");
+    const eds = editions.filter((ed) => ed && ed.total > 0);
+    const n = eds.length;
+    if (n === 0) return;
+
+    const W = 500,
+      H = 240;
+    const PAD = { top: 20, right: 40, bottom: 40, left: 60 };
+    const plotW = W - PAD.left - PAD.right;
+    const plotH = H - PAD.top - PAD.bottom;
+
+    const maxTotal = Math.max(...eds.map((d) => d.total));
+
+    const x = (i) => PAD.left + (i / (n - 1)) * plotW;
+    const y = (val) => PAD.top + plotH - (val / maxTotal) * plotH;
+
+    // Stacked values per edition (pass on bottom, skip on top)
+    const cumPass = eds.map((d) => d.pass);
+    const cumFail = eds.map((d, i) => cumPass[i] + d.fail);
+    const cumCe = eds.map((d, i) => cumFail[i] + d.ce);
+    const cumSkip = eds.map((d, i) => cumCe[i] + d.skip);
+
+    const areaPath = (valueFn, baseFn) => {
+      let p = `M ${x(0)} ${valueFn(0)}`;
+      for (let i = 1; i < n; i++) p += ` L ${x(i)} ${valueFn(i)}`;
+      for (let i = n - 1; i >= 0; i--) p += ` L ${x(i)} ${baseFn(i)}`;
+      return p + " Z";
+    };
+    const linePath = (valueFn) => {
+      let p = `M ${x(0)} ${valueFn(0)}`;
+      for (let i = 1; i < n; i++) p += ` L ${x(i)} ${valueFn(i)}`;
+      return p;
+    };
+
+    // Grid lines
+    const gridSteps = 4;
+    const yMax = Math.ceil(maxTotal / 5000) * 5000;
+    const yG = (val) => PAD.top + plotH - (val / yMax) * plotH;
+    let gridSvg = "";
+    for (let i = 0; i <= gridSteps; i++) {
+      const val = (yMax / gridSteps) * i;
+      const yPos = yG(val);
+      gridSvg += `<line x1="${PAD.left}" y1="${yPos}" x2="${W - PAD.right}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+      gridSvg += `<text x="${PAD.left - 8}" y="${yPos + 4}" text-anchor="end" fill="rgba(255,255,255,0.3)" font-size="10" font-family="monospace">${(val / 1000).toFixed(0)}k</text>`;
+    }
+
+    // X-axis labels
+    let xLabels = "";
+    for (let i = 0; i < n; i++) {
+      const label = eds[i].edition.replace("ES20", "'");
+      xLabels += `<text x="${x(i)}" y="${H - PAD.bottom + 16}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10" font-family="monospace">${label}</text>`;
+    }
+
+    // Pass rate dots + labels
+    let dots = "";
+    const maxPassIdx = cumPass.reduce((mi, v, i, a) => (v > a[mi] ? i : mi), 0);
+    for (let i = 0; i < n; i++) {
+      const cx = x(i),
+        cy = y(cumPass[i]);
+      dots += `<circle cx="${cx}" cy="${cy}" r="3" fill="rgba(255,255,255,0.9)"/>`;
+      if (i === maxPassIdx) {
+        dots += `<text x="${cx}" y="${cy - 8}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10" font-family="monospace">${cumPass[i].toLocaleString()}</text>`;
+      }
+    }
+
+    const svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+      <defs>
+        <linearGradient id="passGrad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="white" stop-opacity="0"/>
+          <stop offset="25%" stop-color="white" stop-opacity="0.055"/>
+          <stop offset="100%" stop-color="white" stop-opacity="0.41"/>
+        </linearGradient>
+        <filter id="passLineGlow">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      ${gridSvg}
+      ${xLabels}
+      <path d="${areaPath(
+        (i) => y(cumSkip[i]),
+        (i) => y(cumCe[i]),
+      )}" fill="rgba(255,255,255,0.04)"/>
+      <path d="${areaPath(
+        (i) => y(cumCe[i]),
+        (i) => y(cumFail[i]),
+      )}" fill="rgba(255,255,255,0.06)"/>
+      <path d="${areaPath(
+        (i) => y(cumFail[i]),
+        (i) => y(cumPass[i]),
+      )}" fill="rgba(255,255,255,0.08)"/>
+      <path d="${areaPath(
+        (i) => y(cumPass[i]),
+        () => y(0),
+      )}" fill="url(#passGrad)"/>
+      <path d="${linePath((i) => y(cumCe[i]))}" fill="none" stroke="none"/>
+      <path d="${linePath((i) => y(cumFail[i]))}" fill="none" stroke="none"/>
+      <path d="${linePath((i) => y(cumPass[i]))}" fill="none" stroke="#fff" stroke-width="2" filter="url(#passLineGlow)"/>
+      <path d="${linePath((i) => y(cumSkip[i]))}" fill="none" stroke="none"/>
+      ${dots}
+    </svg>`;
+
+    // Percentage chart (normalized to 100%)
+    const yPct = (pct) => PAD.top + plotH - (pct / 100) * plotH;
+
+    const pctPass = eds.map((d) => (d.pass / d.total) * 100);
+    const pctFail = eds.map((d, i) => pctPass[i] + (d.fail / d.total) * 100);
+    const pctCe = eds.map((d, i) => pctFail[i] + (d.ce / d.total) * 100);
+
+    let gridPct = "";
+    for (let i = 0; i <= gridSteps; i++) {
+      const pct = (100 / gridSteps) * i;
+      const yPos = yPct(pct);
+      gridPct += `<line x1="${PAD.left}" y1="${yPos}" x2="${W - PAD.right}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+      gridPct += `<text x="${PAD.left - 8}" y="${yPos + 4}" text-anchor="end" fill="rgba(255,255,255,0.3)" font-size="10" font-family="monospace">${pct.toFixed(0)}%</text>`;
+    }
+
+    let dotsPct = "";
+    const maxPctIdx = pctPass.reduce((mi, v, i, a) => (v > a[mi] ? i : mi), 0);
+    for (let i = 0; i < n; i++) {
+      const cx = x(i),
+        cy = yPct(pctPass[i]);
+      dotsPct += `<circle cx="${cx}" cy="${cy}" r="3" fill="rgba(255,255,255,0.9)"/>`;
+      if (i === maxPctIdx) {
+        dotsPct += `<text x="${cx}" y="${cy - 8}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10" font-family="monospace">${Math.round(pctPass[i])}%</text>`;
+      }
+    }
+
+    const svgPct = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+      <defs>
+        <linearGradient id="passGradPct" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="white" stop-opacity="0"/>
+          <stop offset="25%" stop-color="white" stop-opacity="0.055"/>
+          <stop offset="100%" stop-color="white" stop-opacity="0.41"/>
+        </linearGradient>
+        <filter id="passLineGlowPct">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      ${gridPct}
+      ${xLabels}
+      <path d="${areaPath(
+        () => yPct(100),
+        (i) => yPct(pctCe[i]),
+      )}" fill="rgba(255,255,255,0.04)"/>
+      <path d="${areaPath(
+        (i) => yPct(pctCe[i]),
+        (i) => yPct(pctFail[i]),
+      )}" fill="rgba(255,255,255,0.06)"/>
+      <path d="${areaPath(
+        (i) => yPct(pctFail[i]),
+        (i) => yPct(pctPass[i]),
+      )}" fill="rgba(255,255,255,0.08)"/>
+      <path d="${areaPath(
+        (i) => yPct(pctPass[i]),
+        () => yPct(0),
+      )}" fill="url(#passGradPct)"/>
+      <path d="${linePath((i) => yPct(pctCe[i]))}" fill="none" stroke="none"/>
+      <path d="${linePath((i) => yPct(pctFail[i]))}" fill="none" stroke="none"/>
+      <path d="${linePath((i) => yPct(pctPass[i]))}" fill="none" stroke="#fff" stroke-width="2" filter="url(#passLineGlowPct)"/>
+      <path d="${linePath(() => yPct(100))}" fill="none" stroke="none"/>
+      ${dotsPct}
+    </svg>`;
 
     this.shadowRoot.innerHTML = `
       <style>
         :host {
           display: block;
-          --_pass: var(--t262-pass, #3fb950);
-          --_text: var(--t262-text, currentColor);
-          --_text-muted: var(--t262-text-muted, rgba(139, 148, 158, 1));
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-          color: var(--_text);
         }
-        .es-timeline {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-        .es-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        .es-label {
-          font-family: "SF Mono", SFMono-Regular, Consolas, monospace;
-          font-size: 12px;
-          font-weight: 500;
-          color: var(--_text-muted);
-          min-width: 58px;
-          text-align: right;
-          flex-shrink: 0;
-        }
-        .es-bar-track {
-          flex: 1;
-          height: 22px;
-          background: rgba(255,255,255,0.04);
-          border-radius: 4px;
-          overflow: hidden;
-          position: relative;
-        }
-        .es-bar-fill {
-          height: 100%;
-          border-radius: 4px;
-          background: var(--_pass);
-          transition: width 0.8s ease;
-          position: relative;
-        }
-        .es-bar-fill::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 50%);
-          border-radius: 4px;
-        }
-        .es-pct {
-          font-family: "SF Mono", SFMono-Regular, Consolas, monospace;
-          font-size: 12px;
-          color: var(--_text-muted);
-          min-width: 38px;
-          text-align: right;
-          flex-shrink: 0;
-        }
+        .charts { display: flex; flex-direction: column; gap: 24px; }
       </style>
-      <div class="es-timeline">${rowsHTML}</div>
+      <div class="charts">
+        ${svg}
+        ${svgPct}
+      </div>
     `;
   }
 }

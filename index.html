@@ -936,7 +936,6 @@
 
         <div class="conformance-diagrams">
           <div class="diagram-panel">
-            <h3 class="diagram-title">Test262 Conformance</h3>
             <t262-donut
               src="./benchmarks/results/test262-report.json"
               style="--t262-bg: var(--bg, #060a14)"
@@ -979,7 +978,7 @@
             <div class="benchmark-bars" id="benchmark-bars"></div>
           </div>
           <p class="benchmark-legend">
-            0% = no output. JS line = native JS speed (100%). Right of JS = faster than JS.
+            JS line = native JS speed (1x). Right of JS = faster than JS.
             <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline">Full report</a>
           </p>
         </div>
@@ -1414,8 +1413,7 @@
           for (const row of ratios) {
             const ratio = row.ratio;
             const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
-            const pctOfJs = Math.round(ratio * 100);
-            const scoreText = `${pctOfJs}%`;
+            const scoreText = ratio >= 10 ? `${Math.round(ratio)}x` : `${ratio.toFixed(1)}x`;
 
             // Bar extends FROM the JS baseline (100%) TO the wasm ratio.
             // Faster = bar extends right from baseline. Slower = bar extends left.
