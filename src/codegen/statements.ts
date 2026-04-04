@@ -3811,9 +3811,9 @@ function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
     const caseClause = clause as ts.CaseClause;
 
     // if (target == sentinel) { if (tmp == caseExpr) { target = ci; } }
-    const checkBody: Instr[] = [];
-    const outerBody = fctx.body;
-    fctx.body = checkBody;
+    // Use pushBody/popBody so the outer body stays reachable for global-index
+    // fixups when new string-constant imports are added during case compilation.
+    const savedCaseBody = pushBody(fctx);
 
     fctx.body.push({ op: "local.get", index: tmpLocalIdx });
     if (switchIsString && ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
@@ -3841,7 +3841,8 @@ function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
       then: setTarget,
     });
 
-    fctx.body = outerBody;
+    const checkBody = fctx.body;
+    popBody(fctx, savedCaseBody);
 
     // Guard: only check if target is still sentinel (no match found yet)
     fctx.body.push({ op: "local.get", index: targetLocalIdx });
@@ -3911,10 +3912,10 @@ function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
     });
 
     // Emit body: if (running) { <statements> }
+    // Use pushBody/popBody so the outer body stays reachable for global-index
+    // fixups when new string-constant imports are added during case compilation.
     if (clause.statements.length > 0) {
-      const bodyInstrs: Instr[] = [];
-      const outerBody = fctx.body;
-      fctx.body = bodyInstrs;
+      const savedSwitchBody = pushBody(fctx);
 
       // Adjust outer entries for the if-wrapping (+1 nesting level).
       for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!++;
@@ -3932,7 +3933,8 @@ function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
       if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
       adjustRethrowDepth(fctx, -1);
 
-      fctx.body = outerBody;
+      const bodyInstrs = fctx.body;
+      popBody(fctx, savedSwitchBody);
 
       fctx.body.push({ op: "local.get", index: runningLocalIdx });
       fctx.body.push({

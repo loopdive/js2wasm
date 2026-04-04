@@ -44,15 +44,16 @@ echo "Building compiler from branch..."
 /workspace/node_modules/.bin/esbuild "$WT/src/runtime.ts" --bundle --platform=node --format=esm \
   --outfile=/workspace/scripts/runtime-bundle.mjs --external:typescript --external:binaryen
 
-# Run equivalence tests
+# Run equivalence tests (non-zero exit is OK — pre-existing failures expected)
 echo "Running equivalence tests..."
 cd /workspace
-EQUIV_RESULT=$(node node_modules/vitest/dist/cli.js run tests/equivalence/ 2>&1 | tail -3)
-echo "$EQUIV_RESULT"
+EQUIV_RESULT=$(node node_modules/vitest/dist/cli.js run tests/equivalence/ 2>&1 || true)
+echo "$EQUIV_RESULT" | tail -5
+echo ""
 
-# Run test262
+# Run test262 (non-zero exit is OK — vitest reports failures as exit code 1)
 echo "Running test262..."
-pnpm run test:262
+pnpm run test:262 || true
 
 # Find latest report
 REPORT=$(ls -t /workspace/benchmarks/results/test262-report-*.json 2>/dev/null | head -1)
