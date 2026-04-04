@@ -930,7 +930,6 @@
             <h3 class="diagram-title">Test262 Conformance</h3>
             <t262-donut
               src="./benchmarks/results/test262-report.json"
-              strict-only
               style="--t262-bg: var(--bg, #060a14)"
             ></t262-donut>
           </div>
@@ -971,7 +970,7 @@
             <div class="benchmark-bars" id="benchmark-bars"></div>
           </div>
           <p class="benchmark-legend">
-            Center line = JS speed. Right = faster than JS. Left = slower.
+            0% = no output. JS line = native JS speed (100%). Right of JS = faster than JS.
             <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline">Full report</a>
           </p>
         </div>
@@ -1389,40 +1388,40 @@
             return;
           }
 
-          // Center line = JS parity (1x). Right of center = faster. Left = slower.
-          const maxRatio = 2.5;
+          // 0% on left, max ratio on right. JS baseline (100%) at natural position.
+          // First pass: find max ratio to set the scale
+          const ratios = [];
           for (const row of rows) {
             const wasmUs = Number(row?.wasmUs ?? 0);
             const jsUs = Number(row?.jsUs ?? 0);
             if (wasmUs <= 0 || jsUs <= 0) continue;
+            ratios.push({ ...row, ratio: jsUs / wasmUs });
+          }
+          const maxRatio = Math.max(...ratios.map((r) => r.ratio), 1.5);
+          const maxPct = Math.ceil(maxRatio * 100); // e.g. 266 → 300
+          const scaleMax = Math.ceil(maxPct / 100) * 100; // round up to nearest 100%
+          const jsPos = (100 / scaleMax) * 100; // JS baseline position as % of track width
 
-            const ratio = jsUs / wasmUs; // >1 means Wasm is faster
+          for (const row of ratios) {
+            const ratio = row.ratio;
             const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
-            const scoreText = ratio >= 1 ? `${ratio.toFixed(1)}x` : `${(1 / ratio).toFixed(1)}x slower`;
+            const pctOfJs = Math.round(ratio * 100);
+            const scoreText = `${pctOfJs}%`;
             const cls = ratio >= 1.1 ? "faster" : ratio >= 0.8 ? "near-parity" : "slower";
-
-            let left, width;
-            if (ratio >= 1) {
-              left = 50;
-              width = Math.min(((ratio - 1) / (maxRatio - 1)) * 50, 50);
-            } else {
-              const slowPct = Math.max((ratio / 1) * 50, 0);
-              left = slowPct;
-              width = 50 - slowPct;
-            }
+            const barWidth = (ratio / (scaleMax / 100)) * 100; // % of track
 
             const rowEl = document.createElement("div");
             rowEl.className = "bench-row";
             rowEl.innerHTML = `
               <span class="bench-name">${label}</span>
               <div class="bench-track">
-                <div class="bench-fill ${cls}" style="left: ${left}%; width: ${width}%"></div>
+                <div class="bench-fill ${cls}" style="left: 0; width: ${barWidth}%"></div>
               </div>
               <span class="bench-value" style="color: ${cls === "faster" ? "#22c55e" : cls === "near-parity" ? "#eab308" : "#ef4444"}">${scoreText}</span>
             `;
             container.appendChild(rowEl);
           }
-          // Position the JS parity line and label at 50% of the first track element
+          // Position the JS parity line at the natural 100% position
           requestAnimationFrame(() => {
             const track = container.querySelector(".bench-track");
             const wrap = document.querySelector(".benchmark-bars-wrap");
@@ -1431,10 +1430,10 @@
             if (track && wrap && label && line) {
               const wrapRect = wrap.getBoundingClientRect();
               const trackRect = track.getBoundingClientRect();
-              const midX = trackRect.left + trackRect.width / 2 - wrapRect.left;
-              label.style.left = midX + "px";
+              const jsX = trackRect.left + (trackRect.width * jsPos) / 100 - wrapRect.left;
+              label.style.left = jsX + "px";
               label.style.transform = "translateX(-50%)";
-              line.style.left = midX + "px";
+              line.style.left = jsX + "px";
             }
           });
         } catch {
