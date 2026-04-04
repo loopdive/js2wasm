@@ -19,10 +19,7 @@ describe("walkInstructions", () => {
       {
         op: "block",
         blockType: { kind: "void" },
-        body: [
-          { op: "i32.const", value: 42 } as Instr,
-          { op: "drop" } as Instr,
-        ],
+        body: [{ op: "i32.const", value: 42 } as Instr, { op: "drop" } as Instr],
       } as unknown as Instr,
     ];
     const visited: string[] = [];
@@ -50,9 +47,7 @@ describe("walkInstructions", () => {
         op: "try",
         blockType: { kind: "void" },
         body: [{ op: "call", funcIdx: 0 } as Instr],
-        catches: [
-          { tagIdx: 0, body: [{ op: "drop" } as Instr] },
-        ],
+        catches: [{ tagIdx: 0, body: [{ op: "drop" } as Instr] }],
         catchAll: [{ op: "unreachable" } as Instr],
       } as unknown as Instr,
     ];

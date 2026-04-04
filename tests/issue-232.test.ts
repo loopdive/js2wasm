@@ -15,10 +15,7 @@ describe("Issue #232: Method calls on object literals", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     ).toBe(true);
 
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as any;
     expect(exports.test()).toBe(42);
   });
@@ -35,10 +32,7 @@ describe("Issue #232: Method calls on object literals", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     ).toBe(true);
 
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as any;
     expect(exports.test()).toBe(42);
   });
@@ -55,10 +49,7 @@ describe("Issue #232: Method calls on object literals", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     ).toBe(true);
 
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as any;
     expect(exports.test()).toBe(99);
   });
@@ -78,10 +69,7 @@ describe("Issue #232: Method calls on object literals", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     ).toBe(true);
 
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as any;
     expect(exports.test()).toBe(3);
   });
@@ -101,10 +89,7 @@ describe("Issue #232: Method calls on object literals", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     ).toBe(true);
 
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as any;
     expect(exports.test()).toBe(77);
   });
@@ -124,10 +109,7 @@ describe("Issue #232: Method calls on object literals", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     ).toBe(true);
 
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as any;
     expect(exports.test()).toBe(10);
   });

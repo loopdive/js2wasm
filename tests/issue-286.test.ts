@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { assertEquivalent, compileToWasm } from "./equivalence/helpers.js";
 
 describe("Issue #286: Logical assignment on property/element access", () => {
-
   describe("logical assignment on property access", () => {
     it("&&= assigns when property is truthy", async () => {
       await assertEquivalent(

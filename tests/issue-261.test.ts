@@ -4,7 +4,8 @@ import { compileToWasm, assertEquivalent, buildImports } from "./equivalence/hel
 
 describe("Issue #261: ClassDeclaration + new expression", () => {
   it("should support new C() for top-level class", async () => {
-    await assertEquivalent(`
+    await assertEquivalent(
+      `
       class C {
         x: number;
         constructor() { this.x = 42; }
@@ -13,11 +14,14 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         const c = new C();
         return c.x;
       }
-    `, [{ fn: "test", args: [] }]);
+    `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
   it("should support class with constructor args", async () => {
-    await assertEquivalent(`
+    await assertEquivalent(
+      `
       class Point {
         x: number;
         y: number;
@@ -27,11 +31,14 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         const p = new Point(3, 4);
         return p.x + p.y;
       }
-    `, [{ fn: "test", args: [] }]);
+    `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
   it("should support class with methods instantiated via new", async () => {
-    await assertEquivalent(`
+    await assertEquivalent(
+      `
       class Adder {
         val: number;
         constructor(v: number) { this.val = v; }
@@ -41,11 +48,14 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         const a = new Adder(10);
         return a.get();
       }
-    `, [{ fn: "test", args: [] }]);
+    `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
   it("should support class declared in function body", async () => {
-    await assertEquivalent(`
+    await assertEquivalent(
+      `
       export function test(): number {
         class Inner {
           v: number;
@@ -54,11 +64,14 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         const i = new Inner(99);
         return i.v;
       }
-    `, [{ fn: "test", args: [] }]);
+    `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
   it("should support class with extends (inheritance)", async () => {
-    await assertEquivalent(`
+    await assertEquivalent(
+      `
       class Base {
         x: number;
         constructor(x: number) { this.x = x; }
@@ -74,11 +87,14 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         const c = new Child(10, 20);
         return c.x + c.y;
       }
-    `, [{ fn: "test", args: [] }]);
+    `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
   it("should support class used via variable alias (const C = class)", async () => {
-    await assertEquivalent(`
+    await assertEquivalent(
+      `
       const MyClass = class {
         value: number;
         constructor(v: number) { this.value = v; }
@@ -87,7 +103,9 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         const obj = new MyClass(55);
         return obj.value;
       }
-    `, [{ fn: "test", args: [] }]);
+    `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
   it("should compile class in function body without errors", () => {
@@ -101,15 +119,15 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         return c.x;
       }
     `);
-    const classErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported new expression") ||
-      e.message.includes("Missing constructor")
+    const classErrors = result.errors.filter(
+      (e) => e.message.includes("Unsupported new expression") || e.message.includes("Missing constructor"),
     );
     expect(classErrors).toEqual([]);
   });
 
   it("should support class declared in if-block", async () => {
-    await assertEquivalent(`
+    await assertEquivalent(
+      `
       export function test(): number {
         let val = 0;
         if (true) {
@@ -122,7 +140,9 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         }
         return val;
       }
-    `, [{ fn: "test", args: [] }]);
+    `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
   it("should support class factory pattern (class inside function)", () => {
@@ -140,9 +160,8 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         return obj.x;
       }
     `);
-    const classErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported new expression") ||
-      e.message.includes("Missing constructor")
+    const classErrors = result.errors.filter(
+      (e) => e.message.includes("Unsupported new expression") || e.message.includes("Missing constructor"),
     );
     expect(classErrors).toEqual([]);
   });
@@ -161,9 +180,8 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         return c.x;
       }
     `);
-    const classErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported new expression") ||
-      e.message.includes("Missing constructor")
+    const classErrors = result.errors.filter(
+      (e) => e.message.includes("Unsupported new expression") || e.message.includes("Missing constructor"),
     );
     expect(classErrors).toEqual([]);
   });
@@ -182,9 +200,8 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         return obj.val;
       }
     `);
-    const classErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported new expression") ||
-      e.message.includes("Missing constructor")
+    const classErrors = result.errors.filter(
+      (e) => e.message.includes("Unsupported new expression") || e.message.includes("Missing constructor"),
     );
     expect(classErrors).toEqual([]);
   });
@@ -197,9 +214,7 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         return 1;
       }
     `);
-    const newExprErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported new expression")
-    );
+    const newExprErrors = result.errors.filter((e) => e.message.includes("Unsupported new expression"));
     expect(newExprErrors).toEqual([]);
   });
 
@@ -210,9 +225,7 @@ describe("Issue #261: ClassDeclaration + new expression", () => {
         return 1;
       }
     `);
-    const newExprErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported new expression")
-    );
+    const newExprErrors = result.errors.filter((e) => e.message.includes("Unsupported new expression"));
     expect(newExprErrors).toEqual([]);
   });
 });

@@ -1,0 +1,1452 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (() => {
+        const base = document.createElement("base");
+        base.href = location.hostname === "loopdive.github.io" ? "/js2wasm/" : "/";
+        document.head.appendChild(base);
+      })();
+    </script>
+    <title>js2wasm</title>
+    <meta
+      name="description"
+      content="js2wasm is an ahead-of-time compiler that compiles JavaScript and TypeScript to WebAssembly GC."
+    />
+    <style>
+      :root {
+        --bg: #060a14;
+        --hero-piece-clearance: 0px;
+        --bg-soft: #0c1220;
+        --fg: #ffffff;
+        --fg-soft: rgba(255, 255, 255, 0.68);
+        --fg-faint: rgba(255, 255, 255, 0.46);
+        --line: rgba(255, 255, 255, 0.12);
+        --line-strong: rgba(255, 255, 255, 0.22);
+        --surface: rgba(255, 255, 255, 0.05);
+        --surface-hover: rgba(255, 255, 255, 0.08);
+        --nav: rgba(6, 10, 20, 0.45);
+        --mono: "JetBrains Mono", "SF Mono", SFMono-Regular, Consolas, monospace;
+        --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg);
+        color: var(--fg);
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        font-family: var(--font);
+        overflow-x: hidden;
+        background:
+          linear-gradient(rgba(46, 32, 92, 0.34), rgba(24, 18, 44, 0.16) 26%, transparent 56%),
+          radial-gradient(circle at 24% 14%, rgba(58, 41, 110, 0.34), transparent 28%), var(--bg);
+      }
+
+      .puzzle-bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        max-height: 100vh;
+        min-width: 100%;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+        display: block;
+        -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
+        mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
+      }
+
+      .puzzle-bg path {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.1);
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .puzzle-bg #puzzle-bg-glow {
+        stroke: url(#puzzle-glow-gradient);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: url(#puzzle-glow-filter);
+        opacity: 0.95;
+      }
+
+      .site-nav,
+      main,
+      footer {
+        position: relative;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .site-nav {
+        position: fixed;
+        inset: 0 0 auto 0;
+        z-index: 100;
+        height: 64px;
+        padding: 0 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--nav);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow: inset 0 -1px 0 var(--line);
+      }
+
+      .nav-logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .nav-logo img {
+        height: 34px;
+        width: auto;
+        display: block;
+        filter: grayscale(1) contrast(2.4) brightness(1.35);
+      }
+
+      .nav-logo span {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--fg-soft);
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 6px;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .nav-links a {
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--fg-soft);
+        transition:
+          color 0.15s ease,
+          background 0.15s ease;
+      }
+
+      .nav-links a:hover {
+        color: var(--fg);
+        background: var(--surface);
+      }
+
+      .nav-actions {
+        display: flex;
+        gap: 12px;
+      }
+
+      .btn-outline,
+      .btn-solid {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        border: 1px solid var(--line);
+        transition:
+          background 0.15s ease,
+          border-color 0.15s ease,
+          opacity 0.15s ease;
+      }
+
+      .btn-outline:hover {
+        background: var(--surface-hover);
+        border-color: var(--line-strong);
+      }
+
+      .btn-solid {
+        color: var(--bg);
+        background: var(--fg);
+        border-color: var(--fg);
+      }
+
+      .btn-solid:hover {
+        opacity: 0.9;
+      }
+
+      .hero-wrap {
+        min-height: 100svh;
+        display: flex;
+        align-items: center;
+        overflow: clip;
+      }
+
+      .hero {
+        position: relative;
+        width: 100%;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 112px 56px 88px;
+      }
+
+      h1 {
+        max-width: 1180px;
+        margin: 0 0 34px;
+        font-size: clamp(48px, 6vw, 78px);
+        line-height: 0.95;
+        letter-spacing: -0.035em;
+        font-weight: 700;
+        position: relative;
+        z-index: 1;
+      }
+
+      .hero-title-shell {
+        display: grid;
+        align-items: end;
+      }
+
+      .hero-title-measure,
+      .hero-title-type {
+        grid-area: 1 / 1;
+        white-space: pre-wrap;
+        word-break: normal;
+      }
+
+      .hero-title-measure {
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      .hero-title-type {
+        display: inline;
+      }
+
+      .hero-title-char {
+        opacity: 0;
+        transition: opacity 520ms ease;
+      }
+
+      .hero-title-char.is-visible {
+        opacity: 1;
+      }
+
+      .hero-title-type::after {
+        content: "";
+      }
+
+      .hero-title-type.is-typing {
+        animation: none;
+      }
+
+      .hero-title-type.is-typing::after {
+        opacity: 0;
+      }
+
+      .hero-title-type.is-done {
+        animation: none;
+      }
+
+      .hero-title-type.is-done::after {
+        opacity: 0;
+      }
+
+      @keyframes hero-caret-blink {
+        0%,
+        45% {
+          opacity: 1;
+        }
+
+        46%,
+        100% {
+          opacity: 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .hero-title-type {
+          animation: none;
+        }
+      }
+
+      .hero-sub {
+        max-width: 920px;
+        font-size: 18px;
+        line-height: 1.7;
+        color: var(--fg-soft);
+        margin-bottom: 40px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .hero-sub .highlight {
+        color: var(--fg);
+        font-weight: 500;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 1;
+      }
+
+      .hero-actions .btn-solid,
+      .hero-actions .btn-outline {
+        min-height: 50px;
+        padding: 0 28px;
+        font-size: 15px;
+      }
+
+      section {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 56px;
+      }
+
+      .section-pad {
+        padding-top: 110px;
+        padding-bottom: 110px;
+      }
+
+      .divider {
+        border: none;
+        border-top: 1px solid var(--line);
+        margin: 0;
+      }
+
+      .intro h2,
+      .code-copy h2,
+      .cta h2 {
+        font-size: clamp(38px, 5vw, 70px);
+        line-height: 0.95;
+        letter-spacing: -0.045em;
+        font-weight: 700;
+        margin: 0 0 28px;
+      }
+
+      .intro p,
+      .code-copy p,
+      .cta p {
+        max-width: 760px;
+        font-size: 18px;
+        line-height: 1.72;
+        color: var(--fg-soft);
+      }
+
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid var(--line);
+        margin-top: 52px;
+      }
+
+      .feature-card {
+        padding: 48px 34px;
+        border-right: 1px solid var(--line);
+        transition: background 0.18s ease;
+      }
+
+      .feature-card:last-child {
+        border-right: none;
+      }
+
+      .feature-card:hover {
+        background: var(--surface-hover);
+      }
+
+      .feature-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 52px;
+        height: 52px;
+        margin-bottom: 28px;
+        font-size: 32px;
+        font-weight: 700;
+        line-height: 1;
+        color: #ffffff;
+        filter: grayscale(1) contrast(2.4) brightness(1.25);
+      }
+
+      .feature-card h3 {
+        margin: 0 0 18px;
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .feature-card p {
+        margin: 0;
+        color: var(--fg-soft);
+        font-size: 15px;
+        line-height: 1.72;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid var(--line);
+      }
+
+      .stat-item {
+        padding: 56px 34px;
+        border-right: 1px solid var(--line);
+      }
+
+      .stat-item:last-child {
+        border-right: none;
+      }
+
+      .stat-number {
+        font-size: 70px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .stat-label {
+        font-size: 14px;
+        color: var(--fg-faint);
+      }
+
+      /* Conformance diagrams */
+      .conformance-diagrams {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+        margin-top: 56px;
+        align-items: start;
+      }
+
+      .diagram-panel {
+        padding: 40px;
+        background: transparent;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .diagram-title {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--fg-faint);
+        margin: 0 0 28px;
+      }
+
+      /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
+
+      .benchmark-chart {
+        margin-top: 56px;
+        padding: 40px;
+      }
+
+      .benchmark-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .bench-row {
+        display: grid;
+        grid-template-columns: 100px 1fr 60px;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .bench-name {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--fg-soft);
+        text-align: right;
+      }
+
+      .bench-track {
+        height: 28px;
+        background: var(--surface);
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .bench-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.6s ease;
+      }
+
+      .bench-fill.faster { background: #22c55e; }
+      .bench-fill.near-parity { background: #eab308; }
+      .bench-fill.slower { background: #ef4444; }
+
+      .bench-parity {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: var(--fg-faint);
+        opacity: 0.5;
+      }
+
+      .bench-value {
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--fg-soft);
+      }
+
+      .benchmark-legend {
+        margin-top: 16px;
+        font-size: 12px;
+        color: var(--fg-faint);
+      }
+
+      @media (max-width: 1120px) {
+        .conformance-diagrams {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .diagram-panel {
+          padding: 28px 20px;
+        }
+
+        .benchmark-chart {
+          padding: 28px 20px;
+        }
+
+        .bench-row {
+          grid-template-columns: 70px 1fr 50px;
+          gap: 8px;
+        }
+      }
+
+      .code-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 72px;
+        align-items: center;
+      }
+
+      .stats-inline {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px 28px;
+        margin-top: 34px;
+      }
+
+      .stat-inline {
+        font-size: 16px;
+        color: var(--fg-soft);
+      }
+
+      .stat-inline strong {
+        font-size: 28px;
+        color: var(--fg);
+        margin-right: 6px;
+      }
+
+      .code-block {
+        min-width: 0;
+        overflow-x: auto;
+        padding: 34px 38px;
+        border: 1px solid var(--line);
+        background: var(--bg-soft);
+        font-family: var(--mono);
+        font-size: 14px;
+        line-height: 1.8;
+        color: var(--fg-soft);
+      }
+
+      .kw {
+        color: var(--fg);
+        font-weight: 500;
+      }
+
+      .fn {
+        color: #d9ddff;
+      }
+
+      .str {
+        color: #bcb5ff;
+      }
+
+      .cm {
+        color: var(--fg-faint);
+      }
+
+      .link-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        margin-top: 36px;
+      }
+
+      .link-card {
+        padding: 18px 18px 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.025);
+        transition:
+          background 0.18s ease,
+          border-color 0.18s ease;
+      }
+
+      .link-card:hover {
+        background: var(--surface-hover);
+        border-color: var(--line-strong);
+      }
+
+      .link-card strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .link-card span {
+        color: var(--fg-soft);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .cta-actions {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 36px;
+      }
+
+      footer {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 64px 56px;
+      }
+
+      .footer-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 44px;
+        padding-bottom: 42px;
+      }
+
+      .footer-brand img {
+        height: 34px;
+        width: auto;
+        display: block;
+      }
+
+      .footer-brand p {
+        margin-top: 12px;
+        font-size: 14px;
+        color: var(--fg-faint);
+      }
+
+      .footer-cols {
+        display: flex;
+        gap: 72px;
+      }
+
+      .footer-col h4 {
+        margin: 0 0 18px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--fg-faint);
+      }
+
+      .footer-col ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .footer-col a {
+        font-size: 14px;
+        color: var(--fg-soft);
+      }
+
+      .footer-col a:hover {
+        color: var(--fg);
+      }
+
+      .footer-bottom {
+        padding-top: 30px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        color: var(--fg-faint);
+        font-size: 13px;
+      }
+
+      @media (max-width: 1120px) {
+        .features-grid,
+        .stats-grid,
+        .link-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .features-grid .feature-card:nth-child(2n),
+        .stats-grid .stat-item:nth-child(2n) {
+          border-right: none;
+        }
+      }
+
+      @media (max-width: 980px) {
+        .site-nav {
+          padding: 0 24px;
+        }
+
+        .nav-links,
+        .nav-actions .btn-outline {
+          display: none;
+        }
+
+        .hero,
+        section,
+        footer {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+
+        .hero {
+          padding-top: 104px;
+        }
+
+        .code-section,
+        .footer-top {
+          grid-template-columns: 1fr;
+          display: grid;
+        }
+
+        .footer-cols {
+          gap: 36px;
+          flex-wrap: wrap;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .features-grid,
+        .stats-grid,
+        .link-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .feature-card,
+        .stat-item {
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .feature-card:last-child,
+        .stat-item:last-child {
+          border-bottom: none;
+        }
+
+        .footer-bottom {
+          flex-direction: column;
+        }
+
+        .hero-actions,
+        .cta-actions {
+          gap: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="puzzle-bg" aria-hidden="true">
+      <defs>
+        <linearGradient id="puzzle-glow-gradient" x1="-30%" y1="0%" x2="-5%" y2="0%">
+          <stop offset="0%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <stop offset="35%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <stop offset="50%" stop-color="#f3eeff" stop-opacity="1"></stop>
+          <stop offset="65%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <stop offset="100%" stop-color="#beb0ff" stop-opacity="0"></stop>
+        </linearGradient>
+        <filter id="puzzle-glow-filter" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="0.8" result="blur"></feGaussianBlur>
+          <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1.25 0"></feColorMatrix>
+        </filter>
+      </defs>
+      <path id="puzzle-bg-path"></path>
+      <path id="puzzle-bg-glow"></path>
+    </svg>
+    <nav class="site-nav">
+      <a class="nav-logo" href="./" aria-label="js2wasm home">
+        <img src="/jswasmlogo.png" alt="js2wasm logo" />
+        <span>js2wasm</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#goals">Goals</a></li>
+        <li><a href="#approach">Approach</a></li>
+        <li><a href="#links">Links</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a class="btn-outline" href="https://github.com/loopdive/js2wasm">GitHub</a>
+        <a class="btn-solid" href="./playground/">Open Playground</a>
+      </div>
+    </nav>
+
+    <main>
+      <div class="hero-wrap">
+        <section class="hero">
+          <h1
+            id="hero-title"
+            data-texts='["JS2 - A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
+            "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
+          >
+            <span class="hero-title-shell">
+              <span class="hero-title-measure" aria-hidden="true"
+                >JS2 - A next generation JavaScript compiler.", "Compile JavaScript to
+                WebAssembly without embedding an interpreter.</span
+              >
+              <span class="hero-title-type"></span>
+            </span>
+          </h1>
+          <p class="hero-sub">
+            The JS2 compiler project is a technology study for next generation Javascript that AOT compiles real JavaScript to WebAssembly.
+          </p>
+          <div class="hero-actions">
+            <a class="btn-solid" href="./playground/">Live demo</a>
+            <a class="btn-outline" href="./benchmarks/report.html">Javascript compatibility</a>
+          </div>
+        </section>
+      </div>
+
+      <hr class="divider" />
+
+      <section class="section-pad" id="goals">
+        <div class="intro">
+          <h2>Javascript compatible.</h2>
+          <p>
+            Our goal is to make familiar JavaScript and TypeScript code more secure and lightweight so it can run in
+            places where a JS engine is too heavy, insecure, or too expensive to embed per module.
+          </p>
+        </div>
+        <div class="features-grid">
+          <article class="feature-card">
+            <div class="feature-icon">🧩</div>
+            <h3>Small modules</h3>
+            <p>Target Wasm GC directly and avoid bundling a JavaScript runtime into every output module.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <h3>Sandboxed by default</h3>
+            <p>Filesystem, network, DOM, and globals stay behind explicit imports instead of ambient access.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">JS</div>
+            <h3>Just Javascript</h3>
+            <p>
+              Write idiomatic JavaScript and TypeScript instead of switching to a separate language just to target Wasm.
+            </p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">npm</div>
+            <h3>npm compatibility</h3>
+            <p>Move existing package ecosystems toward Wasm hosts instead of forcing rewrites into other languages.</p>
+          </article>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad">
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-number" id="compat-pass-rate">40.8%</div>
+            <div class="stat-label" id="compat-pass-rate-label">compatible with the official ECMAScript Test Suite</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number">17.5k+</div>
+            <div class="stat-label">test262 passes in the default official scope</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number">43k</div>
+            <div class="stat-label">standardized ECMAScript feature tests tracked (no proposals)</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="feature-coverage">33%</div>
+            <div class="stat-label" id="feature-coverage-label">JavaScript feature areas implemented (&gt;50% tests passing)</div>
+          </div>
+        </div>
+
+        <div class="conformance-diagrams">
+          <div class="diagram-panel">
+            <h3 class="diagram-title">Test262 Conformance</h3>
+            <t262-donut
+              src="./benchmarks/results/test262-report.json"
+              strict-only
+              style="--t262-bg: var(--bg, #060a14)"
+            ></t262-donut>
+          </div>
+          <div class="diagram-panel">
+            <h3 class="diagram-title">ECMAScript Edition Coverage</h3>
+            <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
+          </div>
+        </div>
+
+        <div class="benchmark-chart" id="benchmark-chart">
+          <h3 class="diagram-title">Benchmark Performance (Wasm vs JS)</h3>
+          <div class="benchmark-bars" id="benchmark-bars"></div>
+          <p class="benchmark-legend">
+            Bar length = Wasm speed relative to native JS. 100% = JS parity.
+            <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline;">Full report</a>
+          </p>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad code-section" id="approach">
+        <div class="code-copy">
+          <h2>Compiled ahead of time, no interpreter.</h2>
+          <p>
+            js2wasm parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm operations,
+            and keeps host effects isolated at imports and exports. The playground is used as a real development tool
+            for inspecting WAT, profiling codegen, and comparing Wasm against native JS execution.
+          </p>
+          <div class="stats-inline">
+            <div class="stat-inline"><strong>WAT</strong> inspect the exact lowered module</div>
+            <div class="stat-inline"><strong>Bench</strong> compare Wasm against JS side by side</div>
+            <div class="stat-inline"><strong>DOM</strong> run browser-hosted imports in the sandbox</div>
+            <div class="stat-inline"><strong>Plan</strong> connect regressions to tracked sprint work</div>
+          </div>
+        </div>
+        <pre class="code-block"><span class="cm">;; DOM-oriented JS lowers to Wasm plus explicit host imports</span>
+(<span class="kw">module</span>
+  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"global_document"</span> (<span class="kw">func</span> <span class="fn">$global_document</span> (<span class="kw">result</span> externref)))
+  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"Document_createElement"</span> (<span class="kw">func</span> <span class="fn">$create</span> (<span class="kw">param</span> externref externref) (<span class="kw">result</span> externref)))
+  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"Element_appendChild"</span> (<span class="kw">func</span> <span class="fn">$append</span> (<span class="kw">param</span> externref externref) (<span class="kw">result</span> externref)))
+  (<span class="kw">import</span> <span class="str">"string_constants"</span> <span class="str">"div"</span> (<span class="kw">global</span> <span class="fn">$div</span> externref))
+  (<span class="kw">func</span> <span class="fn">$main</span> (<span class="kw">export</span> <span class="str">"main"</span>)
+    call <span class="fn">$global_document</span>
+    global.get <span class="fn">$div</span>
+    call <span class="fn">$create</span>
+    call <span class="fn">$append</span>
+    drop))</pre>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad" id="links">
+        <div class="intro">
+          <h2>Safer with module sandboxing.</h2>
+          <p>
+            While JavaScript in the browser is running in a sandbox, dependencies are not isolated from each other and
+            one foul module risks it all, as has been proven by recent supply chain attacks. In Node.js it is worse any
+            program has full access to the file system an network.
+          </p>
+        </div>
+        <div class="link-grid">
+          <a class="link-card" href="./playground/">
+            <strong>Playground</strong>
+            <span>Compile code, inspect WAT, run examples, and benchmark Wasm against JS.</span>
+          </a>
+          <a class="link-card" href="./benchmarks/report.html">
+            <strong>Report</strong>
+            <span>See current test262 pass rates, history, proposal coverage, and benchmark summaries.</span>
+          </a>
+          <a class="link-card" href="./issues-graph.html">
+            <strong>Issues Graph</strong>
+            <span>Explore planning dependencies between backlog items and implementation themes.</span>
+          </a>
+          <a class="link-card" href="./wasm-treemap.html">
+            <strong>Wasm Treemap</strong>
+            <span>Inspect binary size distribution across functions and sections in generated modules.</span>
+          </a>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad cta">
+        <h2>Project roadmap.</h2>
+        <p>
+          The project is still incomplete, but the playground, report, and planning artifacts already make the compiler
+          direction concrete and inspectable.
+        </p>
+        <div class="cta-actions">
+          <a class="btn-solid" href="./playground/">Open Playground</a>
+          <a class="btn-outline" href="./dashboard/">Project Dashboard</a>
+          <a class="btn-outline" href="https://github.com/loopdive/js2wasm">View Source</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-top">
+        <div class="footer-brand">
+          <img src="/jswasmlogo.png" alt="js2wasm logo" />
+          <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h4>Project</h4>
+            <ul>
+              <li><a href="./playground/">Playground</a></li>
+              <li><a href="./dashboard/">Dashboard</a></li>
+              <li><a href="./benchmarks/report.html">Conformance Report</a></li>
+            </ul>
+          </div>
+          <div class="footer-col">
+            <h4>Analysis</h4>
+            <ul>
+              <li><a href="./issues-graph.html">Issues Graph</a></li>
+              <li><a href="./wasm-treemap.html">Wasm Treemap</a></li>
+              <li><a href="https://github.com/loopdive/js2wasm">GitHub</a></li>
+            </ul>
+          </div>
+          <div class="footer-col">
+            <h4>Focus</h4>
+            <ul>
+              <li><a href="#goals">Goals</a></li>
+              <li><a href="#approach">Approach</a></li>
+              <li><a href="#links">Published tools</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>js2wasm GitHub Pages site</span>
+        <span>Built from the same artifacts used for compiler development.</span>
+      </div>
+    </footer>
+
+    <script type="module" src="./components/t262-charts.js"></script>
+
+    <script>
+      (function mountPuzzleBackground() {
+        const svg = document.querySelector(".puzzle-bg");
+        const path = document.getElementById("puzzle-bg-path");
+        const glowPath = document.getElementById("puzzle-bg-glow");
+        if (
+          !(svg instanceof SVGElement) ||
+          !(path instanceof SVGPathElement) ||
+          !(glowPath instanceof SVGPathElement)
+        ) {
+          return;
+        }
+
+        const basePieceWidth = 180;
+        const basePieceHeight = 186;
+        const mobilePieceHeight = 124;
+        const seedBase = 37;
+        const tabsize = 20;
+        const jitter = 4;
+
+        let seed = seedBase;
+        let a = 0;
+        let b = 0;
+        let c = 0;
+        let d = 0;
+        let e = 0;
+        let t = 0;
+        let j = 0;
+        let flip = false;
+        let xi = 0;
+        let yi = 0;
+        let xn = 0;
+        let yn = 0;
+        let vertical = false;
+        let width = 0;
+        let height = 0;
+        let horizontalSegments = [];
+        let verticalSegments = [];
+
+        const random = () => {
+          const x = Math.sin(seed) * 10000;
+          seed += 1;
+          return x - Math.floor(x);
+        };
+        const uniform = (min, max) => min + random() * (max - min);
+        const rbool = () => random() > 0.5;
+        const sl = () => (vertical ? height / yn : width / xn);
+        const sw = () => (vertical ? width / xn : height / yn);
+        const ol = () => sl() * (vertical ? yi : xi);
+        const ow = () => sw() * (vertical ? xi : yi);
+        const l = (v) => Math.round((ol() + sl() * v) * 100) / 100;
+        const w = (v) => Math.round((ow() + sw() * v * (flip ? -1 : 1)) * 100) / 100;
+        const p0l = () => l(0.0);
+        const p0w = () => w(0.0);
+        const p1l = () => l(0.2);
+        const p1w = () => w(a);
+        const p2l = () => l(0.5 + b + d);
+        const p2w = () => w(-t + c);
+        const p3l = () => l(0.5 - t + b);
+        const p3w = () => w(t + c);
+        const p4l = () => l(0.5 - 2.0 * t + b - d);
+        const p4w = () => w(3.0 * t + c);
+        const p5l = () => l(0.5 + 2.0 * t + b - d);
+        const p5w = () => w(3.0 * t + c);
+        const p6l = () => l(0.5 + t + b);
+        const p6w = () => w(t + c);
+        const p7l = () => l(0.5 + b + d);
+        const p7w = () => w(-t + c);
+        const p8l = () => l(0.8);
+        const p8w = () => w(e);
+        const p9l = () => l(1.0);
+        const p9w = () => w(0.0);
+        const segmentPoints = (isVertical) => {
+          const pts = isVertical
+            ? [
+                { x: p0w(), y: p0l() },
+                { x: p1w(), y: p1l() },
+                { x: p2w(), y: p2l() },
+                { x: p3w(), y: p3l() },
+                { x: p4w(), y: p4l() },
+                { x: p5w(), y: p5l() },
+                { x: p6w(), y: p6l() },
+                { x: p7w(), y: p7l() },
+                { x: p8w(), y: p8l() },
+                { x: p9w(), y: p9l() },
+              ]
+            : [
+                { x: p0l(), y: p0w() },
+                { x: p1l(), y: p1w() },
+                { x: p2l(), y: p2w() },
+                { x: p3l(), y: p3w() },
+                { x: p4l(), y: p4w() },
+                { x: p5l(), y: p5w() },
+                { x: p6l(), y: p6w() },
+                { x: p7l(), y: p7w() },
+                { x: p8l(), y: p8w() },
+                { x: p9l(), y: p9w() },
+              ];
+          return pts;
+        };
+        const curveCommands = (pts) =>
+          [
+            `C${pts[1].x},${pts[1].y} ${pts[2].x},${pts[2].y} ${pts[3].x},${pts[3].y}`,
+            `C${pts[4].x},${pts[4].y} ${pts[5].x},${pts[5].y} ${pts[6].x},${pts[6].y}`,
+            `C${pts[7].x},${pts[7].y} ${pts[8].x},${pts[8].y} ${pts[9].x},${pts[9].y}`,
+          ].join(" ");
+        const reverseCurveCommands = (pts) =>
+          [
+            `C${pts[8].x},${pts[8].y} ${pts[7].x},${pts[7].y} ${pts[6].x},${pts[6].y}`,
+            `C${pts[5].x},${pts[5].y} ${pts[4].x},${pts[4].y} ${pts[3].x},${pts[3].y}`,
+            `C${pts[2].x},${pts[2].y} ${pts[1].x},${pts[1].y} ${pts[0].x},${pts[0].y}`,
+          ].join(" ");
+        const first = () => {
+          e = uniform(-j, j);
+          next();
+        };
+        const next = () => {
+          const flipold = flip;
+          flip = rbool();
+          a = flip === flipold ? -e : e;
+          b = uniform(-j, j);
+          c = uniform(-j, j);
+          d = uniform(-j, j);
+          e = uniform(-j, j);
+        };
+
+        const genD = () => {
+          let str = "";
+          seed = seedBase;
+          t = tabsize / 200.0;
+          j = jitter / 100.0;
+          horizontalSegments = Array.from({ length: Math.max(0, yn - 1) }, () => []);
+          verticalSegments = Array.from({ length: Math.max(0, xn - 1) }, () => []);
+
+          vertical = false;
+          for (yi = 1; yi < yn; ++yi) {
+            xi = 0;
+            first();
+            for (; xi < xn; ++xi) {
+              const pts = segmentPoints(false);
+              horizontalSegments[yi - 1][xi] = pts;
+              str += `M${pts[0].x},${pts[0].y} ${curveCommands(pts)} `;
+              next();
+            }
+          }
+
+          vertical = true;
+          for (xi = 1; xi < xn; ++xi) {
+            yi = 0;
+            first();
+            for (; yi < yn; ++yi) {
+              const pts = segmentPoints(true);
+              verticalSegments[xi - 1][yi] = pts;
+              str += `M${pts[0].x},${pts[0].y} ${curveCommands(pts)} `;
+              next();
+            }
+          }
+
+          return str.trim();
+        };
+
+        let raf = 0;
+        const render = () => {
+          raf = 0;
+          width = Math.max(window.innerWidth, document.documentElement.scrollWidth, document.body.scrollWidth);
+          height = window.innerHeight;
+          const pieceHeight = window.innerWidth <= 720 ? mobilePieceHeight : basePieceHeight;
+          xn = Math.max(2, Math.ceil(width / basePieceWidth));
+          yn = Math.max(2, Math.ceil(height / pieceHeight));
+          svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+          svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+          svg.setAttribute("width", "100%");
+          svg.setAttribute("height", String(height));
+          svg.style.height = `${height}px`;
+          const d = genD();
+          path.setAttribute("d", d);
+          glowPath.setAttribute("d", d);
+          document.documentElement.style.setProperty("--hero-piece-clearance", `0px`);
+        };
+
+        render();
+        window.addEventListener("resize", () => {
+          if (raf) cancelAnimationFrame(raf);
+          raf = requestAnimationFrame(render);
+        });
+      })();
+
+      (function animateGlowWave() {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        const grad = document.getElementById("puzzle-glow-gradient");
+        const glowPath = document.getElementById("puzzle-bg-glow");
+        if (!grad || !glowPath) return;
+
+        // Remove blur filter during animation to avoid expensive per-frame repaints
+        glowPath.style.filter = "none";
+
+        const startX1 = -30,
+          endX1 = 50;
+        const startX2 = -5,
+          endX2 = 75;
+        const duration = 10000;
+        let start = 0;
+        let raf = 0;
+
+        const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+        const step = (now) => {
+          if (!start) start = now;
+          const elapsed = now - start;
+          const t = Math.min(elapsed / duration, 1);
+          const e = ease(t);
+          grad.setAttribute("x1", startX1 + (endX1 - startX1) * e + "%");
+          grad.setAttribute("x2", startX2 + (endX2 - startX2) * e + "%");
+          if (t < 1) {
+            raf = requestAnimationFrame(step);
+          } else {
+            // Re-apply blur only on the frozen final state (single repaint)
+            glowPath.style.filter = "";
+          }
+        };
+
+        raf = requestAnimationFrame(step);
+      })();
+
+      (async function hydrateCompatibilityStat() {
+        const rateEl = document.getElementById("compat-pass-rate");
+        const labelEl = document.getElementById("compat-pass-rate-label");
+        if (!rateEl || !labelEl) return;
+        try {
+          const resp = await fetch("./benchmarks/results/test262-report.json");
+          if (!resp.ok) return;
+          const report = await resp.json();
+          // Use strict-mode summary (tests compatible with ES modules) when available
+          const s = report?.strict_summary ?? report?.summary;
+          const pass = Number(s?.pass ?? 0);
+          const total = Number(s?.total ?? 0);
+          if (!Number.isFinite(pass) || !Number.isFinite(total) || total <= 0) return;
+          const pct = ((pass / total) * 100).toFixed(1);
+          rateEl.textContent = `${pct}%`;
+          labelEl.textContent = "compatible with the official ECMAScript Test Suite (strict mode)";
+        } catch {
+          // Keep the build-time fallback when the report file is unavailable.
+        }
+      })();
+
+      // Conformance diagrams are now rendered by <t262-donut> and <t262-edition-bars> web components.
+
+      (async function hydrateFeatureCoverage() {
+        const coverageEl = document.getElementById("feature-coverage");
+        const labelEl = document.getElementById("feature-coverage-label");
+        if (!coverageEl || !labelEl) return;
+        try {
+          const resp = await fetch("./benchmarks/results/test262-report.json");
+          if (!resp.ok) return;
+          const report = await resp.json();
+          const categories = report?.categories;
+          if (!Array.isArray(categories) || categories.length === 0) return;
+
+          let implemented = 0;
+          let total = 0;
+          for (const cat of categories) {
+            const t = Number(cat?.total ?? 0);
+            const s = Number(cat?.skip ?? 0);
+            const p = Number(cat?.pass ?? 0);
+            const effective = t - s;
+            if (effective <= 0) continue;
+            total++;
+            if (p / effective > 0.5) implemented++;
+          }
+          if (total <= 0) return;
+          const pct = Math.round((implemented / total) * 100);
+          coverageEl.textContent = `${pct}%`;
+          labelEl.textContent = `JavaScript feature areas implemented (${implemented}/${total} with >50% tests passing)`;
+        } catch {
+          // Keep the build-time fallback when the report file is unavailable.
+        }
+      })();
+
+      (async function renderBenchmarkChart() {
+        const container = document.getElementById("benchmark-bars");
+        if (!container) return;
+        try {
+          const resp = await fetch("./benchmarks/results/playground-benchmark-sidebar.json");
+          if (!resp.ok) { document.getElementById("benchmark-chart")?.remove(); return; }
+          const rows = await resp.json();
+          if (!Array.isArray(rows) || rows.length === 0) { document.getElementById("benchmark-chart")?.remove(); return; }
+
+          const maxRatio = 12; // cap display at 12x for layout
+          for (const row of rows) {
+            const wasmUs = Number(row?.wasmUs ?? 0);
+            const jsUs = Number(row?.jsUs ?? 0);
+            if (wasmUs <= 0 || jsUs <= 0) continue;
+
+            const ratio = jsUs / wasmUs; // >1 means Wasm is faster
+            const pct = Math.min(ratio / maxRatio * 100, 100);
+            const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
+            const scoreText = ratio >= 1 ? `${ratio.toFixed(1)}x` : `${(1/ratio).toFixed(1)}x`;
+            const cls = ratio >= 1 ? "faster" : ratio >= 0.5 ? "near-parity" : "slower";
+
+            const rowEl = document.createElement("div");
+            rowEl.className = "bench-row";
+            rowEl.innerHTML = `
+              <span class="bench-name">${label}</span>
+              <div class="bench-track">
+                <div class="bench-parity"></div>
+                <div class="bench-fill ${cls}" style="width: ${pct}%"></div>
+              </div>
+              <span class="bench-value" style="color: ${cls === 'faster' ? '#22c55e' : cls === 'near-parity' ? '#eab308' : '#ef4444'}">${ratio >= 1 ? '' : '-'}${scoreText}</span>
+            `;
+            container.appendChild(rowEl);
+          }
+        } catch {
+          document.getElementById("benchmark-chart")?.remove();
+        }
+      })();
+
+      (function typeHeroTitle() {
+        const title = document.getElementById("hero-title");
+        if (!(title instanceof HTMLElement)) return;
+        const typeEl = title.querySelector(".hero-title-type");
+        const measureEl = title.querySelector(".hero-title-measure");
+        if (!(typeEl instanceof HTMLElement)) return;
+        if (!(measureEl instanceof HTMLElement)) return;
+
+        let texts = [];
+        try {
+          texts = JSON.parse(title.dataset.texts ?? "[]");
+        } catch {
+          texts = [];
+        }
+        texts = texts.filter((text) => typeof text === "string" && text.length > 0);
+        if (!texts.length) {
+          const fallback = typeEl.textContent ?? "";
+          if (fallback) texts = [fallback];
+        }
+        if (!texts.length) return;
+
+        const longestText = texts.reduce((longest, text) => (text.length > longest.length ? text : longest), "");
+        measureEl.textContent = longestText;
+
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          typeEl.textContent = texts[0];
+          typeEl.classList.add("is-done");
+          return;
+        }
+
+        let textIndex = 0;
+        let activeRaf = 0;
+        let cycleTimer = 0;
+
+        const prepareChars = (fullText) => {
+          typeEl.textContent = "";
+          const spans = [];
+          for (const char of fullText) {
+            const span = document.createElement("span");
+            span.className = "hero-title-char";
+            span.textContent = char;
+            typeEl.appendChild(span);
+            spans.push(span);
+          }
+          return spans;
+        };
+
+        const startCycle = (fullText) => {
+          typeEl.classList.remove("is-done");
+          typeEl.classList.add("is-typing");
+          const chars = prepareChars(fullText);
+          let index = 0;
+          let lastStepAt = 0;
+
+          const step = (now) => {
+            if (!lastStepAt) lastStepAt = now;
+            const interval = index < 8 ? 30 : 18;
+            if (now - lastStepAt >= interval) {
+              lastStepAt = now;
+              const span = chars[index];
+              if (!span) {
+                typeEl.classList.remove("is-typing");
+                typeEl.classList.add("is-done");
+                cycleTimer = window.setTimeout(() => {
+                  textIndex = (textIndex + 1) % texts.length;
+                  startCycle(texts[textIndex]);
+                }, 5600);
+                return;
+              }
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  span.classList.add("is-visible");
+                });
+              });
+              index += 1;
+            }
+            activeRaf = window.requestAnimationFrame(step);
+          };
+
+          activeRaf = window.requestAnimationFrame(step);
+        };
+
+        cycleTimer = window.setTimeout(() => {
+          startCycle(texts[textIndex]);
+        }, 260);
+      })();
+    </script>
+  </body>
+</html>

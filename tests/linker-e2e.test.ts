@@ -25,14 +25,29 @@ function buildLinkerWasm(): Uint8Array {
 
   // Export runtime helpers for marshaling
   const helpers = [
-    "__malloc", "__str_from_data", "__str_len",
-    "__u8arr_new", "__u8arr_set", "__u8arr_get", "__u8arr_len", "__u8arr_from_raw", "__u8arr_slice",
-    "__map_new", "__map_set", "__map_has",
-    "__arr_new", "__arr_push", "__arr_len", "__arr_get",
-    "WasmEncoder_ctor", "WasmEncoder_byte", "WasmEncoder_u32", "WasmEncoder_finish",
+    "__malloc",
+    "__str_from_data",
+    "__str_len",
+    "__u8arr_new",
+    "__u8arr_set",
+    "__u8arr_get",
+    "__u8arr_len",
+    "__u8arr_from_raw",
+    "__u8arr_slice",
+    "__map_new",
+    "__map_set",
+    "__map_has",
+    "__arr_new",
+    "__arr_push",
+    "__arr_len",
+    "__arr_get",
+    "WasmEncoder_ctor",
+    "WasmEncoder_byte",
+    "WasmEncoder_u32",
+    "WasmEncoder_finish",
   ];
   for (const name of helpers) {
-    const idx = mod.functions.findIndex(f => f.name === name);
+    const idx = mod.functions.findIndex((f) => f.name === name);
     if (idx >= 0) {
       mod.exports.push({ name, desc: { kind: "func", index: idx } });
     }
@@ -79,10 +94,9 @@ describe("linker end-to-end", { timeout: 120_000 }, () => {
     memory.grow(8);
     const ex = instance.exports as unknown as Record<string, Function>;
 
-    const objResult = compileToObject(
-      `export function add(x: number, y: number): number { return x + y; }`,
-      { moduleName: "test.ts" },
-    );
+    const objResult = compileToObject(`export function add(x: number, y: number): number { return x + y; }`, {
+      moduleName: "test.ts",
+    });
     expect(objResult.success).toBe(true);
 
     // Write .o bytes and name into scratch area (well past heap)
@@ -122,14 +136,12 @@ describe("linker end-to-end", { timeout: 120_000 }, () => {
 
   it("link() produces same output as TypeScript linker", async () => {
     // Create two .o files
-    const aObj = compileToObject(
-      `export function add(x: number, y: number): number { return x + y; }`,
-      { moduleName: "a.ts" },
-    );
-    const bObj = compileToObject(
-      `export function mul(x: number, y: number): number { return x * y; }`,
-      { moduleName: "b.ts" },
-    );
+    const aObj = compileToObject(`export function add(x: number, y: number): number { return x + y; }`, {
+      moduleName: "a.ts",
+    });
+    const bObj = compileToObject(`export function mul(x: number, y: number): number { return x * y; }`, {
+      moduleName: "b.ts",
+    });
     expect(aObj.success).toBe(true);
     expect(bObj.success).toBe(true);
 

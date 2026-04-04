@@ -7,7 +7,7 @@ async function compileAndRun(code: string) {
   for (const e of result.errors) {
     if (e.severity === "error") console.log(`  Error: ${e.message} (line ${e.line})`);
   }
-  if (result.errors.some(e => e.severity === "error")) {
+  if (result.errors.some((e) => e.severity === "error")) {
     throw new Error(`Got compile errors`);
   }
   const imports = buildImports(result.imports ?? [], {}, result.stringPool ?? []);
@@ -18,18 +18,21 @@ async function compileAndRun(code: string) {
 
 describe("issue-530: unsupported call expression fixes", () => {
   test("union type method call compiles and runs", async () => {
-    expect(await compileAndRun(`
+    expect(
+      await compileAndRun(`
       class A { value(): number { return 1; } }
       class B { value(): number { return 2; } }
       export function main(): number {
         const x: A | B = new A();
         return x.value();
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   test("this.method() calls within class", async () => {
-    expect(await compileAndRun(`
+    expect(
+      await compileAndRun(`
       class Foo {
         getValue(): number { return 42; }
         getDouble(): number { return this.getValue() * 2; }
@@ -38,7 +41,8 @@ describe("issue-530: unsupported call expression fixes", () => {
         const f = new Foo();
         return f.getDouble();
       }
-    `)).toBe(84);
+    `),
+    ).toBe(84);
   });
 
   test("abstract class method call no unsupported error", () => {
@@ -50,7 +54,7 @@ describe("issue-530: unsupported call expression fixes", () => {
         return b.get();
       }
     `);
-    const unsupported = result.errors.filter(e => e.message.includes("Unsupported call"));
+    const unsupported = result.errors.filter((e) => e.message.includes("Unsupported call"));
     expect(unsupported).toHaveLength(0);
   });
 
@@ -63,7 +67,7 @@ describe("issue-530: unsupported call expression fixes", () => {
         return callIt(new Impl());
       }
     `);
-    const unsupported = result.errors.filter(e => e.message.includes("Unsupported call"));
+    const unsupported = result.errors.filter((e) => e.message.includes("Unsupported call"));
     expect(unsupported).toHaveLength(0);
   });
 
@@ -74,7 +78,7 @@ describe("issue-530: unsupported call expression fixes", () => {
         return String.prototype.slice.call("world", 0, 3);
       }
     `);
-    const unsupported = result.errors.filter(e => e.message.includes("Unsupported call"));
+    const unsupported = result.errors.filter((e) => e.message.includes("Unsupported call"));
     expect(unsupported).toHaveLength(0);
   });
 
@@ -84,7 +88,7 @@ describe("issue-530: unsupported call expression fixes", () => {
         Promise.resolve(1).then((v: number) => { });
       }
     `);
-    const unsupported = result.errors.filter(e => e.message.includes("Unsupported call"));
+    const unsupported = result.errors.filter((e) => e.message.includes("Unsupported call"));
     expect(unsupported).toHaveLength(0);
   });
 });

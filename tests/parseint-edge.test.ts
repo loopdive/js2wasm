@@ -9,10 +9,7 @@ async function compileAndRun(source: string) {
     `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
   ).toBe(true);
   const imports = buildImports(result.imports, undefined, result.stringPool);
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    imports as unknown as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as unknown as WebAssembly.Imports);
   return instance.exports as Record<string, Function>;
 }
 

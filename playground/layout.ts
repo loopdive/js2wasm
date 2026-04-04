@@ -29,30 +29,58 @@ export interface LeafNode {
 
 export type DropZone = "center" | "top" | "bottom" | "left" | "right";
 
-const LAYOUT_KEY = "ts2wasm_layout_v2";
+const LAYOUT_KEY = "js2wasm_layout_v2";
+const LEGACY_LAYOUT_KEY = "ts2wasm_layout_v2";
 const MIN_PANEL_SIZE = 80; // px
+
+export function clearSavedLayout(): void {
+  try {
+    localStorage.removeItem(LAYOUT_KEY);
+    localStorage.removeItem(LEGACY_LAYOUT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 // ─── Default layout ──────────────────────────────────────────────────────
 
 export function getDefaultLayout(): LayoutNode {
   return {
-    type: "split", direction: "horizontal", ratio: 0.18,
+    type: "split",
+    direction: "horizontal",
+    ratio: 0.18,
     children: [
       { type: "leaf", id: "sidebar-left", tabs: ["test262"], activeTab: "test262" },
-      { type: "split", direction: "vertical", ratio: 0.6, children: [
-        { type: "split", direction: "horizontal", ratio: 0.5,
-          children: [
-            { type: "leaf", id: "editor-left", tabs: ["ts-source"], activeTab: "ts-source" },
-            { type: "leaf", id: "editor-right", tabs: ["wat-output", "wasm-hex", "modular-ts"], activeTab: "wat-output" },
-          ],
-        },
-        { type: "split", direction: "horizontal", ratio: 0.5,
-          children: [
-            { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console"], activeTab: "preview" },
-            { type: "leaf", id: "output-right", tabs: ["treemap"], activeTab: "treemap" },
-          ],
-        },
-      ]},
+      {
+        type: "split",
+        direction: "vertical",
+        ratio: 0.6,
+        children: [
+          {
+            type: "split",
+            direction: "horizontal",
+            ratio: 0.5,
+            children: [
+              { type: "leaf", id: "editor-left", tabs: ["ts-source"], activeTab: "ts-source" },
+              {
+                type: "leaf",
+                id: "editor-right",
+                tabs: ["wat-output", "wasm-hex", "modular-ts"],
+                activeTab: "wat-output",
+              },
+            ],
+          },
+          {
+            type: "split",
+            direction: "horizontal",
+            ratio: 0.5,
+            children: [
+              { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console"], activeTab: "preview" },
+              { type: "leaf", id: "output-right", tabs: ["treemap"], activeTab: "treemap" },
+            ],
+          },
+        ],
+      },
     ],
   };
 }
@@ -63,7 +91,10 @@ export class LayoutManager {
   private root: LayoutNode;
   private container: HTMLElement;
   private tabs = new Map<string, TabItem>();
-  private panelEls = new Map<string, { panel: HTMLElement; tabBar: HTMLElement; content: HTMLElement; activeTab: string }>();
+  private panelEls = new Map<
+    string,
+    { panel: HTMLElement; tabBar: HTMLElement; content: HTMLElement; activeTab: string }
+  >();
   private panelCounter = 100;
 
   // Drag state
@@ -97,7 +128,9 @@ export class LayoutManager {
     this.render();
   }
 
-  getRoot(): LayoutNode { return this.root; }
+  getRoot(): LayoutNode {
+    return this.root;
+  }
 
   // ─── Queries ─────────────────────────────────────────────────────────
 
@@ -113,6 +146,10 @@ export class LayoutManager {
   getActiveTabForPanel(panelId: string): string | null {
     const leaf = this.findLeafById(this.root, panelId);
     return leaf?.activeTab ?? null;
+  }
+
+  hasPanel(panelId: string): boolean {
+    return this.findLeafById(this.root, panelId) !== null;
   }
 
   getTabElement(tabId: string): HTMLElement | null {
@@ -220,44 +257,49 @@ export class LayoutManager {
     panel.style.overflow = "hidden";
 
     // Tab bar
+    const hideTabBar = leaf.id === "sidebar-left" && leaf.tabs.length === 1 && leaf.tabs[0] === "test262";
     const tabBar = document.createElement("div");
     tabBar.className = "panel-tab-bar";
-    for (const tabId of leaf.tabs) {
-      const tab = this.tabs.get(tabId);
-      if (!tab) continue;
-      const tabEl = document.createElement("div");
-      tabEl.className = "panel-tab" + (tabId === leaf.activeTab ? " active" : "");
-      tabEl.dataset.tab = tabId;
+    if (!hideTabBar) {
+      for (const tabId of leaf.tabs) {
+        const tab = this.tabs.get(tabId);
+        if (!tab) continue;
+        const tabEl = document.createElement("div");
+        tabEl.className = "panel-tab" + (tabId === leaf.activeTab ? " active" : "");
+        tabEl.dataset.tab = tabId;
 
-      const label = document.createElement("span");
-      label.className = "panel-tab-label";
-      label.textContent = tab.title;
-      tabEl.appendChild(label);
+        const label = document.createElement("span");
+        label.className = "panel-tab-label";
+        label.textContent = tab.title;
+        tabEl.appendChild(label);
 
-      if (!tab.permanent) {
-        const closeBtn = document.createElement("span");
-        closeBtn.className = "close-btn";
-        closeBtn.textContent = "\u00d7";
-        closeBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const currentPanel = this.findPanelForTab(tabId);
-          if (currentPanel) this.closeTab(currentPanel, tabId);
-        });
-        tabEl.appendChild(closeBtn);
-      }
-
-      // Enable draggable only from the label area, not the close button
-      tabEl.addEventListener("mousedown", (e) => {
-        if (!(e.target as HTMLElement).classList.contains("close-btn")) {
-          tabEl.draggable = true;
+        if (!tab.permanent) {
+          const closeBtn = document.createElement("span");
+          closeBtn.className = "close-btn";
+          closeBtn.textContent = "\u00d7";
+          closeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const currentPanel = this.findPanelForTab(tabId);
+            if (currentPanel) this.closeTab(currentPanel, tabId);
+          });
+          tabEl.appendChild(closeBtn);
         }
-      });
-      tabEl.addEventListener("mouseup", () => { tabEl.draggable = false; });
-      tabEl.addEventListener("click", () => this.switchTab(leaf.id, tabId));
-      this.setupTabDrag(tabEl, tabId, leaf.id);
-      tabBar.appendChild(tabEl);
+
+        // Enable draggable only from the label area, not the close button
+        tabEl.addEventListener("mousedown", (e) => {
+          if (!(e.target as HTMLElement).classList.contains("close-btn")) {
+            tabEl.draggable = true;
+          }
+        });
+        tabEl.addEventListener("mouseup", () => {
+          tabEl.draggable = false;
+        });
+        tabEl.addEventListener("click", () => this.switchTab(leaf.id, tabId));
+        this.setupTabDrag(tabEl, tabId, leaf.id);
+        tabBar.appendChild(tabEl);
+      }
+      panel.appendChild(tabBar);
     }
-    panel.appendChild(tabBar);
 
     // Content area
     const content = document.createElement("div");
@@ -509,8 +551,7 @@ export class LayoutManager {
         activeTab: targetLeaf.activeTab,
       };
 
-      const direction: "horizontal" | "vertical" =
-        zone === "left" || zone === "right" ? "horizontal" : "vertical";
+      const direction: "horizontal" | "vertical" = zone === "left" || zone === "right" ? "horizontal" : "vertical";
       const first = zone === "left" || zone === "top" ? newLeaf : targetCopy;
       const second = zone === "left" || zone === "top" ? targetCopy : newLeaf;
 
@@ -583,6 +624,28 @@ export class LayoutManager {
     this.saveLayout();
   }
 
+  toggleSidebar(): void {
+    if (this.findLeafById(this.root, "sidebar-left")) {
+      this.removeEmptyLeaf("sidebar-left");
+    } else {
+      const sidebarLeaf: LeafNode = {
+        type: "leaf",
+        id: "sidebar-left",
+        tabs: ["test262"],
+        activeTab: "test262",
+      };
+      this.root = {
+        type: "split",
+        direction: "horizontal",
+        ratio: 0.18,
+        children: [sidebarLeaf, this.root],
+      };
+    }
+    this.render();
+    this.saveLayout();
+    this.onLayoutChanged?.();
+  }
+
   // ─── Tree traversal ──────────────────────────────────────────────────
 
   private findLeafByTab(tabId: string): LeafNode | null {
@@ -599,7 +662,10 @@ export class LayoutManager {
   }
 
   private forEachLeaf(node: LayoutNode, fn: (leaf: LeafNode) => void): void {
-    if (node.type === "leaf") { fn(node); return; }
+    if (node.type === "leaf") {
+      fn(node);
+      return;
+    }
     this.forEachLeaf(node.children[0], fn);
     this.forEachLeaf(node.children[1], fn);
   }
@@ -609,12 +675,14 @@ export class LayoutManager {
   saveLayout(): void {
     try {
       localStorage.setItem(LAYOUT_KEY, JSON.stringify(this.serializeNode(this.root)));
-    } catch { /* quota exceeded */ }
+    } catch {
+      /* quota exceeded */
+    }
   }
 
   static loadLayout(allTabIds: Set<string>): LayoutNode | null {
     try {
-      const raw = localStorage.getItem(LAYOUT_KEY);
+      const raw = localStorage.getItem(LAYOUT_KEY) ?? localStorage.getItem(LEGACY_LAYOUT_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       // Validate: all tab IDs in the layout must exist in allTabIds

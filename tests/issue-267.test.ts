@@ -25,7 +25,7 @@ describe("Issue #267 — yield outside generator suppression", () => {
     `;
     const result = compile(source, { fileName: "test.ts" });
     // Should not have fatal errors (warnings are OK)
-    const fatalErrors = result.errors.filter(e => e.severity === "error");
+    const fatalErrors = result.errors.filter((e) => e.severity === "error");
     expect(fatalErrors.length).toBe(0);
   });
 
@@ -43,7 +43,7 @@ describe("Issue #267 — yield outside generator suppression", () => {
       }
     `;
     const result = compile(source, { fileName: "test.ts" });
-    const fatalErrors = result.errors.filter(e => e.severity === "error");
+    const fatalErrors = result.errors.filter((e) => e.severity === "error");
     expect(fatalErrors.length).toBe(0);
   });
 

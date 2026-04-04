@@ -284,14 +284,17 @@ describe("Inline Math functions (no host imports)", () => {
 
   describe("No host imports for Math methods", () => {
     it("compile result should not contain Math_ imports (except random)", async () => {
-      const result = compile(`
+      const result = compile(
+        `
         export function test(): number {
           return Math.sin(1) + Math.cos(1) + Math.exp(1) + Math.log(2) + Math.tan(1) + Math.atan(1);
         }
-      `, { fileName: "test.ts" });
+      `,
+        { fileName: "test.ts" },
+      );
 
       // Check that no Math_ imports are in the import list
-      const mathImports = result.imports.filter(i => i.name.startsWith("Math_"));
+      const mathImports = result.imports.filter((i) => i.name.startsWith("Math_"));
       expect(mathImports).toHaveLength(0);
     });
   });

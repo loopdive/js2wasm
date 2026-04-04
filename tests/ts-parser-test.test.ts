@@ -46,8 +46,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
       concat: (a: string, b: string) => a + b,
       length: (s: string) => s.length,
       equals: (a: string, b: string) => (a === b ? 1 : 0),
-      substring: (s: string, start: number, end: number) =>
-        s.substring(start, end),
+      substring: (s: string, start: number, end: number) => s.substring(start, end),
       charCodeAt: (s: string, i: number) => s.charCodeAt(i),
     },
     string_constants: buildStringConstants(result.stringPool),
@@ -61,10 +60,7 @@ async function compileToWasm(source: string) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    buildImports(result),
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return instance.exports as Record<string, Function>;
 }
 
@@ -314,9 +310,12 @@ const fullSource = `
 
 describe("TS Parser (expression parser compiled to Wasm)", () => {
   it("compiles the parser without errors", async () => {
-    const result = compile(fullSource + `
+    const result = compile(
+      fullSource +
+        `
       export function test(): number { return 1; }
-    `);
+    `,
+    );
     expect(
       result.success,
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
@@ -324,118 +323,153 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
   });
 
   it("parses and evaluates a single number", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("42");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(42);
   });
 
   it("parses and evaluates simple addition: 3 + 4", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("3+4");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(7);
   });
 
   it("parses and evaluates simple subtraction: 10 - 3", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("10-3");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(7);
   });
 
   it("parses and evaluates multiplication: 6 * 7", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("6*7");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(42);
   });
 
   it("parses and evaluates division: 20 / 4", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("20/4");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(5);
   });
 
   it("respects operator precedence: 1 + 2 * 3 = 7 (not 9)", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("1+2*3");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     // 1 + (2 * 3) = 7, NOT (1 + 2) * 3 = 9
     expect(exports.test()).toBe(7);
   });
 
   it("respects precedence: 2 * 3 + 4 = 10", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("2*3+4");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(10);
   });
 
   it("handles parentheses overriding precedence: (1 + 2) * 3 = 9", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("(1+2)*3");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(9);
   });
 
   it("handles nested parentheses: ((5))", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("((5))");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(5);
   });
 
   it("handles subtraction yielding negative: 0 - 7", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("0-7");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(-7);
   });
 
   it("handles whitespace in expressions: 1 + 2 * 3", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("1 + 2 * 3");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(7);
   });
 
   it("builds correct AST structure: checks node kind", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function testRootKind(): number {
         let ast: number = parse("1+2");
         return nodes[ast];
@@ -450,7 +484,8 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
         let rightId: number = nodes[ast + 4];
         return nodes[rightId];
       }
-    `);
+    `,
+    );
     // Root should be BinaryExpr (2)
     expect(exports.testRootKind()).toBe(2);
     // Left and right should be NumberLiteral (1)
@@ -459,7 +494,9 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
   });
 
   it("builds correct AST for 1+2*3: right child is BinaryExpr", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function testRootOp(): number {
         let ast: number = parse("1+2*3");
         return nodes[ast + 2];
@@ -474,7 +511,8 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
         let rightId: number = nodes[ast + 4];
         return nodes[rightId + 2];
       }
-    `);
+    `,
+    );
     // Root op should be Plus (2)
     expect(exports.testRootOp()).toBe(2);
     // Right child should be BinaryExpr (2)
@@ -484,44 +522,56 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
   });
 
   it("complex expression: (10 + 20) * 3 - 4 = 86", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("(10+20)*3-4");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     // (10 + 20) * 3 - 4 = 30 * 3 - 4 = 90 - 4 = 86
     expect(exports.test()).toBe(86);
   });
 
   it("chained operations: 2+3+4+5 = 14", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("2+3+4+5");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(14);
   });
 
   it("mixed precedence: 2+3*4-6/2 = 11", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("2+3*4-6/2");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     // 2 + 12 - 3 = 11
     expect(exports.test()).toBe(11);
   });
 
   it("unary minus: -5 + 3 = -2", async () => {
-    const exports = await compileToWasm(fullSource + `
+    const exports = await compileToWasm(
+      fullSource +
+        `
       export function test(): number {
         let ast: number = parse("0-5+3");
         return evaluate(ast);
       }
-    `);
+    `,
+    );
     expect(exports.test()).toBe(-2);
   });
 });

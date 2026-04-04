@@ -3,7 +3,7 @@ import { compile } from "../src/index.js";
 
 async function run(source: string, fn: string, args: unknown[]): Promise<unknown> {
   const result = compile(source);
-  if (!result.success) throw new Error(result.errors.map(e => `L${e.line}: ${e.message}`).join("\n"));
+  if (!result.success) throw new Error(result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n"));
   const { instance } = await WebAssembly.instantiate(result.binary, {
     env: {
       console_log_number: () => {},

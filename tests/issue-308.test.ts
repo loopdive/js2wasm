@@ -30,9 +30,8 @@ describe("issue-308: addition operator coercion", () => {
       const x = 1n + "";
     `);
     // At minimum, should not produce a codegen error about binary operator
-    const codegenErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported binary operator") ||
-      e.message.includes("call[0] expected type externref")
+    const codegenErrors = result.errors.filter(
+      (e) => e.message.includes("Unsupported binary operator") || e.message.includes("call[0] expected type externref"),
     );
     expect(codegenErrors).toHaveLength(0);
   }, 20000);
@@ -41,9 +40,8 @@ describe("issue-308: addition operator coercion", () => {
     const result = compile(`
       const x = "" + 1n;
     `);
-    const codegenErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported binary operator") ||
-      e.message.includes("call[0] expected type externref")
+    const codegenErrors = result.errors.filter(
+      (e) => e.message.includes("Unsupported binary operator") || e.message.includes("call[0] expected type externref"),
     );
     expect(codegenErrors).toHaveLength(0);
   }, 15000);
@@ -54,9 +52,7 @@ describe("issue-308: addition operator coercion", () => {
       function getValue(): any { return 5; }
       const x = getValue() + getValue();
     `);
-    const codegenErrors = result.errors.filter(e =>
-      e.message.includes("Unsupported binary operator for type")
-    );
+    const codegenErrors = result.errors.filter((e) => e.message.includes("Unsupported binary operator for type"));
     expect(codegenErrors).toHaveLength(0);
   });
 

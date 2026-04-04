@@ -25,7 +25,7 @@ describe("Issue #333: dynamic-import FIXTURE files", () => {
     const result = shouldSkip(
       fixtureSource,
       meta as any,
-      "/some/path/test262/test/language/expressions/dynamic-import/catch/instn-iee-err-ambiguous-1_FIXTURE.js"
+      "/some/path/test262/test/language/expressions/dynamic-import/catch/instn-iee-err-ambiguous-1_FIXTURE.js",
     );
     expect(result.skip).toBe(true);
     expect(result.reason).toContain("FIXTURE");
@@ -37,7 +37,7 @@ describe("Issue #333: dynamic-import FIXTURE files", () => {
     const result = shouldSkip(
       source,
       meta as any,
-      "/some/path/test262/test/language/expressions/dynamic-import/some-regular-test.js"
+      "/some/path/test262/test/language/expressions/dynamic-import/some-regular-test.js",
     );
     // Non-FIXTURE files should not be skipped by the FIXTURE filter
     // (they may be skipped by other filters, but not the FIXTURE one)

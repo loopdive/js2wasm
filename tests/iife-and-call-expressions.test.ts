@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { compileToWasm, evaluateAsJs, assertEquivalent, buildImports, compile, readFileSync, resolve } from "./helpers.js";
+import {
+  compileToWasm,
+  evaluateAsJs,
+  assertEquivalent,
+  buildImports,
+  compile,
+  readFileSync,
+  resolve,
+} from "./helpers.js";
 
 describe("IIFE and call expression edge cases", () => {
   it("IIFE with no args", async () => {
@@ -72,9 +80,7 @@ describe("IIFE and call expression edge cases", () => {
     );
   });
 
-
   // === Tests from #218-219 ===
-
 
   // --- Issue #218: Boolean(x = 0) should return false ---
   it("Boolean with assignment expression argument", async () => {
@@ -251,7 +257,6 @@ describe("IIFE and call expression edge cases", () => {
 
   // === Tests from #210 ===
 
-
   it("for-of with object destructuring", async () => {
     await assertEquivalent(
       `
@@ -352,7 +357,6 @@ describe("IIFE and call expression edge cases", () => {
 
   // === Tests from #211 ===
 
-
   it("void function returns undefined (=== undefined)", async () => {
     await assertEquivalent(
       `
@@ -436,9 +440,7 @@ describe("IIFE and call expression edge cases", () => {
         return eq(first, second);
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -457,9 +459,7 @@ describe("IIFE and call expression edge cases", () => {
         return eq(first, second);
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -481,17 +481,13 @@ describe("IIFE and call expression edge cases", () => {
         return eq(first, second);
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
-
 
   // === Tests from #213 ===
 
   // === Tests from #207-208 ===
-
 
   // -- Issue #208: computed property names with expressions --
 
@@ -563,7 +559,6 @@ describe("IIFE and call expression edge cases", () => {
   });
 
   // === Tests from #209-217 ===
-
 
   // Issue #209: for-loop with continue and string concatenation of numbers
   it("for-loop continue with string concat", async () => {
@@ -905,7 +900,6 @@ export function test(): number {
 
   // === Tests from #221 ===
 
-
   it("comma operator indirect call: (0, fn)()", async () => {
     await assertEquivalent(
       `
@@ -989,7 +983,6 @@ export function test(): number {
 
   // === Tests from #222 ===
 
-
   it("object destructuring var hoisting", async () => {
     await assertEquivalent(
       `
@@ -1047,7 +1040,6 @@ export function test(): number {
   });
 
   // === Tests from #223-224 ===
-
 
   // --- Issue #223: Computed property names in class declarations ---
 

@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { compileToWasm, evaluateAsJs, assertEquivalent, buildImports, compile, readFileSync, resolve } from "./helpers.js";
+import {
+  compileToWasm,
+  evaluateAsJs,
+  assertEquivalent,
+  buildImports,
+  compile,
+  readFileSync,
+  resolve,
+} from "./helpers.js";
 
 describe("TS ↔ Wasm equivalence", () => {
   it("basic arithmetic", async () => {
@@ -299,10 +307,7 @@ describe("TS ↔ Wasm equivalence", () => {
   });
 
   it("game-loop.ts compiles to WAT and .d.ts", () => {
-    const source = readFileSync(
-      resolve(__dirname, "..", "game-loop.ts"),
-      "utf-8",
-    );
+    const source = readFileSync(resolve(__dirname, "..", "game-loop.ts"), "utf-8");
     const result = compile(source);
     expect(
       result.success,
@@ -327,10 +332,7 @@ describe("TS ↔ Wasm equivalence", () => {
   });
 
   it("game-loop.ts binary instantiates successfully", async () => {
-    const source = readFileSync(
-      resolve(__dirname, "..", "game-loop.ts"),
-      "utf-8",
-    );
+    const source = readFileSync(resolve(__dirname, "..", "game-loop.ts"), "utf-8");
     const result = compile(source);
     expect(result.success).toBe(true);
 
@@ -356,10 +358,7 @@ describe("TS ↔ Wasm equivalence", () => {
     });
 
     const mod = await WebAssembly.compile(result.binary as BufferSource);
-    const instance = await WebAssembly.instantiate(
-      mod,
-      proxyImports as WebAssembly.Imports,
-    );
+    const instance = await WebAssembly.instantiate(mod, proxyImports as WebAssembly.Imports);
     expect(instance).toBeTruthy();
     expect(instance.exports.animate).toBeTypeOf("function");
   });
@@ -401,9 +400,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return tag\`hello \${10} world \${20}\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -417,9 +414,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return tag\`just a string\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -453,9 +448,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return first\`hello world\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -471,9 +464,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return sum\`\${x} plus \${y}\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -487,9 +478,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return tag\`hello \${42} world\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -503,9 +492,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return identity\`prefix \${99} suffix\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -519,9 +506,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return tag\`a\${1}b\${2}c\${3}d\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -535,9 +520,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return tag\`a\${1}b\${2}c\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -551,9 +534,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return first\`\${42}trailing\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -567,9 +548,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return tag\`hello world\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -583,9 +562,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return tag\`hello\\nworld\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 
@@ -599,9 +576,7 @@ describe("TS ↔ Wasm equivalence", () => {
         return tag\`hello \${42} world\`;
       }
       `,
-      [
-        { fn: "test1", args: [] },
-      ],
+      [{ fn: "test1", args: [] }],
     );
   });
 

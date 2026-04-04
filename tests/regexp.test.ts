@@ -10,10 +10,7 @@ async function run(source: string, fn: string, ...args: unknown[]): Promise<unkn
     );
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    imports as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
   return (instance.exports as any)[fn](...args);
 }
 

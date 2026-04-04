@@ -5,11 +5,7 @@
  * - enrichErrorMessage: combines function name + source line into error messages
  */
 import { describe, it, expect } from "vitest";
-import {
-  extractWasmFuncName,
-  lookupSourceMapOffset,
-  enrichErrorMessage,
-} from "./test262-runner.js";
+import { extractWasmFuncName, lookupSourceMapOffset, enrichErrorMessage } from "./test262-runner.js";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
 
@@ -112,12 +108,7 @@ describe("enrichErrorMessage", () => {
       stack: `RuntimeError: null reference
     at test (wasm://wasm/abc:wasm-function[6]:0x10)`,
     };
-    const enriched = enrichErrorMessage(
-      "null reference",
-      err,
-      result.sourceMap,
-      0,
-    );
+    const enriched = enrichErrorMessage("null reference", err, result.sourceMap, 0);
     // Should at least contain the original message and function name
     expect(enriched).toContain("null reference");
     expect(enriched).toContain("in test()");
@@ -153,12 +144,7 @@ export function test(): f64 {
       const funcName = extractWasmFuncName(err);
       // We expect some function name (could be "test" or an internal name)
       // The key thing is that extractWasmFuncName doesn't crash
-      const enriched = enrichErrorMessage(
-        err.message,
-        err,
-        result.sourceMap,
-        0,
-      );
+      const enriched = enrichErrorMessage(err.message, err, result.sourceMap, 0);
       expect(enriched).toContain(err.message);
       // If we got a function name, it should be in the enriched message
       if (funcName) {

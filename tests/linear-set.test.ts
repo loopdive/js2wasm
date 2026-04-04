@@ -10,9 +10,7 @@ import {
   addSetRuntime,
 } from "../src/codegen-linear/runtime.js";
 
-async function buildWithSet(
-  setup: (mod: ReturnType<typeof createEmptyModule>, fi: Record<string, number>) => void,
-) {
+async function buildWithSet(setup: (mod: ReturnType<typeof createEmptyModule>, fi: Record<string, number>) => void) {
   const mod = createEmptyModule();
   addRuntime(mod);
   addUint8ArrayRuntime(mod);

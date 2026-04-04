@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 
 // Exploratory test: which TypeScript patterns used by the real TypeScript
-// compiler does ts2wasm handle? Each test tries to compile a pattern
+// compiler does js2wasm handle? Each test tries to compile a pattern
 // found in the TypeScript compiler source.
 
 describe("TypeScript Compiler Pattern Compatibility", () => {
@@ -36,7 +36,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       function getKind(n: Node): number { return n.kind; }
       export function test(): number { return 1; }
     `);
-    if (!r.success) console.log("Interface errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Interface errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     expect(r.success).toBe(true);
   });
 
@@ -72,7 +76,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       }
       export function test(): number { return isKeyword("if"); }
     `);
-    if (!r.success) console.log("String eq errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "String eq errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     expect(r.success).toBe(true);
   });
 
@@ -84,7 +92,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       }
       export function main(): number { return test(42); }
     `);
-    if (!r.success) console.log("Union errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Union errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     // Record whether this passes or fails
     console.log("Union type support:", r.success ? "YES" : "NO");
   });
@@ -97,7 +109,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       }
       export function test(): number { return foo(1); }
     `);
-    if (!r.success) console.log("Optional param errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Optional param errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Optional params support:", r.success ? "YES" : "NO");
   });
 
@@ -122,7 +138,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         return tokens.length;
       }
     `);
-    if (!r.success) console.log("Array of objects errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Array of objects errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Array of class instances:", r.success ? "YES" : "NO");
   });
 
@@ -134,7 +154,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       }
       export function main(): number { return test(42); }
     `);
-    if (!r.success) console.log("Type assertion errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Type assertion errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Type assertion:", r.success ? "YES" : "NO");
   });
 
@@ -150,7 +174,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       }
       export function test(): number { return 1; }
     `);
-    if (!r.success) console.log("Recursive type errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Recursive type errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Recursive/self-ref class:", r.success ? "YES" : "NO");
   });
 
@@ -169,7 +197,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         return getOrDefault(b);
       }
     `);
-    if (!r.success) console.log("Null union errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Null union errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Null union types:", r.success ? "YES" : "NO");
   });
 
@@ -183,7 +215,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         return sum;
       }
     `);
-    if (!r.success) console.log("For loop errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "For loop errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("For loop:", r.success ? "YES" : "NO");
   });
 
@@ -199,7 +235,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       }
       export function test(): number { return classify(2); }
     `);
-    if (!r.success) console.log("Switch errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Switch errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Switch statement:", r.success ? "YES" : "NO");
   });
 
@@ -213,7 +253,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         }
       }
     `);
-    if (!r.success) console.log("Try-catch errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Try-catch errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Try-catch:", r.success ? "YES" : "NO");
   });
 
@@ -225,7 +269,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         return b.length;
       }
     `);
-    if (!r.success) console.log("Spread errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Spread errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Spread operator:", r.success ? "YES" : "NO");
   });
 
@@ -237,7 +285,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         return m.get("a") || 0;
       }
     `);
-    if (!r.success) console.log("Map errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Map errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Map:", r.success ? "YES" : "NO");
   });
 
@@ -251,7 +303,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         return add5(3);
       }
     `);
-    if (!r.success) console.log("Closure errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Closure errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Closure:", r.success ? "YES" : "NO");
   });
 
@@ -275,7 +331,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         return d.getSum();
       }
     `);
-    if (!r.success) console.log("Inheritance errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Inheritance errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Class inheritance:", r.success ? "YES" : "NO");
   });
 
@@ -284,7 +344,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       function identity<T>(x: T): T { return x; }
       export function test(): number { return identity(42); }
     `);
-    if (!r.success) console.log("Generic errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Generic errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Generics:", r.success ? "YES" : "NO");
   });
 
@@ -301,7 +365,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
       }
       export function test(): number { return sum(1, 2, 3); }
     `);
-    if (!r.success) console.log("Rest params errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Rest params errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Rest parameters:", r.success ? "YES" : "NO");
   });
 
@@ -312,7 +380,11 @@ describe("TypeScript Compiler Pattern Compatibility", () => {
         return \\\`value is \\\${x}\\\`;
       }
     `);
-    if (!r.success) console.log("Template literal errors:", r.errors.slice(0, 3).map(e => e.message));
+    if (!r.success)
+      console.log(
+        "Template literal errors:",
+        r.errors.slice(0, 3).map((e) => e.message),
+      );
     console.log("Template literals:", r.success ? "YES" : "NO");
   });
 });

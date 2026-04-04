@@ -9,10 +9,7 @@ async function compileToWasm(source: string) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    buildImports(result),
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return instance.exports as Record<string, Function>;
 }
 

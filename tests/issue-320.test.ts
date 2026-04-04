@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
+import { buildStringConstants } from "../src/runtime.js";
 
 describe("Dead import and type elimination (#320)", () => {
   it("removes unused wasm:js-string imports when only concat is used", () => {
@@ -42,9 +43,7 @@ describe("Dead import and type elimination (#320)", () => {
 
     // Count type definitions - should have exactly 3:
     // concat type, add_type, greet_type (unused string import types eliminated)
-    const typeLines = result.wat.split("\n").filter((l: string) =>
-      l.trim().startsWith("(type")
-    );
+    const typeLines = result.wat.split("\n").filter((l: string) => l.trim().startsWith("(type"));
     // Without elimination we'd have 7 types; with it we should have fewer
     expect(typeLines.length).toBeLessThan(7);
   });
@@ -101,9 +100,7 @@ describe("Dead import and type elimination (#320)", () => {
       "wasm:js-string": {
         concat: (a: string, b: string) => a + b,
       },
-      string_constants: {
-        "Hello ": "Hello ",
-      },
+      string_constants: buildStringConstants(result.stringPool),
     };
 
     const instance = await WebAssembly.instantiate(mod, imports);

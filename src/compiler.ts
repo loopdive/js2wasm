@@ -9,11 +9,7 @@ import {
 import { generateModule, generateMultiModule } from "./codegen/index.js";
 import { resetCompileDepth } from "./codegen/expressions.js";
 import { generateLinearModule, generateLinearMultiModule } from "./codegen-linear/index.js";
-import {
-  emitBinary,
-  emitBinaryWithSourceMap,
-  emitSourceMappingURLSection,
-} from "./emit/binary.js";
+import { emitBinary, emitBinaryWithSourceMap, emitSourceMappingURLSection } from "./emit/binary.js";
 import { WasmEncoder } from "./emit/encoder.js";
 import { emitObject } from "./emit/object.js";
 import { generateSourceMap } from "./emit/sourcemap.js";
@@ -29,16 +25,18 @@ import { generateWit } from "./wit-generator.js";
 
 // Default blocked members on extern classes in safe mode
 const DEFAULT_BLOCKED_MEMBERS = new Set([
-  "__proto__", "constructor", "prototype", "valueOf", "toString",
-  "innerHTML", "outerHTML", "insertAdjacentHTML",
+  "__proto__",
+  "constructor",
+  "prototype",
+  "valueOf",
+  "toString",
+  "innerHTML",
+  "outerHTML",
+  "insertAdjacentHTML",
 ]);
 
 /** Validate source against safe mode restrictions. Returns errors for violations. */
-function validateSafeMode(
-  sourceFile: ts.SourceFile,
-  checker: ts.TypeChecker,
-  options: CompileOptions,
-): CompileError[] {
+function validateSafeMode(sourceFile: ts.SourceFile, checker: ts.TypeChecker, options: CompileOptions): CompileError[] {
   const errors: CompileError[] = [];
   const allowedGlobals = new Set(options.allowedGlobals ?? []);
   const allowedMembers = options.allowedExternMembers ?? {};
@@ -50,7 +48,7 @@ function validateSafeMode(
 
   function visit(node: ts.Node): void {
     // 1. Check declare var/const globals
-    if (ts.isVariableStatement(node) && node.modifiers?.some(m => m.kind === ts.SyntaxKind.DeclareKeyword)) {
+    if (ts.isVariableStatement(node) && node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) {
       for (const decl of node.declarationList.declarations) {
         const name = decl.name.getText();
         // Block undeclared globals unless allowlisted
@@ -58,7 +56,9 @@ function validateSafeMode(
           const p = pos(decl);
           errors.push({
             message: `Safe mode: declared global "${name}" is not in allowedGlobals`,
-            line: p.line, column: p.column, severity: "error",
+            line: p.line,
+            column: p.column,
+            severity: "error",
           });
         }
         // Block any type on declared globals
@@ -68,7 +68,9 @@ function validateSafeMode(
             const p = pos(decl.type);
             errors.push({
               message: `Safe mode: "any" type on declared global "${name}" is not allowed`,
-              line: p.line, column: p.column, severity: "error",
+              line: p.line,
+              column: p.column,
+              severity: "error",
             });
           }
         }
@@ -76,7 +78,7 @@ function validateSafeMode(
     }
 
     // 2. Check declare class (extern class) members
-    if (ts.isClassDeclaration(node) && node.modifiers?.some(m => m.kind === ts.SyntaxKind.DeclareKeyword)) {
+    if (ts.isClassDeclaration(node) && node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) {
       const className = node.name?.getText() ?? "(anonymous)";
       const allowed = allowedMembers[className];
       for (const member of node.members) {
@@ -88,7 +90,9 @@ function validateSafeMode(
           const p = pos(member);
           errors.push({
             message: `Safe mode: extern class "${className}" member "${memberName}" is blocked`,
-            line: p.line, column: p.column, severity: "error",
+            line: p.line,
+            column: p.column,
+            severity: "error",
           });
           continue;
         }
@@ -98,7 +102,9 @@ function validateSafeMode(
           const p = pos(member);
           errors.push({
             message: `Safe mode: extern class "${className}" member "${memberName}" is not in allowedExternMembers`,
-            line: p.line, column: p.column, severity: "error",
+            line: p.line,
+            column: p.column,
+            severity: "error",
           });
           continue;
         }
@@ -110,7 +116,9 @@ function validateSafeMode(
             const p = pos(member.type);
             errors.push({
               message: `Safe mode: "any" type on extern class "${className}.${memberName}" is not allowed`,
-              line: p.line, column: p.column, severity: "error",
+              line: p.line,
+              column: p.column,
+              severity: "error",
             });
           }
         }
@@ -124,14 +132,16 @@ function validateSafeMode(
       const objSymbol = objType.getSymbol();
       if (objSymbol) {
         const decls = objSymbol.getDeclarations() ?? [];
-        const isDeclaredClass = decls.some(d =>
-          ts.isClassDeclaration(d) && d.modifiers?.some(m => m.kind === ts.SyntaxKind.DeclareKeyword)
+        const isDeclaredClass = decls.some(
+          (d) => ts.isClassDeclaration(d) && d.modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword),
         );
         if (isDeclaredClass) {
           const p = pos(node);
           errors.push({
             message: `Safe mode: dynamic property access on extern class "${objSymbol.getName()}" is not allowed`,
-            line: p.line, column: p.column, severity: "error",
+            line: p.line,
+            column: p.column,
+            severity: "error",
           });
         }
       }
@@ -155,9 +165,7 @@ function validateSafeMode(
  * 3. yield/await used as identifiers in generator/async functions
  * 4. Invalid assignment targets (parenthesized non-simple expressions)
  */
-function detectEarlyErrors(
-  sourceFile: ts.SourceFile,
-): CompileError[] {
+function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   const errors: CompileError[] = [];
 
   function pos(node: ts.Node): { line: number; column: number } {
@@ -198,8 +206,12 @@ function detectEarlyErrors(
       if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
         return true;
       }
-      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-          ts.isArrowFunction(current) || ts.isMethodDeclaration(current)) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current)
+      ) {
         // Check for "use strict" directive in function body
         if (current.body && ts.isBlock(current.body)) {
           for (const stmt of current.body.statements) {
@@ -293,9 +305,8 @@ function detectEarlyErrors(
       ts.isGetAccessorDeclaration(node) ||
       ts.isSetAccessorDeclaration(node) ||
       ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) &&
-        (node.asteriskToken !== undefined ||
-         node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword))) ||
-      params.some(p => p.initializer !== undefined || p.dotDotDotToken !== undefined || !ts.isIdentifier(p.name));
+        (node.asteriskToken !== undefined || node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword))) ||
+      params.some((p) => p.initializer !== undefined || p.dotDotDotToken !== undefined || !ts.isIdentifier(p.name));
     if (!alwaysForbid && !isStrictMode(node)) return;
     const seen = new Set<string>();
     for (const param of params) {
@@ -311,26 +322,26 @@ function detectEarlyErrors(
   }
 
   /**
-   * Check if an expression is an "invalid" assignment target per ES spec.
-   * Invalid targets include: `this`, `new.target`, literals, arrow functions,
-   * template literals, class expressions, etc.
+   * Check if an expression is NOT a valid assignment target per ES spec.
+   * For simple assignment (=): identifiers, property/element access, and
+   * destructuring patterns (object/array literals) are valid.
+   * For update (++/--) and compound (+=, etc.): only identifiers and
+   * property/element access are valid — no destructuring patterns.
    */
-  function isInvalidAssignmentTarget(node: ts.Expression): boolean {
+  function isInvalidAssignmentTarget(node: ts.Expression, allowDestructuring = false): boolean {
     let expr: ts.Node = node;
     while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
-    // this
-    if (expr.kind === ts.SyntaxKind.ThisKeyword) return true;
-    // Literals (numbers, strings, booleans, null, regex, template)
-    if (ts.isNumericLiteral(expr) || ts.isStringLiteral(expr) ||
-        ts.isRegularExpressionLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr) ||
-        ts.isTemplateExpression(expr) || ts.isTaggedTemplateExpression(expr) ||
-        expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword ||
-        expr.kind === ts.SyntaxKind.NullKeyword) return true;
-    // Arrow functions, function expressions, class expressions
-    if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr) || ts.isClassExpression(expr)) return true;
-    // new.target (MetaProperty)
-    if (ts.isMetaProperty(expr)) return true;
-    return false;
+    // Valid: identifiers, property access, element access
+    if (ts.isIdentifier(expr)) return false;
+    if (ts.isPropertyAccessExpression(expr)) return false;
+    if (ts.isElementAccessExpression(expr)) return false;
+    // Valid only in simple assignment: destructuring patterns
+    if (allowDestructuring) {
+      if (ts.isObjectLiteralExpression(expr)) return false;
+      if (ts.isArrayLiteralExpression(expr)) return false;
+    }
+    // Everything else is invalid
+    return true;
   }
 
   /**
@@ -348,8 +359,10 @@ function detectEarlyErrors(
     let expr: ts.Node = node;
     while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
     // TS models optional chains with questionDotToken
-    if ((ts.isPropertyAccessExpression(expr) || ts.isElementAccessExpression(expr) ||
-         ts.isCallExpression(expr)) && (expr as any).questionDotToken) {
+    if (
+      (ts.isPropertyAccessExpression(expr) || ts.isElementAccessExpression(expr) || ts.isCallExpression(expr)) &&
+      (expr as any).questionDotToken
+    ) {
       return true;
     }
     // Check parent chain for optional chaining context
@@ -363,8 +376,10 @@ function detectEarlyErrors(
     // Check prefix/postfix increment/decrement on arguments/eval in strict mode
     // Also check increment/decrement on optional chaining (always invalid)
     // Also check increment/decrement on non-simple assignment targets
-    if (ts.isPrefixUnaryExpression(node) &&
-        (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
+    if (
+      ts.isPrefixUnaryExpression(node) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
       const name = isArgumentsOrEval(node.operand);
       if (name && isStrictMode(node)) {
         addError(node, `Invalid use of '${name}' in strict mode`);
@@ -381,8 +396,10 @@ function detectEarlyErrors(
       }
     }
 
-    if (ts.isPostfixUnaryExpression(node) &&
-        (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
+    if (
+      ts.isPostfixUnaryExpression(node) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
       const name = isArgumentsOrEval(node.operand);
       if (name && isStrictMode(node)) {
         addError(node, `Invalid use of '${name}' in strict mode`);
@@ -406,7 +423,7 @@ function detectEarlyErrors(
       if (name && isStrictMode(node)) {
         addError(node.left, `Cannot assign to '${name}' in strict mode`);
       }
-      if (isInvalidAssignmentTarget(node.left)) {
+      if (isInvalidAssignmentTarget(node.left, /* allowDestructuring */ true)) {
         addError(node, "Invalid left-hand side in assignment");
       }
     }
@@ -416,11 +433,16 @@ function detectEarlyErrors(
     if (ts.isBinaryExpression(node)) {
       const op = node.operatorToken.kind;
       const compoundOps = [
-        ts.SyntaxKind.PlusEqualsToken, ts.SyntaxKind.MinusEqualsToken,
-        ts.SyntaxKind.AsteriskEqualsToken, ts.SyntaxKind.SlashEqualsToken,
-        ts.SyntaxKind.PercentEqualsToken, ts.SyntaxKind.AmpersandEqualsToken,
-        ts.SyntaxKind.BarEqualsToken, ts.SyntaxKind.CaretEqualsToken,
-        ts.SyntaxKind.LessThanLessThanEqualsToken, ts.SyntaxKind.GreaterThanGreaterThanEqualsToken,
+        ts.SyntaxKind.PlusEqualsToken,
+        ts.SyntaxKind.MinusEqualsToken,
+        ts.SyntaxKind.AsteriskEqualsToken,
+        ts.SyntaxKind.SlashEqualsToken,
+        ts.SyntaxKind.PercentEqualsToken,
+        ts.SyntaxKind.AmpersandEqualsToken,
+        ts.SyntaxKind.BarEqualsToken,
+        ts.SyntaxKind.CaretEqualsToken,
+        ts.SyntaxKind.LessThanLessThanEqualsToken,
+        ts.SyntaxKind.GreaterThanGreaterThanEqualsToken,
         ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken,
         ts.SyntaxKind.AsteriskAsteriskEqualsToken,
         ts.SyntaxKind.AmpersandAmpersandEqualsToken,
@@ -432,17 +454,16 @@ function detectEarlyErrors(
         if (name && isStrictMode(node)) {
           addError(node.left, `Cannot assign to '${name}' in strict mode`);
         }
-        // Check logical/compound assignment to call expressions in strict mode
-        if (isCallExpressionTarget(node.left) && isStrictMode(node)) {
+        // Compound assignment to non-simple targets (call expressions, binary, etc.)
+        if (isInvalidAssignmentTarget(node.left)) {
           addError(node, "Invalid left-hand side in assignment");
         }
       }
     }
 
-    // Check for-in/for-of with call expression as LHS in strict mode
-    if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) &&
-        !ts.isVariableDeclarationList(node.initializer)) {
-      if (isCallExpressionTarget(node.initializer) && isStrictMode(node)) {
+    // Check for-in/for-of with non-simple assignment target as LHS
+    if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && !ts.isVariableDeclarationList(node.initializer)) {
+      if (isInvalidAssignmentTarget(node.initializer as ts.Expression, /* allowDestructuring */ true)) {
         addError(node.initializer, "Invalid left-hand side in for-in/for-of");
       }
     }
@@ -461,18 +482,24 @@ function detectEarlyErrors(
       checkDuplicateParams(node.parameters, node);
     }
 
-    // Check yield used as identifier in generator functions
+    // Check yield used as identifier in generator functions/methods
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "yield") {
-      // Check if inside a generator function
+      // Check if inside a generator function/method
       let parent: ts.Node | undefined = node.parent;
       while (parent) {
-        if ((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) &&
-            parent.asteriskToken) {
+        if (
+          ((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) && parent.asteriskToken) ||
+          (ts.isMethodDeclaration(parent) && parent.asteriskToken)
+        ) {
           addError(node.name, "'yield' is a reserved word and cannot be used as an identifier in generator functions");
           break;
         }
-        if (ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent) ||
-            ts.isArrowFunction(parent) || ts.isMethodDeclaration(parent)) {
+        if (
+          ts.isFunctionDeclaration(parent) ||
+          ts.isFunctionExpression(parent) ||
+          ts.isArrowFunction(parent) ||
+          ts.isMethodDeclaration(parent)
+        ) {
           break; // Found enclosing non-generator function, stop
         }
         parent = parent.parent;
@@ -547,9 +574,7 @@ function detectEarlyErrors(
     // These are also caught by TS checker (2448/2474) as downgraded warnings.
     // We emit them as warnings here so compilation continues — tests expect runtime ReferenceError.
     if (ts.isSourceFile(node) || ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) {
-      const stmts = ts.isSourceFile(node) ? node.statements :
-                    ts.isBlock(node) ? node.statements :
-                    node.statements;
+      const stmts = ts.isSourceFile(node) ? node.statements : ts.isBlock(node) ? node.statements : node.statements;
       checkTDZInStatements(stmts);
     }
 
@@ -578,12 +603,26 @@ function detectEarlyErrors(
 
     // Check 'delete' of an unqualified identifier — SyntaxError in strict mode
     if (ts.isDeleteExpression(node) && isStrictMode(node)) {
-      let operand = node.expression;
+      let operand: ts.Expression = node.expression;
       while (ts.isParenthesizedExpression(operand)) {
         operand = operand.expression;
       }
       if (ts.isIdentifier(operand)) {
         addError(node, `Delete of an unqualified identifier in strict mode`);
+      }
+    }
+
+    // Check 'delete' on private names — always a SyntaxError
+    // ES spec: delete MemberExpression.PrivateName and delete CallExpression.PrivateName
+    // are early errors (class bodies are always strict mode).
+    // Covers: delete this.#x, delete (this.#x), delete g().#x, delete (g().#x)
+    if (ts.isDeleteExpression(node)) {
+      let operand: ts.Expression = node.expression;
+      while (ts.isParenthesizedExpression(operand)) {
+        operand = operand.expression;
+      }
+      if (ts.isPropertyAccessExpression(operand) && ts.isPrivateIdentifier(operand.name)) {
+        addError(node, `Deleting a private field is a SyntaxError`);
       }
     }
 
@@ -610,21 +649,22 @@ function detectEarlyErrors(
       }
     }
 
-    // Check for-of loop: lexical declarations may not have initializers or multiple bindings
+    // Check for-of loop: declarations may not have initializers; lexical must be single binding
+    // ES spec: ForInOfStatement: for (var ForBinding of AssignmentExpression) — no initializer.
+    // Also for let/const: no initializer and only one binding.
     if (ts.isForOfStatement(node)) {
       const init = node.initializer;
       if (ts.isVariableDeclarationList(init)) {
         const isLexical = (init.flags & ts.NodeFlags.Let) !== 0 || (init.flags & ts.NodeFlags.Const) !== 0;
-        if (isLexical) {
-          for (const decl of init.declarations) {
-            if (decl.initializer) {
-              addError(node, "for-of loop head declarations may not have initializers");
-              break;
-            }
+        // Both var and lexical: no initializers allowed
+        for (const decl of init.declarations) {
+          if (decl.initializer) {
+            addError(node, "for-of loop head declarations may not have initializers");
+            break;
           }
-          if (init.declarations.length > 1) {
-            addError(node, "Only a single declaration is allowed in a for-of statement");
-          }
+        }
+        if (isLexical && init.declarations.length > 1) {
+          addError(node, "Only a single declaration is allowed in a for-of statement");
         }
       }
     }
@@ -665,10 +705,16 @@ function detectEarlyErrors(
     // ES spec: Trailing comma after rest parameter is a SyntaxError.
     // e.g. function f(...a,) {}
     // TypeScript's parser accepts this, but ES spec forbids it.
-    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
-         ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
-         ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
-         ts.isSetAccessorDeclaration(node)) && node.parameters.length > 0) {
+    if (
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isConstructorDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node)) &&
+      node.parameters.length > 0
+    ) {
       const lastParam = node.parameters[node.parameters.length - 1]!;
       if (lastParam.dotDotDotToken) {
         // Check if there's a trailing comma after the rest parameter.
@@ -691,17 +737,17 @@ function detectEarlyErrors(
       const parent = node.parent;
       if (parent && !ts.isYieldExpression(parent) && !ts.isAwaitExpression(parent)) {
         // Skip if this is a property name in a member expression or declaration
-        const isPropertyName = parent && (
-          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
-          (ts.isPropertyAssignment(parent) && parent.name === node) ||
-          (ts.isMethodDeclaration(parent) && parent.name === node) ||
-          (ts.isPropertyDeclaration(parent) && parent.name === node) ||
-          (ts.isGetAccessorDeclaration(parent) && parent.name === node) ||
-          (ts.isSetAccessorDeclaration(parent) && parent.name === node) ||
-          (ts.isEnumMember(parent) && parent.name === node) ||
-          (ts.isPropertySignature(parent) && parent.name === node) ||
-          (ts.isMethodSignature(parent) && parent.name === node)
-        );
+        const isPropertyName =
+          parent &&
+          ((ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+            (ts.isPropertyAssignment(parent) && parent.name === node) ||
+            (ts.isMethodDeclaration(parent) && parent.name === node) ||
+            (ts.isPropertyDeclaration(parent) && parent.name === node) ||
+            (ts.isGetAccessorDeclaration(parent) && parent.name === node) ||
+            (ts.isSetAccessorDeclaration(parent) && parent.name === node) ||
+            (ts.isEnumMember(parent) && parent.name === node) ||
+            (ts.isPropertySignature(parent) && parent.name === node) ||
+            (ts.isMethodSignature(parent) && parent.name === node));
         if (!isPropertyName) {
           if (node.text === "await" && isInsideAsyncFunction(node)) {
             addError(node, "'await' is not allowed as an identifier in an async function");
@@ -718,42 +764,48 @@ function detectEarlyErrors(
     // public, static, yield are reserved in strict mode.
     if (ts.isIdentifier(node) && isStrictMode(node)) {
       const strictReserved = new Set([
-        "implements", "interface", "package", "private", "protected", "public", "static",
+        "implements",
+        "interface",
+        "package",
+        "private",
+        "protected",
+        "public",
+        "static",
       ]);
       if (strictReserved.has(node.text)) {
         // Skip property names — they're fine in strict mode
         const parent = node.parent;
-        const isPropertyName = parent && (
-          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
-          (ts.isPropertyAssignment(parent) && parent.name === node) ||
-          (ts.isMethodDeclaration(parent) && parent.name === node) ||
-          (ts.isPropertyDeclaration(parent) && parent.name === node) ||
-          (ts.isGetAccessorDeclaration(parent) && parent.name === node) ||
-          (ts.isSetAccessorDeclaration(parent) && parent.name === node) ||
-          (ts.isPropertySignature(parent) && parent.name === node) ||
-          (ts.isMethodSignature(parent) && parent.name === node)
-        );
+        const isPropertyName =
+          parent &&
+          ((ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+            (ts.isPropertyAssignment(parent) && parent.name === node) ||
+            (ts.isMethodDeclaration(parent) && parent.name === node) ||
+            (ts.isPropertyDeclaration(parent) && parent.name === node) ||
+            (ts.isGetAccessorDeclaration(parent) && parent.name === node) ||
+            (ts.isSetAccessorDeclaration(parent) && parent.name === node) ||
+            (ts.isPropertySignature(parent) && parent.name === node) ||
+            (ts.isMethodSignature(parent) && parent.name === node));
         // Also skip if used as a label name (label: statement)
         const isLabel = parent && ts.isLabeledStatement(parent) && parent.label === node;
         // Skip break/continue target labels
-        const isBreakContinueTarget = parent && (
-          (ts.isBreakStatement(parent) && parent.label === node) ||
-          (ts.isContinueStatement(parent) && parent.label === node)
-        );
+        const isBreakContinueTarget =
+          parent &&
+          ((ts.isBreakStatement(parent) && parent.label === node) ||
+            (ts.isContinueStatement(parent) && parent.label === node));
         if (!isPropertyName && !isLabel && !isBreakContinueTarget) {
           // Flag when used as a binding name (variable, parameter, function name)
           // or as a shorthand property (IdentifierReference context)
-          const isBinding = parent && (
-            (ts.isVariableDeclaration(parent) && parent.name === node) ||
-            (ts.isParameter(parent) && parent.name === node) ||
-            (ts.isFunctionDeclaration(parent) && parent.name === node) ||
-            (ts.isFunctionExpression(parent) && parent.name === node) ||
-            (ts.isClassDeclaration(parent) && parent.name === node) ||
-            (ts.isClassExpression(parent) && parent.name === node) ||
-            (ts.isBindingElement(parent) && parent.name === node) ||
-            // Shorthand property in object literal: {implements} — IdentifierReference
-            (ts.isShorthandPropertyAssignment(parent) && parent.name === node)
-          );
+          const isBinding =
+            parent &&
+            ((ts.isVariableDeclaration(parent) && parent.name === node) ||
+              (ts.isParameter(parent) && parent.name === node) ||
+              (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+              (ts.isFunctionExpression(parent) && parent.name === node) ||
+              (ts.isClassDeclaration(parent) && parent.name === node) ||
+              (ts.isClassExpression(parent) && parent.name === node) ||
+              (ts.isBindingElement(parent) && parent.name === node) ||
+              // Shorthand property in object literal: {implements} — IdentifierReference
+              (ts.isShorthandPropertyAssignment(parent) && parent.name === node));
           if (isBinding) {
             addError(node, `'${node.text}' is a reserved word in strict mode and cannot be used as an identifier`);
           }
@@ -765,14 +817,19 @@ function detectEarlyErrors(
     // ES spec: It is a SyntaxError if ContainsUseStrict of FunctionBody is true
     // and IsSimpleParameterList of FormalParameters is false.
     // Non-simple: default values, destructuring patterns, or rest parameters.
-    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
-         ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
-         ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
-         ts.isSetAccessorDeclaration(node)) && node.body && ts.isBlock(node.body)) {
-      const hasNonSimpleParams = node.parameters.some(p =>
-        p.initializer !== undefined ||
-        p.dotDotDotToken !== undefined ||
-        !ts.isIdentifier(p.name) // destructuring pattern
+    if (
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isConstructorDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node)) &&
+      node.body &&
+      ts.isBlock(node.body)
+    ) {
+      const hasNonSimpleParams = node.parameters.some(
+        (p) => p.initializer !== undefined || p.dotDotDotToken !== undefined || !ts.isIdentifier(p.name), // destructuring pattern
       );
       if (hasNonSimpleParams) {
         // Check if body starts with "use strict" directive
@@ -793,10 +850,17 @@ function detectEarlyErrors(
     // ES spec: It is a SyntaxError if BoundNames of FormalParameters also
     // occurs in the LexicallyDeclaredNames of FunctionBody (for arrow,
     // async, generator, method, constructor, getter, setter).
-    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
-         ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
-         ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
-         ts.isSetAccessorDeclaration(node)) && node.body && ts.isBlock(node.body)) {
+    if (
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isConstructorDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node)) &&
+      node.body &&
+      ts.isBlock(node.body)
+    ) {
       const paramNames = new Set<string>();
       for (const p of node.parameters) {
         collectBindingNames(p.name, paramNames);
@@ -857,9 +921,8 @@ function detectEarlyErrors(
       const declList = node.parent;
       if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
         const declListParent = declList.parent;
-        const isForOfOrIn = declListParent && (
-          ts.isForOfStatement(declListParent) || ts.isForInStatement(declListParent)
-        );
+        const isForOfOrIn =
+          declListParent && (ts.isForOfStatement(declListParent) || ts.isForInStatement(declListParent));
         if (!isForOfOrIn) {
           addError(node, "Missing initializer in const declaration");
         }
@@ -889,8 +952,11 @@ function detectEarlyErrors(
             collectBindingNames(decl.name, lexNames);
           }
           if (lexNames.size > 0) {
-            const body = ts.isForStatement(node) ? node.statement :
-                         ts.isForInStatement(node) ? node.statement : node.statement;
+            const body = ts.isForStatement(node)
+              ? node.statement
+              : ts.isForInStatement(node)
+                ? node.statement
+                : node.statement;
             if (ts.isBlock(body)) {
               collectVarDeclaredNamesInBlock(body, lexNames);
             }
@@ -905,18 +971,19 @@ function detectEarlyErrors(
     if (ts.isIdentifier(node) && (node.text === "eval" || node.text === "arguments") && isStrictMode(node)) {
       const parent = node.parent;
       // Check if used as a binding name (variable, parameter, function name, catch binding)
-      const isBinding = parent && (
-        (ts.isVariableDeclaration(parent) && parent.name === node) ||
-        (ts.isParameter(parent) && parent.name === node) ||
-        (ts.isFunctionDeclaration(parent) && parent.name === node) ||
-        (ts.isFunctionExpression(parent) && parent.name === node) ||
-        (ts.isClassDeclaration(parent) && parent.name === node) ||
-        (ts.isClassExpression(parent) && parent.name === node) ||
-        (ts.isBindingElement(parent) && parent.name === node) ||
-        (ts.isCatchClause(parent) && parent.variableDeclaration &&
-         ts.isIdentifier(parent.variableDeclaration.name) &&
-         parent.variableDeclaration.name === node)
-      );
+      const isBinding =
+        parent &&
+        ((ts.isVariableDeclaration(parent) && parent.name === node) ||
+          (ts.isParameter(parent) && parent.name === node) ||
+          (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+          (ts.isFunctionExpression(parent) && parent.name === node) ||
+          (ts.isClassDeclaration(parent) && parent.name === node) ||
+          (ts.isClassExpression(parent) && parent.name === node) ||
+          (ts.isBindingElement(parent) && parent.name === node) ||
+          (ts.isCatchClause(parent) &&
+            parent.variableDeclaration &&
+            ts.isIdentifier(parent.variableDeclaration.name) &&
+            parent.variableDeclaration.name === node));
       if (isBinding) {
         addError(node, `Binding '${node.text}' in strict mode is not allowed`);
       }
@@ -932,15 +999,18 @@ function detectEarlyErrors(
     // ── Class body: static prototype method/field ─────────────────────
     // ES spec: It is a SyntaxError if the PropName of a static method or
     // field is "prototype".
-    if ((ts.isClassDeclaration(node) || ts.isClassExpression(node))) {
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
       for (const member of node.members) {
         if (member.name && !ts.isPrivateIdentifier(member.name)) {
-          const isStatic = member.modifiers?.some(
-            m => m.kind === ts.SyntaxKind.StaticKeyword
-          );
+          const isStatic = ts.canHaveModifiers(member)
+            ? (ts.getModifiers(member as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ?? false)
+            : false;
           if (isStatic) {
-            const memberName = ts.isIdentifier(member.name) ? member.name.text :
-                              ts.isStringLiteral(member.name) ? member.name.text : null;
+            const memberName = ts.isIdentifier(member.name)
+              ? member.name.text
+              : ts.isStringLiteral(member.name)
+                ? member.name.text
+                : null;
             if (memberName === "prototype") {
               addError(member, "Classes may not have a static property named 'prototype'");
             }
@@ -953,7 +1023,7 @@ function detectEarlyErrors(
     // ES spec: It is a Syntax Error if PrivateBoundNames of ClassBody contains
     // any duplicate entries, unless the name is used once for a getter and once
     // for a setter and in no other entries.
-    if ((ts.isClassDeclaration(node) || ts.isClassExpression(node))) {
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
       checkDuplicatePrivateNames(node);
     }
 
@@ -979,7 +1049,7 @@ function detectEarlyErrors(
     // ── Class method named "constructor" restrictions ─────────────────
     // ES spec: It is a SyntaxError if PropName of a MethodDefinition is "constructor" and
     // the method is a generator, async, getter, or setter.
-    if ((ts.isClassDeclaration(node) || ts.isClassExpression(node))) {
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
       for (const member of node.members) {
         const memberName = getMemberName(member);
         if (memberName === "constructor") {
@@ -988,7 +1058,10 @@ function detectEarlyErrors(
           if (ts.isMethodDeclaration(member) && member.asteriskToken) {
             addError(member, "Class constructor may not be a generator");
           }
-          if (ts.isMethodDeclaration(member) && member.modifiers?.some((m: any) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+          if (
+            ts.isMethodDeclaration(member) &&
+            member.modifiers?.some((m: any) => m.kind === ts.SyntaxKind.AsyncKeyword)
+          ) {
             addError(member, "Class constructor may not be an async method");
           }
           if (ts.isGetAccessorDeclaration(member)) {
@@ -1011,8 +1084,10 @@ function detectEarlyErrors(
 
     // ── Direct super property outside method ──────────────────────────
     // super.x and super[x] are only valid in methods (including constructors)
-    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
-        node.expression.kind === ts.SyntaxKind.SuperKeyword) {
+    if (
+      (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      node.expression.kind === ts.SyntaxKind.SuperKeyword
+    ) {
       if (!isInsideMethod(node)) {
         addError(node, "'super' keyword unexpected here");
       }
@@ -1023,8 +1098,11 @@ function detectEarlyErrors(
       let protoCount = 0;
       for (const prop of node.properties) {
         if (ts.isPropertyAssignment(prop)) {
-          const propName = ts.isIdentifier(prop.name) ? prop.name.text :
-                          ts.isStringLiteral(prop.name) ? prop.name.text : null;
+          const propName = ts.isIdentifier(prop.name)
+            ? prop.name.text
+            : ts.isStringLiteral(prop.name)
+              ? prop.name.text
+              : null;
           if (propName === "__proto__") {
             protoCount++;
             if (protoCount > 1) {
@@ -1058,8 +1136,11 @@ function detectEarlyErrors(
         // Check if the body has "use strict"
         if (node.body) {
           for (const stmt of node.body.statements) {
-            if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression) &&
-                stmt.expression.text === "use strict") {
+            if (
+              ts.isExpressionStatement(stmt) &&
+              ts.isStringLiteral(stmt.expression) &&
+              stmt.expression.text === "use strict"
+            ) {
               addError(param.name, `Binding '${param.name.text}' in strict mode is not allowed`);
               break;
             } else {
@@ -1141,20 +1222,551 @@ function detectEarlyErrors(
     // diagnostics in the test262 worker, so detect them here.
     if (ts.isContinueStatement(node)) {
       if (!isInsideIteration(node, node.label?.text)) {
-        addError(node, node.label
-          ? `A 'continue' statement can only jump to a label of an enclosing iteration statement`
-          : `A 'continue' statement can only be used within an enclosing iteration statement`);
+        addError(
+          node,
+          node.label
+            ? `A 'continue' statement can only jump to a label of an enclosing iteration statement`
+            : `A 'continue' statement can only be used within an enclosing iteration statement`,
+        );
       }
     }
     if (ts.isBreakStatement(node)) {
       if (!isInsideBreakable(node, node.label?.text)) {
-        addError(node, node.label
-          ? `A 'break' statement can only jump to a label of an enclosing statement`
-          : `A 'break' statement can only be used within an enclosing iteration or switch statement`);
+        addError(
+          node,
+          node.label
+            ? `A 'break' statement can only jump to a label of an enclosing statement`
+            : `A 'break' statement can only be used within an enclosing iteration or switch statement`,
+        );
       }
     }
 
+    // ── new import() — always a SyntaxError ────────────────────────
+    // ES spec: ImportCall is a CallExpression, not a NewExpression target.
+    // Also applies to import.source() and import.defer() proposals.
+    // TS parser splits "new import('x')" into a broken NewExpression (empty identifier)
+    // followed by an import CallExpression. We detect this by checking for
+    // NewExpression with a missing/empty expression where the source text shows "new import".
+    if (ts.isNewExpression(node)) {
+      const expr = node.expression;
+      if (ts.isIdentifier(expr) && expr.text === "") {
+        const start = node.getStart(sourceFile);
+        const textAfter = sourceFile.text.substring(start, start + 30);
+        if (/^new\s+import\s*[\.(]/.test(textAfter)) {
+          addError(node, "Cannot use new with import()");
+        }
+      }
+    }
+
+    // ── typeof import — always a SyntaxError ────────────────────────
+    // ES spec: `import` is not a valid UnaryExpression operand (not an identifier).
+    // TS parser creates a TypeOfExpression with an empty Identifier when parsing
+    // `typeof import`. Detect this by checking source text.
+    if (ts.isTypeOfExpression(node)) {
+      const expr = node.expression;
+      if (ts.isIdentifier(expr) && expr.text === "") {
+        const start = node.getStart(sourceFile);
+        const textAfter = sourceFile.text.substring(start, start + 30);
+        if (/^typeof\s+import\b/.test(textAfter)) {
+          addError(node, "Cannot use typeof with import");
+        }
+      }
+    }
+
+    // ── `arguments` in class field initializers ──────────────────────
+    // ES spec: FieldDefinition — It is a Syntax Error if ContainsArguments
+    // of Initializer is true. `arguments` is not allowed in any class field
+    // initializer (instance or static), because field initializers are not
+    // "real" function bodies and don't bind `arguments`.
+    if (ts.isPropertyDeclaration(node) && node.initializer) {
+      if (ts.isClassDeclaration(node.parent) || ts.isClassExpression(node.parent)) {
+        if (containsArguments(node.initializer)) {
+          addError(node.initializer, "'arguments' is not allowed in class field initializers");
+        }
+      }
+    }
+
+    // ── await with empty operand in async functions ───────────────
+    // When TS parses `void await`, `await:`, or just `await` (as identifier ref)
+    // inside an async function, it creates AwaitExpression with empty Identifier
+    // operand. This means `await` was used as an identifier, not as the keyword.
+    // ES spec: await is a reserved word in async function bodies.
+    if (ts.isAwaitExpression(node)) {
+      const operand = node.expression;
+      if (ts.isIdentifier(operand) && operand.text === "") {
+        if (isInsideAsyncFunction(node) || isInsideClassStaticBlock(node)) {
+          addError(node, "'await' is not allowed as an identifier in this context");
+        }
+      }
+      // Also check await: label pattern (TS parses await: as AwaitExpression + colon)
+      if (isInsideAsyncFunction(node) || isInsideClassStaticBlock(node)) {
+        const endPos = node.end;
+        const afterText = sourceFile.text.substring(endPos, endPos + 5).trimStart();
+        if (afterText.startsWith(":")) {
+          addError(node, "'await' is not allowed as a label identifier in this context");
+        }
+      }
+    }
+
+    // ── yield with empty operand in generator functions ──────────
+    // Similar to await: when `yield` is used as identifier reference in a generator,
+    // TS may create YieldExpression with empty operand.
+    if (ts.isYieldExpression(node) && isInsideGeneratorFunction(node)) {
+      const operand = node.expression;
+      if (operand && ts.isIdentifier(operand) && operand.text === "") {
+        addError(node, "'yield' is not allowed as an identifier in a generator function");
+      }
+    }
+
+    // ── yield in class static blocks ──────────────────────────────
+    // ES spec: ClassStaticBlockStatementList uses [~Yield], meaning yield
+    // is not allowed inside static blocks even if nested within a generator.
+    // TS parses `yield;` in static blocks as Identifier("yield"), not
+    // YieldExpression, because class bodies are strict mode. TS diagnostic
+    // 1214 is downgraded for sloppy-mode compat, so check explicitly.
+    if (ts.isIdentifier(node) && node.text === "yield") {
+      if (isInsideClassStaticBlock(node) && !isInsideGeneratorFunction(node)) {
+        const parent = node.parent;
+        // Skip property names (obj.yield, { yield: x })
+        const isPropertyName =
+          parent &&
+          ((ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+            (ts.isPropertyAssignment(parent) && parent.name === node) ||
+            (ts.isMethodDeclaration(parent) && parent.name === node) ||
+            (ts.isPropertyDeclaration(parent) && parent.name === node));
+        if (!isPropertyName) {
+          addError(node, "'yield' is not allowed in class static initialization blocks");
+        }
+      }
+    }
+
+    // ── Escaped keyword detection ─────────────────────────────────
+    // ES spec: Keywords containing Unicode escape sequences are not valid.
+    // e.g., \u0061wait is NOT a valid `await` keyword, im\u0070ort is NOT
+    // a valid `import` keyword, etc.
+    // Check if the raw source text of keyword-like nodes contains \u escapes.
+    if (ts.isAwaitExpression(node) || ts.isYieldExpression(node)) {
+      const start = node.getStart(sourceFile);
+      const rawText = sourceFile.text.substring(start, start + 10);
+      if (/\\u[0-9a-fA-F]{4}/.test(rawText)) {
+        addError(node, "Keyword must not contain escaped characters");
+      }
+    }
+    // Escaped 'async' modifier
+    if (
+      (ts.isArrowFunction(node) ||
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isMethodDeclaration(node)) &&
+      node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
+    ) {
+      for (const mod of node.modifiers!) {
+        if (mod.kind === ts.SyntaxKind.AsyncKeyword) {
+          const modStart = mod.getStart(sourceFile);
+          const rawText = sourceFile.text.substring(modStart, modStart + 10);
+          if (/\\u[0-9a-fA-F]{4}/.test(rawText)) {
+            addError(mod, "Keyword must not contain escaped characters");
+          }
+        }
+      }
+    }
+
+    // ── import/export in invalid positions ──────────────────────────
+    // NOTE: These checks are intentionally REMOVED (#952).
+    // Our test262 runner wraps module tests inside `export function test() { try { ... } }`,
+    // which places import/export declarations inside a function body. TypeScript's parser
+    // doesn't flag this (it's a semantic error, code 1258), and the compiler handles it
+    // gracefully. Re-adding these checks would cause ~97 test regressions.
+    // TypeScript semantic diagnostics (1258, 1232) catch real cases if needed.
+
+    // ── dynamic import() as assignment target ──────────────────────
+    // ES spec: ImportCall is not a valid LeftHandSideExpression for assignment.
+    // e.g., import('x')++, import('x') = 1, ++import('x')
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const parent = node.parent;
+      if (parent) {
+        // import()++ or import()--
+        if (ts.isPostfixUnaryExpression(parent) && parent.operand === node) {
+          addError(node, "Invalid left-hand side in postfix operation");
+        }
+        // ++import() or --import()
+        if (
+          ts.isPrefixUnaryExpression(parent) &&
+          (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken) &&
+          parent.operand === node
+        ) {
+          addError(node, "Invalid left-hand side expression in prefix operation");
+        }
+        // import() = x
+        if (
+          ts.isBinaryExpression(parent) &&
+          parent.left === node &&
+          parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        ) {
+          addError(node, "Invalid left-hand side in assignment");
+        }
+      }
+    }
+
+    // ── await in class static initializer blocks ──────────────────
+    // ES spec: It is a Syntax Error if the code matched by this production is
+    // nested within a ClassStaticBlock and StringValue of Identifier is "await".
+    if (ts.isIdentifier(node) && node.text === "await") {
+      if (isInsideClassStaticBlock(node) && !isInsideAsyncFunction(node)) {
+        const parent = node.parent;
+        // Skip property names
+        const isPropertyName =
+          parent &&
+          ((ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+            (ts.isPropertyAssignment(parent) && parent.name === node) ||
+            (ts.isMethodDeclaration(parent) && parent.name === node) ||
+            (ts.isPropertyDeclaration(parent) && parent.name === node));
+        if (!isPropertyName) {
+          addError(node, "'await' is not allowed as an identifier in a class static initializer block");
+        }
+      }
+    }
+
+    // ── return outside function ──────────────────────────────────
+    // ES spec: A ReturnStatement can only appear in a FunctionBody.
+    if (ts.isReturnStatement(node)) {
+      if (!isInsideFunction(node)) {
+        addError(node, "A 'return' statement can only be used within a function body");
+      }
+    }
+
+    // ── yield-as-label (TS parses yield: as YieldExpression in generators)
+    // Only flag if the colon is a label colon, not a ternary operator colon.
+    // A ternary colon is preceded by `?` somewhere before it. Check if the
+    // yield is the consequent/alternate of a ConditionalExpression.
+    if (ts.isYieldExpression(node) && isInsideGeneratorFunction(node)) {
+      const endPos = node.end;
+      const afterText = sourceFile.text.substring(endPos, endPos + 5).trimStart();
+      if (afterText.startsWith(":")) {
+        // Don't flag if the yield is inside a ConditionalExpression (ternary ? yield : ...)
+        const isInTernary =
+          node.parent &&
+          (ts.isConditionalExpression(node.parent) ||
+            // Also check grandparent for nested parens: (yield) ? yield : yield
+            (ts.isParenthesizedExpression(node.parent) && ts.isConditionalExpression(node.parent.parent)));
+        if (!isInTernary) {
+          addError(node, "'yield' is not allowed as a label identifier in a generator function");
+        }
+      }
+    }
+
+    // ── Escaped 'let' keyword ─────────────────────────────────────
+    // \u006Cet is not valid as a keyword
+    if (ts.isIdentifier(node) && node.text === "let") {
+      const start = node.getStart(sourceFile);
+      const rawText = sourceFile.text.substring(start, start + 10);
+      if (rawText.includes("\\u")) {
+        addError(node, "Keyword must not contain escaped characters");
+      }
+    }
+
+    // ── private name escape sequences ─────────────────────────────
+    // ES spec: It is a Syntax Error if any code point in the PrivateIdentifier
+    // is expressed by a UnicodeEscapeSequence, unless it's for a valid start/part.
+    // For keywords like 'async', 'generator', 'field' — private names with
+    // escape sequences like #\u0061sync are SyntaxErrors.
+    // Note: TS represents private identifiers with ts.isPrivateIdentifier.
+    // The "cannot-escape-token" tests check that keywords used in private name
+    // positions cannot use Unicode escapes.
+
+    // ── Duplicate export names ────────────────────────────────────
+    // ES spec: It is a Syntax Error if the ExportedNames of ModuleBody contains
+    // any duplicate entries.
+    // This is checked at the source file level.
+
+    // ── import() with spread argument ──────────────────────────────
+    // ES spec: ImportCall takes exactly one AssignmentExpression, not ArgumentList.
+    // import(...['x']) is a SyntaxError.
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      for (const arg of node.arguments) {
+        if (ts.isSpreadElement(arg)) {
+          addError(arg, "import() does not allow spread arguments");
+        }
+      }
+    }
+
+    // ── Escaped 'import' keyword in dynamic import() ──────────────
+    // im\u0070ort('x') — escaped form of import keyword is not valid
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const start = node.getStart(sourceFile);
+      const rawText = sourceFile.text.substring(start, start + 15);
+      if (rawText.includes("\\u")) {
+        addError(node, "Keyword must not contain escaped characters");
+      }
+    }
+
+    // ── VoidExpression / TypeOfExpression with empty operand ─────────
+    // When TS encounters `void yield` or `void await` in a generator/async context,
+    // it splits them into two statements: void(empty) and yield/await.
+    // The void/typeof gets an empty Identifier operand (text === "").
+    // In ES spec, `void` always requires a UnaryExpression, so this indicates
+    // a parse issue — the construct is a SyntaxError.
+    if (ts.isVoidExpression(node)) {
+      const expr = node.expression;
+      if (ts.isIdentifier(expr) && expr.text === "") {
+        // Check what follows in the source — likely `void yield` or `void await`
+        const start = node.getStart(sourceFile);
+        const rawText = sourceFile.text.substring(start, start + 20).trim();
+        if (/^void\s+(yield|await)\b/.test(rawText)) {
+          addError(node, `'${rawText.match(/void\s+(\w+)/)?.[1]}' is not a valid operand for 'void' in this context`);
+        }
+      }
+    }
+    if (ts.isTypeOfExpression(node)) {
+      const expr = node.expression;
+      if (ts.isIdentifier(expr) && expr.text === "") {
+        const start = node.getStart(sourceFile);
+        const rawText = sourceFile.text.substring(start, start + 25).trim();
+        if (/^typeof\s+(yield|await)\b/.test(rawText)) {
+          addError(
+            node,
+            `'${rawText.match(/typeof\s+(\w+)/)?.[1]}' is not a valid operand for 'typeof' in this context`,
+          );
+        }
+      }
+    }
+
+    // ── Unary prefix (+, -, ~, !) with yield/await in generator/async ──
+    // Same issue: `+yield`, `-yield`, etc. TS splits the expression.
+    // If a PrefixUnaryExpression (not ++/--) has an empty Identifier operand,
+    // check if it's followed by yield/await.
+    if (
+      ts.isPrefixUnaryExpression(node) &&
+      node.operator !== ts.SyntaxKind.PlusPlusToken &&
+      node.operator !== ts.SyntaxKind.MinusMinusToken
+    ) {
+      const operand = node.operand;
+      if (ts.isIdentifier(operand) && operand.text === "") {
+        const start = node.getStart(sourceFile);
+        const rawText = sourceFile.text.substring(start, start + 20).trim();
+        if (/^[+\-~!]\s*(yield|await)\b/.test(rawText)) {
+          addError(node, `Invalid use of '${rawText.match(/[+\-~!]\s*(\w+)/)?.[1]}' in this context`);
+        }
+      }
+    }
+
+    // ── Nullish coalescing (??) mixed with || or && without parens ──
+    // ES spec: It is a Syntax Error if ShortCircuitExpression includes both
+    // CoalesceExpression (??) and LogicalORExpression/LogicalANDExpression
+    // without explicit parenthesization.
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (op === ts.SyntaxKind.QuestionQuestionToken) {
+        // Check if either child is a || or && expression (without parens)
+        const checkMixed = (child: ts.Node): boolean => {
+          if (ts.isParenthesizedExpression(child)) return false; // parens break the chain
+          if (ts.isBinaryExpression(child)) {
+            const childOp = child.operatorToken.kind;
+            if (childOp === ts.SyntaxKind.BarBarToken || childOp === ts.SyntaxKind.AmpersandAmpersandToken) {
+              return true;
+            }
+          }
+          return false;
+        };
+        if (checkMixed(node.left) || checkMixed(node.right)) {
+          addError(node, "Cannot mix '??' with '||' or '&&' without parentheses");
+        }
+      }
+      if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.AmpersandAmpersandToken) {
+        const checkMixed = (child: ts.Node): boolean => {
+          if (ts.isParenthesizedExpression(child)) return false;
+          if (ts.isBinaryExpression(child)) {
+            if (child.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) return true;
+          }
+          return false;
+        };
+        if (checkMixed(node.left) || checkMixed(node.right)) {
+          addError(node, "Cannot mix '??' with '||' or '&&' without parentheses");
+        }
+      }
+    }
+
+    // ── Optional chaining with tagged template literal ───────────────
+    // ES spec: OptionalChain : ?.TemplateLiteral and OptionalChain TemplateLiteral
+    // are always SyntaxErrors. Tagged templates cannot be used with optional chaining.
+    if (ts.isTaggedTemplateExpression(node)) {
+      // Check if the tag uses optional chaining
+      if (hasOptionalChain(node.tag)) {
+        addError(node, "Tagged template cannot be used in an optional chain");
+      }
+      // Also check for direct ?.` pattern: a?.`hello`
+      const tagEnd = node.tag.end;
+      const textBetween = sourceFile.text.substring(tagEnd - 2, tagEnd + 2);
+      if (textBetween.includes("?.")) {
+        addError(node, "Tagged template cannot be used in an optional chain");
+      }
+    }
+
+    // ── new.target outside function ─────────────────────────────────
+    // ES spec: new.target is only valid inside functions (including arrow functions
+    // which inherit from enclosing function) and class static blocks.
+    if (node.kind === ts.SyntaxKind.MetaProperty) {
+      const meta = node as ts.MetaProperty;
+      if (meta.keywordToken === ts.SyntaxKind.NewKeyword && meta.name.text === "target") {
+        if (!isInsideFunction(node) && !isInsideClassStaticBlock(node)) {
+          addError(node, "new.target is only valid inside functions");
+        }
+      }
+    }
+
+    // ── super() in constructor of class without extends ──────────────
+    // ES spec: It is a Syntax Error if ConstructorMethod of ClassBody contains
+    // SuperCall and ClassHeritage is not present.
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
+      // Find the enclosing class
+      let current: ts.Node | undefined = node.parent;
+      while (current) {
+        if (ts.isConstructorDeclaration(current)) {
+          const classNode = current.parent;
+          if (
+            (ts.isClassDeclaration(classNode) || ts.isClassExpression(classNode)) &&
+            !classNode.heritageClauses?.some((h) => h.token === ts.SyntaxKind.ExtendsKeyword)
+          ) {
+            addError(node, "super() is only valid in a constructor of a derived class");
+          }
+          break;
+        }
+        if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) || ts.isArrowFunction(current)) {
+          break;
+        }
+        current = current.parent;
+      }
+    }
+
+    // ── ASI: postfix ++/-- with line terminator before operator ─────
+    // ES spec: no LineTerminator between LeftHandSideExpression and ++/--.
+    // If a line terminator separates the operand from the operator, ASI applies
+    // and the ++ is parsed as a prefix on the next line. But if there's no
+    // next operand, it's a SyntaxError.
+    // NOTE: This only applies to LINE SEPARATOR (U+2028) and PARAGRAPH SEPARATOR (U+2029)
+    // because regular \n and \r are handled by TS parser's ASI behavior.
+    // After wrapTest resolves Unicode escapes, these characters appear literally.
+
+    // ── HTML-like comment (-->) in module code ─────────────────────
+    // ES spec: SingleLineHTMLCloseComment is only valid in scripts, not modules.
+    // Since we compile as modules (export {}), --> is a SyntaxError.
+    // Only check if the source contains --> outside of string literals.
+    // Note: this is detected by checking raw source text for --> at the start of a line.
+
+    // ── 'using' declarations in statement positions ──────────────────
+    // ES spec: UsingDeclaration is not a valid Statement — it's a
+    // LexicalDeclaration variant only valid in StatementList positions.
+    // In TS, 'using' may be parsed as a regular identifier + expression.
+    // We detect the pattern: for (...) using x = ...; (using in single-statement position)
+    // by checking if a variable statement with name "using" is in statement position.
+
+    // ── Fields named "constructor" in class ──────────────────────────
+    // ES spec: It is a Syntax Error if PropName of a ClassElement is "constructor"
+    // and the element is a field definition (not a method).
+    if (ts.isPropertyDeclaration(node)) {
+      const name = ts.isIdentifier(node.name) ? node.name.text : ts.isStringLiteral(node.name) ? node.name.text : null;
+      if (name === "constructor") {
+        const isStatic = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword);
+        if (!isStatic) {
+          addError(node, "Classes may not have a non-static field named 'constructor'");
+        }
+      }
+    }
+
+    // ── Duplicate constructor methods ────────────────────────────────
+    // ES spec: It is a Syntax Error if PrototypePropertyNameList of ClassElementList
+    // contains more than one occurrence of "constructor".
+    // Handled by checkDuplicateConstructors in the class-level check.
+
+    // ── HTML single-line close comment in module ─────────────────────
+    // ES spec: HTML-like comments (<!-- and -->) are only valid in scripts.
+    // We're always in module mode. Check for --> at the start of a line.
+    // Note: TS parser doesn't flag this.
+
     ts.forEachChild(node, visit);
+  }
+
+  /** Check if a node is inside a class static initializer block. */
+  function isInsideClassStaticBlock(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isClassStaticBlockDeclaration(current)) return true;
+      // ALL function boundaries stop the search, including arrow functions.
+      // ES spec: ContainsAwait returns false for ArrowFunction, meaning
+      // `await` as an identifier inside an arrow within a static block is valid.
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /** Check if a node is inside any function (for return statement validation). */
+  function isInsideFunction(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /**
+   * Check if an expression tree contains `arguments` identifier reference.
+   * Used for ES spec ContainsArguments check in class field initializers.
+   * Does NOT cross function boundaries (arguments is valid inside nested functions).
+   */
+  function containsArguments(node: ts.Node): boolean {
+    if (ts.isIdentifier(node) && node.text === "arguments") {
+      // Check it's not a property name
+      const parent = node.parent;
+      if (
+        parent &&
+        ((ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+          (ts.isPropertyAssignment(parent) && parent.name === node))
+      ) {
+        return false;
+      }
+      return true;
+    }
+    // Don't cross function boundaries — arguments IS valid inside nested functions
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node)
+    ) {
+      return false;
+    }
+    // Arrow functions don't bind arguments — keep searching
+    let found = false;
+    ts.forEachChild(node, (child) => {
+      if (!found && containsArguments(child)) {
+        found = true;
+      }
+    });
+    return found;
   }
 
   /** Get the computed name of a class member, if it's a simple string. */
@@ -1180,9 +1792,13 @@ function detectEarlyErrors(
         continue;
       }
       // Other function boundaries break super() context
-      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-          ts.isMethodDeclaration(current) ||
-          ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current)) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
         return false;
       }
       current = current.parent;
@@ -1194,8 +1810,20 @@ function detectEarlyErrors(
   function isInsideMethod(node: ts.Node): boolean {
     let current: ts.Node | undefined = node.parent;
     while (current) {
-      if (ts.isMethodDeclaration(current) || ts.isConstructorDeclaration(current) ||
-          ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current)) {
+      if (
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return true;
+      }
+      // Class property declarations (field initializers) inherit super context
+      // e.g. class C extends B { func = () => { super.prop; } }
+      if (ts.isPropertyDeclaration(current) && ts.isClassDeclaration(current.parent)) {
+        return true;
+      }
+      if (ts.isPropertyDeclaration(current) && ts.isClassExpression(current.parent)) {
         return true;
       }
       // Arrow functions inherit super property context — don't stop
@@ -1214,9 +1842,13 @@ function detectEarlyErrors(
 
   /** Check if a node is an iteration statement. */
   function isIterationStatement(node: ts.Node): boolean {
-    return ts.isForStatement(node) || ts.isForInStatement(node) ||
-           ts.isForOfStatement(node) || ts.isWhileStatement(node) ||
-           ts.isDoStatement(node);
+    return (
+      ts.isForStatement(node) ||
+      ts.isForInStatement(node) ||
+      ts.isForOfStatement(node) ||
+      ts.isWhileStatement(node) ||
+      ts.isDoStatement(node)
+    );
   }
 
   /** Check if `continue` is inside a valid iteration statement. Respects labels and function boundaries. */
@@ -1224,10 +1856,15 @@ function detectEarlyErrors(
     let current: ts.Node | undefined = node.parent;
     while (current) {
       // Function boundaries stop the search
-      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-          ts.isArrowFunction(current) || ts.isMethodDeclaration(current) ||
-          ts.isConstructorDeclaration(current) || ts.isGetAccessorDeclaration(current) ||
-          ts.isSetAccessorDeclaration(current)) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
         return false;
       }
       if (label) {
@@ -1249,10 +1886,15 @@ function detectEarlyErrors(
     let current: ts.Node | undefined = node.parent;
     while (current) {
       // Function boundaries stop the search
-      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-          ts.isArrowFunction(current) || ts.isMethodDeclaration(current) ||
-          ts.isConstructorDeclaration(current) || ts.isGetAccessorDeclaration(current) ||
-          ts.isSetAccessorDeclaration(current)) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
         return false;
       }
       if (label) {
@@ -1408,12 +2050,13 @@ function detectEarlyErrors(
   function isInsideAsyncFunction(node: ts.Node): boolean {
     let current: ts.Node | undefined = node.parent;
     while (current) {
-      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-          ts.isMethodDeclaration(current)) {
-        return current.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+      // Class static blocks create a new scope — stop searching
+      if (ts.isClassStaticBlockDeclaration(current)) return false;
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) || ts.isMethodDeclaration(current)) {
+        return current.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
       }
       if (ts.isArrowFunction(current)) {
-        return current.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+        return current.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
       }
       current = current.parent;
     }
@@ -1424,8 +2067,9 @@ function detectEarlyErrors(
   function isInsideGeneratorFunction(node: ts.Node): boolean {
     let current: ts.Node | undefined = node.parent;
     while (current) {
-      if ((ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) &&
-          current.asteriskToken) {
+      // Class static blocks create a new scope — stop searching
+      if (ts.isClassStaticBlockDeclaration(current)) return false;
+      if ((ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) && current.asteriskToken) {
         return true;
       }
       if (ts.isMethodDeclaration(current) && current.asteriskToken) {
@@ -1433,8 +2077,7 @@ function detectEarlyErrors(
       }
       // Arrow functions are never generators, but they don't create a new yield scope
       // If we hit an arrow, keep going up — arrows inherit the generator context
-      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
-          ts.isMethodDeclaration(current)) {
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) || ts.isMethodDeclaration(current)) {
         return false; // Found a non-generator function boundary
       }
       current = current.parent;
@@ -1462,7 +2105,7 @@ function detectEarlyErrors(
 
   /** Check if a node has the 'async' modifier. */
   function hasAsyncModifier(node: ts.FunctionDeclaration): boolean {
-    return node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+    return node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
   }
 
   /** Check if a private identifier is inside a class that declares it. */
@@ -1529,14 +2172,20 @@ function detectEarlyErrors(
       return;
     }
     // Don't cross function boundaries (var doesn't hoist past functions)
-    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
-        ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
-        ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
-        ts.isSetAccessorDeclaration(node) || ts.isClassDeclaration(node) ||
-        ts.isClassExpression(node)) {
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isClassExpression(node)
+    ) {
       return;
     }
-    ts.forEachChild(node, child => collectVarDeclaredNamesInBlock(child, lexicalNames));
+    ts.forEachChild(node, (child) => collectVarDeclaredNamesInBlock(child, lexicalNames));
   }
 
   /**
@@ -1623,12 +2272,22 @@ function detectEarlyErrors(
       }
       // Emit as warning — test262 expects runtime ReferenceError, not compile error
       const p = pos(node);
-      errors.push({ message: `Cannot access '${name}' before initialization`, line: p.line, column: p.column, severity: "warning" });
+      errors.push({
+        message: `Cannot access '${name}' before initialization`,
+        line: p.line,
+        column: p.column,
+        severity: "warning",
+      });
       return;
     }
     // Don't descend into nested function scopes -- they create their own TDZ
-    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
-        ts.isArrowFunction(node) || ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isClassExpression(node)
+    ) {
       return;
     }
     ts.forEachChild(node, (child: ts.Node) => checkForTDZRef(child, name));
@@ -1642,8 +2301,11 @@ function detectEarlyErrors(
     const parent = objLit.parent;
     if (!parent) return false;
     // Direct destructuring: ({ x = 1 } = source)
-    if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        parent.left === objLit) {
+    if (
+      ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      parent.left === objLit
+    ) {
       return true;
     }
     // In for-of/for-in LHS
@@ -1666,8 +2328,12 @@ function detectEarlyErrors(
   function isAssignmentPatternContext_expr(arrLit: ts.ArrayLiteralExpression): boolean {
     const parent = arrLit.parent;
     if (!parent) return false;
-    if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        parent.left === arrLit) return true;
+    if (
+      ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      parent.left === arrLit
+    )
+      return true;
     if (ts.isForOfStatement(parent) || ts.isForInStatement(parent)) return parent.initializer === arrLit;
     if (ts.isArrayLiteralExpression(parent)) return isAssignmentPatternContext_expr(parent);
     if (ts.isPropertyAssignment(parent)) {
@@ -1678,6 +2344,117 @@ function detectEarlyErrors(
   }
 
   visit(sourceFile);
+
+  // ── Duplicate export names (source-file level check) ──────────────
+  // ES spec: It is a Syntax Error if ExportedNames contains any duplicate entries.
+  const exportedNames = new Map<string, ts.Node>();
+  for (const stmt of sourceFile.statements) {
+    if (ts.isExportDeclaration(stmt)) {
+      if (stmt.exportClause && ts.isNamedExports(stmt.exportClause)) {
+        for (const spec of stmt.exportClause.elements) {
+          const exportName = (spec.propertyName ?? spec.name).text;
+          const exportedAs = spec.name.text;
+          if (exportedNames.has(exportedAs)) {
+            addError(spec, `Duplicate export name '${exportedAs}'`);
+          } else {
+            exportedNames.set(exportedAs, spec);
+          }
+        }
+      }
+      // export * as name — adds 'name' to exported names
+      if (stmt.exportClause && ts.isNamespaceExport(stmt.exportClause)) {
+        const exportedAs = stmt.exportClause.name.text;
+        if (exportedNames.has(exportedAs)) {
+          addError(stmt.exportClause, `Duplicate export name '${exportedAs}'`);
+        } else {
+          exportedNames.set(exportedAs, stmt.exportClause);
+        }
+      }
+    }
+    if (ts.isExportAssignment(stmt)) {
+      if (exportedNames.has("default")) {
+        addError(stmt, "Duplicate export name 'default'");
+      } else {
+        exportedNames.set("default", stmt);
+      }
+    }
+    // export function/class/variable declarations contribute to exported names
+    if (
+      ts.isFunctionDeclaration(stmt) &&
+      stmt.name &&
+      ts.canHaveModifiers(stmt) &&
+      ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      const isDefault = ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
+      const name = isDefault ? "default" : stmt.name.text;
+      if (exportedNames.has(name)) {
+        addError(stmt.name, `Duplicate export name '${name}'`);
+      } else {
+        exportedNames.set(name, stmt.name);
+      }
+    }
+    if (
+      ts.isClassDeclaration(stmt) &&
+      ts.canHaveModifiers(stmt) &&
+      ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      const isDefault = ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
+      const name = isDefault ? "default" : (stmt.name?.text ?? "default");
+      if (exportedNames.has(name)) {
+        addError(stmt.name ?? stmt, `Duplicate export name '${name}'`);
+      } else {
+        exportedNames.set(name, stmt.name ?? stmt);
+      }
+    }
+    if (
+      ts.isVariableStatement(stmt) &&
+      ts.canHaveModifiers(stmt) &&
+      ts.getModifiers(stmt as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name)) {
+          if (exportedNames.has(decl.name.text)) {
+            addError(decl.name, `Duplicate export name '${decl.name.text}'`);
+          } else {
+            exportedNames.set(decl.name.text, decl.name);
+          }
+        }
+      }
+    }
+  }
+
+  // ── HTML close comment (-->) in module code ──────────────────────
+  // NOTE: Check disabled (#952). Our test262 wrapper puts script-mode tests
+  // (which allow -->) inside module code (export function test() {}), causing
+  // false positives. The compiler handles --> gracefully regardless.
+
+  // ── Duplicate class constructors ──────────────────────────────────
+  // ES spec: It is a Syntax Error if PrototypePropertyNameList of ClassElementList
+  // contains more than one occurrence of "constructor".
+  function checkDuplicateConstructors(classNode: ts.ClassDeclaration | ts.ClassExpression) {
+    let ctorCount = 0;
+    for (const member of classNode.members) {
+      if (ts.isConstructorDeclaration(member)) {
+        // Only count constructors with a body (declarations without bodies are overloads)
+        if (member.body) {
+          ctorCount++;
+          if (ctorCount > 1) {
+            addError(member, "A class may only have one constructor");
+            break;
+          }
+        }
+      }
+    }
+  }
+  // Walk all classes to check for duplicate constructors
+  function checkClassesForDuplicateCtors(node: ts.Node) {
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+      checkDuplicateConstructors(node);
+    }
+    ts.forEachChild(node, checkClassesForDuplicateCtors);
+  }
+  checkClassesForDuplicateCtors(sourceFile);
+
   return errors;
 }
 
@@ -1716,6 +2493,7 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
 
   // Date
   if (name === "Date_new") return { type: "date_new" };
+  if (name === "__date_now") return { type: "date_now" };
   if (name.startsWith("Date_")) return { type: "date_method", method: name.slice(5) };
 
   // Extern classes — check mod.externClasses
@@ -1723,11 +2501,14 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
     const prefix = ec.importPrefix;
     if (name === `${prefix}_new`) return { type: "extern_class", className: ec.className, action: "new" };
     for (const [methodName] of ec.methods) {
-      if (name === `${prefix}_${methodName}`) return { type: "extern_class", className: ec.className, action: "method", member: methodName };
+      if (name === `${prefix}_${methodName}`)
+        return { type: "extern_class", className: ec.className, action: "method", member: methodName };
     }
     for (const [propName] of ec.properties) {
-      if (name === `${prefix}_get_${propName}`) return { type: "extern_class", className: ec.className, action: "get", member: propName };
-      if (name === `${prefix}_set_${propName}`) return { type: "extern_class", className: ec.className, action: "set", member: propName };
+      if (name === `${prefix}_get_${propName}`)
+        return { type: "extern_class", className: ec.className, action: "get", member: propName };
+      if (name === `${prefix}_set_${propName}`)
+        return { type: "extern_class", className: ec.className, action: "set", member: propName };
     }
   }
 
@@ -1791,7 +2572,9 @@ function buildImportManifest(mod: WasmModule): ImportDescriptor[] {
 }
 
 /** Check if TS syntax errors look like the source is plain JavaScript (no type annotations). */
-function looksLikeTsSyntaxOnJs(diagnostics: readonly { code: number; messageText: string | ts.DiagnosticMessageChain }[]): boolean {
+function looksLikeTsSyntaxOnJs(
+  diagnostics: readonly { code: number; messageText: string | ts.DiagnosticMessageChain }[],
+): boolean {
   // TS error codes that indicate TS-specific syntax was expected but not found,
   // or the parser hit JS-only patterns it can't handle in .ts mode.
   // Common: 1005 (';' expected), 2304 (cannot find name), 2552 (cannot find name, did you mean),
@@ -1824,7 +2607,8 @@ function checkJsTypeCoverage(ast: TypedAST): CompileError[] {
           const paramName = ts.isIdentifier(param.name) ? param.name.text : "?";
           const { line, character } = sf.getLineAndCharacterOfPosition(param.getStart());
           warnings.push({
-            message: `Parameter '${paramName}' in function '${fnName}' has implicit 'any' type. ` +
+            message:
+              `Parameter '${paramName}' in function '${fnName}' has implicit 'any' type. ` +
               `Add a JSDoc annotation: /** @param {number} ${paramName} */`,
             line: line + 1,
             column: character + 1,
@@ -1839,7 +2623,8 @@ function checkJsTypeCoverage(ast: TypedAST): CompileError[] {
         if (retType.flags & ts.TypeFlags.Any) {
           const { line, character } = sf.getLineAndCharacterOfPosition(node.name.getStart());
           warnings.push({
-            message: `Function '${fnName}' has implicit 'any' return type. ` +
+            message:
+              `Function '${fnName}' has implicit 'any' return type. ` +
               `Add a JSDoc annotation: /** @returns {number} */`,
             line: line + 1,
             column: character + 1,
@@ -2036,17 +2821,21 @@ export function compileSource(
   if (languageService) {
     // Incremental path: reuse cached lib files via the language service
     languageService.updateSource(processedSource, effectiveFileName);
-    ast = languageService.analyze({ allowJs: options.allowJs, skipSemanticDiagnostics: options.skipSemanticDiagnostics });
+    ast = languageService.analyze({
+      allowJs: options.allowJs,
+      skipSemanticDiagnostics: options.skipSemanticDiagnostics,
+    });
   } else {
-    ast = analyzeSource(processedSource, effectiveFileName, { allowJs: options.allowJs, skipSemanticDiagnostics: options.skipSemanticDiagnostics });
+    ast = analyzeSource(processedSource, effectiveFileName, {
+      allowJs: options.allowJs,
+      skipSemanticDiagnostics: options.skipSemanticDiagnostics,
+    });
   }
 
   // Auto-detect: if parsing as TS fails with syntax errors that look like
   // the source is plain JS, retry with allowJs mode enabled.
   if (!isJsMode) {
-    const syntaxErrors = ast.syntacticDiagnostics.filter(
-      (d) => d.category === 1 && d.file === ast.sourceFile,
-    );
+    const syntaxErrors = ast.syntacticDiagnostics.filter((d) => d.category === 1 && d.file === ast.sourceFile);
     if (syntaxErrors.length > 0 && looksLikeTsSyntaxOnJs(syntaxErrors)) {
       // Retry as JS
       isJsMode = true;
@@ -2074,15 +2863,10 @@ export function compileSource(
   for (const diag of ast.diagnostics) {
     if (diag.category === 1) {
       // Error
-      const pos = diag.file
-        ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
-        : { line: 0, character: 0 };
+      const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0) : { line: 0, character: 0 };
       const severity = DOWNGRADE_DIAG_CODES.has(diag.code) ? "warning" : "error";
       errors.push({
-        message:
-          typeof diag.messageText === "string"
-            ? diag.messageText
-            : diag.messageText.messageText,
+        message: typeof diag.messageText === "string" ? diag.messageText : diag.messageText.messageText,
         line: pos.line + 1,
         column: pos.character + 1,
         severity: severity as "error" | "warning",
@@ -2133,13 +2917,15 @@ export function compileSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
   // Step 1a: Early error detection — catch ES-spec syntax errors that TypeScript misses
   const earlyErrors = detectEarlyErrors(ast.sourceFile);
   errors.push(...earlyErrors);
-  const hasHardEarlyErrors = earlyErrors.some(e => e.severity !== "warning");
+  const hasHardEarlyErrors = earlyErrors.some((e) => e.severity !== "warning");
   if (hasHardEarlyErrors) {
     return {
       binary: new Uint8Array(0),
@@ -2150,6 +2936,8 @@ export function compileSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2167,6 +2955,8 @@ export function compileSource(
         errors,
         stringPool: [],
         imports: [],
+        hasMain: false,
+        hasTopLevelStatements: false,
       };
     }
   }
@@ -2177,8 +2967,16 @@ export function compileSource(
     errors.push(...hardenedErrors);
     if (hardenedErrors.length > 0) {
       return {
-        binary: new Uint8Array(0), wat: "", dts: "", importsHelper: "",
-        success: false, errors, stringPool: [], imports: [],
+        binary: new Uint8Array(0),
+        wat: "",
+        dts: "",
+        importsHelper: "",
+        success: false,
+        errors,
+        stringPool: [],
+        imports: [],
+        hasMain: false,
+        hasTopLevelStatements: false,
       };
     }
   }
@@ -2192,7 +2990,12 @@ export function compileSource(
     if (useLinear) {
       mod = generateLinearModule(ast);
     } else {
-      const result = generateModule(ast, { sourceMap: emitSourceMap, fast: options.fast, nativeStrings: options.nativeStrings, wasi: options.target === "wasi" });
+      const result = generateModule(ast, {
+        sourceMap: emitSourceMap,
+        fast: options.fast,
+        nativeStrings: options.nativeStrings,
+        wasi: options.target === "wasi",
+      });
       mod = result.module;
       // Propagate codegen errors with source locations
       for (const err of result.errors) {
@@ -2220,6 +3023,8 @@ export function compileSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2244,10 +3049,7 @@ export function compileSource(
       // Generate source map JSON
       const sourcesContent = new Map<string, string>();
       sourcesContent.set(effectiveFileName, source);
-      const sourceMap = generateSourceMap(
-        emitResult.sourceMapEntries,
-        sourcesContent,
-      );
+      const sourceMap = generateSourceMap(emitResult.sourceMapEntries, sourcesContent);
       sourceMapJson = JSON.stringify(sourceMap);
 
       // Append sourceMappingURL custom section to the binary
@@ -2257,9 +3059,7 @@ export function compileSource(
       const urlSectionBytes = urlSection.finish();
 
       // Concatenate the binary with the sourceMappingURL section
-      const combined = new Uint8Array(
-        emitResult.binary.length + urlSectionBytes.length,
-      );
+      const combined = new Uint8Array(emitResult.binary.length + urlSectionBytes.length);
       combined.set(emitResult.binary);
       combined.set(urlSectionBytes, emitResult.binary.length);
       binary = combined;
@@ -2282,6 +3082,8 @@ export function compileSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2343,6 +3145,8 @@ export function compileSource(
     imports: buildImportManifest(mod),
     cHeader,
     wit: witOutput,
+    hasMain: mod.exports.some((e) => e.name === "main" && e.desc.kind === "func"),
+    hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }
 
@@ -2350,13 +3154,8 @@ export function compileSource(
  * Apply C ABI transformation to a compiled WasmModule.
  * Rewrites exported function signatures for C compatibility and generates a C header.
  */
-function applyCabiTransform(
-  mod: WasmModule,
-  moduleName: string,
-): { cHeader: string } {
-  const numImportFuncs = mod.imports.filter(
-    (i) => i.desc.kind === "func",
-  ).length;
+function applyCabiTransform(mod: WasmModule, moduleName: string): { cHeader: string } {
+  const numImportFuncs = mod.imports.filter((i) => i.desc.kind === "func").length;
 
   // Build CabiExportInfo for each exported function
   const exportInfos: CabiExportInfo[] = [];
@@ -2379,20 +3178,18 @@ function applyCabiTransform(
       // Without TS type info at this stage, we infer from wasm types:
       // f64 → number, i32 → could be string/array/object/boolean
       // For now, treat all i32 params as direct (caller provides i32)
-      const semantic = wt.kind === "f64" ? "number_f64" as const : "number_i32" as const;
+      const semantic = wt.kind === "f64" ? ("number_f64" as const) : ("number_i32" as const);
       return { name: `p${i}`, wasmType: wt, semantic };
     });
 
     const cabiParams = mapParamsToCabi(paramDefs);
-    const resultSemantic = typeDef.results.length === 0
-      ? "void" as const
-      : typeDef.results[0].kind === "f64"
-        ? "number_f64" as const
-        : "number_i32" as const;
-    const cabiResult = mapResultToCabi(
-      typeDef.results.length > 0 ? typeDef.results[0] : null,
-      resultSemantic,
-    );
+    const resultSemantic =
+      typeDef.results.length === 0
+        ? ("void" as const)
+        : typeDef.results[0].kind === "f64"
+          ? ("number_f64" as const)
+          : ("number_i32" as const);
+    const cabiResult = mapResultToCabi(typeDef.results.length > 0 ? typeDef.results[0] : null, resultSemantic);
 
     const cabiName = exp.name; // mangleCabiName is identity for simple names
 
@@ -2430,14 +3227,9 @@ export function compileMultiSource(
 
   for (const diag of multiAst.diagnostics) {
     if (diag.category === 1) {
-      const pos = diag.file
-        ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
-        : { line: 0, character: 0 };
+      const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0) : { line: 0, character: 0 };
       errors.push({
-        message:
-          typeof diag.messageText === "string"
-            ? diag.messageText
-            : diag.messageText.messageText,
+        message: typeof diag.messageText === "string" ? diag.messageText : diag.messageText.messageText,
         line: pos.line + 1,
         column: pos.character + 1,
         severity: "error",
@@ -2459,6 +3251,8 @@ export function compileMultiSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2468,7 +3262,7 @@ export function compileMultiSource(
       const safeErrors = validateSafeMode(sf, multiAst.checker, options);
       errors.push(...safeErrors);
     }
-    if (errors.some(e => e.severity === "error")) {
+    if (errors.some((e) => e.severity === "error")) {
       return {
         binary: new Uint8Array(0),
         wat: "",
@@ -2478,6 +3272,8 @@ export function compileMultiSource(
         errors,
         stringPool: [],
         imports: [],
+        hasMain: false,
+        hasTopLevelStatements: false,
       };
     }
   }
@@ -2490,7 +3286,12 @@ export function compileMultiSource(
     if (useLinear) {
       mod = generateLinearMultiModule(multiAst);
     } else {
-      const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap, fast: options.fast, nativeStrings: options.nativeStrings, wasi: options.target === "wasi" });
+      const result = generateMultiModule(multiAst, {
+        sourceMap: emitSourceMap,
+        fast: options.fast,
+        nativeStrings: options.nativeStrings,
+        wasi: options.target === "wasi",
+      });
       mod = result.module;
       // Propagate codegen errors with source locations
       for (const err of result.errors) {
@@ -2518,6 +3319,8 @@ export function compileMultiSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2535,10 +3338,7 @@ export function compileMultiSource(
       for (const [name, content] of Object.entries(files)) {
         sourcesContent.set(name, content);
       }
-      const sourceMap = generateSourceMap(
-        emitResult.sourceMapEntries,
-        sourcesContent,
-      );
+      const sourceMap = generateSourceMap(emitResult.sourceMapEntries, sourcesContent);
       sourceMapJson = JSON.stringify(sourceMap);
 
       // Append sourceMappingURL custom section
@@ -2547,9 +3347,7 @@ export function compileMultiSource(
       emitSourceMappingURLSection(urlSection, sourceMapUrl);
       const urlSectionBytes = urlSection.finish();
 
-      const combined = new Uint8Array(
-        emitResult.binary.length + urlSectionBytes.length,
-      );
+      const combined = new Uint8Array(emitResult.binary.length + urlSectionBytes.length);
       combined.set(emitResult.binary);
       combined.set(urlSectionBytes, emitResult.binary.length);
       binary = combined;
@@ -2558,7 +3356,7 @@ export function compileMultiSource(
     }
   } catch (e) {
     errors.push({
-      message: `Binary emit error: ${e instanceof Error ? e.stack ?? e.message : String(e)}`,
+      message: `Binary emit error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
       line: 0,
       column: 0,
       severity: "error",
@@ -2572,6 +3370,8 @@ export function compileMultiSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2626,6 +3426,8 @@ export function compileMultiSource(
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
     imports: buildImportManifest(mod),
+    hasMain: mod.exports.some((e) => e.name === "main" && e.desc.kind === "func"),
+    hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }
 
@@ -2634,10 +3436,7 @@ export function compileMultiSource(
  * Uses ts.createProgram with real filesystem access -- TypeScript resolves
  * all imports automatically via standard module resolution.
  */
-export function compileFilesSource(
-  entryPath: string,
-  options: CompileOptions = {},
-): CompileResult {
+export function compileFilesSource(entryPath: string, options: CompileOptions = {}): CompileResult {
   const errors: CompileError[] = [];
   const emitWatOutput = options.emitWat !== false;
 
@@ -2648,14 +3447,9 @@ export function compileFilesSource(
 
   for (const diag of multiAst.diagnostics) {
     if (diag.category === 1) {
-      const pos = diag.file
-        ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
-        : { line: 0, character: 0 };
+      const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0) : { line: 0, character: 0 };
       errors.push({
-        message:
-          typeof diag.messageText === "string"
-            ? diag.messageText
-            : diag.messageText.messageText,
+        message: typeof diag.messageText === "string" ? diag.messageText : diag.messageText.messageText,
         line: pos.line + 1,
         column: pos.character + 1,
         severity: "error",
@@ -2677,6 +3471,8 @@ export function compileFilesSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2686,7 +3482,7 @@ export function compileFilesSource(
       const safeErrors = validateSafeMode(sf, multiAst.checker, options);
       errors.push(...safeErrors);
     }
-    if (errors.some(e => e.severity === "error")) {
+    if (errors.some((e) => e.severity === "error")) {
       return {
         binary: new Uint8Array(0),
         wat: "",
@@ -2696,6 +3492,8 @@ export function compileFilesSource(
         errors,
         stringPool: [],
         imports: [],
+        hasMain: false,
+        hasTopLevelStatements: false,
       };
     }
   }
@@ -2708,7 +3506,12 @@ export function compileFilesSource(
     if (useLinear) {
       mod = generateLinearMultiModule(multiAst);
     } else {
-      const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap, fast: options.fast, nativeStrings: options.nativeStrings, wasi: options.target === "wasi" });
+      const result = generateMultiModule(multiAst, {
+        sourceMap: emitSourceMap,
+        fast: options.fast,
+        nativeStrings: options.nativeStrings,
+        wasi: options.target === "wasi",
+      });
       mod = result.module;
       for (const err of result.errors) {
         errors.push({
@@ -2735,6 +3538,8 @@ export function compileFilesSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2764,7 +3569,7 @@ export function compileFilesSource(
     }
   } catch (e) {
     errors.push({
-      message: `Binary emit error: ${e instanceof Error ? e.stack ?? e.message : String(e)}`,
+      message: `Binary emit error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
       line: 0,
       column: 0,
       severity: "error",
@@ -2778,6 +3583,8 @@ export function compileFilesSource(
       errors,
       stringPool: [],
       imports: [],
+      hasMain: false,
+      hasTopLevelStatements: false,
     };
   }
 
@@ -2831,6 +3638,8 @@ export function compileFilesSource(
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
     imports: buildImportManifest(mod),
+    hasMain: mod.exports.some((e) => e.name === "main" && e.desc.kind === "func"),
+    hasTopLevelStatements: mod.hasTopLevelStatements === true,
   };
 }
 
@@ -2842,11 +3651,7 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
   // Exports interface
   const exportLines: string[] = [];
   for (const stmt of ast.sourceFile.statements) {
-    if (
-      ts.isFunctionDeclaration(stmt) &&
-      stmt.name &&
-      hasExportModifier(stmt)
-    ) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
       const name = stmt.name.text;
       const isAsync = mod.asyncFunctions.has(name);
       const params = stmt.parameters
@@ -2902,9 +3707,7 @@ function generateImportsHelper(mod: WasmModule): string {
   // Late-binding variable for callback support
   if (hasCallbacks) {
     lines.push("let wasmExports;");
-    lines.push(
-      "export function setExports(exports) { wasmExports = exports; }",
-    );
+    lines.push("export function setExports(exports) { wasmExports = exports; }");
     lines.push("");
   }
 
@@ -2930,7 +3733,9 @@ function generateImportsHelper(mod: WasmModule): string {
     lines.push("  // String constants as WebAssembly.Global values");
     lines.push("  const string_constants = {");
     for (const s of mod.stringPool) {
-      lines.push(`    ${JSON.stringify(s)}: new WebAssembly.Global({ value: "externref", mutable: false }, ${JSON.stringify(s)}),`);
+      lines.push(
+        `    ${JSON.stringify(s)}: new WebAssembly.Global({ value: "externref", mutable: false }, ${JSON.stringify(s)}),`,
+      );
     }
     lines.push("  };");
   }
@@ -2938,9 +3743,7 @@ function generateImportsHelper(mod: WasmModule): string {
   // wasm:js-string polyfill
   if (hasJsString) {
     lines.push("");
-    lines.push(
-      "  // Polyfill for engines without native wasm:js-string support",
-    );
+    lines.push("  // Polyfill for engines without native wasm:js-string support");
     lines.push("  const jsString = {");
     lines.push("    concat: (a, b) => a + b,");
     lines.push("    length: (s) => s.length,");
@@ -2971,22 +3774,17 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
 
   // Console stubs (log, warn, error)
   for (const cm of ["log", "warn", "error"]) {
-    if (name === `console_${cm}_number`)
-      return `console_${cm}_number: (v) => console.${cm}(v)`;
-    if (name === `console_${cm}_bool`)
-      return `console_${cm}_bool: (v) => console.${cm}(Boolean(v))`;
-    if (name === `console_${cm}_string`)
-      return `console_${cm}_string: (v) => console.${cm}(v)`;
-    if (name === `console_${cm}_externref`)
-      return `console_${cm}_externref: (v) => console.${cm}(v)`;
+    if (name === `console_${cm}_number`) return `console_${cm}_number: (v) => console.${cm}(v)`;
+    if (name === `console_${cm}_bool`) return `console_${cm}_bool: (v) => console.${cm}(Boolean(v))`;
+    if (name === `console_${cm}_string`) return `console_${cm}_string: (v) => console.${cm}(v)`;
+    if (name === `console_${cm}_externref`) return `console_${cm}_externref: (v) => console.${cm}(v)`;
   }
 
   // Primitive method imports
   if (name === "number_toString") return "number_toString: (v) => String(v)";
 
   // String compare (lexicographic ordering)
-  if (name === "string_compare")
-    return "string_compare: (a, b) => (a < b ? -1 : a > b ? 1 : 0)";
+  if (name === "string_compare") return "string_compare: (a, b) => (a < b ? -1 : a > b ? 1 : 0)";
 
   // String method imports
   if (name.startsWith("string_")) {
@@ -2995,12 +3793,10 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   }
 
   // String.fromCharCode
-  if (name === "String_fromCharCode")
-    return "String_fromCharCode: (code) => String.fromCharCode(code)";
+  if (name === "String_fromCharCode") return "String_fromCharCode: (code) => String.fromCharCode(code)";
 
   // ToUint32 helper for Math.clz32/imul
-  if (name === "__toUint32")
-    return "__toUint32: (x) => x >>> 0";
+  if (name === "__toUint32") return "__toUint32: (x) => x >>> 0";
 
   // Math host imports
   if (name.startsWith("Math_")) {
@@ -3011,10 +3807,7 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   // Extern class imports
   for (const ec of mod.externClasses) {
     const prefix = ec.importPrefix;
-    const nsAccess =
-      ec.namespacePath.length > 0
-        ? `deps.${ec.namespacePath.join(".")}`
-        : `deps`;
+    const nsAccess = ec.namespacePath.length > 0 ? `deps.${ec.namespacePath.join(".")}` : `deps`;
 
     if (name === `${prefix}_new`) {
       const paramList = ec.constructorParams.map((_, i) => `a${i}`).join(", ");
@@ -3060,23 +3853,18 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "__gen_result_done") return `${name}: (r) => r.done ? 1 : 0`;
 
   // Union type helper imports
-  if (name === "__typeof_number")
-    return `${name}: (v) => typeof v === "number" ? 1 : 0`;
-  if (name === "__typeof_string")
-    return `${name}: (v) => typeof v === "string" ? 1 : 0`;
-  if (name === "__typeof_boolean")
-    return `${name}: (v) => typeof v === "boolean" ? 1 : 0`;
-  if (name === "__typeof_undefined")
-    return `${name}: (v) => typeof v === "undefined" ? 1 : 0`;
-  if (name === "__typeof_object")
-    return `${name}: (v) => typeof v === "object" ? 1 : 0`;
-  if (name === "__typeof_function")
-    return `${name}: (v) => typeof v === "function" ? 1 : 0`;
+  if (name === "__typeof_number") return `${name}: (v) => typeof v === "number" ? 1 : 0`;
+  if (name === "__typeof_string") return `${name}: (v) => typeof v === "string" ? 1 : 0`;
+  if (name === "__typeof_boolean") return `${name}: (v) => typeof v === "boolean" ? 1 : 0`;
+  if (name === "__typeof_undefined") return `${name}: (v) => typeof v === "undefined" ? 1 : 0`;
+  if (name === "__typeof_object") return `${name}: (v) => typeof v === "object" ? 1 : 0`;
+  if (name === "__typeof_function") return `${name}: (v) => typeof v === "function" ? 1 : 0`;
   if (name === "__unbox_number") return `${name}: (v) => Number(v)`;
   if (name === "__unbox_boolean") return `${name}: (v) => v ? 1 : 0`;
   if (name === "__box_number") return `${name}: (v) => v`;
   if (name === "__box_boolean") return `${name}: (v) => Boolean(v)`;
-  if (name === "__box_symbol") return `${name}: (() => { const c = new Map([[1,Symbol.iterator],[2,Symbol.hasInstance],[3,Symbol.toPrimitive],[4,Symbol.toStringTag],[5,Symbol.species],[6,Symbol.isConcatSpreadable],[7,Symbol.match],[8,Symbol.replace],[9,Symbol.search],[10,Symbol.split],[11,Symbol.unscopables],[12,Symbol.asyncIterator]]); return (id) => { let s = c.get(id); if (!s) { s = Symbol("wasm_"+id); c.set(id, s); } return s; }; })()`;
+  if (name === "__box_symbol")
+    return `${name}: (() => { const c = new Map([[1,Symbol.iterator],[2,Symbol.hasInstance],[3,Symbol.toPrimitive],[4,Symbol.toStringTag],[5,Symbol.species],[6,Symbol.isConcatSpreadable],[7,Symbol.match],[8,Symbol.replace],[9,Symbol.search],[10,Symbol.split],[11,Symbol.unscopables],[12,Symbol.asyncIterator]]); return (id) => { let s = c.get(id); if (!s) { s = Symbol("wasm_"+id); c.set(id, s); } return s; }; })()`;
   if (name === "__is_truthy") return `${name}: (v) => v ? 1 : 0`;
   if (name === "__typeof") return `${name}: (v) => typeof v`;
 
@@ -3088,18 +3876,10 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   return `${name}: () => {}`;
 }
 
-function mapTypeForDts(
-  typeNode: ts.TypeNode | undefined,
-  sf: ts.SourceFile,
-): string {
+function mapTypeForDts(typeNode: ts.TypeNode | undefined, sf: ts.SourceFile): string {
   if (!typeNode) return "void";
   const text = typeNode.getText(sf);
-  if (
-    text === "number" ||
-    text === "boolean" ||
-    text === "string" ||
-    text === "void"
-  ) {
+  if (text === "number" || text === "boolean" || text === "string" || text === "void") {
     return text;
   }
   // Handle Promise<T> type references
@@ -3114,12 +3894,8 @@ function mapTypeForDts(
 }
 
 function hasExportModifier(node: ts.Node): boolean {
-  const modifiers = ts.canHaveModifiers(node)
-    ? ts.getModifiers(node)
-    : undefined;
-  return (
-    modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false
-  );
+  const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+  return modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 }
 
 // ── Object file compilation ─────────────────────────────────────────
@@ -3138,10 +3914,7 @@ export interface ObjectCompileResult {
  * Uses the same pipeline as compileSource but emits LLVM-style
  * linking metadata instead of a final executable module.
  */
-export function compileToObjectSource(
-  source: string,
-  options: CompileOptions = {},
-): ObjectCompileResult {
+export function compileToObjectSource(source: string, options: CompileOptions = {}): ObjectCompileResult {
   const errors: CompileError[] = [];
 
   const processedSource = preprocessImports(source);
@@ -3151,15 +3924,10 @@ export function compileToObjectSource(
 
   for (const diag of ast.diagnostics) {
     if (diag.category === 1) {
-      const pos = diag.file
-        ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
-        : { line: 0, character: 0 };
+      const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0) : { line: 0, character: 0 };
       const severity = DOWNGRADE_DIAG_CODES.has(diag.code) ? "warning" : "error";
       errors.push({
-        message:
-          typeof diag.messageText === "string"
-            ? diag.messageText
-            : diag.messageText.messageText,
+        message: typeof diag.messageText === "string" ? diag.messageText : diag.messageText.messageText,
         line: pos.line + 1,
         column: pos.character + 1,
         severity: severity as "error" | "warning",
@@ -3240,31 +4008,53 @@ export function compileToObjectSource(
  * Hardened mode: walk AST and reject dangerous patterns.
  * Inspired by Endo/SES — compile-time rejection of insecure features.
  */
-function validateHardenedMode(sourceFile: ts.SourceFile): Array<{ message: string; line: number; column: number; severity: "error" }> {
+function validateHardenedMode(
+  sourceFile: ts.SourceFile,
+): Array<{ message: string; line: number; column: number; severity: "error" }> {
   const errors: Array<{ message: string; line: number; column: number; severity: "error" }> = [];
 
   function visit(node: ts.Node): void {
     // Reject eval() calls
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "eval") {
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
-      errors.push({ message: "[hardened] eval() is not allowed", line: line + 1, column: character, severity: "error" });
+      errors.push({
+        message: "[hardened] eval() is not allowed",
+        line: line + 1,
+        column: character,
+        severity: "error",
+      });
     }
     // Reject new Function()
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Function") {
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
-      errors.push({ message: "[hardened] new Function() is not allowed", line: line + 1, column: character, severity: "error" });
+      errors.push({
+        message: "[hardened] new Function() is not allowed",
+        line: line + 1,
+        column: character,
+        severity: "error",
+      });
     }
     // Reject with statements
     if (ts.isWithStatement(node)) {
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
-      errors.push({ message: "[hardened] with statement is not allowed", line: line + 1, column: character, severity: "error" });
+      errors.push({
+        message: "[hardened] with statement is not allowed",
+        line: line + 1,
+        column: character,
+        severity: "error",
+      });
     }
     // Reject __proto__ assignment
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
       const left = node.left;
       if (ts.isPropertyAccessExpression(left) && left.name.text === "__proto__") {
         const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
-        errors.push({ message: "[hardened] __proto__ assignment is not allowed", line: line + 1, column: character, severity: "error" });
+        errors.push({
+          message: "[hardened] __proto__ assignment is not allowed",
+          line: line + 1,
+          column: character,
+          severity: "error",
+        });
       }
     }
     ts.forEachChild(node, visit);
@@ -3293,7 +4083,7 @@ function widenNonDefaultableTypes(mod: WasmModule): void {
   }
 
   // Widen all type definitions (func types, struct fields, array elements)
-  function widenTypeDef(typeDef: typeof mod.types[number]): void {
+  function widenTypeDef(typeDef: (typeof mod.types)[number]): void {
     switch (typeDef.kind) {
       case "func":
         for (let i = 0; i < typeDef.params.length; i++) {
@@ -3352,10 +4142,7 @@ function widenNonDefaultableTypes(mod: WasmModule): void {
  * Recursively walk an instruction body and widen block types (if/block/loop/try)
  * from `ref` to `ref_null`, matching the widened function type signatures.
  */
-function widenBlockTypesInBody(
-  body: Instr[],
-  widenValType: (t: ValType) => ValType,
-): void {
+function widenBlockTypesInBody(body: Instr[], widenValType: (t: ValType) => ValType): void {
   for (const instr of body) {
     const a = instr as any;
     // Widen block type if it's a val type with ref kind

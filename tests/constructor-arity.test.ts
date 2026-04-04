@@ -16,7 +16,8 @@ describe("constructor arity - preserve trailing undefined args (#593)", () => {
   it("should correctly construct class with trailing undefined-like args", async () => {
     // This tests that the compiler handles constructors with multiple args
     // including ones that may be null/undefined at runtime
-    const result = await run(`
+    const result = await run(
+      `
       class Foo {
         a: number;
         b: number;
@@ -34,7 +35,9 @@ describe("constructor arity - preserve trailing undefined args (#593)", () => {
         const f = new Foo(1, 0, 0);
         return f.sum();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(1);
   });
 });

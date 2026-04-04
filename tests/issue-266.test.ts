@@ -168,8 +168,9 @@ describe("Issue #266: Scope resolution for multi-variable patterns", () => {
           return count;
         }
       `);
-      const unknowns = (r.success ? [] : r.errors.map((e) => e.message))
-        .filter((e) => e.includes("Unknown identifier"));
+      const unknowns = (r.success ? [] : r.errors.map((e) => e.message)).filter((e) =>
+        e.includes("Unknown identifier"),
+      );
       expect(unknowns).toEqual([]);
     });
   });

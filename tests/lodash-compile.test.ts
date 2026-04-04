@@ -2,11 +2,7 @@ import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 import { buildStringConstants } from "../src/runtime.js";
 
-async function run(
-  source: string,
-  fn: string,
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -24,8 +20,7 @@ async function run(
     concat: (a: string, b: string) => a + b,
     length: (s: string) => s.length,
     equals: (a: string, b: string) => (a === b ? 1 : 0),
-    substring: (s: string, start: number, end: number) =>
-      s.substring(start, end),
+    substring: (s: string, start: number, end: number) => s.substring(start, end),
     charCodeAt: (s: string, i: number) => s.charCodeAt(i),
   };
 
@@ -41,7 +36,7 @@ async function run(
 // lodash-style utility functions compiled to WebAssembly
 //
 // These are TypeScript implementations of common lodash functions, written
-// using only patterns supported by ts2wasm (number arrays, basic control flow,
+// using only patterns supported by js2wasm (number arrays, basic control flow,
 // array methods like push/indexOf/slice/concat).
 //
 // Results summary:

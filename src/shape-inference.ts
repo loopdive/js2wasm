@@ -29,10 +29,7 @@ export interface InferredShape {
  * Collect shape information for module-level variables by walking the AST.
  * Returns a map from variable name to inferred shape.
  */
-export function collectShapes(
-  checker: ts.TypeChecker,
-  sourceFile: ts.SourceFile,
-): Map<string, InferredShape> {
+export function collectShapes(checker: ts.TypeChecker, sourceFile: ts.SourceFile): Map<string, InferredShape> {
   const shapes = new Map<string, InferredShape>();
 
   function getOrCreate(name: string): InferredShape {
@@ -50,9 +47,7 @@ export function collectShapes(
     return shape;
   }
 
-  function inferTypeCategory(
-    tsType: ts.Type,
-  ): "number" | "string" | "boolean" | "unknown" {
+  function inferTypeCategory(tsType: ts.Type): "number" | "string" | "boolean" | "unknown" {
     if (tsType.flags & ts.TypeFlags.NumberLike) return "number";
     if (tsType.flags & ts.TypeFlags.StringLike) return "string";
     if (tsType.flags & ts.TypeFlags.BooleanLike) return "boolean";
@@ -127,8 +122,7 @@ export function collectShapes(
   // (have both numeric indexing and a length field, or are used in call/apply)
   const result = new Map<string, InferredShape>();
   for (const [name, shape] of shapes) {
-    const isArrayLike =
-      shape.hasNumericIndexing && shape.fields.has("length");
+    const isArrayLike = shape.hasNumericIndexing && shape.fields.has("length");
     if (isArrayLike || (shape.usedInCallApply && shape.hasNumericIndexing)) {
       result.set(name, shape);
     }

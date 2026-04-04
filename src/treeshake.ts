@@ -11,11 +11,7 @@ import ts from "typescript";
  * @param checker - TypeScript type checker for resolving references
  * @returns Set of reachable top-level declaration nodes
  */
-export function treeshake(
-  entryExports: string[],
-  sourceFiles: ts.SourceFile[],
-  checker: ts.TypeChecker,
-): Set<ts.Node> {
+export function treeshake(entryExports: string[], sourceFiles: ts.SourceFile[], checker: ts.TypeChecker): Set<ts.Node> {
   const reachable = new Set<ts.Node>();
   const visitedSymbols = new Set<ts.Symbol>();
 
@@ -155,10 +151,7 @@ function walkReferences(
 /**
  * Get the aliased symbol if this is an alias (e.g., import binding).
  */
-function getAliasedSymbol(
-  sym: ts.Symbol,
-  checker: ts.TypeChecker,
-): ts.Symbol | undefined {
+function getAliasedSymbol(sym: ts.Symbol, checker: ts.TypeChecker): ts.Symbol | undefined {
   try {
     if (sym.flags & ts.SymbolFlags.Alias) {
       return checker.getAliasedSymbol(sym);
@@ -172,10 +165,7 @@ function getAliasedSymbol(
 /**
  * Get top-level symbols declared by a statement.
  */
-function getTopLevelSymbols(
-  stmt: ts.Statement,
-  checker: ts.TypeChecker,
-): ts.Symbol[] {
+function getTopLevelSymbols(stmt: ts.Statement, checker: ts.TypeChecker): ts.Symbol[] {
   const symbols: ts.Symbol[] = [];
 
   if (ts.isFunctionDeclaration(stmt) && stmt.name) {
@@ -236,9 +226,7 @@ function getDeclaredNames(stmt: ts.Statement): string[] {
  * Check if a statement has the `export` modifier.
  */
 function hasExportModifier(node: ts.Node): boolean {
-  const modifiers = ts.canHaveModifiers(node)
-    ? ts.getModifiers(node)
-    : undefined;
+  const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
   return modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 }
 

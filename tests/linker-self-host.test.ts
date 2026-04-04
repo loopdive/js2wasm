@@ -22,8 +22,8 @@ describe("linker self-host", { timeout: 60_000 }, () => {
     const result = compileMulti(files, "link/index.ts", { target: "linear" });
 
     // Separate codegen errors from type-check errors
-    const codegenErrors = result.errors.filter(e => e.message.startsWith("Codegen error:"));
-    const otherErrors = result.errors.filter(e => !e.message.startsWith("Codegen error:"));
+    const codegenErrors = result.errors.filter((e) => e.message.startsWith("Codegen error:"));
+    const otherErrors = result.errors.filter((e) => !e.message.startsWith("Codegen error:"));
     if (otherErrors.length > 0) {
       console.log(`Type-check errors (${otherErrors.length}):`);
       for (const err of otherErrors.slice(0, 10)) {
@@ -43,7 +43,9 @@ describe("linker self-host", { timeout: 60_000 }, () => {
       const key = e.message.split(":")[0] ?? e.message.slice(0, 40);
       errCounts.set(key, (errCounts.get(key) ?? 0) + 1);
     }
-    console.log(`success: ${result.success}, binary size: ${result.binary.length}, total errors: ${result.errors.length}`);
+    console.log(
+      `success: ${result.success}, binary size: ${result.binary.length}, total errors: ${result.errors.length}`,
+    );
     for (const [k, v] of [...errCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15)) {
       console.log(`  ${v}x ${k}`);
     }

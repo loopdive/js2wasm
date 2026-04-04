@@ -9,7 +9,7 @@ describe("Generator function call patterns (#579)", () => {
       ref.someMethod(1, 2);
       export const result = 42;
     `);
-    const unsupported = result.errors.filter(e => e.message === "Unsupported call expression");
+    const unsupported = result.errors.filter((e) => e.message === "Unsupported call expression");
     expect(unsupported).toHaveLength(0);
   }, 30000);
 
@@ -22,7 +22,7 @@ describe("Generator function call patterns (#579)", () => {
       ref(1, 2).next();
       export const result = 42;
     `);
-    const unsupported = result.errors.filter(e => e.message === "Unsupported call expression");
+    const unsupported = result.errors.filter((e) => e.message === "Unsupported call expression");
     expect(unsupported).toHaveLength(0);
   }, 30000);
 
@@ -36,7 +36,7 @@ describe("Generator function call patterns (#579)", () => {
       ref(undefined, void 0).next();
       export const result = callCount;
     `);
-    const unsupported = result.errors.filter(e => e.message === "Unsupported call expression");
+    const unsupported = result.errors.filter((e) => e.message === "Unsupported call expression");
     expect(unsupported).toHaveLength(0);
   }, 30000);
 
@@ -51,7 +51,7 @@ describe("Generator function call patterns (#579)", () => {
       obj.method({}).next();
       export const result = callCount;
     `);
-    const unsupported = result.errors.filter(e => e.message === "Unsupported call expression");
+    const unsupported = result.errors.filter((e) => e.message === "Unsupported call expression");
     expect(unsupported).toHaveLength(0);
   }, 30000);
 
@@ -65,7 +65,7 @@ describe("Generator function call patterns (#579)", () => {
       f([1, 2, 3]).next();
       export const result = callCount;
     `);
-    const unsupported = result.errors.filter(e => e.message === "Unsupported call expression");
+    const unsupported = result.errors.filter((e) => e.message === "Unsupported call expression");
     expect(unsupported).toHaveLength(0);
   }, 30000);
 
@@ -78,10 +78,7 @@ describe("Generator function call patterns (#579)", () => {
     `);
     expect(result.success).toBe(true);
     const imports = buildImports(result.imports, undefined, result.stringPool);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      imports as unknown as WebAssembly.Imports,
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, imports as unknown as WebAssembly.Imports);
     const gen = (instance.exports.gen as Function)(5);
     expect(gen.next().value).toBe(10);
     expect(gen.next().value).toBe(15);
@@ -94,7 +91,7 @@ describe("Generator function call patterns (#579)", () => {
       assert.sameValue(1, 1);
       export const result = 42;
     `);
-    const unsupported = result.errors.filter(e => e.message === "Unsupported call expression");
+    const unsupported = result.errors.filter((e) => e.message === "Unsupported call expression");
     expect(unsupported).toHaveLength(0);
   }, 30000);
 });

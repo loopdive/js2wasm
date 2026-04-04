@@ -76,12 +76,7 @@ export class IncrementalLanguageService {
       options.checkJs = true;
     }
 
-    const program = ts.createProgram(
-      [this.fileName],
-      options,
-      this.host,
-      this.oldProgram,
-    );
+    const program = ts.createProgram([this.fileName], options, this.host, this.oldProgram);
     this.oldProgram = program;
 
     const checker = program.getTypeChecker();

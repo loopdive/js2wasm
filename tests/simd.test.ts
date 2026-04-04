@@ -3,12 +3,7 @@ import { createEmptyModule } from "../src/ir/types.js";
 import { emitBinary } from "../src/emit/binary.js";
 import { WasmEncoder } from "../src/emit/encoder.js";
 import { OP, SIMD, TYPE } from "../src/emit/opcodes.js";
-import {
-  addRuntime,
-  addUint8ArrayRuntime,
-  addArrayRuntime,
-  addStringRuntime,
-} from "../src/codegen-linear/runtime.js";
+import { addRuntime, addUint8ArrayRuntime, addArrayRuntime, addStringRuntime } from "../src/codegen-linear/runtime.js";
 import { addSimdRuntime } from "../src/codegen-linear/simd.js";
 import type { Instr, ValType } from "../src/ir/types.js";
 
@@ -102,11 +97,7 @@ describe("SIMD binary emission", () => {
       name: "test_splat_extract",
       typeIdx,
       locals: [],
-      body: [
-        { op: "local.get", index: 0 },
-        { op: "i32x4.splat" },
-        { op: "i32x4.extract_lane", lane: 2 },
-      ],
+      body: [{ op: "local.get", index: 0 }, { op: "i32x4.splat" }, { op: "i32x4.extract_lane", lane: 2 }],
       exported: true,
     });
     mod.exports.push({ name: "test_splat_extract", desc: { kind: "func", index: 0 } });
@@ -148,9 +139,7 @@ describe("SIMD binary emission", () => {
 
 // ---- SIMD runtime e2e tests (linear memory) ----
 
-async function buildWithSimd(
-  setup: (mod: ReturnType<typeof createEmptyModule>, fi: Record<string, number>) => void,
-) {
+async function buildWithSimd(setup: (mod: ReturnType<typeof createEmptyModule>, fi: Record<string, number>) => void) {
   const mod = createEmptyModule();
   addRuntime(mod);
   addUint8ArrayRuntime(mod);
@@ -379,7 +368,10 @@ describe("SIMD string indexOf (__str_indexOf_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       mod.functions.push({
@@ -416,7 +408,10 @@ describe("SIMD string indexOf (__str_indexOf_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       mod.functions.push({
@@ -453,7 +448,10 @@ describe("SIMD string indexOf (__str_indexOf_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       mod.functions.push({
@@ -490,7 +488,10 @@ describe("SIMD string indexOf (__str_indexOf_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       mod.functions.push({
@@ -526,7 +527,10 @@ describe("SIMD string indexOf (__str_indexOf_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       // 32 byte haystack, needle at position 20
@@ -567,7 +571,10 @@ describe("SIMD array indexOf (__arr_indexOf_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       mod.functions.push({
@@ -579,7 +586,7 @@ describe("SIMD array indexOf (__arr_indexOf_simd)", () => {
           { op: "i32.const", value: 16 },
           { op: "call", funcIdx: fi["__arr_new"] },
           { op: "local.set", index: 0 },
-          ...[10, 20, 30, 40, 50, 60, 70, 80].flatMap(v => [
+          ...[10, 20, 30, 40, 50, 60, 70, 80].flatMap((v) => [
             { op: "local.get" as const, index: 0 },
             { op: "i32.const" as const, value: v },
             { op: "call" as const, funcIdx: fi["__arr_push"] },
@@ -600,7 +607,10 @@ describe("SIMD array indexOf (__arr_indexOf_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       mod.functions.push({
@@ -611,7 +621,7 @@ describe("SIMD array indexOf (__arr_indexOf_simd)", () => {
           { op: "i32.const", value: 16 },
           { op: "call", funcIdx: fi["__arr_new"] },
           { op: "local.set", index: 0 },
-          ...[10, 20, 30, 40, 50, 60, 70, 80].flatMap(v => [
+          ...[10, 20, 30, 40, 50, 60, 70, 80].flatMap((v) => [
             { op: "local.get" as const, index: 0 },
             { op: "i32.const" as const, value: v },
             { op: "call" as const, funcIdx: fi["__arr_push"] },
@@ -632,7 +642,10 @@ describe("SIMD array indexOf (__arr_indexOf_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       mod.functions.push({
@@ -643,7 +656,7 @@ describe("SIMD array indexOf (__arr_indexOf_simd)", () => {
           { op: "i32.const", value: 16 },
           { op: "call", funcIdx: fi["__arr_new"] },
           { op: "local.set", index: 0 },
-          ...[10, 20, 30].flatMap(v => [
+          ...[10, 20, 30].flatMap((v) => [
             { op: "local.get" as const, index: 0 },
             { op: "i32.const" as const, value: v },
             { op: "call" as const, funcIdx: fi["__arr_push"] },
@@ -665,7 +678,10 @@ describe("SIMD array fill (__arr_fill_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       const funcIdx = mod.functions.length;
       mod.functions.push({
@@ -677,7 +693,7 @@ describe("SIMD array fill (__arr_fill_simd)", () => {
           { op: "i32.const", value: 16 },
           { op: "call", funcIdx: fi["__arr_new"] },
           { op: "local.set", index: 0 },
-          ...[0, 0, 0, 0, 0, 0, 0, 0].flatMap(_ => [
+          ...[0, 0, 0, 0, 0, 0, 0, 0].flatMap((_) => [
             { op: "local.get" as const, index: 0 },
             { op: "i32.const" as const, value: 0 },
             { op: "call" as const, funcIdx: fi["__arr_push"] },
@@ -704,7 +720,10 @@ describe("SIMD array fill (__arr_fill_simd)", () => {
     const e = await buildWithSimd((mod, fi) => {
       const typeIdx = mod.types.length;
       mod.types.push({
-        kind: "func", name: "$test_type", params: [], results: [{ kind: "i32" }],
+        kind: "func",
+        name: "$test_type",
+        params: [],
+        results: [{ kind: "i32" }],
       });
       // Returns two values packed: arr[1] * 1000 + arr[3]
       const funcIdx = mod.functions.length;
@@ -716,7 +735,7 @@ describe("SIMD array fill (__arr_fill_simd)", () => {
           { op: "i32.const", value: 16 },
           { op: "call", funcIdx: fi["__arr_new"] },
           { op: "local.set", index: 0 },
-          ...[1, 2, 3, 4, 5].flatMap(v => [
+          ...[1, 2, 3, 4, 5].flatMap((v) => [
             { op: "local.get" as const, index: 0 },
             { op: "i32.const" as const, value: v },
             { op: "call" as const, funcIdx: fi["__arr_push"] },

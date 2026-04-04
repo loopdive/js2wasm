@@ -1,6 +1,6 @@
 /**
  * Test262 conformance tests — runs a filtered subset of the official
- * ECMAScript test suite through the ts2wasm compiler.
+ * ECMAScript test suite through the js2wasm compiler.
  *
  * Tests are non-failing: we track pass/fail/skip/compile_error counts
  * as a conformance dashboard, not as a gate.
@@ -50,7 +50,9 @@ afterAll(() => {
   console.log("           Test262 Conformance Report");
   console.log("══════════════════════════════════════════════════════");
   console.log(`  Total tests:     ${total}`);
-  console.log(`  Passed:          ${stats.pass}  (${compilable > 0 ? ((stats.pass / compilable * 100) | 0) : 0}% of compilable)`);
+  console.log(
+    `  Passed:          ${stats.pass}  (${compilable > 0 ? ((stats.pass / compilable) * 100) | 0 : 0}% of compilable)`,
+  );
   console.log(`  Failed:          ${stats.fail}`);
   console.log(`  Compile errors:  ${stats.compile_error}`);
   console.log(`  Skipped:         ${stats.skip}`);
@@ -58,14 +60,16 @@ afterAll(() => {
 
   for (const [cat, s] of [...byCategory.entries()].sort()) {
     const catCompilable = s.pass + s.fail;
-    const pct = catCompilable > 0 ? ((s.pass / catCompilable * 100) | 0) : 0;
+    const pct = catCompilable > 0 ? ((s.pass / catCompilable) * 100) | 0 : 0;
     const short = cat
       .replace("built-ins/Math/", "Math.")
       .replace("built-ins/", "")
       .replace("language/expressions/", "expr/")
       .replace("language/statements/", "stmt/")
       .replace("language/types/", "types/");
-    console.log(`  ${short.padEnd(26)} ${String(s.pass).padStart(3)}/${String(catCompilable).padStart(3)} pass (${String(pct).padStart(3)}%)  skip:${String(s.skip).padStart(3)}  err:${String(s.compile_error).padStart(3)}`);
+    console.log(
+      `  ${short.padEnd(26)} ${String(s.pass).padStart(3)}/${String(catCompilable).padStart(3)} pass (${String(pct).padStart(3)}%)  skip:${String(s.skip).padStart(3)}  err:${String(s.compile_error).padStart(3)}`,
+    );
   }
 
   console.log("══════════════════════════════════════════════════════");
@@ -78,7 +82,7 @@ afterAll(() => {
       const msgs = r.error.split("; ");
       for (const msg of msgs) {
         const normalized = msg
-          .replace(/'\w+'/g, "'X'")           // normalize identifier names
+          .replace(/'\w+'/g, "'X'") // normalize identifier names
           .replace(/type '\w+'/g, "type 'X'") // normalize type names
           .replace(/struct type: __anon_\d+/g, "struct type: __anon_N")
           .replace(/Cannot compile expression: \d+/g, "Cannot compile expression: N");
@@ -100,7 +104,9 @@ afterAll(() => {
     compileErrors: errorFreqSorted.map(([msg, count]) => ({ message: msg, count })),
   };
   const reportPath = join(import.meta.dirname ?? ".", "..", "benchmarks", "results", "test262-report.json");
-  try { writeFileSync(reportPath, JSON.stringify(reportData, null, 2)); } catch {}
+  try {
+    writeFileSync(reportPath, JSON.stringify(reportData, null, 2));
+  } catch {}
 
   // Print compile error frequency
   if (errorFreqSorted.length > 0) {
@@ -112,7 +118,7 @@ afterAll(() => {
   }
 
   // Print failures for debugging
-  const failures = allResults.filter(r => r.status === "fail");
+  const failures = allResults.filter((r) => r.status === "fail");
   if (failures.length > 0) {
     console.log(`\nFailing tests (${failures.length}):`);
     for (const f of failures) {
@@ -121,7 +127,7 @@ afterAll(() => {
   }
 
   // Print all compile errors for debugging
-  const compileErrors = allResults.filter(r => r.status === "compile_error");
+  const compileErrors = allResults.filter((r) => r.status === "compile_error");
   if (compileErrors.length > 0) {
     console.log(`\nCompile errors (${compileErrors.length}):`);
     for (const e of compileErrors) {

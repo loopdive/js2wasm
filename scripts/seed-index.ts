@@ -36,7 +36,12 @@ for (const file of files) {
     if (!s || s.total < MIN_TOTAL) continue;
 
     entries.push({
-      timestamp: raw.timestamp || file.replace(/-report\.json$/, "").replace(/T/, "T").replace(/-/g, (m: string, i: number) => i > 9 ? ":" : m),
+      timestamp:
+        raw.timestamp ||
+        file
+          .replace(/-report\.json$/, "")
+          .replace(/T/, "T")
+          .replace(/-/g, (m: string, i: number) => (i > 9 ? ":" : m)),
       pass: s.pass ?? 0,
       fail: s.fail ?? 0,
       ce: s.compile_error ?? 0,

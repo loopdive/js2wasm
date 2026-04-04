@@ -40,9 +40,7 @@ describe("wasm-opt optimization pass", () => {
     const result = compile(source, { optimize: true });
     expect(result.success).toBe(true);
 
-    const hasOptWarning = result.errors.some(
-      (e) => e.severity === "warning" && e.message.includes("wasm-opt"),
-    );
+    const hasOptWarning = result.errors.some((e) => e.severity === "warning" && e.message.includes("wasm-opt"));
 
     // If optimization was not applied (no binaryen npm package, no system binary),
     // there should be a warning. If it WAS applied, no warning.

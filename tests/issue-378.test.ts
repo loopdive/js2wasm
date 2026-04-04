@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { compileToWasm, evaluateAsJs, assertEquivalent, buildImports, compile, readFileSync, resolve } from "./equivalence/helpers.js";
+import {
+  compileToWasm,
+  evaluateAsJs,
+  assertEquivalent,
+  buildImports,
+  compile,
+  readFileSync,
+  resolve,
+} from "./equivalence/helpers.js";
 
 describe("Issue #378: Increment/decrement on property/element access", () => {
   it("postfix increment on object property", async () => {

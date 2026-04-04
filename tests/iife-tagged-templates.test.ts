@@ -11,9 +11,7 @@ describe("IIFE and call expression tagged templates", () => {
         })\`hello\`;
       }
       `,
-      [
-        { fn: "test", args: [] },
-      ],
+      [{ fn: "test", args: [] }],
     );
   });
 
@@ -26,9 +24,7 @@ describe("IIFE and call expression tagged templates", () => {
         })\`hello \${10} world \${20}\`;
       }
       `,
-      [
-        { fn: "test", args: [] },
-      ],
+      [{ fn: "test", args: [] }],
     );
   });
 
@@ -39,9 +35,7 @@ describe("IIFE and call expression tagged templates", () => {
         return ((strings: string[]): number => strings.length)\`hello\`;
       }
       `,
-      [
-        { fn: "test", args: [] },
-      ],
+      [{ fn: "test", args: [] }],
     );
   });
 
@@ -57,9 +51,7 @@ describe("IIFE and call expression tagged templates", () => {
         return makeTag()\`hello\`;
       }
       `,
-      [
-        { fn: "test", args: [] },
-      ],
+      [{ fn: "test", args: [] }],
     );
   });
 
@@ -75,9 +67,7 @@ describe("IIFE and call expression tagged templates", () => {
         return makeTag()\`prefix \${42} suffix\`;
       }
       `,
-      [
-        { fn: "test", args: [] },
-      ],
+      [{ fn: "test", args: [] }],
     );
   });
 });

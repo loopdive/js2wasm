@@ -2,100 +2,199 @@ import type { Plugin } from "vite";
 import { readdirSync, readFileSync, existsSync, statSync, realpathSync } from "fs";
 import { join, relative, resolve, normalize } from "path";
 
+const projectRoot = resolve(__dirname, "..");
+const publicRoot = join(projectRoot, "public");
 const TEST_CATEGORIES = [
-  "built-ins/Math/abs", "built-ins/Math/ceil", "built-ins/Math/floor",
-  "built-ins/Math/round", "built-ins/Math/trunc", "built-ins/Math/sign",
-  "built-ins/Math/sqrt", "built-ins/Math/min", "built-ins/Math/max",
-  "built-ins/Math/clz32", "built-ins/Math/imul", "built-ins/Math/pow",
-  "built-ins/Math/exp", "built-ins/Math/log", "built-ins/Math/sin",
-  "built-ins/Math/cos", "built-ins/Math/tan", "built-ins/Math/asin",
-  "built-ins/Math/acos", "built-ins/Math/atan", "built-ins/Math/atan2",
-  "built-ins/Math/acosh", "built-ins/Math/asinh", "built-ins/Math/atanh",
-  "built-ins/Math/cbrt", "built-ins/Math/expm1", "built-ins/Math/log1p",
-  "built-ins/Math/log2", "built-ins/Math/log10", "built-ins/Math/fround",
+  "built-ins/Math/abs",
+  "built-ins/Math/ceil",
+  "built-ins/Math/floor",
+  "built-ins/Math/round",
+  "built-ins/Math/trunc",
+  "built-ins/Math/sign",
+  "built-ins/Math/sqrt",
+  "built-ins/Math/min",
+  "built-ins/Math/max",
+  "built-ins/Math/clz32",
+  "built-ins/Math/imul",
+  "built-ins/Math/pow",
+  "built-ins/Math/exp",
+  "built-ins/Math/log",
+  "built-ins/Math/sin",
+  "built-ins/Math/cos",
+  "built-ins/Math/tan",
+  "built-ins/Math/asin",
+  "built-ins/Math/acos",
+  "built-ins/Math/atan",
+  "built-ins/Math/atan2",
+  "built-ins/Math/acosh",
+  "built-ins/Math/asinh",
+  "built-ins/Math/atanh",
+  "built-ins/Math/cbrt",
+  "built-ins/Math/expm1",
+  "built-ins/Math/log1p",
+  "built-ins/Math/log2",
+  "built-ins/Math/log10",
+  "built-ins/Math/fround",
   "built-ins/Math/hypot",
-  "language/expressions/addition", "language/expressions/subtraction",
-  "language/expressions/multiplication", "language/expressions/division",
-  "language/expressions/modulus", "language/expressions/exponentiation",
+  "language/expressions/addition",
+  "language/expressions/subtraction",
+  "language/expressions/multiplication",
+  "language/expressions/division",
+  "language/expressions/modulus",
+  "language/expressions/exponentiation",
   "language/expressions/concatenation",
-  "language/expressions/bitwise-and", "language/expressions/bitwise-or",
-  "language/expressions/bitwise-xor", "language/expressions/bitwise-not",
-  "language/expressions/left-shift", "language/expressions/right-shift",
-  "language/expressions/equals", "language/expressions/does-not-equals",
-  "language/expressions/strict-equals", "language/expressions/strict-does-not-equals",
-  "language/expressions/greater-than", "language/expressions/greater-than-or-equal",
-  "language/expressions/less-than", "language/expressions/less-than-or-equal",
-  "language/expressions/logical-and", "language/expressions/logical-not",
-  "language/expressions/logical-or", "language/expressions/conditional",
-  "language/expressions/comma", "language/expressions/typeof",
-  "language/expressions/instanceof", "language/expressions/void",
-  "language/expressions/unary-plus", "language/expressions/unary-minus",
-  "language/expressions/prefix-increment", "language/expressions/prefix-decrement",
-  "language/expressions/postfix-increment", "language/expressions/postfix-decrement",
-  "language/expressions/compound-assignment", "language/expressions/logical-assignment",
-  "language/expressions/assignment", "language/expressions/grouping",
-  "language/expressions/call", "language/expressions/function",
-  "language/expressions/property-accessors", "language/expressions/unsigned-right-shift",
-  "language/expressions/new", "language/expressions/arrow-function",
-  "language/expressions/class", "language/expressions/object",
-  "language/expressions/array", "language/expressions/template-literal",
-  "language/expressions/tagged-template", "language/expressions/generators",
-  "language/expressions/async-arrow-function", "language/expressions/async-function",
-  "language/expressions/await", "language/expressions/assignmenttargettype",
-  "language/expressions/delete", "language/expressions/yield",
-  "language/expressions/coalesce", "language/expressions/in",
-  "language/expressions/this", "language/expressions/member-expression",
-  "language/expressions/new.target", "language/expressions/relational",
-  "language/statements/if", "language/statements/while",
-  "language/statements/do-while", "language/statements/for",
-  "language/statements/switch", "language/statements/break",
-  "language/statements/continue", "language/statements/return",
-  "language/statements/block", "language/statements/empty",
-  "language/statements/expression", "language/statements/variable",
-  "language/statements/labeled", "language/statements/throw",
-  "language/statements/try", "language/statements/function",
-  "language/statements/for-of", "language/statements/for-in",
-  "language/statements/class", "language/statements/generators",
+  "language/expressions/bitwise-and",
+  "language/expressions/bitwise-or",
+  "language/expressions/bitwise-xor",
+  "language/expressions/bitwise-not",
+  "language/expressions/left-shift",
+  "language/expressions/right-shift",
+  "language/expressions/equals",
+  "language/expressions/does-not-equals",
+  "language/expressions/strict-equals",
+  "language/expressions/strict-does-not-equals",
+  "language/expressions/greater-than",
+  "language/expressions/greater-than-or-equal",
+  "language/expressions/less-than",
+  "language/expressions/less-than-or-equal",
+  "language/expressions/logical-and",
+  "language/expressions/logical-not",
+  "language/expressions/logical-or",
+  "language/expressions/conditional",
+  "language/expressions/comma",
+  "language/expressions/typeof",
+  "language/expressions/instanceof",
+  "language/expressions/void",
+  "language/expressions/unary-plus",
+  "language/expressions/unary-minus",
+  "language/expressions/prefix-increment",
+  "language/expressions/prefix-decrement",
+  "language/expressions/postfix-increment",
+  "language/expressions/postfix-decrement",
+  "language/expressions/compound-assignment",
+  "language/expressions/logical-assignment",
+  "language/expressions/assignment",
+  "language/expressions/grouping",
+  "language/expressions/call",
+  "language/expressions/function",
+  "language/expressions/property-accessors",
+  "language/expressions/unsigned-right-shift",
+  "language/expressions/new",
+  "language/expressions/arrow-function",
+  "language/expressions/class",
+  "language/expressions/object",
+  "language/expressions/array",
+  "language/expressions/template-literal",
+  "language/expressions/tagged-template",
+  "language/expressions/generators",
+  "language/expressions/async-arrow-function",
+  "language/expressions/async-function",
+  "language/expressions/await",
+  "language/expressions/assignmenttargettype",
+  "language/expressions/delete",
+  "language/expressions/yield",
+  "language/expressions/coalesce",
+  "language/expressions/in",
+  "language/expressions/this",
+  "language/expressions/member-expression",
+  "language/expressions/new.target",
+  "language/expressions/relational",
+  "language/statements/if",
+  "language/statements/while",
+  "language/statements/do-while",
+  "language/statements/for",
+  "language/statements/switch",
+  "language/statements/break",
+  "language/statements/continue",
+  "language/statements/return",
+  "language/statements/block",
+  "language/statements/empty",
+  "language/statements/expression",
+  "language/statements/variable",
+  "language/statements/labeled",
+  "language/statements/throw",
+  "language/statements/try",
+  "language/statements/function",
+  "language/statements/for-of",
+  "language/statements/for-in",
+  "language/statements/class",
+  "language/statements/generators",
   "language/statements/async-function",
   "built-ins/Array/isArray",
-  "built-ins/Array/prototype/push", "built-ins/Array/prototype/pop",
-  "built-ins/Array/prototype/indexOf", "built-ins/Array/prototype/lastIndexOf",
-  "built-ins/Array/prototype/includes", "built-ins/Array/prototype/slice",
-  "built-ins/Array/prototype/concat", "built-ins/Array/prototype/join",
-  "built-ins/Array/prototype/reverse", "built-ins/Array/prototype/fill",
-  "built-ins/Array/prototype/find", "built-ins/Array/prototype/findIndex",
-  "built-ins/Array/prototype/sort", "built-ins/Array/prototype/splice",
-  "built-ins/Array/prototype/map", "built-ins/Array/prototype/filter",
-  "built-ins/Array/prototype/forEach", "built-ins/Array/prototype/every",
-  "built-ins/Array/prototype/some", "built-ins/Array/prototype/reduce",
-  "built-ins/Number/isNaN", "built-ins/Number/isFinite",
-  "built-ins/Number/isInteger", "built-ins/Number/parseFloat",
-  "built-ins/Number/parseInt", "built-ins/Number/POSITIVE_INFINITY",
-  "built-ins/Number/NEGATIVE_INFINITY", "built-ins/Number/MAX_VALUE",
-  "built-ins/Number/MIN_VALUE", "built-ins/Number/EPSILON",
-  "built-ins/Number/MAX_SAFE_INTEGER", "built-ins/Number/MIN_SAFE_INTEGER",
+  "built-ins/Array/prototype/push",
+  "built-ins/Array/prototype/pop",
+  "built-ins/Array/prototype/indexOf",
+  "built-ins/Array/prototype/lastIndexOf",
+  "built-ins/Array/prototype/includes",
+  "built-ins/Array/prototype/slice",
+  "built-ins/Array/prototype/concat",
+  "built-ins/Array/prototype/join",
+  "built-ins/Array/prototype/reverse",
+  "built-ins/Array/prototype/fill",
+  "built-ins/Array/prototype/find",
+  "built-ins/Array/prototype/findIndex",
+  "built-ins/Array/prototype/sort",
+  "built-ins/Array/prototype/splice",
+  "built-ins/Array/prototype/map",
+  "built-ins/Array/prototype/filter",
+  "built-ins/Array/prototype/forEach",
+  "built-ins/Array/prototype/every",
+  "built-ins/Array/prototype/some",
+  "built-ins/Array/prototype/reduce",
+  "built-ins/Number/isNaN",
+  "built-ins/Number/isFinite",
+  "built-ins/Number/isInteger",
+  "built-ins/Number/parseFloat",
+  "built-ins/Number/parseInt",
+  "built-ins/Number/POSITIVE_INFINITY",
+  "built-ins/Number/NEGATIVE_INFINITY",
+  "built-ins/Number/MAX_VALUE",
+  "built-ins/Number/MIN_VALUE",
+  "built-ins/Number/EPSILON",
+  "built-ins/Number/MAX_SAFE_INTEGER",
+  "built-ins/Number/MIN_SAFE_INTEGER",
   "built-ins/Number/isSafeInteger",
   "built-ins/Boolean",
-  "built-ins/parseInt", "built-ins/parseFloat",
-  "built-ins/isNaN", "built-ins/isFinite",
-  "language/types/number", "language/types/boolean",
-  "language/types/null", "language/types/undefined",
-  "language/types/string", "language/types/reference",
-  "built-ins/Object/keys", "built-ins/Object/values", "built-ins/Object/entries",
-  "built-ins/JSON/parse", "built-ins/JSON/stringify",
-  "built-ins/String/prototype/charAt", "built-ins/String/prototype/charCodeAt",
-  "built-ins/String/prototype/indexOf", "built-ins/String/prototype/lastIndexOf",
-  "built-ins/String/prototype/includes", "built-ins/String/prototype/startsWith",
-  "built-ins/String/prototype/endsWith", "built-ins/String/prototype/slice",
-  "built-ins/String/prototype/substring", "built-ins/String/prototype/trim",
-  "built-ins/String/prototype/trimStart", "built-ins/String/prototype/trimEnd",
-  "built-ins/String/prototype/toLowerCase", "built-ins/String/prototype/toUpperCase",
-  "built-ins/String/prototype/split", "built-ins/String/prototype/replace",
-  "built-ins/String/prototype/repeat", "built-ins/String/prototype/padStart",
-  "built-ins/String/prototype/padEnd", "built-ins/String/prototype/concat",
+  "built-ins/parseInt",
+  "built-ins/parseFloat",
+  "built-ins/isNaN",
+  "built-ins/isFinite",
+  "language/types/number",
+  "language/types/boolean",
+  "language/types/null",
+  "language/types/undefined",
+  "language/types/string",
+  "language/types/reference",
+  "built-ins/Object/keys",
+  "built-ins/Object/values",
+  "built-ins/Object/entries",
+  "built-ins/JSON/parse",
+  "built-ins/JSON/stringify",
+  "built-ins/String/prototype/charAt",
+  "built-ins/String/prototype/charCodeAt",
+  "built-ins/String/prototype/indexOf",
+  "built-ins/String/prototype/lastIndexOf",
+  "built-ins/String/prototype/includes",
+  "built-ins/String/prototype/startsWith",
+  "built-ins/String/prototype/endsWith",
+  "built-ins/String/prototype/slice",
+  "built-ins/String/prototype/substring",
+  "built-ins/String/prototype/trim",
+  "built-ins/String/prototype/trimStart",
+  "built-ins/String/prototype/trimEnd",
+  "built-ins/String/prototype/toLowerCase",
+  "built-ins/String/prototype/toUpperCase",
+  "built-ins/String/prototype/split",
+  "built-ins/String/prototype/replace",
+  "built-ins/String/prototype/repeat",
+  "built-ins/String/prototype/padStart",
+  "built-ins/String/prototype/padEnd",
+  "built-ins/String/prototype/concat",
   "built-ins/String/prototype/at",
-  "built-ins/Promise/resolve", "built-ins/Promise/reject",
-  "built-ins/Promise/all", "built-ins/Promise/race",
+  "built-ins/Promise/resolve",
+  "built-ins/Promise/reject",
+  "built-ins/Promise/all",
+  "built-ins/Promise/race",
 ];
 
 interface CategoryInfo {
@@ -153,7 +252,9 @@ export function test262Plugin(): Plugin {
         const list = map.get(entry.category);
         if (list) list.push(item);
         else map.set(entry.category, [item]);
-      } catch { /* skip malformed lines */ }
+      } catch {
+        /* skip malformed lines */
+      }
     }
     cachedJsonlByCategory = map;
     cachedJsonlMtime = stat.mtimeMs;
@@ -165,25 +266,32 @@ export function test262Plugin(): Plugin {
 
   function getEquivTests(): { name: string; source: string }[] {
     if (cachedEquivTests) return cachedEquivTests;
-    const testFile = join(projectRoot, "tests", "equivalence.test.ts");
-    if (!existsSync(testFile)) return [];
-    const content = readFileSync(testFile, "utf-8");
     const tests: { name: string; source: string }[] = [];
-    // Match it("name", async () => { ... compileToWasm(`...`) or assertEquivalent(`...`)
+    const testFiles = [
+      join(projectRoot, "tests", "ts-wasm-equivalence.test.ts"),
+      ...collectFiles(join(projectRoot, "tests", "equivalence")).filter((file) => file.endsWith(".test.ts")),
+    ].filter((file, index, all) => existsSync(file) && all.indexOf(file) === index);
+
     const itRegex = /it\("([^"]+)"[\s\S]*?(?:compileToWasm|assertEquivalent)\(\s*`([\s\S]*?)`/g;
-    let match;
-    while ((match = itRegex.exec(content)) !== null) {
-      const name = match[1];
-      let source = match[2];
-      // Dedent: find minimum indentation and remove it
-      const lines = source.split("\n");
-      const nonEmpty = lines.filter(l => l.trim().length > 0);
-      if (nonEmpty.length > 0) {
-        const minIndent = Math.min(...nonEmpty.map(l => l.match(/^(\s*)/)?.[1].length ?? 0));
-        source = lines.map(l => l.slice(minIndent)).join("\n").trim();
+    for (const testFile of testFiles) {
+      const content = readFileSync(testFile, "utf-8");
+      let match;
+      while ((match = itRegex.exec(content)) !== null) {
+        const name = match[1];
+        let source = match[2];
+        const lines = source.split("\n");
+        const nonEmpty = lines.filter((l) => l.trim().length > 0);
+        if (nonEmpty.length > 0) {
+          const minIndent = Math.min(...nonEmpty.map((l) => l.match(/^(\s*)/)?.[1].length ?? 0));
+          source = lines
+            .map((l) => l.slice(minIndent))
+            .join("\n")
+            .trim();
+        }
+        tests.push({ name, source });
       }
-      tests.push({ name, source });
     }
+
     cachedEquivTests = tests;
     return tests;
   }
@@ -195,7 +303,7 @@ export function test262Plugin(): Plugin {
       const dir = join(testBase, cat);
       const files = collectFiles(dir);
       if (files.length > 0) {
-        const relFiles = files.map(f => relative(testBase, f));
+        const relFiles = files.map((f) => relative(testBase, f));
         categories.push({
           name: cat,
           path: cat,
@@ -218,7 +326,8 @@ export function test262Plugin(): Plugin {
         // Serve static files from project root (benchmarks/, test262/)
         // MUST return 404 for missing files to prevent vite SPA fallback returning HTML
         if (url.pathname.startsWith("/benchmarks/") || url.pathname.startsWith("/test262/")) {
-          const filePath = normalize(join(projectRoot, url.pathname));
+          const publicPath = normalize(join(publicRoot, url.pathname));
+          const filePath = normalize(existsSync(publicPath) ? publicPath : join(projectRoot, url.pathname));
           if (!filePath.startsWith(projectRoot)) {
             res.statusCode = 403;
             res.end("Forbidden");
@@ -227,9 +336,15 @@ export function test262Plugin(): Plugin {
           if (existsSync(filePath) && statSync(filePath).isFile()) {
             const ext = filePath.split(".").pop() ?? "";
             const mimeTypes: Record<string, string> = {
-              html: "text/html", json: "application/json", jsonl: "application/x-ndjson",
-              js: "text/javascript", css: "text/css", wasm: "application/wasm",
-              map: "application/json", ts: "text/plain", md: "text/plain",
+              html: "text/html",
+              json: "application/json",
+              jsonl: "application/x-ndjson",
+              js: "text/javascript",
+              css: "text/css",
+              wasm: "application/wasm",
+              map: "application/json",
+              ts: "text/plain",
+              md: "text/plain",
             };
             res.setHeader("Content-Type", mimeTypes[ext] ?? "application/octet-stream");
             res.end(readFileSync(filePath));
@@ -251,7 +366,7 @@ export function test262Plugin(): Plugin {
         // Lightweight summary: categories with counts only, no file lists (~2KB vs ~500KB)
         if (url.pathname === "/api/test262-index-summary") {
           const index = getIndex();
-          const summary = index.categories.map(c => ({
+          const summary = index.categories.map((c) => ({
             name: c.name,
             path: c.path,
             fileCount: c.fileCount,

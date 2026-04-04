@@ -5,21 +5,12 @@
  * Extracted from expressions.ts (#688 step 6).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./index.js";
-import {
-  allocLocal,
-  allocTempLocal,
-  releaseTempLocal,
-  resolveWasmType,
-  getOrRegisterVecType,
-  getArrTypeIdxFromVec,
-  addFuncType,
-  addUnionImports,
-  getOrRegisterTupleType,
-  addStringConstantGlobal,
-  ensureExnTag,
-  cacheStringLiterals,
-} from "./index.js";
+import { reportError } from "./context/errors.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
+import { resolveWasmType, addUnionImports, getOrRegisterTupleType, cacheStringLiterals } from "./index.js";
 import { isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { compileStatement } from "./statements.js";
@@ -27,12 +18,7 @@ import { coerceType } from "./shared.js";
 import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
 import { compileNativeStringLiteral } from "./string-ops.js";
-import {
-  emitThrowString,
-  resolveStructName,
-  ensureLateImport,
-  flushLateImportShifts,
-} from "./expressions.js";
+import { emitThrowString, resolveStructName, ensureLateImport, flushLateImportShifts } from "./expressions.js";
 import { emitGuardedRefCast } from "./type-coercion.js";
 
 // ── Compile-time primitive type check for Object methods ─────────────
@@ -72,12 +58,14 @@ function emitNonObjectArgGuard(
   }
 
   // Also check for literal expressions that are obviously non-object
-  if (argExpr.kind === ts.SyntaxKind.UndefinedKeyword ||
-      argExpr.kind === ts.SyntaxKind.NullKeyword ||
-      argExpr.kind === ts.SyntaxKind.TrueKeyword ||
-      argExpr.kind === ts.SyntaxKind.FalseKeyword ||
-      ts.isNumericLiteral(argExpr) ||
-      (ts.isIdentifier(argExpr) && argExpr.text === "undefined")) {
+  if (
+    argExpr.kind === ts.SyntaxKind.UndefinedKeyword ||
+    argExpr.kind === ts.SyntaxKind.NullKeyword ||
+    argExpr.kind === ts.SyntaxKind.TrueKeyword ||
+    argExpr.kind === ts.SyntaxKind.FalseKeyword ||
+    ts.isNumericLiteral(argExpr) ||
+    (ts.isIdentifier(argExpr) && argExpr.text === "undefined")
+  ) {
     emitThrowString(ctx, fctx, `TypeError: ${methodName} called on non-object`);
     return true;
   }
@@ -91,21 +79,17 @@ function emitNonObjectArgGuard(
  * Emit a null check on the ref stored in `localIdx`.
  * If null, throws TypeError via the exception tag.
  */
-function emitObjectArgNullGuard(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  localIdx: number,
-): void {
+function emitObjectArgNullGuard(ctx: CodegenContext, fctx: FunctionContext, localIdx: number): void {
+  const message = "TypeError: Object method called on null or undefined";
+  addStringConstantGlobal(ctx, message);
+  const strIdx = ctx.stringGlobalMap.get(message)!;
   const tagIdx = ensureExnTag(ctx);
   fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "ref.is_null" });
   fctx.body.push({
     op: "if",
     blockType: { kind: "empty" },
-    then: [
-      { op: "ref.null.extern" } as Instr,
-      { op: "throw", tagIdx } as Instr,
-    ],
+    then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
     else: [],
   });
 }
@@ -120,11 +104,11 @@ function emitObjectArgNullGuard(
  *   bit 3: "defined" marker (always 1 when a descriptor has been stored)
  *   bit 4: is accessor property (get/set vs data)
  */
-export const PROP_FLAG_WRITABLE     = 1 << 0;  // 1
-export const PROP_FLAG_ENUMERABLE   = 1 << 1;  // 2
-export const PROP_FLAG_CONFIGURABLE = 1 << 2;  // 4
-export const PROP_FLAG_DEFINED      = 1 << 3;  // 8
-export const PROP_FLAG_ACCESSOR     = 1 << 4;  // 16
+export const PROP_FLAG_WRITABLE = 1 << 0; // 1
+export const PROP_FLAG_ENUMERABLE = 1 << 1; // 2
+export const PROP_FLAG_CONFIGURABLE = 1 << 2; // 4
+export const PROP_FLAG_DEFINED = 1 << 3; // 8
+export const PROP_FLAG_ACCESSOR = 1 << 4; // 16
 
 /**
  * Compute a compile-time flags integer from parsed descriptor booleans.
@@ -168,8 +152,18 @@ export function emitDefinePropertyFlagCheck(
   const neKey = "__ne";
 
   // Ensure __extern_get, __extern_set, __unbox_number, __box_number are available
-  const getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-  const setIdx = ensureLateImport(ctx, "__extern_set", [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+  const getIdx = ensureLateImport(
+    ctx,
+    "__extern_get",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  const setIdx = ensureLateImport(
+    ctx,
+    "__extern_set",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [],
+  );
   const unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
   const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
   flushLateImportShifts(ctx, fctx);
@@ -187,10 +181,7 @@ export function emitDefinePropertyFlagCheck(
   addStringConstantGlobal(ctx, typeErrorMessage);
   const errMsgGlobal = ctx.stringGlobalMap.get(typeErrorMessage)!;
   const tagIdx = ensureExnTag(ctx);
-  const throwInstrs: Instr[] = [
-    { op: "global.get", index: errMsgGlobal } as Instr,
-    { op: "throw", tagIdx } as Instr,
-  ];
+  const throwInstrs: Instr[] = [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr];
 
   const neErrMessage = "TypeError: Cannot define property, object is not extensible";
   addStringConstantGlobal(ctx, neErrMessage);
@@ -239,7 +230,7 @@ export function emitDefinePropertyFlagCheck(
   // Check for data property restrictions
   if (!isAccessor) {
     const nonWritableChecks: Instr[] = [];
-    if ((newFlags & PROP_FLAG_WRITABLE) || hasValue) {
+    if (newFlags & PROP_FLAG_WRITABLE || hasValue) {
       nonWritableChecks.push(...throwInstrs);
     }
     if (nonWritableChecks.length > 0) {
@@ -272,7 +263,7 @@ export function emitDefinePropertyFlagCheck(
       { op: "i32.eqz" } as Instr,
       { op: "if", blockType: { kind: "empty" }, then: [...throwInstrs] } as unknown as Instr,
     );
-  } else if (hasValue || (newFlags & PROP_FLAG_WRITABLE)) {
+  } else if (hasValue || newFlags & PROP_FLAG_WRITABLE) {
     nonConfigChecks.push(
       { op: "local.get", index: existingI32Local } as Instr,
       { op: "i32.const", value: PROP_FLAG_ACCESSOR } as Instr,
@@ -374,11 +365,7 @@ export function compileObjectDefineProperty(
   let setNode: ts.MethodDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
   if (ts.isObjectLiteralExpression(descArg)) {
     for (const prop of descArg.properties) {
-      if (
-        ts.isPropertyAssignment(prop) &&
-        ts.isIdentifier(prop.name) &&
-        prop.name.text === "value"
-      ) {
+      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") {
         valueExpr = prop.initializer;
       }
       // get: function() { ... } or get: () => ...
@@ -391,12 +378,7 @@ export function compileObjectDefineProperty(
         getNode = prop.initializer;
       }
       // get() { ... } (method shorthand)
-      if (
-        ts.isMethodDeclaration(prop) &&
-        prop.name &&
-        ts.isIdentifier(prop.name) &&
-        prop.name.text === "get"
-      ) {
+      if (ts.isMethodDeclaration(prop) && prop.name && ts.isIdentifier(prop.name) && prop.name.text === "get") {
         getNode = prop;
       }
       // set: function(v) { ... } or set: (v) => ...
@@ -409,12 +391,7 @@ export function compileObjectDefineProperty(
         setNode = prop.initializer;
       }
       // set(v) { ... } (method shorthand)
-      if (
-        ts.isMethodDeclaration(prop) &&
-        prop.name &&
-        ts.isIdentifier(prop.name) &&
-        prop.name.text === "set"
-      ) {
+      if (ts.isMethodDeclaration(prop) && prop.name && ts.isIdentifier(prop.name) && prop.name.text === "set") {
         setNode = prop;
       }
     }
@@ -450,17 +427,17 @@ export function compileObjectDefineProperty(
 
   // Check if obj is a struct type with the given field
   const objTsType = ctx.checker.getTypeAtLocation(objArg);
-  let structName = resolveStructName(ctx, objTsType)
-    || (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+  let structName =
+    resolveStructName(ctx, objTsType) ||
+    (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
 
   // Fallback 1: resolve struct name from the local variable's Wasm type.
   // This handles cases where the TS type is `any` but the local holds a struct ref.
   if (!structName && ts.isIdentifier(objArg)) {
     const localIdx = fctx.localMap.get(objArg.text);
     if (localIdx !== undefined) {
-      const localType = localIdx < fctx.params.length
-        ? fctx.params[localIdx]!.type
-        : fctx.locals[localIdx - fctx.params.length]?.type;
+      const localType =
+        localIdx < fctx.params.length ? fctx.params[localIdx]!.type : fctx.locals[localIdx - fctx.params.length]?.type;
       if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
         structName = ctx.typeIdxToStructName.get(localType.typeIdx);
       }
@@ -480,14 +457,13 @@ export function compileObjectDefineProperty(
       // by struct field names against the object literal properties.
       if (!structName && ts.isObjectLiteralExpression(decl.initializer)) {
         const litProps = decl.initializer.properties
-          .filter(p => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name))
-          .map(p => (p.name as ts.Identifier).text)
+          .filter((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name))
+          .map((p) => (p.name as ts.Identifier).text)
           .sort();
         if (litProps.length > 0) {
           for (const [sName, sFields] of ctx.structFields) {
-            const fieldNames = sFields.map(f => f.name).sort();
-            if (fieldNames.length === litProps.length &&
-                fieldNames.every((n, i) => n === litProps[i])) {
+            const fieldNames = sFields.map((f) => f.name).sort();
+            if (fieldNames.length === litProps.length && fieldNames.every((n, i) => n === litProps[i])) {
               structName = sName;
               break;
             }
@@ -499,7 +475,7 @@ export function compileObjectDefineProperty(
 
   const structTypeIdx = structName ? ctx.structMap.get(structName) : undefined;
   const fields = structName ? ctx.structFields.get(structName) : undefined;
-  const fieldIdx = (fields && propName) ? fields.findIndex(f => f.name === propName) : -1;
+  const fieldIdx = fields && propName ? fields.findIndex((f) => f.name === propName) : -1;
   const useStruct = structTypeIdx !== undefined && fields && fieldIdx >= 0 && valueExpr;
 
   // ── Getter/setter path ──────────────────────────────────────────────
@@ -517,7 +493,14 @@ export function compileObjectDefineProperty(
     ctx.classAccessorSet.add(accessorKey);
 
     // Helper to get body statements from a getter/setter node
-    const getBodyStatements = (node: ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction): ts.Statement[] => {
+    const getBodyStatements = (
+      node:
+        | ts.MethodDeclaration
+        | ts.GetAccessorDeclaration
+        | ts.SetAccessorDeclaration
+        | ts.FunctionExpression
+        | ts.ArrowFunction,
+    ): ts.Statement[] => {
       if (ts.isArrowFunction(node) && !ts.isBlock(node.body)) {
         // Arrow with expression body: wrap as return statement
         return [];
@@ -527,7 +510,9 @@ export function compileObjectDefineProperty(
     };
 
     // Helper to get parameters from a node
-    const getParams = (node: ts.MethodDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction): readonly ts.ParameterDeclaration[] => {
+    const getParams = (
+      node: ts.MethodDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction,
+    ): readonly ts.ParameterDeclaration[] => {
       return node.parameters;
     };
 
@@ -584,7 +569,12 @@ export function compileObjectDefineProperty(
 
         if (ts.isArrowFunction(getNode) && !ts.isBlock(getNode.body)) {
           // Arrow with expression body: compile as return expression
-          const retType = compileExpression(ctx, getterFctx, getNode.body as ts.Expression, getterFctx.returnType ?? undefined);
+          const retType = compileExpression(
+            ctx,
+            getterFctx,
+            getNode.body as ts.Expression,
+            getterFctx.returnType ?? undefined,
+          );
           if (retType && getterFctx.returnType && retType.kind !== getterFctx.returnType.kind) {
             coerceType(ctx, getterFctx, retType, getterFctx.returnType);
           }
@@ -627,7 +617,7 @@ export function compileObjectDefineProperty(
         const setterParams: ValType[] = [{ kind: "ref_null", typeIdx: structTypeIdx }];
         const allNodeParams = getParams(setNode);
         // Filter out the TS `this` parameter (explicit this type annotation)
-        const nodeParams = allNodeParams.filter(p => !(ts.isIdentifier(p.name) && p.name.text === "this"));
+        const nodeParams = allNodeParams.filter((p) => !(ts.isIdentifier(p.name) && p.name.text === "this"));
         for (const param of nodeParams) {
           const paramType = ctx.checker.getTypeAtLocation(param);
           setterParams.push(resolveWasmType(ctx, paramType));
@@ -722,13 +712,8 @@ export function compileObjectDefineProperty(
       fctx.body.push({
         op: "if",
         blockType: { kind: "val", type: { kind: "ref_null", typeIdx: structTypeIdx } as ValType },
-        then: [
-          { op: "local.get", index: tmpAny } as Instr,
-          { op: "ref.cast_null", typeIdx: structTypeIdx } as Instr,
-        ],
-        else: [
-          { op: "ref.null", typeIdx: structTypeIdx },
-        ],
+        then: [{ op: "local.get", index: tmpAny } as Instr, { op: "ref.cast_null", typeIdx: structTypeIdx } as Instr],
+        else: [{ op: "ref.null", typeIdx: structTypeIdx }],
       } as Instr);
       releaseTempLocal(fctx, tmpAny);
       objType = { kind: "ref_null", typeIdx: structTypeIdx };
@@ -781,7 +766,7 @@ export function compileObjectDefineProperty(
             if (isAccessor && !(existingFlags & PROP_FLAG_ACCESSOR)) {
               emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
             }
-            if (!isAccessor && (existingFlags & PROP_FLAG_ACCESSOR)) {
+            if (!isAccessor && existingFlags & PROP_FLAG_ACCESSOR) {
               emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
             }
           }
@@ -795,9 +780,9 @@ export function compileObjectDefineProperty(
           const userFieldsList = fields
             .map((f, idx) => ({ field: f, fieldIdx: idx }))
             .filter((e) => !e.field.name.startsWith("__"));
-          const userIdx = userFieldsList.findIndex(e => e.field.name === propName);
+          const userIdx = userFieldsList.findIndex((e) => e.field.name === propName);
           if (userIdx >= 0) {
-            let flagsArr = ctx.shapePropFlags.get(structTypeIdx);
+            const flagsArr = ctx.shapePropFlags.get(structTypeIdx);
             if (flagsArr && userIdx < flagsArr.length) {
               flagsArr[userIdx] = newFlags & 0x07; // Only store WEC bits
             }
@@ -817,7 +802,8 @@ export function compileObjectDefineProperty(
 
     // Check if this property is non-writable non-configurable (needs runtime value comparison)
     // Uses priorExistingFlags captured BEFORE the current call updated the map
-    const needsValueCompare = priorExistingFlags !== undefined &&
+    const needsValueCompare =
+      priorExistingFlags !== undefined &&
       !(priorExistingFlags & PROP_FLAG_CONFIGURABLE) &&
       !(priorExistingFlags & PROP_FLAG_WRITABLE) &&
       !(priorExistingFlags & PROP_FLAG_ACCESSOR);
@@ -904,15 +890,34 @@ export function compileObjectDefineProperty(
     // Return obj
     fctx.body.push({ op: "local.get", index: objLocal });
     return objType;
-
   } else if (valueExpr) {
     // Externref path: Object.defineProperty(obj, prop, { value: v }) → __defineProperty_value
-    return emitExternDefinePropertyValue(ctx, fctx, objArg, propArg, descArg, valueExpr, descWritable, descEnumerable, descConfigurable);
-
+    return emitExternDefinePropertyValue(
+      ctx,
+      fctx,
+      objArg,
+      propArg,
+      descArg,
+      valueExpr,
+      descWritable,
+      descEnumerable,
+      descConfigurable,
+    );
   } else {
     // No value property or descriptor is not an object literal:
     // For externref objects, delegate to __defineProperty_value with no-value flag
-    return emitExternDefinePropertyNoValue(ctx, fctx, objArg, propArg, descArg, descWritable, descEnumerable, descConfigurable, getNode, setNode);
+    return emitExternDefinePropertyNoValue(
+      ctx,
+      fctx,
+      objArg,
+      propArg,
+      descArg,
+      descWritable,
+      descEnumerable,
+      descConfigurable,
+      getNode,
+      setNode,
+    );
   }
 }
 
@@ -930,18 +935,18 @@ function computeRuntimeFlags(
 ): number {
   let flags = 0;
   if (descWritable !== undefined) {
-    flags |= (1 << 3); // writable specified
+    flags |= 1 << 3; // writable specified
     if (descWritable) flags |= 1;
   }
   if (descEnumerable !== undefined) {
-    flags |= (1 << 4); // enumerable specified
-    if (descEnumerable) flags |= (1 << 1);
+    flags |= 1 << 4; // enumerable specified
+    if (descEnumerable) flags |= 1 << 1;
   }
   if (descConfigurable !== undefined) {
-    flags |= (1 << 5); // configurable specified
-    if (descConfigurable) flags |= (1 << 2);
+    flags |= 1 << 5; // configurable specified
+    if (descConfigurable) flags |= 1 << 2;
   }
-  if (hasValue) flags |= (1 << 7);
+  if (hasValue) flags |= 1 << 7;
   return flags;
 }
 
@@ -1000,8 +1005,12 @@ function emitExternDefinePropertyValue(
     for (const prop of descArg.properties) {
       if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") continue;
       // Skip flag properties (writable, enumerable, configurable) — handled via flags param
-      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) &&
-          (prop.name.text === "writable" || prop.name.text === "enumerable" || prop.name.text === "configurable")) continue;
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        (prop.name.text === "writable" || prop.name.text === "enumerable" || prop.name.text === "configurable")
+      )
+        continue;
       if (ts.isPropertyAssignment(prop)) {
         const sideType = compileExpression(ctx, fctx, prop.initializer);
         if (sideType) fctx.body.push({ op: "drop" });
@@ -1018,9 +1027,12 @@ function emitExternDefinePropertyValue(
   fctx.body.push({ op: "local.get", index: valLocal });
   fctx.body.push({ op: "f64.const", value: runtimeFlags });
 
-  let funcIdx = ensureLateImport(ctx, "__defineProperty_value",
+  const funcIdx = ensureLateImport(
+    ctx,
+    "__defineProperty_value",
     [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
-    [{ kind: "externref" }]);
+    [{ kind: "externref" }],
+  );
   flushLateImportShifts(ctx, fctx);
   if (funcIdx !== undefined) {
     fctx.body.push({ op: "call", funcIdx });
@@ -1077,12 +1089,13 @@ function emitExternDefinePropertyNoValue(
   // with no value (flags without bit 7). This ensures runtime validation of property descriptors.
   // We check if the object is a known struct type — if not, delegate to runtime (#856).
   const objTsType = ctx.checker.getTypeAtLocation(objArg);
-  const _structName = resolveStructName(ctx, objTsType)
-    || (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+  const _structName =
+    resolveStructName(ctx, objTsType) ||
+    (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
   const _propName = ts.isStringLiteral(propArg) ? propArg.text : undefined;
   const _structTypeIdx = _structName ? ctx.structMap.get(_structName) : undefined;
   const _fields = _structName ? ctx.structFields.get(_structName) : undefined;
-  const _fieldIdx = (_fields && _propName) ? _fields.findIndex(f => f.name === _propName) : -1;
+  const _fieldIdx = _fields && _propName ? _fields.findIndex((f) => f.name === _propName) : -1;
   const isKnownStructField = _structTypeIdx !== undefined && _fields !== undefined && _fieldIdx >= 0;
   if (!isKnownStructField && propLocal !== undefined) {
     const propName = ts.isStringLiteral(propArg) ? propArg.text : undefined;
@@ -1108,9 +1121,12 @@ function emitExternDefinePropertyNoValue(
     fctx.body.push({ op: "ref.null.extern" }); // null value
     fctx.body.push({ op: "f64.const", value: runtimeFlags });
 
-    let funcIdx = ensureLateImport(ctx, "__defineProperty_value",
+    const funcIdx = ensureLateImport(
+      ctx,
+      "__defineProperty_value",
       [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
-      [{ kind: "externref" }]);
+      [{ kind: "externref" }],
+    );
     flushLateImportShifts(ctx, fctx);
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
@@ -1153,7 +1169,7 @@ function emitExternDefinePropertyNoValue(
           if (isAccessor && !(existingFlags & PROP_FLAG_ACCESSOR)) {
             emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
           }
-          if (!isAccessor && (existingFlags & PROP_FLAG_ACCESSOR)) {
+          if (!isAccessor && existingFlags & PROP_FLAG_ACCESSOR) {
             emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
           }
         }
@@ -1212,15 +1228,11 @@ export function compileObjectDefineProperties(
         ts.factory.createIdentifier("Object"),
         "defineProperty",
       );
-      const syntheticCall = ts.factory.createCallExpression(
-        syntheticPropAccess,
-        undefined,
-        [
-          ts.factory.createIdentifier(`__defprops_obj_placeholder_${objLocal}`),
-          ts.factory.createStringLiteral(propName),
-          prop.initializer,
-        ],
-      );
+      const syntheticCall = ts.factory.createCallExpression(syntheticPropAccess, undefined, [
+        ts.factory.createIdentifier(`__defprops_obj_placeholder_${objLocal}`),
+        ts.factory.createStringLiteral(propName),
+        prop.initializer,
+      ]);
       ts.setTextRange(syntheticCall, expr);
       (syntheticCall as any).parent = expr.parent;
 
@@ -1262,11 +1274,12 @@ export function compileObjectDefineProperties(
 
       // Try struct path: if obj is a known struct and propName matches a field
       const objTsType = ctx.checker.getTypeAtLocation(objArg);
-      const structName = resolveStructName(ctx, objTsType)
-        || (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+      const structName =
+        resolveStructName(ctx, objTsType) ||
+        (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
       const structTypeIdx = structName ? ctx.structMap.get(structName) : undefined;
       const fields = structName ? ctx.structFields.get(structName) : undefined;
-      const fieldIdx = (fields && propName) ? fields.findIndex(f => f.name === propName) : -1;
+      const fieldIdx = fields && propName ? fields.findIndex((f) => f.name === propName) : -1;
 
       if (structTypeIdx !== undefined && fields && fieldIdx >= 0 && valueExpr) {
         // Struct path: emit struct.set directly
@@ -1305,7 +1318,7 @@ export function compileObjectDefineProperties(
               if (isAccessor && !(existingFlags & PROP_FLAG_ACCESSOR)) {
                 emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
               }
-              if (!isAccessor && (existingFlags & PROP_FLAG_ACCESSOR)) {
+              if (!isAccessor && existingFlags & PROP_FLAG_ACCESSOR) {
                 emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
               }
             }
@@ -1313,7 +1326,8 @@ export function compileObjectDefineProperties(
         }
 
         // Check if this property is non-writable non-configurable (needs runtime value comparison)
-        const needsValueCompare = priorExistingFlags !== undefined &&
+        const needsValueCompare =
+          priorExistingFlags !== undefined &&
           !(priorExistingFlags & PROP_FLAG_CONFIGURABLE) &&
           !(priorExistingFlags & PROP_FLAG_WRITABLE) &&
           !(priorExistingFlags & PROP_FLAG_ACCESSOR);
@@ -1325,8 +1339,11 @@ export function compileObjectDefineProperties(
         if (objType.kind === "externref") {
           fctx.body.push({ op: "any.convert_extern" } as Instr);
           needsGuard = true;
-        } else if ((objType.kind === "ref_null" || objType.kind === "ref") &&
-                   "typeIdx" in objType && objType.typeIdx !== structTypeIdx) {
+        } else if (
+          (objType.kind === "ref_null" || objType.kind === "ref") &&
+          "typeIdx" in objType &&
+          objType.typeIdx !== structTypeIdx
+        ) {
           needsGuard = true;
         }
 
@@ -1350,9 +1367,7 @@ export function compileObjectDefineProperties(
                   { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
                   { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
                 ],
-                else: [
-                  { op: "f64.const", value: 0 } as Instr,
-                ],
+                else: [{ op: "f64.const", value: 0 } as Instr],
               } as Instr);
             } else if (fieldType.kind === "i32") {
               fctx.body.push({
@@ -1363,9 +1378,7 @@ export function compileObjectDefineProperties(
                   { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
                   { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
                 ],
-                else: [
-                  { op: "i32.const", value: 0 } as Instr,
-                ],
+                else: [{ op: "i32.const", value: 0 } as Instr],
               } as Instr);
             }
             fctx.body.push({ op: "local.set", index: oldValLocal } as Instr);
@@ -1391,10 +1404,7 @@ export function compileObjectDefineProperties(
                 fctx.body.push({
                   op: "if",
                   blockType: { kind: "empty" },
-                  then: [
-                    { op: "global.get", index: errMsgGlobal } as Instr,
-                    { op: "throw", tagIdx } as Instr,
-                  ],
+                  then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
                 } as unknown as Instr);
               } else if (fieldType.kind === "i32") {
                 fctx.body.push({ op: "local.get", index: oldValLocal });
@@ -1403,10 +1413,7 @@ export function compileObjectDefineProperties(
                 fctx.body.push({
                   op: "if",
                   blockType: { kind: "empty" },
-                  then: [
-                    { op: "global.get", index: errMsgGlobal } as Instr,
-                    { op: "throw", tagIdx } as Instr,
-                  ],
+                  then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
                 } as unknown as Instr);
               }
 
@@ -1450,10 +1457,7 @@ export function compileObjectDefineProperties(
                 fctx.body.push({
                   op: "if",
                   blockType: { kind: "empty" },
-                  then: [
-                    { op: "global.get", index: errMsgGlobal } as Instr,
-                    { op: "throw", tagIdx } as Instr,
-                  ],
+                  then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
                 } as unknown as Instr);
               } else if (fieldType.kind === "i32") {
                 fctx.body.push({ op: "local.get", index: oldValLocal });
@@ -1462,10 +1466,7 @@ export function compileObjectDefineProperties(
                 fctx.body.push({
                   op: "if",
                   blockType: { kind: "empty" },
-                  then: [
-                    { op: "global.get", index: errMsgGlobal } as Instr,
-                    { op: "throw", tagIdx } as Instr,
-                  ],
+                  then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
                 } as unknown as Instr);
               }
 
@@ -1531,9 +1532,9 @@ export function compileObjectDefineProperties(
         const userFields = fields
           .map((f, idx) => ({ field: f, fieldIdx: idx }))
           .filter((e) => !e.field.name.startsWith("__"));
-        const userFieldIdx = userFields.findIndex(e => e.fieldIdx === fieldIdx);
+        const userFieldIdx = userFields.findIndex((e) => e.fieldIdx === fieldIdx);
         if (userFieldIdx >= 0) {
-          let flagsArr = ctx.shapePropFlags.get(structTypeIdx);
+          const flagsArr = ctx.shapePropFlags.get(structTypeIdx);
           if (flagsArr && userFieldIdx < flagsArr.length) {
             const isAccessor = false;
             const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
@@ -1575,9 +1576,12 @@ export function compileObjectDefineProperties(
       const runtimeFlags = computeRuntimeFlags(descWritable, descEnumerable, descConfigurable, !!valueExpr);
       fctx.body.push({ op: "f64.const", value: runtimeFlags });
 
-      const funcIdx = ensureLateImport(ctx, "__defineProperty_value",
+      const funcIdx = ensureLateImport(
+        ctx,
+        "__defineProperty_value",
         [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
-        [{ kind: "externref" }]);
+        [{ kind: "externref" }],
+      );
       flushLateImportShifts(ctx, fctx);
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
@@ -1612,9 +1616,12 @@ export function compileObjectDefineProperties(
     coerceType(ctx, fctx, descsType, { kind: "externref" });
   }
 
-  const funcIdx = ensureLateImport(ctx, "__defineProperties",
+  const funcIdx = ensureLateImport(
+    ctx,
+    "__defineProperties",
     [{ kind: "externref" }, { kind: "externref" }],
-    [{ kind: "externref" }]);
+    [{ kind: "externref" }],
+  );
   flushLateImportShifts(ctx, fctx);
   if (funcIdx !== undefined) {
     fctx.body.push({ op: "call", funcIdx });
@@ -1655,7 +1662,10 @@ export function compileObjectKeysOrValues(
       const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
       if (arrTypeIdx < 0) return null;
       fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: 0 });
-      const tmpData = allocLocal(fctx, `__obj_${method}_empty_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+      const tmpData = allocLocal(fctx, `__obj_${method}_empty_data_${fctx.locals.length}`, {
+        kind: "ref",
+        typeIdx: arrTypeIdx,
+      });
       fctx.body.push({ op: "local.set", index: tmpData });
       fctx.body.push({ op: "i32.const", value: 0 });
       fctx.body.push({ op: "local.get", index: tmpData });
@@ -1675,7 +1685,7 @@ export function compileObjectKeysOrValues(
       coerceType(ctx, fctx, argResult, { kind: "externref" });
     }
     const importName = `__object_${method}`;
-    let funcIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+    const funcIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
     flushLateImportShifts(ctx, fctx);
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
@@ -1690,11 +1700,7 @@ export function compileObjectKeysOrValues(
   const structTypeIdx = ctx.structMap.get(structName);
   const fields = ctx.structFields.get(structName);
   if (structTypeIdx === undefined || !fields) {
-    ctx.errors.push({
-      message: `Object.${method}(): unknown struct "${structName}"`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, `Object.${method}(): unknown struct "${structName}"`);
     return null;
   }
 
@@ -1703,6 +1709,22 @@ export function compileObjectKeysOrValues(
     .map((f, idx) => ({ field: f, fieldIdx: idx }))
     .filter((e) => !e.field.name.startsWith("__"));
 
+  // Per ES spec, keys/values/entries only include enumerable own properties.
+  // definedPropertyFlags is keyed as "varName:propName" and updated at compile time
+  // by Object.defineProperty calls. shapePropFlags is initialized with defaults after
+  // compilation, so it won't reflect defineProperty updates during this pass.
+  const argVarName = ts.isIdentifier(arg) ? arg.text : undefined;
+  const enumUserFields = userFields.filter((e) => {
+    if (argVarName) {
+      const key = `${argVarName}:${e.field.name}`;
+      const flags = ctx.definedPropertyFlags.get(key);
+      if (flags !== undefined) {
+        return !!(flags & PROP_FLAG_ENUMERABLE);
+      }
+    }
+    return true; // no explicit descriptor = enumerable by default
+  });
+
   if (method === "keys") {
     // Build a string[] array from the field names
     // Each field name is already registered as a string literal thunk
@@ -1710,16 +1732,12 @@ export function compileObjectKeysOrValues(
     const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
     if (arrTypeIdx < 0) {
-      ctx.errors.push({
-        message: `Object.keys(): cannot resolve array type for string[]`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, `Object.keys(): cannot resolve array type for string[]`);
       return null;
     }
 
-    // Push each field name string onto the stack
-    for (const entry of userFields) {
+    // Push each enumerable field name string onto the stack
+    for (const entry of enumUserFields) {
       if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
         compileNativeStringLiteral(ctx, fctx, entry.field.name);
         // Object.keys returns externref strings, convert from native
@@ -1741,7 +1759,7 @@ export function compileObjectKeysOrValues(
     }
 
     // Create the backing array with array.new_fixed
-    const count = userFields.length;
+    const count = enumUserFields.length;
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: count });
     const tmpData = allocLocal(fctx, `__obj_keys_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
     fctx.body.push({ op: "local.set", index: tmpData });
@@ -1756,7 +1774,10 @@ export function compileObjectKeysOrValues(
     // tuple struct and vec types that match what resolveWasmType produces.
     const argResult = compileExpression(ctx, fctx, arg);
     if (!argResult) return null;
-    const objLocal = allocLocal(fctx, `__obj_entries_src_${fctx.locals.length}`, { kind: "ref", typeIdx: structTypeIdx });
+    const objLocal = allocLocal(fctx, `__obj_entries_src_${fctx.locals.length}`, {
+      kind: "ref",
+      typeIdx: structTypeIdx,
+    });
     fctx.body.push({ op: "local.set", index: objLocal });
     emitObjectArgNullGuard(ctx, fctx, objLocal);
 
@@ -1777,8 +1798,12 @@ export function compileObjectKeysOrValues(
       // The array element type is a ref to the tuple struct
       // Get it from the vec's array type definition
       const arrTypeDef = ctx.mod.types[outerArrTypeIdx];
-      if (arrTypeDef && arrTypeDef.kind === "array" && (arrTypeDef as any).element &&
-          ((arrTypeDef as any).element.kind === "ref" || (arrTypeDef as any).element.kind === "ref_null")) {
+      if (
+        arrTypeDef &&
+        arrTypeDef.kind === "array" &&
+        (arrTypeDef as any).element &&
+        ((arrTypeDef as any).element.kind === "ref" || (arrTypeDef as any).element.kind === "ref_null")
+      ) {
         entryTupleTypeIdx = (arrTypeDef as any).element.typeIdx;
       } else {
         // Fallback: create a tuple with [externref, externref]
@@ -1793,11 +1818,7 @@ export function compileObjectKeysOrValues(
     }
 
     if (outerArrTypeIdx < 0) {
-      ctx.errors.push({
-        message: `Object.entries(): cannot resolve outer array type`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, `Object.entries(): cannot resolve outer array type`);
       return null;
     }
 
@@ -1810,8 +1831,8 @@ export function compileObjectKeysOrValues(
     // Ensure union boxing imports are registered (needed for boxing primitives)
     addUnionImports(ctx);
 
-    // For each field, create a tuple struct [key, value]
-    for (const entry of userFields) {
+    // For each enumerable field, create a tuple struct [key, value]
+    for (const entry of enumUserFields) {
       // Push key string (field 0 of tuple)
       if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
         compileNativeStringLiteral(ctx, fctx, entry.field.name);
@@ -1863,9 +1884,12 @@ export function compileObjectKeysOrValues(
     }
 
     // Create outer array from the entry tuples on the stack
-    const count = userFields.length;
+    const count = enumUserFields.length;
     fctx.body.push({ op: "array.new_fixed", typeIdx: outerArrTypeIdx, length: count });
-    const outerData = allocLocal(fctx, `__obj_entries_data_${fctx.locals.length}`, { kind: "ref", typeIdx: outerArrTypeIdx });
+    const outerData = allocLocal(fctx, `__obj_entries_data_${fctx.locals.length}`, {
+      kind: "ref",
+      typeIdx: outerArrTypeIdx,
+    });
     fctx.body.push({ op: "local.set", index: outerData });
     fctx.body.push({ op: "i32.const", value: count });
     fctx.body.push({ op: "local.get", index: outerData });
@@ -1886,19 +1910,15 @@ export function compileObjectKeysOrValues(
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
   if (arrTypeIdx < 0) {
-    ctx.errors.push({
-      message: `Object.values(): cannot resolve array type for values[]`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, `Object.values(): cannot resolve array type for values[]`);
     return null;
   }
 
   // Ensure union boxing imports are registered (needed for boxing primitives)
   addUnionImports(ctx);
 
-  // Push each field value onto the stack, boxing primitives to externref
-  for (const entry of userFields) {
+  // Push each enumerable field value onto the stack, boxing primitives to externref
+  for (const entry of enumUserFields) {
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: entry.fieldIdx });
     // Box primitive values to externref
@@ -1921,7 +1941,7 @@ export function compileObjectKeysOrValues(
   }
 
   // Create the backing array with array.new_fixed
-  const count = userFields.length;
+  const count = enumUserFields.length;
   fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: count });
   const tmpData = allocLocal(fctx, `__obj_vals_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: tmpData });
@@ -1948,6 +1968,30 @@ export function compilePropertyIntrospection(
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
   const receiverWasm = resolveWasmType(ctx, receiverType);
 
+  // For externref/any receivers (e.g. Object.create result), delegate to runtime
+  // since we can't statically know their properties
+  if (receiverWasm.kind === "externref") {
+    const isHOP = propAccess.name.text === "hasOwnProperty";
+    const importName = isHOP ? "__hasOwnProperty" : "__propertyIsEnumerable";
+    const hopIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (hopIdx !== undefined) {
+      // Push receiver
+      compileExpression(ctx, fctx, propAccess.expression);
+      // Push key argument (or null if missing)
+      if (expr.arguments[0]) {
+        const argType = compileExpression(ctx, fctx, expr.arguments[0]);
+        if (argType && argType.kind !== "externref") {
+          coerceType(ctx, fctx, argType, { kind: "externref" });
+        }
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      fctx.body.push({ op: "call", funcIdx: hopIdx });
+      return { kind: "i32" };
+    }
+  }
+
   // Build a set of private member names (without '#') from the TS type.
   // Private fields (#x) are stored in the struct with the '#' stripped, but
   // should never be reported as own properties via hasOwnProperty("x").
@@ -1966,12 +2010,8 @@ export function compilePropertyIntrospection(
     const structDef = ctx.mod.types[(receiverWasm as { typeIdx: number }).typeIdx];
     if (structDef?.kind === "struct") {
       structFieldNames = structDef.fields
-        .map(f => f.name)
-        .filter((n): n is string =>
-          n !== undefined &&
-          !n.startsWith("__") &&
-          !privateNames.has(n)
-        );
+        .map((f) => f.name)
+        .filter((n): n is string => n !== undefined && !n.startsWith("__") && !privateNames.has(n));
     }
   }
 
@@ -1980,12 +2020,11 @@ export function compilePropertyIntrospection(
   //   - Prototype:   methods + accessors are own; instance fields are NOT
   //   - Instance:    instance fields are own; methods are NOT (they're on prototype)
   //   - Constructor: static members are own; instance members are NOT
-  const isPrototypeReceiver = ts.isPropertyAccessExpression(propAccess.expression) &&
-    propAccess.expression.name.text === "prototype";
+  const isPrototypeReceiver =
+    ts.isPropertyAccessExpression(propAccess.expression) && propAccess.expression.name.text === "prototype";
 
   // A constructor type (typeof C) has construct signatures; an instance does not.
-  const isConstructorReceiver = !isPrototypeReceiver &&
-    receiverType.getConstructSignatures().length > 0;
+  const isConstructorReceiver = !isPrototypeReceiver && receiverType.getConstructSignatures().length > 0;
 
   // For prototype/constructor receivers, the struct definition represents the
   // instance layout — its fields are NOT own properties of the prototype or
@@ -2002,10 +2041,10 @@ export function compilePropertyIntrospection(
     if (prop.name.startsWith("#")) continue;
 
     const decls = prop.getDeclarations();
-    const isMethod = decls && decls.length > 0 && decls.every(d =>
-      ts.isMethodDeclaration(d) || ts.isMethodSignature(d));
-    const isAccessor = decls && decls.length > 0 && decls.every(d =>
-      ts.isGetAccessorDeclaration(d) || ts.isSetAccessorDeclaration(d));
+    const isMethod =
+      decls && decls.length > 0 && decls.every((d) => ts.isMethodDeclaration(d) || ts.isMethodSignature(d));
+    const isAccessor =
+      decls && decls.length > 0 && decls.every((d) => ts.isGetAccessorDeclaration(d) || ts.isSetAccessorDeclaration(d));
 
     if (isPrototypeReceiver) {
       // On C.prototype: only methods and accessors are own properties.
@@ -2014,9 +2053,11 @@ export function compilePropertyIntrospection(
     } else if (isConstructorReceiver) {
       // On the constructor (typeof C): only static members are own.
       if (decls && decls.length > 0) {
-        const hasStatic = decls.some(d =>
-          ts.canHaveModifiers(d) &&
-          d.modifiers?.some((m: ts.Modifier) => m.kind === ts.SyntaxKind.StaticKeyword));
+        const hasStatic = decls.some((d) =>
+          ts.canHaveModifiers(d)
+            ? (ts.getModifiers(d as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ?? false)
+            : false,
+        );
         if (!hasStatic) continue;
       }
     } else {
@@ -2041,7 +2082,7 @@ export function compilePropertyIntrospection(
     }
     // Check if receiver is a class — classes always have "prototype"
     const symbol = receiverType.getSymbol();
-    if (symbol && (symbol.flags & ts.SymbolFlags.Class)) {
+    if (symbol && symbol.flags & ts.SymbolFlags.Class) {
       tsProps.add("prototype");
     }
   }
@@ -2052,7 +2093,7 @@ export function compilePropertyIntrospection(
     // No argument — hasOwnProperty() with no args returns false in JS
     // Compile receiver for side effects
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
-    if (recvType && recvType !== VOID_RESULT) {
+    if (recvType) {
       fctx.body.push({ op: "drop" });
     }
     fctx.body.push({ op: "i32.const", value: 0 });
@@ -2073,27 +2114,39 @@ export function compilePropertyIntrospection(
     }
   }
 
+  const isPropertyIsEnumerable = propAccess.name.text === "propertyIsEnumerable";
+
   if (staticKey !== null) {
     // Static resolution: check if the key is a known own property
     const hasInStruct = structFieldNames !== null && structFieldNames.includes(staticKey);
     const hasInTs = tsProps.has(staticKey);
     const has = hasInStruct || hasInTs;
 
-    // For propertyIsEnumerable, all struct/TS-visible own properties are enumerable
-    // (non-enumerable properties are only created via Object.defineProperty with
-    // enumerable:false, which uses the __pf_ side-table — we can't check that
-    // statically, so for static keys known to be own, return true for both methods)
+    // For propertyIsEnumerable, also check definedPropertyFlags for updated enumerability.
+    // definedPropertyFlags is keyed as "varName:propName" and is the authoritative source
+    // for compile-time flag updates from Object.defineProperty calls.
+    let result = has ? 1 : 0;
+    if (isPropertyIsEnumerable && has) {
+      const recvVarName = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : undefined;
+      if (recvVarName) {
+        const key = `${recvVarName}:${staticKey}`;
+        const flags = ctx.definedPropertyFlags.get(key);
+        if (flags !== undefined) {
+          result = flags & PROP_FLAG_ENUMERABLE ? 1 : 0;
+        }
+      }
+    }
 
     // Compile receiver and argument for side effects, then drop
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
-    if (recvType && recvType !== VOID_RESULT) {
+    if (recvType) {
       fctx.body.push({ op: "drop" });
     }
     const argResultType = compileExpression(ctx, fctx, arg);
-    if (argResultType && argResultType !== VOID_RESULT) {
+    if (argResultType) {
       fctx.body.push({ op: "drop" });
     }
-    fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
+    fctx.body.push({ op: "i32.const", value: result });
     return { kind: "i32" };
   }
 
@@ -2114,7 +2167,7 @@ export function compilePropertyIntrospection(
 
     // Compile receiver for side effects, drop it
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
-    if (recvType && recvType !== VOID_RESULT) {
+    if (recvType) {
       fctx.body.push({ op: "drop" });
     }
 
@@ -2122,9 +2175,7 @@ export function compilePropertyIntrospection(
     const keyType = compileExpression(ctx, fctx, arg);
     if (keyType) {
       const equalsIdx = ctx.funcMap.get("__str_eq") ?? ctx.funcMap.get("string_equals");
-      const jsStrEquals = ctx.mod.imports.findIndex(
-        imp => imp.module === "wasm:js-string" && imp.name === "equals"
-      );
+      const jsStrEquals = ctx.mod.imports.findIndex((imp) => imp.module === "wasm:js-string" && imp.name === "equals");
       const eqFunc = jsStrEquals >= 0 ? jsStrEquals : equalsIdx;
       if (eqFunc !== undefined && eqFunc >= 0) {
         const keyLocal = allocLocal(fctx, `__hop_key_${fctx.locals.length}`, keyType);
@@ -2147,11 +2198,11 @@ export function compilePropertyIntrospection(
 
   // Fallback: compile both sides for side effects, return false
   const recvType = compileExpression(ctx, fctx, propAccess.expression);
-  if (recvType && recvType !== VOID_RESULT) {
+  if (recvType) {
     fctx.body.push({ op: "drop" });
   }
   const argResultType = compileExpression(ctx, fctx, arg);
-  if (argResultType && argResultType !== VOID_RESULT) {
+  if (argResultType) {
     fctx.body.push({ op: "drop" });
   }
   fctx.body.push({ op: "i32.const", value: 0 });

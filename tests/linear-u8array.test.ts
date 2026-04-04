@@ -1,10 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createEmptyModule } from "../src/ir/types.js";
 import { emitBinary } from "../src/emit/binary.js";
-import {
-  addRuntime,
-  addUint8ArrayRuntime,
-} from "../src/codegen-linear/runtime.js";
+import { addRuntime, addUint8ArrayRuntime } from "../src/codegen-linear/runtime.js";
 import type { Instr, FuncTypeDef, ValType } from "../src/ir/types.js";
 
 /** Build a module with runtime + Uint8Array support and custom test functions */

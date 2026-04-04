@@ -23,4 +23,4 @@ The result: 550 passing tests → 18,167 passing tests. 768 issues closed. The a
 
 ---
 
-_Built with [Claude Code](https://claude.ai/code). The compiler is [ts2wasm](https://github.com/loopdive/ts2wasm)._
+_Built with [Claude Code](https://claude.ai/code). The compiler is [js2wasm](https://github.com/loopdive/js2wasm)._

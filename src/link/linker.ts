@@ -34,11 +34,7 @@ import {
   SYMBOL_UNDEFINED,
 } from "./reader.js";
 import { resolveSymbols, type Resolution } from "./resolver.js";
-import {
-  validateIsolation,
-  type IsolationReport,
-  type IsolationViolation,
-} from "./isolation.js";
+import { validateIsolation, type IsolationReport, type IsolationViolation } from "./isolation.js";
 
 // ── Public types ──────────────────────────────────────────────────
 
@@ -79,10 +75,7 @@ interface ModuleOffsets {
 /**
  * Link multiple relocatable .o wasm files into a single module.
  */
-export function link(
-  objects: Map<string, Uint8Array>,
-  options?: LinkOptions,
-): LinkResult {
+export function link(objects: Map<string, Uint8Array>, options?: LinkOptions): LinkResult {
   const errors: LinkError[] = [];
   const doIsolation = options?.validateIsolation !== false;
 
@@ -294,9 +287,7 @@ function emitLinked(
   }
 
   // ── Memory section (multi-memory) ─────────────────────────────
-  const allMemories: MemoryEntry[] = parsed.flatMap(
-    (obj) => obj.memories,
-  );
+  const allMemories: MemoryEntry[] = parsed.flatMap((obj) => obj.memories);
   if (allMemories.length > 0) {
     enc.section(SECTION.memory, (s) => {
       s.u32(allMemories.length);
@@ -359,8 +350,7 @@ function emitLinked(
 
   // ── Export section ────────────────────────────────────────────
   const entryModuleName = options?.entry;
-  const exportEntries: { name: string; kind: number; index: number }[] =
-    [];
+  const exportEntries: { name: string; kind: number; index: number }[] = [];
 
   for (let modIdx = 0; modIdx < parsed.length; modIdx++) {
     const obj = parsed[modIdx]!;
@@ -443,14 +433,9 @@ function emitLinked(
         const off = offsets[modIdx]!;
 
         // Get relocs for the code section
-        const codeRelocs =
-          obj.relocations.get("reloc.CODE") ?? [];
+        const codeRelocs = obj.relocations.get("reloc.CODE") ?? [];
 
-        for (
-          let fnIdx = 0;
-          fnIdx < obj.code.length;
-          fnIdx++
-        ) {
+        for (let fnIdx = 0; fnIdx < obj.code.length; fnIdx++) {
           const code = obj.code[fnIdx]!;
 
           // Build the function body
@@ -576,27 +561,11 @@ function rewriteCode(
       case 0x11: {
         // call_indirect: typeIdx + tableIdx
         pos++;
-        const { value: typeIdx, size: typeSize } = readLEB128(
-          result,
-          pos,
-        );
-        writeLEB128(
-          result,
-          pos,
-          typeIdx + off.typeOffset,
-          typeSize,
-        );
+        const { value: typeIdx, size: typeSize } = readLEB128(result, pos);
+        writeLEB128(result, pos, typeIdx + off.typeOffset, typeSize);
         pos += typeSize;
-        const { value: tableIdx, size: tableSize } = readLEB128(
-          result,
-          pos,
-        );
-        writeLEB128(
-          result,
-          pos,
-          tableIdx + off.tableOffset,
-          tableSize,
-        );
+        const { value: tableIdx, size: tableSize } = readLEB128(result, pos);
+        writeLEB128(result, pos, tableIdx + off.tableOffset, tableSize);
         pos += tableSize;
         break;
       }
@@ -657,10 +626,7 @@ function resolveIndex(
 
 // ── LEB128 helpers ────────────────────────────────────────────────
 
-function readLEB128(
-  data: Uint8Array,
-  pos: number,
-): { value: number; size: number } {
+function readLEB128(data: Uint8Array, pos: number): { value: number; size: number } {
   let result = 0;
   let shift = 0;
   let size = 0;
@@ -678,12 +644,7 @@ function readLEB128(
  * Write an unsigned LEB128 value into a fixed number of bytes.
  * Pads with continuation bits if the new value fits in fewer bytes.
  */
-function writeLEB128(
-  data: Uint8Array,
-  pos: number,
-  value: number,
-  size: number,
-): void {
+function writeLEB128(data: Uint8Array, pos: number, value: number, size: number): void {
   for (let i = 0; i < size; i++) {
     let b = value & 0x7f;
     value >>>= 7;
@@ -696,10 +657,7 @@ function writeLEB128(
 
 // ── WAT stub generation ───────────────────────────────────────────
 
-function generateWatStub(
-  parsed: ParsedObject[],
-  offsets: ModuleOffsets[],
-): string {
+function generateWatStub(parsed: ParsedObject[], offsets: ModuleOffsets[]): string {
   const lines: string[] = ["(module"];
 
   for (let modIdx = 0; modIdx < parsed.length; modIdx++) {
@@ -709,13 +667,9 @@ function generateWatStub(
 
     for (let i = 0; i < obj.functions.length; i++) {
       const globalIdx = i + off.funcOffset;
-      const exp = obj.exports.find(
-        (e) => e.kind === 0 && e.index === i,
-      );
+      const exp = obj.exports.find((e) => e.kind === 0 && e.index === i);
       const exportClause = exp ? ` (export "${exp.name}")` : "";
-      lines.push(
-        `  (func $f${globalIdx}${exportClause} (type ${obj.functions[i]!.typeIdx + off.typeOffset}))`,
-      );
+      lines.push(`  (func $f${globalIdx}${exportClause} (type ${obj.functions[i]!.typeIdx + off.typeOffset}))`);
     }
 
     for (let i = 0; i < obj.memories.length; i++) {
@@ -732,9 +686,7 @@ function generateWatStub(
 
 // ── Empty isolation report ────────────────────────────────────────
 
-function emptyIsolationReport(
-  parsed: ParsedObject[],
-): IsolationReport {
+function emptyIsolationReport(parsed: ParsedObject[]): IsolationReport {
   return {
     modules: parsed.map((p) => p.name),
     properties: {

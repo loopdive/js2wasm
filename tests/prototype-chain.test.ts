@@ -6,8 +6,7 @@ const jsStringPolyfill = {
   concat: (a: string, b: string) => a + b,
   length: (s: string) => s.length,
   equals: (a: string, b: string) => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number) =>
-    s.substring(start, end),
+  substring: (s: string, start: number, end: number) => s.substring(start, end),
   charCodeAt: (s: string, i: number) => s.charCodeAt(i),
 };
 

@@ -46,8 +46,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
       concat: (a: string, b: string) => a + b,
       length: (s: string) => s.length,
       equals: (a: string, b: string) => (a === b ? 1 : 0),
-      substring: (s: string, start: number, end: number) =>
-        s.substring(start, end),
+      substring: (s: string, start: number, end: number) => s.substring(start, end),
       charCodeAt: (s: string, i: number) => s.charCodeAt(i),
     },
     string_constants: buildStringConstants(result.stringPool),
@@ -61,15 +60,11 @@ async function compileToWasm(source: string, allowJs = false) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    buildImports(result),
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return instance.exports as Record<string, Function>;
 }
 
 describe("Issue #379: Tuple/destructuring type errors", () => {
-
   it("empty array destructuring var [] = [] compiles in TS mode", () => {
     const result = compile(`
       export function test(): number {
@@ -81,12 +76,15 @@ describe("Issue #379: Tuple/destructuring type errors", () => {
   });
 
   it("empty array destructuring var [] = [] compiles in JS mode", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function test() {
         var [] = [];
         return 0;
       }
-    `, { allowJs: true, fileName: "input.js" });
+    `,
+      { allowJs: true, fileName: "input.js" },
+    );
     expect(result.success).toBe(true);
   });
 
@@ -191,30 +189,34 @@ describe("Issue #379: Tuple/destructuring type errors", () => {
         return a;
       }
     `);
-    const fieldErrors = result.errors.filter(e =>
-      e.message.includes("Unknown field in destructuring")
-    );
+    const fieldErrors = result.errors.filter((e) => e.message.includes("Unknown field in destructuring"));
     expect(fieldErrors).toHaveLength(0);
     expect(result.success).toBe(true);
   });
 
   it("destructuring with unknown source type in JS mode", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function test(x) {
         var { a, b } = x;
         return 0;
       }
-    `, { allowJs: true, fileName: "input.js" });
+    `,
+      { allowJs: true, fileName: "input.js" },
+    );
     expect(result.success).toBe(true);
   });
 
   it("array destructuring on unknown type in JS mode", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function test(x) {
         var [a, b] = x;
         return 0;
       }
-    `, { allowJs: true, fileName: "input.js" });
+    `,
+      { allowJs: true, fileName: "input.js" },
+    );
     expect(result.success).toBe(true);
   });
 

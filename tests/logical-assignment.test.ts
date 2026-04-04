@@ -40,7 +40,10 @@ describe("logical assignment operators", () => {
           console_log_number: () => {},
           console_log_string: () => {},
           console_log_bool: () => {},
-          Box_new: (v: number) => { constructed.push(v); return { __box: v }; },
+          Box_new: (v: number) => {
+            constructed.push(v);
+            return { __box: v };
+          },
         },
       });
       const exports = instance.exports as any;
@@ -70,7 +73,10 @@ describe("logical assignment operators", () => {
           console_log_number: () => {},
           console_log_string: () => {},
           console_log_bool: () => {},
-          Box_new: (v: number) => { constructed.push(v); return { __box: v }; },
+          Box_new: (v: number) => {
+            constructed.push(v);
+            return { __box: v };
+          },
         },
       });
       const exports = instance.exports as any;

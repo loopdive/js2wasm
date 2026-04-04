@@ -5,10 +5,15 @@ import { buildImports, instantiateWasm } from "../src/runtime.ts";
 async function run(src: string): Promise<any> {
   const result = compile(src, { fileName: "test.ts" });
   if (!result.success) {
-    throw new Error("Compile error: " + result.errors.map(e => e.message).join("; "));
+    throw new Error("Compile error: " + result.errors.map((e) => e.message).join("; "));
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
-  const { instance } = await instantiateWasm(result.binary, imports.env, imports["wasm:js-string"], imports.string_constants);
+  const { instance } = await instantiateWasm(
+    result.binary,
+    imports.env,
+    imports["wasm:js-string"],
+    imports.string_constants,
+  );
   if (imports.setExports) imports.setExports(instance.exports as Record<string, Function>);
   return (instance.exports as any).test();
 }

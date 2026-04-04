@@ -16,39 +16,49 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("issue-352: delete operator", () => {
   it("delete obj.prop returns true (1)", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         const obj = { a: 1, b: 2 };
         const result = delete (obj as any).a;
         return result ? 1 : 0;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(1);
   });
 
   it("delete variable returns false (0)", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         let x = 42;
         const result = delete (x as any);
         return result ? 1 : 0;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(0);
   });
 
   it("delete with literal returns true", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         const result = delete (0 as any);
         return result ? 1 : 0;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(1);
   });
 
   it("delete result is usable as boolean in if", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         const obj = { x: 10 };
         if (delete (obj as any).x) {
@@ -56,7 +66,9 @@ describe("issue-352: delete operator", () => {
         }
         return 0;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(1);
   });
 

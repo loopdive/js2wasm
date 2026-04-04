@@ -4,7 +4,10 @@ import { buildImports } from "./equivalence/helpers.js";
 
 async function run(source: string, fn: string, args: unknown[]): Promise<unknown> {
   const result = compile(source);
-  if (!result.success) throw new Error(`Compile failed:\n${result.errors.map(e => `L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`);
+  if (!result.success)
+    throw new Error(
+      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
+    );
   const imports = buildImports(result);
   const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
   return (instance.exports as any)[fn](...args);
@@ -12,12 +15,14 @@ async function run(source: string, fn: string, args: unknown[]): Promise<unknown
 
 function compileOnly(source: string) {
   const result = compile(source);
-  if (!result.success) throw new Error(`Compile failed:\n${result.errors.map(e => `L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`);
+  if (!result.success)
+    throw new Error(
+      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
+    );
   return result;
 }
 
 describe("Issue #288: Try/catch/finally complex patterns", () => {
-
   describe("catch without binding", () => {
     it("catch with no variable", async () => {
       const src = `

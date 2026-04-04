@@ -117,8 +117,7 @@ describe("ref.cast peephole optimization (#596)", () => {
       if (lines[i]!.includes("ref.cast") && lines[i + 1]!.includes("ref.as_non_null")) {
         // This should not happen after the peephole pass
         throw new Error(
-          `Found redundant ref.as_non_null after ref.cast at line ${i + 1}:\n` +
-          `  ${lines[i]}\n  ${lines[i + 1]}`,
+          `Found redundant ref.as_non_null after ref.cast at line ${i + 1}:\n` + `  ${lines[i]}\n  ${lines[i + 1]}`,
         );
       }
     }

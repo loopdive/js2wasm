@@ -2,15 +2,37 @@ import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.
 import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
+import {
+  typescriptDefaults,
+  javascriptDefaults,
+  ScriptTarget as MonacoScriptTarget,
+  ModuleKind as MonacoModuleKind,
+  ModuleResolutionKind as MonacoModuleResolutionKind,
+} from "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as ts from "typescript";
-import { compile } from "../src/index.js";
-import { buildImports, instantiateWasm } from "../src/runtime.js";
+import "./ts-lib-files.js";
+import { compile, compileMulti } from "../src/index.js";
+import { optimizeBinaryAsync } from "../src/optimize.js";
+import { buildImports, buildStringConstants, instantiateWasm } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
-import { LayoutManager } from "./layout.js";
+import { LayoutManager, clearSavedLayout } from "./layout.js";
 import DEFAULT_SOURCE from "./examples/dom/calendar.ts?raw";
+import BENCH_HELPERS_SOURCE from "./examples/benchmarks/helpers.ts?raw";
+
+const rawExampleModules = import.meta.glob("./examples/**/*.ts", {
+  query: "?raw",
+  import: "default",
+});
+
+function isPagesPlaygroundPath(): boolean {
+  return /\/playground\/?$/.test(window.location.pathname);
+}
+
+function resolveSiteLink(path: string): string {
+  return isPagesPlaygroundPath() ? `../${path}` : `./${path}`;
+}
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -20,6 +42,24 @@ self.MonacoEnvironment = {
     return new editorWorker();
   },
 };
+
+typescriptDefaults.setCompilerOptions({
+  target: MonacoScriptTarget.ESNext,
+  module: MonacoModuleKind.ESNext,
+  moduleResolution: MonacoModuleResolutionKind.NodeJs,
+  allowImportingTsExtensions: true,
+  allowNonTsExtensions: true,
+  strict: true,
+});
+
+javascriptDefaults.setCompilerOptions({
+  target: MonacoScriptTarget.ESNext,
+  module: MonacoModuleKind.ESNext,
+  moduleResolution: MonacoModuleResolutionKind.NodeJs,
+  allowImportingTsExtensions: true,
+  allowNonTsExtensions: true,
+  checkJs: true,
+});
 
 // ─── Cursor Dark theme ──────────────────────────────────────────────────
 monaco.editor.defineTheme("cursor-dark", {
@@ -93,17 +133,7 @@ monaco.languages.setMonarchTokensProvider("wat", {
     "ref",
     "null",
   ],
-  typeKeywords: [
-    "i32",
-    "i64",
-    "f32",
-    "f64",
-    "funcref",
-    "externref",
-    "anyref",
-    "eqref",
-    "i31ref",
-  ],
+  typeKeywords: ["i32", "i64", "f32", "f64", "funcref", "externref", "anyref", "eqref", "i31ref"],
   instructions: [
     "call",
     "call_indirect",
@@ -212,14 +242,8 @@ monaco.languages.setMonarchTokensProvider("wat", {
       [/[()]/, "delimiter.parenthesis"],
     ],
     instructions: [
-      [
-        /\b(?:call_indirect|call|return|br_table|br_if|br|drop|select|unreachable|nop)\b/,
-        "keyword.instruction",
-      ],
-      [
-        /\b(?:local|global|i32|i64|f32|f64|struct|array|ref)\.[a-z_]+\b/,
-        "keyword.instruction",
-      ],
+      [/\b(?:call_indirect|call|return|br_table|br_if|br|drop|select|unreachable|nop)\b/, "keyword.instruction"],
+      [/\b(?:local|global|i32|i64|f32|f64|struct|array|ref)\.[a-z_]+\b/, "keyword.instruction"],
     ],
     blockComment: [
       [/[^(;]+/, "comment"],
@@ -235,15 +259,30 @@ const WAT_KEYWORD_DOCS: Record<string, { brief: string; url?: string }> = {
   // Value types
   i32: { brief: "32-bit integer", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/i32" },
   i64: { brief: "64-bit integer", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/i64" },
-  f32: { brief: "32-bit IEEE 754 float", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f32" },
-  f64: { brief: "64-bit IEEE 754 float", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f64" },
-  funcref: { brief: "Nullable reference to a function", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types" },
-  externref: { brief: "Opaque host reference — JS object, DOM node, etc.", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types" },
+  f32: {
+    brief: "32-bit IEEE 754 float",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f32",
+  },
+  f64: {
+    brief: "64-bit IEEE 754 float",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f64",
+  },
+  funcref: {
+    brief: "Nullable reference to a function",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types",
+  },
+  externref: {
+    brief: "Opaque host reference — JS object, DOM node, etc.",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types",
+  },
   anyref: { brief: "Reference to any GC-managed value" },
   eqref: { brief: "Reference supporting structural equality" },
   i31ref: { brief: "Unboxed 31-bit integer reference" },
   // Module structure
-  module: { brief: "Top-level container for all definitions", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format" },
+  module: {
+    brief: "Top-level container for all definitions",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format",
+  },
   func: { brief: "Function definition or reference" },
   type: { brief: "Reusable function type signature" },
   param: { brief: "Function parameter" },
@@ -252,17 +291,32 @@ const WAT_KEYWORD_DOCS: Record<string, { brief: string; url?: string }> = {
   global: { brief: "Global variable, accessible from all functions" },
   import: { brief: "Import from the host environment" },
   export: { brief: "Export to the host environment" },
-  memory: { brief: "Linear memory — resizable byte buffer (64KB pages)", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_memory" },
+  memory: {
+    brief: "Linear memory — resizable byte buffer (64KB pages)",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_memory",
+  },
   data: { brief: "Initialize a region of linear memory" },
-  table: { brief: "Typed array of references for indirect calls", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_tables" },
+  table: {
+    brief: "Typed array of references for indirect calls",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_tables",
+  },
   elem: { brief: "Initialize table entries with references" },
   start: { brief: "Function called automatically on instantiation" },
   mut: { brief: "Marks a global as mutable (default is immutable)" },
   offset: { brief: "Memory or table initialization offset" },
   // Control flow
-  block: { brief: "Structured forward-jump target", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/block" },
-  loop: { brief: "Structured backward-jump target", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/loop" },
-  if: { brief: "Pop i32, execute then-branch if non-zero", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/if...else" },
+  block: {
+    brief: "Structured forward-jump target",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/block",
+  },
+  loop: {
+    brief: "Structured backward-jump target",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/loop",
+  },
+  if: {
+    brief: "Pop i32, execute then-branch if non-zero",
+    url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/if...else",
+  },
   then: { brief: "True branch of an if" },
   else: { brief: "False branch of an if" },
   end: { brief: "End of block, loop, if, or function body" },
@@ -282,10 +336,16 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
 
   // local.get/set/tee
   const lm = token.match(/^local\.(get|set|tee)$/);
-  if (lm) return { get: { brief: "Push local variable onto the stack" }, set: { brief: "Pop and store into local variable" }, tee: { brief: "Copy top of stack into local (keep on stack)" } }[lm[1]]!;
+  if (lm)
+    return {
+      get: { brief: "Push local variable onto the stack" },
+      set: { brief: "Pop and store into local variable" },
+      tee: { brief: "Copy top of stack into local (keep on stack)" },
+    }[lm[1]]!;
   // global.get/set
   const gm = token.match(/^global\.(get|set)$/);
-  if (gm) return gm[1] === "get" ? { brief: "Push global value onto the stack" } : { brief: "Pop and store into global" };
+  if (gm)
+    return gm[1] === "get" ? { brief: "Push global value onto the stack" } : { brief: "Pop and store into global" };
 
   // type.const
   if (/^(i32|i64|f32|f64)\.const$/.test(token)) return { brief: `Push a constant ${token.split(".")[0]} value` };
@@ -318,17 +378,23 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
     const gcOps: Record<string, string> = {
       "struct.new": "Allocate struct, pop fields from stack",
       "struct.new_default": "Allocate struct with default values",
-      "struct.get": "Read struct field", "struct.get_s": "Read struct field, sign-extend",
-      "struct.get_u": "Read struct field, zero-extend", "struct.set": "Write struct field",
+      "struct.get": "Read struct field",
+      "struct.get_s": "Read struct field, sign-extend",
+      "struct.get_u": "Read struct field, zero-extend",
+      "struct.set": "Write struct field",
       "array.new": "Allocate array, fill with stack value",
       "array.new_default": "Allocate array with defaults",
       "array.new_fixed": "Allocate array from N stack values",
-      "array.get": "Read array element", "array.get_s": "Read array element, sign-extend",
+      "array.get": "Read array element",
+      "array.get_s": "Read array element, sign-extend",
       "array.get_u": "Read array element, zero-extend",
-      "array.set": "Write array element", "array.len": "Push array length",
-      "ref.null": "Push null reference", "ref.is_null": "Test if reference is null → i32",
+      "array.set": "Write array element",
+      "array.len": "Push array length",
+      "ref.null": "Push null reference",
+      "ref.is_null": "Test if reference is null → i32",
       "ref.func": "Push reference to a function",
-      "ref.test": "Test reference type → i32", "ref.cast": "Cast reference (trap on mismatch)",
+      "ref.test": "Test reference type → i32",
+      "ref.cast": "Cast reference (trap on mismatch)",
     };
     return gcOps[token] ? { brief: gcOps[token] } : null;
   }
@@ -336,47 +402,84 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
   const [, ty, op] = dm;
   // Binary arithmetic
   const bin: Record<string, string> = {
-    add: "Add", sub: "Subtract", mul: "Multiply",
-    div_s: "Signed divide", div_u: "Unsigned divide", div: "Divide",
-    rem_s: "Signed remainder", rem_u: "Unsigned remainder",
-    and: "Bitwise AND", or: "Bitwise OR", xor: "Bitwise XOR",
-    shl: "Shift left", shr_s: "Arithmetic shift right", shr_u: "Logical shift right",
-    rotl: "Rotate left", rotr: "Rotate right",
-    min: "Minimum", max: "Maximum", copysign: "Copy sign",
+    add: "Add",
+    sub: "Subtract",
+    mul: "Multiply",
+    div_s: "Signed divide",
+    div_u: "Unsigned divide",
+    div: "Divide",
+    rem_s: "Signed remainder",
+    rem_u: "Unsigned remainder",
+    and: "Bitwise AND",
+    or: "Bitwise OR",
+    xor: "Bitwise XOR",
+    shl: "Shift left",
+    shr_s: "Arithmetic shift right",
+    shr_u: "Logical shift right",
+    rotl: "Rotate left",
+    rotr: "Rotate right",
+    min: "Minimum",
+    max: "Maximum",
+    copysign: "Copy sign",
   };
   if (bin[op]) return { brief: `${bin[op]} — pop two ${ty}, push result` };
 
   // Comparison
   const cmp: Record<string, string> = {
-    eq: "Equal", ne: "Not equal",
-    lt_s: "Less (signed)", lt_u: "Less (unsigned)", lt: "Less than",
-    gt_s: "Greater (signed)", gt_u: "Greater (unsigned)", gt: "Greater than",
-    le_s: "≤ (signed)", le_u: "≤ (unsigned)", le: "≤",
-    ge_s: "≥ (signed)", ge_u: "≥ (unsigned)", ge: "≥",
+    eq: "Equal",
+    ne: "Not equal",
+    lt_s: "Less (signed)",
+    lt_u: "Less (unsigned)",
+    lt: "Less than",
+    gt_s: "Greater (signed)",
+    gt_u: "Greater (unsigned)",
+    gt: "Greater than",
+    le_s: "≤ (signed)",
+    le_u: "≤ (unsigned)",
+    le: "≤",
+    ge_s: "≥ (signed)",
+    ge_u: "≥ (unsigned)",
+    ge: "≥",
   };
   if (cmp[op]) return { brief: `${cmp[op]} — pop two ${ty}, push i32 (0 or 1)` };
 
   // Unary
   const un: Record<string, string> = {
-    eqz: "Is zero? → push i32", clz: "Count leading zeros", ctz: "Count trailing zeros",
-    popcnt: "Count set bits", neg: "Negate", abs: "Absolute value",
-    ceil: "Round up", floor: "Round down", trunc: "Round toward zero",
-    nearest: "Round to nearest even", sqrt: "Square root",
+    eqz: "Is zero? → push i32",
+    clz: "Count leading zeros",
+    ctz: "Count trailing zeros",
+    popcnt: "Count set bits",
+    neg: "Negate",
+    abs: "Absolute value",
+    ceil: "Round up",
+    floor: "Round down",
+    trunc: "Round toward zero",
+    nearest: "Round to nearest even",
+    sqrt: "Square root",
   };
   if (un[op]) return { brief: un[op] };
 
   // Conversion
   const conv: Record<string, string> = {
     wrap_i64: "Truncate i64 → i32 (low 32 bits)",
-    extend_i32_s: "Sign-extend i32 → i64", extend_i32_u: "Zero-extend i32 → i64",
-    trunc_f32_s: "Truncate f32 → signed int", trunc_f32_u: "Truncate f32 → unsigned int",
-    trunc_f64_s: "Truncate f64 → signed int", trunc_f64_u: "Truncate f64 → unsigned int",
-    convert_i32_s: "Convert signed i32 → float", convert_i32_u: "Convert unsigned i32 → float",
-    convert_i64_s: "Convert signed i64 → float", convert_i64_u: "Convert unsigned i64 → float",
-    demote_f64: "f64 → f32 (lossy)", promote_f32: "f32 → f64",
-    reinterpret_i32: "Reinterpret i32 bits as f32", reinterpret_i64: "Reinterpret i64 bits as f64",
-    reinterpret_f32: "Reinterpret f32 bits as i32", reinterpret_f64: "Reinterpret f64 bits as i64",
-    extend8_s: "Sign-extend low 8 bits", extend16_s: "Sign-extend low 16 bits",
+    extend_i32_s: "Sign-extend i32 → i64",
+    extend_i32_u: "Zero-extend i32 → i64",
+    trunc_f32_s: "Truncate f32 → signed int",
+    trunc_f32_u: "Truncate f32 → unsigned int",
+    trunc_f64_s: "Truncate f64 → signed int",
+    trunc_f64_u: "Truncate f64 → unsigned int",
+    convert_i32_s: "Convert signed i32 → float",
+    convert_i32_u: "Convert unsigned i32 → float",
+    convert_i64_s: "Convert signed i64 → float",
+    convert_i64_u: "Convert unsigned i64 → float",
+    demote_f64: "f64 → f32 (lossy)",
+    promote_f32: "f32 → f64",
+    reinterpret_i32: "Reinterpret i32 bits as f32",
+    reinterpret_i64: "Reinterpret i64 bits as f64",
+    reinterpret_f32: "Reinterpret f32 bits as i32",
+    reinterpret_f64: "Reinterpret f64 bits as i64",
+    extend8_s: "Sign-extend low 8 bits",
+    extend16_s: "Sign-extend low 16 bits",
     trunc_sat_f32_s: "Saturating truncate f32 → signed int",
     trunc_sat_f32_u: "Saturating truncate f32 → unsigned int",
     trunc_sat_f64_s: "Saturating truncate f64 → signed int",
@@ -386,10 +489,17 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
 
   // Load/store
   const mem: Record<string, string> = {
-    load: "Load from memory", load8_s: "Load 8-bit, sign-extend", load8_u: "Load 8-bit, zero-extend",
-    load16_s: "Load 16-bit, sign-extend", load16_u: "Load 16-bit, zero-extend",
-    load32_s: "Load 32-bit, sign-extend", load32_u: "Load 32-bit, zero-extend",
-    store: "Store to memory", store8: "Store low 8 bits", store16: "Store low 16 bits", store32: "Store low 32 bits",
+    load: "Load from memory",
+    load8_s: "Load 8-bit, sign-extend",
+    load8_u: "Load 8-bit, zero-extend",
+    load16_s: "Load 16-bit, sign-extend",
+    load16_u: "Load 16-bit, zero-extend",
+    load32_s: "Load 32-bit, sign-extend",
+    load32_u: "Load 32-bit, zero-extend",
+    store: "Store to memory",
+    store8: "Store low 8 bits",
+    store16: "Store low 16 bits",
+    store32: "Store low 32 bits",
   };
   if (mem[op]) return { brief: `${mem[op]} (${ty})` };
 
@@ -399,7 +509,8 @@ function describeWatInstruction(token: string): { brief: string; url?: string } 
 /** Extract the full dotted token (e.g. "i32.add") at a cursor column. */
 function getWatTokenAt(line: string, col: number): string {
   const idx = col - 1;
-  let start = idx, end = idx;
+  let start = idx,
+    end = idx;
   while (start > 0 && /[\w.]/.test(line[start - 1])) start--;
   while (end < line.length && /[\w.]/.test(line[end])) end++;
   return line.slice(start, end);
@@ -413,16 +524,16 @@ function describeWatLine(lineText: string): string | null {
   // Type definition
   const typeM = t.match(/^\(type\s+(\$\S+)\s+\(func\s*(.*)\)\s*\)?/);
   if (typeM) {
-    const ps = [...typeM[2].matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
-    const rs = [...typeM[2].matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    const ps = [...typeM[2].matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map((m) => m[1]);
+    const rs = [...typeM[2].matchAll(/\(result\s+(\w+)\)/g)].map((m) => m[1]);
     return `Type **${typeM[1]}** — signature (${ps.join(", ") || "∅"}) → ${rs.join(", ") || "void"}`;
   }
 
   // Function definition
   const funcM = t.match(/^\(func\s+(\$\S+)/);
   if (funcM) {
-    const ps = [...t.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
-    const rs = [...t.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    const ps = [...t.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map((m) => m[1]);
+    const rs = [...t.matchAll(/\(result\s+(\w+)\)/g)].map((m) => m[1]);
     return `Function **${funcM[1]}**(${ps.join(", ")})${rs.length ? " → " + rs.join(", ") : ""}`;
   }
 
@@ -485,15 +596,18 @@ function describeWatLine(lineText: string): string | null {
 }
 
 /** Find a function's name and signature in the WAT model by $name. */
-function findWatFuncSignature(watModel: monaco.editor.ITextModel, funcName: string): { params: string[]; results: string[] } | null {
+function findWatFuncSignature(
+  watModel: monaco.editor.ITextModel,
+  funcName: string,
+): { params: string[]; results: string[] } | null {
   const lineCount = watModel.getLineCount();
   const escaped = funcName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(`\\(func\\s+${escaped}(?:\\s|\\()`);
   for (let i = 1; i <= lineCount; i++) {
     const text = watModel.getLineContent(i);
     if (!re.test(text)) continue;
-    const params = [...text.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
-    const results = [...text.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    const params = [...text.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map((m) => m[1]);
+    const results = [...text.matchAll(/\(result\s+(\w+)\)/g)].map((m) => m[1]);
     return { params, results };
   }
   return null;
@@ -528,8 +642,8 @@ function resolveWatType(watModel: monaco.editor.ITextModel, operand: string): st
 }
 
 function extractTypeSig(typeLineText: string): string {
-  const params = [...typeLineText.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
-  const results = [...typeLineText.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+  const params = [...typeLineText.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map((m) => m[1]);
+  const results = [...typeLineText.matchAll(/\(result\s+(\w+)\)/g)].map((m) => m[1]);
   const nameM = typeLineText.match(/\(type\s+(\$\S+)/);
   const name = nameM ? `**${nameM[1]}**` : "type";
   const ret = results.length ? " → " + results.join(", ") : "";
@@ -568,7 +682,10 @@ function findEnclosingWatFunc(watModel: monaco.editor.ITextModel, lineNumber: nu
 }
 
 /** Cached map of TS declaration name → line range, built from the AST. */
-interface TsSymbolInfo { startLine: number; endLine: number }
+interface TsSymbolInfo {
+  startLine: number;
+  endLine: number;
+}
 let tsSymbolCache: { version: number; map: Map<string, TsSymbolInfo> } | null = null;
 
 function getTsSymbolMap(tsModel: monaco.editor.ITextModel): Map<string, TsSymbolInfo> {
@@ -606,8 +723,12 @@ function getTsSymbolMap(tsModel: monaco.editor.ITextModel): Map<string, TsSymbol
       add(prefix + "set_" + node.name.text, node);
     } else if (ts.isPropertyDeclaration(node) && ts.isIdentifier(node.name)) {
       add(prefix + node.name.text, node);
-    } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
-               node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    ) {
       add(prefix + node.name.text, node);
     }
     ts.forEachChild(node, (child) => visit(child, prefix));
@@ -634,7 +755,10 @@ function findEnclosingTsFunc(tsModel: monaco.editor.ITextModel, lineNumber: numb
   for (const [name, { startLine, endLine }] of map) {
     if (lineNumber >= startLine && lineNumber <= endLine) {
       const size = endLine - startLine;
-      if (size < bestSize) { bestSize = size; best = name; }
+      if (size < bestSize) {
+        bestSize = size;
+        best = name;
+      }
     }
   }
   return best;
@@ -699,8 +823,17 @@ interface FileEntry {
   binaryData?: Uint8Array;
 }
 
-const STORAGE_KEY = "ts2wasm_source";
-const saved = sessionStorage.getItem(STORAGE_KEY);
+const STORAGE_KEY = "js2wasm_source";
+const LEGACY_STORAGE_KEY = "ts2wasm_source";
+const saved = sessionStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(LEGACY_STORAGE_KEY);
+
+function canonicalizeBenchmarkHelperImports(source: string, pathHint?: string | null): string {
+  const replacement = pathHint === "examples/benchmarks.ts" ? "./benchmarks/helpers.ts" : "./helpers.ts";
+  return source.replace(
+    /(["'])(?:\/examples\/benchmarks\/helpers\.ts|examples\/benchmarks\/helpers\.ts|\.\/benchmarks\/helpers\.ts|\.\/helpers\.ts)\1/g,
+    `"${replacement}"`,
+  );
+}
 
 function createFileEntry(
   path: string,
@@ -729,15 +862,121 @@ const files: FileEntry[] = [
     "typescript",
     false,
     "input",
-    saved ?? DEFAULT_SOURCE,
+    canonicalizeBenchmarkHelperImports(saved ?? DEFAULT_SOURCE, null),
   ),
   createFileEntry("output/example.wat", "wat", true, "output", ""),
   createFileEntry("output/example.wasm", "text", true, "output", ""),
   createFileEntry("output/example.js", "javascript", true, "output", ""),
 ];
 
+monaco.editor.createModel(
+  BENCH_HELPERS_SOURCE,
+  "typescript",
+  monaco.Uri.parse("file:///examples/benchmarks/helpers.ts"),
+);
+
 const fileMap = new Map<string, FileEntry>(files.map((f) => [f.path, f]));
 const inputFile = fileMap.get("input/example.ts")!;
+let inputModelChangeDisposable: monaco.IDisposable | null = null;
+
+function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
+  inputModelChangeDisposable?.dispose();
+  inputModelChangeDisposable = model.onDidChangeContent(() => {
+    if (t262Loading) return;
+    sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
+    lastResult = null;
+    compileBtn.disabled = false;
+    runBtn.disabled = true;
+    benchBtn.disabled = true;
+    downloadWatBtn.disabled = true;
+    downloadWasmBtn.disabled = true;
+  });
+}
+
+function setInputSourceModel(virtualPath: string, source: string): void {
+  const normalizedSource = canonicalizeBenchmarkHelperImports(source, virtualPath);
+  const uri = monaco.Uri.parse(`file:///${virtualPath}`);
+  let model = monaco.editor.getModel(uri);
+  if (!model) {
+    model = monaco.editor.createModel(normalizedSource, "typescript", uri);
+  } else if (model.getValue() !== normalizedSource) {
+    model.setValue(normalizedSource);
+  }
+  inputFile.path = virtualPath;
+  inputFile.displayName = virtualPath.split("/").pop()!;
+  inputFile.model = model;
+  (tabDefs["ts-source"] as EditorTabDef).model = model;
+  const sourcePanelId = layout.findPanelForTab("ts-source");
+  if (sourcePanelId && layout.getActiveTabForPanel(sourcePanelId) !== "ts-source") {
+    layout.switchTab(sourcePanelId, "ts-source");
+  }
+  bindInputModelPersistence(model);
+  for (const slot of editorSlots) {
+    if (!slot.panelId) continue;
+    if (layout.getActiveTabForPanel(slot.panelId) !== "ts-source") continue;
+    slot.editor.setModel(model);
+  }
+}
+
+async function loadBundledExampleSource(path: string): Promise<string | null> {
+  const key = `./${path}`;
+  const loader = rawExampleModules[key] as (() => Promise<string>) | undefined;
+  if (!loader) return null;
+  return await loader();
+}
+
+function resolveLocalExampleImport(fromPath: string, specifier: string): string | null {
+  if (!specifier.startsWith(".")) return null;
+  const fromParts = fromPath.split("/");
+  fromParts.pop();
+  const specParts = specifier.split("/");
+  for (const part of specParts) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (fromParts.length > 0) fromParts.pop();
+      continue;
+    }
+    fromParts.push(part);
+  }
+  return fromParts.join("/");
+}
+
+function getImportSpecifierAtPosition(model: monaco.editor.ITextModel, position: monaco.Position): string | null {
+  const line = model.getLineContent(position.lineNumber);
+  const matches = [...line.matchAll(/["']([^"']+)["']/g)];
+  for (const match of matches) {
+    const full = match[0];
+    const spec = match[1];
+    const start = (match.index ?? 0) + 1;
+    const end = start + full.length;
+    if (position.column >= start && position.column <= end) {
+      return spec;
+    }
+  }
+  return null;
+}
+
+async function openLocalImportedSource(specifier: string): Promise<boolean> {
+  const fromPath = inputFile.path;
+  const resolvedPath = resolveLocalExampleImport(fromPath, specifier);
+  if (!resolvedPath) return false;
+  if (!(resolvedPath.startsWith("examples/") || resolvedPath.startsWith("input/"))) return false;
+  try {
+    const content = resolvedPath.startsWith("examples/") ? await loadBundledExampleSource(resolvedPath) : null;
+    if (content == null) return false;
+    t262Loading = true;
+    sessionStorage.removeItem(STORAGE_KEY);
+    setInputSourceModel(resolvedPath, content);
+    revealSourceTab();
+    t262SetActive(resolvedPath);
+    updateTabLabel("ts-source", resolvedPath.split("/").pop() ?? "example.ts");
+    t262Loading = false;
+    return true;
+  } catch {
+    t262Loading = false;
+    return false;
+  }
+}
 
 // ─── Editor pool ─────────────────────────────────────────────────────────
 const editorOpts: monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -805,18 +1044,6 @@ function editorForPanel(panelId: string): EditorSlot | null {
   return editorSlots.find((s) => s.panelId === panelId) ?? null;
 }
 
-// Session storage for input
-inputFile.model.onDidChangeContent(() => {
-  if (t262Loading) return;
-  sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
-  lastResult = null;
-  compileBtn.disabled = false;
-  runBtn.disabled = true;
-  benchBtn.disabled = true;
-  downloadWatBtn.disabled = true;
-  downloadWasmBtn.disabled = true;
-});
-
 // ─── DOM references ─────────────────────────────────────────────────────
 const timingSpan = document.getElementById("timing") as HTMLSpanElement;
 const compileBtn = document.getElementById("compile") as HTMLButtonElement;
@@ -825,6 +1052,15 @@ const downloadWatBtn = document.getElementById("download-wat") as HTMLButtonElem
 const downloadWasmBtn = document.getElementById("download-wasm") as HTMLButtonElement;
 const benchBtn = document.getElementById("bench") as HTMLButtonElement;
 const resetLayoutBtn = document.getElementById("reset-layout") as HTMLButtonElement;
+const toggleSidebarBtn = document.getElementById("toggle-sidebar") as HTMLButtonElement;
+const compatLink = document.getElementById("compat-link") as HTMLAnchorElement | null;
+const planLink = document.getElementById("plan-link") as HTMLAnchorElement | null;
+
+if (compatLink) compatLink.href = resolveSiteLink("benchmarks/report.html");
+if (planLink) planLink.href = resolveSiteLink("dashboard/");
+
+// Session storage for input
+bindInputModelPersistence(inputFile.model);
 
 // Create output panel elements programmatically (mounted by layout system)
 const consolePre = document.createElement("pre");
@@ -846,7 +1082,6 @@ const test262Panel = document.createElement("div");
 test262Panel.id = "test262-panel";
 test262Panel.innerHTML = `
   <div class="t262-browser">
-    <div class="t262-stats-bar" id="t262-stats-bar" style="display:none"></div>
     <div class="t262-search-wrap">
       <input class="t262-search" type="text" placeholder="Filter tests..." />
     </div>
@@ -854,59 +1089,158 @@ test262Panel.innerHTML = `
   </div>
 `;
 
-interface T262Category { name: string; path: string; fileCount: number; files: string[]; }
-interface T262CategorySummary { name: string; path: string; fileCount: number; }
+interface T262Category {
+  name: string;
+  path: string;
+  fileCount: number;
+  files: string[];
+}
+interface T262CategorySummary {
+  name: string;
+  path: string;
+  fileCount: number;
+}
 let t262Index: T262CategorySummary[] | null = null;
 const t262FilesCache = new Map<string, string[]>();
+let staticT262Files: Record<string, string[]> | null = null;
+let staticT262FileResults: Record<string, T262FileResult[]> | null = null;
+let staticEquivTests: { name: string; source: string }[] | null = null;
+const prefersStaticPlaygroundData =
+  location.protocol === "https:" || (location.hostname !== "localhost" && location.hostname !== "127.0.0.1");
+
+async function fetchJson<T>(path: string): Promise<T | null> {
+  try {
+    const resp = await fetch(path);
+    if (!resp.ok) return null;
+    return (await resp.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchText(path: string): Promise<string | null> {
+  try {
+    const resp = await fetch(path);
+    if (!resp.ok) return null;
+    return await resp.text();
+  } catch {
+    return null;
+  }
+}
+
+async function loadStaticEquivTests(): Promise<{ name: string; source: string }[]> {
+  if (staticEquivTests) return staticEquivTests;
+  staticEquivTests = (await fetchJson<{ name: string; source: string }[]>("playground-data/equiv-tests.json")) ?? [];
+  return staticEquivTests;
+}
+
+async function loadStaticT262Files(): Promise<Record<string, string[]>> {
+  if (staticT262Files) return staticT262Files;
+  staticT262Files = (await fetchJson<Record<string, string[]>>("playground-data/test262-files.json")) ?? {};
+  return staticT262Files;
+}
+
+async function loadStaticT262FileResults(): Promise<Record<string, T262FileResult[]>> {
+  if (staticT262FileResults) return staticT262FileResults;
+  staticT262FileResults =
+    (await fetchJson<Record<string, T262FileResult[]>>("playground-data/test262-file-results.json")) ?? {};
+  return staticT262FileResults;
+}
 
 // ── Test262 results data ──
 interface T262Report {
   summary: { total: number; pass: number; fail: number; skip: number; compile_error: number };
   categories: { name: string; pass: number; fail: number; skip: number; compile_error: number }[];
 }
-interface T262FileResult { file: string; status: string; error?: string; }
+interface T262FileResult {
+  file: string;
+  status: string;
+  error?: string;
+}
+type SuiteSummary = T262Report["summary"];
+interface T262TrendRun {
+  timestamp: string;
+  pass: number;
+  fail: number;
+  ce: number;
+  skip: number;
+  total: number;
+}
 
 let t262Report: T262Report | null = null;
 const t262FileResultsCache = new Map<string, T262FileResult[]>();
 
+async function loadLatestT262Summary(): Promise<T262Report["summary"] | null> {
+  const runs = await fetchJson<T262TrendRun[]>("benchmarks/results/runs/index.json");
+  const latest = runs?.[runs.length - 1];
+  if (!latest || latest.total === 0) return null;
+  return {
+    total: latest.total,
+    pass: latest.pass,
+    fail: latest.fail,
+    skip: latest.skip,
+    compile_error: latest.ce,
+  };
+}
+
 async function t262LoadReport(): Promise<T262Report | null> {
   if (t262Report) return t262Report;
-  try {
-    const resp = await fetch("/api/test262-results");
-    const data = await resp.json();
-    if (data.error) return null;
-    if (!data.summary || data.summary.total === 0) return null;
-    t262Report = data as T262Report;
-    return t262Report;
-  } catch {
-    return null;
-  }
+  const latestSummary = prefersStaticPlaygroundData ? await loadLatestT262Summary() : null;
+  const data = prefersStaticPlaygroundData
+    ? ((await fetchJson<T262Report>("benchmarks/results/test262-report.json")) ??
+      (await fetchJson<T262Report | { error: string }>("/api/test262-results")))
+    : ((await fetchJson<T262Report | { error: string }>("/api/test262-results")) ??
+      (await fetchJson<T262Report>("benchmarks/results/test262-report.json")));
+  if ((!data || "error" in data) && !latestSummary) return null;
+  const report =
+    !data || "error" in data
+      ? { summary: latestSummary!, categories: [] }
+      : {
+          ...(data as T262Report),
+          summary: latestSummary ?? (data as T262Report).summary,
+        };
+  if (!report.summary || report.summary.total === 0) return null;
+  t262Report = report;
+  return t262Report;
 }
 
 async function t262LoadFileResults(category: string): Promise<T262FileResult[]> {
   if (t262FileResultsCache.has(category)) return t262FileResultsCache.get(category)!;
-  try {
-    const resp = await fetch(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
-    const data = await resp.json() as T262FileResult[];
-    t262FileResultsCache.set(category, data);
-    return data;
-  } catch {
-    return [];
+  let data: T262FileResult[] | null = null;
+  if (!prefersStaticPlaygroundData) {
+    data = await fetchJson<T262FileResult[]>(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
   }
+  if (!data) {
+    const staticResults = await loadStaticT262FileResults();
+    data = staticResults[category] ?? null;
+  }
+  if (!data && prefersStaticPlaygroundData) {
+    data = await fetchJson<T262FileResult[]>(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
+  }
+  const resolved = data ?? [];
+  t262FileResultsCache.set(category, resolved);
+  return resolved;
 }
 
-function t262GetCategoryStats(catName: string): { pass: number; fail: number; skip: number; compile_error: number } | null {
+function t262GetCategoryStats(
+  catName: string,
+): { pass: number; fail: number; skip: number; compile_error: number } | null {
   if (!t262Report) return null;
-  return t262Report.categories.find(c => c.name === catName) ?? null;
+  return t262Report.categories.find((c) => c.name === catName) ?? null;
 }
 
 function t262StatusIcon(status: string): string {
   switch (status) {
-    case "pass": return '<span class="t262-file-status t262-status-pass">&#10003;</span>';
-    case "fail": return '<span class="t262-file-status t262-status-fail">&#10007;</span>';
-    case "compile_error": return '<span class="t262-file-status t262-status-ce">&#9888;</span>';
-    case "skip": return '<span class="t262-file-status t262-status-skip">&#9675;</span>';
-    default: return '<span class="t262-file-status" style="color:#555">?</span>';
+    case "pass":
+      return '<span class="t262-file-status t262-status-pass">&#10003;</span>';
+    case "fail":
+      return '<span class="t262-file-status t262-status-fail">&#10007;</span>';
+    case "compile_error":
+      return '<span class="t262-file-status t262-status-ce">&#9888;</span>';
+    case "skip":
+      return '<span class="t262-file-status t262-status-skip">&#9675;</span>';
+    default:
+      return '<span class="t262-file-status" style="color:#555">?</span>';
   }
 }
 
@@ -914,6 +1248,45 @@ function t262PassRateColor(pct: number): string {
   if (pct >= 90) return "#4caf50";
   if (pct >= 50) return "#ff9800";
   return "#f44336";
+}
+
+function buildSuiteSummaryHtml(summary: SuiteSummary): string {
+  const total = summary.total;
+  const passP = total > 0 ? (summary.pass / total) * 100 : 0;
+  const failP = total > 0 ? (summary.fail / total) * 100 : 0;
+  const ceP = total > 0 ? (summary.compile_error / total) * 100 : 0;
+  const skipP = total > 0 ? (summary.skip / total) * 100 : 0;
+  return `
+    <div class="t262-suite-summary">
+      <div class="t262-stats-segments">
+        <div class="t262-seg-pass" style="width:${passP}%"></div>
+        <div class="t262-seg-fail" style="width:${failP}%"></div>
+        <div class="t262-seg-ce" style="width:${ceP}%"></div>
+        <div class="t262-seg-skip" style="width:${skipP}%"></div>
+      </div>
+      <div class="t262-stats-text">
+        <strong>${summary.pass.toLocaleString()}</strong> pass /
+        <strong>${total.toLocaleString()}</strong> total
+        (${passP.toFixed(1)}%)
+        &mdash;
+        ${summary.fail.toLocaleString()} fail, ${summary.compile_error.toLocaleString()} CE, ${summary.skip.toLocaleString()} skip
+      </div>
+    </div>
+  `;
+}
+
+function buildT262SummaryHtml(summary: T262Report["summary"]): string {
+  return buildSuiteSummaryHtml(summary);
+}
+
+function buildEquivSummaryHtml(total: number): string {
+  return buildSuiteSummaryHtml({
+    total,
+    pass: total,
+    fail: 0,
+    compile_error: 0,
+    skip: 0,
+  });
 }
 const t262ExpandedCats = new Set<string>();
 let t262Filter = "";
@@ -923,39 +1296,83 @@ let t262Loading = false;
 
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
-  // Use summary endpoint — no file lists, ~2KB instead of ~500KB
-  const resp = await fetch("/api/test262-index-summary");
-  const data = await resp.json();
-  t262Index = data.categories as T262CategorySummary[];
+  const data = prefersStaticPlaygroundData
+    ? ((await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json")) ??
+      (await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")))
+    : ((await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")) ??
+      (await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json")));
+  t262Index = data?.categories ?? [];
   return t262Index;
 }
 
 async function t262LoadFiles(category: string): Promise<string[]> {
   if (t262FilesCache.has(category)) return t262FilesCache.get(category)!;
-  const resp = await fetch(`/api/test262-files?category=${encodeURIComponent(category)}`);
-  const files = await resp.json() as string[];
-  t262FilesCache.set(category, files);
-  return files;
+  let files: string[] | null = null;
+  if (!prefersStaticPlaygroundData) {
+    files = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
+  }
+  if (!files) {
+    files = (await loadStaticT262Files())[category] ?? null;
+  }
+  if (!files && prefersStaticPlaygroundData) {
+    files = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
+  }
+  const resolved = files ?? [];
+  t262FilesCache.set(category, resolved);
+  return resolved;
 }
 
 async function t262LoadFile(path: string): Promise<string> {
-  const resp = await fetch(`/api/test262-file?path=${encodeURIComponent(path)}`);
-  return resp.text();
+  if (!prefersStaticPlaygroundData) {
+    const apiData = await fetchText(`/api/test262-file?path=${encodeURIComponent(path)}`);
+    if (apiData !== null) return apiData;
+  }
+  const normalizedPath = path.startsWith("test/") ? path : `test/${path}`;
+  const staticData = await fetchText(`test262/${normalizedPath}`);
+  if (staticData !== null) return staticData;
+  if (prefersStaticPlaygroundData) {
+    const apiData = await fetchText(`/api/test262-file?path=${encodeURIComponent(path)}`);
+    if (apiData !== null) return apiData;
+  }
+  return "";
 }
 
-interface EquivTest { name: string; index: number; }
+interface EquivTest {
+  name: string;
+  index: number;
+}
 let equivIndex: EquivTest[] | null = null;
 
 async function loadEquivIndex(): Promise<EquivTest[]> {
   if (equivIndex) return equivIndex;
-  const resp = await fetch("/api/equiv-index");
-  equivIndex = await resp.json() as EquivTest[];
+  let data: EquivTest[] | null = null;
+  if (!prefersStaticPlaygroundData) {
+    data = await fetchJson<EquivTest[]>("/api/equiv-index");
+  }
+  if (!data) {
+    const staticTests = await loadStaticEquivTests();
+    data = staticTests.map((t, index) => ({ name: t.name, index }));
+  }
+  if ((!data || data.length === 0) && prefersStaticPlaygroundData) {
+    data = await fetchJson<EquivTest[]>("/api/equiv-index");
+  }
+  equivIndex = data ?? [];
   return equivIndex;
 }
 
 async function loadEquivSource(idx: number): Promise<string> {
-  const resp = await fetch(`/api/equiv-source?index=${idx}`);
-  return resp.text();
+  if (!prefersStaticPlaygroundData) {
+    const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
+    if (apiData !== null) return apiData;
+  }
+  const staticTests = await loadStaticEquivTests();
+  const source = staticTests[idx]?.source;
+  if (source != null) return source;
+  if (prefersStaticPlaygroundData) {
+    const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
+    if (apiData !== null) return apiData;
+  }
+  return "";
 }
 
 function t262FileName(fullPath: string): string {
@@ -977,7 +1394,8 @@ async function t262LoadAndShow(filePath: string) {
   const content = await t262LoadFile(filePath);
   t262Loading = true;
   sessionStorage.removeItem(STORAGE_KEY);
-  inputFile.model.setValue(content);
+  setInputSourceModel(filePath, content);
+  revealSourceTab();
   t262SetActive(filePath);
   const fname = t262FileName(filePath);
   updateTabLabel("ts-source", fname);
@@ -987,10 +1405,238 @@ async function t262LoadAndShow(filePath: string) {
 
 // Build a recursive tree from category paths
 interface T262TreeNode {
-  name: string;       // segment name (e.g. "Math")
-  fullPath: string;   // full path up to this node (e.g. "built-ins/Math")
+  name: string; // segment name (e.g. "Math")
+  fullPath: string; // full path up to this node (e.g. "built-ins/Math")
   children: Map<string, T262TreeNode>;
-  categories: T262CategorySummary[];  // leaf categories at this node
+  categories: T262CategorySummary[]; // leaf categories at this node
+}
+
+interface BenchmarkExample {
+  name: string;
+  path: string;
+  title: string;
+  description: string;
+  benchmarkFunction: string;
+}
+
+interface BenchmarkSidebarResult {
+  wasmUs: number;
+  jsUs: number;
+  deltaPct: number;
+}
+
+interface BenchmarkSidebarSnapshot {
+  path: string;
+  wasmUs: number;
+  jsUs: number;
+}
+
+const BENCHMARK_IDB_NAME = "js2wasm-benchmarks";
+const BENCHMARK_IDB_STORE = "sidebar-results";
+
+const benchmarkExamples: BenchmarkExample[] = [
+  {
+    name: "fib.ts",
+    path: "examples/benchmarks/fib.ts",
+    title: "fib(30)",
+    description: "Recursive — pure i32/f64 math, no host calls",
+    benchmarkFunction: "bench_fib",
+  },
+  {
+    name: "loop.ts",
+    path: "examples/benchmarks/loop.ts",
+    title: "Loop: sum 1..1M",
+    description: "Tight numeric loop, no allocations",
+    benchmarkFunction: "bench_loop",
+  },
+  {
+    name: "dom.ts",
+    path: "examples/benchmarks/dom.ts",
+    title: "DOM: 100 elements",
+    description: "Host boundary — createElement + appendChild",
+    benchmarkFunction: "bench_dom",
+  },
+  {
+    name: "string.ts",
+    path: "examples/benchmarks/string.ts",
+    title: "String: concat 1k",
+    description: "wasm:js-string concat per iteration",
+    benchmarkFunction: "bench_string",
+  },
+  {
+    name: "array.ts",
+    path: "examples/benchmarks/array.ts",
+    title: "Array: fill+sum 10k",
+    description: "Wasm GC array — push / get loop",
+    benchmarkFunction: "bench_array",
+  },
+  {
+    name: "style.ts",
+    path: "examples/benchmarks/style.ts",
+    title: "Style: 100 updates",
+    description: "Host boundary — style.background per iteration",
+    benchmarkFunction: "bench_style",
+  },
+];
+const benchmarkSidebarResults = new Map<string, BenchmarkSidebarResult>();
+let benchmarkSidebarSnapshotLoaded = false;
+
+function isBrowserOnlyBenchmark(path: string): boolean {
+  return path === "examples/benchmarks/dom.ts" || path === "examples/benchmarks/style.ts";
+}
+
+function openBenchmarkDb(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    if (typeof indexedDB === "undefined") {
+      resolve(null);
+      return;
+    }
+    const req = indexedDB.open(BENCHMARK_IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(BENCHMARK_IDB_STORE)) {
+        db.createObjectStore(BENCHMARK_IDB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function loadBrowserBenchmarkSidebarResults(): Promise<BenchmarkSidebarSnapshot[]> {
+  const db = await openBenchmarkDb();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    const tx = db.transaction(BENCHMARK_IDB_STORE, "readonly");
+    const store = tx.objectStore(BENCHMARK_IDB_STORE);
+    const req = store.getAll();
+    req.onsuccess = () => {
+      db.close();
+      resolve((req.result as BenchmarkSidebarSnapshot[] | undefined) ?? []);
+    };
+    req.onerror = () => {
+      db.close();
+      resolve([]);
+    };
+  });
+}
+
+async function saveBrowserBenchmarkSidebarResult(snapshot: BenchmarkSidebarSnapshot): Promise<void> {
+  if (!isBrowserOnlyBenchmark(snapshot.path)) return;
+  const db = await openBenchmarkDb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(BENCHMARK_IDB_STORE, "readwrite");
+    tx.objectStore(BENCHMARK_IDB_STORE).put(snapshot, snapshot.path);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      resolve();
+    };
+  });
+}
+
+async function ensureBenchmarkSidebarSnapshot(): Promise<void> {
+  if (benchmarkSidebarSnapshotLoaded || benchmarkSidebarResults.size > 0) return;
+  const snapshot = await fetchJson<BenchmarkSidebarSnapshot[]>(
+    "../benchmarks/results/playground-benchmark-sidebar.json",
+  );
+  const browserSnapshot = await loadBrowserBenchmarkSidebarResults();
+  benchmarkSidebarSnapshotLoaded = true;
+  for (const item of [...(snapshot ?? []), ...browserSnapshot]) {
+    benchmarkSidebarResults.set(item.path, {
+      wasmUs: item.wasmUs,
+      jsUs: item.jsUs,
+      deltaPct: (item.jsUs / item.wasmUs - 1) * 100,
+    });
+  }
+}
+
+function isBenchmarkProjectPath(path: string | null): boolean {
+  return !!path && (path === "examples/benchmarks.ts" || path.startsWith("examples/benchmarks/"));
+}
+
+function usesBenchmarkHelpers(source: string): boolean {
+  return /^\s*import\s+\{[^}]+\}\s+from\s+["']\.\/(?:benchmarks\/)?helpers\.ts["'];?\s*$/m.test(source);
+}
+
+function normalizeBenchmarkHelperImport(source: string, entryPath: string | null): string {
+  const replacement = entryPath === "examples/benchmarks.ts" ? "./benchmarks/helpers.ts" : "./helpers.ts";
+  return source.replace(
+    /(["'])(?:\/examples\/benchmarks\/helpers\.ts|examples\/benchmarks\/helpers\.ts|\.\/benchmarks\/helpers\.ts|\.\/helpers\.ts)\1/g,
+    `"${replacement}"`,
+  );
+}
+
+function buildCompileResultForEditorSource(source: string) {
+  const entryPath = isBenchmarkProjectPath(t262ActivePath)
+    ? t262ActivePath!
+    : source.includes("bench_")
+      ? "examples/benchmarks.ts"
+      : "example.ts";
+  const normalizedSource = normalizeBenchmarkHelperImport(source, entryPath);
+  if (!isBenchmarkProjectPath(t262ActivePath) && !usesBenchmarkHelpers(normalizedSource)) {
+    return compile(normalizedSource);
+  }
+  return compileMulti(
+    {
+      [entryPath]: normalizedSource,
+      "examples/benchmarks/helpers.ts": BENCH_HELPERS_SOURCE,
+    },
+    entryPath,
+  );
+}
+
+function buildBenchmarkRuntimeJs(source: string): string {
+  const strippedSource = normalizeBenchmarkHelperImport(source, t262ActivePath)
+    .replace(/^\s*import\s+\{[^}]+\}\s+from\s+["']\.\/(?:benchmarks\/)?helpers\.ts["'];?\s*$/gm, "")
+    .replace(/^\s*import\s+["'][^"']+["'];?\s*$/gm, "")
+    .trim();
+  return `${BENCH_HELPERS_SOURCE}\n${strippedSource}`;
+}
+
+async function loadBenchmarkJsFunctions(
+  source: string,
+  benchNames: string[],
+): Promise<{ funcs: Record<string, Function>; dispose: () => void }> {
+  const helperJs = ts.transpileModule(BENCH_HELPERS_SOURCE, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+    },
+  }).outputText;
+  const helperUrl = URL.createObjectURL(new Blob([helperJs], { type: "text/javascript" }));
+  const transpiledEntry = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+    },
+  }).outputText;
+  const entryJs = transpiledEntry.replace(
+    /(["'])(?:\.\/helpers\.ts|\.\/benchmarks\/helpers\.ts|\/examples\/benchmarks\/helpers\.ts|examples\/benchmarks\/helpers\.ts)\1/g,
+    `"${helperUrl}"`,
+  );
+  const entryUrl = URL.createObjectURL(new Blob([entryJs], { type: "text/javascript" }));
+  try {
+    const mod = await import(/* @vite-ignore */ entryUrl);
+    const funcs = Object.fromEntries(
+      benchNames.filter((name) => typeof mod[name] === "function").map((name) => [name, mod[name] as Function]),
+    );
+    return {
+      funcs,
+      dispose: () => {
+        URL.revokeObjectURL(entryUrl);
+        URL.revokeObjectURL(helperUrl);
+      },
+    };
+  } catch (err) {
+    URL.revokeObjectURL(entryUrl);
+    URL.revokeObjectURL(helperUrl);
+    throw err;
+  }
 }
 
 function t262BuildTree(cats: T262CategorySummary[]): T262TreeNode {
@@ -1018,35 +1664,10 @@ async function t262Render() {
   if (!listEl) return;
   listEl.innerHTML = "";
 
+  await ensureBenchmarkSidebarSnapshot();
+
   // Load test262 results report
   const report = await t262LoadReport();
-  const statsBar = test262Panel.querySelector("#t262-stats-bar") as HTMLElement;
-  if (report && statsBar) {
-    const s = report.summary;
-    const total = s.total;
-    const passP = total > 0 ? (s.pass / total * 100) : 0;
-    const failP = total > 0 ? (s.fail / total * 100) : 0;
-    const ceP = total > 0 ? (s.compile_error / total * 100) : 0;
-    const skipP = total > 0 ? (s.skip / total * 100) : 0;
-    statsBar.style.display = "";
-    statsBar.innerHTML = `
-      <div class="t262-stats-segments">
-        <div class="t262-seg-pass" style="width:${passP}%"></div>
-        <div class="t262-seg-fail" style="width:${failP}%"></div>
-        <div class="t262-seg-ce" style="width:${ceP}%"></div>
-        <div class="t262-seg-skip" style="width:${skipP}%"></div>
-      </div>
-      <div class="t262-stats-text">
-        <strong>${s.pass.toLocaleString()}</strong> pass /
-        <strong>${total.toLocaleString()}</strong> total
-        (${passP.toFixed(1)}%)
-        &mdash;
-        ${s.fail} fail, ${s.compile_error} CE, ${s.skip} skip
-      </div>
-    `;
-  } else if (statsBar) {
-    statsBar.style.display = "none";
-  }
 
   const filter = t262Filter.toLowerCase();
 
@@ -1062,11 +1683,12 @@ async function t262Render() {
     entry.textContent = ex.name;
     entry.dataset.path = ex.path;
     entry.addEventListener("click", async () => {
-      const resp = await fetch("/" + ex.path);
-      const content = await resp.text();
+      const content = await loadBundledExampleSource(ex.path);
+      if (content == null) return;
       t262Loading = true;
       sessionStorage.removeItem(STORAGE_KEY);
-      inputFile.model.setValue(content);
+      setInputSourceModel(ex.path, content);
+      revealSourceTab();
       t262SetActive(ex.path);
       updateTabLabel("ts-source", ex.name);
       compileOnly();
@@ -1075,8 +1697,89 @@ async function t262Render() {
     parent.appendChild(entry);
   }
 
-  const anyExampleMatches = exampleGroups.some(g =>
-    !filter || g.folder.includes(filter) || g.files.some(f => f.name.toLowerCase().includes(filter))
+  async function loadBenchmarkFile(bench: BenchmarkExample) {
+    const rawContent = await loadBundledExampleSource(bench.path);
+    if (rawContent == null) return;
+    const content = normalizeBenchmarkHelperImport(rawContent, bench.path);
+    t262Loading = true;
+    sessionStorage.removeItem(STORAGE_KEY);
+    setInputSourceModel(bench.path, content);
+    revealSourceTab();
+    t262SetActive(bench.path);
+    updateTabLabel("ts-source", bench.name);
+    compileOnly();
+    t262Loading = false;
+  }
+
+  function renderBenchmarkFile(bench: BenchmarkExample, parent: HTMLElement) {
+    const entry = document.createElement("div");
+    entry.className = "t262-file" + (t262ActivePath === bench.path ? " active" : "");
+    entry.dataset.path = bench.path;
+    entry.title = bench.description;
+    const row = document.createElement("div");
+    row.className = "bench-file-row";
+    const runInlineBtn = document.createElement("button");
+    runInlineBtn.className = "bench-run-btn";
+    runInlineBtn.type = "button";
+    runInlineBtn.innerHTML = "&#9654;";
+    runInlineBtn.title = `Benchmark ${bench.name}`;
+    runInlineBtn.disabled = benchBtn.disabled;
+    runInlineBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      if (runInlineBtn.disabled) return;
+      await loadBenchmarkFile(bench);
+      await runBenchmark();
+    });
+    row.appendChild(runInlineBtn);
+    const titleEl = document.createElement("div");
+    titleEl.className = "bench-file-name";
+    titleEl.textContent = bench.name;
+    row.appendChild(titleEl);
+    entry.appendChild(row);
+    const result = benchmarkSidebarResults.get(bench.path);
+    if (result) {
+      const meter = document.createElement("div");
+      meter.className = "bench-result";
+      const clamped = Math.max(-100, Math.min(100, result.deltaPct));
+      const fillWidth = Math.min(Math.abs(clamped), 100) / 2;
+      const fillStart = clamped >= 0 ? 50 : 50 - fillWidth;
+      const fillEnd = clamped >= 0 ? 50 + fillWidth : 50;
+      const fillColor = clamped >= 0 ? "#3fb950" : "#f85149";
+      meter.style.background = `linear-gradient(to right,
+        rgba(248, 81, 73, 0.12) 0%,
+        rgba(248, 81, 73, 0.12) 49.5%,
+        rgba(255, 255, 255, 0.18) 49.5%,
+        rgba(255, 255, 255, 0.18) 50.5%,
+        rgba(63, 185, 80, 0.12) 50.5%,
+        rgba(63, 185, 80, 0.12) 100%),
+        linear-gradient(to right,
+        transparent 0%,
+        transparent ${fillStart}%,
+        ${fillColor} ${fillStart}%,
+        ${fillColor} ${fillEnd}%,
+        transparent ${fillEnd}%,
+        transparent 100%)`;
+      const label = document.createElement("div");
+      label.className = "bench-result-label";
+      label.style.color = clamped >= 0 ? "#7ee787" : "#ff8e8a";
+      const signed = `${result.deltaPct >= 0 ? "+" : ""}${result.deltaPct.toFixed(0)}%`;
+      label.textContent = `${signed} vs JS`;
+      entry.appendChild(meter);
+      entry.appendChild(label);
+    } else if (isBrowserOnlyBenchmark(bench.path)) {
+      const label = document.createElement("div");
+      label.className = "bench-result-label";
+      label.textContent = "run in browser";
+      entry.appendChild(label);
+    }
+    entry.addEventListener("click", async () => {
+      await loadBenchmarkFile(bench);
+    });
+    parent.appendChild(entry);
+  }
+
+  const anyExampleMatches = exampleGroups.some(
+    (g) => !filter || g.folder.includes(filter) || g.files.some((f) => f.name.toLowerCase().includes(filter)),
   );
   if (anyExampleMatches) {
     const exHeader = document.createElement("div");
@@ -1085,8 +1788,8 @@ async function t262Render() {
     listEl.appendChild(exHeader);
 
     for (const group of exampleGroups) {
-      const groupMatches = !filter || group.folder.includes(filter) ||
-        group.files.some(f => f.name.toLowerCase().includes(filter));
+      const groupMatches =
+        !filter || group.folder.includes(filter) || group.files.some((f) => f.name.toLowerCase().includes(filter));
       if (!groupMatches) continue;
       await renderTopFolder(group.folder, `__ex_${group.folder}__`, listEl, (container) => {
         const filesEl = document.createElement("div");
@@ -1122,7 +1825,7 @@ async function t262Render() {
       if (cat.name.toLowerCase().includes(f) || cat.path.toLowerCase().includes(f)) return true;
       // Check cached file lists (if already loaded)
       const cached = t262FilesCache.get(cat.path);
-      if (cached?.some(file => file.toLowerCase().includes(f))) return true;
+      if (cached?.some((file) => file.toLowerCase().includes(f))) return true;
     }
     for (const child of node.children.values()) {
       if (nodeMatchesFilter(child, f)) return true;
@@ -1132,14 +1835,25 @@ async function t262Render() {
 
   // Aggregate stats for a tree node (sum across all categories in subtree)
   function nodeStats(node: T262TreeNode): { pass: number; fail: number; skip: number; ce: number; total: number } {
-    let pass = 0, fail = 0, skip = 0, ce = 0;
+    let pass = 0,
+      fail = 0,
+      skip = 0,
+      ce = 0;
     for (const cat of node.categories) {
       const s = t262GetCategoryStats(cat.path);
-      if (s) { pass += s.pass; fail += s.fail; skip += s.skip; ce += s.compile_error; }
+      if (s) {
+        pass += s.pass;
+        fail += s.fail;
+        skip += s.skip;
+        ce += s.compile_error;
+      }
     }
     for (const child of node.children.values()) {
       const cs = nodeStats(child);
-      pass += cs.pass; fail += cs.fail; skip += cs.skip; ce += cs.ce;
+      pass += cs.pass;
+      fail += cs.fail;
+      skip += cs.skip;
+      ce += cs.ce;
     }
     return { pass, fail, skip, ce, total: pass + fail + skip + ce };
   }
@@ -1147,7 +1861,7 @@ async function t262Render() {
   // Build a stats badge HTML string
   function statsBadge(stats: { pass: number; fail: number; skip: number; ce: number; total: number }): string {
     if (!report || stats.total === 0) return "";
-    const pct = stats.total > 0 ? (stats.pass / stats.total * 100) : 0;
+    const pct = stats.total > 0 ? (stats.pass / stats.total) * 100 : 0;
     const color = t262PassRateColor(pct);
     return `<span class="t262-cat-stats"><span class="t262-cat-bar"><span class="t262-cat-bar-fill" style="width:${pct.toFixed(0)}%;background:${color}"></span></span><span class="t262-cat-pct" style="color:${color}">${pct.toFixed(0)}%</span></span>`;
   }
@@ -1177,16 +1891,14 @@ async function t262Render() {
 
       const isLeaf = child.children.size === 0 && child.categories.length > 0;
       const folderKey = child.fullPath;
-      const expanded = isLeaf
-        ? t262ExpandedCats.has(child.categories[0]?.path)
-        : t262ExpandedFolders.has(folderKey);
+      const expanded = isLeaf ? t262ExpandedCats.has(child.categories[0]?.path) : t262ExpandedFolders.has(folderKey);
 
       const el = document.createElement("div");
       el.className = "t262-category";
 
       const headerEl = document.createElement("div");
       headerEl.className = "t262-cat-header";
-      headerEl.style.paddingLeft = (10 + depth * 12) + "px";
+      headerEl.style.paddingLeft = 10 + depth * 12 + "px";
       const count = nodeFileCount(child);
       const stats = nodeStats(child);
       const badge = statsBadge(stats);
@@ -1215,13 +1927,11 @@ async function t262Render() {
         for (const cat of child.categories) {
           // Lazy-load file list on demand (#868)
           const allFiles = await t262LoadFiles(cat.path);
-          const displayFiles = filter
-            ? allFiles.filter(f => f.toLowerCase().includes(filter))
-            : allFiles;
+          const displayFiles = filter ? allFiles.filter((f) => f.toLowerCase().includes(filter)) : allFiles;
 
           const filesEl = document.createElement("div");
           filesEl.className = "t262-files";
-          filesEl.style.paddingLeft = (10 + (depth + 1) * 12) + "px";
+          filesEl.style.paddingLeft = 10 + (depth + 1) * 12 + "px";
 
           // Pre-load file results for this category if report is available
           const resultLookup = report ? await getFileResultLookup(cat.path) : null;
@@ -1249,8 +1959,12 @@ async function t262Render() {
 
   // Helper to render a top-level folder
   async function renderTopFolder(
-    name: string, folderKey: string, parent: HTMLElement,
+    name: string,
+    folderKey: string,
+    parent: HTMLElement,
     renderContents: (container: HTMLElement) => void | Promise<void>,
+    summaryHtml?: string,
+    onOpen?: () => void | Promise<void>,
   ) {
     if (filter && !name.toLowerCase().includes(filter)) {
       // Still render if contents might match — caller handles filtering
@@ -1261,11 +1975,19 @@ async function t262Render() {
 
     const headerEl = document.createElement("div");
     headerEl.className = "t262-cat-header";
-    headerEl.innerHTML = `<span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${name}</span>`;
+    headerEl.innerHTML = `
+      <div class="t262-top-header">
+        <span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span>
+        <span class="t262-cat-name">${name}</span>
+      </div>
+      ${summaryHtml ?? ""}
+    `;
     headerEl.addEventListener("click", async () => {
-      if (t262ExpandedFolders.has(folderKey)) t262ExpandedFolders.delete(folderKey);
+      const wasExpanded = t262ExpandedFolders.has(folderKey);
+      if (wasExpanded) t262ExpandedFolders.delete(folderKey);
       else t262ExpandedFolders.add(folderKey);
       await t262Render();
+      if (!wasExpanded && onOpen) await onOpen();
     });
     el.appendChild(headerEl);
 
@@ -1276,37 +1998,42 @@ async function t262Render() {
     parent.appendChild(el);
   }
 
-  // ── ts2wasm folder (equivalence tests) ──
+  // ── js2wasm folder (equivalence tests) ──
   const equivTests = await loadEquivIndex();
-  const equivMatches = filter
-    ? equivTests.filter(t => t.name.toLowerCase().includes(filter))
-    : equivTests;
+  const equivMatches = filter ? equivTests.filter((t) => t.name.toLowerCase().includes(filter)) : equivTests;
   if (!filter || equivMatches.length > 0 || "js2wasm test suite".includes(filter)) {
-    await renderTopFolder("js2wasm Test Suite", "__ts2wasm__", listEl, (container) => {
-      const filesEl = document.createElement("div");
-      filesEl.className = "t262-files";
-      filesEl.style.paddingLeft = "22px";
-      for (const t of equivMatches) {
-        const path = `equiv:${t.index}`;
-        const fileEl = document.createElement("div");
-        fileEl.className = "t262-file" + (t262ActivePath === path ? " active" : "");
-        fileEl.textContent = t.name;
-        fileEl.title = t.name;
-        fileEl.dataset.path = path;
-        fileEl.addEventListener("click", async () => {
-          const source = await loadEquivSource(t.index);
-          t262Loading = true;
-          sessionStorage.removeItem(STORAGE_KEY);
-          inputFile.model.setValue(source);
-          t262SetActive(path);
-          updateTabLabel("ts-source", t.name);
-          compileOnly();
-          t262Loading = false;
-        });
-        filesEl.appendChild(fileEl);
-      }
-      container.appendChild(filesEl);
-    });
+    await renderTopFolder(
+      "js2wasm Test Suite",
+      "__js2wasm__",
+      listEl,
+      (container) => {
+        const filesEl = document.createElement("div");
+        filesEl.className = "t262-files";
+        filesEl.style.paddingLeft = "22px";
+        for (const t of equivMatches) {
+          const path = `equiv:${t.index}`;
+          const fileEl = document.createElement("div");
+          fileEl.className = "t262-file" + (t262ActivePath === path ? " active" : "");
+          fileEl.textContent = t.name;
+          fileEl.title = t.name;
+          fileEl.dataset.path = path;
+          fileEl.addEventListener("click", async () => {
+            const source = await loadEquivSource(t.index);
+            t262Loading = true;
+            sessionStorage.removeItem(STORAGE_KEY);
+            setInputSourceModel("input/example.ts", source);
+            revealSourceTab();
+            t262SetActive(path);
+            updateTabLabel("ts-source", t.name);
+            compileOnly();
+            t262Loading = false;
+          });
+          filesEl.appendChild(fileEl);
+        }
+        container.appendChild(filesEl);
+      },
+      buildEquivSummaryHtml(equivTests.length),
+    );
   }
 
   // ── test262 folder ──
@@ -1314,21 +2041,39 @@ async function t262Render() {
   const tree = t262BuildTree(cats);
   const t262Matches = !filter || nodeMatchesFilter(tree, filter) || "ecmascript test suite".includes(filter);
   if (t262Matches) {
-    await renderTopFolder("ECMAScript Test Suite", "__test262__", listEl, async (container) => {
-      await renderNode(tree, container, 1);
-    });
+    await renderTopFolder(
+      "ECMAScript Test Suite",
+      "__test262__",
+      listEl,
+      async (container) => {
+        await renderNode(tree, container, 1);
+      },
+      report ? buildT262SummaryHtml(report.summary) : "",
+    );
   }
 
   // ── BENCHMARKS section ──
-  const benchFile = { name: "benchmarks.ts", path: "examples/benchmarks.ts" };
-  const benchMatches = !filter || "benchmarks".includes(filter);
-  if (benchMatches) {
+  const benchMatches = benchmarkExamples.filter(
+    (bench) =>
+      !filter ||
+      "benchmark suite".includes(filter) ||
+      bench.name.toLowerCase().includes(filter) ||
+      bench.title.toLowerCase().includes(filter) ||
+      bench.description.toLowerCase().includes(filter),
+  );
+  if (benchMatches.length > 0) {
     const benchHeader = document.createElement("div");
     benchHeader.className = "t262-section-header";
     benchHeader.textContent = "BENCHMARKS";
     listEl.appendChild(benchHeader);
 
-    renderExampleFile(benchFile, listEl);
+    await renderTopFolder("js2wasm Benchmark Suite", "__benchmarks__", listEl, (container) => {
+      const filesEl = document.createElement("div");
+      filesEl.className = "t262-files";
+      filesEl.style.paddingLeft = "22px";
+      for (const bench of benchMatches) renderBenchmarkFile(bench, filesEl);
+      container.appendChild(filesEl);
+    });
   }
 }
 
@@ -1356,8 +2101,8 @@ treemap.onNodeSelect = ({ name, fullPath }) => {
 
 // ─── Cross-highlight state (declared early, used by layout callbacks) ────
 interface HighlightTarget {
-  name: string;           // function name (no $) or section name
-  treemapPath: string;    // e.g. "code/fib", "import", "type"
+  name: string; // function name (no $) or section name
+  treemapPath: string; // e.g. "code/fib", "import", "type"
   kind: "function" | "section" | "import";
 }
 type HighlightSource = "ts" | "wat" | "hex" | "treemap";
@@ -1379,8 +2124,16 @@ const wasmHexModel = fileMap.get("output/example.wasm")!.model;
 // ─── Layout manager ─────────────────────────────────────────────────────
 
 // Tab content definitions
-interface EditorTabDef { kind: "editor"; model: monaco.editor.ITextModel; readOnly: boolean; glyphMargin?: boolean; }
-interface DomTabDef { kind: "dom"; element: HTMLElement; }
+interface EditorTabDef {
+  kind: "editor";
+  model: monaco.editor.ITextModel;
+  readOnly: boolean;
+  glyphMargin?: boolean;
+}
+interface DomTabDef {
+  kind: "dom";
+  element: HTMLElement;
+}
 type TabContentDef = EditorTabDef | DomTabDef;
 
 const tabDefs: Record<string, TabContentDef> = {
@@ -1388,11 +2141,11 @@ const tabDefs: Record<string, TabContentDef> = {
   "wat-output": { kind: "editor", model: watFile.model, readOnly: true, glyphMargin: true },
   "wasm-hex": { kind: "editor", model: wasmHexFile.model, readOnly: true, glyphMargin: true },
   "modular-ts": { kind: "editor", model: modularFile.model, readOnly: true },
-  "errors": { kind: "dom", element: errorsPre },
-  "preview": { kind: "dom", element: previewPanel },
-  "console": { kind: "dom", element: consolePre },
-  "treemap": { kind: "dom", element: treemapPanel },
-  "test262": { kind: "dom", element: test262Panel },
+  errors: { kind: "dom", element: errorsPre },
+  preview: { kind: "dom", element: previewPanel },
+  console: { kind: "dom", element: consolePre },
+  treemap: { kind: "dom", element: treemapPanel },
+  test262: { kind: "dom", element: test262Panel },
 };
 
 const layoutRoot = document.getElementById("layout-root")!;
@@ -1472,9 +2225,20 @@ const allTabIds = new Set(Object.keys(tabDefs));
 const savedLayout = LayoutManager.loadLayout(allTabIds);
 layout.init(savedLayout ?? undefined);
 
+function syncSidebarToggleButton(): void {
+  toggleSidebarBtn.setAttribute("aria-pressed", layout.hasPanel("sidebar-left") ? "true" : "false");
+}
+
+function toggleSidebar(): void {
+  layout.toggleSidebar();
+  syncSidebarToggleButton();
+}
+
+syncSidebarToggleButton();
+
 // ─── Tab size labels ─────────────────────────────────────────────────────
 
-const fmtSize = (b: number) => b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`;
+const fmtSize = (b: number) => (b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`);
 
 const tabBaseTitles: Record<string, string> = {
   "ts-source": "TypeScript (.ts)",
@@ -1505,7 +2269,10 @@ function updateTabSizes() {
     const baseTitle = tabBaseTitles[tabId] ?? tabId;
 
     const raw = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
-    if (raw === 0) { updateTabLabel(tabId, baseTitle); continue; }
+    if (raw === 0) {
+      updateTabLabel(tabId, baseTitle);
+      continue;
+    }
 
     updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)})`);
 
@@ -1531,6 +2298,13 @@ function openFileTab(path: string) {
   if (!tabId) return;
   const panelId = layout.findPanelForTab(tabId);
   if (panelId) layout.switchTab(panelId, tabId);
+}
+
+function revealSourceTab(): void {
+  openFileTab("input/example.ts");
+  requestAnimationFrame(() => {
+    editorForTab("ts-source")?.focus();
+  });
 }
 
 function showOutputPanel(name: string) {
@@ -1560,10 +2334,14 @@ function xHighlightEditors(target: HighlightTarget, pinned: boolean, source: Hig
     if (model === inputFile.model && source !== "ts" && target.kind === "function") {
       const line = findTsSourceLine(inputFile.model, target.name);
       if (line) {
-        xDecos.push(slot.editor.createDecorationsCollection([{
-          range: new monaco.Range(line, 1, line, 1),
-          options: { className: cls, isWholeLine: true },
-        }]));
+        xDecos.push(
+          slot.editor.createDecorationsCollection([
+            {
+              range: new monaco.Range(line, 1, line, 1),
+              options: { className: cls, isWholeLine: true },
+            },
+          ]),
+        );
         slot.editor.revealLineInCenter(line);
       }
     }
@@ -1572,9 +2350,14 @@ function xHighlightEditors(target: HighlightTarget, pinned: boolean, source: Hig
     if (model === wasmHexFile.model && source !== "hex") {
       const range = hexRangeForNode(target.name, target.treemapPath);
       if (range) {
-        xDecos.push(slot.editor.createDecorationsCollection([{
-          range, options: { className: cls, isWholeLine: true },
-        }]));
+        xDecos.push(
+          slot.editor.createDecorationsCollection([
+            {
+              range,
+              options: { className: cls, isWholeLine: true },
+            },
+          ]),
+        );
         slot.editor.revealRangeInCenter(range);
       }
     }
@@ -1584,9 +2367,14 @@ function xHighlightEditors(target: HighlightTarget, pinned: boolean, source: Hig
       const watLine = watLineForNode(target.name, target.treemapPath);
       if (watLine) {
         const range = new monaco.Range(watLine.start, 1, watLine.end, 1);
-        xDecos.push(slot.editor.createDecorationsCollection([{
-          range, options: { className: cls, isWholeLine: true },
-        }]));
+        xDecos.push(
+          slot.editor.createDecorationsCollection([
+            {
+              range,
+              options: { className: cls, isWholeLine: true },
+            },
+          ]),
+        );
         slot.editor.revealRangeInCenter(range);
       }
     }
@@ -1608,7 +2396,10 @@ function setHighlightTarget(target: HighlightTarget | null, source: HighlightSou
   if (xPinned) return;
 
   // Cancel any pending hover
-  if (xHoverTimer !== null) { clearTimeout(xHoverTimer); xHoverTimer = null; }
+  if (xHoverTimer !== null) {
+    clearTimeout(xHoverTimer);
+    xHoverTimer = null;
+  }
 
   if (target?.name === xTarget?.name && source === xSource) return;
 
@@ -1695,18 +2486,22 @@ function applyHexSpanHighlight(offset: number, ed: monaco.editor.IStandaloneCode
   const span = findSpanAt(offset);
   if (span && span === xLastHoveredSpan) return;
   xLastHoveredSpan = span;
-  if (xHexSpanDeco) { xHexSpanDeco.clear(); xHexSpanDeco = null; }
+  if (xHexSpanDeco) {
+    xHexSpanDeco.clear();
+    xHexSpanDeco = null;
+  }
   if (span) {
     const section = findSectionAt(span.offset);
     const cssKey = section ? sectionCssKey(section) : "header";
-    xHexSpanDeco = ed.createDecorationsCollection(
-      spanHighlightDecorations(span, `hex-span-hover-${cssKey}`),
-    );
+    xHexSpanDeco = ed.createDecorationsCollection(spanHighlightDecorations(span, `hex-span-hover-${cssKey}`));
   }
 }
 
 function clearHexSpanHighlight() {
-  if (xHexSpanDeco) { xHexSpanDeco.clear(); xHexSpanDeco = null; }
+  if (xHexSpanDeco) {
+    xHexSpanDeco.clear();
+    xHexSpanDeco = null;
+  }
   xLastHoveredSpan = null;
 }
 
@@ -1714,7 +2509,10 @@ function clearHexSpanHighlight() {
 
 // Treemap hover
 treemap.onNodeHover = (node) => {
-  if (!node) { setHighlightTarget(null, "treemap"); return; }
+  if (!node) {
+    setHighlightTarget(null, "treemap");
+    return;
+  }
   setHighlightTarget(resolveTreemapTarget(node), "treemap");
 };
 
@@ -1772,13 +2570,20 @@ function watLineForNode(name: string, fullPath: string): { start: number; end: n
 
   // Section-level: find section keyword in WAT
   const sectionKeywords: Record<string, string> = {
-    type: "(type ", import: "(import ", func: "(func ", export: "(export ",
-    global: "(global ", table: "(table ", memory: "(memory ", element: "(elem ",
+    type: "(type ",
+    import: "(import ",
+    func: "(func ",
+    export: "(export ",
+    global: "(global ",
+    table: "(table ",
+    memory: "(memory ",
+    element: "(elem ",
   };
   const kw = sectionKeywords[name];
   if (kw) {
     const lines = watText.split("\n");
-    let start = -1, end = -1;
+    let start = -1,
+      end = -1;
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].trimStart().startsWith(kw)) {
         if (start === -1) start = i + 1;
@@ -1794,7 +2599,8 @@ function watLineForNode(name: string, fullPath: string): { start: number; end: n
     idx = watText.indexOf(pattern);
     if (idx !== -1) {
       const lines = watText.split("\n");
-      let start = -1, end = -1;
+      let start = -1,
+        end = -1;
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].includes(`(import "${name}"`)) {
           if (start === -1) start = i + 1;
@@ -1821,46 +2627,84 @@ function watLineForNode(name: string, fullPath: string): { start: number; end: n
 // (Old tab management removed — handled by LayoutManager)
 
 // ─── Compile helpers ────────────────────────────────────────────────────
-const DOM_PATTERNS =
-  /\b(?:Document|Window|HTMLElement|HTMLInputElement|HTMLButtonElement|HTMLCollection|Element|Node|NodeList|DOMTokenList|EventTarget|CSSStyleDeclaration)_/;
+const DOM_EXTERN_CLASSES = new Set([
+  "Document",
+  "Window",
+  "HTMLElement",
+  "HTMLInputElement",
+  "HTMLButtonElement",
+  "HTMLCollection",
+  "Element",
+  "Node",
+  "NodeList",
+  "DOMTokenList",
+  "EventTarget",
+  "CSSStyleDeclaration",
+]);
 
 function detectDomUsage(result: ReturnType<typeof compile>): boolean {
-  const helperBody = (result.importsHelper ?? "")
-    .replace(/^(\/\/[^\n]*\n)+\n?/, "")
-    .trimStart();
-  const envMatch = helperBody.match(/const env = \{([\s\S]*?)\n  \};/);
-  if (!envMatch) return false;
-  return envMatch[1].split("\n").some((l) => DOM_PATTERNS.test(l) && l.trim());
+  if (
+    result.imports.some((imp) => imp.intent.type === "extern_class" && DOM_EXTERN_CLASSES.has(imp.intent.className))
+  ) {
+    return true;
+  }
+
+  if (
+    result.imports.some(
+      (imp) =>
+        imp.intent.type === "declared_global" && (imp.intent.name === "document" || imp.intent.name === "window"),
+    )
+  ) {
+    return true;
+  }
+
+  return result.imports.some((imp) => imp.name === "__get_globalThis" && result.stringPool.includes("document"));
 }
 
 function generateModularOutput(result: ReturnType<typeof compile>): string {
   const dts = result.dts ?? "";
+  const helper = (result.importsHelper ?? "").trim();
+  const needsDeps = /\bcreateImports\s*\(\s*deps\s*\)/.test(helper);
   // Parse "export declare function name(params): ret;" into JSDoc-annotated exports
-  const exportLines = [
-    ...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm),
-  ].map(([, name, params, ret]) => {
-    // Build compact JSDoc type annotation
-    const jsParams = params
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean)
-      .map((p) => {
-        const [pName, pType] = p.split(":").map((s) => s.trim());
-        return `${pType || "any"} ${pName}`;
-      })
-      .join(", ");
-    return `/** @type {(${jsParams}) => ${ret}} */\nexport const ${name} = _exports.${name};`;
-  });
+  const exportLines = [...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm)].map(
+    ([, name, params, ret]) => {
+      // Build compact JSDoc type annotation
+      const jsParams = params
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => {
+          const [pName, pType] = p.split(":").map((s) => s.trim());
+          return `${pType || "any"} ${pName}`;
+        })
+        .join(", ");
+      return `/** @type {(${jsParams}) => ${ret}} */\nexport const ${name} = _exports.${name};`;
+    },
+  );
 
-  const exports =
-    exportLines.length > 0
-      ? exportLines.join("\n\n")
-      : `export default _exports;`;
+  const exports = exportLines.length > 0 ? exportLines.join("\n\n") : `export default instance.exports;`;
 
-  return `import { compileAndInstantiate } from "ts2wasm";
-import _source from "./example.ts?raw";
+  const importsCall = needsDeps ? "createImports(/* host deps */)" : "createImports()";
 
-const _exports = await compileAndInstantiate(_source);
+  return `${helper || `export function createImports() {\n  return { env: {} };\n}`}
+
+import { compile } from "js2wasm";
+import source from "./example.ts?raw";
+
+const result = compile(source);
+
+if (!result.success) {
+  throw new Error(
+    result.errors.map((e) => \`L\${e.line}:\${e.column} [\${e.severity}] \${e.message}\`).join("\\n"),
+  );
+}
+
+const imports = ${importsCall};
+const { instance } = await WebAssembly.instantiate(
+  result.binary,
+  imports,
+  { builtins: ["js-string"], importedStringConstants: "string_constants" },
+);
 
 ${exports}
 `;
@@ -1872,7 +2716,6 @@ function sectionCssKey(section: WasmSection): string {
   const key = section.customName ? "custom" : section.name;
   return key in SECTION_COLORS ? key : "header";
 }
-
 
 // Generate hex viewer CSS from treemap SECTION_COLORS
 {
@@ -1900,7 +2743,9 @@ function sectionCssKey(section: WasmSection): string {
     rules.push(`.hex-asc-${name} { color: ${asc} !important; }`);
     // Brightness levels 0-10: near-background → section color → white
     const bgVal = 35;
-    const midR = Math.min(255, r + 80), midG = Math.min(255, g + 80), midB = Math.min(255, b + 80);
+    const midR = Math.min(255, r + 80),
+      midG = Math.min(255, g + 80),
+      midB = Math.min(255, b + 80);
     for (let i = 0; i <= 10; i++) {
       const t = i / 10;
       let cr: number, cg: number, cb: number;
@@ -1954,9 +2799,7 @@ function buildHexLineLabels(wasmData: WasmData, totalLines: number): string[] {
 
   // Section lines
   for (const section of wasmData.sections) {
-    const label = section.customName
-      ? `${section.name}:${section.customName}`
-      : section.name;
+    const label = section.customName ? `${section.name}:${section.customName}` : section.name;
     const startLine = Math.floor(section.offset / 16);
     const endLine = Math.floor((section.offset + section.totalSize - 1) / 16);
     for (let l = startLine; l <= Math.min(endLine, totalLines - 1); l++) {
@@ -1987,7 +2830,11 @@ function annotateHexEditor(bin: Uint8Array, wasmData: WasmData, lineLabels: stri
   const sectionKeyIndex = new Map<string, number>([["header", 0]]);
   function getSectionKeyIdx(key: string): number {
     let idx = sectionKeyIndex.get(key);
-    if (idx == null) { idx = sectionKeys.length; sectionKeys.push(key); sectionKeyIndex.set(key, idx); }
+    if (idx == null) {
+      idx = sectionKeys.length;
+      sectionKeys.push(key);
+      sectionKeyIndex.set(key, idx);
+    }
     return idx;
   }
   // Header: bytes 0-7
@@ -2006,8 +2853,7 @@ function annotateHexEditor(bin: Uint8Array, wasmData: WasmData, lineLabels: stri
     let spanIdx = 0;
     for (let i = 0; i < bin.length; i++) {
       // Advance to the span covering this byte
-      while (spanIdx < lastWasmSpans.length &&
-             i >= lastWasmSpans[spanIdx].offset + lastWasmSpans[spanIdx].length) {
+      while (spanIdx < lastWasmSpans.length && i >= lastWasmSpans[spanIdx].offset + lastWasmSpans[spanIdx].length) {
         spanIdx++;
         alt ^= 1;
       }
@@ -2121,7 +2967,8 @@ function applyHexDecorations() {
 /** Binary search for the span containing `offset` */
 function findSpanAt(offset: number): ByteSpan | null {
   const spans = lastWasmSpans;
-  let lo = 0, hi = spans.length - 1;
+  let lo = 0,
+    hi = spans.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     const s = spans[mid];
@@ -2240,8 +3087,10 @@ monaco.languages.registerHoverProvider("text", {
       const bStart = Math.max(span.offset, lineByteStart) - lineByteStart;
       const bEnd = Math.min(span.offset + span.length, lineByteStart + 16) - lineByteStart;
       range = new monaco.Range(
-        position.lineNumber, HEX_DATA_COL + bStart * 3 + 1,
-        position.lineNumber, HEX_DATA_COL + (bEnd - 1) * 3 + 3,
+        position.lineNumber,
+        HEX_DATA_COL + bStart * 3 + 1,
+        position.lineNumber,
+        HEX_DATA_COL + (bEnd - 1) * 3 + 3,
       );
     } else {
       range = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 2);
@@ -2265,7 +3114,11 @@ function setupEditorHandlers(ed: monaco.editor.IStandaloneCodeEditor) {
       setHighlightTarget(resolveTsTarget(e.target.position.lineNumber), "ts");
     } else if (model === wasmHexModel) {
       const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
-      if (offset === null) { clearHexSpanHighlight(); setHighlightTarget(null, "hex"); return; }
+      if (offset === null) {
+        clearHexSpanHighlight();
+        setHighlightTarget(null, "hex");
+        return;
+      }
       applyHexSpanHighlight(offset, ed);
       setHighlightTarget(resolveHexTarget(offset), "hex");
     } else if (model === watFile.model) {
@@ -2282,6 +3135,13 @@ function setupEditorHandlers(ed: monaco.editor.IStandaloneCodeEditor) {
     if (!e.target.position) return;
     const model = ed.getModel();
     if (model === inputFile.model) {
+      if (e.event.metaKey || e.event.ctrlKey) {
+        const specifier = getImportSpecifierAtPosition(model, e.target.position);
+        if (specifier) {
+          void openLocalImportedSource(specifier);
+          return;
+        }
+      }
       handleHighlightClick(resolveTsTarget(e.target.position.lineNumber), "ts");
     } else if (model === wasmHexModel) {
       const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
@@ -2300,6 +3160,17 @@ let lastResult: ReturnType<typeof compile> | null = null;
 let hasCompiledOnce = false;
 let autoCycleTimer: ReturnType<typeof setInterval> | null = null;
 
+function hasExportedMain(result: ReturnType<typeof compile>): boolean {
+  return result.hasMain === true;
+}
+
+function hasTopLevelMainDeclaration(source: string): boolean {
+  return (
+    /^\s*(?:export\s+)?(?:async\s+)?function\s+main\s*\(/m.test(source) ||
+    /^\s*(?:export\s+)?(?:const|let|var)\s+main\b/m.test(source)
+  );
+}
+
 function compileOnly() {
   const source = inputFile.model.getValue();
   consolePre.textContent = "";
@@ -2312,7 +3183,7 @@ function compileOnly() {
   }
 
   const t0 = performance.now();
-  const result = compile(source);
+  const result = buildCompileResultForEditorSource(source);
   const compileTime = performance.now() - t0;
 
   lastResult = result;
@@ -2336,16 +3207,10 @@ function compileOnly() {
     for (let i = 0; i < bin.length; i += 16) {
       const lineIdx = i / 16;
       const slice = bin.subarray(i, Math.min(i + 16, bin.length));
-      const hex = Array.from(slice, (b) =>
-        b.toString(16).padStart(2, "0"),
-      ).join(" ");
-      const ascii = Array.from(slice, (b) =>
-        b >= 32 && b < 127 ? String.fromCharCode(b) : ".",
-      ).join("");
+      const hex = Array.from(slice, (b) => b.toString(16).padStart(2, "0")).join(" ");
+      const ascii = Array.from(slice, (b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : ".")).join("");
       const label = lineLabels[lineIdx];
-      lines.push(
-        `${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii.padEnd(16)}  ${label}`,
-      );
+      lines.push(`${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii.padEnd(16)}  ${label}`);
     }
     const wasmFile = fileMap.get("output/example.wasm")!;
     wasmFile.model.setValue(lines.join("\n"));
@@ -2353,9 +3218,7 @@ function compileOnly() {
     wasmFile.binaryData = new Uint8Array(bin);
     annotateHexEditor(bin, wasmData, lineLabels);
   }
-  fileMap
-    .get("output/example.js")!
-    .model.setValue(generateModularOutput(result));
+  fileMap.get("output/example.js")!.model.setValue(generateModularOutput(result));
 
   // Mark output files as compiled
   for (const f of files) {
@@ -2363,9 +3226,7 @@ function compileOnly() {
   }
 
   if (result.errors.length > 0) {
-    errorsPre.textContent = result.errors
-      .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
-      .join("\n");
+    errorsPre.textContent = result.errors.map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`).join("\n");
   }
 
   timingSpan.textContent = `compile: ${compileTime.toFixed(1)}ms${result.success ? "" : " (failed)"}`;
@@ -2396,21 +3257,43 @@ function buildEnv(
   setExports: (exports: Record<string, Function>) => void;
 } {
   const doc = previewRoot
-    ? new Proxy(document, {
-        get(target, prop) {
-          if (prop === "body") return previewRoot;
-          const val = (target as any)[prop];
-          return typeof val === "function" ? val.bind(target) : val;
+    ? {
+        get body() {
+          return previewRoot;
         },
-      })
+        createElement: document.createElement.bind(document),
+        querySelector: document.querySelector.bind(document),
+        querySelectorAll: document.querySelectorAll.bind(document),
+        getElementById: document.getElementById.bind(document),
+        getElementsByClassName: document.getElementsByClassName.bind(document),
+        getElementsByTagName: document.getElementsByTagName.bind(document),
+        addEventListener: document.addEventListener.bind(document),
+        removeEventListener: document.removeEventListener.bind(document),
+        dispatchEvent: document.dispatchEvent.bind(document),
+      }
     : document;
+
+  const sandboxGlobal = previewRoot
+    ? (() => {
+        const sandbox = Object.create(globalThis) as Record<string, unknown>;
+        Object.defineProperties(sandbox, {
+          document: { value: doc, configurable: true, enumerable: true, writable: true },
+          performance: { value: performance, configurable: true, enumerable: true, writable: true },
+          globalThis: { value: sandbox, configurable: true, enumerable: true, writable: true },
+          self: { value: sandbox, configurable: true, enumerable: true, writable: true },
+          window: { value: sandbox, configurable: true, enumerable: true, writable: true },
+        });
+        return sandbox;
+      })()
+    : globalThis;
 
   // Build closed env from the compiler-generated manifest.
   // The deps object provides declared globals (document, window, performance).
   const imports = buildImports(result.imports, {
     document: doc,
-    window: window,
+    window: sandboxGlobal,
     performance: performance,
+    globalThis: sandboxGlobal,
   });
   const env = imports.env;
 
@@ -2434,11 +3317,41 @@ function buildEnv(
 
 async function runOnly() {
   if (!lastResult) return;
-  const result = lastResult;
+  let result = lastResult;
+  let synthesizedMain = false;
 
   consolePre.textContent = "";
   errorsPre.textContent = "";
   previewPanel.innerHTML = "";
+
+  // Use compile-time metadata to determine execution intent
+  const hasMain = result.hasMain === true;
+  const hasTopLevel = result.hasTopLevelStatements === true;
+
+  if (!hasMain && !hasTopLevel) {
+    consolePre.textContent = "Nothing to run: no exported main() and no top-level statements.";
+    showOutputPanel("console");
+    return;
+  }
+
+  if (!hasMain && hasTopLevel) {
+    // Top-level statements exist but no main() — recompile with a synthesized
+    // main() so the playground has an entry point to call.
+    const source = inputFile.model.getValue();
+    if (!hasTopLevelMainDeclaration(source)) {
+      const runtimeSource = `${source}\n\nexport function main(): void {}\n`;
+      const runtimeResult = buildCompileResultForEditorSource(runtimeSource);
+      if (!runtimeResult.success) {
+        errorsPre.textContent = runtimeResult.errors
+          .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
+          .join("\n");
+        showOutputPanel("errors");
+        return;
+      }
+      result = runtimeResult;
+      synthesizedMain = true;
+    }
+  }
 
   const usesDom = detectDomUsage(result);
   const logs: string[] = [];
@@ -2457,18 +3370,24 @@ async function runOnly() {
     const { instance, nativeBuiltins } = await instantiateWasm(
       result.binary as BufferSource,
       env,
+      buildStringConstants(result.stringPool),
     );
-    console.log(`[ts2wasm] wasm:js-string → ${nativeBuiltins ? "native builtins" : "JS polyfill"}`);
 
     wasmExports = instance.exports as Record<string, any>;
     setExports(wasmExports as Record<string, Function>);
     if (typeof wasmExports.main === "function") {
+      if (synthesizedMain) {
+        logs.push("Executed top-level statements via synthesized main().");
+      }
       const returnValue = wasmExports.main();
       if (returnValue !== undefined) logs.push(`→ ${returnValue}`);
+    } else {
+      logs.push("No exported main() found in Wasm module.");
     }
 
     consolePre.textContent = logs.join("\n");
-    if (usesDom) showOutputPanel("preview");
+    if (usesDom && typeof wasmExports.main === "function") showOutputPanel("preview");
+    else showOutputPanel("console");
 
     // Auto-cycle demos if nextDemo is exported
     if (autoCycleTimer !== null) {
@@ -2487,17 +3406,35 @@ async function runOnly() {
       if (tag) {
         try {
           const payload = e.getArg(tag, 0);
-          msg = typeof payload === "string" ? payload :
-                payload?.message ? String(payload.message) :
-                String(payload);
+          const payloadText =
+            typeof payload === "string"
+              ? payload
+              : payload instanceof Error
+                ? (payload.stack ?? payload.message)
+                : payload?.message
+                  ? String(payload.message)
+                  : payload === null
+                    ? "null"
+                    : payload === undefined
+                      ? "undefined"
+                      : String(payload);
+          msg = [`Wasm exception payload: ${payloadText}`, String(e)].join("\n");
         } catch {
-          msg = String(e);
+          msg = e.stack ?? String(e);
         }
       } else {
-        msg = String(e);
+        msg = e.stack ?? String(e);
       }
     } else {
-      msg = e instanceof Error ? e.message : String(e);
+      if (e instanceof Error) {
+        msg = e.stack ?? e.message;
+      } else if (e === null) {
+        msg = "null (non-Error exception)";
+      } else if (e === undefined) {
+        msg = "undefined (non-Error exception)";
+      } else {
+        msg = `${String(e)} (non-Error exception)`;
+      }
     }
     errorsPre.textContent = `Runtime: ${msg}`;
     showOutputPanel("errors");
@@ -2534,11 +3471,15 @@ async function runBenchmark() {
   // If current source has no bench_* exports, load benchmarks example
   const src = inputFile.model.getValue();
   if (!src.includes("bench_")) {
-    const resp = await fetch("/examples/benchmarks.ts");
-    const content = await resp.text();
+    const content = await loadBundledExampleSource("examples/benchmarks.ts");
+    if (content == null) {
+      benchBtn.disabled = false;
+      return;
+    }
     t262Loading = true;
     sessionStorage.removeItem(STORAGE_KEY);
-    inputFile.model.setValue(content);
+    setInputSourceModel("examples/benchmarks.ts", normalizeBenchmarkHelperImport(content, "examples/benchmarks.ts"));
+    revealSourceTab();
     t262SetActive("examples/benchmarks.ts");
     updateTabLabel("ts-source", "benchmarks.ts");
 
@@ -2554,17 +3495,29 @@ async function runBenchmark() {
   showOutputPanel("console");
   benchBtn.disabled = true;
 
-  const log = (s: string) => { consolePre.textContent += s + "\n"; };
+  const log = (s: string) => {
+    consolePre.textContent += s + "\n";
+  };
   const yield_ = () => new Promise<void>((r) => setTimeout(r, 0));
 
   // ── WASM setup ──
   log("Setting up WASM…");
   await yield_();
 
+  log("Optimizing WASM with Binaryen…");
+  await yield_();
+  const optResult = await optimizeBinaryAsync(lastResult.binary, { level: 4 });
+  if (optResult.optimized) {
+    log("Binaryen optimization applied.");
+  } else if (optResult.warning) {
+    log(`Binaryen unavailable: ${optResult.warning}`);
+  }
+
   const { env: wasmEnv, setExports } = buildEnv(lastResult, () => {});
   const { instance, nativeBuiltins } = await instantiateWasm(
-    lastResult.binary as BufferSource,
+    optResult.binary as BufferSource,
     wasmEnv,
+    buildStringConstants(lastResult.stringPool),
   );
   log(`wasm:js-string → ${nativeBuiltins ? "native builtins" : "JS polyfill"}`);
   const wasmExports = instance.exports as Record<string, Function>;
@@ -2586,13 +3539,7 @@ async function runBenchmark() {
   await yield_();
 
   const source = inputFile.model.getValue();
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      target: ts.ScriptTarget.ESNext,
-      module: ts.ModuleKind.ESNext,
-    },
-  });
-  const cleanJs = transpiled.outputText.replace(/^export /gm, "");
+  const moduleBenchmark = isBenchmarkProjectPath(t262ActivePath) || usesBenchmarkHelpers(source);
 
   // Ensure a preview-panel element exists for DOM benchmarks (JS side)
   let tempPreview: HTMLElement | null = null;
@@ -2603,16 +3550,29 @@ async function runBenchmark() {
     document.body.appendChild(tempPreview);
   }
 
-  // NOTE: new Function() is intentional here — we evaluate the user's transpiled
-  // benchmark source to get JS reference functions for WASM-vs-JS comparison.
   let jsFuncs: Record<string, Function>;
+  let disposeJsModule = () => {};
   try {
-    const returnExpr = "return {" + benchNames.join(",") + "};";
-    const factory = new Function(cleanJs + "\n" + returnExpr); // eslint-disable-line no-new-func
-    jsFuncs = factory();
+    if (moduleBenchmark) {
+      const loaded = await loadBenchmarkJsFunctions(source, benchNames);
+      jsFuncs = loaded.funcs;
+      disposeJsModule = loaded.dispose;
+    } else {
+      const transpiled = ts.transpileModule(source, {
+        compilerOptions: {
+          target: ts.ScriptTarget.ESNext,
+          module: ts.ModuleKind.ESNext,
+        },
+      });
+      const cleanJs = transpiled.outputText.replace(/^export /gm, "");
+      const returnExpr = "return {" + benchNames.join(",") + "};";
+      const factory = new Function(cleanJs + "\n" + returnExpr); // eslint-disable-line no-new-func
+      jsFuncs = factory();
+    }
   } catch (e) {
     log(`Failed to create JS functions: ${e}`);
     tempPreview?.remove();
+    disposeJsModule();
     benchBtn.disabled = false;
     return;
   }
@@ -2623,7 +3583,10 @@ async function runBenchmark() {
   function calibrate(fn: Function): number {
     let iters = 0;
     const t0 = performance.now();
-    while (performance.now() - t0 < 100) { fn(); iters++; }
+    while (performance.now() - t0 < 100) {
+      fn();
+      iters++;
+    }
     return Math.max(10, Math.ceil((iters / 100) * TARGET_MS));
   }
 
@@ -2639,8 +3602,10 @@ async function runBenchmark() {
   }
 
   type BenchResult = {
-    name: string; iters: number;
-    wasmUs: number; jsUs: number;
+    name: string;
+    iters: number;
+    wasmUs: number;
+    jsUs: number;
   };
   const results: BenchResult[] = [];
 
@@ -2649,7 +3614,10 @@ async function runBenchmark() {
   for (const name of benchNames) {
     const wasmFn = wasmExports[name];
     const jsFn = jsFuncs[name];
-    if (!jsFn) { log(`  ${name}: JS function not found, skipping`); continue; }
+    if (!jsFn) {
+      log(`  ${name}: JS function not found, skipping`);
+      continue;
+    }
 
     consolePre.textContent = consolePre.textContent.replace(/  \w+…\n?$/, "");
     log(`  ${name}…`);
@@ -2657,7 +3625,10 @@ async function runBenchmark() {
 
     try {
       // Warmup both sides
-      for (let i = 0; i < 50; i++) { wasmFn(); jsFn(); }
+      for (let i = 0; i < 50; i++) {
+        wasmFn();
+        jsFn();
+      }
 
       // Calibrate on WASM (usually faster → safe iteration count for JS)
       const iters = calibrate(wasmFn);
@@ -2677,6 +3648,26 @@ async function runBenchmark() {
   }
 
   tempPreview?.remove();
+  disposeJsModule();
+
+  for (const r of results) {
+    const bench = benchmarkExamples.find((example) => example.benchmarkFunction === `bench_${r.name}`);
+    if (!bench) continue;
+    const snapshot = {
+      path: bench.path,
+      wasmUs: r.wasmUs,
+      jsUs: r.jsUs,
+    };
+    benchmarkSidebarResults.set(bench.path, {
+      wasmUs: r.wasmUs,
+      jsUs: r.jsUs,
+      deltaPct: (r.jsUs / r.wasmUs - 1) * 100,
+    });
+    void saveBrowserBenchmarkSidebarResult(snapshot);
+  }
+  if (t262Loaded) {
+    t262Render();
+  }
 
   // ── Format results table ──
   const nameW = Math.max(10, ...results.map((r) => r.name.length));
@@ -2694,10 +3685,8 @@ async function runBenchmark() {
     let tag: string;
     if (ratio > 1.05) tag = ("WASM " + ratio.toFixed(2) + "\u00d7").padEnd(10);
     else if (ratio < 0.95) tag = ("JS " + (1 / ratio).toFixed(2) + "\u00d7").padEnd(10);
-    else tag = ("\u2248 tied").padEnd(10);
-    lines.push(
-      `  ${r.name}${pad}${wStr}  ${jStr}    ${tag} ${r.iters.toLocaleString()}`,
-    );
+    else tag = "\u2248 tied".padEnd(10);
+    lines.push(`  ${r.name}${pad}${wStr}  ${jStr}    ${tag} ${r.iters.toLocaleString()}`);
   }
 
   consolePre.textContent = lines.join("\n") + "\n";
@@ -2710,8 +3699,31 @@ runBtn.addEventListener("click", runOnly);
 benchBtn.addEventListener("click", runBenchmark);
 downloadWatBtn.addEventListener("click", downloadWat);
 downloadWasmBtn.addEventListener("click", downloadWasm);
-resetLayoutBtn.addEventListener("click", () => layout.resetLayout());
+toggleSidebarBtn.addEventListener("click", toggleSidebar);
+resetLayoutBtn.addEventListener("click", () => {
+  clearSavedLayout();
+  sessionStorage.removeItem(STORAGE_KEY);
+  t262ActivePath = null;
+  t262Loading = true;
+  setInputSourceModel("input/example.ts", DEFAULT_SOURCE);
+  revealSourceTab();
+  t262Loading = false;
+  updateTabLabel("ts-source", "example.ts");
+  layout.resetLayout();
+  clearSavedLayout();
+  compileOnly();
+  syncSidebarToggleButton();
+});
+
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "b") {
+    event.preventDefault();
+    toggleSidebar();
+  }
+});
 
 // Auto-compile and run on page load
 compileOnly();
-runOnly();
+requestAnimationFrame(() => {
+  void runOnly();
+});

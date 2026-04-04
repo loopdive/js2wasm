@@ -20,23 +20,17 @@ async function compileAndRun(src: string): Promise<any> {
 
 describe("Issue #675: Dynamic import()", () => {
   it("compiles basic import() call", () => {
-    const r = compile(
-      `export function test(): number { import("./m"); return 1; }`,
-      { fileName: "test.ts" },
-    );
+    const r = compile(`export function test(): number { import("./m"); return 1; }`, { fileName: "test.ts" });
     expect(r.success).toBe(true);
     // Should have __dynamic_import in imports
-    const dynImport = r.imports.find(
-      (i: any) => i.name === "__dynamic_import",
-    );
+    const dynImport = r.imports.find((i: any) => i.name === "__dynamic_import");
     expect(dynImport).toBeDefined();
   });
 
   it("compiles import() with variable specifier", () => {
-    const r = compile(
-      `export function test(): number { const s = "./m"; import(s); return 1; }`,
-      { fileName: "test.ts" },
-    );
+    const r = compile(`export function test(): number { const s = "./m"; import(s); return 1; }`, {
+      fileName: "test.ts",
+    });
     expect(r.success).toBe(true);
   });
 

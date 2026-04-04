@@ -14,7 +14,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("Accessor/getter/setter side effects (#634)", () => {
   it("getter side effect is triggered on property access", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Counter {
         private _count: number = 0;
         private _accessed: number = 0;
@@ -40,12 +41,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         c.count;  // trigger again
         return c.accessed;  // should be 3
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(3);
   });
 
   it("setter side effect is triggered on property assignment", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Logger {
         private _value: number = 0;
         private _setCount: number = 0;
@@ -70,12 +74,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         l.value = 20;
         return l.setCount;  // should be 2
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(2);
   });
 
   it("getter returns computed value, not raw field", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Doubler {
         private _x: number = 5;
 
@@ -92,12 +99,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         const d = new Doubler();
         return d.x;  // should be 10 (5 * 2)
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(10);
   });
 
   it("setter transforms value before storing", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Clamper {
         private _val: number = 0;
 
@@ -119,12 +129,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         c.val = 200;
         return c.val;  // should be 100 (clamped)
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(100);
   });
 
   it("getter-only computed property (no setter)", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Rectangle {
         width: number;
         height: number;
@@ -143,12 +156,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         const r = new Rectangle(3, 4);
         return r.area;  // should be 12
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(12);
   });
 
   it("object literal getter is invoked", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         let count = 0;
         const obj = {
@@ -160,12 +176,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         const val = obj.v;
         return count;  // should be 1
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(1);
   });
 
   it("object literal getter+setter both capture function-local", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         let count = 0;
         const obj = {
@@ -183,12 +202,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         const v = obj.x;
         return count;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(2);
   });
 
   it("object literal setter with count++ on captured local", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         let count = 0;
         const obj = {
@@ -200,12 +222,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         obj.x = 20;
         return count;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(2);
   });
 
   it("object literal setter captures function-local variable (set only)", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         let count = 0;
         const obj = {
@@ -218,12 +243,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         obj.x = 10;
         return count;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(1);
   });
 
   it("object literal setter is invoked", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       let count = 0;
       const obj = {
         _x: 0,
@@ -240,12 +268,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         obj.x = 20;
         return count;  // should be 2
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(2);
   });
 
   it("object literal getter reads module-level variable", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       let val = 42;
       const obj = {
         get v(): number {
@@ -255,12 +286,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
       export function test(): number {
         return obj.v;  // should be 42
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(42);
   });
 
   it("object literal getter writes module-level variable", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       let count = 0;
       const obj = {
         get v(): number {
@@ -273,12 +307,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         obj.v;
         return count;  // should be 2
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(2);
   });
 
   it("object literal getter reads closure variable", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         let val = 42;
         const obj = {
@@ -288,12 +325,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         };
         return obj.v;  // should be 42
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(42);
   });
 
   it("object literal getter writes closure variable via ref cell", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         let count = 0;
         const obj = {
@@ -305,12 +345,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         obj.v;
         return count;  // should be 1
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(1);
   });
 
   it("object literal getter returns computed value (no closure)", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         const obj = {
           _x: 5,
@@ -320,12 +363,15 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         };
         return obj.x;  // should be 10
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(10);
   });
 
   it("getter invoked on expression statement (side effect only)", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Foo {
         private _x: number = 0;
         get x(): number {
@@ -338,7 +384,9 @@ describe("Accessor/getter/setter side effects (#634)", () => {
         f.x;  // expression statement - getter should still run
         return f._x;  // should be 99
       }
-    `, "test");
+    `,
+      "test",
+    );
     // Note: _x is private but we access it via the backing field
     // This may or may not work - depends on private field compilation
     expect(result).toBe(99);

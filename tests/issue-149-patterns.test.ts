@@ -4,23 +4,16 @@ import { buildImports } from "./equivalence/helpers.js";
 
 function compileAndCheck(source: string) {
   const result = compile(source);
-  const unsupported = result.errors?.filter(
-    (e) => e.message === "Unsupported call expression",
-  );
+  const unsupported = result.errors?.filter((e) => e.message === "Unsupported call expression");
   return { result, unsupported };
 }
 
 async function compileToWasm(source: string) {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(
-      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    buildImports(result),
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return instance.exports as Record<string, Function>;
 }
 

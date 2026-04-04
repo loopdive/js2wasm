@@ -9,10 +9,7 @@ async function compileAndRun(source: string): Promise<Record<string, Function>> 
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    buildImports(result),
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return instance.exports as Record<string, Function>;
 }
 
@@ -108,12 +105,12 @@ describe("Issue #198: Switch statement compile errors and type coercion", () => 
         return result;
       }
     `);
-    expect(exports.switchTest(0)).toBe(6);   // 2 + 4
-    expect(exports.switchTest(1)).toBe(4);   // 4
-    expect(exports.switchTest(2)).toBe(56);  // 8 + 16 + 32
-    expect(exports.switchTest(3)).toBe(48);  // 16 + 32
-    expect(exports.switchTest(4)).toBe(64);  // 64
-    expect(exports.switchTest(5)).toBe(32);  // default: 32
+    expect(exports.switchTest(0)).toBe(6); // 2 + 4
+    expect(exports.switchTest(1)).toBe(4); // 4
+    expect(exports.switchTest(2)).toBe(56); // 8 + 16 + 32
+    expect(exports.switchTest(3)).toBe(48); // 16 + 32
+    expect(exports.switchTest(4)).toBe(64); // 64
+    expect(exports.switchTest(5)).toBe(32); // default: 32
   });
 
   // test262 S12.11_A1_T3 pattern: switch with expression case (2+3)
@@ -141,10 +138,10 @@ describe("Issue #198: Switch statement compile errors and type coercion", () => 
         return result;
       }
     `);
-    expect(exports.switchTest(0)).toBe(6);   // 2 + 4
-    expect(exports.switchTest(1)).toBe(4);   // 4
-    expect(exports.switchTest(2)).toBe(56);  // 8 + 16 + 32
-    expect(exports.switchTest(3)).toBe(48);  // 16 + 32
+    expect(exports.switchTest(0)).toBe(6); // 2 + 4
+    expect(exports.switchTest(1)).toBe(4); // 4
+    expect(exports.switchTest(2)).toBe(56); // 8 + 16 + 32
+    expect(exports.switchTest(3)).toBe(48); // 16 + 32
     expect(exports.switchTest(5)).toBe(512); // 2+3=5, matches
   });
 

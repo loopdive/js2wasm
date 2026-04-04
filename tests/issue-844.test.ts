@@ -15,9 +15,7 @@ describe("Issue #844: new AggregateError compiles", () => {
     `;
     const result = compile(source, { fileName: "test.ts" });
     expect(result.success).toBe(true);
-    const unsupported = result.errors.filter(e =>
-      e.message.includes("Unsupported new expression")
-    );
+    const unsupported = result.errors.filter((e) => e.message.includes("Unsupported new expression"));
     expect(unsupported).toHaveLength(0);
   });
 
@@ -30,9 +28,7 @@ describe("Issue #844: new AggregateError compiles", () => {
     `;
     const result = compile(source, { fileName: "test.ts" });
     expect(result.success).toBe(true);
-    const unsupported = result.errors.filter(e =>
-      e.message.includes("Unsupported new expression")
-    );
+    const unsupported = result.errors.filter((e) => e.message.includes("Unsupported new expression"));
     expect(unsupported).toHaveLength(0);
   });
 });

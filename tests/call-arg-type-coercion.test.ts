@@ -25,54 +25,67 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 describe("call argument type coercion (#626)", () => {
   it("f64 arithmetic result passed to any-typed parameter", async () => {
     // Pattern: call[0] expected externref, found f64
-    const result = await run(`
+    const result = await run(
+      `
       function takeAny(x: any): any { return x; }
       export function test(): number {
         const a = 2 + 3;
         return takeAny(a);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(5);
   });
 
   it("boolean (i32) passed to any-typed parameter", async () => {
     // Pattern: call[0] expected externref, found i32
-    const result = await run(`
+    const result = await run(
+      `
       function identity(x: any): any { return x; }
       export function test(): number {
         return identity(true) ? 1 : 0;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(1);
   });
 
   it("any-typed value passed to number parameter", async () => {
     // Pattern: call[0] expected f64, found externref
-    const result = await run(`
+    const result = await run(
+      `
       function addOne(x: number): number { return x + 1; }
       export function test(): number {
         const s: any = 5;
         return addOne(s);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(6);
   });
 
   it("closure call_ref with f64 where externref expected", async () => {
     // Pattern: call_ref[1] expected externref, found f64
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         const fn = (x: any): any => x;
         const val = 1 + 2;
         return fn(val);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(3);
   });
 
   it("class method call with f64 where externref expected", async () => {
     // Pattern: call[1] expected externref, found f64
-    const result = await run(`
+    const result = await run(
+      `
       class Foo {
         process(x: any): any { return x; }
       }
@@ -80,19 +93,24 @@ describe("call argument type coercion (#626)", () => {
         const f = new Foo();
         return f.process(42);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(42);
   });
 
   it("multiple argument types coerced correctly", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       function combine(a: any, b: any): number {
         return a + b;
       }
       export function test(): number {
         return combine(10, 20);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(30);
   });
 });

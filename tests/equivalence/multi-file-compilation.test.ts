@@ -8,10 +8,7 @@ import { tmpdir } from "node:os";
 /**
  * Compile multiple virtual files and run the entry file's exports.
  */
-async function compileAndRunMulti(
-  files: Record<string, string>,
-  entryFile: string,
-) {
+async function compileAndRunMulti(files: Record<string, string>, entryFile: string) {
   const result = compileMulti(files, entryFile);
   expect(
     result.success,
@@ -108,7 +105,7 @@ describe("multi-file compilation", () => {
 });
 
 describe("compileFiles (disk-based)", () => {
-  const tmpDir = join(tmpdir(), `ts2wasm-test-${Date.now()}`);
+  const tmpDir = join(tmpdir(), `js2wasm-test-${Date.now()}`);
 
   // Create temp files before tests
   it("resolves imports from disk via ts.createProgram", async () => {

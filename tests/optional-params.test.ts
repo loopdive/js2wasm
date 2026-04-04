@@ -77,7 +77,7 @@ describe("optional parameters", () => {
       },
     });
     const exports = instance.exports as any;
-    expect(exports.withScale()).toBe(30);   // 10 * 3
+    expect(exports.withScale()).toBe(30); // 10 * 3
     expect(exports.withoutScale()).toBe(10); // fallback, scale is 0 (falsy)
   });
 });

@@ -9,8 +9,7 @@ const jsStringPolyfill = {
   concat: (a: string, b: string) => a + b,
   length: (s: string) => s.length,
   equals: (a: string, b: string) => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number) =>
-    s.substring(start, end),
+  substring: (s: string, start: number, end: number) => s.substring(start, end),
   charCodeAt: (s: string, i: number) => s.charCodeAt(i),
 };
 
@@ -53,7 +52,9 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
         const ctor = (globalThis as any)[ctorName];
         if (typeof ctor !== "function") return 0;
         return v instanceof ctor ? 1 : 0;
-      } catch { return 0; }
+      } catch {
+        return 0;
+      }
     },
     __is_truthy: (v: unknown) => (v ? 1 : 0),
     parseFloat: (s: any) => parseFloat(String(s)),
@@ -64,17 +65,25 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     __box_boolean: (v: number) => Boolean(v),
     __make_callback: () => null,
     __extern_get: (obj: any, key: any) => (obj == null ? undefined : obj[key]),
-    __extern_set: (obj: any, key: any, val: any) => { if (obj != null) obj[key] = val; },
+    __extern_set: (obj: any, key: any, val: any) => {
+      if (obj != null) obj[key] = val;
+    },
     __extern_length: (obj: any) => (obj == null ? 0 : obj.length),
-    __extern_is_undefined: (v: any) => v === undefined ? 1 : 0,
-    __extern_slice: (arr: any, start: number) => Array.isArray(arr) ? arr.slice(start) : [],
+    __extern_is_undefined: (v: any) => (v === undefined ? 1 : 0),
+    __extern_slice: (arr: any, start: number) => (Array.isArray(arr) ? arr.slice(start) : []),
     JSON_stringify: (v: any) => JSON.stringify(v),
     JSON_parse: (s: any) => JSON.parse(s),
     // Generator support: buffer management and generator creation
     __gen_create_buffer: () => [] as any[],
-    __gen_push_f64: (buf: any[], v: number) => { buf.push(v); },
-    __gen_push_i32: (buf: any[], v: number) => { buf.push(v); },
-    __gen_push_ref: (buf: any[], v: any) => { buf.push(v); },
+    __gen_push_f64: (buf: any[], v: number) => {
+      buf.push(v);
+    },
+    __gen_push_i32: (buf: any[], v: number) => {
+      buf.push(v);
+    },
+    __gen_push_ref: (buf: any[], v: any) => {
+      buf.push(v);
+    },
     __create_generator: (buf: any[]) => {
       let index = 0;
       return {
@@ -88,7 +97,9 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
           index = buf.length;
           return { value, done: true };
         },
-        [Symbol.iterator]() { return this; },
+        [Symbol.iterator]() {
+          return this;
+        },
       };
     },
     __gen_next: (gen: any) => gen.next(),
@@ -96,7 +107,7 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     __gen_throw: (gen: any, err: any) => gen.throw(err),
     __gen_result_value: (result: any) => result.value,
     __gen_result_value_f64: (result: any) => Number(result.value),
-    __gen_result_done: (result: any) => result.done ? 1 : 0,
+    __gen_result_done: (result: any) => (result.done ? 1 : 0),
     // Iterator protocol: host-delegated iteration for non-array types
     __iterator: (obj: any) => obj[Symbol.iterator](),
     __async_iterator: (obj: any) => {
@@ -105,9 +116,11 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
       return obj[Symbol.iterator]();
     },
     __iterator_next: (iter: any) => iter.next(),
-    __iterator_done: (result: any) => result.done ? 1 : 0,
+    __iterator_done: (result: any) => (result.done ? 1 : 0),
     __iterator_value: (result: any) => result.value,
-    __iterator_return: (iter: any) => { if (iter && typeof iter.return === "function") iter.return(); },
+    __iterator_return: (iter: any) => {
+      if (iter && typeof iter.return === "function") iter.return();
+    },
     // String method host imports (non-fast mode)
     string_trim: (s: string) => s.trim(),
     string_trimStart: (s: string) => s.trimStart(),
@@ -122,9 +135,9 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     string_indexOf: (s: string, search: any, fromIndex?: any) => s.indexOf(search, fromIndex),
     string_lastIndexOf: (s: string, search: any, fromIndex?: any) =>
       fromIndex == null ? s.lastIndexOf(search) : s.lastIndexOf(search, fromIndex),
-    string_includes: (s: string, search: any) => s.includes(search) ? 1 : 0,
-    string_startsWith: (s: string, search: any) => s.startsWith(search) ? 1 : 0,
-    string_endsWith: (s: string, search: any) => s.endsWith(search) ? 1 : 0,
+    string_includes: (s: string, search: any) => (s.includes(search) ? 1 : 0),
+    string_startsWith: (s: string, search: any) => (s.startsWith(search) ? 1 : 0),
+    string_endsWith: (s: string, search: any) => (s.endsWith(search) ? 1 : 0),
     string_replace: (s: string, search: any, replacement: any) => s.replace(search, replacement),
     string_replaceAll: (s: string, search: any, replacement: any) => s.replaceAll(search, replacement),
     string_repeat: (s: string, count: number) => s.repeat(count),
@@ -141,7 +154,11 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
       if (flags & (1 << 3)) desc.writable = !!(flags & 1);
       if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
       if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
-      try { Object.defineProperty(obj, prop, desc); } catch (_) { /* swallow for frozen/sealed */ }
+      try {
+        Object.defineProperty(obj, prop, desc);
+      } catch (_) {
+        /* swallow for frozen/sealed */
+      }
       return obj;
     },
     __getOwnPropertyDescriptor: (obj: any, prop: any) => {
@@ -166,6 +183,9 @@ export async function compileToWasm(source: string) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
+  if (!WebAssembly.validate(result.binary)) {
+    throw new Error(`Invalid Wasm binary (WebAssembly.validate failed)\nWAT:\n${result.wat}`);
+  }
   // Use the runtime's buildImports for full host import support (iterator protocol, etc.)
   // Merge with the manual buildImports for wasm:js-string polyfill and string_constants.
   const manualImports = buildImports(result);
@@ -181,10 +201,7 @@ export async function compileToWasm(source: string) {
       manualImports.string_constants = runtimeResult.string_constants;
     }
   }
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    manualImports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, manualImports);
   // Set exports so runtime callbacks (iterator protocol, struct field getters) can access them
   if (setExportsFn) {
     setExportsFn(instance.exports as Record<string, Function>);
@@ -214,10 +231,7 @@ export function evaluateAsJs(source: string): Record<string, Function> {
 /**
  * Test that Wasm output matches native JS output for a set of inputs.
  */
-export async function assertEquivalent(
-  source: string,
-  testCases: { fn: string; args: unknown[]; approx?: boolean }[],
-) {
+export async function assertEquivalent(source: string, testCases: { fn: string; args: unknown[]; approx?: boolean }[]) {
   const wasmExports = await compileToWasm(source);
   const jsExports = evaluateAsJs(source);
 

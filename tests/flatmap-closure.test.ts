@@ -74,8 +74,17 @@ export function testTypeSection(): Uint8Array {
       console.log("Compilation errors:", errors);
     }
 
-    const helpers = ["__malloc", "__arr_new", "__arr_push", "__arr_len", "__arr_get",
-      "__u8arr_new", "__u8arr_from_arr", "__u8arr_len", "__u8arr_get"];
+    const helpers = [
+      "__malloc",
+      "__arr_new",
+      "__arr_push",
+      "__arr_len",
+      "__arr_get",
+      "__u8arr_new",
+      "__u8arr_from_arr",
+      "__u8arr_len",
+      "__u8arr_get",
+    ];
     for (const name of helpers) {
       const idx = mod.functions.findIndex((f: any) => f.name === name);
       if (idx >= 0) mod.exports.push({ name, desc: { kind: "func", index: idx } });
@@ -93,7 +102,7 @@ export function testTypeSection(): Uint8Array {
     const bytes: number[] = [];
     const u8 = new Uint8Array(memory.buffer);
     for (let i = 0; i < len; i++) bytes.push(u8[resultPtr + 12 + i]);
-    console.log("bytes:", bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log("bytes:", bytes.map((b) => b.toString(16).padStart(2, "0")).join(" "));
 
     // Expected type section: 01 0d 02 60 02 7c 7c 01 7c 60 02 7c 7c 01 7c
     expect(bytes[0]).toBe(0x01); // section ID

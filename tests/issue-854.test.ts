@@ -9,10 +9,10 @@ import { buildImports } from "../src/runtime.ts";
 async function compileAndRun(source: string): Promise<number> {
   const result = compile(source, { fileName: "test.ts" });
   if (!result.success) {
-    throw new Error(`Compilation failed: ${result.errors.map(e => e.message).join("; ")}`);
+    throw new Error(`Compilation failed: ${result.errors.map((e) => e.message).join("; ")}`);
   }
   if (result.errors.length > 0) {
-    throw new Error(`Compile errors: ${result.errors.map(e => e.message).join("; ")}`);
+    throw new Error(`Compile errors: ${result.errors.map((e) => e.message).join("; ")}`);
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
@@ -73,8 +73,8 @@ describe("Issue #854: Array iterator methods", () => {
     `;
     const result = compile(source, { fileName: "test.ts" });
     expect(result.success).toBe(true);
-    const iterErrors = result.errors.filter(e =>
-      e.message.includes("unsupported") || e.message.includes("not a function")
+    const iterErrors = result.errors.filter(
+      (e) => e.message.includes("unsupported") || e.message.includes("not a function"),
     );
     expect(iterErrors).toHaveLength(0);
   });
@@ -89,8 +89,8 @@ describe("Issue #854: Array iterator methods", () => {
     `;
     const result = compile(source, { fileName: "test.ts" });
     expect(result.success).toBe(true);
-    const iterErrors = result.errors.filter(e =>
-      e.message.includes("unsupported") || e.message.includes("not a function")
+    const iterErrors = result.errors.filter(
+      (e) => e.message.includes("unsupported") || e.message.includes("not a function"),
     );
     expect(iterErrors).toHaveLength(0);
   });
@@ -105,8 +105,8 @@ describe("Issue #854: Array iterator methods", () => {
     `;
     const result = compile(source, { fileName: "test.ts" });
     expect(result.success).toBe(true);
-    const iterErrors = result.errors.filter(e =>
-      e.message.includes("unsupported") || e.message.includes("not a function")
+    const iterErrors = result.errors.filter(
+      (e) => e.message.includes("unsupported") || e.message.includes("not a function"),
     );
     expect(iterErrors).toHaveLength(0);
   });

@@ -2,11 +2,7 @@ import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
 
-async function run(
-  source: string,
-  fn: string,
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -29,8 +25,8 @@ describe("string literal caching", () => {
     expect(result.success).toBe(true);
     const wat = result.wat!;
     // String literals are now imported as string_constants globals
-    expect(wat).toContain('string_constants');
-    expect(wat).toContain('global.get');
+    expect(wat).toContain("string_constants");
+    expect(wat).toContain("global.get");
   });
 
   it("string literal in loop uses global.get", () => {
@@ -47,8 +43,8 @@ describe("string literal caching", () => {
     expect(result.success).toBe(true);
     const wat = result.wat!;
     // String constants should be imported as globals
-    expect(wat).toContain('string_constants');
-    expect(wat).toContain('global.get');
+    expect(wat).toContain("string_constants");
+    expect(wat).toContain("global.get");
   });
 
   it("string concat in loop produces correct result", async () => {

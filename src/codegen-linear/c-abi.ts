@@ -15,25 +15,12 @@
  * (pointer + length pairs).
  */
 
-import type {
-  FuncTypeDef,
-  Instr,
-  ValType,
-  WasmExport,
-  WasmFunction,
-  WasmModule,
-} from "../ir/types.js";
+import type { FuncTypeDef, Instr, ValType, WasmExport, WasmFunction, WasmModule } from "../ir/types.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
 /** Describes the TS-level semantic type of a parameter */
-export type TsSemanticType =
-  | "number_i32"
-  | "number_f64"
-  | "boolean"
-  | "string"
-  | "array"
-  | "object";
+export type TsSemanticType = "number_i32" | "number_f64" | "boolean" | "string" | "array" | "object";
 
 /** A parameter definition with TS semantic info */
 export interface ParamDef {
@@ -121,7 +108,6 @@ export function mapParamsToCabi(params: ParamDef[]): CabiParam[] {
           role: "direct",
         });
         break;
-      case "object":
       default:
         result.push({
           name: p.name,
@@ -138,10 +124,7 @@ export function mapParamsToCabi(params: ParamDef[]): CabiParam[] {
 /**
  * Map a TS return type to a C ABI return descriptor.
  */
-export function mapResultToCabi(
-  result: ValType | null,
-  semantic: TsSemanticType | "void",
-): CabiResult {
+export function mapResultToCabi(result: ValType | null, semantic: TsSemanticType | "void"): CabiResult {
   if (result === null || semantic === "void") {
     return { wasmTypes: [], semantic: "void" };
   }
@@ -156,7 +139,6 @@ export function mapResultToCabi(
       return { wasmTypes: [{ kind: "i32" }], semantic };
     case "number_f64":
       return { wasmTypes: [{ kind: "f64" }], semantic };
-    case "object":
     default:
       return { wasmTypes: [{ kind: "i32" }], semantic };
   }
@@ -190,17 +172,15 @@ export function mangleCabiName(name: string): string {
  *
  * Returns the list of CabiExportInfo describing the new C ABI exports.
  */
-export function emitCabiWrappers(
-  mod: WasmModule,
-  exportInfos: CabiExportInfo[],
-): void {
+export function emitCabiWrappers(mod: WasmModule, exportInfos: CabiExportInfo[]): void {
   // Track which export indices to replace
   const exportReplacements = new Map<string, number>(); // old export name -> new func index
 
   for (const info of exportInfos) {
-    const needsWrapper = info.params.some(
-      (p) => p.role === "ptr" || p.role === "len",
-    ) || info.result.semantic === "string" || info.result.semantic === "array";
+    const needsWrapper =
+      info.params.some((p) => p.role === "ptr" || p.role === "len") ||
+      info.result.semantic === "string" ||
+      info.result.semantic === "array";
 
     if (!needsWrapper) {
       // No wrapper needed; just rename the export if needed
@@ -226,13 +206,8 @@ export function emitCabiWrappers(
     if (origFuncIdx === -1) continue;
 
     // Find the original function's type
-    const numImportFuncs = mod.imports.filter(
-      (i) => i.desc.kind === "func",
-    ).length;
-    const origFunc =
-      origFuncIdx >= numImportFuncs
-        ? mod.functions[origFuncIdx - numImportFuncs]
-        : null;
+    const numImportFuncs = mod.imports.filter((i) => i.desc.kind === "func").length;
+    const origFunc = origFuncIdx >= numImportFuncs ? mod.functions[origFuncIdx - numImportFuncs] : null;
     if (!origFunc) continue;
     const origType = mod.types[origFunc.typeIdx] as FuncTypeDef;
 
@@ -255,7 +230,7 @@ export function emitCabiWrappers(
     let cabiParamIdx = 0;
     for (let origIdx = 0; origIdx < (origType.params?.length ?? 0); origIdx++) {
       const cabiParam = info.params[cabiParamIdx];
-      if (cabiParam && (cabiParam.role === "ptr")) {
+      if (cabiParam && cabiParam.role === "ptr") {
         // String/array: the original function expects an i32 pointer.
         // In C ABI, we pass (ptr, len). The original function already
         // works with a pointer to the string/array header in linear memory.
@@ -333,9 +308,7 @@ export function emitCabiWrappers(
     }
 
     // Remove the original export (keep the function, just un-export it)
-    const origExportIdx = mod.exports.findIndex(
-      (e) => e.name === info.tsName && e.desc.kind === "func",
-    );
+    const origExportIdx = mod.exports.findIndex((e) => e.name === info.tsName && e.desc.kind === "func");
     if (origExportIdx !== -1) {
       mod.exports.splice(origExportIdx, 1);
     }
@@ -345,10 +318,7 @@ export function emitCabiWrappers(
 /**
  * Infer the TS semantic type from a ValType and TS type text.
  */
-export function inferSemantic(
-  wasmType: ValType,
-  tsTypeText: string | undefined,
-): TsSemanticType {
+export function inferSemantic(wasmType: ValType, tsTypeText: string | undefined): TsSemanticType {
   if (!tsTypeText) {
     return wasmType.kind === "f64" ? "number_f64" : "number_i32";
   }
