@@ -44,13 +44,8 @@ Sprint 36 focuses entirely on contributor readiness and code quality — no new 
 | 18 | #933 | Migrate report.html charts to shared t262-charts.js web components | Medium — DRY | Medium |
 | 19 | #942 | JS feature compatibility report ranked by real-world importance | **High** — user/contributor clarity | Medium |
 
-### Phase 6: Refactoring (from #909 sub-issues — sequential, high-risk)
-| Order | Issue | Title | Impact | Effort |
-|-------|-------|-------|--------|--------|
-| 20 | #910 | Split expressions.ts into syntax-family modules | High — largest file | Hard |
-| 21 | #911 | Split statements.ts into control-flow, vars, destructuring, loops, functions | High | Hard |
-| 22 | #912 | Remove circular dependencies from core codegen backend | High — contributor friction | Medium |
-| 23 | #913 | Split compiler.ts into validation, orchestration, output | Medium | Medium |
+### ~~Phase 6: Refactoring~~ — moved to sprint 37 (depends on #944 regression fix)
+~~#910, #911, #912, #913~~ — see sprint-37.md
 
 ### Done (completed earlier)
 - ~~#924~~ — Vite dev server OOM (done in sprint 35)
