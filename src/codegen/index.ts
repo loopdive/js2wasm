@@ -1432,7 +1432,7 @@ function _emitVecAccessExportsInner(ctx: CodegenContext): void {
       const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
       if (arrTypeIdx < 0) continue;
       // Skip numeric element types if __box_number is not available
-      if ((elemKey === "f64" || elemKey === "i32") && boxNumIdx === undefined) continue;
+      if ((elemKey === "f64" || elemKey === "i32" || elemKey === "i32_byte") && boxNumIdx === undefined) continue;
 
       // Inline boxing: avoid calling addUnionImports late
       let boxInstrs: Instr[];
@@ -1442,6 +1442,9 @@ function _emitVecAccessExportsInner(ctx: CodegenContext): void {
         boxInstrs = [{ op: "call", funcIdx: boxNumIdx } as Instr];
       } else if (elemKey === "i32" && boxNumIdx !== undefined) {
         boxInstrs = [{ op: "f64.convert_i32_s" } as Instr, { op: "call", funcIdx: boxNumIdx } as Instr];
+      } else if (elemKey === "i32_byte" && boxNumIdx !== undefined) {
+        // ArrayBuffer/DataView byte elements (i32, unsigned 0-255) — convert unsigned then box
+        boxInstrs = [{ op: "f64.convert_i32_u" } as Instr, { op: "call", funcIdx: boxNumIdx } as Instr];
       } else if (elemKey === "i64") {
         // i64 (BigInt) is a value type, not a ref type — extern.convert_any expects anyref.
         // Convert i64 -> f64 (lossy for large values) then box, or drop and return null.

@@ -13,8 +13,8 @@
  *   - Error category breakdown for regressions
  */
 
-import { createReadStream } from 'fs';
-import { createInterface } from 'readline';
+import { createReadStream } from "fs";
+import { createInterface } from "readline";
 
 interface TestResult {
   file: string;
@@ -46,7 +46,7 @@ async function loadJsonl(path: string): Promise<StatusMap> {
 function main() {
   const args = process.argv.slice(2);
 
-  if (args.length < 2 || args.includes('--help') || args.includes('-h')) {
+  if (args.length < 2 || args.includes("--help") || args.includes("-h")) {
     console.log(`Usage: npx tsx scripts/diff-test262.ts <baseline.jsonl> <new.jsonl>
 
 Compare two test262 JSONL result files and report regressions/improvements.
@@ -56,14 +56,14 @@ Options:
   --all            Show all transitions (no limit)
   --quiet, -q      Only show summary counts
   --help, -h       Show this help`);
-    process.exit(args.includes('--help') || args.includes('-h') ? 0 : 1);
+    process.exit(args.includes("--help") || args.includes("-h") ? 0 : 1);
   }
 
   const baselinePath = args[0];
   const newPath = args[1];
-  const verbose = args.includes('--verbose') || args.includes('-v');
-  const showAll = args.includes('--all');
-  const quiet = args.includes('--quiet') || args.includes('-q');
+  const verbose = args.includes("--verbose") || args.includes("-v");
+  const showAll = args.includes("--all");
+  const quiet = args.includes("--quiet") || args.includes("-q");
 
   const maxShow = showAll ? Infinity : verbose ? 50 : 20;
 
@@ -71,10 +71,7 @@ Options:
 }
 
 async function run(baselinePath: string, newPath: string, maxShow: number, quiet: boolean) {
-  const [baseline, newer] = await Promise.all([
-    loadJsonl(baselinePath),
-    loadJsonl(newPath),
-  ]);
+  const [baseline, newer] = await Promise.all([loadJsonl(baselinePath), loadJsonl(newPath)]);
 
   // Collect transitions
   const regressions: { file: string; from: string; to: string; error?: string; error_category?: string }[] = [];
@@ -99,12 +96,12 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
     const base = baseline.get(file);
     const cur = newer.get(file);
 
-    const baseStatus = base?.status ?? 'absent';
-    const curStatus = cur?.status ?? 'absent';
+    const baseStatus = base?.status ?? "absent";
+    const curStatus = cur?.status ?? "absent";
 
     if (baseStatus === curStatus) continue;
 
-    if (baseStatus === 'pass' && curStatus !== 'pass') {
+    if (baseStatus === "pass" && curStatus !== "pass") {
       regressions.push({
         file,
         from: baseStatus,
@@ -112,7 +109,7 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
         error: cur?.error,
         error_category: cur?.error_category,
       });
-    } else if (baseStatus !== 'pass' && curStatus === 'pass') {
+    } else if (baseStatus !== "pass" && curStatus === "pass") {
       improvements.push({ file, from: baseStatus, to: curStatus });
     } else {
       otherChanges.push({ file, from: baseStatus, to: curStatus });
@@ -125,31 +122,38 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
   otherChanges.sort((a, b) => a.file.localeCompare(b.file));
 
   // Print report
-  console.log(`\n${'='.repeat(60)}`);
+  console.log(`\n${"=".repeat(60)}`);
   console.log(`  test262 diff: ${baseline.size} baseline → ${newer.size} new tests`);
-  console.log(`${'='.repeat(60)}\n`);
+  console.log(`${"=".repeat(60)}\n`);
 
   // Status counts
   const allStatuses = new Set([...Object.keys(baselineCounts), ...Object.keys(newCounts)]);
-  console.log('  Status        Baseline    New      Delta');
-  console.log('  ' + '-'.repeat(46));
-  for (const status of ['pass', 'fail', 'compile_error', ...([...allStatuses].filter(s => !['pass', 'fail', 'compile_error'].includes(s)).sort())]) {
+  console.log("  Status        Baseline    New      Delta");
+  console.log("  " + "-".repeat(46));
+  for (const status of [
+    "pass",
+    "fail",
+    "compile_error",
+    ...[...allStatuses].filter((s) => !["pass", "fail", "compile_error"].includes(s)).sort(),
+  ]) {
     if (!allStatuses.has(status)) continue;
     const bCount = baselineCounts[status] || 0;
     const nCount = newCounts[status] || 0;
     const delta = nCount - bCount;
-    const deltaStr = delta === 0 ? '' : delta > 0 ? `+${delta}` : `${delta}`;
-    console.log(`  ${status.padEnd(16)}${String(bCount).padStart(7)}  ${String(nCount).padStart(7)}  ${deltaStr.padStart(7)}`);
+    const deltaStr = delta === 0 ? "" : delta > 0 ? `+${delta}` : `${delta}`;
+    console.log(
+      `  ${status.padEnd(16)}${String(bCount).padStart(7)}  ${String(nCount).padStart(7)}  ${deltaStr.padStart(7)}`,
+    );
   }
   console.log();
 
   // Regressions
-  const regColor = regressions.length > 0 ? '⚠️  ' : '';
+  const regColor = regressions.length > 0 ? "⚠️  " : "";
   console.log(`${regColor}=== Regressions (pass → other): ${regressions.length} ===`);
   if (!quiet && regressions.length > 0) {
     const shown = regressions.slice(0, maxShow);
     for (const r of shown) {
-      const errMsg = r.error ? ` (${truncate(r.error, 80)})` : '';
+      const errMsg = r.error ? ` (${truncate(r.error, 80)})` : "";
       console.log(`  ${r.file}: pass → ${r.to}${errMsg}`);
     }
     if (regressions.length > maxShow) {
@@ -203,7 +207,7 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
       const cat = r.error_category || r.to;
       errCats.set(cat, (errCats.get(cat) || 0) + 1);
     }
-    console.log('=== Regression error categories ===');
+    console.log("=== Regression error categories ===");
     const sorted = [...errCats.entries()].sort((a, b) => b[1] - a[1]);
     for (const [cat, count] of sorted) {
       console.log(`  ${cat}: ${count}`);
@@ -212,10 +216,10 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
   }
 
   // Net delta
-  const basePass = baselineCounts['pass'] || 0;
-  const newPass = newCounts['pass'] || 0;
+  const basePass = baselineCounts["pass"] || 0;
+  const newPass = newCounts["pass"] || 0;
   const delta = newPass - basePass;
-  const sign = delta >= 0 ? '+' : '';
+  const sign = delta >= 0 ? "+" : "";
   console.log(`=== Net: ${sign}${delta} pass (${basePass} → ${newPass}) ===`);
   console.log();
 
@@ -227,7 +231,7 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
 
 function truncate(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
-  return s.slice(0, maxLen - 3) + '...';
+  return s.slice(0, maxLen - 3) + "...";
 }
 
 main();
