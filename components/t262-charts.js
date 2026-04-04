@@ -62,10 +62,10 @@ class T262Donut extends HTMLElement {
     const pct = ((pass / total) * 100).toFixed(1);
 
     const segments = [
-      { value: pass, color: "var(--t262-pass, #3fb950)", label: "Pass" },
-      { value: fail, color: "var(--t262-fail, #f85149)", label: "Fail" },
-      { value: ce, color: "var(--t262-ce, #d29922)", label: "CE" },
-      { value: skip, color: "var(--t262-skip, #8b949e)", label: "Skip" },
+      { value: pass, color: "rgba(255,255,255,1)", label: "Pass" },
+      { value: fail, color: "rgba(255,255,255,0.2)", label: "Fail" },
+      { value: ce, color: "rgba(255,255,255,0.1)", label: "CE" },
+      { value: skip, color: "rgba(255,255,255,0)", label: "Skip" },
     ];
 
     // Build the conic-gradient donut
@@ -97,10 +97,10 @@ class T262Donut extends HTMLElement {
     };
 
     const orbitHTML =
-      makeOrbitStat(pass, "Passed", "var(--t262-pass, #3fb950)", passDeg / 2, 184) +
-      makeOrbitStat(fail, "Failed", "var(--t262-fail, #f85149)", (passDeg + failDeg) / 2, 194) +
-      makeOrbitStat(ce, "Compile Errors", "var(--t262-ce, #d29922)", (failDeg + ceDeg) / 2, 180) +
-      makeOrbitStat(skip, "Unsupported", "var(--t262-skip, #8b949e)", (ceDeg + 360) / 2, 214);
+      makeOrbitStat(pass, "Passed", "rgba(255,255,255,0.9)", passDeg / 2, 184) +
+      makeOrbitStat(fail, "Failed", "rgba(255,255,255,0.4)", (passDeg + failDeg) / 2, 194) +
+      makeOrbitStat(ce, "Compile Errors", "rgba(255,255,255,0.25)", (failDeg + ceDeg) / 2, 180) +
+      makeOrbitStat(skip, "Unsupported", "rgba(255,255,255,0.15)", (ceDeg + 360) / 2, 214);
 
     // Build legend
     const legendHTML = segments
@@ -143,10 +143,11 @@ class T262Donut extends HTMLElement {
           aspect-ratio: 1 / 1;
           border-radius: 50%;
           background: conic-gradient(
-            var(--_pass) 0deg ${passDeg}deg,
-            rgba(248,81,73,0.18) ${passDeg}deg ${failDeg}deg,
-            rgba(210,153,34,0.18) ${failDeg}deg ${ceDeg}deg,
-            rgba(139,148,158,0.14) ${ceDeg}deg 360deg
+            rgba(255,255,255,0) 0deg,
+            rgba(255,255,255,1) ${passDeg}deg,
+            rgba(255,255,255,0.2) ${passDeg}deg ${failDeg}deg,
+            rgba(255,255,255,0.1) ${failDeg}deg ${ceDeg}deg,
+            rgba(255,255,255,0) ${ceDeg}deg 360deg
           );
         }
         .gauge-wrap::before {
