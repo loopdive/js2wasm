@@ -5716,18 +5716,55 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   // Build loop body
   const savedBody = pushBody(fctx);
 
-  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
-  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
-  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! += 2;
-  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 2;
-  adjustRethrowDepth(fctx, 2);
-
-  fctx.breakStack.push(1); // break = depth 1 (exit block)
-  fctx.continueStack.push(0); // continue = depth 0 (restart loop)
+  // Adjust existing break/continue depths: try+block+loop adds 3 nesting levels (#851).
+  // The extra +1 (vs the old +2) is for the try wrapper that enables iterator close on throw.
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! += 3;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 3;
+  adjustRethrowDepth(fctx, 3);
 
   // Done flag: tracks whether iterator completed normally (done=true).
   // Used after the loop to decide whether to call iterator.return() (#851).
   const doneFlag = allocLocal(fctx, `__forof_done_${fctx.locals.length}`, { kind: "i32" });
+
+  // Iterator close finallyStack entry (#851): inline before return/outer-break/outer-continue.
+  // Push BEFORE the for-of break/continue entries so that:
+  //   - break to for-of (breakIdx = N = breakStackLen)  → N < N = false → NOT inlined (post-loop handles it)
+  //   - break to outer  (breakIdx < N)                  → true → inlined ✓
+  //   - continue to for-of (contIdx = M = continueStackLen) → M < M = false → NOT inlined ✓
+  //   - continue to outer  (contIdx < M)                → true → inlined ✓
+  //   - return                                          → always inlined ✓
+  const iterCloseBreakStackLen = fctx.breakStack.length;
+  const iterCloseContinueStackLen = fctx.continueStack.length;
+  if (returnIdx !== undefined) {
+    const capturedDoneFlag = doneFlag;
+    const capturedIterLocal = iterLocal;
+    const capturedReturnIdx = returnIdx;
+    if (!fctx.finallyStack) fctx.finallyStack = [];
+    fctx.finallyStack.push({
+      cloneFinally: (): Instr[] =>
+        JSON.parse(
+          JSON.stringify([
+            { op: "local.get", index: capturedDoneFlag } as Instr,
+            { op: "i32.eqz" } as Instr,
+            {
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "local.get", index: capturedIterLocal } as Instr,
+                { op: "call", funcIdx: capturedReturnIdx } as Instr,
+              ],
+              else: [],
+            } as unknown as Instr,
+          ]),
+        ),
+      breakStackLen: iterCloseBreakStackLen,
+      continueStackLen: iterCloseContinueStackLen,
+    });
+  }
+
+  fctx.breakStack.push(1); // break = depth 1 (exit block, inside try wrapper)
+  fctx.continueStack.push(0); // continue = depth 0 (restart loop)
 
   // Safety guard: max iteration counter to prevent infinite loops from collection mutation
   const iterCountLocal = allocLocal(fctx, `__forof_guard_${fctx.locals.length}`, { kind: "i32" });
@@ -5791,15 +5828,22 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
 
-  // Restore existing break/continue depths
-  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
-  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! -= 2;
-  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
-  adjustRethrowDepth(fctx, -2);
+  // Pop the iterator-close finallyStack entry (pushed before break/continue entries).
+  if (returnIdx !== undefined && fctx.finallyStack && fctx.finallyStack.length > 0) {
+    fctx.finallyStack.pop();
+  }
+
+  // Restore existing break/continue depths (undo the +3 applied at loop entry).
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 3;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! -= 3;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 3;
+  adjustRethrowDepth(fctx, -3);
 
   popBody(fctx, savedBody);
 
-  fctx.body.push({
+  // The block/loop body; wrapped in try/catch_all when __iterator_return is available
+  // to call iterator.return() on throw (#851 via-throw).
+  const blockLoop = {
     op: "block",
     blockType: { kind: "empty" },
     body: [
@@ -5809,13 +5853,37 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
         body: loopBody,
       },
     ],
-  });
+  };
 
-  // Iterator close protocol (#851): call iterator.return() only on abrupt
-  // completion (break/return/throw), NOT on normal completion (done=true).
+  if (returnIdx !== undefined) {
+    // Wrap in try/catch_all: on exception, call iterator.return() then rethrow.
+    const catchAllBody: Instr[] = [
+      { op: "local.get", index: doneFlag } as Instr,
+      { op: "i32.eqz" } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "local.get", index: iterLocal } as Instr, { op: "call", funcIdx: returnIdx } as Instr],
+        else: [],
+      } as unknown as Instr,
+      { op: "rethrow", depth: 0 } as unknown as Instr,
+    ];
+    fctx.body.push({
+      op: "try",
+      blockType: { kind: "empty" },
+      body: [blockLoop],
+      catches: [],
+      catchAll: catchAllBody,
+    } as unknown as Instr);
+  } else {
+    fctx.body.push(blockLoop as unknown as Instr);
+  }
+
+  // Iterator close protocol (#851): call iterator.return() on break (post-loop check).
+  // return/throw/outer-break/outer-continue are handled via finallyStack and try/catch_all above.
   if (returnIdx !== undefined) {
     fctx.body.push({ op: "local.get", index: doneFlag });
-    fctx.body.push({ op: "i32.eqz" }); // if NOT done (abrupt exit)
+    fctx.body.push({ op: "i32.eqz" }); // if NOT done (abrupt exit via break)
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
