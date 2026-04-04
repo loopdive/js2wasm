@@ -503,37 +503,6 @@ function isStringMethodReturningHostArray(ctx: CodegenContext, expr: ts.Expressi
   return isStringType(receiverType);
 }
 
-/** Check if an expression is a Promise static method call (Promise.resolve, Promise.all, etc.)
- *  or a Promise instance method (.then, .catch, .finally) that returns a host Promise object (externref). */
-function isPromiseHostCall(ctx: CodegenContext, expr: ts.Expression): boolean {
-  if (!ts.isCallExpression(expr)) return false;
-  if (ts.isPropertyAccessExpression(expr.expression)) {
-    const method = expr.expression.name.text;
-    // Static methods: Promise.resolve/reject/all/race/allSettled/any
-    if (
-      ts.isIdentifier(expr.expression.expression) &&
-      expr.expression.expression.text === "Promise" &&
-      (method === "resolve" || method === "reject" || method === "all" ||
-       method === "race" || method === "allSettled" || method === "any")
-    ) {
-      return true;
-    }
-    // Instance methods: .then/.catch/.finally on Promise-typed receivers
-    if (method === "then" || method === "catch" || method === "finally") {
-      const receiverType = ctx.checker.getTypeAtLocation(expr.expression.expression);
-      const symName = receiverType.getSymbol()?.name;
-      if (symName === "Promise") return true;
-      const apparent = ctx.checker.getApparentType(receiverType);
-      if (apparent.getSymbol()?.name === "Promise") return true;
-    }
-  }
-  // new Promise(executor)
-  if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression) && expr.expression.text === "Promise") {
-    return true;
-  }
-  return false;
-}
-
 function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.VariableStatement): void {
   for (const decl of stmt.declarationList.declarations) {
     if (ts.isObjectBindingPattern(decl.name)) {
@@ -707,9 +676,7 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
         : (inferredVecType ??
           (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer)
             ? { kind: "externref" as const }
-            : (decl.initializer && isPromiseHostCall(ctx, decl.initializer)
-              ? { kind: "externref" as const }
-              : resolveWasmType(ctx, varType))));
+            : resolveWasmType(ctx, varType)));
 
     // If this var/let/const was already pre-hoisted at function entry, reuse that slot.
     const existingIdx = fctx.localMap.get(name);
