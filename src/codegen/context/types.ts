@@ -374,6 +374,8 @@ export interface CodegenContext {
   shapePropFlags: Map<number, Uint8Array>;
   /** Cache for function-constructor struct types */
   funcConstructorMap: Map<string, { structTypeIdx: number; ctorFuncName: string }>;
+  /** Per-compilation recursion guard for ensureStructForType (prevents infinite loops on circular types) */
+  ensureStructPending: Set<ts.Type>;
 }
 
 export type { SourcePos };

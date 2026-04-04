@@ -8964,7 +8964,6 @@ function ensureDateStructForCtx(ctx: CodegenContext): number {
  * For named types already in structMap, this is a no-op.
  * For anonymous types, auto-registers them with a generated name.
  */
-const _ensureStructPending = new WeakSet<ts.Type>();
 export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
   if (!(tsType.flags & ts.TypeFlags.Object)) return;
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
@@ -8972,9 +8971,11 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   if (isTupleType(tsType)) return;
   // Callable types (functions) are compiled as closures, not structs
   if (tsType.getCallSignatures().length > 0) return;
-  // Guard against infinite recursion on circular/self-referencing types
-  if (_ensureStructPending.has(tsType)) return;
-  _ensureStructPending.add(tsType);
+  // Guard against infinite recursion on circular/self-referencing types.
+  // Uses per-compilation ctx.ensureStructPending (not module-scoped) to avoid
+  // leaking state between compile() calls in the same process (#923).
+  if (ctx.ensureStructPending.has(tsType)) return;
+  ctx.ensureStructPending.add(tsType);
 
   const name = tsType.symbol?.name;
 
