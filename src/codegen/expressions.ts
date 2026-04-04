@@ -10335,18 +10335,24 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
-    // Handle Promise.all / Promise.race / Promise.resolve / Promise.reject — host-delegated static calls
+    // Handle Promise.all / Promise.race / Promise.allSettled / Promise.any / Promise.resolve / Promise.reject — host-delegated static calls
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Promise" &&
       (propAccess.name.text === "all" ||
         propAccess.name.text === "race" ||
+        propAccess.name.text === "allSettled" ||
+        propAccess.name.text === "any" ||
         propAccess.name.text === "resolve" ||
         propAccess.name.text === "reject")
     ) {
       const methodName = propAccess.name.text;
       const importName = `Promise_${methodName}`;
-      const funcIdx = ctx.funcMap.get(importName);
+      let funcIdx =
+        ctx.funcMap.get(importName) ??
+        ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+      funcIdx = ctx.funcMap.get(importName) ?? funcIdx;
       if (funcIdx !== undefined) {
         if (expr.arguments.length >= 1) {
           compileExpression(ctx, fctx, expr.arguments[0]!, {
@@ -10647,42 +10653,58 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
-    // Handle Promise instance methods: .then(cb1, cb2?), .catch(cb)
+    // Handle Promise instance methods: .then(cb1, cb2?), .catch(cb), .finally(cb)
     // Promise values are externref; delegate to host imports
+    // GUARD: Only match when receiver TS type is Promise (prevents routing
+    // compiled async function returns through host Promise path — v1 regression)
     {
       const method = propAccess.name.text;
-      if ((method === "then" || method === "catch") && expr.arguments.length >= 1) {
-        const importName = `Promise_${method}`;
-        const funcIdx = ctx.funcMap.get(importName);
-        if (funcIdx !== undefined) {
-          // Compile the Promise value (receiver)
-          compileExpression(ctx, fctx, propAccess.expression, {
-            kind: "externref",
-          });
-          // Compile the first callback argument, coercing to externref
-          const cbType = compileExpression(ctx, fctx, expr.arguments[0]!, {
-            kind: "externref",
-          });
-          if (cbType && cbType.kind !== "externref") {
-            coerceType(ctx, fctx, cbType, { kind: "externref" });
-          }
-          // For .then(): push second callback (onRejected) or null
-          if (method === "then") {
-            if (expr.arguments.length >= 2) {
+      if ((method === "then" || method === "catch" || method === "finally") && expr.arguments.length >= 1) {
+        const receiverTsType = ctx.checker.getTypeAtLocation(propAccess.expression);
+        const recvSym = receiverTsType.getSymbol()?.name;
+        const apparentSym = ctx.checker.getApparentType(receiverTsType).getSymbol()?.name;
+        const isPromiseReceiver = recvSym === "Promise" || apparentSym === "Promise";
+
+        if (isPromiseReceiver) {
+          // Determine import name: use Promise_then2 for .then(cb1, cb2)
+          const useThen2 = method === "then" && expr.arguments.length >= 2;
+          const importName = useThen2 ? "Promise_then2" : `Promise_${method}`;
+
+          // Ensure import exists (late import fallback)
+          const paramTypes: ValType[] = useThen2
+            ? [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }]
+            : [{ kind: "externref" }, { kind: "externref" }];
+          let funcIdx =
+            ctx.funcMap.get(importName) ?? ensureLateImport(ctx, importName, paramTypes, [{ kind: "externref" }]);
+          flushLateImportShifts(ctx, fctx);
+          funcIdx = ctx.funcMap.get(importName) ?? funcIdx;
+
+          if (funcIdx !== undefined) {
+            // Compile the Promise value (receiver)
+            compileExpression(ctx, fctx, propAccess.expression, {
+              kind: "externref",
+            });
+            // Compile the first callback argument, coercing to externref
+            const cbType = compileExpression(ctx, fctx, expr.arguments[0]!, {
+              kind: "externref",
+            });
+            if (cbType && cbType.kind !== "externref") {
+              coerceType(ctx, fctx, cbType, { kind: "externref" });
+            }
+            // For .then(cb1, cb2): compile second callback
+            if (useThen2) {
               const cb2Type = compileExpression(ctx, fctx, expr.arguments[1]!, {
                 kind: "externref",
               });
               if (cb2Type && cb2Type.kind !== "externref") {
                 coerceType(ctx, fctx, cb2Type, { kind: "externref" });
               }
-            } else {
-              fctx.body.push({ op: "ref.null.extern" });
             }
+            // Re-lookup funcIdx after compiling args (late imports may shift)
+            const finalIdx = ctx.funcMap.get(importName) ?? funcIdx;
+            fctx.body.push({ op: "call", funcIdx: finalIdx });
+            return { kind: "externref" };
           }
-          // Re-lookup funcIdx after compiling args (addUnionImports may shift)
-          const finalIdx = ctx.funcMap.get(importName) ?? funcIdx;
-          fctx.body.push({ op: "call", funcIdx: finalIdx });
-          return { kind: "externref" };
         }
       }
     }
@@ -15347,7 +15369,11 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
 
   // Handle `new Promise(executor)` — delegate to host import
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Promise") {
-    const funcIdx = ctx.funcMap.get("Promise_new");
+    let funcIdx =
+      ctx.funcMap.get("Promise_new") ??
+      ensureLateImport(ctx, "Promise_new", [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    funcIdx = ctx.funcMap.get("Promise_new") ?? funcIdx;
     if (funcIdx !== undefined) {
       const args = expr.arguments ?? [];
       if (args.length >= 1) {
@@ -15357,7 +15383,6 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
       }
       fctx.body.push({ op: "call", funcIdx });
     } else {
-      // No import registered — fallback to null
       fctx.body.push({ op: "ref.null.extern" });
     }
     return { kind: "externref" };
