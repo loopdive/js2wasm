@@ -1998,6 +1998,7 @@ interface UnifiedCollectorState {
   // -- collectPromiseImports --
   promiseNeeded: Set<string>;
   promiseNeedConstructor: boolean;
+  promiseNeedThen2: boolean;
   // -- collectJsonImports --
   jsonNeedStringify: boolean;
   jsonNeedParse: boolean;
@@ -2050,6 +2051,7 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
     needsFromCodePoint: false,
     promiseNeeded: new Set(),
     promiseNeedConstructor: false,
+    promiseNeedThen2: false,
     jsonNeedStringify: false,
     jsonNeedParse: false,
     callbackFound: false,
@@ -2354,8 +2356,34 @@ function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorState, nod
     node.expression.expression.text === "Promise"
   ) {
     const method = node.expression.name.text;
-    if (method === "all" || method === "race" || method === "resolve" || method === "reject") {
+    if (
+      method === "all" ||
+      method === "race" ||
+      method === "resolve" ||
+      method === "reject" ||
+      method === "allSettled" ||
+      method === "any"
+    ) {
       state.promiseNeeded.add(method);
+    }
+  }
+  // Detect .then() / .catch() / .finally() on Promise-typed values
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    const method = node.expression.name.text;
+    if (method === "then" || method === "catch" || method === "finally") {
+      const receiverType = ctx.checker.getTypeAtLocation(node.expression.expression);
+      const symName = receiverType.getSymbol()?.name;
+      const apparent = ctx.checker.getApparentType(receiverType);
+      if (
+        symName === "Promise" ||
+        apparent.getSymbol()?.name === "Promise" ||
+        (receiverType as any).resolvedTypeArguments
+      ) {
+        state.promiseNeeded.add(method);
+        if (method === "then" && node.arguments.length >= 2) {
+          state.promiseNeedThen2 = true;
+        }
+      }
     }
   }
   if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
@@ -2788,12 +2816,33 @@ function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorSt
   }
 
   // ── collectPromiseImports finalize ──
+  const promiseInstanceMethods = new Set(["then", "catch", "finally"]);
+  // Register static methods: (externref) → externref
   for (const method of state.promiseNeeded) {
+    if (promiseInstanceMethods.has(method)) continue;
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
       const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
+  }
+  // Register instance methods: (externref, externref) → externref
+  for (const method of state.promiseNeeded) {
+    if (!promiseInstanceMethods.has(method)) continue;
+    const importName = `Promise_${method}`;
+    if (!ctx.funcMap.has(importName)) {
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    }
+  }
+  // Register Promise_then2: (externref, externref, externref) → externref
+  if (state.promiseNeedThen2 && !ctx.funcMap.has("Promise_then2")) {
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    addImport(ctx, "env", "Promise_then2", { kind: "func", typeIdx });
   }
   if (state.promiseNeedConstructor && !ctx.funcMap.has("Promise_new")) {
     const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);

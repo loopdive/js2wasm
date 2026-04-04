@@ -494,6 +494,36 @@ function isStringMethodReturningHostArray(ctx: CodegenContext, expr: ts.Expressi
   return isStringType(receiverType);
 }
 
+/**
+ * Check if an expression is a host Promise call whose result is a real JS Promise.
+ * Only matches static Promise methods (resolve/reject/all/race/allSettled/any) and
+ * new Promise(). DELIBERATELY OMITS instance methods (.then/.catch/.finally) to
+ * prevent cascading type overrides through Promise chains on compiled async functions.
+ */
+function isPromiseHostCall(_ctx: CodegenContext, expr: ts.Expression): boolean {
+  // new Promise(executor)
+  if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression) && expr.expression.text === "Promise") {
+    return true;
+  }
+  if (!ts.isCallExpression(expr)) return false;
+  if (!ts.isPropertyAccessExpression(expr.expression)) return false;
+  const method = expr.expression.name.text;
+  // Static methods: Promise.resolve/reject/all/race/allSettled/any
+  if (
+    ts.isIdentifier(expr.expression.expression) &&
+    expr.expression.expression.text === "Promise" &&
+    (method === "resolve" ||
+      method === "reject" ||
+      method === "all" ||
+      method === "race" ||
+      method === "allSettled" ||
+      method === "any")
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.VariableStatement): void {
   for (const decl of stmt.declarationList.declarations) {
     if (ts.isObjectBindingPattern(decl.name)) {
@@ -663,7 +693,9 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
         : (inferredVecType ??
           (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer)
             ? { kind: "externref" as const }
-            : resolveWasmType(ctx, varType)));
+            : decl.initializer && isPromiseHostCall(ctx, decl.initializer)
+              ? { kind: "externref" as const }
+              : resolveWasmType(ctx, varType)));
 
     // If this var/let/const was already pre-hoisted at function entry, reuse that slot.
     const existingIdx = fctx.localMap.get(name);
@@ -683,7 +715,7 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
     // already emitted struct.new + local.set targeting this local with its original
     // ref type. Changing the type retroactively would cause Wasm validation errors.
     // Instead, keep the existing ref type and let emitCoercedLocalSet handle coercion.
-    if (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length) {
+    if ((isVar || isHoistedLetConst) && existingIdx !== undefined && existingIdx >= fctx.params.length) {
       const localSlot = fctx.locals[existingIdx - fctx.params.length];
       if (
         localSlot &&

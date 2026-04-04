@@ -1252,13 +1252,39 @@ function resolveImport(
           return keys[i];
         };
       // Promise combinators and constructors
-      if (name === "Promise_all") return (arr: any) => Promise.all(arr);
-      if (name === "Promise_race") return (arr: any) => Promise.race(arr);
+      // Helper: convert WasmGC vec struct to JS array (vec structs are opaque
+      // from JS; Promise.all/race/etc. need an iterable).
+      const _vecToArray = (arr: any): any[] => {
+        if (arr == null) return [];
+        if (Array.isArray(arr)) return arr;
+        const exports = callbackState?.getExports();
+        if (exports) {
+          const vecLen = exports.__vec_len as Function | undefined;
+          const vecGet = exports.__vec_get as Function | undefined;
+          if (typeof vecLen === "function" && typeof vecGet === "function") {
+            const len = vecLen(arr) as number;
+            if (typeof len === "number" && len >= 0) {
+              const result: any[] = new Array(len);
+              for (let i = 0; i < len; i++) {
+                result[i] = vecGet(arr, i);
+              }
+              return result;
+            }
+          }
+        }
+        return [arr]; // Fallback: wrap single value
+      };
+      if (name === "Promise_all") return (arr: any) => Promise.all(_vecToArray(arr));
+      if (name === "Promise_race") return (arr: any) => Promise.race(_vecToArray(arr));
+      if (name === "Promise_allSettled") return (arr: any) => Promise.allSettled(_vecToArray(arr));
+      if (name === "Promise_any") return (arr: any) => (Promise as any).any(_vecToArray(arr));
       if (name === "Promise_resolve") return (val: any) => Promise.resolve(val);
       if (name === "Promise_reject") return (val: any) => Promise.reject(val);
       if (name === "Promise_new") return (executor: any) => new Promise(executor);
       if (name === "Promise_then") return (p: any, cb: any) => p.then(cb);
+      if (name === "Promise_then2") return (p: any, cb1: any, cb2: any) => p.then(cb1, cb2);
       if (name === "Promise_catch") return (p: any, cb: any) => p.catch(cb);
+      if (name === "Promise_finally") return (p: any, cb: any) => p.finally(cb);
       // Generator support: buffer management and generator creation
       if (name === "__gen_create_buffer") return () => [];
       if (name === "__gen_push_f64")
