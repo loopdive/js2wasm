@@ -1791,14 +1791,6 @@ export function test(): number {
   ${implicitDecls}
   try {
     `;
-  const asyncResultExport = needsDone
-    ? `
-export function __asyncResult(): number {
-  if (__fail) { return __fail; }
-  return 1;
-}
-`
-    : "";
   const postBody = `
   } catch (e) {
     if (!__fail) __fail = -1;
@@ -1807,7 +1799,7 @@ export function __asyncResult(): number {
   if (__fail) { return __fail; }
   return 1;
 }
-${asyncResultExport}`;
+`;
   const bodyLineOffset = preBody.split("\n").length - 1;
   // Also account for lines stripped from the original source (metadata block)
   const metaBlock = source.match(/\/\*---[\s\S]*?---\*\//);
@@ -2464,23 +2456,8 @@ export async function runTest262File(
     }
 
     const executeStart = performance.now();
-    let ret = testFn();
+    const ret = testFn();
     executeMs = performance.now() - executeStart;
-
-    // For async tests (those using $DONE), drain the microtask queue and
-    // re-check the result. Promise callbacks fire asynchronously — by the
-    // time test() returns, $DONE may not have been called yet.
-    const asyncResultFn = (instance.exports as any).__asyncResult;
-    if (ret === 1 && typeof asyncResultFn === "function") {
-      // Drain microtasks: await a resolved promise to let .then() callbacks fire
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      try {
-        ret = asyncResultFn();
-      } catch {
-        // If __asyncResult throws, keep the original result
-      }
-    }
-
     const totalMs = performance.now() - totalStart;
     const timing: TestTiming = {
       totalMs: round2(totalMs),
