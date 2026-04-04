@@ -59,6 +59,7 @@ function _validatePropertyDescriptor(
   descs: Map<string | symbol, number>,
   prop: string | symbol,
   desc: PropertyDescriptor,
+  existingValue?: any,
 ): number {
   const existing = descs.get(prop);
   // Compute new flags — for Object.defineProperty, unspecified attributes default to false
@@ -99,7 +100,9 @@ function _validatePropertyDescriptor(
       if (desc.writable === true) {
         throw new TypeError("Cannot redefine property: " + String(prop));
       }
-      if (desc.value !== undefined) {
+      // ES spec 9.1.6.3: can set value only if SameValue(desc.value, existing.value).
+      // Use Object.is for SameValue semantics (distinguishes +0/-0, NaN===NaN).
+      if (desc.value !== undefined && !Object.is(desc.value, existingValue)) {
         throw new TypeError("Cannot redefine property: " + String(prop));
       }
     }
@@ -937,9 +940,11 @@ function resolveImport(
               // Distinguish WasmGC "opaque" errors from spec-mandated errors.
               const msg = (e as Error).message || "";
               if (msg.includes("opaque") || msg.includes("WebAssembly")) {
-                // WasmGC struct — validate against sidecar descriptors, then store
+                // WasmGC struct — validate against sidecar descriptors, then store.
+                // Pass existing sidecar value for SameValue check on non-writable props.
                 const sDescs = _getSidecarDescs(obj);
-                const newFlags = _validatePropertyDescriptor(sDescs, prop, desc);
+                const existingVal = _sidecarGet(obj, prop);
+                const newFlags = _validatePropertyDescriptor(sDescs, prop, desc, existingVal);
                 sDescs.set(prop, newFlags);
                 if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
               } else {
@@ -1006,7 +1011,8 @@ function resolveImport(
                     if (getFn !== undefined) desc.get = getFn;
                     const setFn = getField(rawDesc, "set");
                     if (setFn !== undefined) desc.set = setFn;
-                    const newFlags = _validatePropertyDescriptor(sDescs, key, desc);
+                    const existingVal2 = _sidecarGet(obj, key);
+                    const newFlags = _validatePropertyDescriptor(sDescs, key, desc, existingVal2);
                     sDescs.set(key, newFlags);
                     if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
                   }
