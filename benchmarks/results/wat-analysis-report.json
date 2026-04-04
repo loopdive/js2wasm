@@ -1,0 +1,52 @@
+{
+  "generated_at": "2026-04-04T16:14:28.518Z",
+  "corpus_size": 3916,
+  "deduped_sources": 3757,
+  "compiled_ok": 3619,
+  "compiled_fail": 138,
+  "patterns": {
+    "duplicate_locals": {
+      "description": "Functions with duplicate (local $name) declarations (same TS variable name compiled multiple times)",
+      "total_extra_locals": 3366,
+      "affected_functions": 2201,
+      "affected_modules": 2064,
+      "example": "(local $__self (ref null 1))\n    (local $__prop_assign_1 f64)\n    i32.const 0\n    f64.const 0\n    st"
+    },
+    "dead_drops": {
+      "description": "local.set/tee N immediately followed by drop — expression statement result not used, value is dropped",
+      "count": 272,
+      "affected_modules": 173,
+      "example": "local.set 3\n        drop"
+    },
+    "local_get_drop": {
+      "description": "local.get N immediately followed by drop — local loaded but result unused",
+      "count": 1,
+      "affected_modules": 1,
+      "example": "local.get 2\n    drop"
+    },
+    "string_concat_chain": {
+      "description": "3+ consecutive calls to the same function (e.g. string concat) — could use a multi-arg concat",
+      "count": 531,
+      "max_chain_length": 38,
+      "affected_modules": 172,
+      "example": "3x call 1 (concat chain)"
+    },
+    "null_guards": {
+      "description": "ref.is_null checks generated for property access — total guards across all modules",
+      "total": 3441,
+      "affected_modules": 1298,
+      "avg_per_module": 1
+    },
+    "ref_test_cast_pairs": {
+      "description": "ref.test (ref N) + ref.cast (ref N) pairs — type check immediately before cast of same type",
+      "count": 8642,
+      "affected_modules": 1291,
+      "example": "ref.test (ref 1)\n    (if\n      (then\n      local.get 1\n      ref.cast (ref 1)"
+    },
+    "f64_const_to_i32": {
+      "description": "f64.const N immediately followed by i32.trunc_sat_f64_s — could emit i32.const N directly",
+      "count": 673,
+      "affected_modules": 318
+    }
+  }
+}
