@@ -1315,6 +1315,33 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
+    // ── Escaped keyword detection ─────────────────────────────────
+    // ES spec: Keywords containing Unicode escape sequences are not valid.
+    // e.g., \u0061wait is NOT a valid `await` keyword, im\u0070ort is NOT
+    // a valid `import` keyword, etc.
+    // Check if the raw source text of keyword-like nodes contains \u escapes.
+    if (ts.isAwaitExpression(node) || ts.isYieldExpression(node)) {
+      const start = node.getStart(sourceFile);
+      const rawText = sourceFile.text.substring(start, start + 10);
+      if (/\\u[0-9a-fA-F]{4}/.test(rawText)) {
+        addError(node, "Keyword must not contain escaped characters");
+      }
+    }
+    // Escaped 'async' modifier
+    if ((ts.isArrowFunction(node) || ts.isFunctionDeclaration(node) ||
+         ts.isFunctionExpression(node) || ts.isMethodDeclaration(node)) &&
+        node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+      for (const mod of node.modifiers!) {
+        if (mod.kind === ts.SyntaxKind.AsyncKeyword) {
+          const modStart = mod.getStart(sourceFile);
+          const rawText = sourceFile.text.substring(modStart, modStart + 10);
+          if (/\\u[0-9a-fA-F]{4}/.test(rawText)) {
+            addError(mod, "Keyword must not contain escaped characters");
+          }
+        }
+      }
+    }
+
     // ── import/export in invalid positions ──────────────────────────
     // ES spec: ImportDeclaration and ExportDeclaration are only valid at the
     // top level of a Module. They cannot appear inside functions, blocks, etc.
@@ -1328,13 +1355,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         addError(node, "An export declaration can only be used at the top level of a module");
       }
     }
-    // export default in invalid positions (e.g., do { export default null } while(false))
-    if (node.kind === ts.SyntaxKind.ExportKeyword) {
-      const parent = node.parent;
-      if (parent && !ts.isSourceFile(parent.parent) && !ts.isModuleBlock(parent?.parent)) {
-        // Only flag if the parent is a declaration inside a non-top-level context
-        if (ts.isVariableStatement(parent) || ts.isFunctionDeclaration(parent) || ts.isClassDeclaration(parent) || ts.isExpressionStatement(parent)) {
-          if (parent.parent && !ts.isSourceFile(parent.parent) && !ts.isModuleBlock(parent.parent)) {
+    // Also catch exported declarations (export function, export class, export var)
+    // that are inside non-top-level contexts
+    if (ts.isVariableStatement(node) || ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) {
+      if (ts.canHaveModifiers(node)) {
+        const mods = ts.getModifiers(node as ts.HasModifiers);
+        if (mods?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+          if (!ts.isSourceFile(node.parent) && !ts.isModuleBlock(node.parent)) {
             addError(node, "An export declaration can only be used at the top level of a module");
           }
         }
