@@ -184,6 +184,21 @@ All independent -- can run in parallel (different codegen paths).
 
 ---
 
+## Cluster N: Codegen Performance (WAT pattern elimination) `[E][S]`
+
+Discovered via `scripts/analyze-wat-patterns.ts` (#948) — corpus of 3,619 modules.
+All independent, can run in parallel.
+
+| #   | Title | Impact | Ready? |
+|-----|-------|--------|--------|
+| 954 | Eliminate duplicate locals (57% modules, 3,366 extra locals) | Size/perf | **Ready** |
+| 955 | Eliminate redundant ref.test + ref.cast pairs (35.7%, 8,642 cases) | Size/perf | **Ready** |
+| 956 | Emit i32.const directly vs f64.const + trunc (8.8%, 673 cases) | Size/perf | **Ready** (easy) |
+| 957 | Eliminate local.set + drop dead-store pattern (4.8%, 272 cases) | Size/perf | **Ready** (easy) |
+| 958 | Batch string concat chains into multi-arg call (4.8%, 531 chains) | GC allocs | **Ready** (hard) |
+
+---
+
 ## Cluster H: Type Inference / Performance `[E][I]`
 
 ```
