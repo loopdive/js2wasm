@@ -442,6 +442,12 @@ function resolveImport(
       } else if (variant.startsWith("error_")) {
         consoleFn = console.error;
         isBool = variant === "error_bool";
+      } else if (variant.startsWith("info_")) {
+        consoleFn = console.info;
+        isBool = variant === "info_bool";
+      } else if (variant.startsWith("debug_")) {
+        consoleFn = console.debug;
+        isBool = variant === "debug_bool";
       } else if (variant.startsWith("log_")) {
         isBool = variant === "log_bool";
       } else if (variant === "bool") {

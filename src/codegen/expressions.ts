@@ -9110,7 +9110,11 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "console" &&
-      (propAccess.name.text === "log" || propAccess.name.text === "warn" || propAccess.name.text === "error")
+      (propAccess.name.text === "log" ||
+        propAccess.name.text === "warn" ||
+        propAccess.name.text === "error" ||
+        propAccess.name.text === "info" ||
+        propAccess.name.text === "debug")
     ) {
       return compileConsoleCall(ctx, fctx, expr, propAccess.name.text);
     }
