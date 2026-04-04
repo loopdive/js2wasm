@@ -11,7 +11,7 @@
 
 class T262Donut extends HTMLElement {
   static get observedAttributes() {
-    return ["pass", "fail", "ce", "skip", "total", "src", "strict-only"];
+    return ["pass", "fail", "ce", "skip", "total", "src", "include-sloppy"];
   }
 
   constructor() {
@@ -41,8 +41,10 @@ class T262Donut extends HTMLElement {
         const resp = await fetch(src);
         if (!resp.ok) return;
         const report = await resp.json();
-        const strictOnly = this.hasAttribute("strict-only");
-        const s = strictOnly && report?.strict_summary ? report.strict_summary : report?.summary;
+        // Default: exclude sloppy-mode-only tests (noStrict).
+        // With include-sloppy attribute: show all tests including sloppy.
+        const includeSloppy = this.hasAttribute("include-sloppy");
+        const s = !includeSloppy && report?.no_sloppy_summary ? report.no_sloppy_summary : report?.summary;
         if (!s) return;
         pass = Number(s.pass ?? 0);
         fail = Number(s.fail ?? 0);
