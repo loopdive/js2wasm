@@ -174,7 +174,7 @@ All independent -- can run in parallel (different codegen paths).
 
 | #   | Title | Impact | Ready? |
 |-----|-------|--------|--------|
-| 852 | Destructuring params: null_deref + illegal_cast | **1,525 FAIL** | **Ready** (CRITICAL) |
+| ~~852~~ | ~~Destructuring params: null_deref + illegal_cast~~ | ~~**1,525 FAIL**~~ | **Done** (arrow-function/dstr +34, type mutation fix) |
 | 847 | for-await-of / for-of destructuring wrong values | **660 FAIL** | **Ready** |
 | 761 | Rest/spread silently dropped in destructuring | ~200 FAIL | **Ready** |
 | 142 | Assignment destructuring failures | -- | **Ready** |
