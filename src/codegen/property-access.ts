@@ -7,6 +7,7 @@
  */
 
 import ts from "typescript";
+import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
@@ -1937,11 +1938,7 @@ export function compileElementAccessBody(
         fctx.body.push({ op: "ref.null.extern" });
       }
     } else {
-      ctx.errors.push({
-        message: "Element access on non-array value",
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      reportError(ctx, expr, "Element access on non-array value");
       return null;
     }
     // Compile key as externref and call __extern_get
@@ -1976,20 +1973,12 @@ export function compileElementAccessBody(
       if (isTuple) {
         // Tuple element access requires a literal numeric index
         if (!ts.isNumericLiteral(expr.argumentExpression)) {
-          ctx.errors.push({
-            message: "Tuple element access requires a numeric literal index",
-            line: getLine(expr),
-            column: getCol(expr),
-          });
+          reportError(ctx, expr, "Tuple element access requires a numeric literal index");
           return null;
         }
         const fieldIdx = Number(expr.argumentExpression.text);
         if (fieldIdx < 0 || fieldIdx >= typeDef.fields.length) {
-          ctx.errors.push({
-            message: `Tuple index ${fieldIdx} out of bounds (tuple has ${typeDef.fields.length} elements)`,
-            line: getLine(expr),
-            column: getCol(expr),
-          });
+          reportError(ctx, expr, `Tuple index ${fieldIdx} out of bounds (tuple has ${typeDef.fields.length} elements)`);
           return null;
         }
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
@@ -2080,7 +2069,7 @@ export function compileElementAccessBody(
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const arrDef = ctx.mod.types[arrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {
-      ctx.errors.push({ message: "Element access: vec data is not array", line: 0, column: 0 });
+      reportErrorNoNode(ctx, "Element access: vec data is not array");
       return null;
     }
     // Unwrap: struct.get data field, then index into backing array
@@ -2101,11 +2090,7 @@ export function compileElementAccessBody(
   }
 
   if (!typeDef || typeDef.kind !== "array") {
-    ctx.errors.push({
-      message: "Element access on non-array type",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Element access on non-array type");
     return null;
   }
 

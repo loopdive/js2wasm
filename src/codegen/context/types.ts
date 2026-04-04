@@ -195,6 +195,9 @@ export interface CodegenContext {
   funcStack: FunctionContext[];
   /** Errors accumulated during codegen */
   errors: CodegenError[];
+  /** Last AST node with a valid source position — used as fallback for error reporting
+   * when the immediate node lacks source file context (synthetic/detached nodes). */
+  lastKnownNode: ts.Node | null;
   /** Registry of external declared classes */
   externClasses: Map<string, ExternClassInfo>;
   /** Optional parameter info per function */

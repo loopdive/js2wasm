@@ -18,7 +18,7 @@ import {
   VOID_RESULT,
 } from "./expressions.js";
 import { popBody, pushBody } from "./context/bodies.js";
-import { reportError } from "./context/errors.js";
+import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal, getLocalType } from "./context/locals.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
@@ -299,14 +299,13 @@ function restoreBlockScopedShadows(fctx: FunctionContext, saved: BlockScopeSave 
 
 /** Compile a statement, appending instructions to the function body */
 export function compileStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
+  // Track the last known good AST node for error location fallback (#931)
+  if (stmt) ctx.lastKnownNode = stmt;
+
   // Guard: if the AST node is undefined/null, report an error and return
   // instead of crashing with "Cannot read 'kind' of undefined".
   if (!stmt) {
-    ctx.errors.push({
-      message: "unexpected undefined AST node in compileStatement",
-      line: 0,
-      column: 0,
-    });
+    reportErrorNoNode(ctx, "unexpected undefined AST node in compileStatement");
     return;
   }
 
@@ -315,11 +314,7 @@ export function compileStatement(ctx: CodegenContext, fctx: FunctionContext, stm
   } catch (e) {
     // Defensive: catch any unhandled crash in statement compilation
     const msg = e instanceof Error ? e.message : String(e);
-    ctx.errors.push({
-      message: `Internal error compiling statement: ${msg}`,
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportErrorNoNode(ctx, `Internal error compiling statement: ${msg}`);
   }
 }
 
@@ -479,11 +474,7 @@ function compileStatementInner(ctx: CodegenContext, fctx: FunctionContext, stmt:
     return;
   }
 
-  ctx.errors.push({
-    message: `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`,
-    line: getLine(stmt),
-    column: getCol(stmt),
-  });
+  reportError(ctx, stmt, `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`);
 }
 
 /** String methods that return a host array (externref) rather than a wasm GC array.
@@ -516,11 +507,7 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
     }
 
     if (!ts.isIdentifier(decl.name)) {
-      ctx.errors.push({
-        message: "Destructuring not supported",
-        line: getLine(decl),
-        column: getCol(decl),
-      });
+      reportError(ctx, decl, "Destructuring not supported");
       continue;
     }
 
@@ -1252,11 +1239,7 @@ function compileObjectDestructuring(ctx: CodegenContext, fctx: FunctionContext, 
       }
       fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
       ensureBindingLocals(ctx, fctx, pattern);
-      ctx.errors.push({
-        message: "Cannot destructure: unknown type",
-        line: getLine(decl),
-        column: getCol(decl),
-      });
+      reportError(ctx, decl, "Cannot destructure: unknown type");
       return;
     }
 
@@ -1271,11 +1254,7 @@ function compileObjectDestructuring(ctx: CodegenContext, fctx: FunctionContext, 
       }
       fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
       ensureBindingLocals(ctx, fctx, pattern);
-      ctx.errors.push({
-        message: `Cannot destructure: not a known struct type: ${typeName}`,
-        line: getLine(decl),
-        column: getCol(decl),
-      });
+      reportError(ctx, decl, `Cannot destructure: not a known struct type: ${typeName}`);
       return;
     }
   }
@@ -1451,11 +1430,7 @@ function compileObjectDestructuring(ctx: CodegenContext, fctx: FunctionContext, 
       const propNameText = propName ? propName.text : propNameResolvedText!;
       const fieldIdx = fields.findIndex((f) => f.name === propNameText);
       if (fieldIdx === -1) {
-        ctx.errors.push({
-          message: `Unknown field in destructuring: ${propNameText}`,
-          line: getLine(element),
-          column: getCol(element),
-        });
+        reportError(ctx, element, `Unknown field in destructuring: ${propNameText}`);
         continue;
       }
 
@@ -1867,11 +1842,7 @@ function compileArrayDestructuring(ctx: CodegenContext, fctx: FunctionContext, d
     }
     fctx.body.length = bodyLenBefore;
     ensureBindingLocals(ctx, fctx, pattern);
-    ctx.errors.push({
-      message: "Cannot destructure: not an array type",
-      line: getLine(decl),
-      column: getCol(decl),
-    });
+    reportError(ctx, decl, "Cannot destructure: not an array type");
     return;
   }
 
@@ -2740,11 +2711,7 @@ function compileStringDestructuring(
   if (charAtIdx === undefined) {
     fctx.body.length = bodyLenBefore;
     ensureBindingLocals(ctx, fctx, pattern);
-    ctx.errors.push({
-      message: "Cannot destructure string: __str_charAt helper not available",
-      line: 0,
-      column: 0,
-    });
+    reportError(ctx, stmt, "Cannot destructure string: __str_charAt helper not available");
     return;
   }
 
@@ -4024,11 +3991,7 @@ function compileForOfDestructuring(
     const structTypeIdx = (elemType as { typeIdx: number }).typeIdx;
     const typeDef = ctx.mod.types[structTypeIdx];
     if (!typeDef || typeDef.kind !== "struct") {
-      ctx.errors.push({
-        message: "for-of destructuring: element type is not a struct",
-        line: getLine(stmt),
-        column: getCol(stmt),
-      });
+      reportErrorNoNode(ctx, "for-of destructuring: element type is not a struct");
       return;
     }
 
@@ -4036,11 +3999,7 @@ function compileForOfDestructuring(
     const structName = ctx.typeIdxToStructName.get(structTypeIdx);
     const fields = structName ? ctx.structFields.get(structName) : undefined;
     if (!fields) {
-      ctx.errors.push({
-        message: "for-of destructuring: cannot find struct fields",
-        line: getLine(stmt),
-        column: getCol(stmt),
-      });
+      reportError(ctx, stmt, "for-of destructuring: cannot find struct fields");
       return;
     }
 
@@ -4290,11 +4249,7 @@ function compileForOfDestructuring(
     const innerArrTypeIdx = getArrTypeIdxFromVec(ctx, structTypeIdx);
     const arrDef = ctx.mod.types[innerArrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {
-      ctx.errors.push({
-        message: "for-of array destructuring: element is not an array type",
-        line: getLine(stmt),
-        column: getCol(stmt),
-      });
+      reportError(ctx, stmt, "for-of array destructuring: element is not an array type");
       return;
     }
 
@@ -4815,11 +4770,7 @@ function compileForOfString(ctx: CodegenContext, fctx: FunctionContext, stmt: ts
 
   const charAtIdx = ctx.nativeStrHelpers.get("__str_charAt");
   if (charAtIdx === undefined) {
-    ctx.errors.push({
-      message: "for-of on string: __str_charAt helper not available",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-of on string: __str_charAt helper not available");
     return;
   }
 
@@ -4831,11 +4782,7 @@ function compileForOfString(ctx: CodegenContext, fctx: FunctionContext, stmt: ts
   const compiledType = compileExpression(ctx, fctx, stmt.expression);
   if (!compiledType) {
     fctx.body.length = bodyLenBefore;
-    ctx.errors.push({
-      message: "for-of: failed to compile string expression",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-of: failed to compile string expression");
     return;
   }
 
@@ -5002,11 +4949,7 @@ function compileForOfArray(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.
   const vecType = compileExpression(ctx, fctx, stmt.expression);
   if (!vecType || (vecType.kind !== "ref" && vecType.kind !== "ref_null")) {
     fctx.body.length = bodyLenBefore;
-    ctx.errors.push({
-      message: "for-of requires an array expression",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-of requires an array expression");
     return;
   }
 
@@ -5015,11 +4958,7 @@ function compileForOfArray(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.
   const vecDef = ctx.mod.types[vecTypeIdx];
   if (!vecDef || vecDef.kind !== "struct") {
     fctx.body.length = bodyLenBefore;
-    ctx.errors.push({
-      message: "for-of requires an array type",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-of requires an array type");
     return;
   }
 
@@ -5027,11 +4966,7 @@ function compileForOfArray(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.
   const arrDef = ctx.mod.types[arrTypeIdx];
   if (!arrDef || arrDef.kind !== "array") {
     fctx.body.length = bodyLenBefore;
-    ctx.errors.push({
-      message: "for-of requires an array type",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-of requires an array type");
     return;
   }
   const elemType = arrDef.element;
@@ -5644,11 +5579,7 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   // Compile the iterable expression
   const iterableType = compileExpression(ctx, fctx, stmt.expression);
   if (!iterableType) {
-    ctx.errors.push({
-      message: "for-of: failed to compile iterable expression",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-of: failed to compile iterable expression");
     return;
   }
 
@@ -5724,11 +5655,7 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
     iteratorIdx = ctx.funcMap.get("__iterator");
   }
   if (iteratorIdx === undefined) {
-    ctx.errors.push({
-      message: "for-of on non-array type requires iterator imports",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-of on non-array type requires iterator imports");
     return;
   }
 
@@ -5740,11 +5667,7 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   const valueIdx = ctx.funcMap.get("__iterator_value");
   const returnIdx = ctx.funcMap.get("__iterator_return");
   if (nextIdx === undefined || doneIdx === undefined || valueIdx === undefined) {
-    ctx.errors.push({
-      message: "for-of on non-array type requires iterator imports",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-of on non-array type requires iterator imports");
     return;
   }
   const iterLocal = allocLocal(fctx, `__forof_iter_${fctx.locals.length}`, { kind: "externref" });
@@ -5913,11 +5836,7 @@ function compileForInStatement(ctx: CodegenContext, fctx: FunctionContext, stmt:
       // Destructuring patterns in for-in (e.g. `for (var [a] in obj)`)
       // are exotic — the key is a string, destructuring it gives characters.
       // For now, skip gracefully rather than crash.
-      ctx.errors.push({
-        message: "for-in variable must be an identifier",
-        line: getLine(decl),
-        column: getCol(decl),
-      });
+      reportError(ctx, decl, "for-in variable must be an identifier");
       return;
     }
     varName = decl.name.text;
@@ -5950,11 +5869,7 @@ function compileForInStatement(ctx: CodegenContext, fctx: FunctionContext, stmt:
     compileExpression(ctx, fctx, init.right);
     fctx.body.push({ op: "local.set", index: keyLocal });
   } else {
-    ctx.errors.push({
-      message: "for-in requires a variable declaration or identifier",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    reportError(ctx, stmt, "for-in requires a variable declaration or identifier");
     return;
   }
 

@@ -4,6 +4,7 @@
  * and native string method calls.
  */
 import ts from "typescript";
+import { reportError } from "./context/errors.js";
 import { pushBody } from "./context/bodies.js";
 import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
@@ -62,11 +63,7 @@ export function compileStringLiteral(
   }
 
   // Truly unreachable — all paths above should succeed
-  ctx.errors.push({
-    message: `String literal not registered: "${value}"`,
-    line: node ? getLine(node) : 0,
-    column: node ? getCol(node) : 0,
-  });
+  reportError(ctx, node ?? expr, `String literal not registered: "${value}"`);
   return null;
 }
 
@@ -268,11 +265,7 @@ export function compileTaggedTemplateExpression(
   const baseVecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, baseVecTypeIdx);
   if (arrTypeIdx < 0) {
-    ctx.errors.push({
-      message: "Tagged template: invalid vec type for strings array",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, "Tagged template: invalid vec type for strings array");
     return null;
   }
 
@@ -353,11 +346,7 @@ export function compileTaggedTemplateExpression(
     if (closureInfo) {
       const localIdx = fctx.localMap.get(tagName);
       if (localIdx === undefined) {
-        ctx.errors.push({
-          message: `Tagged template: closure variable '${tagName}' not found`,
-          line: getLine(expr),
-          column: getCol(expr),
-        });
+        reportError(ctx, expr, `Tagged template: closure variable '${tagName}' not found`);
         return null;
       }
 
@@ -649,11 +638,7 @@ export function compileTaggedTemplateExpression(
     }
   }
 
-  ctx.errors.push({
-    message: `Tagged template: unsupported tag expression kind ${ts.SyntaxKind[expr.tag.kind]}`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, `Tagged template: unsupported tag expression kind ${ts.SyntaxKind[expr.tag.kind]}`);
   fctx.body.push({ op: "ref.null.extern" });
   return { kind: "externref" };
 }
@@ -809,11 +794,7 @@ export function compileStringBinaryOp(
       }
     }
 
-    ctx.errors.push({
-      message: `Unsupported string operator: ${ts.SyntaxKind[op]}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    reportError(ctx, expr, `Unsupported string operator: ${ts.SyntaxKind[op]}`);
     return null;
   }
 
@@ -1006,11 +987,7 @@ export function compileStringBinaryOp(
     }
   }
 
-  ctx.errors.push({
-    message: `Unsupported string operator: ${ts.SyntaxKind[op]}`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, `Unsupported string operator: ${ts.SyntaxKind[op]}`);
   return null;
 }
 
@@ -1634,10 +1611,6 @@ export function compileNativeStringMethodCall(
     }
   }
 
-  ctx.errors.push({
-    message: `Unknown string method: ${method}`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
+  reportError(ctx, expr, `Unknown string method: ${method}`);
   return null;
 }
