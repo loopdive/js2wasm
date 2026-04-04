@@ -144,11 +144,13 @@ class T262Donut extends HTMLElement {
           border-radius: 50%;
           background: conic-gradient(
             rgba(255,255,255,0.09) 0deg,
-            rgba(255,255,255,1) ${passDeg}deg,
-            rgba(255,255,255,0.06) ${passDeg}deg ${failDeg - 0.4}deg,
-            var(--_bg) ${failDeg - 0.4}deg ${failDeg + 0.4}deg,
-            rgba(255,255,255,0.03) ${failDeg + 0.4}deg ${ceDeg}deg,
-            rgba(255,255,255,0) ${ceDeg}deg 360deg
+            rgba(255,255,255,1) ${passDeg - 0.8}deg,
+            var(--_bg) ${passDeg - 0.8}deg ${passDeg + 0.8}deg,
+            rgba(255,255,255,0.06) ${passDeg + 0.8}deg ${failDeg - 0.8}deg,
+            var(--_bg) ${failDeg - 0.8}deg ${failDeg + 0.8}deg,
+            rgba(255,255,255,0.03) ${failDeg + 0.8}deg ${ceDeg - 0.8}deg,
+            var(--_bg) ${ceDeg - 0.8}deg ${ceDeg + 0.8}deg,
+            rgba(255,255,255,0) ${ceDeg + 0.8}deg 360deg
           );
         }
         .gauge-wrap::before {
