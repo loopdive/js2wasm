@@ -10104,8 +10104,9 @@ export function collectClassDeclaration(
       }
 
       // Detect async methods — unwrap Promise<T> to T for Wasm return type
+      // Exclude async generators: they return AsyncGenerator objects, not Promises.
       const isAsyncMethod = member.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
-      if (isAsyncMethod) {
+      if (isAsyncMethod && !isGeneratorMethod) {
         ctx.asyncFunctions.add(fullName);
       }
 
@@ -10882,13 +10883,14 @@ function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isE
       }
 
       // Track async functions — unwrap Promise<T> for Wasm return type
+      // Exclude async generators: they return AsyncGenerator objects, not Promises.
       const isAsync = hasAsyncModifier(stmt);
-      if (isAsync) {
+      const isGenerator = isGeneratorFunction(stmt);
+      if (isAsync && !isGenerator) {
         ctx.asyncFunctions.add(name);
       }
 
       // Track generator functions (function*)
-      const isGenerator = isGeneratorFunction(stmt);
       if (isGenerator) {
         ctx.generatorFunctions.add(name);
         // Determine yield element type from Generator<T> return annotation
