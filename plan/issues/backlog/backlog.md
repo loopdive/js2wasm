@@ -1,6 +1,6 @@
 # js2wasm Backlog
 
-**Current state** (2026-04-03): 17,782 pass | 21,178 fail | 2,803 CE | 6,411 skip
+**Current state** (2026-04-04): 17,822 pass | 21,186 fail | 2,755 CE | 6,402 skip
 
 ---
 
@@ -10,14 +10,15 @@ Issues where the compiler emits invalid Wasm (type errors, missing args, bad cas
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [822](../ready/822.md) | **HIGH** | Wasm type mismatch compile errors (all sub-patterns) | **907 CE** | Ready |
+| [944](../ready/944.md) | **HIGH** | __vec_get: extern.convert_any fails on integer TypedArray elements | **780 CE** | Ready |
+| [822](../ready/822.md) | **HIGH** | Wasm type mismatch compile errors (all sub-patterns) | **~907 CE** | Ready |
 | [839](../ready/839.md) | High | return_call stack args / type mismatch in constructors | **158 CE** | Ready |
-| [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **149 CE** | Ready |
+| [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **154 CE** | Ready |
 | [829](../ready/829.md) | Medium | Unsupported assignment target compile errors | **141 CE** | Ready |
 | [844](../ready/844.md) | Medium | Unsupported new expression for built-in classes | **85 CE** | Ready |
 | [845](../ready/845.md) | Medium | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** | Ready |
 | [831](../ready/831.md) | Medium | Negative test gaps: expected SyntaxError but compiled | **242 FAIL** | Ready |
-| [927](../ready/927.md) | **HIGH** | Missing early/parse error detection (umbrella for #831) | **840 FAIL** | Ready |
+| [927](../ready/927.md) | **HIGH** | Missing early/parse error detection (umbrella for #831) | **810 FAIL** | Ready |
 | [926](../ready/926.md) | Low | Fixture tests not supported in unified mode | **172 CE** | Ready |
 | [840](../ready/840.md) | Medium | Array concat/push/splice 0-arg support | **31 CE** | Ready |
 | [836](../ready/836.md) | Low | Tagged templates with non-PropertyAccess tags | **20 CE** | Ready |
@@ -39,8 +40,8 @@ Issues where compiled Wasm runs but produces wrong values or wrong error types.
 | [852](../ready/852.md) | **CRITICAL** | Destructuring params: null_deref + illegal_cast | **1,525 FAIL** | Ready |
 | [820](../ready/820.md) | **CRITICAL** | TypeError / null dereference failures (umbrella) | **6,077 FAIL** | Ready |
 | [779](../ready/779.md) | **CRITICAL** | Assert failures: wrong values (umbrella/analysis) | **10,099 FAIL** | Ready |
-| [825](../ready/825.md) | High | Null dereference failures (sub-issue of #820) | **1,081 FAIL** | Ready |
-| [826](../ready/826.md) | High | Illegal cast failures (sub-issue of #820) | **1,294 FAIL** | Ready |
+| [825](../ready/825.md) | High | Null dereference failures (sub-issue of #820) | **2,295 FAIL** | Ready |
+| [826](../ready/826.md) | High | Illegal cast failures (sub-issue of #820) | **1,276 FAIL** | Ready |
 | [848](../ready/848.md) | High | Class computed property / accessor correctness | **1,015 FAIL** | Ready |
 | [847](../ready/847.md) | High | for-await-of / for-of destructuring wrong values | **660 FAIL** | Ready |
 | [786](../ready/786.md) | Medium | Multi-assertion failures (returned N > 2) | **2,142 FAIL** | In-progress |
