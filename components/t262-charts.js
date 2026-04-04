@@ -98,10 +98,10 @@ class T262Donut extends HTMLElement {
     };
 
     const orbitHTML =
-      makeOrbitStat(pass, "Passed", "rgba(255,255,255,0.9)", passDeg / 2, 184, "pass") +
-      makeOrbitStat(fail, "Failed", "rgba(255,255,255,0.7)", (passDeg + failDeg) / 2, 194) +
-      makeOrbitStat(ce, "Compile Errors", "rgba(255,255,255,0.7)", (failDeg + ceDeg) / 2, 180) +
-      makeOrbitStat(skip, "Unsupported", "rgba(255,255,255,0.7)", (ceDeg + 360) / 2, 214);
+      makeOrbitStat(pass, "Passed", "rgba(255,255,255,0.9)", passDeg / 2, 164, "pass") +
+      makeOrbitStat(fail, "Failed", "rgba(255,255,255,0.7)", (passDeg + failDeg) / 2, 170) +
+      makeOrbitStat(ce, "Compile Errors", "rgba(255,255,255,0.7)", (failDeg + ceDeg) / 2, 164) +
+      makeOrbitStat(skip, "Unsupported", "rgba(255,255,255,0.7)", (ceDeg + 360) / 2, 178);
 
     // Build legend
     const legendHTML = segments
@@ -132,8 +132,9 @@ class T262Donut extends HTMLElement {
         .gauge-orbit {
           position: relative;
           width: min(100%, 380px);
-          height: 340px;
+          height: 320px;
           margin: 0 auto;
+          overflow: hidden;
         }
         .gauge-wrap {
           position: relative;
@@ -234,18 +235,18 @@ class T262Donut extends HTMLElement {
         .orbit-stat {
           position: absolute;
           display: grid;
-          gap: 0.15rem;
+          gap: 0.1rem;
           text-align: center;
           font-variant-numeric: tabular-nums;
-          width: 120px;
+          width: 100px;
           transform: translate(-50%, -50%);
         }
         .orbit-value {
-          font-size: 1rem;
+          font-size: 0.85rem;
           font-weight: 700;
         }
         .orbit-label {
-          font-size: 0.68rem;
+          font-size: 0.6rem;
           letter-spacing: 0.06em;
           text-transform: uppercase;
           color: var(--_text-muted);
@@ -481,33 +482,50 @@ class T262EditionBars extends HTMLElement {
 
     // Pass rate dots + labels
     let dots = "";
+    const maxPassIdx = cumPass.reduce((mi, v, i, a) => (v > a[mi] ? i : mi), 0);
     for (let i = 0; i < n; i++) {
       const cx = x(i),
         cy = y(cumPass[i]);
       dots += `<circle cx="${cx}" cy="${cy}" r="3" fill="rgba(255,255,255,0.9)"/>`;
+      if (i === maxPassIdx) {
+        dots += `<text x="${cx}" y="${cy - 8}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10" font-family="monospace">${cumPass[i].toLocaleString()}</text>`;
+      }
     }
 
     const svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+      <defs>
+        <linearGradient id="passGrad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="white" stop-opacity="0"/>
+          <stop offset="25%" stop-color="white" stop-opacity="0.055"/>
+          <stop offset="100%" stop-color="white" stop-opacity="0.41"/>
+        </linearGradient>
+        <filter id="passLineGlow">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
       ${gridSvg}
       ${xLabels}
       <path d="${areaPath(
         (i) => y(cumSkip[i]),
-        () => y(0),
-      )}" fill="rgba(255,255,255,0)"/>
+        (i) => y(cumCe[i]),
+      )}" fill="rgba(255,255,255,0.04)"/>
       <path d="${areaPath(
         (i) => y(cumCe[i]),
-        (i) => y(cumSkip[i]),
-      )}" fill="rgba(255,255,255,0.03)"/>
+        (i) => y(cumFail[i]),
+      )}" fill="rgba(255,255,255,0.06)"/>
       <path d="${areaPath(
         (i) => y(cumFail[i]),
         (i) => y(cumPass[i]),
-      )}" fill="rgba(255,255,255,0.06)"/>
+      )}" fill="rgba(255,255,255,0.08)"/>
       <path d="${areaPath(
         (i) => y(cumPass[i]),
         () => y(0),
-      )}" fill="rgba(255,255,255,0.15)"/>
-      <path d="${linePath((i) => y(cumPass[i]))}" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2"/>
-      <path d="${linePath((i) => y(cumFail[i]))}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+      )}" fill="url(#passGrad)"/>
+      <path d="${linePath((i) => y(cumCe[i]))}" fill="none" stroke="none"/>
+      <path d="${linePath((i) => y(cumFail[i]))}" fill="none" stroke="none"/>
+      <path d="${linePath((i) => y(cumPass[i]))}" fill="none" stroke="#fff" stroke-width="2" filter="url(#passLineGlow)"/>
+      <path d="${linePath((i) => y(cumSkip[i]))}" fill="none" stroke="none"/>
       ${dots}
     </svg>`;
 
@@ -527,31 +545,50 @@ class T262EditionBars extends HTMLElement {
     }
 
     let dotsPct = "";
+    const maxPctIdx = pctPass.reduce((mi, v, i, a) => (v > a[mi] ? i : mi), 0);
     for (let i = 0; i < n; i++) {
-      dotsPct += `<circle cx="${x(i)}" cy="${yPct(pctPass[i])}" r="3" fill="rgba(255,255,255,0.9)"/>`;
+      const cx = x(i),
+        cy = yPct(pctPass[i]);
+      dotsPct += `<circle cx="${cx}" cy="${cy}" r="3" fill="rgba(255,255,255,0.9)"/>`;
+      if (i === maxPctIdx) {
+        dotsPct += `<text x="${cx}" y="${cy - 8}" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10" font-family="monospace">${Math.round(pctPass[i])}%</text>`;
+      }
     }
 
     const svgPct = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+      <defs>
+        <linearGradient id="passGradPct" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="white" stop-opacity="0"/>
+          <stop offset="25%" stop-color="white" stop-opacity="0.055"/>
+          <stop offset="100%" stop-color="white" stop-opacity="0.41"/>
+        </linearGradient>
+        <filter id="passLineGlowPct">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
       ${gridPct}
       ${xLabels}
       <path d="${areaPath(
         () => yPct(100),
         (i) => yPct(pctCe[i]),
-      )}" fill="rgba(255,255,255,0)"/>
+      )}" fill="rgba(255,255,255,0.04)"/>
       <path d="${areaPath(
         (i) => yPct(pctCe[i]),
         (i) => yPct(pctFail[i]),
-      )}" fill="rgba(255,255,255,0.03)"/>
+      )}" fill="rgba(255,255,255,0.06)"/>
       <path d="${areaPath(
         (i) => yPct(pctFail[i]),
         (i) => yPct(pctPass[i]),
-      )}" fill="rgba(255,255,255,0.06)"/>
+      )}" fill="rgba(255,255,255,0.08)"/>
       <path d="${areaPath(
         (i) => yPct(pctPass[i]),
         () => yPct(0),
-      )}" fill="rgba(255,255,255,0.15)"/>
-      <path d="${linePath((i) => yPct(pctPass[i]))}" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2"/>
-      <path d="${linePath((i) => yPct(pctFail[i]))}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+      )}" fill="url(#passGradPct)"/>
+      <path d="${linePath((i) => yPct(pctCe[i]))}" fill="none" stroke="none"/>
+      <path d="${linePath((i) => yPct(pctFail[i]))}" fill="none" stroke="none"/>
+      <path d="${linePath((i) => yPct(pctPass[i]))}" fill="none" stroke="#fff" stroke-width="2" filter="url(#passLineGlowPct)"/>
+      <path d="${linePath(() => yPct(100))}" fill="none" stroke="none"/>
       ${dotsPct}
     </svg>`;
 
