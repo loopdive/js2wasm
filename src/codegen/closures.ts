@@ -805,13 +805,25 @@ export function compileArrowAsClosure(
     arrowParams.push(wasmType);
   }
 
+  // Detect async functions/arrows — their TS return type is Promise<T> but the
+  // Wasm return should be T (matching the unwrap that top-level async functions use).
+  const isAsync =
+    arrow.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+
   const sig = ctx.checker.getSignatureFromDeclaration(arrow);
   let closureReturnType: ValType | null = null;
   if (isGenerator) {
     // Generator function expressions always return externref (JS Generator object)
     closureReturnType = { kind: "externref" };
   } else if (sig) {
-    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    let retType = ctx.checker.getReturnTypeOfSignature(sig);
+    // For async functions, unwrap Promise<T> to get T — matching the top-level
+    // async function handling in index.ts. Without this, async Promise<void>
+    // closures get externref return type and push ref.null.extern, breaking
+    // .then()/.catch() chains that expect a real Promise.
+    if (isAsync) {
+      retType = unwrapPromiseType(retType, ctx.checker);
+    }
     // Treat `never` the same as `void` — a function returning `never` (e.g.
     // always throws) never produces a value, so it should have no Wasm result.
     // Without this, `never` resolves to externref and creates a mismatched

@@ -155,6 +155,62 @@ function isEffectivelyVoidReturn(ctx: CodegenContext, retType: ts.Type, funcName
 }
 
 /**
+ * Check if a call expression targets an async function/method.
+ * Used to determine whether the result needs Promise.resolve() wrapping (#919).
+ */
+function isAsyncCallExpression(
+  ctx: CodegenContext,
+  expr: ts.CallExpression,
+): boolean {
+  // Check if the callee is a named function in ctx.asyncFunctions
+  if (ts.isIdentifier(expr.expression)) {
+    if (ctx.asyncFunctions.has(expr.expression.text)) return true;
+  }
+
+  // Check the TS signature for the async modifier on the declaration
+  const sig = ctx.checker.getResolvedSignature(expr);
+  if (sig) {
+    const decl = sig.getDeclaration();
+    if (decl && decl.modifiers) {
+      for (const mod of decl.modifiers) {
+        if (mod.kind === ts.SyntaxKind.AsyncKeyword) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Wrap the current stack value in Promise.resolve() for async function calls (#919).
+ * Coerces the value to externref first, then calls Promise_resolve.
+ * If the result is VOID_RESULT/null, pushes ref.null.extern first.
+ * Returns { kind: "externref" }.
+ */
+function wrapAsyncReturn(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  resultType: InnerResult,
+): ValType {
+  if (resultType === null || resultType === VOID_RESULT) {
+    fctx.body.push({ op: "ref.null.extern" });
+  } else if (resultType.kind !== "externref") {
+    coerceType(ctx, fctx, resultType, { kind: "externref" });
+  }
+  const resolveIdx = ensureLateImport(
+    ctx,
+    "Promise_resolve",
+    [{ kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (resolveIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx: resolveIdx });
+  }
+  return { kind: "externref" };
+}
+
+/**
  * Check if a Wasm function (by index) has a void return type by inspecting
  * the actual function type in the module. This is the ground truth for whether
  * a `call` instruction pushes a value onto the stack.
@@ -1059,6 +1115,14 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
     if (fctx.pendingCallbackWritebacks && fctx.pendingCallbackWritebacks.length > 0) {
       fctx.body.push(...fctx.pendingCallbackWritebacks);
       fctx.pendingCallbackWritebacks = undefined;
+    }
+    // Async function/method calls: wrap return value in Promise.resolve() (#919).
+    // Our compiler executes async functions synchronously, so the raw return is
+    // the unwrapped value. JS semantics require async calls to return a Promise.
+    if (isAsyncCallExpression(ctx, expr)) {
+      // If the result is already externref from a Promise host call, it may already
+      // be a Promise — wrapping in Promise.resolve() is idempotent for Promises.
+      return wrapAsyncReturn(ctx, fctx, callResult);
     }
     return callResult;
   }

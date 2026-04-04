@@ -10130,13 +10130,23 @@ export function collectClassDeclaration(
         methodParams.push(wasmType);
       }
 
+      // Detect async methods — unwrap Promise<T> to T for Wasm return type
+      const isAsyncMethod =
+        member.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+      if (isAsyncMethod) {
+        ctx.asyncFunctions.add(fullName);
+      }
+
       const sig = ctx.checker.getSignatureFromDeclaration(member);
       let methodResults: ValType[] = [];
       if (isGeneratorMethod) {
         // Generator methods return externref (JS Generator object)
         methodResults = [{ kind: "externref" }];
       } else if (sig) {
-        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        let retType = ctx.checker.getReturnTypeOfSignature(sig);
+        if (isAsyncMethod) {
+          retType = unwrapPromiseType(retType, ctx.checker);
+        }
         if (!isVoidType(retType)) {
           methodResults = [resolveWasmType(ctx, retType)];
         }
