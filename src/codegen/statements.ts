@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { isStringType, isVoidType } from "../checker/type-mapper.js";
+import { isStringType, isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { emitGuardedRefCast } from "./type-coercion.js";
 import {
@@ -6780,13 +6780,25 @@ function compileNestedFunctionDeclaration(
   if (isGenerator) {
     ctx.generatorFunctions.add(funcName);
   }
+  // Detect async functions — their TS return type is Promise<T> but the
+  // Wasm return should be T (matching the unwrap that top-level async functions use).
+  const isAsync =
+    stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+  if (isAsync) {
+    ctx.asyncFunctions.add(funcName);
+  }
+
   const sig = ctx.checker.getSignatureFromDeclaration(stmt);
   let returnType: ValType | null = null;
   if (isGenerator) {
     // Generator functions return externref (JS Generator object)
     returnType = { kind: "externref" };
   } else if (sig) {
-    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    let retType = ctx.checker.getReturnTypeOfSignature(sig);
+    // For async functions, unwrap Promise<T> to get T
+    if (isAsync) {
+      retType = unwrapPromiseType(retType, ctx.checker);
+    }
     if (!isVoidType(retType)) {
       returnType = resolveWasmType(ctx, retType);
     }
