@@ -585,7 +585,16 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
         // Set TDZ flag to 1 (initialized)
         emitTdzInit(ctx, fctx, name);
       } else {
-        const localIdx = allocLocal(fctx, name, closureType);
+        // Reuse pre-hoisted slot if it exists (pre-pass allocated as externref,
+        // but we now have the precise closure struct ref type).
+        const priorIdx = fctx.localMap.get(name);
+        const localIdx =
+          priorIdx !== undefined && priorIdx >= fctx.params.length ? priorIdx : allocLocal(fctx, name, closureType);
+        // Update to the precise closure ref type (more specific than pre-pass externref)
+        if (priorIdx !== undefined && priorIdx >= fctx.params.length) {
+          const slot = fctx.locals[priorIdx - fctx.params.length];
+          if (slot) slot.type = closureType;
+        }
         emitCoercedLocalSet(ctx, fctx, localIdx, closureType);
       }
       continue;
@@ -621,7 +630,14 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
             fctx.body.push({ op: "global.set", index: modGlobal });
             emitTdzInit(ctx, fctx, name);
           } else {
-            const localIdx = allocLocal(fctx, name, objType);
+            // Reuse pre-hoisted slot if it exists
+            const priorIdx = fctx.localMap.get(name);
+            const localIdx =
+              priorIdx !== undefined && priorIdx >= fctx.params.length ? priorIdx : allocLocal(fctx, name, objType);
+            if (priorIdx !== undefined && priorIdx >= fctx.params.length) {
+              const slot = fctx.locals[priorIdx - fctx.params.length];
+              if (slot) slot.type = objType;
+            }
             fctx.body.push({ op: "local.set", index: localIdx });
           }
           continue;
@@ -698,10 +714,11 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
               : resolveWasmType(ctx, varType)));
 
     // If this var/let/const was already pre-hoisted at function entry, reuse that slot.
+    // For let/const: the pre-pass (hoistLetConstWithTdz) always pre-allocates a slot
+    // regardless of whether a TDZ flag is also allocated, so we check only the localMap.
     const existingIdx = fctx.localMap.get(name);
     const isVar = !(decl.parent.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
-    const isHoistedLetConst =
-      !isVar && existingIdx !== undefined && existingIdx >= fctx.params.length && fctx.tdzFlagLocals?.has(name);
+    const isHoistedLetConst = !isVar && existingIdx !== undefined && existingIdx >= fctx.params.length;
     const localIdx =
       (isVar || isHoistedLetConst) && existingIdx !== undefined && existingIdx >= fctx.params.length
         ? existingIdx
