@@ -30,6 +30,7 @@
     "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
     "lint": "biome lint --diagnostic-level=error",
     "typecheck": "tsc --noEmit",
+    "generate:editions": "npx tsx scripts/generate-editions.ts",
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
     "build:pages": "node dashboard/build-data.js && pnpm run build:playground && node scripts/build-pages.js",
