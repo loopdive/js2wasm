@@ -9,9 +9,7 @@ export function bench_string(): number {
 export function main(): void {
   const host = document.body;
   host.innerHTML = "";
-  host.style.cssText =
-    "margin:0;background:#111;color:#ddd;" +
-    "font-family:system-ui,sans-serif;overflow-y:auto";
+  host.style.cssText = "margin:0;background:#111;color:#ddd;" + "font-family:system-ui,sans-serif;overflow-y:auto";
   const wrap = el("div", "padding:0.75rem");
   addBenchCard(wrap, "String: concat 1k", "wasm:js-string concat per iteration", bench_string);
   host.appendChild(wrap);
