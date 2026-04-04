@@ -183,6 +183,9 @@ export async function compileToWasm(source: string) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
+  if (!WebAssembly.validate(result.binary)) {
+    throw new Error(`Invalid Wasm binary (WebAssembly.validate failed)\nWAT:\n${result.wat}`);
+  }
   // Use the runtime's buildImports for full host import support (iterator protocol, etc.)
   // Merge with the manual buildImports for wasm:js-string polyfill and string_constants.
   const manualImports = buildImports(result);

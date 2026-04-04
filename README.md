@@ -25,6 +25,8 @@ js2wasm takes a fundamentally different approach from other projects in this spa
 
 <sub>\* Javy and StarlingMonkey inherit their embedded engine's conformance — they're not compiling JS to Wasm, they're running an interpreter inside Wasm.</sub>
 
+The Bytecode Alliance's [StarlingMonkey](https://github.com/bytecodealliance/StarlingMonkey) takes the technically most sophisticated bundled-engine approach — SpiderMonkey compiled to Wasm, with AOT specialization via partial evaluation of the interpreter ([weval](https://github.com/cfallin/weval)). Chris Fallin's [three-part blog series](https://cfallin.org/blog/2023/10/11/spidermonkey-pbl/) is the authoritative description of that architecture. js2wasm and StarlingMonkey are architecturally opposite: one achieves ~100% coverage by bundling a full engine; the other achieves zero runtime overhead by compiling directly. See [docs/competitive-analysis.md](docs/competitive-analysis.md) for a full technical comparison of all four approaches.
+
 **Key differentiators:**
 
 - **No runtime overhead** — compiled to native Wasm instructions, not interpreted

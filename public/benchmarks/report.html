@@ -1565,22 +1565,42 @@
         proposalToggle.appendChild(el("span", null, "proposals"));
         controlsHost.appendChild(proposalToggle);
 
+        // Strict mode toggle — checked by default, persisted in localStorage
+        const strictToggle = el("label", { className: "filter-toggle" });
+        const strictDefault = localStorage.getItem("t262-strict-only") !== "false";
+        const strictCheckbox = el("input", { type: "checkbox" });
+        if (strictDefault) strictCheckbox.setAttribute("checked", "checked");
+        strictCheckbox.checked = strictDefault;
+        strictToggle.appendChild(strictCheckbox);
+        strictToggle.appendChild(el("span", null, "strict mode only"));
+        controlsHost.appendChild(strictToggle);
+
         function syncToggleStyles() {
           legacyToggle.classList.toggle("active", legacyCheckbox.checked);
           proposalToggle.classList.toggle("active", proposalCheckbox.checked);
+          strictToggle.classList.toggle("active", strictCheckbox.checked);
+          // Dim scope toggles when strict mode overrides them
+          legacyToggle.style.opacity = strictCheckbox.checked ? "0.4" : "";
+          proposalToggle.style.opacity = strictCheckbox.checked ? "0.4" : "";
         }
 
         function renderSummaryCard() {
-          const s = makeScopeSummary(
-            standardSummary,
-            scoreState.includeLegacy ? legacySummary : null,
-            scoreState.includeProposals ? proposalSummary : null,
-          );
+          let s;
+          if (strictCheckbox.checked && data.strict_summary) {
+            s = data.strict_summary;
+          } else {
+            s = makeScopeSummary(
+              standardSummary,
+              scoreState.includeLegacy ? legacySummary : null,
+              scoreState.includeProposals ? proposalSummary : null,
+            );
+          }
           const passRate = pct(s.pass, s.total);
+          const caption = strictCheckbox.checked
+            ? "strict mode"
+            : scopeLabel(scoreState.includeLegacy, scoreState.includeProposals);
           summaryCardHost.textContent = "";
-          summaryCardHost.appendChild(
-            makeGaugeCard(s, passRate, scopeLabel(scoreState.includeLegacy, scoreState.includeProposals)),
-          );
+          summaryCardHost.appendChild(makeGaugeCard(s, passRate, caption));
         }
 
         legacyCheckbox.addEventListener("change", () => {
@@ -1590,6 +1610,11 @@
         });
         proposalCheckbox.addEventListener("change", () => {
           scoreState.includeProposals = proposalCheckbox.checked;
+          syncToggleStyles();
+          renderSummaryCard();
+        });
+        strictCheckbox.addEventListener("change", () => {
+          localStorage.setItem("t262-strict-only", String(strictCheckbox.checked));
           syncToggleStyles();
           renderSummaryCard();
         });
