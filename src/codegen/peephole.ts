@@ -20,6 +20,22 @@
  *    copy is immediately dropped, replace with local.set (save only, no push):
  *      local.tee N   ;; save + push
  *      drop          ;; pop the copy — replace with local.set N
+ *
+ * 4. Postfix increment/decrement dead-store: when i++ / x-- is used as a
+ *    statement (result discarded), the compiler emits an extra local.get for
+ *    the "expression result" that is immediately dropped after the update.
+ *    Pattern (272 cases in corpus — #957):
+ *      local.get N      ;; push old value (expression result — will be dropped)
+ *      local.get N      ;; push N for computation
+ *      i32/f64.const 1
+ *      i32/f64.add/sub
+ *      local.set N      ;; store incremented/decremented value
+ *      drop             ;; drop old value — wasted push+drop pair
+ *    Optimized:
+ *      local.get N
+ *      i32/f64.const 1
+ *      i32/f64.add/sub
+ *      local.set N
  */
 import type { Instr, WasmModule } from "../ir/types.js";
 
@@ -80,6 +96,31 @@ function optimizeBody(body: Instr[]): number {
       body.splice(i, 2, { op: "local.set", index: cur.index });
       removed++; // net: 2 removed, 1 added = 1 instruction saved
       i++;
+      continue;
+    }
+
+    // Pattern 4: postfix increment/decrement dead-store (#957)
+    // local.get N; local.get N; i32/f64.const 1; i32/f64.add/sub; local.set N; drop
+    // → local.get N; i32/f64.const 1; i32/f64.add/sub; local.set N
+    if (
+      i + 5 < body.length &&
+      cur.op === "local.get" &&
+      body[i + 1]!.op === "local.get" &&
+      (body[i + 1] as any).index === (cur as any).index &&
+      (body[i + 2]!.op === "i32.const" || body[i + 2]!.op === "f64.const") &&
+      (body[i + 3]!.op === "i32.add" ||
+        body[i + 3]!.op === "i32.sub" ||
+        body[i + 3]!.op === "f64.add" ||
+        body[i + 3]!.op === "f64.sub") &&
+      body[i + 4]!.op === "local.set" &&
+      (body[i + 4] as any).index === (cur as any).index &&
+      body[i + 5]!.op === "drop"
+    ) {
+      // Remove the first local.get N (index i) and the trailing drop (now at i+4 after removal)
+      body.splice(i, 1); // remove first local.get N; array shifts left by 1
+      body.splice(i + 4, 1); // remove drop (was i+5, now i+4 after first splice)
+      removed += 2;
+      // Don't increment i — recheck at same position
       continue;
     }
 

@@ -647,6 +647,15 @@ function compileExpressionBody(
         return { kind: "i32" };
       }
     }
+    // i32 context: numeric literal that is a safe integer → emit i32.const directly
+    // instead of f64.const + i32.trunc_sat_f64_s (673 cases in corpus — #956)
+    if (expectedType.kind === "i32" && ts.isNumericLiteral(inner)) {
+      const litVal = Number(inner.text.replace(/_/g, ""));
+      if (Number.isInteger(litVal) && litVal >= -2147483648 && litVal <= 2147483647) {
+        fctx.body.push({ op: "i32.const", value: litVal });
+        return { kind: "i32" };
+      }
+    }
     // void expr in numeric context: evaluate operand for side effects, then
     // produce the correct undefined-as-number constant (NaN for f64, 0 for i32).
     // This avoids the externref roundtrip where null and undefined are
