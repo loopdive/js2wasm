@@ -865,15 +865,12 @@
 
       /* ── Feature support tables (#972) ───────────────────────────── */
       .feat-tables {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 28px;
         margin-top: 52px;
-        align-items: start;
       }
 
       .feat-panel {
-        border: 1px solid var(--line);
+        columns: 3;
+        column-gap: 28px;
       }
 
       .feat-panel-head {
@@ -903,9 +900,26 @@
         border-radius: 10px;
       }
 
+      .feat-section {
+        break-inside: avoid;
+        margin-bottom: 24px;
+      }
+      .feat-edition {
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        color: rgba(255, 255, 255, 0.8);
+        padding: 12px 16px 14px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+      }
+      .feat-edition:first-of-type {
+        padding-top: 0;
+      }
       .feat-row {
         display: grid;
-        grid-template-columns: 1fr auto auto;
+        grid-template-columns: 30px 1fr 24px;
         align-items: center;
         column-gap: 10px;
         row-gap: 0;
@@ -921,11 +935,118 @@
       .feat-row:hover {
         background: var(--surface);
       }
+      .feat-row details {
+        grid-column: 2;
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .feat-row details.expanding,
+      .feat-row details[open] {
+        grid-template-rows: 1fr;
+      }
+      .feat-row details summary {
+        display: none;
+      }
+      .feat-row details .feat-detail-inner {
+        overflow: hidden;
+        padding: 0;
+        transition: padding 0.3s ease;
+      }
+      .feat-row details[open] .feat-detail-inner {
+        padding: 8px 0 4px;
+      }
+      .feat-row details pre {
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1.5;
+        white-space: pre;
+        color: var(--fg-soft);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 12px 14px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 10px 0 0;
+        position: relative;
+      }
+      .feat-row details pre::after {
+        content: "JS";
+        position: absolute;
+        bottom: 6px;
+        right: 10px;
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.2);
+      }
+      .feat-row details pre.wat {
+        background: rgba(100, 70, 200, 0.06);
+        margin-top: 6px;
+      }
+      .feat-row details pre.wat::after {
+        content: "WAT";
+        color: rgba(190, 176, 255, 0.4);
+      }
+      .feat-row details .feat-explain {
+        font-size: 11px;
+        color: var(--fg-faint);
+        margin-top: 6px;
+        line-height: 1.4;
+      }
+      .feat-row {
+        cursor: pointer;
+      }
+      .feat-row:hover .feat-name {
+        color: #fff;
+      }
+      .feat-desc {
+        grid-column: 2;
+        font-size: 11px;
+        color: var(--fg-faint);
+        line-height: 1.3;
+        margin-top: -2px;
+      }
+      .feat-row pre .kw {
+        color: #c792ea;
+      }
+      .feat-row pre .str {
+        color: #c3e88d;
+      }
+      .feat-row pre .num {
+        color: #f78c6c;
+      }
+      .feat-row pre .cm {
+        color: #546e7a;
+      }
+      .feat-row pre .fn {
+        color: #82aaff;
+      }
+      .feat-row pre .op {
+        color: #89ddff;
+      }
 
       .feat-name {
-        font-size: 13.5px;
-        color: var(--fg-soft);
+        font-size: 15px;
+        color: rgba(255, 255, 255, 0.85);
         line-height: 1.45;
+      }
+      .feat-row::after {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-right: 2px solid var(--fg-faint);
+        border-bottom: 2px solid var(--fg-faint);
+        grid-row: 1;
+        grid-column: 3;
+        align-self: center;
+        justify-self: end;
+        transform: rotate(45deg);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        margin-bottom: 4px;
+      }
+      .feat-row:has(details[open])::after {
+        transform: rotate(-135deg);
+        margin-bottom: 0;
+        margin-top: 4px;
       }
 
       .feat-note {
@@ -936,47 +1057,33 @@
         line-height: 1.4;
       }
 
-      .es-tag {
-        font-family: var(--mono);
-        font-size: 10px;
-        color: var(--fg-faint);
-        white-space: nowrap;
-        background: rgba(255, 255, 255, 0.05);
-        padding: 2px 7px;
-        border-radius: 3px;
-        letter-spacing: 0.02em;
-        align-self: center;
-      }
-
       .feat-badge {
-        font-family: var(--mono);
-        font-size: 10px;
-        font-weight: 600;
-        white-space: nowrap;
-        padding: 2px 8px;
-        border-radius: 3px;
-        letter-spacing: 0.04em;
+        font-size: 24px;
+        width: 30px;
+        text-align: center;
         align-self: center;
       }
 
       .feat-badge.full {
         color: #4ade80;
-        background: rgba(74, 222, 128, 0.09);
       }
 
       .feat-badge.partial {
         color: #fbbf24;
-        background: rgba(251, 191, 36, 0.09);
       }
 
       .feat-badge.none {
-        color: rgba(255, 255, 255, 0.28);
-        background: rgba(255, 255, 255, 0.05);
+        color: #f87171;
       }
 
-      @media (max-width: 980px) {
-        .feat-tables {
-          grid-template-columns: 1fr;
+      @media (max-width: 1200px) {
+        .feat-panel {
+          columns: 2;
+        }
+      }
+      @media (max-width: 720px) {
+        .feat-panel {
+          columns: 1;
         }
       }
     </style>
@@ -1173,285 +1280,679 @@
         </div>
 
         <div class="feat-tables">
-          <!-- ── Implemented ───────────────────────────────────────── -->
           <div class="feat-panel">
-            <div class="feat-panel-head">
-              <span class="feat-panel-head-title">Implemented</span>
-              <span class="feat-panel-count">38 features</span>
-            </div>
+            <div class="feat-section">
+              <div class="feat-edition">ES5</div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Variables (var, let, const)</span
+                ><span class="feat-desc">Block-scoped and function-scoped variable declarations</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+let count = 1;
+const name = "hello";
+var legacy = true;</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Functions &amp; closures</span
+                ><span class="feat-desc">Named functions, expressions, and lexical closures</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+function greet(name) {
+  return "Hi " + name;
+}
 
-            <!-- ES5 -->
-            <div class="feat-row">
-              <span class="feat-name">Variables (var, let, const)</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Functions &amp; closures</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Control flow</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-              <span class="feat-note">if/else, for, while, do-while, switch, break, continue</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">try / catch / finally</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">throw</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Objects</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-              <span class="feat-note">literals, property access, methods, shorthand</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Strings</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Numbers</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">JSON</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Error types</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge full">✓ Full</span>
-              <span class="feat-note">Error, TypeError, RangeError, SyntaxError, …</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Arrays</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">most built-in methods; some iterator edge cases</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Regular expressions</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">basic patterns; named groups / lookbehind partial</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Property accessors (get / set)</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">basic get/set; Object.defineProperty partial</span>
-            </div>
-            <!-- ES2015 -->
-            <div class="feat-row">
-              <span class="feat-name">Arrow functions</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Template literals</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Destructuring</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge full">✓ Full</span>
-              <span class="feat-note">array, object, nested, default values, rest</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Spread / rest operators</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Default parameters</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Computed property names</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">for-of</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Generators (function*, yield)</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Classes</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">constructor, methods, extends, super; dynamic prototype lookup partial</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Map / Set</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">core operations; some iteration edge cases</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Symbol (basic)</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">creation and basic use; well-known symbols partial</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">TypedArray / ArrayBuffer</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">Int8–Float64 arrays; BigInt64 not yet</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Modules (import / export)</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">static imports; dynamic import() not yet</span>
-            </div>
-            <!-- ES2017 -->
-            <div class="feat-row">
-              <span class="feat-name">async / await</span>
-              <span class="es-tag">ES2017</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Object.entries / values</span>
-              <span class="es-tag">ES2017</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <!-- ES2018 -->
-            <div class="feat-row">
-              <span class="feat-name">Object spread / rest</span>
-              <span class="es-tag">ES2018</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Async iteration (for-await-of)</span>
-              <span class="es-tag">ES2018</span>
-              <span class="feat-badge partial">◐ Partial</span>
-            </div>
-            <!-- ES2020 -->
-            <div class="feat-row">
-              <span class="feat-name">Optional chaining (?.)</span>
-              <span class="es-tag">ES2020</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Nullish coalescing (??)</span>
-              <span class="es-tag">ES2020</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">globalThis</span>
-              <span class="es-tag">ES2020</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">BigInt</span>
-              <span class="es-tag">ES2020</span>
-              <span class="feat-badge partial">◐ Partial</span>
-              <span class="feat-note">basic arithmetic; BigInt typed arrays not yet</span>
-            </div>
-            <!-- ES2022 -->
-            <div class="feat-row">
-              <span class="feat-name">Class fields (public, private, static)</span>
-              <span class="es-tag">ES2022</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Error.cause</span>
-              <span class="es-tag">ES2022</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Array.at / String.at</span>
-              <span class="es-tag">ES2022</span>
-              <span class="feat-badge full">✓ Full</span>
-            </div>
-          </div>
+const add = (a, b) =&gt; a + b;</pre
+                  >
+                  <pre class="wat">
+(func $greet (param externref) (result externref)
+  global.get 1        ;; "Hi "
+  local.get 0         ;; name
+  call $__str_concat
+  return)</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Control flow</span
+                ><span class="feat-desc">Branching, loops, and switch statements</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+if (x &gt; 0) {
+  handle();
+} else {
+  fallback();
+}
 
-          <!-- ── Not Yet Implemented ───────────────────────────────── -->
-          <div class="feat-panel">
-            <div class="feat-panel-head">
-              <span class="feat-panel-head-title">Not Yet Implemented</span>
-              <span class="feat-panel-count">10 features</span>
+for (let i = 0; i &lt; 10; i++) {
+  process(i);
+}</pre
+                  >
+                  <pre class="wat">
+(func $test (param f64) (result f64)
+  local.get 0
+  f64.const 0
+  f64.gt
+  (if (result f64)
+    (then local.get 0 return)
+    (else local.get 0 f64.neg return)))</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">try / catch / finally</span
+                ><span class="feat-desc">Exception handling with optional finally block</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+try {
+  riskyOp();
+} catch (e) {
+  handle(e);
+} finally {
+  cleanup();
+}</pre
+                  >
+                  <pre class="wat">
+(func $safe (result f64)
+  (try
+    (do call $riskyOp)
+    (catch 0
+      local.set $e
+      f64.const -1
+      return)))</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">throw</span
+                ><span class="feat-desc">Throw custom and built-in error objects</span>
+                <details>
+                  <summary></summary>
+                  <pre>throw new Error("something went wrong");</pre>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Objects</span
+                ><span class="feat-desc">Literals, property access, methods, and shorthand syntax</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const obj = {
+  name: "js2wasm",
+  version: 1,
+  greet() { return this.name; }
+};</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Strings</span
+                ><span class="feat-desc">String methods, concatenation, and manipulation</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+"hello".toUpperCase();   // "HELLO"
+"a,b,c".split(",");      // ["a", "b", "c"]
+"hello".slice(1, 3);      // "el"</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Numbers</span
+                ><span class="feat-desc">Math operations, parseInt, Number methods</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+Math.max(1, 2);
+parseInt("42");
+(3.14).toFixed(1);</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">JSON</span
+                ><span class="feat-desc">Parse and stringify JSON data</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const obj = JSON.parse('{"a": 1}');
+const str = JSON.stringify({ a: 1 });</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Error types</span
+                ><span class="feat-desc">Error, TypeError, RangeError, SyntaxError and more</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+throw new TypeError("expected string");
+throw new RangeError("out of bounds");</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">Arrays</span
+                ><span class="feat-desc">Array methods and iteration helpers</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const doubled = [1, 2, 3].map(x =&gt; x * 2);
+const sum = arr.reduce((a, b) =&gt; a + b, 0);
+const found = arr.find(x =&gt; x &gt; 5);</pre
+                  >
+                  <div class="feat-explain">
+                    Most built-in methods work. Some iterator edge cases and sparse array handling incomplete.
+                  </div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">Regular expressions</span
+                ><span class="feat-desc">Pattern matching and string search</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+/hello/i.test("Hello World"); // true
+"abc123".match(/\d+/);         // ["123"]</pre
+                  >
+                  <div class="feat-explain">Basic patterns work. Named groups and lookbehind partially supported.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">Property accessors (get / set)</span
+                ><span class="feat-desc">Getter and setter property definitions</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const obj = {
+  _v: 0,
+  get value() { return this._v; },
+  set value(v) { this._v = v; }
+};</pre
+                  >
+                  <div class="feat-explain">Basic get/set works. Object.defineProperty partially supported.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">eval()</span
+                ><span class="feat-desc">Dynamic code evaluation at runtime</span>
+                <details>
+                  <summary></summary>
+                  <pre>eval("1 + 2"); // not supported</pre>
+                  <div class="feat-explain">Requires a JS engine at runtime. Not possible in AOT compilation.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">with statement</span
+                ><span class="feat-desc">Dynamic scope extension</span>
+                <details>
+                  <summary></summary>
+                  <pre>with (obj) { x; } // not supported</pre>
+                  <div class="feat-explain">Disallowed in strict mode. All modules run strict.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">Object.defineProperty (full)</span
+                ><span class="feat-desc">Full property descriptor configuration</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+Object.defineProperty(obj, "x", {
+  enumerable: false,
+  writable: false
+});</pre
+                  >
+                  <div class="feat-explain">Property descriptor system not yet fully emitted in Wasm structs.</div>
+                </details>
+              </div>
             </div>
+            <div class="feat-section">
+              <div class="feat-edition">ES2015</div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Arrow functions</span
+                ><span class="feat-desc">Concise function syntax with lexical this</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const add = (a, b) =&gt; a + b;
+const square = x =&gt; x * x;
+const greet = () =&gt; "hello";</pre
+                  >
+                  <pre class="wat">
+(func $add (param f64 f64) (result f64)
+  local.get 0
+  local.get 1
+  f64.add)
 
-            <div class="feat-row">
-              <span class="feat-name">eval()</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">requires a JS engine at runtime</span>
+(func $square (param f64) (result f64)
+  local.get 0
+  local.get 0
+  f64.mul)</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Template literals</span
+                ><span class="feat-desc">String interpolation with backtick syntax</span>
+                <details>
+                  <summary></summary>
+                  <pre>const msg = `Hello ${name}, you are ${age}!`;</pre>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Destructuring</span
+                ><span class="feat-desc">Extract values from arrays and objects</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const { name, age } = person;
+const [first, ...rest] = items;
+const { a: x = 0 } = opts;</pre
+                  >
+                  <pre class="wat">
+(func $__module_init
+  ;; const { a, b } = obj
+  local.get $obj
+  string.const "a"
+  call $__extern_get  ;; a
+  local.get $obj
+  string.const "b"
+  call $__extern_get) ;; b</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Spread / rest operators</span
+                ><span class="feat-desc">Expand iterables and collect arguments</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const merged = [...a, ...b];
+const clone = { ...original };
+function sum(...args) { }</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Default parameters</span
+                ><span class="feat-desc">Fallback values for function parameters</span>
+                <details>
+                  <summary></summary>
+                  <pre>function greet(name = "world") { }</pre>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Computed property names</span
+                ><span class="feat-desc">Dynamic property keys in object literals</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const key = "id";
+const obj = { [key]: 42 };</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">for-of</span
+                ><span class="feat-desc">Iterate over iterable objects</span>
+                <details>
+                  <summary></summary>
+                  <pre>for (const item of iterable) { }</pre>
+                  <pre class="wat">
+(func $__module_init
+  ;; for (const x of arr)
+  local.get $arr
+  call $__iterator
+  local.set $iter
+  (loop $for_of
+    local.get $iter
+    call $__iterator_next
+    ;; ... process x
+    br_if $for_of))</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Generators (function*, yield)</span
+                ><span class="feat-desc">Pausable functions that produce sequences</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+function* range(n) {
+  for (let i = 0; i &lt; n; i++) {
+    yield i;
+  }
+}</pre
+                  >
+                  <pre class="wat">
+(func $range (param f64) (result externref)
+  call $__gen_create_buffer
+  local.set $buf
+  (loop $loop
+    local.get $i
+    local.get 0  ;; n
+    i32.lt_s
+    (if (then
+      local.get $buf
+      local.get $i
+      call $__gen_push
+      ;; i++, br $loop
+    )))
+  local.get $buf
+  call $__create_generator)</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">Classes</span
+                ><span class="feat-desc">Class declarations with inheritance</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+class Animal {
+  constructor(name) {
+    this.name = name;
+  }
+  speak() {
+    return this.name + " speaks";
+  }
+}
+
+class Dog extends Animal { }</pre
+                  >
+                  <pre class="wat">
+(type $Animal (struct
+  (field $__tag i32)
+  (field $name externref)))
+
+(func $Animal_new (param externref) (result (ref null $Animal))
+  struct.new $Animal
+  local.get 0
+  struct.set $Animal $name)</pre
+                  >
+                  <div class="feat-explain">
+                    Constructor, methods, extends, super work. Dynamic prototype lookup is partial.
+                  </div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">Map / Set</span
+                ><span class="feat-desc">Key-value and unique-value collections</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const m = new Map();
+m.set("key", 42);
+
+const s = new Set([1, 2, 3]);
+s.has(2); // true</pre
+                  >
+                  <div class="feat-explain">Core operations work. Some iteration edge cases incomplete.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">Symbol</span
+                ><span class="feat-desc">Unique, immutable primitive identifiers</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const id = Symbol("id");
+obj[id] = 42;</pre
+                  >
+                  <div class="feat-explain">
+                    Creation and basic use work. Well-known symbols (Symbol.iterator) partial.
+                  </div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">TypedArray / ArrayBuffer</span
+                ><span class="feat-desc">Binary data buffers and typed views</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const buf = new ArrayBuffer(16);
+const view = new Int32Array(buf);
+view[0] = 42;</pre
+                  >
+                  <div class="feat-explain">Int8 through Float64 arrays work. BigInt64Array not yet.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">Modules (import / export)</span
+                ><span class="feat-desc">ES module system for code organization</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const big = 9007199254740993n;
+const sum = big + 1n;</pre
+                  >
+                  <div class="feat-explain">Static imports work. Dynamic import() not yet.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">Proxy / Reflect</span
+                ><span class="feat-desc">Object behavior interception and reflection</span>
+                <details>
+                  <summary></summary>
+                  <pre>new Proxy(target, handler); // not supported</pre>
+                  <div class="feat-explain">Requires runtime trap dispatch. Not AOT-compilable.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">Promise .then / .catch / .finally</span
+                ><span class="feat-desc">Promise chaining and error handling</span>
+                <details>
+                  <summary></summary>
+                  <pre>promise.then(v => v + 1); // not yet</pre>
+                  <div class="feat-explain">
+                    Compiles but async callbacks do not execute. Promise.resolve/all/race work.
+                  </div>
+                </details>
+              </div>
             </div>
-            <div class="feat-row">
-              <span class="feat-name">with statement</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">disallowed in strict mode (all modules run strict)</span>
+            <div class="feat-section">
+              <div class="feat-edition">ES2017</div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">async / await</span
+                ><span class="feat-desc">Asynchronous functions with synchronous-style syntax</span>
+                <details>
+                  <summary></summary>
+                  <pre>const mod = await import("./module"); // not yet</pre>
+                  <pre class="wat">
+(func $fetchData (result f64)
+  f64.const 42
+  call $Promise.resolve
+  call $__await
+  return)</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Object.entries / values</span
+                ><span class="feat-desc">Extract entries or values from objects</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+Object.entries({ a: 1, b: 2 });
+// [["a", 1], ["b", 2]]
+
+Object.values({ x: 10 });
+// [10]</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">SharedArrayBuffer / Atomics</span
+                ><span class="feat-desc">Shared memory and atomic operations</span>
+                <details>
+                  <summary></summary>
+                  <pre>new SharedArrayBuffer(1024); // not supported</pre>
+                  <div class="feat-explain">Requires shared Wasm linear memory.</div>
+                </details>
+              </div>
             </div>
-            <div class="feat-row">
-              <span class="feat-name">Object.defineProperty (full)</span>
-              <span class="es-tag">ES5</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">property descriptor system not yet fully emitted</span>
+            <div class="feat-section">
+              <div class="feat-edition">ES2018</div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Object spread / rest</span
+                ><span class="feat-desc">Object spread in literals and rest in destructuring</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+const clone = { ...original, extra: 1 };
+const { a, ...rest } = obj;</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">Async iteration (for-await-of)</span
+                ><span class="feat-desc">Iterate over async data sources</span>
+                <details>
+                  <summary></summary>
+                  <pre>for await (const chunk of stream) { }</pre>
+                  <div class="feat-explain">Basic patterns work. Some async generator edge cases incomplete.</div>
+                </details>
+              </div>
             </div>
-            <div class="feat-row">
-              <span class="feat-name">Proxy / Reflect</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">requires runtime trap dispatch; not AOT-compilable</span>
+            <div class="feat-section">
+              <div class="feat-edition">ES2020</div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Optional chaining (?.)</span
+                ><span class="feat-desc">Safe property access on nullable values</span>
+                <details>
+                  <summary></summary>
+                  <pre>const name = user?.profile?.name;</pre>
+                  <pre class="wat">
+(func $test (param externref) (result externref)
+  local.get 0
+  ref.is_null
+  (if (result externref)
+    (then ref.null extern)
+    (else local.get 0
+          call $__extern_get_name)))</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Nullish coalescing (??)</span
+                ><span class="feat-desc">Default values for null or undefined</span>
+                <details>
+                  <summary></summary>
+                  <pre>const val = input ?? "default";</pre>
+                  <pre class="wat">
+(func $test (param f64) (result f64)
+  local.get 0        ;; x
+  call $__is_nullish
+  (if (result f64)
+    (then f64.const 0)
+    (else local.get 0)))</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">globalThis</span
+                ><span class="feat-desc">Universal global object reference</span>
+                <details>
+                  <summary></summary>
+                  <pre>globalThis.console;</pre>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge partial">⚠</span><span class="feat-name">BigInt</span
+                ><span class="feat-desc">Arbitrary precision integer arithmetic</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+globalThis.setTimeout;
+globalThis.console;</pre
+                  >
+                  <div class="feat-explain">Basic arithmetic works. BigInt typed arrays not yet.</div>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">Dynamic import()</span
+                ><span class="feat-desc">Load modules at runtime on demand</span>
+                <details>
+                  <summary></summary>
+                  <pre>const mod = await import("./module"); // not yet</pre>
+                  <div class="feat-explain">Requires a runtime module loader.</div>
+                </details>
+              </div>
             </div>
-            <div class="feat-row">
-              <span class="feat-name">Promise .then / .catch / .finally</span>
-              <span class="es-tag">ES2015</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">compiles but async callbacks do not execute</span>
+            <div class="feat-section">
+              <div class="feat-edition">ES2021</div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">WeakRef / FinalizationRegistry</span
+                ><span class="feat-desc">Weak references and GC callbacks</span>
+                <details>
+                  <summary></summary>
+                  <pre>new WeakRef(obj); // not supported</pre>
+                  <div class="feat-explain">GC-observable. Not available in WasmGC.</div>
+                </details>
+              </div>
             </div>
-            <div class="feat-row">
-              <span class="feat-name">Dynamic import()</span>
-              <span class="es-tag">ES2020</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">requires a runtime module loader</span>
+            <div class="feat-section">
+              <div class="feat-edition">ES2022</div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span
+                ><span class="feat-name">Class fields (public, private, static)</span
+                ><span class="feat-desc">Declarative field syntax in classes</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+class Counter {
+  count = 0;
+  #secret = 42;
+  static instances = 0;
+}</pre
+                  >
+                  <pre class="wat">
+(type $Counter (struct
+  (field $__tag i32)
+  (field $count f64)))
+
+(func $Counter_new (result (ref null $Counter))
+  i32.const 0     ;; __tag
+  f64.const 0     ;; count = 0
+  struct.new $Counter)</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Error.cause</span
+                ><span class="feat-desc">Chain errors with a cause property</span>
+                <details>
+                  <summary></summary>
+                  <pre>throw new Error("fail", { cause: origErr });</pre>
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge full">✓</span><span class="feat-name">Array.at / String.at</span
+                ><span class="feat-desc">Relative indexing with negative support</span>
+                <details>
+                  <summary></summary>
+                  <pre>
+[1, 2, 3].at(-1);  // 3
+"hello".at(0);      // "h"</pre
+                  >
+                </details>
+              </div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">Top-level await</span
+                ><span class="feat-desc">Await at module scope without async wrapper</span>
+              </div>
             </div>
-            <div class="feat-row">
-              <span class="feat-name">SharedArrayBuffer / Atomics</span>
-              <span class="es-tag">ES2017</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">requires shared Wasm linear memory</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">WeakRef / FinalizationRegistry</span>
-              <span class="es-tag">ES2021</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">GC-observable — not available in WasmGC</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Top-level await</span>
-              <span class="es-tag">ES2022</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">requires module-level async execution model</span>
-            </div>
-            <div class="feat-row">
-              <span class="feat-name">Temporal</span>
-              <span class="es-tag">proposal</span>
-              <span class="feat-badge none">—</span>
-              <span class="feat-note">Stage 3 proposal; not yet in scope</span>
+            <div class="feat-section">
+              <div class="feat-edition">Proposals</div>
+              <div class="feat-row">
+                <span class="feat-badge none">✗</span><span class="feat-name">Temporal</span
+                ><span class="feat-desc">Modern date and time API</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1766,6 +2267,108 @@
       })();
 
       // Glow wave animation is now pure CSS/SMIL — no JS needed
+
+      // Minimal syntax highlighter for feature code examples
+      (function highlightFeatureCode() {
+        const KW =
+          /\b(const|let|var|function|class|extends|new|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|async|await|yield|import|export|from|of|in|typeof|instanceof|static|get|set|with)\b/g;
+        const STR = /(["'`])(?:(?!\1)[^\\]|\\.)*?\1/g;
+        const NUM = /\b(\d+(?:\.\d+)?n?)\b/g;
+        const CM = /(\/\/[^\n]*)/g;
+        const FN = /\b([a-zA-Z_$][\w$]*)\s*(?=\()/g;
+        const OP = /([=!&|?:+\-*/%.]+|=&gt;|&lt;|&gt;)/g;
+        // WAT keywords
+        const WAT_KW =
+          /\b(func|param|result|local|global|struct|field|type|if|then|else|loop|block|br|br_if|call|return|try|do|catch|catch_all|ref|mut|i32|i64|f32|f64|externref)\b/g;
+        const WAT_OP =
+          /\b(local\.get|local\.set|local\.tee|global\.get|global\.set|struct\.new|struct\.get|struct\.set|ref\.null|ref\.is_null|string\.const|f64\.const|i32\.const|f64\.add|f64\.mul|f64\.neg|f64\.gt|i32\.lt_s|i32\.trunc_sat_f64_s|call_indirect|drop)\b/g;
+
+        function highlightJS(pre) {
+          let html = pre.textContent.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const strings = [];
+          html = html.replace(STR, (m) => {
+            strings.push(m);
+            return `__STR${strings.length - 1}__`;
+          });
+          const comments = [];
+          html = html.replace(CM, (m) => {
+            comments.push(m);
+            return `__CM${comments.length - 1}__`;
+          });
+          html = html.replace(KW, '<span class="kw">$1</span>');
+          html = html.replace(FN, '<span class="fn">$1</span>');
+          html = html.replace(NUM, '<span class="num">$1</span>');
+          comments.forEach((c, i) => {
+            html = html.replace(`__CM${i}__`, `<span class="cm">${c}</span>`);
+          });
+          strings.forEach((s, i) => {
+            html = html.replace(`__STR${i}__`, `<span class="str">${s}</span>`);
+          });
+          pre.innerHTML = html;
+        }
+
+        function highlightWAT(pre) {
+          let html = pre.textContent.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const comments = [];
+          html = html.replace(/(;;[^\n]*)/g, (m) => {
+            comments.push(m);
+            return `__CM${comments.length - 1}__`;
+          });
+          const strings = [];
+          html = html.replace(/"[^"]*"/g, (m) => {
+            strings.push(m);
+            return `__STR${strings.length - 1}__`;
+          });
+          html = html.replace(WAT_OP, '<span class="fn">$1</span>');
+          html = html.replace(WAT_KW, '<span class="kw">$1</span>');
+          html = html.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="num">$1</span>');
+          html = html.replace(/(\$[\w._]+)/g, '<span class="str">$1</span>');
+          comments.forEach((c, i) => {
+            html = html.replace(`__CM${i}__`, `<span class="cm">${c}</span>`);
+          });
+          strings.forEach((s, i) => {
+            html = html.replace(`__STR${i}__`, `<span class="str">${s}</span>`);
+          });
+          pre.innerHTML = html;
+        }
+
+        document.querySelectorAll(".feat-row pre:not(.wat)").forEach(highlightJS);
+        document.querySelectorAll(".feat-row pre.wat").forEach(highlightWAT);
+      })();
+
+      // Wrap details children in .feat-detail-inner for height animation, then wire click
+      document.querySelectorAll(".feat-row details").forEach((d) => {
+        const inner = document.createElement("div");
+        inner.className = "feat-detail-inner";
+        while (d.lastChild && d.lastChild !== d.querySelector("summary")) {
+          inner.prepend(d.lastChild);
+        }
+        d.appendChild(inner);
+      });
+      document.querySelectorAll(".feat-row").forEach((row) => {
+        row.addEventListener("click", () => {
+          const d = row.querySelector("details");
+          if (!d) return;
+          if (d.open) {
+            // Closing: remove expanding class, wait for transition, then remove open
+            d.classList.remove("expanding");
+            d.addEventListener(
+              "transitionend",
+              function once() {
+                d.removeEventListener("transitionend", once);
+                d.removeAttribute("open");
+              },
+              { once: true },
+            );
+          } else {
+            // Opening: set open first (so content exists), then add expanding class
+            d.setAttribute("open", "");
+            // Force reflow so the 0fr state is rendered before expanding
+            d.offsetHeight;
+            d.classList.add("expanding");
+          }
+        });
+      });
 
       (async function hydrateCompatibilityStat() {
         const rateEl = document.getElementById("compat-pass-rate");
