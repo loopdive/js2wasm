@@ -619,6 +619,10 @@ function resolveImport(
     }
     case "builtin": {
       const name = intent.name;
+      // Batched string concat: __concat_3, __concat_4, ... (#958)
+      if (name.startsWith("__concat_")) {
+        return (...args: string[]) => args.join("");
+      }
       if (name === "number_toString") return (v: number) => String(v);
       if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
       if (name === "number_toPrecision") return (v: number, p: number) => v.toPrecision(p);
