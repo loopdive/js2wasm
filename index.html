@@ -1295,959 +1295,10 @@
           </p>
         </div>
 
-        <div class="feat-tables">
+        <div class="feat-tables" id="feat-tables-root">
           <div class="feat-panel">
             <div class="feat-section">
-              <div class="feat-edition">ES5</div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Variables (var, let, const)</span>
-                <span class="feat-desc">Block-scoped and function-scoped variable declarations</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-let count = 1;
-const name = "hello";
-var legacy = true;</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  (local $count f64)
-  (local $name externref)
-  (local $legacy i32)
-  f64.const 1
-  local.set $count       ;; let count = 1
-  string.const "hello"
-  local.set $name        ;; const name = "hello"
-  i32.const 1
-  local.set $legacy)     ;; var legacy = true</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Functions &amp; closures</span>
-                <span class="feat-desc">Named functions, expressions, and lexical closures</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-function greet(name) {
-  return "Hi " + name;
-}
-
-const add = (a, b) =&gt; a + b;</pre
-                  >
-                  <pre class="wat">
-(func $greet (param externref) (result externref)
-  global.get 1        ;; "Hi "
-  local.get 0         ;; name
-  call $__str_concat
-  return)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Control flow</span>
-                <span class="feat-desc">Branching, loops, and switch statements</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-if (x &gt; 0) {
-  handle();
-} else {
-  fallback();
-}
-
-for (let i = 0; i &lt; 10; i++) {
-  process(i);
-}</pre
-                  >
-                  <pre class="wat">
-(func $test (param f64) (result f64)
-  local.get 0
-  f64.const 0
-  f64.gt
-  (if (result f64)
-    (then local.get 0 return)
-    (else local.get 0 f64.neg return)))</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">try / catch / finally</span>
-                <span class="feat-desc">Exception handling with optional finally block</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-try {
-  riskyOp();
-} catch (e) {
-  handle(e);
-} finally {
-  cleanup();
-}</pre
-                  >
-                  <pre class="wat">
-(func $safe (result f64)
-  (try
-    (do call $riskyOp)
-    (catch 0
-      local.set $e
-      f64.const -1
-      return)))</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">throw</span>
-                <span class="feat-desc">Throw custom and built-in error objects</span>
-                <details>
-                  <summary></summary>
-                  <pre>throw new Error("something went wrong");</pre>
-                  <pre class="wat">
-(func $__module_init
-  string.const "something went wrong"
-  call $Error_new
-  throw 0)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Objects</span>
-                <span class="feat-desc">Literals, property access, methods, and shorthand syntax</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const obj = {
-  name: "js2wasm",
-  version: 1,
-  greet() { return this.name; }
-};</pre
-                  >
-                  <pre class="wat">
-(type $obj (struct
-  (field $__tag i32)
-  (field $name externref)
-  (field $version f64)))
-
-(func $obj_greet (param (ref null $obj)) (result externref)
-  local.get 0
-  struct.get $obj $name    ;; this.name
-  return)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Strings</span>
-                <span class="feat-desc">String methods, concatenation, and manipulation</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-"hello".toUpperCase();   // "HELLO"
-"a,b,c".split(",");      // ["a", "b", "c"]
-"hello".slice(1, 3);      // "el"</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  global.get 0             ;; "hello"
-  call $toUpperCase
-  drop
-  global.get 1             ;; "a,b,c"
-  global.get 2             ;; ","
-  call $split
-  drop
-  global.get 0             ;; "hello"
-  f64.const 1
-  f64.const 3
-  call $slice)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Numbers</span>
-                <span class="feat-desc">Math operations, parseInt, Number methods</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-Math.max(1, 2);
-parseInt("42");
-(3.14).toFixed(1);</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  (local $a f64) (local $b f64)
-  f64.const 1
-  local.set $a
-  f64.const 2
-  local.set $b
-  local.get $a  local.get $b
-  f64.max               ;; Math.max(1, 2)
-  drop)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">JSON</span>
-                <span class="feat-desc">Parse and stringify JSON data</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const obj = JSON.parse('{"a": 1}');
-const str = JSON.stringify({ a: 1 });</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  global.get 0           ;; '{"a": 1}'
-  call $JSON.parse       ;; → externref
-  global.set $obj)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Error types</span>
-                <span class="feat-desc">Error, TypeError, RangeError, SyntaxError and more</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-throw new TypeError("expected string");
-throw new RangeError("out of bounds");</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  string.const "expected string"
-  call $TypeError_new
-  throw 0)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">Arrays</span>
-                <span class="feat-desc">Array methods and iteration helpers</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const doubled = [1, 2, 3].map(x =&gt; x * 2);
-const sum = arr.reduce((a, b) =&gt; a + b, 0);
-const found = arr.find(x =&gt; x &gt; 5);</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  ;; [1, 2, 3].map(x =&amp;gt; x * 2)
-  f64.const 1  f64.const 2  f64.const 3
-  array.new_fixed 3
-  ref.func $callback
-  call $__arr_map          ;; WasmGC array map)</pre
-                  >
-                  <div class="feat-explain">
-                    Most built-in methods work. Some iterator edge cases and sparse array handling incomplete.
-                  </div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">Regular expressions</span>
-                <span class="feat-desc">Pattern matching and string search</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-/hello/i.test("Hello World"); // true
-"abc123".match(/\d+/);         // ["123"]</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  global.get $re           ;; /hello/i
-  global.get 1             ;; "Hello World"
-  call $RegExp.test        ;; → i32 bool)</pre
-                  >
-                  <div class="feat-explain">Basic patterns work. Named groups and lookbehind partially supported.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-name">Property accessors (get / set)</span>
-                <span class="feat-desc">Getter and setter property definitions</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const obj = {
-  _v: 0,
-  get value() { return this._v; },
-  set value(v) { this._v = v; }
-};</pre
-                  >
-                  <pre class="wat">
-(func $get_value (param (ref null $obj)) (result f64)
-  local.get 0
-  struct.get $obj $_v      ;; return this._v
-)
-
-(func $set_value (param (ref null $obj)) (param f64)
-  local.get 0
-  local.get 1
-  struct.set $obj $_v)     ;; this._v = v</pre
-                  >
-                  <div class="feat-explain">Basic get/set works. Object.defineProperty partially supported.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-name">eval()</span>
-                <span class="feat-desc">Dynamic code evaluation at runtime</span>
-                <details>
-                  <summary></summary>
-                  <pre>eval("1 + 2"); // not supported</pre>
-                  <div class="feat-explain">Requires a JS engine at runtime. Not possible in AOT compilation.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-name">with statement</span>
-                <span class="feat-desc">Dynamic scope extension</span>
-                <details>
-                  <summary></summary>
-                  <pre>with (obj) { x; } // not supported</pre>
-                  <div class="feat-explain">Disallowed in strict mode. All modules run strict.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-name">Object.defineProperty (full)</span>
-                <span class="feat-desc">Full property descriptor configuration</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-Object.defineProperty(obj, "x", {
-  enumerable: false,
-  writable: false
-});</pre
-                  >
-                  <div class="feat-explain">Property descriptor system not yet fully emitted in Wasm structs.</div>
-                </details>
-              </div>
-            </div>
-            <div class="feat-section">
-              <div class="feat-edition">ES2015</div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Arrow functions</span>
-                <span class="feat-desc">Concise function syntax with lexical this</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const add = (a, b) =&gt; a + b;
-const square = x =&gt; x * x;
-const greet = () =&gt; "hello";</pre
-                  >
-                  <pre class="wat">
-(func $add (param f64 f64) (result f64)
-  local.get 0
-  local.get 1
-  f64.add)
-
-(func $square (param f64) (result f64)
-  local.get 0
-  local.get 0
-  f64.mul)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Template literals</span>
-                <span class="feat-desc">String interpolation with backtick syntax</span>
-                <details>
-                  <summary></summary>
-                  <pre>const msg = `Hello ${name}, you are ${age}!`;</pre>
-                  <pre class="wat">
-(func $__module_init
-  global.get 0             ;; "Hello "
-  global.get $name         ;; name
-  call $__str_concat
-  global.get 1             ;; "!"
-  call $__str_concat)      ;; → "Hello world!"</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Destructuring</span>
-                <span class="feat-desc">Extract values from arrays and objects</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const { name, age } = person;
-const [first, ...rest] = items;
-const { a: x = 0 } = opts;</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  ;; const { a, b } = obj
-  local.get $obj
-  string.const "a"
-  call $__extern_get  ;; a
-  local.get $obj
-  string.const "b"
-  call $__extern_get) ;; b</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Spread / rest operators</span>
-                <span class="feat-desc">Expand iterables and collect arguments</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const merged = [...a, ...b];
-const clone = { ...original };
-function sum(...args) { }</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  ;; [...arr, 4]
-  f64.const 1  f64.const 2  f64.const 3
-  array.new_fixed 3        ;; arr
-  ;; spread into new array
-  call $__spread_array
-  f64.const 4
-  call $__arr_push)        ;; → [1, 2, 3, 4]</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Default parameters</span>
-                <span class="feat-desc">Fallback values for function parameters</span>
-                <details>
-                  <summary></summary>
-                  <pre>function greet(name = "world") { }</pre>
-                  <pre class="wat">
-(func $greet (param externref) (result externref)
-  local.get 0
-  ref.is_null
-  (if (then
-    global.get 1           ;; "world"
-    local.set 0))
-  local.get 0
-  return)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Computed property names</span>
-                <span class="feat-desc">Dynamic property keys in object literals</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const key = "id";
-const obj = { [key]: 42 };</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  ;; { [key]: 42 }
-  global.get $key          ;; "id"
-  f64.const 42
-  struct.new $obj)          ;; → { id: 42 }</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">for-of</span>
-                <span class="feat-desc">Iterate over iterable objects</span>
-                <details>
-                  <summary></summary>
-                  <pre>for (const item of iterable) { }</pre>
-                  <pre class="wat">
-(func $__module_init
-  ;; for (const x of arr)
-  local.get $arr
-  call $__iterator
-  local.set $iter
-  (loop $for_of
-    local.get $iter
-    call $__iterator_next
-    ;; ... process x
-    br_if $for_of))</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Generators (function*, yield)</span>
-                <span class="feat-desc">Pausable functions that produce sequences</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-function* range(n) {
-  for (let i = 0; i &lt; n; i++) {
-    yield i;
-  }
-}</pre
-                  >
-                  <pre class="wat">
-(func $range (param f64) (result externref)
-  call $__gen_create_buffer
-  local.set $buf
-  (loop $loop
-    local.get $i
-    local.get 0  ;; n
-    i32.lt_s
-    (if (then
-      local.get $buf
-      local.get $i
-      call $__gen_push
-      ;; i++, br $loop
-    )))
-  local.get $buf
-  call $__create_generator)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-name">Classes</span>
-                <span class="feat-desc">Class declarations with inheritance</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-class Animal {
-  constructor(name) {
-    this.name = name;
-  }
-  speak() {
-    return this.name + " speaks";
-  }
-}
-
-class Dog extends Animal { }</pre
-                  >
-                  <pre class="wat">
-(type $Animal (struct
-  (field $__tag i32)
-  (field $name externref)))
-
-(func $Animal_new (param externref) (result (ref null $Animal))
-  struct.new $Animal
-  local.get 0
-  struct.set $Animal $name)</pre
-                  >
-                  <div class="feat-explain">
-                    Constructor, methods, extends, super work. Dynamic prototype lookup is partial.
-                  </div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">Map / Set</span>
-                <span class="feat-desc">Key-value and unique-value collections</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const m = new Map();
-m.set("key", 42);
-
-const s = new Set([1, 2, 3]);
-s.has(2); // true</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  call $Map_new            ;; new Map()
-  global.set $m
-  global.get $m
-  global.get 0             ;; "key"
-  f64.const 42
-  call $Map_set)           ;; m.set("key", 42)</pre
-                  >
-                  <div class="feat-explain">Core operations work. Some iteration edge cases incomplete.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">Symbol</span>
-                <span class="feat-desc">Unique, immutable primitive identifiers</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const id = Symbol("id");
-obj[id] = 42;</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  global.get $nextId
-  i32.const 1
-  i32.add                  ;; unique id++
-  global.set $nextId
-  global.get $nextId
-  global.set $id)          ;; Symbol("id")</pre
-                  >
-                  <div class="feat-explain">
-                    Creation and basic use work. Well-known symbols (Symbol.iterator) partial.
-                  </div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">TypedArray / ArrayBuffer</span>
-                <span class="feat-desc">Binary data buffers and typed views</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const buf = new ArrayBuffer(16);
-const view = new Int32Array(buf);
-view[0] = 42;</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  i32.const 16
-  call $ArrayBuffer_new    ;; new ArrayBuffer(16)
-  call $Int32Array_from    ;; new Int32Array(buf)
-  global.set $view
-  global.get $view
-  i32.const 0              ;; index 0
-  f64.const 42
-  call $TypedArray_set)    ;; view[0] = 42</pre
-                  >
-                  <div class="feat-explain">Int8 through Float64 arrays work. BigInt64Array not yet.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-name">Modules (import / export)</span>
-                <span class="feat-desc">ES module system for code organization</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const big = 9007199254740993n;
-const sum = big + 1n;</pre
-                  >
-                  <pre class="wat">
-(func $bar (export "bar") (result f64)
-  f64.const 1
-  return)</pre
-                  >
-                  <div class="feat-explain">Static imports work. Dynamic import() not yet.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-name">Proxy / Reflect</span>
-                <span class="feat-desc">Object behavior interception and reflection</span>
-                <details>
-                  <summary></summary>
-                  <pre>new Proxy(target, handler); // not supported</pre>
-                  <div class="feat-explain">Requires runtime trap dispatch. Not AOT-compilable.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">Promise .then / .catch / .finally</span>
-                <span class="feat-desc">Promise chaining and error handling</span>
-                <details>
-                  <summary></summary>
-                  <pre>promise.then(v => v + 1); // not yet</pre>
-                  <div class="feat-explain">
-                    Compiles but async callbacks do not execute. Promise.resolve/all/race work.
-                  </div>
-                </details>
-              </div>
-            </div>
-            <div class="feat-section">
-              <div class="feat-edition">ES2017</div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">async / await</span>
-                <span class="feat-desc">Asynchronous functions with synchronous-style syntax</span>
-                <details>
-                  <summary></summary>
-                  <pre>const mod = await import("./module"); // not yet</pre>
-                  <pre class="wat">
-(func $fetchData (result f64)
-  f64.const 42
-  call $Promise.resolve
-  call $__await
-  return)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Object.entries / values</span>
-                <span class="feat-desc">Extract entries or values from objects</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-Object.entries({ a: 1, b: 2 });
-// [["a", 1], ["b", 2]]
-
-Object.values({ x: 10 });
-// [10]</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  ;; Object.entries({ a: 1, b: 2 })
-  f64.const 1  f64.const 2
-  struct.new $obj
-  extern.convert_any
-  call $Object.entries)    ;; → [["a",1],["b",2]]</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">SharedArrayBuffer / Atomics</span>
-                <span class="feat-desc">Shared memory and atomic operations</span>
-                <details>
-                  <summary></summary>
-                  <pre>new SharedArrayBuffer(1024); // not supported</pre>
-                  <div class="feat-explain">Requires shared Wasm linear memory.</div>
-                </details>
-              </div>
-            </div>
-            <div class="feat-section">
-              <div class="feat-edition">ES2018</div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Object spread / rest</span>
-                <span class="feat-desc">Object spread in literals and rest in destructuring</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const clone = { ...original, extra: 1 };
-const { a, ...rest } = obj;</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  ;; { ...original, extra: 2 }
-  local.get $original
-  call $__spread_obj       ;; copy fields
-  f64.const 2
-  struct.set $clone $extra);; add extra: 2</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">Async iteration (for-await-of)</span>
-                <span class="feat-desc">Iterate over async data sources</span>
-                <details>
-                  <summary></summary>
-                  <pre>for await (const chunk of stream) { }</pre>
-                  <pre class="wat">
-(func $process (param externref)
-  local.get 0
-  call $__iterator         ;; get async iterator
-  local.set $iter
-  (loop $for_await
-    local.get $iter
-    call $__iterator_next  ;; await next()
-    local.set $chunk
-    ;; ... process chunk
-    br_if $for_await))</pre
-                  >
-                  <div class="feat-explain">Basic patterns work. Some async generator edge cases incomplete.</div>
-                </details>
-              </div>
-            </div>
-            <div class="feat-section">
-              <div class="feat-edition">ES2020</div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Optional chaining (?.)</span>
-                <span class="feat-desc">Safe property access on nullable values</span>
-                <details>
-                  <summary></summary>
-                  <pre>const name = user?.profile?.name;</pre>
-                  <pre class="wat">
-(func $test (param externref) (result externref)
-  local.get 0
-  ref.is_null
-  (if (result externref)
-    (then ref.null extern)
-    (else local.get 0
-          call $__extern_get_name)))</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Nullish coalescing (??)</span>
-                <span class="feat-desc">Default values for null or undefined</span>
-                <details>
-                  <summary></summary>
-                  <pre>const val = input ?? "default";</pre>
-                  <pre class="wat">
-(func $test (param f64) (result f64)
-  local.get 0        ;; x
-  call $__is_nullish
-  (if (result f64)
-    (then f64.const 0)
-    (else local.get 0)))</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">globalThis</span>
-                <span class="feat-desc">Universal global object reference</span>
-                <details>
-                  <summary></summary>
-                  <pre>globalThis.console;</pre>
-                  <pre class="wat">
-(func $__module_init
-  call $__get_globalThis   ;; runtime global ref
-  global.set $g)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge partial">⚠</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">BigInt</span>
-                <span class="feat-desc">Arbitrary precision integer arithmetic</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-const big = 9007199254740993n;
-const sum = big + 1n;</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  i64.const 9007199254740993
-  global.set $big
-  global.get $big
-  i64.const 1
-  i64.add
-  global.set $sum)</pre
-                  >
-                  <div class="feat-explain">Basic arithmetic works. BigInt typed arrays not yet.</div>
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">Dynamic import()</span>
-                <span class="feat-desc">Load modules at runtime on demand</span>
-                <details>
-                  <summary></summary>
-                  <pre>const mod = await import("./module"); // not yet</pre>
-                  <div class="feat-explain">Requires a runtime module loader.</div>
-                </details>
-              </div>
-            </div>
-            <div class="feat-section">
-              <div class="feat-edition">ES2021</div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-host">host</span>
-                <span class="feat-name">WeakRef / FinalizationRegistry</span>
-                <span class="feat-desc">Weak references and GC callbacks</span>
-                <details>
-                  <summary></summary>
-                  <pre>new WeakRef(obj); // not supported</pre>
-                  <div class="feat-explain">GC-observable. Not available in WasmGC.</div>
-                </details>
-              </div>
-            </div>
-            <div class="feat-section">
-              <div class="feat-edition">ES2022</div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Class fields (public, private, static)</span>
-                <span class="feat-desc">Declarative field syntax in classes</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-class Counter {
-  count = 0;
-  #secret = 42;
-  static instances = 0;
-}</pre
-                  >
-                  <pre class="wat">
-(type $Counter (struct
-  (field $__tag i32)
-  (field $count f64)))
-
-(func $Counter_new (result (ref null $Counter))
-  i32.const 0     ;; __tag
-  f64.const 0     ;; count = 0
-  struct.new $Counter)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Error.cause</span>
-                <span class="feat-desc">Chain errors with a cause property</span>
-                <details>
-                  <summary></summary>
-                  <pre>throw new Error("fail", { cause: origErr });</pre>
-                  <pre class="wat">
-(func $fail
-  string.const "root"
-  call $Error_new          ;; cause error
-  string.const "fail"
-  call $Error_new_cause    ;; Error("fail", {cause})
-  throw 0)</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge full">✓</span>
-                <span class="feat-name">Array.at / String.at</span>
-                <span class="feat-desc">Relative indexing with negative support</span>
-                <details>
-                  <summary></summary>
-                  <pre>
-[1, 2, 3].at(-1);  // 3
-"hello".at(0);      // "h"</pre
-                  >
-                  <pre class="wat">
-(func $__module_init
-  ;; [1,2,3].at(-1)
-  local.get $arr
-  i32.const -1             ;; negative index
-  local.get $len
-  i32.add                  ;; len + (-1) = last
-  array.get $data)         ;; → 3</pre
-                  >
-                </details>
-              </div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-name">Top-level await</span>
-                <span class="feat-desc">Await at module scope without async wrapper</span>
-              </div>
-            </div>
-            <div class="feat-section">
-              <div class="feat-edition">Proposals</div>
-              <div class="feat-row">
-                <span class="feat-badge none">✗</span>
-                <span class="feat-name">Temporal</span>
-                <span class="feat-desc">Modern date and time API</span>
-              </div>
+              <div class="feat-edition">Loading…</div>
             </div>
           </div>
         </div>
@@ -2383,6 +1434,111 @@ class Counter {
     </footer>
 
     <script type="module" src="./components/t262-charts.js"></script>
+
+    <script>
+      (function mountFeatureTable() {
+        const root = document.getElementById("feat-tables-root");
+        if (!root) return;
+
+        fetch("./feature-examples.json")
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (data) {
+            const features = data.features || [];
+
+            // Group features by edition, preserving order
+            const editions = [];
+            const byEdition = new Map();
+            for (const f of features) {
+              if (!byEdition.has(f.edition)) {
+                editions.push(f.edition);
+                byEdition.set(f.edition, []);
+              }
+              byEdition.get(f.edition).push(f);
+            }
+
+            const panel = document.createElement("div");
+            panel.className = "feat-panel";
+
+            for (const edition of editions) {
+              const section = document.createElement("div");
+              section.className = "feat-section";
+
+              const edDiv = document.createElement("div");
+              edDiv.className = "feat-edition";
+              edDiv.textContent = edition;
+              section.appendChild(edDiv);
+
+              for (const feat of byEdition.get(edition)) {
+                const row = document.createElement("div");
+                row.className = "feat-row";
+
+                const badge = document.createElement("span");
+                badge.className = "feat-badge " + feat.badge;
+                badge.textContent = feat.badge === "full" ? "✓" : feat.badge === "partial" ? "⚠" : "✗";
+                row.appendChild(badge);
+
+                if (feat.host) {
+                  const host = document.createElement("span");
+                  host.className = "feat-host";
+                  host.textContent = "host";
+                  row.appendChild(host);
+                }
+
+                const name = document.createElement("span");
+                name.className = "feat-name";
+                name.textContent = feat.name;
+                row.appendChild(name);
+
+                const desc = document.createElement("span");
+                desc.className = "feat-desc";
+                desc.textContent = feat.description;
+                row.appendChild(desc);
+
+                if (feat.js || feat.wat || feat.explain) {
+                  const details = document.createElement("details");
+                  const summary = document.createElement("summary");
+                  details.appendChild(summary);
+
+                  if (feat.js) {
+                    const pre = document.createElement("pre");
+                    pre.textContent = feat.js;
+                    details.appendChild(pre);
+                  }
+
+                  if (feat.wat) {
+                    const pre = document.createElement("pre");
+                    pre.className = "wat";
+                    pre.textContent = feat.wat;
+                    details.appendChild(pre);
+                  }
+
+                  if (feat.explain) {
+                    const explain = document.createElement("div");
+                    explain.className = "feat-explain";
+                    explain.textContent = feat.explain;
+                    details.appendChild(explain);
+                  }
+
+                  row.appendChild(details);
+                }
+
+                section.appendChild(row);
+              }
+
+              panel.appendChild(section);
+            }
+
+            root.innerHTML = "";
+            root.appendChild(panel);
+          })
+          .catch(function () {
+            root.innerHTML =
+              '<div class="feat-panel"><div class="feat-section"><div class="feat-edition">Feature examples unavailable</div></div></div>';
+          });
+      })();
+    </script>
 
     <script>
       (function mountPuzzleBackground() {

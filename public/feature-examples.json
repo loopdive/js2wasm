@@ -1,0 +1,470 @@
+{
+  "generated": "2026-04-05T22:56:40.208Z",
+  "features": [
+    {
+      "name": "Variables (var, let, const)",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "Block-scoped and function-scoped variable declarations",
+      "js": "let count = 1;\nconst name = \"hello\";\nvar legacy = true;",
+      "wat": "(func $__module_init\n    f64.const 1\n    global.set 2\n    i32.const 1\n    global.set 5\n    global.get 0\n    global.set 3\n    i32.const 1\n    global.set 6\n    i32.const 1\n    global.set 4\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Functions & closures",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "Named functions, expressions, and lexical closures",
+      "js": "function greet(name: string): string {\n  return \"Hi \" + name;\n}\n\nconst add = (a: number, b: number): number => a + b;",
+      "wat": "(func $greet (param externref) (result externref)\n    global.get 1\n    local.get 0\n    call 0\n    return\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Control flow",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "Branching, loops, and switch statements",
+      "js": "function abs(x: number): number {\n  if (x > 0) {\n    return x;\n  } else {\n    return -x;\n  }\n}",
+      "wat": "(func $abs (param f64) (result f64)\n    local.get 0\n    f64.const 0\n    f64.gt\n    (if\n      (then\n      local.get 0\n      return\n      )\n      (else\n      local.get 0\n      f64.neg\n      return\n      )\n    )\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "try / catch / finally",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "Exception handling with optional finally block",
+      "js": "function safe(): number {\n  try {\n    throw new Error(\"oops\");\n  } catch (e) {\n    return -1;\n  }\n  return 0;\n}",
+      "wat": "(func $safe (result f64)\n    (local $e externref)\n    (try\n      (do\n        global.get 1\n        call 0\n        throw 0\n      )\n      (catch 0\n        local.set 0\n        f64.const -1\n        return\n      )\n      (catch_all\n        call 1\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "throw",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "Throw custom and built-in error objects",
+      "js": "function check(x: number): number {\n  if (x < 0) throw new Error(\"negative\");\n  return x;\n}",
+      "wat": "(func $check (param f64) (result f64)\n    local.get 0\n    f64.const 0\n    f64.lt\n    (if\n      (then\n      global.get 1\n      call 0\n      throw 0\n      )\n    )\n    local.get 0\n    return\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Objects",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "Literals, property access, methods, and shorthand syntax",
+      "js": "class Point {\n  x: number;\n  y: number;\n  constructor(x: number, y: number) {\n    this.x = x;\n    this.y = y;\n  }\n  dist(): number {\n    return Math.sqrt(this.x * this.x + this.y * this.y);\n  }\n}",
+      "wat": "(func $Point_dist (param (ref null 1)) (result f64)\n    (local $__ng_0 (ref null 1))\n    (local $__ng_1 (ref null 1))\n    (local $__ng_2 (ref null 1))\n    (local $__ng_3 (ref null 1))\n    local.get 0\n    local.tee 1\n    ref.is_null\n    (if (result f64)\n      (then\n      global.get 3\n      throw 0\n      )\n      (else\n      local.get 1\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Strings",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "String methods, concatenation, and manipulation",
+      "js": "function greet(name: string): string {\n  return \"Hello \" + name;\n}\n\nfunction initials(first: string, last: string): string {\n  return first.slice(0, 1) + last.slice(0, 1);\n}",
+      "wat": "(func $greet (param externref) (result externref)\n    global.get 1\n    local.get 0\n    call 0\n    return\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Numbers",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "Math operations, parseInt, Number methods",
+      "js": "const a = 1.5;\nconst b = 2.5;\nconst m = Math.max(a, b);\nconst floored = Math.floor(3.7);",
+      "wat": "(func $__module_init\n    (local $__minmax_0 f64)\n    (local $__minmax_1 f64)\n    f64.const 1.5\n    global.set 0\n    i32.const 1\n    global.set 4\n    f64.const 2.5\n    global.set 1\n    i32.const 1\n    global.set 5\n    global.get 0\n    local.set 0\n    global.get 1\n    local.set 1\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "JSON",
+      "edition": "ES5",
+      "badge": "full",
+      "host": true,
+      "description": "Parse and stringify JSON data",
+      "js": "const obj = JSON.parse('{\"a\": 1}');\nconst str = JSON.stringify({ a: 1 });",
+      "wat": "(func $__module_init\n    global.get 0\n    call 2\n    global.set 3\n    i32.const 1\n    global.set 5\n    f64.const 1\n    struct.new 9\n    extern.convert_any\n    ref.null extern\n    ref.null extern\n    call 1\n    global.set 4\n    i32.const 1\n    global.set 6\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Error types",
+      "edition": "ES5",
+      "badge": "full",
+      "description": "Error, TypeError, RangeError, SyntaxError and more",
+      "js": "function fail(msg: string): never {\n  throw new TypeError(msg);\n}",
+      "wat": "(func $fail (type 0)\n    local.get 0\n    call 0\n    throw 0\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Arrays",
+      "edition": "ES5",
+      "badge": "partial",
+      "host": true,
+      "description": "Array methods and iteration helpers",
+      "js": "const nums = [1, 2, 3];\nconst doubled = nums.map((x: number) => x * 2);\nconst sum = nums.reduce((a: number, b: number) => a + b, 0);",
+      "explain": "Most built-in methods work. Some iterator edge cases and sparse array handling incomplete.",
+      "wat": "(func $__closure_0 (type 3)\n    local.get 1\n    f64.const 2\n    f64.mul\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Regular expressions",
+      "edition": "ES5",
+      "badge": "partial",
+      "host": true,
+      "description": "Pattern matching and string search",
+      "js": "const re = /d+/g;\nconst found = \"abc123def456\".match(re);",
+      "explain": "Basic patterns work. Named groups and lookbehind partially supported.",
+      "wat": "(func $__module_init\n    global.get 0\n    global.get 1\n    call 0\n    global.set 4\n    i32.const 1\n    global.set 6\n    global.get 2\n    global.get 4\n    call 1\n    global.set 5\n    i32.const 1\n    global.set 7\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Property accessors (get / set)",
+      "edition": "ES5",
+      "badge": "partial",
+      "description": "Getter and setter property definitions",
+      "js": "class Circle {\n  private _r: number;\n  constructor(r: number) { this._r = r; }\n  get radius(): number { return this._r; }\n  set radius(v: number) { this._r = v; }\n}",
+      "explain": "Basic get/set works. Object.defineProperty partially supported.",
+      "wat": "(func $Circle_set_radius (param (ref null 1) f64)\n    (local $__prop_assign_0 f64)\n    local.get 0\n    local.get 1\n    local.tee 2\n    struct.set 1 1\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "eval()",
+      "edition": "ES5",
+      "badge": "none",
+      "description": "Dynamic code evaluation at runtime",
+      "js": "eval(\"1 + 2\"); // not supported",
+      "explain": "Requires a JS engine at runtime. Not possible in AOT compilation.",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "with statement",
+      "edition": "ES5",
+      "badge": "none",
+      "description": "Dynamic scope extension",
+      "js": "with (obj) { x; } // not supported",
+      "explain": "Disallowed in strict mode. All modules run strict.",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "Object.defineProperty (full)",
+      "edition": "ES5",
+      "badge": "none",
+      "description": "Full property descriptor configuration",
+      "js": "Object.defineProperty(obj, \"x\", {\n  enumerable: false,\n  writable: false\n});",
+      "explain": "Property descriptor system not yet fully emitted in Wasm structs.",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "Arrow functions",
+      "edition": "ES2015",
+      "badge": "full",
+      "description": "Concise function syntax with lexical this",
+      "js": "const double = (x: number): number => x * 2;\nconst negate = (x: number): number => -x;\nconst add = (a: number, b: number): number => a + b;",
+      "wat": "(func $__closure_2 (type 1)\n    local.get 1\n    f64.neg\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Template literals",
+      "edition": "ES2015",
+      "badge": "full",
+      "description": "String interpolation with backtick syntax",
+      "js": "function greeting(name: string, age: number): string {\n  return `Hello ${name}, you are ${age}!`;\n}",
+      "wat": "(func $greeting (param externref f64) (result externref)\n    global.get 1\n    local.get 0\n    call 1\n    global.get 2\n    call 1\n    local.get 1\n    call 0\n    call 1\n    global.get 3\n    call 1\n    return\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Destructuring",
+      "edition": "ES2015",
+      "badge": "full",
+      "description": "Extract values from arrays and objects",
+      "js": "class Opts {\n  a: number;\n  b: number;\n  constructor(a: number, b: number) { this.a = a; this.b = b; }\n}\n\nfunction sum(opts: Opts): number {\n  const { a, b } = opts;\n  return a + b;\n}",
+      "wat": "(func $sum (param (ref null 1)) (result f64)\n    (local $__destruct_0 (ref null 1))\n    (local $a f64)\n    (local $b f64)\n    local.get 0\n    local.set 1\n    local.get 1\n    struct.get 1 1\n    local.set 2\n    local.get 1\n    struct.get 1 2\n    local.set 3\n    local.get 2\n    local.get 3\n    f64.add\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Spread / rest operators",
+      "edition": "ES2015",
+      "badge": "full",
+      "description": "Expand iterables and collect arguments",
+      "js": "function sum(...nums: number[]): number {\n  let total = 0;\n  for (const n of nums) total += n;\n  return total;\n}",
+      "wat": "(func $sum (param (ref null 1)) (result f64)\n    (local $total f64)\n    (local $__forof_vec_1 (ref null 1))\n    (local $__forof_data_2 (ref null 0))\n    (local $__forof_len_3 i32)\n    (local $__forof_i_4 i32)\n    (local $n f64)\n    f64.const 0\n    local.set 1\n    local.get 0\n    local.set 2\n    local.get 2\n    ref.is_null\n    (if\n      (then\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Default parameters",
+      "edition": "ES2015",
+      "badge": "full",
+      "description": "Fallback values for function parameters",
+      "js": "function greet(name: string = \"world\"): string {\n  return \"Hello \" + name;\n}",
+      "wat": "(func $greet (param externref) (result externref)\n    local.get 0\n    ref.is_null\n    (if\n      (then\n      global.get 1\n      local.set 0\n      )\n    )\n    global.get 2\n    local.get 0\n    call 0\n    return\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Computed property names",
+      "edition": "ES2015",
+      "badge": "full",
+      "description": "Dynamic property keys in object literals",
+      "js": "const key = \"id\";\nconst obj: Record<string, number> = { [key]: 42 };",
+      "wat": "(func $__module_init\n    global.get 0\n    global.set 2\n    i32.const 1\n    global.set 4\n    f64.const 42\n    struct.new 0\n    extern.convert_any\n    global.set 3\n    i32.const 1\n    global.set 5\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "for-of",
+      "edition": "ES2015",
+      "badge": "full",
+      "description": "Iterate over iterable objects",
+      "js": "function sum(arr: number[]): number {\n  let total = 0;\n  for (const x of arr) {\n    total += x;\n  }\n  return total;\n}",
+      "wat": "(func $sum (param (ref null 1)) (result f64)\n    (local $total f64)\n    (local $__forof_vec_1 (ref null 1))\n    (local $__forof_data_2 (ref null 0))\n    (local $__forof_len_3 i32)\n    (local $__forof_i_4 i32)\n    (local $x f64)\n    f64.const 0\n    local.set 1\n    local.get 0\n    local.set 2\n    local.get 2\n    ref.is_null\n    (if\n      (then\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Generators (function*, yield)",
+      "edition": "ES2015",
+      "badge": "full",
+      "description": "Pausable functions that produce sequences",
+      "js": "function* range(n: number): Generator<number> {\n  for (let i = 0; i < n; i++) {\n    yield i;\n  }\n}",
+      "wat": "(func $range (param f64) (result externref)\n    (local $__gen_buffer externref)\n    (local $i i32)\n    (local $__yield_tmp_2 i32)\n    call 0\n    local.set 1\n    (block\n      i32.const 0\n      local.set 2\n      (block\n        (loop\n          local.get 2\n          local.get 0\n          i32.trunc_sat_f64_s\n          i32.lt_s\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Classes",
+      "edition": "ES2015",
+      "badge": "partial",
+      "description": "Class declarations with inheritance",
+      "js": "class Animal {\n  name: string;\n  constructor(name: string) { this.name = name; }\n  speak(): string { return this.name + \" speaks\"; }\n}\n\nclass Dog extends Animal {\n  bark(): string { return this.name + \" barks\"; }\n}",
+      "explain": "Constructor, methods, extends, super work. Dynamic prototype lookup is partial.",
+      "wat": "(func $Animal_speak (param (ref null 2)) (result externref)\n    (local $__ng_0 (ref null 2))\n    local.get 0\n    local.tee 1\n    ref.is_null\n    (if (result externref)\n      (then\n      global.get 7\n      throw 0\n      )\n      (else\n      local.get 1\n      struct.get 2 1\n      )\n    )\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Map / Set",
+      "edition": "ES2015",
+      "badge": "partial",
+      "host": true,
+      "description": "Key-value and unique-value collections",
+      "js": "const m = new Map<string, number>();\nm.set(\"key\", 42);\nconst val = m.get(\"key\");\n\nconst s = new Set<string>();\ns.add(\"a\");",
+      "explain": "Core operations work. Some iteration edge cases incomplete.",
+      "wat": "(func $__module_init\n    call 5\n    call 0\n    global.set 3\n    i32.const 1\n    global.set 6\n    global.get 3\n    global.get 0\n    call 2\n    call 6\n    global.set 4\n    i32.const 1\n    global.set 7\n    call 5\n    call 3\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Symbol",
+      "edition": "ES2015",
+      "badge": "partial",
+      "host": true,
+      "description": "Unique, immutable primitive identifiers",
+      "js": "const id = Symbol(\"id\");\nconst desc = id.description;",
+      "explain": "Creation and basic use work. Well-known symbols (Symbol.iterator) partial.",
+      "wat": "(func $__module_init\n    global.get 0\n    drop\n    global.get 6\n    i32.const 1\n    i32.add\n    global.set 6\n    global.get 6\n    global.set 2\n    i32.const 1\n    global.set 4\n    ref.null extern\n    global.set 3\n    i32.const 1\n    global.set 5\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "TypedArray / ArrayBuffer",
+      "edition": "ES2015",
+      "badge": "partial",
+      "host": true,
+      "description": "Binary data buffers and typed views",
+      "js": "const buf = new ArrayBuffer(16);\nconst view = new Int32Array(buf);\nview[0] = 42;\nconst first = view[0];",
+      "explain": "Int8 through Float64 arrays work. BigInt64Array not yet.",
+      "wat": "(func $__module_init\n    (local $__ab_len_f64_0 f64)\n    (local $__ab_size_1 i32)\n    (local $__ta_size_2 i32)\n    (local $__bounds_idx_3 i32)\n    (local $__bounds_arr_4 (ref null 2))\n    (local $__vec_5 (ref null 3))\n    (local $__idx_6 i32)\n    (local $__val_7 f64)\n    (local $__vec_data_8 (ref null 2))\n    (local $__vec_ncap_9 i32)\n    (local $__vec_ndata_10 (ref null 2))\n    (local $__vec_ocap_11 i32)\n    f64.const 16\n    local.tee 0\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Modules (import / export)",
+      "edition": "ES2015",
+      "badge": "partial",
+      "description": "ES module system for code organization",
+      "js": "export function bar(): number { return 1; }\nexport const version = \"1.0\";",
+      "explain": "Static imports work. Dynamic import() not yet.",
+      "wat": "(func $bar (result f64)\n    global.get 5\n    i32.eqz\n    (if\n      (then\n      i32.const 1\n      global.set 5\n      call 1\n      )\n    )\n    f64.const 1\n    return\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Proxy / Reflect",
+      "edition": "ES2015",
+      "badge": "none",
+      "description": "Object behavior interception and reflection",
+      "js": "new Proxy(target, handler); // not supported",
+      "explain": "Requires runtime trap dispatch. Not AOT-compilable.",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "Promise .then / .catch / .finally",
+      "edition": "ES2015",
+      "badge": "none",
+      "host": true,
+      "description": "Promise chaining and error handling",
+      "js": "promise.then(v => v + 1); // not yet",
+      "explain": "Compiles but async callbacks do not execute. Promise.resolve/all/race work.",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "async / await",
+      "edition": "ES2017",
+      "badge": "full",
+      "host": true,
+      "description": "Asynchronous functions with synchronous-style syntax",
+      "js": "export async function fetchValue(): Promise<number> {\n  return 42;\n}",
+      "wat": "(func $fetchValue (result f64)\n    f64.const 42\n    return\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Object.entries / values",
+      "edition": "ES2017",
+      "badge": "full",
+      "description": "Extract entries or values from objects",
+      "js": "class Pair { key: string; val: number; constructor(k: string, v: number) { this.key = k; this.val = v; } }\nfunction pairs(obj: Pair): [string, number][] {\n  return Object.entries(obj) as [string, number][];\n}",
+      "wat": "(func $pairs (param (ref null 4)) (result (ref null 10))\n    (local $__obj_entries_src_0 (ref null 4))\n    (local $__obj_entries_data_1 (ref null 14))\n    (local $__tmp_2 (ref null 15))\n    (local $__tmp_3 i32)\n    (local $__tmp_4 (ref null 9))\n    (local $__tmp_5 i32)\n    local.get 0\n    local.set 1\n    local.get 1\n    ref.is_null\n    (if\n      (then\n      global.get 5\n      throw 0\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "SharedArrayBuffer / Atomics",
+      "edition": "ES2017",
+      "badge": "none",
+      "host": true,
+      "description": "Shared memory and atomic operations",
+      "js": "new SharedArrayBuffer(1024); // not supported",
+      "explain": "Requires shared Wasm linear memory.",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "Object spread / rest",
+      "edition": "ES2018",
+      "badge": "full",
+      "description": "Object spread in literals and rest in destructuring",
+      "js": "class Vec2 { x: number; y: number; constructor(x: number, y: number) { this.x = x; this.y = y; } }\nfunction move(v: Vec2, dx: number, dy: number): Vec2 {\n  return { ...v, x: v.x + dx, y: v.y + dy };\n}",
+      "wat": "(func $move (param (ref null 1) f64 f64) (result (ref null 1))\n    (local $__spread_obj_0 (ref null 1))\n    (local $__ng_1 (ref null 1))\n    (local $__ng_2 (ref null 1))\n    local.get 0\n    local.set 3\n    local.get 3\n    struct.get 1 0\n    local.get 0\n    local.tee 4\n    ref.is_null\n    (if (result f64)\n      (then\n      global.get 3\n      throw 0\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Async iteration (for-await-of)",
+      "edition": "ES2018",
+      "badge": "partial",
+      "host": true,
+      "description": "Iterate over async data sources",
+      "js": "async function sum(iter: AsyncIterable<number>): Promise<number> {\n  let total = 0;\n  for await (const n of iter) { total += n; }\n  return total;\n}",
+      "explain": "Basic patterns work. Some async generator edge cases incomplete.",
+      "wat": "(func $sum (param (ref null 9)) (result f64)\n    (local $total f64)\n    (local $__forit_null_1 externref)\n    (local $__forof_iter_2 externref)\n    (local $__forof_result_3 externref)\n    (local $n externref)\n    (local $__forof_done_5 i32)\n    (local $__forof_guard_6 i32)\n    f64.const 0\n    local.set 1\n    local.get 0\n    extern.convert_any\n    local.tee 2\n    ref.is_null\n    (if\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Optional chaining (?.)",
+      "edition": "ES2020",
+      "badge": "full",
+      "description": "Safe property access on nullable values",
+      "js": "interface User { profile?: { name?: string } }\nfunction getName(u: User): string | undefined {\n  return u?.profile?.name;\n}",
+      "wat": "(func $getName (param (ref null 0)) (result externref)\n    (local $__opt_0 (ref null 0))\n    (local $__opt_1 externref)\n    local.get 0\n    local.tee 1\n    ref.is_null\n    (if (result externref)\n      (then\n      ref.null extern\n      )\n      (else\n      local.get 1\n      struct.get 0 0\n      extern.convert_any\n      )\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Nullish coalescing (??)",
+      "edition": "ES2020",
+      "badge": "full",
+      "description": "Default values for null or undefined",
+      "js": "function getPort(port: number | null): number {\n  return port ?? 8080;\n}",
+      "wat": "(func $getPort (param f64) (result f64)\n    (local $__tmp_0 f64)\n    local.get 0\n    local.tee 1\n    return\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "globalThis",
+      "edition": "ES2020",
+      "badge": "full",
+      "host": true,
+      "description": "Universal global object reference",
+      "js": "const g = globalThis;",
+      "wat": "(func $__module_init\n    call 0\n    global.set 0\n    i32.const 1\n    global.set 1\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "BigInt",
+      "edition": "ES2020",
+      "badge": "partial",
+      "host": true,
+      "description": "Arbitrary precision integer arithmetic",
+      "js": "const big = 9007199254740993n;\nconst sum = big + 1n;",
+      "explain": "Basic arithmetic works. BigInt typed arrays not yet.",
+      "wat": "(func $__module_init\n    i64.const 9007199254740993\n    global.set 0\n    i32.const 1\n    global.set 2\n    global.get 0\n    i64.const 1\n    i64.add\n    global.set 1\n    i32.const 1\n    global.set 3\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Dynamic import()",
+      "edition": "ES2020",
+      "badge": "none",
+      "host": true,
+      "description": "Load modules at runtime on demand",
+      "js": "const mod = await import(\"./module\"); // not yet",
+      "explain": "Requires a runtime module loader.",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "WeakRef / FinalizationRegistry",
+      "edition": "ES2021",
+      "badge": "none",
+      "host": true,
+      "description": "Weak references and GC callbacks",
+      "js": "new WeakRef(obj); // not supported",
+      "explain": "GC-observable. Not available in WasmGC.",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "Class fields (public, private, static)",
+      "edition": "ES2022",
+      "badge": "full",
+      "description": "Declarative field syntax in classes",
+      "js": "class Counter {\n  count: number = 0;\n  #value: number = 42;\n  static instances: number = 0;\n  increment(): void { this.count++; }\n}",
+      "wat": "(func $Counter_increment (param (ref null 1))\n    (local $__incdec_obj_0 (ref null 1))\n    (local $__incdec_old_1 f64)\n    (local $__incdec_new_2 f64)\n    local.get 0\n    local.set 1\n    local.get 1\n    struct.get 1 1\n    local.tee 2\n    f64.const 1\n    f64.add\n    local.set 3\n    local.get 1\n    local.get 3\n    struct.set 1 1\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Error.cause",
+      "edition": "ES2022",
+      "badge": "full",
+      "description": "Chain errors with a cause property",
+      "js": "function wrap(inner: Error): never {\n  throw new Error(\"wrapped\", { cause: inner });\n}",
+      "wat": "(func $wrap (type 0)\n    global.get 1\n    call 0\n    throw 0\n  )",
+      "compileSuccess": true
+    },
+    {
+      "name": "Array.at / String.at",
+      "edition": "ES2022",
+      "badge": "full",
+      "description": "Relative indexing with negative support",
+      "js": "const nums = [1, 2, 3];\nconst last = nums.at(-1);\nconst first = \"hello\".at(0);",
+      "wat": "(func $__module_init\n    (local $__arr_data_0 (ref null 0))\n    (local $__mod_proxy_nums (ref null 1))\n    (local $__arr_at_vec_2 (ref null 1))\n    (local $__arr_at_idx_3 i32)\n    (local $__arr_at_len_4 i32)\n    (local $__bounds_idx_5 i32)\n    (local $__bounds_arr_6 (ref null 0))\n    f64.const 1\n    f64.const 2\n    f64.const 3\n    array.new_fixed 0 3\n    local.set 0\n    i32.const 3\n    local.get 0\n  ...\n)",
+      "compileSuccess": true
+    },
+    {
+      "name": "Top-level await",
+      "edition": "ES2022",
+      "badge": "none",
+      "description": "Await at module scope without async wrapper",
+      "js": "await fetch(\"./data.json\"); // not supported",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    },
+    {
+      "name": "Temporal",
+      "edition": "Proposals",
+      "badge": "none",
+      "description": "Modern date and time API",
+      "js": "const now = Temporal.Now.plainDateTimeISO(); // not supported",
+      "noCompile": true,
+      "wat": null,
+      "compileSuccess": false
+    }
+  ]
+}
