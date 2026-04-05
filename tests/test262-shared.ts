@@ -156,7 +156,7 @@ function recordResult(
   status: string,
   error?: string,
   timing?: { compileMs?: number; execMs?: number },
-  scopeInfo?: { scope: Test262Scope; official: boolean; reason?: string },
+  scopeInfo?: { scope: Test262Scope; official: boolean; reason?: string; strict?: "only" | "no" | "both" },
 ) {
   const errorCategory = status === "fail" || status === "compile_error" ? classifyError(error) : undefined;
 
@@ -172,6 +172,7 @@ function recordResult(
     scope: scopeInfo?.scope ?? "standard",
     scope_official: scopeInfo?.official ?? true,
     scope_reason: scopeInfo?.reason,
+    strict: scopeInfo?.strict ?? "both",
   });
   fdWrite(jsonlFd, entry + "\n");
   summary.total++;
@@ -316,6 +317,9 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
             const source = readFileSync(filePath, "utf-8");
             const meta = parseMeta(source);
             const scopeInfo = classifyTestScope(source, meta, filePath);
+
+            // Don't record proposal tests at all — they inflate JSONL without adding value
+            if (!includeProposals && scopeInfo.scope === "proposal") return;
 
             const filter = shouldSkip(source, meta, filePath);
             if (filter.skip) {
