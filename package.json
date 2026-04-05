@@ -31,6 +31,7 @@
     "lint": "biome lint --diagnostic-level=error",
     "typecheck": "tsc --noEmit",
     "generate:editions": "npx tsx scripts/generate-editions.ts",
+    "generate:feature-examples": "npx tsx scripts/generate-feature-examples.ts",
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
     "build:pages": "node dashboard/build-data.js && pnpm run build:playground && node scripts/build-pages.js",
