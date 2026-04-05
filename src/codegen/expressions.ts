@@ -9573,6 +9573,62 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           return { kind: "ref", typeIdx: vecTypeIdx };
         }
       }
+      // Fallback: Array.from(externref/iterable) — delegate to host (#965)
+      {
+        const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        if (argType && argType.kind !== "externref") coerceType(ctx, fctx, argType, { kind: "externref" });
+        // Optional mapFn argument
+        if (expr.arguments.length >= 2) {
+          const mapType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "externref" });
+          if (mapType && mapType.kind !== "externref") coerceType(ctx, fctx, mapType, { kind: "externref" });
+        } else {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+        const fromIdx = ensureLateImport(
+          ctx,
+          "__array_from",
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (fromIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: fromIdx });
+          return { kind: "externref" };
+        }
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+    }
+
+    // Handle Array.of(...items) — creates array from arguments (#965)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Array" &&
+      propAccess.name.text === "of"
+    ) {
+      // Build a JS array of the arguments and delegate to host
+      const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+      const arrPushIdx = ensureLateImport(ctx, "__js_array_push", [{ kind: "externref" }, { kind: "externref" }], []);
+      const ofIdx = ensureLateImport(ctx, "__array_of", [{ kind: "externref" }], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (ofIdx !== undefined && arrNewIdx !== undefined && arrPushIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+        const itemsLocal = allocLocal(fctx, `__arrof_items_${fctx.locals.length}`, { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: itemsLocal });
+        for (const arg of expr.arguments) {
+          fctx.body.push({ op: "local.get", index: itemsLocal });
+          const argType = compileExpression(ctx, fctx, arg, { kind: "externref" });
+          if (argType && argType.kind !== "externref") coerceType(ctx, fctx, argType, { kind: "externref" });
+          fctx.body.push({ op: "call", funcIdx: arrPushIdx });
+        }
+        fctx.body.push({ op: "local.get", index: itemsLocal });
+        fctx.body.push({ op: "call", funcIdx: ofIdx });
+        return { kind: "externref" };
+      }
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
     }
 
     // Handle Object.keys(obj), Object.values(obj), and Object.entries(obj)
@@ -10261,6 +10317,273 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         fctx.body.push({ op: "ref.null.extern" });
       }
       return { kind: "externref" };
+    }
+
+    // Handle Object.hasOwn(obj, key) — ES2022 static method (#965)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "hasOwn" &&
+      expr.arguments.length >= 2
+    ) {
+      const objArg = expr.arguments[0]!;
+      const keyArg = expr.arguments[1]!;
+      const objType = compileExpression(ctx, fctx, objArg, { kind: "externref" });
+      if (objType && objType.kind !== "externref") coerceType(ctx, fctx, objType, { kind: "externref" });
+      const keyType = compileExpression(ctx, fctx, keyArg, { kind: "externref" });
+      if (keyType && keyType.kind !== "externref") coerceType(ctx, fctx, keyType, { kind: "externref" });
+      const funcIdx = ensureLateImport(
+        ctx,
+        "__object_hasOwn",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "i32" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "i32" };
+      }
+      fctx.body.push({ op: "i32.const", value: 0 });
+      return { kind: "i32" };
+    }
+
+    // Handle Object.is(x, y) — SameValue comparison (#965)
+    // Delegates to host: handles NaN===NaN and +0!==-0 correctly.
+    // Uses type-aware boxing: booleans use __box_boolean, numbers use __box_number,
+    // so that Object.is(false, 0) correctly returns false (different JS types).
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "is" &&
+      expr.arguments.length >= 2
+    ) {
+      // Helper: compile an argument and coerce to externref preserving JS type
+      const compileArgAsExternref = (arg: ts.Expression) => {
+        const argTsType = ctx.checker.getTypeAtLocation(arg);
+        const wasmType = compileExpression(ctx, fctx, arg);
+        if (!wasmType || wasmType.kind === "externref") return;
+        if (wasmType.kind === "i32" && isBooleanType(argTsType)) {
+          // Boolean i32: box as JS boolean (not number) so Object.is(false, 0) = false
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_boolean");
+          if (boxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: boxIdx });
+            return;
+          }
+        }
+        coerceType(ctx, fctx, wasmType, { kind: "externref" });
+      };
+      const xArg = expr.arguments[0]!;
+      const yArg = expr.arguments[1]!;
+      compileArgAsExternref(xArg);
+      compileArgAsExternref(yArg);
+      const isIdx = ensureLateImport(
+        ctx,
+        "__object_is",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "i32" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (isIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: isIdx });
+        return { kind: "i32" };
+      }
+      fctx.body.push({ op: "i32.const", value: 0 });
+      return { kind: "i32" };
+    }
+
+    // Handle Object.assign(target, ...sources) — shallow copy properties (#965)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "assign" &&
+      expr.arguments.length >= 1
+    ) {
+      const targetArg = expr.arguments[0]!;
+      const targetType = compileExpression(ctx, fctx, targetArg, { kind: "externref" });
+      if (targetType && targetType.kind !== "externref") coerceType(ctx, fctx, targetType, { kind: "externref" });
+      // Build sources as a JS array
+      const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+      const arrPushIdx = ensureLateImport(ctx, "__js_array_push", [{ kind: "externref" }, { kind: "externref" }], []);
+      const assignIdx = ensureLateImport(
+        ctx,
+        "__object_assign",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (assignIdx !== undefined && arrNewIdx !== undefined && arrPushIdx !== undefined) {
+        const targetLocal = allocLocal(fctx, `__assign_tgt_${fctx.locals.length}`, { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: targetLocal });
+        fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+        const sourcesLocal = allocLocal(fctx, `__assign_src_${fctx.locals.length}`, { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: sourcesLocal });
+        for (let i = 1; i < expr.arguments.length; i++) {
+          fctx.body.push({ op: "local.get", index: sourcesLocal });
+          const srcType = compileExpression(ctx, fctx, expr.arguments[i]!, { kind: "externref" });
+          if (srcType && srcType.kind !== "externref") coerceType(ctx, fctx, srcType, { kind: "externref" });
+          fctx.body.push({ op: "call", funcIdx: arrPushIdx });
+        }
+        fctx.body.push({ op: "local.get", index: targetLocal });
+        fctx.body.push({ op: "local.get", index: sourcesLocal });
+        fctx.body.push({ op: "call", funcIdx: assignIdx });
+        return { kind: "externref" };
+      }
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
+    // Handle Object.fromEntries(iterable) — create object from [key,value] pairs (#965)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "fromEntries" &&
+      expr.arguments.length >= 1
+    ) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+      if (argType && argType.kind !== "externref") coerceType(ctx, fctx, argType, { kind: "externref" });
+      const funcIdx = ensureLateImport(ctx, "__object_fromEntries", [{ kind: "externref" }], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
+    // Handle Object.getOwnPropertyDescriptors(obj) — all own descriptors (#965)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "getOwnPropertyDescriptors" &&
+      expr.arguments.length >= 1
+    ) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+      if (argType && argType.kind !== "externref") coerceType(ctx, fctx, argType, { kind: "externref" });
+      const funcIdx = ensureLateImport(
+        ctx,
+        "__object_getOwnPropertyDescriptors",
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
+    // Handle Object.groupBy(iterable, keyFn) — ES2024 grouping (#965)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "groupBy" &&
+      expr.arguments.length >= 2
+    ) {
+      const iterType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+      if (iterType && iterType.kind !== "externref") coerceType(ctx, fctx, iterType, { kind: "externref" });
+      const fnType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "externref" });
+      if (fnType && fnType.kind !== "externref") coerceType(ctx, fctx, fnType, { kind: "externref" });
+      const funcIdx = ensureLateImport(
+        ctx,
+        "__object_groupBy",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
+    // Handle Proxy.revocable(target, handler) — creates revocable Proxy (#965)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Proxy" &&
+      propAccess.name.text === "revocable" &&
+      expr.arguments.length >= 2
+    ) {
+      const tgtType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+      if (tgtType && tgtType.kind !== "externref") coerceType(ctx, fctx, tgtType, { kind: "externref" });
+      const hndType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "externref" });
+      if (hndType && hndType.kind !== "externref") coerceType(ctx, fctx, hndType, { kind: "externref" });
+      const funcIdx = ensureLateImport(
+        ctx,
+        "__proxy_revocable",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
+    // Handle Symbol.for(key) and Symbol.keyFor(sym) — global symbol registry (#965)
+    if (ts.isIdentifier(propAccess.expression) && propAccess.expression.text === "Symbol") {
+      const symMethod = propAccess.name.text;
+      if (symMethod === "for" && expr.arguments.length >= 1) {
+        const keyType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        if (keyType && keyType.kind !== "externref") coerceType(ctx, fctx, keyType, { kind: "externref" });
+        const funcIdx = ensureLateImport(ctx, "__symbol_for", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+      if (symMethod === "keyFor" && expr.arguments.length >= 1) {
+        const symType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        if (symType && symType.kind !== "externref") coerceType(ctx, fctx, symType, { kind: "externref" });
+        const funcIdx = ensureLateImport(ctx, "__symbol_keyFor", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+    }
+
+    // Handle ArrayBuffer.isView(arg) — checks if arg is a TypedArray/DataView (#965)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "ArrayBuffer" &&
+      propAccess.name.text === "isView" &&
+      expr.arguments.length >= 1
+    ) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+      if (argType && argType.kind !== "externref") coerceType(ctx, fctx, argType, { kind: "externref" });
+      const funcIdx = ensureLateImport(ctx, "__arraybuffer_isView", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "i32" };
+      }
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      return { kind: "i32" };
     }
 
     // ── Reflect API — compile-time rewrites to equivalent operations ──────
@@ -11741,7 +12064,43 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
 
         // (#799 WI3) Generic host-delegated method call for any/externref receivers.
         // Builds a JS array of arguments and calls __extern_method_call(obj, methodName, args).
+        // (#965) For known built-in class identifiers (Object, Array, Proxy, etc.) that would
+        // otherwise compile to ref.null.extern, use __get_builtin to get the real JS object.
         {
+          // Known built-in class names that compile to null in compileIdentifier fallback.
+          // These need __get_builtin to get the actual JS object for method dispatch.
+          const BUILTIN_CLASS_NAMES = new Set([
+            "Object",
+            "Array",
+            "Function",
+            "Symbol",
+            "Proxy",
+            "Reflect",
+            "Math",
+            "BigInt",
+            "JSON",
+            "Date",
+            "RegExp",
+            "ArrayBuffer",
+            "SharedArrayBuffer",
+            "DataView",
+            "Promise",
+            "WeakMap",
+            "WeakSet",
+            "WeakRef",
+            "FinalizationRegistry",
+            "Atomics",
+            "Iterator",
+            "Map",
+            "Set",
+            "Error",
+            "TypeError",
+            "RangeError",
+            "String",
+            "Number",
+            "Boolean",
+          ]);
+
           const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
           const arrPushIdx = ensureLateImport(
             ctx,
@@ -11755,13 +12114,35 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
             [{ kind: "externref" }],
           );
+          // For built-in class identifiers, import __get_builtin to resolve real JS object
+          const receiverIsBuiltin =
+            ts.isIdentifier(propAccess.expression) && BUILTIN_CLASS_NAMES.has(propAccess.expression.text);
+          const getBuiltinIdx = receiverIsBuiltin
+            ? ensureLateImport(ctx, "__get_builtin", [{ kind: "externref" }], [{ kind: "externref" }])
+            : undefined;
           flushLateImportShifts(ctx, fctx);
 
           if (methodCallIdx !== undefined && arrNewIdx !== undefined && arrPushIdx !== undefined) {
-            // Compile receiver as externref
-            const recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
-            if (recvType && recvType.kind !== "externref") {
-              fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+            // Compile receiver as externref.
+            // For known built-in class identifiers, use __get_builtin to get the real JS object
+            // instead of the null produced by compileIdentifier's graceful fallback.
+            let recvType: ValType | null;
+            if (receiverIsBuiltin && getBuiltinIdx !== undefined) {
+              const builtinName = (propAccess.expression as ts.Identifier).text;
+              addStringConstantGlobal(ctx, builtinName);
+              const strIdx = ctx.stringGlobalMap.get(builtinName);
+              if (strIdx !== undefined) {
+                fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+              } else {
+                compileStringLiteral(ctx, fctx, builtinName);
+              }
+              fctx.body.push({ op: "call", funcIdx: getBuiltinIdx });
+              recvType = { kind: "externref" };
+            } else {
+              recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+              if (recvType && recvType.kind !== "externref") {
+                fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+              }
             }
             const recvLocal = allocLocal(fctx, `__emc_recv_${fctx.locals.length}`, { kind: "externref" });
             fctx.body.push({ op: "local.set", index: recvLocal });
