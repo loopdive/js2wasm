@@ -1722,10 +1722,10 @@
         // Remove blur filter during animation to avoid expensive per-frame repaints
         glowPath.style.filter = "none";
 
-        const startX1 = -5,
-          endX1 = 75;
-        const startX2 = 15,
-          endX2 = 100;
+        const startX1 = -30,
+          endX1 = 100;
+        const startX2 = -10,
+          endX2 = 130;
         const duration = 10000;
         let start = 0;
         let raf = 0;
@@ -1739,11 +1739,15 @@
           const e = ease(t);
           grad.setAttribute("x1", startX1 + (endX1 - startX1) * e + "%");
           grad.setAttribute("x2", startX2 + (endX2 - startX2) * e + "%");
+          // Fade out in the last 20% of the animation
+          if (t > 0.8) {
+            glowPath.style.opacity = String(1 - (t - 0.8) / 0.2);
+          }
           if (t < 1) {
             raf = requestAnimationFrame(step);
           } else {
-            // Re-apply blur only on the frozen final state (single repaint)
-            glowPath.style.filter = "";
+            glowPath.style.opacity = "0";
+            glowPath.style.display = "none";
           }
         };
 
