@@ -817,6 +817,36 @@ export function compilePropertyAccess(
     }
   }
 
+  // Check for static property access via 'this' in a static method context.
+  // In a static method, 'this' refers to the class constructor (no local 'this' param).
+  // e.g., `this.#m` in `static fieldAccess()` where `#m` is a static private field.
+  if (expr.expression.kind === ts.SyntaxKind.ThisKeyword && fctx.localMap.get("this") === undefined) {
+    // Resolve the enclosing class name from context.
+    // Try enclosingClassName first (set for closures), then scan the function name
+    // for a class name prefix by checking each underscore-delimited prefix against classSet.
+    // This handles both simple names ("C_method") and names like "__anonClass_0_method".
+    let enclosingClass: string | undefined = fctx.enclosingClassName;
+    if (!enclosingClass) {
+      const fname = fctx.name;
+      let pos = -1;
+      while (!enclosingClass) {
+        pos = fname.indexOf("_", pos + 1);
+        if (pos < 0) break;
+        const candidate = fname.substring(0, pos);
+        if (candidate && ctx.classSet.has(candidate)) enclosingClass = candidate;
+      }
+    }
+    if (enclosingClass) {
+      const fullName = `${enclosingClass}_${propName}`;
+      const globalIdx = ctx.staticProps.get(fullName);
+      if (globalIdx !== undefined) {
+        fctx.body.push({ op: "global.get", index: globalIdx });
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+        return globalDef?.type ?? { kind: "externref" };
+      }
+    }
+  }
+
   // Check for static property access: ClassName.staticProp
   if (ts.isIdentifier(expr.expression)) {
     const objName = expr.expression.text;
