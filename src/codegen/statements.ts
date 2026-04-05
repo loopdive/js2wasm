@@ -585,15 +585,16 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
         // Set TDZ flag to 1 (initialized)
         emitTdzInit(ctx, fctx, name);
       } else {
-        // Reuse pre-hoisted slot if it exists (pre-pass allocated as externref,
-        // but we now have the precise closure struct ref type).
+        // Reuse pre-hoisted slot if it exists.
+        // Do NOT narrow externref → ref: the hoisting pass already emitted
+        // __get_undefined() targeting externref; mutating the type causes
+        // impossible ref.cast at runtime (#962). Coercion handles it.
         const priorIdx = fctx.localMap.get(name);
         const localIdx =
           priorIdx !== undefined && priorIdx >= fctx.params.length ? priorIdx : allocLocal(fctx, name, closureType);
-        // Update to the precise closure ref type (more specific than pre-pass externref)
         if (priorIdx !== undefined && priorIdx >= fctx.params.length) {
           const slot = fctx.locals[priorIdx - fctx.params.length];
-          if (slot) slot.type = closureType;
+          if (slot && slot.type.kind !== "externref") slot.type = closureType;
         }
         emitCoercedLocalSet(ctx, fctx, localIdx, closureType);
       }
@@ -630,13 +631,14 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
             fctx.body.push({ op: "global.set", index: modGlobal });
             emitTdzInit(ctx, fctx, name);
           } else {
-            // Reuse pre-hoisted slot if it exists
+            // Reuse pre-hoisted slot if it exists.
+            // Do NOT narrow externref → ref (#962).
             const priorIdx = fctx.localMap.get(name);
             const localIdx =
               priorIdx !== undefined && priorIdx >= fctx.params.length ? priorIdx : allocLocal(fctx, name, objType);
             if (priorIdx !== undefined && priorIdx >= fctx.params.length) {
               const slot = fctx.locals[priorIdx - fctx.params.length];
-              if (slot) slot.type = objType;
+              if (slot && slot.type.kind !== "externref") slot.type = objType;
             }
             fctx.body.push({ op: "local.set", index: localIdx });
           }
@@ -727,11 +729,10 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
     // If we reused a pre-hoisted slot but inference found a more precise type
     // (e.g. Array<any> hoisted as vec_externref, but inferred as vec_f64),
     // update the local's type so it matches what the initializer will produce.
-    // IMPORTANT: Do NOT downgrade a ref/ref_null local to a primitive type (f64,
-    // i32, externref) — earlier instructions (e.g. emitArgumentsObject) may have
-    // already emitted struct.new + local.set targeting this local with its original
-    // ref type. Changing the type retroactively would cause Wasm validation errors.
-    // Instead, keep the existing ref type and let emitCoercedLocalSet handle coercion.
+    // IMPORTANT: Do NOT retroactively change the type when it would invalidate
+    // already-emitted initialization code:
+    // - ref/ref_null → primitive: earlier struct.new would become invalid
+    // - externref → ref/ref_null: hoisted __get_undefined() can't be cast (#962)
     if ((isVar || isHoistedLetConst) && existingIdx !== undefined && existingIdx >= fctx.params.length) {
       const localSlot = fctx.locals[existingIdx - fctx.params.length];
       if (
@@ -739,12 +740,14 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
         (wasmType.kind !== localSlot.type.kind || (wasmType as any).typeIdx !== (localSlot.type as any).typeIdx)
       ) {
         const existingIsRef = localSlot.type.kind === "ref" || localSlot.type.kind === "ref_null";
+        const existingIsExternref = localSlot.type.kind === "externref";
         const newIsPrimitive =
           wasmType.kind === "f64" ||
           wasmType.kind === "i32" ||
           wasmType.kind === "i64" ||
           wasmType.kind === "externref";
-        if (!(existingIsRef && newIsPrimitive)) {
+        const newIsRef = wasmType.kind === "ref" || wasmType.kind === "ref_null";
+        if (!(existingIsRef && newIsPrimitive) && !(existingIsExternref && newIsRef)) {
           localSlot.type = wasmType;
         }
       }
@@ -760,15 +763,15 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
         // Compile without type hint to get the actual closure/ref type
         const actualType = compileExpression(ctx, fctx, decl.initializer);
         const closureType = actualType ?? { kind: "externref" as const };
-        // If the result is a closure ref, update the local's type
+        // If the result is a closure ref, update the local's type — but not
+        // if the local was pre-hoisted as externref (illegal cast, #962).
         if (
           (closureType.kind === "ref" || closureType.kind === "ref_null") &&
           ctx.closureInfoByTypeIdx.has((closureType as { typeIdx: number }).typeIdx)
         ) {
-          // Update the local slot type to the actual closure type
           if (localIdx >= fctx.params.length) {
             const localSlot = fctx.locals[localIdx - fctx.params.length];
-            if (localSlot) localSlot.type = closureType;
+            if (localSlot && localSlot.type.kind !== "externref") localSlot.type = closureType;
           }
           stackType = closureType;
         } else if (closureType.kind === "externref" && callSigs!.length > 0) {
@@ -814,7 +817,8 @@ function compileVariableStatement(ctx: CodegenContext, fctx: FunctionContext, st
             const castType: ValType = { kind: "ref_null", typeIdx: matchedClosureInfo.structTypeIdx };
             if (localIdx >= fctx.params.length) {
               const localSlot = fctx.locals[localIdx - fctx.params.length];
-              if (localSlot) localSlot.type = castType;
+              // Do NOT narrow externref → ref (#962)
+              if (localSlot && localSlot.type.kind !== "externref") localSlot.type = castType;
             }
             stackType = castType;
           } else {
