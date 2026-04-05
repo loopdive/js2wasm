@@ -1722,15 +1722,15 @@
         // Remove blur filter during animation to avoid expensive per-frame repaints
         glowPath.style.filter = "none";
 
-        const startX1 = -30,
-          endX1 = 50;
-        const startX2 = -5,
-          endX2 = 75;
+        const startX1 = -5,
+          endX1 = 75;
+        const startX2 = 15,
+          endX2 = 100;
         const duration = 10000;
         let start = 0;
         let raf = 0;
 
-        const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+        const ease = (t) => t * t * (3 - 2 * t); // smoothstep — gentler in the middle
 
         const step = (now) => {
           if (!start) start = now;
