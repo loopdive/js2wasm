@@ -22,6 +22,11 @@ export default defineConfig({
   resolve: {
     alias: {
       binaryen: "/workspace/playground/stubs/binaryen.js",
+      path: "/workspace/playground/stubs/path-shim.js",
+      "node:path": "/workspace/playground/stubs/path-shim.js",
+      "node:fs": "/workspace/playground/stubs/node-fs-stub.js",
+      "node:child_process": "/workspace/playground/stubs/node-stub.js",
+      "node:os": "/workspace/playground/stubs/node-stub.js",
     },
   },
   server: {
