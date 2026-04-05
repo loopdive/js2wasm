@@ -33,6 +33,8 @@ export interface Test262ScopeInfo {
   scope: Test262Scope;
   official: boolean;
   reason?: string;
+  /** "only" = onlyStrict, "no" = noStrict/sloppy-only, "both" = works in either mode */
+  strict: "only" | "no" | "both";
 }
 
 const PROPOSAL_FEATURES = new Map([
@@ -47,50 +49,52 @@ function getTest262RelativePath(filePath?: string): string | undefined {
   return filePath.replace(/.*test262\//, "");
 }
 
+// Known sloppy-only tests that may not carry a noStrict flag in their metadata
+const SLOPPY_MODE_PATHS = new Set([
+  "test/annexB/language/function-code/function-redeclaration-block.js",
+  "test/annexB/language/function-code/function-redeclaration-switch.js",
+  "test/annexB/language/statements/for-in/const-initializer.js",
+  "test/annexB/language/statements/for-in/strict-initializer.js",
+  "test/annexB/language/statements/for-in/var-arraybindingpattern-initializer.js",
+  "test/annexB/language/statements/for-in/let-initializer.js",
+  "test/annexB/language/statements/for-in/var-objectbindingpattern-initializer.js",
+  "test/annexB/language/statements/labeled/function-declaration.js",
+]);
+
+function classifyStrictMode(meta: Test262Meta, relPath: string): "only" | "no" | "both" {
+  if (meta.flags?.includes("onlyStrict")) return "only";
+  if (meta.flags?.includes("noStrict")) return "no";
+  if (SLOPPY_MODE_PATHS.has(relPath)) return "no";
+  if (/legacy-octal-escape|legacy-non-octal-escape|S7\.8\.4_A4\.3/.test(relPath)) return "no";
+  return "both";
+}
+
 export function classifyTestScope(source: string, meta: Test262Meta, filePath?: string): Test262ScopeInfo {
   const relPath = getTest262RelativePath(filePath) ?? "";
+  const strict = classifyStrictMode(meta, relPath);
 
   if (relPath.startsWith("test/staging/") || relPath.startsWith("staging/")) {
-    return {
-      scope: "proposal",
-      official: false,
-      reason: "test262 staging proposal",
-    };
+    return { scope: "proposal", official: false, reason: "test262 staging proposal", strict };
   }
 
   if (relPath.startsWith("test/annexB/") || relPath.startsWith("annexB/")) {
-    return {
-      scope: "annex_b",
-      official: true,
-      reason: "Annex B",
-    };
+    return { scope: "annex_b", official: true, reason: "Annex B", strict };
   }
 
   if (relPath.includes("built-ins/Temporal/")) {
-    return {
-      scope: "proposal",
-      official: false,
-      reason: "proposal feature: Temporal",
-    };
+    return { scope: "proposal", official: false, reason: "proposal feature: Temporal", strict };
   }
 
   if (meta.features) {
     for (const feat of meta.features) {
       const reason = PROPOSAL_FEATURES.get(feat);
       if (reason) {
-        return {
-          scope: "proposal",
-          official: false,
-          reason,
-        };
+        return { scope: "proposal", official: false, reason, strict };
       }
     }
   }
 
-  return {
-    scope: "standard",
-    official: true,
-  };
+  return { scope: "standard", official: true, strict };
 }
 
 /** Parse the /*--- ... ---*​/ YAML front matter from a test262 file */
@@ -193,29 +197,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
       reason: "ES5 legacy: with statement (strict mode disallowed)",
     };
   }
-  // Sloppy-mode features that TS rejects in strict/module mode
-  const SLOPPY_MODE_TESTS = new Set([
-    "test/annexB/language/function-code/function-redeclaration-block.js",
-    "test/annexB/language/function-code/function-redeclaration-switch.js",
-    "test/annexB/language/statements/for-in/const-initializer.js",
-    "test/annexB/language/statements/for-in/strict-initializer.js",
-    "test/annexB/language/statements/for-in/var-arraybindingpattern-initializer.js",
-    "test/annexB/language/statements/for-in/let-initializer.js",
-    "test/annexB/language/statements/for-in/var-objectbindingpattern-initializer.js",
-    "test/annexB/language/statements/labeled/function-declaration.js",
-  ]);
-  if (filePath) {
-    const rel = filePath.replace(/.*test262\//, "");
-    if (SLOPPY_MODE_TESTS.has(rel)) {
-      return { skip: true, reason: "ES5 sloppy mode: not supported in strict/module mode (#833)" };
-    }
-  }
-  if (filePath && /legacy-octal-escape|legacy-non-octal-escape|S7\.8\.4_A4\.3/.test(filePath)) {
-    return {
-      skip: true,
-      reason: "ES5 strict mode: octal escape sequences forbidden in modules (#833)",
-    };
-  }
+  // Sloppy-mode tests (noStrict flag or known sloppy paths) are now tagged via
+  // classifyTestScope(strict:"no") and run as-is — they may CE or fail in strict
+  // module mode, but are recorded so the report can filter them.
   if (filePath && /unicode-16\.0\.0/.test(filePath)) {
     return {
       skip: true,
