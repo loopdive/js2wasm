@@ -83,10 +83,9 @@
 
       .puzzle-bg #puzzle-bg-glow {
         stroke: url(#puzzle-glow-gradient);
-        stroke-width: 2.4;
+        stroke-width: 4;
         stroke-linecap: round;
         stroke-linejoin: round;
-        filter: url(#puzzle-glow-filter);
         opacity: 0.95;
       }
 
@@ -1719,8 +1718,7 @@
         const glowPath = document.getElementById("puzzle-bg-glow");
         if (!grad || !glowPath) return;
 
-        // Remove blur filter during animation to avoid expensive per-frame repaints
-        glowPath.style.filter = "none";
+        // No blur filter — removed for cleaner look
 
         const startX1 = -30,
           endX1 = 100;
