@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   dtach \
   locales \
   openssh-server \
+  && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen \
   && locale-gen en_US.UTF-8 \
   && ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
