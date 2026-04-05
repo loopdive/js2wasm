@@ -11,6 +11,8 @@ output/
 benchmarks/results/*.json
 !benchmarks/results/test262-report.json
 !benchmarks/results/wat-analysis-report.json
+!benchmarks/results/latest.json
+!benchmarks/results/history.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
 .pnpm-store/
