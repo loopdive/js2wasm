@@ -40,6 +40,24 @@ Note: #931, #946, #947, #948 are already DONE in sprint 37. Do NOT dispatch thes
 | 11 | #845 | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** | Medium | sonnet |
 | 12 | #822 | Wasm type mismatch compile errors | **907 CE** | Hard | opus |
 
+### Phase 4: Regression fixes + infrastructure (added mid-sprint)
+| Order | Issue | Title | Impact | Status | Model |
+|-------|-------|-------|--------|--------|-------|
+| 13 | #959 | Auto-generate test262-editions.json | DX | Done | sonnet |
+| 14 | #960 | Promise type index corruption (~1,023 regression) | Critical | Done | opus |
+| 15 | #961 | Promise .then() via late imports | Critical | Done | opus |
+| 16 | #962 | Illegal cast regression (433 tests) | High | Done | opus |
+| 17 | #963 | Runner state leak (412 false CEs) | Critical | Done | opus |
+| 18 | #964 | Promise .then() 987 tests | — | Done (false passes) | — |
+| 19 | #965 | Prototype null + Array methods (99 tests) | High | Done | sonnet |
+| 20 | #966 | Invalid Wasm binaries (79 tests) | High | Done | sonnet |
+| 21 | #967 | Array some/every/map (30 tests) | High | In progress | opus |
+| 22 | #968 | Block scope dedup locals (25 tests) | High | In progress | opus |
+| 23 | #969 | Misc methods bind/call/split (22 tests) | Medium | In progress | opus |
+| 24 | #970 | Include sloppy tests in runner | Medium | In progress | sonnet |
+| 25 | #971 | Mixed assertion failures (~180 tests) | Medium | Ready | opus |
+| 26 | #972 | Landing page feature support tables | Medium | In progress | sonnet |
+
 ## Dev paths
 
 **Dev-1 (opus)**: #855 Promise v2 -- follow architect spec (plan/issues/ready/855.md) strictly, 8 work items, test262 after each WI
