@@ -10,7 +10,7 @@
         document.head.appendChild(base);
       })();
     </script>
-    <title>js2wasm</title>
+    <title>JS2 - Javascript compiler</title>
     <meta
       name="description"
       content="js2wasm is an ahead-of-time compiler that compiles JavaScript and TypeScript to WebAssembly GC."
@@ -1127,9 +1127,8 @@
       <path id="puzzle-bg-glow-sharp"></path>
     </svg>
     <nav class="site-nav">
-      <a class="nav-logo" href="./" aria-label="js2wasm home">
-        <img src="/jswasmlogo.png" alt="js2wasm logo" />
-        <span>js2wasm</span>
+      <a class="nav-logo" href="./" aria-label="js2 home">
+        <span>js2</span>
       </a>
       <ul class="nav-links">
         <li><a href="#goals">Goals</a></li>
@@ -1148,7 +1147,7 @@
         <section class="hero">
           <h1
             id="hero-title"
-            data-texts='["JS2 - A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
+            data-texts='["JS2: Anext generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
             "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
           >
             <span class="hero-title-shell">
@@ -1174,7 +1173,7 @@
 
       <section class="section-pad" id="goals">
         <div class="intro">
-          <h2>Javascript compatible.</h2>
+          <h2>JS2: Next generation JavaScript compiler.</h2>
           <p>
             Our goal is to make familiar JavaScript and TypeScript code more secure and lightweight so it can run in
             places where a JS engine is too heavy, insecure, or too expensive to embed per module.
@@ -1338,10 +1337,10 @@ function greet(name) {
 const add = (a, b) =&gt; a + b;</pre
                   >
                   <pre class="wat">
-(func $greet (param externref) (result externref)
-  global.get 1        ;; "Hi "
+(func $greet (param (ref null $str)) (result (ref null $str))
+  string.const "Hi "
   local.get 0         ;; name
-  call $__str_concat
+  string.concat        ;; native string op
   return)</pre
                   >
                 </details>
@@ -1409,8 +1408,9 @@ try {
                   <pre>throw new Error("something went wrong");</pre>
                   <pre class="wat">
 (func $__module_init
+  i32.const 1              ;; Error tag
   string.const "something went wrong"
-  call $Error_new
+  struct.new $Error
   throw 0)</pre
                   >
                 </details>
@@ -1454,17 +1454,13 @@ const obj = {
                   >
                   <pre class="wat">
 (func $__module_init
-  global.get 0             ;; "hello"
-  call $toUpperCase
-  drop
-  global.get 1             ;; "a,b,c"
-  global.get 2             ;; ","
-  call $split
-  drop
-  global.get 0             ;; "hello"
-  f64.const 1
-  f64.const 3
-  call $slice)</pre
+  ;; "hello".toUpperCase()
+  string.const "hello"
+  call $string.toUpperCase ;; host
+  ;; "hello".slice(1, 3)
+  string.const "hello"
+  i32.const 1  i32.const 3
+  string.substring)        ;; native WasmGC</pre
                   >
                 </details>
               </div>
@@ -1523,8 +1519,9 @@ throw new RangeError("out of bounds");</pre
                   >
                   <pre class="wat">
 (func $__module_init
+  i32.const 2              ;; TypeError tag
   string.const "expected string"
-  call $TypeError_new
+  struct.new $TypeError
   throw 0)</pre
                   >
                 </details>
@@ -1568,8 +1565,8 @@ const found = arr.find(x =&gt; x &gt; 5);</pre
                   <pre class="wat">
 (func $__module_init
   global.get $re           ;; /hello/i
-  global.get 1             ;; "Hello World"
-  call $RegExp.test        ;; → i32 bool)</pre
+  string.const "Hello World"
+  call $regexp_test)       ;; host import</pre
                   >
                   <div class="feat-explain">Basic patterns work. Named groups and lookbehind partially supported.</div>
                 </details>
@@ -1672,11 +1669,11 @@ const greet = () =&gt; "hello";</pre
                   <pre>const msg = `Hello ${name}, you are ${age}!`;</pre>
                   <pre class="wat">
 (func $__module_init
-  global.get 0             ;; "Hello "
-  global.get $name         ;; name
-  call $__str_concat
-  global.get 1             ;; "!"
-  call $__str_concat)      ;; → "Hello world!"</pre
+  string.const "Hello "
+  local.get $name          ;; "world"
+  string.concat
+  string.const "!"
+  string.concat)           ;; → "Hello world!"</pre
                   >
                 </details>
               </div>
@@ -1692,14 +1689,12 @@ const [first, ...rest] = items;
 const { a: x = 0 } = opts;</pre
                   >
                   <pre class="wat">
+;; typed object → direct struct access
 (func $__module_init
-  ;; const { a, b } = obj
   local.get $obj
-  string.const "a"
-  call $__extern_get  ;; a
+  struct.get $Obj $a     ;; a
   local.get $obj
-  string.const "b"
-  call $__extern_get) ;; b</pre
+  struct.get $Obj $b)    ;; b</pre
                   >
                 </details>
               </div>
@@ -1718,11 +1713,8 @@ function sum(...args) { }</pre
 (func $__module_init
   ;; [...arr, 4]
   f64.const 1  f64.const 2  f64.const 3
-  array.new_fixed 3        ;; arr
-  ;; spread into new array
-  call $__spread_array
   f64.const 4
-  call $__arr_push)        ;; → [1, 2, 3, 4]</pre
+  array.new_fixed $f64arr 4)  ;; [1,2,3,4]</pre
                   >
                 </details>
               </div>
@@ -1775,11 +1767,11 @@ const obj = { [key]: 42 };</pre
 (func $__module_init
   ;; for (const x of arr)
   local.get $arr
-  call $__iterator
-  local.set $iter
+  struct.get $Vec $data    ;; get backing array
+  struct.get $Vec $len     ;; get length
   (loop $for_of
-    local.get $iter
-    call $__iterator_next
+    local.get $i
+    array.get $data        ;; x = arr[i]
     ;; ... process x
     br_if $for_of))</pre
                   >
@@ -1799,21 +1791,21 @@ function* range(n) {
 }</pre
                   >
                   <pre class="wat">
-(func $range (param f64) (result externref)
-  call $__gen_create_buffer
+(func $range (param f64) (result (ref $Gen))
+  ;; yield values into WasmGC array
+  array.new_default $f64arr 0
   local.set $buf
   (loop $loop
     local.get $i
-    local.get 0  ;; n
+    local.get 0            ;; n
     i32.lt_s
     (if (then
-      local.get $buf
+      ;; yield i → push to buffer
       local.get $i
-      call $__gen_push
       ;; i++, br $loop
     )))
   local.get $buf
-  call $__create_generator)</pre
+  struct.new $Generator)</pre
                   >
                 </details>
               </div>
@@ -1866,12 +1858,12 @@ s.has(2); // true</pre
                   >
                   <pre class="wat">
 (func $__module_init
-  call $Map_new            ;; new Map()
+  call $Map_new            ;; new Map() — host
   global.set $m
   global.get $m
-  global.get 0             ;; "key"
+  string.const "key"
   f64.const 42
-  call $Map_set)           ;; m.set("key", 42)</pre
+  call $Map_set)           ;; host import</pre
                   >
                   <div class="feat-explain">Core operations work. Some iteration edge cases incomplete.</div>
                 </details>
@@ -1916,13 +1908,13 @@ view[0] = 42;</pre
                   <pre class="wat">
 (func $__module_init
   i32.const 16
-  call $ArrayBuffer_new    ;; new ArrayBuffer(16)
-  call $Int32Array_from    ;; new Int32Array(buf)
+  call $ArrayBuffer_new    ;; host import
+  call $Int32Array_from    ;; host import
   global.set $view
   global.get $view
-  i32.const 0              ;; index 0
+  i32.const 0
   f64.const 42
-  call $TypedArray_set)    ;; view[0] = 42</pre
+  call $TypedArray_set)    ;; host import</pre
                   >
                   <div class="feat-explain">Int8 through Float64 arrays work. BigInt64Array not yet.</div>
                 </details>
@@ -1934,8 +1926,8 @@ view[0] = 42;</pre
                 <details>
                   <summary></summary>
                   <pre>
-const big = 9007199254740993n;
-const sum = big + 1n;</pre
+import { foo } from "./mod";
+export function bar() { return 1; }</pre
                   >
                   <pre class="wat">
 (func $bar (export "bar") (result f64)
@@ -2003,11 +1995,10 @@ Object.values({ x: 10 });
                   >
                   <pre class="wat">
 (func $__module_init
-  ;; Object.entries({ a: 1, b: 2 })
   f64.const 1  f64.const 2
-  struct.new $obj
+  struct.new $obj          ;; { a: 1, b: 2 }
   extern.convert_any
-  call $Object.entries)    ;; → [["a",1],["b",2]]</pre
+  call $Object.entries)    ;; host import</pre
                   >
                 </details>
               </div>
@@ -2039,9 +2030,9 @@ const { a, ...rest } = obj;</pre
 (func $__module_init
   ;; { ...original, extra: 2 }
   local.get $original
-  call $__spread_obj       ;; copy fields
-  f64.const 2
-  struct.set $clone $extra);; add extra: 2</pre
+  struct.get $Obj $x       ;; copy field x
+  f64.const 2              ;; extra: 2
+  struct.new $Clone)       ;; new struct</pre
                   >
                 </details>
               </div>
@@ -2056,12 +2047,11 @@ const { a, ...rest } = obj;</pre
                   <pre class="wat">
 (func $process (param externref)
   local.get 0
-  call $__iterator         ;; get async iterator
+  call $__iterator         ;; host import
   local.set $iter
   (loop $for_await
     local.get $iter
-    call $__iterator_next  ;; await next()
-    local.set $chunk
+    call $__iterator_next  ;; host import
     ;; ... process chunk
     br_if $for_await))</pre
                   >
@@ -2116,7 +2106,7 @@ const { a, ...rest } = obj;</pre
                   <pre>globalThis.console;</pre>
                   <pre class="wat">
 (func $__module_init
-  call $__get_globalThis   ;; runtime global ref
+  call $__get_globalThis   ;; host import
   global.set $g)</pre
                   >
                 </details>
@@ -2206,10 +2196,12 @@ class Counter {
                   <pre>throw new Error("fail", { cause: origErr });</pre>
                   <pre class="wat">
 (func $fail
+  i32.const 1              ;; Error tag
   string.const "root"
-  call $Error_new          ;; cause error
+  struct.new $Error        ;; cause
+  i32.const 1
   string.const "fail"
-  call $Error_new_cause    ;; Error("fail", {cause})
+  struct.new $ErrorCause   ;; with cause field
   throw 0)</pre
                   >
                 </details>
@@ -2259,9 +2251,9 @@ class Counter {
         <div class="code-copy">
           <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
-            js2wasm parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm operations,
-            and keeps host effects isolated at imports and exports. The playground is used as a real development tool
-            for inspecting WAT, profiling codegen, and comparing Wasm against native JS execution.
+            js2 parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm operations, and
+            keeps host effects isolated at imports and exports. The playground is used as a real development tool for
+            inspecting WAT, profiling codegen, and comparing Wasm against native JS execution.
           </p>
           <div class="stats-inline">
             <div class="stat-inline">
@@ -2346,7 +2338,7 @@ class Counter {
     <footer>
       <div class="footer-top">
         <div class="footer-brand">
-          <img src="/jswasmlogo.png" alt="js2wasm logo" />
+          <img src="/jswasmlogo.png" alt="js2 logo" />
           <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
         </div>
         <div class="footer-cols">
@@ -2377,7 +2369,7 @@ class Counter {
         </div>
       </div>
       <div class="footer-bottom">
-        <span>js2wasm GitHub Pages site</span>
+        <span>js2 GitHub Pages site</span>
         <span>Built from the same artifacts used for compiler development.</span>
       </div>
     </footer>
