@@ -400,7 +400,7 @@ customElements.define("t262-donut", T262Donut);
 
 class T262EditionBars extends HTMLElement {
   static get observedAttributes() {
-    return ["src"];
+    return ["src", "mode"];
   }
 
   constructor() {
@@ -418,6 +418,7 @@ class T262EditionBars extends HTMLElement {
 
   async _render() {
     const src = this.getAttribute("src") || "./benchmarks/results/test262-editions.json";
+    const chartMode = this.getAttribute("mode") || "both";
     let editions;
     try {
       const resp = await fetch(src);
@@ -630,8 +631,8 @@ class T262EditionBars extends HTMLElement {
         .charts { display: flex; flex-direction: column; gap: 24px; }
       </style>
       <div class="charts">
-        ${svg}
-        ${svgPct}
+        ${chartMode !== "percentage" ? svg : ""}
+        ${chartMode !== "absolute" ? svgPct : ""}
       </div>
     `;
   }
