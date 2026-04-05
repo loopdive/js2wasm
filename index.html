@@ -516,7 +516,7 @@
       }
 
       .edition-chart {
-        grid-column: span 2;
+        grid-column: span 1;
       }
 
       .benchmark-bars {
@@ -1367,8 +1367,12 @@
             </div>
           </div>
           <div class="diagram-panel edition-chart">
-            <h3 class="diagram-title">ECMAScript Edition Coverage (absolute)</h3>
-            <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
+            <h3 class="diagram-title">Edition Coverage (tests)</h3>
+            <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="absolute"></t262-edition-bars>
+          </div>
+          <div class="diagram-panel edition-chart">
+            <h3 class="diagram-title">Edition Coverage (pass rate)</h3>
+            <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="percentage"></t262-edition-bars>
           </div>
         </div>
 
