@@ -76,11 +76,17 @@ export function deduplicateLocals(fctx: FunctionContext): void {
   // First pass: find which relative indices are duplicates.
   // Only merge locals that share both the same name AND the same type —
   // same-name locals with different types are not interchangeable (#962).
+  // IMPORTANT: Only dedup compiler-generated temps (names starting with "__").
+  // User-visible variables with the same name in different block scopes must
+  // NOT be merged — nested scopes can shadow outer variables, and merging
+  // would corrupt the outer variable's value (e.g., IIFE param `x` + `let x`).
   const nameToFirstRel = new Map<string, number>();
   const isDuplicate = new Uint8Array(n); // 0 = keep, 1 = duplicate
 
   for (let i = 0; i < n; i++) {
     const local = fctx.locals[i]!;
+    // Skip user-visible variables — only dedup compiler temps
+    if (!local.name.startsWith("__")) continue;
     const key = local.name + "\0" + valTypeKey(local.type);
     if (nameToFirstRel.has(key)) {
       isDuplicate[i] = 1;

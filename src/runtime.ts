@@ -1145,6 +1145,17 @@ function resolveImport(
           if (typeof fn !== "function") throw new TypeError(method + " is not a function");
           return fn.apply(obj, args ?? []);
         };
+      // Type.prototype.method.call(receiver, ...args) dispatch for built-in types.
+      // Used when e.g. Array.prototype.every.call(functionObj, fn) — the receiver
+      // doesn't inherit from the Type, so obj.method() would fail.
+      if (name === "__proto_method_call")
+        return (typeName: string, methodName: string, receiver: any, args: any[]) => {
+          const Type = (globalThis as any)[typeName];
+          if (!Type || !Type.prototype) throw new TypeError(typeName + " is not a constructor");
+          const method = Type.prototype[methodName];
+          if (typeof method !== "function") throw new TypeError(methodName + " is not a function");
+          return method.call(receiver, ...(args ?? []));
+        };
       // Get actual JS built-in object by name (#965) — fixes WI3 null receiver for built-in classes
       if (name === "__get_builtin") return (n: string) => (globalThis as any)[n];
       // Object.hasOwn(obj, key) — ES2022 static method (#965)
