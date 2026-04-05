@@ -249,4 +249,14 @@ copyFileIfExists(
 // Disable Jekyll processing so all generated assets are published as-is.
 writeFileSync(join(PAGES_DIST, ".nojekyll"), "");
 
+// Sync benchmark data to public/ for the landing page (Vite serves public/ as static)
+const PUBLIC_BENCH = join(ROOT, "public", "benchmarks", "results");
+mkdirSync(PUBLIC_BENCH, { recursive: true });
+copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-report.json"), join(PUBLIC_BENCH, "test262-report.json"));
+copyFileIfExists(
+  join(BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
+  join(PUBLIC_BENCH, "playground-benchmark-sidebar.json"),
+);
+copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-editions.json"), join(PUBLIC_BENCH, "test262-editions.json"));
+
 console.log(`GitHub Pages artifact ready at ${PAGES_DIST}`);
