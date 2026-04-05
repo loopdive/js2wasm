@@ -937,7 +937,7 @@
   <body>
     <svg class="puzzle-bg" aria-hidden="true">
       <defs>
-        <linearGradient id="puzzle-glow-gradient" x1="-30%" y1="0%" x2="-5%" y2="0%">
+        <linearGradient id="puzzle-glow-gradient" x1="0%" y1="-50%" x2="0%" y2="-10%" gradientUnits="objectBoundingBox">
           <stop offset="0%" stop-color="#beb0ff" stop-opacity="0"></stop>
           <stop offset="35%" stop-color="#beb0ff" stop-opacity="0"></stop>
           <stop offset="50%" stop-color="#f3eeff" stop-opacity="1"></stop>
@@ -1720,10 +1720,10 @@
 
         // No blur filter — removed for cleaner look
 
-        const startX1 = -50,
-          endX1 = 100;
-        const startX2 = -10,
-          endX2 = 150;
+        const startY1 = -50,
+          endY1 = 100;
+        const startY2 = -10,
+          endY2 = 150;
         const duration = 6667;
         let start = 0;
         let raf = 0;
@@ -1735,8 +1735,8 @@
           const elapsed = now - start;
           const t = Math.min(elapsed / duration, 1);
           const e = ease(t);
-          grad.setAttribute("x1", startX1 + (endX1 - startX1) * e + "%");
-          grad.setAttribute("x2", startX2 + (endX2 - startX2) * e + "%");
+          grad.setAttribute("y1", startY1 + (endY1 - startY1) * e + "%");
+          grad.setAttribute("y2", startY2 + (endY2 - startY2) * e + "%");
           // Fade in first 10%, fade out last 20%
           if (t < 0.1) {
             glowPath.style.opacity = String((t / 0.1) * 0.5);
