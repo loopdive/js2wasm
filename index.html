@@ -86,10 +86,10 @@
           opacity: 0;
         }
         10% {
-          opacity: 0.3;
+          opacity: 1;
         }
         80% {
-          opacity: 0.3;
+          opacity: 1;
         }
         100% {
           opacity: 0;
@@ -97,16 +97,16 @@
       }
       .puzzle-bg #puzzle-bg-glow {
         stroke: url(#puzzle-glow-gradient);
-        stroke-width: 2.4;
+        stroke-width: 4;
         stroke-linecap: round;
         stroke-linejoin: round;
         animation: glow-fade 13.4s ease infinite;
-        filter: blur(4px);
+        filter: blur(8px);
       }
       @media (prefers-reduced-motion: reduce) {
         .puzzle-bg #puzzle-bg-glow {
           animation: none;
-          opacity: 0.3;
+          opacity: 1;
         }
       }
 
@@ -959,11 +959,12 @@
     <svg class="puzzle-bg" aria-hidden="true">
       <defs>
         <linearGradient id="puzzle-glow-gradient" x1="0%" y1="-50%" x2="0%" y2="-10%" gradientUnits="objectBoundingBox">
-          <stop offset="0%" stop-color="#beb0ff" stop-opacity="0"></stop>
-          <stop offset="35%" stop-color="#beb0ff" stop-opacity="0"></stop>
-          <stop offset="50%" stop-color="#f3eeff" stop-opacity="1"></stop>
-          <stop offset="65%" stop-color="#beb0ff" stop-opacity="0"></stop>
-          <stop offset="100%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0"></stop>
+          <stop offset="30%" stop-color="#d4c8ff" stop-opacity="0"></stop>
+          <stop offset="45%" stop-color="#ffffff" stop-opacity="1"></stop>
+          <stop offset="55%" stop-color="#ffffff" stop-opacity="1"></stop>
+          <stop offset="70%" stop-color="#d4c8ff" stop-opacity="0"></stop>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"></stop>
           <animate attributeName="y1" values="-50%;100%" dur="13.4s" repeatCount="indefinite" />
           <animate attributeName="y2" values="-10%;150%" dur="13.4s" repeatCount="indefinite" />
         </linearGradient>
@@ -1111,7 +1112,7 @@
                     bottom: 0;
                     width: 2px;
                     background: var(--fg-soft);
-                    opacity: 0.3;
+                    opacity: 1;
                     z-index: 1;
                   "
                 ></div>
