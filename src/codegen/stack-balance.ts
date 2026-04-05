@@ -718,6 +718,13 @@ function fixBranchType(body: Instr[], blockType: BlockType, types: TypeDef[], si
     return 1;
   }
 
+  // i64 → externref: drop + ref.null.extern (#822)
+  if ((expectedType.kind === "externref" || expectedType.kind === "ref_extern") && produced === "i64") {
+    body.push({ op: "drop" });
+    body.push({ op: "ref.null.extern" });
+    return 1;
+  }
+
   // externref → f64: drop + f64.const 0 (lossy but valid)
   if (expectedType.kind === "f64" && produced === "externref") {
     body.push({ op: "drop" });
@@ -1694,6 +1701,181 @@ function fixCallArgTypesInBody(
   // struct.new field coercion is handled by fixStructNewFieldCoercion
   // (forward type-stack simulation), called separately from stackBalance.
 
+  // Forward-pass coercion for compound expressions (if/block/loop/try)
+  // that produce values consumed by call/call_ref/return_call.
+  // The backward walk above stops at control flow boundaries, so these
+  // type mismatches must be fixed via forward type-stack simulation. (#822)
+  fixups += fixCompoundCallArgCoercion(
+    body,
+    localTypes,
+    globalTypes,
+    types,
+    mod,
+    numImports,
+    sigs,
+    boxNumberIdx,
+    unboxNumberIdx,
+  );
+
+  return fixups;
+}
+
+/**
+ * Forward-pass coercion for compound expression results used as call arguments.
+ *
+ * When an if/block/loop/try produces a value that's consumed by a call/call_ref,
+ * the backward walk can't insert the coercion. This forward pass uses the
+ * type stack to detect and fix these mismatches.
+ */
+function fixCompoundCallArgCoercion(
+  body: Instr[],
+  localTypes: ValType[],
+  globalTypes: ValType[],
+  types: TypeDef[],
+  mod: WasmModule,
+  numImports: number,
+  sigs: FuncSigInfo,
+  boxNumberIdx: number | null,
+  unboxNumberIdx: number | null,
+): number {
+  let fixups = 0;
+
+  // Recurse into nested blocks
+  for (const instr of body) {
+    if (instr.op === "if") {
+      const ifInstr = instr as any;
+      if (ifInstr.then)
+        fixups += fixCompoundCallArgCoercion(
+          ifInstr.then,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
+      if (ifInstr.else)
+        fixups += fixCompoundCallArgCoercion(
+          ifInstr.else,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
+    } else if (instr.op === "block" || instr.op === "loop") {
+      const blockInstr = instr as any;
+      if (blockInstr.body)
+        fixups += fixCompoundCallArgCoercion(
+          blockInstr.body,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
+    } else if (instr.op === "try") {
+      const tryInstr = instr as any;
+      if (tryInstr.body)
+        fixups += fixCompoundCallArgCoercion(
+          tryInstr.body,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
+      if (tryInstr.catches) {
+        for (const c of tryInstr.catches) {
+          if (c.body)
+            fixups += fixCompoundCallArgCoercion(
+              c.body,
+              localTypes,
+              globalTypes,
+              types,
+              mod,
+              numImports,
+              sigs,
+              boxNumberIdx,
+              unboxNumberIdx,
+            );
+        }
+      }
+      if (tryInstr.catchAll)
+        fixups += fixCompoundCallArgCoercion(
+          tryInstr.catchAll,
+          localTypes,
+          globalTypes,
+          types,
+          mod,
+          numImports,
+          sigs,
+          boxNumberIdx,
+          unboxNumberIdx,
+        );
+    }
+  }
+
+  // Forward scan: look for pattern where a valued if/block/loop/try is
+  // immediately followed by a call/call_ref/return_call and the block's
+  // result type doesn't match the call's last parameter type.
+  for (let ci = 0; ci < body.length - 1; ci++) {
+    const instr = body[ci]!;
+    if (instr.op !== "if" && instr.op !== "block" && instr.op !== "loop" && instr.op !== "try") continue;
+
+    const bt = (instr as any).blockType as BlockType | undefined;
+    if (!bt || bt.kind === "empty") continue;
+
+    // Get the block's result type
+    let blockResultType: ValType | null = null;
+    if (bt.kind === "val") {
+      blockResultType = bt.type;
+    } else if (bt.kind === "type") {
+      const ft = resolveFuncType(types, bt.typeIdx);
+      if (ft && ft.results.length === 1) blockResultType = ft.results[0]!;
+    }
+    if (!blockResultType) continue;
+
+    // Check the next instruction — it might be a call/call_ref/return_call
+    const next = body[ci + 1]!;
+    const isCall = next.op === "call" || next.op === "return_call";
+    const isCallRef = next.op === "call_ref";
+    if (!isCall && !isCallRef) continue;
+
+    // Get expected param types for the call
+    let expectedParams: ValType[] | null;
+    if (isCallRef) {
+      const typeIdx = (next as any).typeIdx as number;
+      const ft = resolveFuncType(types, typeIdx);
+      expectedParams = ft ? ft.params : null;
+    } else {
+      const funcIdx = (next as any).funcIdx as number;
+      expectedParams = getFullParamTypes(mod, funcIdx, numImports);
+    }
+    if (!expectedParams || expectedParams.length === 0) continue;
+
+    // The block result is the LAST argument on the stack for the call
+    const lastParamType = expectedParams[expectedParams.length - 1]!;
+    const coercion = callArgCoercionInstrs(blockResultType, lastParamType, boxNumberIdx, unboxNumberIdx);
+    if (coercion.length > 0) {
+      // Insert coercion between the block and the call
+      body.splice(ci + 1, 0, ...coercion);
+      ci += coercion.length;
+      fixups += coercion.length;
+    }
+  }
+
   return fixups;
 }
 
@@ -2501,6 +2683,28 @@ function fixLocalSetCoercion(
     const coercion = callArgCoercionInstrs(stackType, localType, boxNumberIdx, unboxNumberIdx);
     if (coercion.length > 0) {
       // Insert coercion instructions before the local.set
+      body.splice(i, 0, ...coercion);
+      i += coercion.length;
+      fixups += coercion.length;
+    }
+  }
+
+  // Fix global.set type mismatches (e.g., ref → externref) (#822)
+  for (let i = 0; i < body.length; i++) {
+    const instr = body[i]!;
+    if (instr.op !== "global.set") continue;
+
+    const globalIdx = (instr as any).index as number;
+    const globalType = globalTypes[globalIdx];
+    if (!globalType) continue;
+
+    if (i === 0) continue;
+    const prev = body[i - 1]!;
+    const stackType = inferInstrType(prev, localTypes, globalTypes, types, mod, numImports);
+    if (!stackType) continue;
+
+    const coercion = callArgCoercionInstrs(stackType, globalType, boxNumberIdx, unboxNumberIdx);
+    if (coercion.length > 0) {
       body.splice(i, 0, ...coercion);
       i += coercion.length;
       fixups += coercion.length;
