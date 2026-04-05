@@ -11,7 +11,7 @@ import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/typ
 import { addStringConstantGlobal, ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterTemplateVecType, getOrRegisterVecType } from "./registry/types.js";
 import { resolveWasmType, addUnionImports, nativeStringType, flatStringType, addStringImports } from "./index.js";
-import { isBooleanType, isVoidType } from "../checker/type-mapper.js";
+import { isBooleanType, isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, VOID_RESULT, getLine, getCol, ensureLateImport, flushLateImportShifts } from "./shared.js";
 import { compileNumericBinaryOp, getFuncParamTypes, emitNullCheckThrow } from "./expressions.js";
@@ -663,6 +663,96 @@ export function emitBoolToString(ctx: CodegenContext, fctx: FunctionContext): vo
   } as any);
 }
 
+// ── Batched string concat chains ─────────────────────────────────────
+
+/**
+ * Walk a left-associative (or right-associative) tree of `+` BinaryExpressions
+ * whose result type is string, collecting all leaf operands in order.
+ * Returns the flat list of operands for the concat chain.
+ */
+function collectConcatOperands(ctx: CodegenContext, expr: ts.Expression): ts.Expression[] {
+  if (
+    ts.isBinaryExpression(expr) &&
+    expr.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+    isStringType(ctx.checker.getTypeAtLocation(expr))
+  ) {
+    return [...collectConcatOperands(ctx, expr.left), ...collectConcatOperands(ctx, expr.right)];
+  }
+  return [expr];
+}
+
+/**
+ * Compile a single operand and coerce it to externref (string) for concat.
+ * Handles: void → "undefined", number → number_toString, boolean → "true"/"false",
+ * null/undefined externref → string constant, struct ref → extern.convert_any.
+ */
+function compileAndCoerceConcatOperand(ctx: CodegenContext, fctx: FunctionContext, operand: ts.Expression): void {
+  const tsType = ctx.checker.getTypeAtLocation(operand);
+  const valType = compileExpression(ctx, fctx, operand);
+
+  if (!valType) {
+    // Void function return → push "undefined"
+    addStringConstantGlobal(ctx, "undefined");
+    fctx.body.push({ op: "global.get", index: ctx.stringGlobalMap.get("undefined")! });
+  } else if (valType.kind === "f64" || valType.kind === "i32" || valType.kind === "i64") {
+    if (isBooleanType(tsType) && valType.kind === "i32") {
+      emitBoolToString(ctx, fctx);
+    } else {
+      if (valType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+      else if (valType.kind === "i64") fctx.body.push({ op: "f64.convert_i64_s" });
+      const toStr = ctx.funcMap.get("number_toString");
+      if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+    }
+  } else if (valType.kind === "externref") {
+    const isNull = (tsType.flags & ts.TypeFlags.Null) !== 0;
+    const isUndef = (tsType.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) !== 0;
+    if (isNull) {
+      fctx.body.push({ op: "drop" });
+      addStringConstantGlobal(ctx, "null");
+      fctx.body.push({ op: "global.get", index: ctx.stringGlobalMap.get("null")! });
+    } else if (isUndef) {
+      fctx.body.push({ op: "drop" });
+      addStringConstantGlobal(ctx, "undefined");
+      fctx.body.push({ op: "global.get", index: ctx.stringGlobalMap.get("undefined")! });
+    }
+  } else if (valType.kind === "ref" || valType.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" });
+  }
+}
+
+/**
+ * Emit a batched concat call: compile all operands, register __concat_N
+ * host import on demand, and emit a single call that concatenates N strings.
+ */
+function compileBatchedConcat(ctx: CodegenContext, fctx: FunctionContext, operands: ts.Expression[]): ValType {
+  const arity = operands.length;
+
+  // Compile and coerce each operand — pushes N externref values onto the stack
+  for (const operand of operands) {
+    compileAndCoerceConcatOperand(ctx, fctx, operand);
+  }
+
+  // Register __concat_N import on demand (all params are externref, result is externref)
+  const importName = `__concat_${arity}`;
+  const paramTypes: ValType[] = Array.from({ length: arity }, () => ({ kind: "externref" }) as ValType);
+  const funcIdx = ensureLateImport(ctx, importName, paramTypes, [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+
+  if (funcIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx });
+  } else {
+    // Fallback: pairwise concat (shouldn't happen in js-string mode)
+    const concatIdx = ctx.funcMap.get("concat");
+    if (concatIdx !== undefined) {
+      for (let i = 1; i < arity; i++) {
+        fctx.body.push({ op: "call", funcIdx: concatIdx });
+      }
+    }
+  }
+
+  return { kind: "externref" };
+}
+
 export function compileStringBinaryOp(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -800,6 +890,14 @@ export function compileStringBinaryOp(
 
   // Ensure string imports are registered (may not be if no string literals in source)
   addStringImports(ctx);
+
+  // Batch N-operand string concat chains into a single multi-arg host call (#958)
+  if (op === ts.SyntaxKind.PlusToken) {
+    const operands = collectConcatOperands(ctx, expr);
+    if (operands.length >= 3) {
+      return compileBatchedConcat(ctx, fctx, operands);
+    }
+  }
 
   // Arithmetic/bitwise operators on strings: coerce both operands to f64 via ToNumber
   // This matches JS semantics: "5" - "2" === 3, "6" * "7" === 42
