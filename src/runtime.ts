@@ -1145,6 +1145,39 @@ function resolveImport(
           if (typeof fn !== "function") throw new TypeError(method + " is not a function");
           return fn.apply(obj, args ?? []);
         };
+      // Get actual JS built-in object by name (#965) — fixes WI3 null receiver for built-in classes
+      if (name === "__get_builtin") return (n: string) => (globalThis as any)[n];
+      // Object.hasOwn(obj, key) — ES2022 static method (#965)
+      if (name === "__object_hasOwn")
+        return (obj: any, key: any): number =>
+          (Object.hasOwn ? Object.hasOwn(obj, key) : Object.prototype.hasOwnProperty.call(obj, key)) ? 1 : 0;
+      // Object.is(x, y) — SameValue comparison (#965)
+      if (name === "__object_is") return (x: any, y: any): number => (Object.is(x, y) ? 1 : 0);
+      // Object.assign(target, ...sources) — shallow copy (#965)
+      if (name === "__object_assign")
+        return (target: any, sources: any[]): any => Object.assign(target, ...(sources ?? []));
+      // Object.fromEntries(iterable) — create object from entries (#965)
+      if (name === "__object_fromEntries") return (iterable: any): any => Object.fromEntries(iterable);
+      // Object.getOwnPropertyDescriptors(obj) — all own descriptors (#965)
+      if (name === "__object_getOwnPropertyDescriptors")
+        return (obj: any): any => Object.getOwnPropertyDescriptors(obj);
+      // Object.groupBy(iterable, keyFn) — ES2024 grouping (#965)
+      if (name === "__object_groupBy")
+        return (iterable: any, keyFn: any): any => (Object as any).groupBy(iterable, keyFn);
+      // Proxy.revocable(target, handler) — creates a revocable Proxy (#965)
+      if (name === "__proxy_revocable") return (target: any, handler: any): any => Proxy.revocable(target, handler);
+      // Symbol.for(key) — global symbol registry (#965)
+      if (name === "__symbol_for") return (key: any): any => Symbol.for(String(key));
+      // Symbol.keyFor(sym) — reverse lookup in global registry (#965)
+      if (name === "__symbol_keyFor") return (sym: any): any => Symbol.keyFor(sym) ?? null;
+      // ArrayBuffer.isView(arg) — checks if arg is a TypedArray or DataView (#965)
+      if (name === "__arraybuffer_isView") return (arg: any): number => (ArrayBuffer.isView(arg) ? 1 : 0);
+      // Array.from(iterable, mapFn?) — creates array from iterable (#965)
+      if (name === "__array_from")
+        return (iterable: any, mapFn: any): any[] =>
+          mapFn != null ? Array.from(iterable, mapFn) : Array.from(iterable);
+      // Array.of(...items) — creates array from arguments (#965)
+      if (name === "__array_of") return (items: any[]): any[] => items;
       // Object.prototype methods for extern class dispatch (#799 WI2)
       if (name === "Object_hasOwnProperty")
         return (obj: any, key: any) => (Object.prototype.hasOwnProperty.call(obj, key) ? 1 : 0);
