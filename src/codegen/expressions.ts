@@ -9169,7 +9169,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const objType = ctx.checker.getTypeAtLocation(objExpr);
 
         // Case 2a: Type.prototype.method.call(receiver, ...args)
-        // Rewrite as receiver.method(...args) — create a synthetic call expression
+        // Use __proto_method_call host import to correctly dispatch through
+        // the Type's prototype, even when receiver doesn't inherit from Type.
+        // e.g. Array.prototype.every.call(fnObj, cb) where fnObj is a Function.
         if (
           ts.isPropertyAccessExpression(objExpr) &&
           objExpr.name.text === "prototype" &&
@@ -9178,32 +9180,82 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           expr.arguments.length >= 1
         ) {
           const typeName = objExpr.expression.text;
-          // Rewrite Type.prototype.method.call(receiver, ...args) as a synthetic
-          // property access call on the receiver: receiver.method(...args).
-          // This handles String.prototype.slice.call("hello", 0, 2) → "hello".slice(0, 2)
-          // and Array.prototype.push.call(arr, 1) → arr.push(1), etc.
           if (
             (typeName === "String" ||
               typeName === "Number" ||
               typeName === "Array" ||
               typeName === "Boolean" ||
-              typeName === "Object") &&
+              typeName === "Object" ||
+              typeName === "Function" ||
+              typeName === "RegExp") &&
             expr.arguments.length >= 1
           ) {
-            const receiverArg = expr.arguments[0]!;
-            const remainingArgs = Array.from(expr.arguments).slice(1);
-            const syntheticPropAccess = ts.factory.createPropertyAccessExpression(
-              receiverArg as ts.Expression,
-              methodName,
+            const protoCallIdx = ensureLateImport(
+              ctx,
+              "__proto_method_call",
+              [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+              [{ kind: "externref" }],
             );
-            const syntheticCall = ts.factory.createCallExpression(
-              syntheticPropAccess,
-              expr.typeArguments,
-              remainingArgs as unknown as readonly ts.Expression[],
+            const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+            const arrPushIdx = ensureLateImport(
+              ctx,
+              "__js_array_push",
+              [{ kind: "externref" }, { kind: "externref" }],
+              [],
             );
-            ts.setTextRange(syntheticCall, expr);
-            (syntheticCall as any).parent = expr.parent;
-            return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+            flushLateImportShifts(ctx, fctx);
+
+            if (protoCallIdx !== undefined && arrNewIdx !== undefined && arrPushIdx !== undefined) {
+              // Push typeName string
+              addStringConstantGlobal(ctx, typeName);
+              const typeNameIdx = ctx.stringGlobalMap.get(typeName);
+              if (typeNameIdx !== undefined) {
+                fctx.body.push({ op: "global.get", index: typeNameIdx } as Instr);
+              } else {
+                compileStringLiteral(ctx, fctx, typeName);
+              }
+
+              // Push methodName string
+              addStringConstantGlobal(ctx, methodName);
+              const methodNameIdx = ctx.stringGlobalMap.get(methodName);
+              if (methodNameIdx !== undefined) {
+                fctx.body.push({ op: "global.get", index: methodNameIdx } as Instr);
+              } else {
+                compileStringLiteral(ctx, fctx, methodName);
+              }
+
+              // Compile receiver (first argument to .call)
+              const receiverArg = expr.arguments[0]!;
+              const recvType = compileExpression(ctx, fctx, receiverArg, { kind: "externref" });
+              if (recvType && recvType.kind !== "externref") {
+                fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+              }
+              if (recvType === null) {
+                fctx.body.push({ op: "ref.null.extern" });
+              }
+
+              // Build args array from remaining arguments
+              const remainingArgs = Array.from(expr.arguments).slice(1);
+              const argsLocal = allocLocal(fctx, `__pmc_args_${fctx.locals.length}`, { kind: "externref" });
+              fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+              fctx.body.push({ op: "local.set", index: argsLocal });
+              for (const arg of remainingArgs) {
+                fctx.body.push({ op: "local.get", index: argsLocal });
+                const argType = compileExpression(ctx, fctx, arg, { kind: "externref" });
+                if (argType && argType.kind !== "externref") {
+                  fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+                }
+                if (argType === null) {
+                  fctx.body.push({ op: "ref.null.extern" });
+                }
+                fctx.body.push({ op: "call", funcIdx: arrPushIdx });
+              }
+              fctx.body.push({ op: "local.get", index: argsLocal });
+
+              // Call __proto_method_call(typeName, methodName, receiver, args)
+              fctx.body.push({ op: "call", funcIdx: protoCallIdx });
+              return { kind: "externref" };
+            }
           }
         }
 
