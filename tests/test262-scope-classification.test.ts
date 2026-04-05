@@ -11,6 +11,7 @@ describe("test262 scope classification", () => {
       scope: "annex_b",
       official: true,
       reason: "Annex B",
+      strict: "both",
     });
   });
 
