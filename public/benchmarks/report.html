@@ -1572,7 +1572,7 @@
         if (strictDefault) strictCheckbox.setAttribute("checked", "checked");
         strictCheckbox.checked = strictDefault;
         strictToggle.appendChild(strictCheckbox);
-        strictToggle.appendChild(el("span", null, "strict mode only"));
+        strictToggle.appendChild(el("span", null, "strict mode"));
         controlsHost.appendChild(strictToggle);
 
         function syncToggleStyles() {
