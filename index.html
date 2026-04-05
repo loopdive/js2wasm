@@ -103,8 +103,16 @@
         animation: glow-fade 13.4s ease infinite;
         filter: blur(8px);
       }
+      .puzzle-bg #puzzle-bg-glow-sharp {
+        stroke: url(#puzzle-glow-gradient);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        animation: glow-fade 13.4s ease infinite;
+      }
       @media (prefers-reduced-motion: reduce) {
-        .puzzle-bg #puzzle-bg-glow {
+        .puzzle-bg #puzzle-bg-glow,
+        .puzzle-bg #puzzle-bg-glow-sharp {
           animation: none;
           opacity: 1;
         }
@@ -975,6 +983,7 @@
       </defs>
       <path id="puzzle-bg-path"></path>
       <path id="puzzle-bg-glow"></path>
+      <path id="puzzle-bg-glow-sharp"></path>
     </svg>
     <nav class="site-nav">
       <a class="nav-logo" href="./" aria-label="js2wasm home">
@@ -1554,6 +1563,7 @@
         const svg = document.querySelector(".puzzle-bg");
         const path = document.getElementById("puzzle-bg-path");
         const glowPath = document.getElementById("puzzle-bg-glow");
+        const glowSharp = document.getElementById("puzzle-bg-glow-sharp");
         if (
           !(svg instanceof SVGElement) ||
           !(path instanceof SVGPathElement) ||
@@ -1726,6 +1736,7 @@
           const d = genD();
           path.setAttribute("d", d);
           glowPath.setAttribute("d", d);
+          if (glowSharp) glowSharp.setAttribute("d", d);
           document.documentElement.style.setProperty("--hero-piece-clearance", `0px`);
         };
 
