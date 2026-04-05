@@ -2367,25 +2367,9 @@ function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorState, nod
       state.promiseNeeded.add(method);
     }
   }
-  // Detect .then() / .catch() / .finally() on Promise-typed values
-  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-    const method = node.expression.name.text;
-    if (method === "then" || method === "catch" || method === "finally") {
-      const receiverType = ctx.checker.getTypeAtLocation(node.expression.expression);
-      const symName = receiverType.getSymbol()?.name;
-      const apparent = ctx.checker.getApparentType(receiverType);
-      if (
-        symName === "Promise" ||
-        apparent.getSymbol()?.name === "Promise" ||
-        (receiverType as any).resolvedTypeArguments
-      ) {
-        state.promiseNeeded.add(method);
-        if (method === "then" && node.arguments.length >= 2) {
-          state.promiseNeedThen2 = true;
-        }
-      }
-    }
-  }
+  // NOTE: Promise instance methods (.then/.catch/.finally) are NOT detected here.
+  // Pre-registering them adds func types that shift struct type indices, breaking
+  // non-Promise code in the same module. They're handled at codegen time instead.
   if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
     state.promiseNeedConstructor = true;
   }
@@ -2816,33 +2800,17 @@ function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorSt
   }
 
   // ── collectPromiseImports finalize ──
-  const promiseInstanceMethods = new Set(["then", "catch", "finally"]);
-  // Register static methods: (externref) → externref
+  // Only register STATIC Promise methods (e.g., Promise.resolve, Promise.all).
+  // Instance methods (.then/.catch/.finally) are NOT pre-registered because
+  // adding their func types here shifts struct type indices, breaking
+  // non-Promise code in the same module (#855 regression fix).
   for (const method of state.promiseNeeded) {
-    if (promiseInstanceMethods.has(method)) continue;
+    if (method === "then" || method === "catch" || method === "finally") continue;
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
       const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
-  }
-  // Register instance methods: (externref, externref) → externref
-  for (const method of state.promiseNeeded) {
-    if (!promiseInstanceMethods.has(method)) continue;
-    const importName = `Promise_${method}`;
-    if (!ctx.funcMap.has(importName)) {
-      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-      addImport(ctx, "env", importName, { kind: "func", typeIdx });
-    }
-  }
-  // Register Promise_then2: (externref, externref, externref) → externref
-  if (state.promiseNeedThen2 && !ctx.funcMap.has("Promise_then2")) {
-    const typeIdx = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
-      [{ kind: "externref" }],
-    );
-    addImport(ctx, "env", "Promise_then2", { kind: "func", typeIdx });
   }
   if (state.promiseNeedConstructor && !ctx.funcMap.has("Promise_new")) {
     const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
@@ -8181,22 +8149,8 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
         needed.add(method);
       }
     }
-    // Detect .then() / .catch() on Promise-typed values
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-      const method = node.expression.name.text;
-      if (method === "then" || method === "catch") {
-        const receiverType = ctx.checker.getTypeAtLocation(node.expression.expression);
-        const symName = receiverType.getSymbol()?.name;
-        if (symName === "Promise" || (receiverType as any).resolvedTypeArguments) {
-          needed.add(method);
-        }
-        // Also check if the TS type is a Promise via its apparent type
-        const apparent = ctx.checker.getApparentType(receiverType);
-        if (apparent.getSymbol()?.name === "Promise") {
-          needed.add(method);
-        }
-      }
-    }
+    // NOTE: Promise instance methods (.then/.catch/.finally) not detected here.
+    // See #855 regression fix — pre-registering them shifts type indices.
     // Detect `new Promise(...)`
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
       needConstructor = true;

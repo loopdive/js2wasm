@@ -10787,61 +10787,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
-    // Handle Promise instance methods: .then(cb1, cb2?), .catch(cb), .finally(cb)
-    // Promise values are externref; delegate to host imports
-    // GUARD: Only match when receiver TS type is Promise (prevents routing
-    // compiled async function returns through host Promise path — v1 regression)
-    {
-      const method = propAccess.name.text;
-      if ((method === "then" || method === "catch" || method === "finally") && expr.arguments.length >= 1) {
-        const receiverTsType = ctx.checker.getTypeAtLocation(propAccess.expression);
-        const recvSym = receiverTsType.getSymbol()?.name;
-        const apparentSym = ctx.checker.getApparentType(receiverTsType).getSymbol()?.name;
-        const isPromiseReceiver = recvSym === "Promise" || apparentSym === "Promise";
-
-        if (isPromiseReceiver) {
-          // Determine import name: use Promise_then2 for .then(cb1, cb2)
-          const useThen2 = method === "then" && expr.arguments.length >= 2;
-          const importName = useThen2 ? "Promise_then2" : `Promise_${method}`;
-
-          // Ensure import exists (late import fallback)
-          const paramTypes: ValType[] = useThen2
-            ? [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }]
-            : [{ kind: "externref" }, { kind: "externref" }];
-          let funcIdx =
-            ctx.funcMap.get(importName) ?? ensureLateImport(ctx, importName, paramTypes, [{ kind: "externref" }]);
-          flushLateImportShifts(ctx, fctx);
-          funcIdx = ctx.funcMap.get(importName) ?? funcIdx;
-
-          if (funcIdx !== undefined) {
-            // Compile the Promise value (receiver)
-            compileExpression(ctx, fctx, propAccess.expression, {
-              kind: "externref",
-            });
-            // Compile the first callback argument, coercing to externref
-            const cbType = compileExpression(ctx, fctx, expr.arguments[0]!, {
-              kind: "externref",
-            });
-            if (cbType && cbType.kind !== "externref") {
-              coerceType(ctx, fctx, cbType, { kind: "externref" });
-            }
-            // For .then(cb1, cb2): compile second callback
-            if (useThen2) {
-              const cb2Type = compileExpression(ctx, fctx, expr.arguments[1]!, {
-                kind: "externref",
-              });
-              if (cb2Type && cb2Type.kind !== "externref") {
-                coerceType(ctx, fctx, cb2Type, { kind: "externref" });
-              }
-            }
-            // Re-lookup funcIdx after compiling args (late imports may shift)
-            const finalIdx = ctx.funcMap.get(importName) ?? funcIdx;
-            fctx.body.push({ op: "call", funcIdx: finalIdx });
-            return { kind: "externref" };
-          }
-        }
-      }
-    }
+    // NOTE: Promise instance methods (.then/.catch/.finally) are NOT handled
+    // as dedicated host imports. Adding Promise_then/Promise_catch imports
+    // (either pre-registered or via ensureLateImport) introduces new func
+    // types that shift struct type indices, corrupting the type section for
+    // non-Promise code in the same module. These calls fall through to the
+    // generic method handling below. (#855 regression fix)
 
     // Handle wrapper type method calls: new Number(x).valueOf(), etc.
     // Since wrapper constructors now return primitives, valueOf() is a no-op identity.
