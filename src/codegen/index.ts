@@ -9579,6 +9579,13 @@ function collectExternDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFil
             "URIError",
             "EvalError",
             "ReferenceError",
+            // Promise instance methods (.then/.catch/.finally) are handled by
+            // dedicated Promise-specific codegen that registers 2-param late imports.
+            // Registering Promise via collectExternFromDeclareVar causes the TypeScript
+            // interface declaration (then(onfulfilled?, onrejected?)) to be collected
+            // as a 3-param Wasm function, creating an arity mismatch with the 2-param
+            // late imports used by the Promise-specific handler. (#966)
+            "Promise",
           ]);
           if (!BUILTIN_SKIP.has(varName)) {
             const refType = ctx.checker.getTypeAtLocation(decl.type);
