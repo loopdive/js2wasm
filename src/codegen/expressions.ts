@@ -1593,8 +1593,10 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
   if (name === "globalThis") {
     let funcIdx = ctx.funcMap.get("__get_globalThis");
     if (funcIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
       const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
       addImport(ctx, "env", "__get_globalThis", { kind: "func", typeIdx });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
       funcIdx = ctx.funcMap.get("__get_globalThis")!;
     }
     fctx.body.push({ op: "call", funcIdx });

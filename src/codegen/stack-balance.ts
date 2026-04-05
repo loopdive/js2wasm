@@ -1624,13 +1624,14 @@ function fixCallArgTypesInBody(
         if (effectiveType && expectedType) {
           const coercion = callArgCoercionInstrs(effectiveType, expectedType, boxNumberIdx, unboxNumberIdx);
           if (coercion.length > 0) {
-            // After traversing sub-expressions, the backward walk may confuse
-            // sub-expression inputs with call arguments. Only apply the
-            // proven-safe ref→externref coercion (extern.convert_any) in
-            // that case; other coercions are restricted to positions before
-            // any consumer has been traversed.
-            const isSafeRefToExtern = coercion.length === 1 && (coercion[0] as any).op === "extern.convert_any";
-            if (!inSubExpr || isSafeRefToExtern) {
+            // When inSubExpr is true, the backward walk has traversed past
+            // an intermediate call — the producer is an argument to that
+            // intermediate call, NOT the target call. Applying coercion here
+            // would corrupt the intermediate call's arguments.
+            // Previously, ref→externref (extern.convert_any) was exempted as
+            // "safe", but this is wrong when the intermediate call expects a
+            // GC ref type, not externref (#963).
+            if (!inSubExpr) {
               insertions.push({ afterPos: insertPos, instrs: coercion });
             }
           }
