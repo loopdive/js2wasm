@@ -1737,15 +1737,21 @@
           const e = ease(t);
           grad.setAttribute("x1", startX1 + (endX1 - startX1) * e + "%");
           grad.setAttribute("x2", startX2 + (endX2 - startX2) * e + "%");
-          // Fade out in the last 20% of the animation
-          if (t > 0.8) {
-            glowPath.style.opacity = String(1 - (t - 0.8) / 0.2);
+          // Fade in first 10%, fade out last 20%
+          if (t < 0.1) {
+            glowPath.style.opacity = String((t / 0.1) * 0.5);
+          } else if (t > 0.8) {
+            glowPath.style.opacity = String(0.5 * (1 - (t - 0.8) / 0.2));
+          } else {
+            glowPath.style.opacity = "0.5";
           }
           if (t < 1) {
             raf = requestAnimationFrame(step);
           } else {
+            // Reset and loop
+            start = 0;
             glowPath.style.opacity = "0";
-            glowPath.style.display = "none";
+            raf = requestAnimationFrame(step);
           }
         };
 
