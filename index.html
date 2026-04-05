@@ -924,6 +924,7 @@
         column-gap: 10px;
         row-gap: 0;
         padding: 9px 24px;
+        position: relative;
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         transition: background 0.14s ease;
       }
@@ -987,6 +988,30 @@
       .feat-row:hover .feat-name {
         color: #fff;
       }
+      .feat-host {
+        font-family: var(--mono);
+        font-size: 8px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: inherit;
+        background: none;
+        padding: 0;
+        position: absolute;
+        left: 39px;
+        top: calc(50% + 10px);
+        transform: translateX(-50%);
+        line-height: 1.6;
+        white-space: nowrap;
+      }
+      .feat-badge.full + .feat-host {
+        color: #4ade80;
+      }
+      .feat-badge.partial + .feat-host {
+        color: #fbbf24;
+      }
+      .feat-badge.none + .feat-host {
+        color: #f87171;
+      }
       .feat-desc {
         grid-column: 2;
         font-size: 11px;
@@ -1017,6 +1042,8 @@
         font-size: 15px;
         color: rgba(255, 255, 255, 0.85);
         line-height: 1.45;
+        display: flex;
+        align-items: center;
       }
       .feat-row::after {
         content: "";
@@ -1467,6 +1494,7 @@ parseInt("42");
               </div>
               <div class="feat-row">
                 <span class="feat-badge full">✓</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">JSON</span>
                 <span class="feat-desc">Parse and stringify JSON data</span>
                 <details>
@@ -1503,6 +1531,7 @@ throw new RangeError("out of bounds");</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge partial">⚠</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">Arrays</span>
                 <span class="feat-desc">Array methods and iteration helpers</span>
                 <details>
@@ -1527,6 +1556,7 @@ const found = arr.find(x =&gt; x &gt; 5);</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge partial">⚠</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">Regular expressions</span>
                 <span class="feat-desc">Pattern matching and string search</span>
                 <details>
@@ -1822,6 +1852,7 @@ class Dog extends Animal { }</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge partial">⚠</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">Map / Set</span>
                 <span class="feat-desc">Key-value and unique-value collections</span>
                 <details>
@@ -1847,6 +1878,7 @@ s.has(2); // true</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge partial">⚠</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">Symbol</span>
                 <span class="feat-desc">Unique, immutable primitive identifiers</span>
                 <details>
@@ -1871,6 +1903,7 @@ obj[id] = 42;</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge partial">⚠</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">TypedArray / ArrayBuffer</span>
                 <span class="feat-desc">Binary data buffers and typed views</span>
                 <details>
@@ -1924,6 +1957,7 @@ const sum = big + 1n;</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge none">✗</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">Promise .then / .catch / .finally</span>
                 <span class="feat-desc">Promise chaining and error handling</span>
                 <details>
@@ -1939,6 +1973,7 @@ const sum = big + 1n;</pre
               <div class="feat-edition">ES2017</div>
               <div class="feat-row">
                 <span class="feat-badge full">✓</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">async / await</span>
                 <span class="feat-desc">Asynchronous functions with synchronous-style syntax</span>
                 <details>
@@ -1978,6 +2013,7 @@ Object.values({ x: 10 });
               </div>
               <div class="feat-row">
                 <span class="feat-badge none">✗</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">SharedArrayBuffer / Atomics</span>
                 <span class="feat-desc">Shared memory and atomic operations</span>
                 <details>
@@ -2011,6 +2047,7 @@ const { a, ...rest } = obj;</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge partial">⚠</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">Async iteration (for-await-of)</span>
                 <span class="feat-desc">Iterate over async data sources</span>
                 <details>
@@ -2071,6 +2108,7 @@ const { a, ...rest } = obj;</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge full">✓</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">globalThis</span>
                 <span class="feat-desc">Universal global object reference</span>
                 <details>
@@ -2085,6 +2123,7 @@ const { a, ...rest } = obj;</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge partial">⚠</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">BigInt</span>
                 <span class="feat-desc">Arbitrary precision integer arithmetic</span>
                 <details>
@@ -2107,6 +2146,7 @@ const sum = big + 1n;</pre
               </div>
               <div class="feat-row">
                 <span class="feat-badge none">✗</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">Dynamic import()</span>
                 <span class="feat-desc">Load modules at runtime on demand</span>
                 <details>
@@ -2120,6 +2160,7 @@ const sum = big + 1n;</pre
               <div class="feat-edition">ES2021</div>
               <div class="feat-row">
                 <span class="feat-badge none">✗</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">WeakRef / FinalizationRegistry</span>
                 <span class="feat-desc">Weak references and GC callbacks</span>
                 <details>
