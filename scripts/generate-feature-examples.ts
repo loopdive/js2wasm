@@ -25,6 +25,8 @@ interface FeatureDef {
   edition: string;
   badge: Badge;
   host?: boolean;
+  /** Feature is sloppy-mode only — hide when strict-only toggle is on */
+  sloppy?: boolean;
   description: string;
   js: string;
   explain?: string;
@@ -41,6 +43,120 @@ interface FeatureResult extends FeatureDef {
 // ── Feature definitions ──────────────────────────────────────────────────
 
 const FEATURES: FeatureDef[] = [
+  // ── ES3 / Core ──────────────────────────────────────────────────────────
+  {
+    name: "Primitive types (string, number, boolean, null, undefined)",
+    edition: "ES3 / Core",
+    badge: "full",
+    description: "All primitive value types and coercion",
+    js: `const s = "hello";
+const n = 42;
+const b = true;
+const x = null;`,
+  },
+  {
+    name: "Operators (arithmetic, comparison, logical, bitwise)",
+    edition: "ES3 / Core",
+    badge: "full",
+    description: "All standard operators including ternary",
+    js: `function calc(a: number, b: number): number {
+  const sum = a + b;
+  const eq = a === b ? 1 : 0;
+  const both = a > 0 && b > 0 ? 1 : 0;
+  return sum + eq + both;
+}`,
+  },
+  {
+    name: "typeof / instanceof",
+    edition: "ES3 / Core",
+    badge: "full",
+    description: "Runtime type checking operators",
+    js: `function classify(x: unknown): string {
+  if (typeof x === "number") return "num";
+  if (typeof x === "string") return "str";
+  return "other";
+}`,
+  },
+  {
+    name: "delete operator",
+    edition: "ES3 / Core",
+    badge: "full",
+    description: "Remove a property from an object",
+    js: `class Obj { x: number; y: number; constructor(x: number, y: number) { this.x = x; this.y = y; } }
+function dropY(o: Obj): boolean {
+  return delete (o as unknown as Record<string, unknown>).y;
+}`,
+  },
+  {
+    name: "Comma operator",
+    edition: "ES3 / Core",
+    badge: "full",
+    description: "Evaluate multiple expressions, return last",
+    js: `function withSideEffect(): number {
+  let x = 0;
+  const y = (x++, x * 2);
+  return y;
+}`,
+  },
+  {
+    name: "Labeled statements (break / continue)",
+    edition: "ES3 / Core",
+    badge: "full",
+    description: "Named loops for multi-level break and continue",
+    js: `function firstPair(n: number): number {
+  outer: for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i !== j) break outer;
+    }
+  }
+  return 0;
+}`,
+  },
+  {
+    name: "for-in",
+    edition: "ES3 / Core",
+    badge: "full",
+    description: "Iterate over object property names",
+    js: `function countKeys(obj: Record<string, unknown>): number {
+  let n = 0;
+  for (const key in obj) { n++; }
+  return n;
+}`,
+  },
+  {
+    name: "arguments object (full)",
+    edition: "ES3 / Core",
+    badge: "none",
+    sloppy: true,
+    description: "Legacy arguments — partial, rest params preferred",
+    js: `function legacy(): number {
+  return arguments.length;
+}
+// prefer rest params: (...args)`,
+    explain:
+      "The full arguments object is partially supported. Rest parameters (...args) are preferred and fully compiled.",
+    noCompile: true,
+  },
+  {
+    name: "eval()",
+    edition: "ES3 / Core",
+    badge: "none",
+    description: "Dynamic code evaluation at runtime",
+    js: `eval("1 + 2"); // not supported`,
+    explain: "Requires a JS engine at runtime. Not possible in AOT compilation.",
+    noCompile: true,
+  },
+  {
+    name: "with statement",
+    edition: "ES3 / Core",
+    badge: "none",
+    sloppy: true,
+    description: "Dynamic scope extension",
+    js: `with (obj) { x; } // not supported`,
+    explain: "Disallowed in strict mode. All modules run strict.",
+    noCompile: true,
+  },
+
   // ── ES5 ────────────────────────────────────────────────────────────────
   {
     name: "Variables (var, let, const)",
@@ -192,31 +308,14 @@ const found = "abc123def456".match(re);`,
     explain: "Basic get/set works. Object.defineProperty partially supported.",
   },
   {
-    name: "eval()",
-    edition: "ES5",
-    badge: "none",
-    description: "Dynamic code evaluation at runtime",
-    js: `eval("1 + 2"); // not supported`,
-    explain: "Requires a JS engine at runtime. Not possible in AOT compilation.",
-    noCompile: true,
-  },
-  {
-    name: "with statement",
-    edition: "ES5",
-    badge: "none",
-    description: "Dynamic scope extension",
-    js: `with (obj) { x; } // not supported`,
-    explain: "Disallowed in strict mode. All modules run strict.",
-    noCompile: true,
-  },
-  {
     name: "Object.defineProperty (full)",
     edition: "ES5",
     badge: "none",
     description: "Full property descriptor configuration",
-    js: `Object.defineProperty(obj, "x", {
+    js: `Object.defineProperty({}, "x", {
   enumerable: false,
-  writable: false
+  writable: false,
+  value: 42,
 });`,
     explain: "Property descriptor system not yet fully emitted in Wasm structs.",
     noCompile: true,
@@ -548,6 +647,254 @@ const first = "hello".at(0);`,
     noCompile: true,
   },
 
+  // ── ES2016 ──────────────────────────────────────────────────────────────
+  {
+    name: "Array.prototype.includes",
+    edition: "ES2016",
+    badge: "full",
+    description: "Check if array contains a value",
+    js: `function has(arr: number[], val: number): boolean {
+  return arr.includes(val);
+}`,
+  },
+  {
+    name: "Exponentiation operator (**)",
+    edition: "ES2016",
+    badge: "full",
+    description: "Power operator as syntactic sugar for Math.pow",
+    js: `function power(base: number, exp: number): number {
+  return base ** exp;
+}`,
+  },
+
+  // ── ES2019 ──────────────────────────────────────────────────────────────
+  {
+    name: "Optional catch binding",
+    edition: "ES2019",
+    badge: "full",
+    description: "Omit the catch parameter when not needed",
+    js: `function isJSON(s: string): boolean {
+  try {
+    JSON.parse(s);
+    return true;
+  } catch {
+    return false;
+  }
+}`,
+  },
+  {
+    name: "Array.prototype.flat / flatMap",
+    edition: "ES2019",
+    badge: "partial",
+    host: true,
+    description: "Flatten nested arrays and map-then-flatten",
+    js: `const nested = [[1, 2], [3, 4]];
+const flat = nested.flat();
+const doubled = nested.flatMap((a: number[]) => a.map((x: number) => x * 2));`,
+    explain: "Basic flat/flatMap work. Deep nesting levels partially supported.",
+  },
+  {
+    name: "Object.fromEntries",
+    edition: "ES2019",
+    badge: "partial",
+    host: true,
+    description: "Create object from key-value pairs",
+    js: `const entries: [string, number][] = [["a", 1], ["b", 2]];
+const obj = Object.fromEntries(entries);`,
+    explain: "Works for basic key-value pairs.",
+  },
+
+  // ── ES2023 ──────────────────────────────────────────────────────────────
+  {
+    name: "Array.findLast / findLastIndex",
+    edition: "ES2023",
+    badge: "partial",
+    host: true,
+    description: "Find elements searching from the end",
+    js: `const nums = [1, 2, 3, 4];
+const last = nums.findLast((x: number) => x % 2 === 0);
+const lastIdx = nums.findLastIndex((x: number) => x % 2 === 0);`,
+    explain: "Works for standard arrays.",
+  },
+  {
+    name: "Change array by copy (toSorted, toReversed, toSpliced)",
+    edition: "ES2023",
+    badge: "none",
+    host: true,
+    description: "Immutable array operations returning new arrays",
+    js: `const arr = [3, 1, 2];
+const sorted = arr.toSorted();
+const reversed = arr.toReversed();`,
+    explain: "Not yet implemented. Use spread + sort: [...arr].sort()",
+    noCompile: true,
+  },
+  {
+    name: "Hashbang (#!) comments",
+    edition: "ES2023",
+    badge: "full",
+    description: "Unix shebang line support in JS files",
+    js: `#!/usr/bin/env node
+const x = 1;`,
+  },
+
+  // ── ES2024 ──────────────────────────────────────────────────────────────
+  {
+    name: "Promise.withResolvers",
+    edition: "ES2024",
+    badge: "none",
+    host: true,
+    description: "Create a Promise with exposed resolve/reject functions",
+    js: `const { promise, resolve, reject } = Promise.withResolvers(); // not yet`,
+    explain: "Promise infrastructure not yet fully implemented.",
+    noCompile: true,
+  },
+  {
+    name: "Resizable ArrayBuffer",
+    edition: "ES2024",
+    badge: "none",
+    host: true,
+    description: "ArrayBuffer that can grow or shrink after creation",
+    js: `const buf = new ArrayBuffer(8, { maxByteLength: 1024 }); // not yet`,
+    explain: "Requires Wasm memory growth integration.",
+    noCompile: true,
+  },
+  {
+    name: "RegExp v flag",
+    edition: "ES2024",
+    badge: "none",
+    description: "Enhanced Unicode set notation in regular expressions",
+    js: `const re = /[\p{Letter}&&\p{ASCII}]/v; // not yet`,
+    explain: "Requires v-flag Unicode set support in the regex engine.",
+    noCompile: true,
+  },
+
+  // ── ES2025 ──────────────────────────────────────────────────────────────
+  {
+    name: "Set methods (union, intersection, difference)",
+    edition: "ES2025",
+    badge: "none",
+    host: true,
+    description: "Set algebra operations",
+    js: `const a = new Set([1, 2, 3]);
+const b = new Set([2, 3, 4]);
+const union = a.union(b); // not yet`,
+    explain: "Set method extensions not yet implemented.",
+    noCompile: true,
+  },
+  {
+    name: "Iterator helpers (map, filter, take)",
+    edition: "ES2025",
+    badge: "none",
+    host: true,
+    description: "Lazy iterator combinators on Iterator.prototype",
+    js: `[1, 2, 3].values().map((x: number) => x * 2).take(2); // not yet`,
+    explain: "Iterator protocol helpers not yet implemented.",
+    noCompile: true,
+  },
+  {
+    name: "RegExp duplicate named groups",
+    edition: "ES2025",
+    badge: "none",
+    description: "Same named capture groups across alternatives",
+    js: `const re = /(?<y>\d{4})-(?<m>\d{2})|(?<m>\d{2})\/(?<y>\d{4})/v; // not yet`,
+    explain: "Requires regex engine support for duplicate group names.",
+    noCompile: true,
+  },
+
+  // ── Legacy / Deprecated ─────────────────────────────────────────────────
+  {
+    name: "var hoisting",
+    edition: "Legacy / Deprecated",
+    badge: "partial",
+    sloppy: true,
+    description: "Function-scoped var declarations hoisted to function top",
+    js: `function hoisted(): number {
+  console.log(x); // undefined (hoisted)
+  var x = 5;
+  return x;
+}`,
+    explain: "var declarations are hoisted. Full TDZ semantics for let/const.",
+  },
+  {
+    name: "arguments.callee",
+    edition: "Legacy / Deprecated",
+    badge: "none",
+    sloppy: true,
+    description: "Reference to the currently executing function",
+    js: `(function factorial(n) {
+  return n <= 1 ? 1 : n * arguments.callee(n - 1);
+})(5); // not supported`,
+    explain: "Forbidden in strict mode. Use named function expressions instead.",
+    noCompile: true,
+  },
+  {
+    name: "__proto__ accessor",
+    edition: "Legacy / Deprecated",
+    badge: "none",
+    description: "Direct prototype chain mutation via __proto__",
+    js: `const obj = {};
+obj.__proto__ = protoObj; // not supported`,
+    explain: "Prototype mutation not emitted in WasmGC struct hierarchy.",
+    noCompile: true,
+  },
+  {
+    name: "String.prototype.substr",
+    edition: "Legacy / Deprecated",
+    badge: "none",
+    description: "Legacy string slicing (use slice instead)",
+    js: `"hello".substr(1, 3); // not yet`,
+    explain: "Deprecated. Use String.prototype.slice instead.",
+    noCompile: true,
+  },
+  {
+    name: "Octal literals (0777)",
+    edition: "Legacy / Deprecated",
+    badge: "none",
+    sloppy: true,
+    description: "Legacy octal integer syntax (use 0o prefix instead)",
+    js: `const n = 0777; // not supported in strict mode`,
+    explain: "Forbidden in strict mode. Use 0o prefix: 0o777.",
+    noCompile: true,
+  },
+  {
+    name: "escape() / unescape()",
+    edition: "Legacy / Deprecated",
+    badge: "none",
+    description: "Legacy URL-encoding functions (use encodeURIComponent instead)",
+    js: `escape("hello world"); // not supported`,
+    explain: "Deprecated globals. Use encodeURIComponent / decodeURIComponent.",
+    noCompile: true,
+  },
+  {
+    name: "Function.prototype.caller",
+    edition: "Legacy / Deprecated",
+    badge: "none",
+    sloppy: true,
+    description: "Reference to the function that called the current function",
+    js: `function f() { return f.caller; } // not supported`,
+    explain: "Forbidden in strict mode. Call stacks not inspectable in Wasm.",
+    noCompile: true,
+  },
+  {
+    name: "HTML string methods (.bold(), .anchor())",
+    edition: "Legacy / Deprecated",
+    badge: "none",
+    description: "Legacy String methods wrapping HTML tags",
+    js: `"hello".bold(); // not supported`,
+    explain: "Deprecated HTML wrapper methods. Use DOM APIs directly.",
+    noCompile: true,
+  },
+  {
+    name: "RegExp.$1 static properties",
+    edition: "Legacy / Deprecated",
+    badge: "none",
+    description: "Static capture group properties on RegExp constructor",
+    js: `/(\d+)/.test("abc123");
+const match = RegExp.$1; // not supported`,
+    explain: "Legacy static properties on RegExp not implemented.",
+    noCompile: true,
+  },
+
   // ── Proposals ───────────────────────────────────────────────────────────
   {
     name: "Temporal",
@@ -555,6 +902,31 @@ const first = "hello".at(0);`,
     badge: "none",
     description: "Modern date and time API",
     js: `const now = Temporal.Now.plainDateTimeISO(); // not supported`,
+    noCompile: true,
+  },
+  {
+    name: "Decorators",
+    edition: "Proposals",
+    badge: "none",
+    description: "Syntax for class and method metadata annotation",
+    js: `@sealed
+class Foo {
+  @log
+  method() {}
+} // not yet`,
+    explain: "Stage 3 proposal. Decorator transform not yet in scope.",
+    noCompile: true,
+  },
+  {
+    name: "Pattern matching",
+    edition: "Proposals",
+    badge: "none",
+    description: "Structural pattern matching with match expression",
+    js: `const result = match (value) {
+  when ({ type: "a" }): "A";
+  when ({ type: "b" }): "B";
+}; // not yet`,
+    explain: "Stage 1 proposal. Structural pattern matching not yet in scope.",
     noCompile: true,
   },
 ];

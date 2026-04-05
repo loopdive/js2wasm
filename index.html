@@ -516,6 +516,7 @@
 
       .edition-chart {
         margin-top: 56px;
+        max-width: 640px;
       }
 
       .benchmark-bars {
@@ -625,6 +626,66 @@
           grid-template-columns: 70px 1fr;
           gap: 8px;
         }
+      }
+
+      .how-cols {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        margin-top: 48px;
+      }
+      @media (max-width: 980px) {
+        .how-cols {
+          grid-template-columns: 1fr;
+        }
+      }
+      .how-step {
+        position: relative;
+      }
+      .how-step-title {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        color: var(--fg-soft);
+        margin-bottom: 12px;
+      }
+      .how-sub {
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--fg-faint);
+        margin-bottom: 12px;
+        max-width: 720px;
+      }
+      .how-code {
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--fg-soft);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 16px 18px;
+        border-radius: 8px;
+        overflow-x: auto;
+        white-space: pre;
+        margin: 0;
+        position: relative;
+      }
+      .how-code.wat {
+        background: rgba(100, 70, 200, 0.06);
+        max-width: 520px;
+      }
+      .how-code.shell {
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--fg-faint);
+      }
+      .how-code-label {
+        display: block;
+        font-family: var(--mono);
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        color: var(--fg-faint);
+        text-align: right;
+        margin-top: 6px;
+        opacity: 0.5;
       }
 
       .code-section {
@@ -864,8 +925,31 @@
       }
 
       /* ── Feature support tables (#972) ───────────────────────────── */
+      .feat-filter {
+        margin-top: 48px;
+        display: flex;
+        gap: 16px;
+      }
+      .feat-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--fg-faint);
+        cursor: pointer;
+      }
+      .feat-toggle input {
+        accent-color: var(--fg-soft);
+      }
+      .feat-tables.strict-only .feat-row[data-sloppy] {
+        display: none;
+      }
+      .feat-tables.strict-only .feat-section[data-sloppy] {
+        display: none;
+      }
       .feat-tables {
-        margin-top: 52px;
+        margin-top: 16px;
       }
 
       .feat-panel {
@@ -1045,7 +1129,7 @@
         display: flex;
         align-items: center;
       }
-      .feat-row::after {
+      .feat-row:has(details)::after {
         content: "";
         width: 10px;
         height: 10px;
@@ -1147,7 +1231,7 @@
         <section class="hero">
           <h1
             id="hero-title"
-            data-texts='["JS2: Anext generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
+            data-texts='["JS2: A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
             "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
           >
             <span class="hero-title-shell">
@@ -1173,11 +1257,8 @@
 
       <section class="section-pad" id="goals">
         <div class="intro">
-          <h2>JS2: Next generation JavaScript compiler.</h2>
-          <p>
-            Our goal is to make familiar JavaScript and TypeScript code more secure and lightweight so it can run in
-            places where a JS engine is too heavy, insecure, or too expensive to embed per module.
-          </p>
+          <h2>Next generation JavaScript compiler.</h2>
+          <p>The mission of the JS2 compiler project is to make JavaScript more secure, modular, and lightweight.</p>
         </div>
         <div class="features-grid">
           <article class="feature-card">
@@ -1208,6 +1289,13 @@
       <hr class="divider" />
 
       <section class="section-pad">
+        <div class="intro">
+          <h2>Goal: 100% JavaScript compatibility.</h2>
+          <p>
+            Which JS language features compile to WebAssembly today, and which are still on the roadmap. Status is
+            derived from ECMAScript Test262 pass rates and known compiler limitations.
+          </p>
+        </div>
         <div class="stats-grid">
           <div class="stat-item">
             <div class="stat-number" id="compat-pass-rate">40.8%</div>
@@ -1281,17 +1369,12 @@
           <h3 class="diagram-title">ECMAScript Edition Coverage</h3>
           <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
         </div>
-      </section>
 
-      <hr class="divider" />
-
-      <section class="section-pad" id="feature-support">
-        <div class="intro">
-          <h2>JavaScript feature support.</h2>
-          <p>
-            Which JS language features compile to WebAssembly today, and which are still on the roadmap. Status is
-            derived from ECMAScript Test262 pass rates and known compiler limitations.
-          </p>
+        <div class="feat-filter">
+          <label class="feat-toggle">
+            <input type="checkbox" id="strict-only-toggle" checked />
+            <span>Strict mode</span>
+          </label>
         </div>
 
         <div class="feat-tables" id="feat-tables-root">
@@ -1300,6 +1383,132 @@
               <div class="feat-edition">Loading…</div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad" id="how-it-works">
+        <div class="intro">
+          <h2>From JavaScript to WebAssembly in one step.</h2>
+          <p>
+            Write regular JavaScript. The compiler produces a .wasm binary that runs anywhere WebAssembly runs &mdash;
+            browser, server, edge. No interpreter embedded, no garbage collector shipped.
+          </p>
+        </div>
+
+        <div class="how-cols">
+          <div class="how-step">
+            <h3 class="how-step-title">1. Write JavaScript</h3>
+            <pre class="how-code js">
+function fibonacci(n) {
+  if (n &lt;= 1) return n;
+  return fibonacci(n - 1)
+       + fibonacci(n - 2);
+}
+
+export function run() {
+  return fibonacci(10);
+}</pre
+            >
+            <span class="how-code-label">app.js</span>
+          </div>
+
+          <div class="how-step">
+            <h3 class="how-step-title">2. Compile to Wasm</h3>
+            <pre class="how-code shell">
+$ npx js2wasm app.js -o app.wasm
+
+# inspect the output
+$ npx js2wasm app.js --wat</pre
+            >
+            <span class="how-code-label">terminal</span>
+          </div>
+
+          <div class="how-step">
+            <h3 class="how-step-title">3. Run it</h3>
+            <pre class="how-code js">
+import { readFileSync } from "fs";
+
+const wasm = readFileSync("app.wasm");
+const { instance } = await
+  WebAssembly.instantiate(wasm);
+
+console.log(instance.exports.run());
+// &rarr; 55</pre
+            >
+            <span class="how-code-label">run.mjs</span>
+          </div>
+        </div>
+
+        <div class="how-step" style="margin-top: 40px">
+          <h3 class="how-step-title">Compiled output</h3>
+          <p class="how-sub">
+            The compiler lowers JavaScript into typed Wasm instructions. No runtime interpreter &mdash; every function
+            becomes native Wasm ops.
+          </p>
+          <pre class="how-code wat">
+(module
+  (func $fibonacci (param f64) (result f64)
+    local.get 0
+    f64.const 1
+    f64.le
+    (if (result f64)
+      (then local.get 0)
+      (else
+        local.get 0
+        f64.const 1
+        f64.sub
+        call $fibonacci       ;; fib(n-1)
+        local.get 0
+        f64.const 2
+        f64.sub
+        call $fibonacci       ;; fib(n-2)
+        f64.add)))
+
+  (func $run (export "run") (result f64)
+    f64.const 10
+    call $fibonacci))</pre
+          >
+          <span class="how-code-label">app.wat</span>
+        </div>
+
+        <div class="how-step" style="margin-top: 40px">
+          <h3 class="how-step-title">How DOM and JS APIs work</h3>
+          <p class="how-sub">
+            The Wasm module doesn't embed a JavaScript engine. Browser APIs are injected as
+            <strong>host imports</strong>
+            &mdash; functions the host provides at instantiation. The compiler emits
+            <code>call</code>
+            instructions that cross the Wasm/JS boundary via
+            <code>externref</code>
+            handles.
+          </p>
+          <pre class="how-code js">
+// The host provides these imports
+const imports = {
+  env: {
+    __str_concat: (a, b) =&gt; a + b,
+    __extern_set: (obj, key, val) =&gt;
+      obj[key] = val,
+    __extern_get: (obj, key) =&gt;
+      obj[key],
+    __make_callback: (id) =&gt;
+      (...args) =&gt;
+        wasm.exports[id](...args),
+  }
+};
+
+const { instance } = await
+  WebAssembly.instantiate(wasm, imports);</pre
+          >
+          <span class="how-code-label">host imports</span>
+          <p class="how-sub" style="margin-top: 16px">
+            Pure computations (math, control flow, structs) compile to standalone Wasm &mdash; no imports needed. Only
+            features that touch the outside world (DOM, I/O, regex, JSON) use host imports. The
+            <span style="color: #fbbf24">host</span>
+            labels in the feature table show which features need them.
+          </p>
         </div>
       </section>
 
@@ -1472,6 +1681,7 @@
               for (const feat of byEdition.get(edition)) {
                 const row = document.createElement("div");
                 row.className = "feat-row";
+                if (feat.sloppy) row.setAttribute("data-sloppy", "");
 
                 const badge = document.createElement("span");
                 badge.className = "feat-badge " + feat.badge;
@@ -1531,6 +1741,10 @@
 
             root.innerHTML = "";
             root.appendChild(panel);
+            // Apply syntax highlighting to newly rendered elements
+            if (typeof window._highlightFeatureCode === "function") {
+              window._highlightFeatureCode(panel);
+            }
           })
           .catch(function () {
             root.innerHTML =
@@ -1794,16 +2008,32 @@
           pre.innerHTML = html;
         }
 
-        document.querySelectorAll(".feat-row pre:not(.wat)").forEach(highlightJS);
-        document.querySelectorAll(".feat-row pre.wat").forEach(highlightWAT);
+        window._highlightFeatureCode = function (container) {
+          (container || document).querySelectorAll(".feat-row pre:not(.wat)").forEach(highlightJS);
+          (container || document).querySelectorAll(".feat-row pre.wat").forEach(highlightWAT);
+        };
+        window._highlightFeatureCode();
       })();
 
-      // Toggle details on row click
-      document.querySelectorAll(".feat-row").forEach((row) => {
-        row.addEventListener("click", () => {
+      // Strict mode toggle for feature table
+      (function () {
+        const toggle = document.getElementById("strict-only-toggle");
+        const tables = document.querySelector(".feat-tables");
+        if (toggle && tables) {
+          tables.classList.add("strict-only");
+          toggle.addEventListener("change", () => {
+            tables.classList.toggle("strict-only", toggle.checked);
+          });
+        }
+      })();
+
+      // Toggle details on row click — use event delegation so dynamic rows work
+      document.addEventListener("click", (e) => {
+        const row = e.target.closest(".feat-row");
+        if (row) {
           const d = row.querySelector("details");
           if (d) d.toggleAttribute("open");
-        });
+        }
       });
 
       (async function hydrateCompatibilityStat() {
