@@ -631,7 +631,7 @@ class T262EditionBars extends HTMLElement {
       </style>
       <div class="charts">
         ${svg}
-        <!-- ${svgPct} -->
+        ${svgPct}
       </div>
     `;
   }
