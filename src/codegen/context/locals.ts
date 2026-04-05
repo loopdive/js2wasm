@@ -73,16 +73,19 @@ export function deduplicateLocals(fctx: FunctionContext): void {
   const n = fctx.locals.length;
   if (n === 0) return;
 
-  // First pass: find which relative indices are duplicates
+  // First pass: find which relative indices are duplicates.
+  // Only merge locals that share both the same name AND the same type —
+  // same-name locals with different types are not interchangeable (#962).
   const nameToFirstRel = new Map<string, number>();
   const isDuplicate = new Uint8Array(n); // 0 = keep, 1 = duplicate
 
   for (let i = 0; i < n; i++) {
-    const name = fctx.locals[i]!.name;
-    if (nameToFirstRel.has(name)) {
+    const local = fctx.locals[i]!;
+    const key = local.name + "\0" + valTypeKey(local.type);
+    if (nameToFirstRel.has(key)) {
       isDuplicate[i] = 1;
     } else {
-      nameToFirstRel.set(name, i);
+      nameToFirstRel.set(key, i);
     }
   }
 
@@ -106,7 +109,8 @@ export function deduplicateLocals(fctx: FunctionContext): void {
     const absOld = paramCount + i;
     let absNew: number;
     if (isDuplicate[i]) {
-      const firstRel = nameToFirstRel.get(fctx.locals[i]!.name)!;
+      const local = fctx.locals[i]!;
+      const firstRel = nameToFirstRel.get(local.name + "\0" + valTypeKey(local.type))!;
       absNew = relToNewAbs[firstRel]; // canonical slot's new absolute index
     } else {
       absNew = relToNewAbs[i];
