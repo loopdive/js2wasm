@@ -2764,7 +2764,7 @@ function compileStringDestructuring(
   if (charAtIdx === undefined) {
     fctx.body.length = bodyLenBefore;
     ensureBindingLocals(ctx, fctx, pattern);
-    reportError(ctx, stmt, "Cannot destructure string: __str_charAt helper not available");
+    reportError(ctx, pattern, "Cannot destructure string: __str_charAt helper not available");
     return;
   }
 

@@ -170,11 +170,11 @@ function isAsyncCallExpression(ctx: CodegenContext, expr: ts.CallExpression): bo
   const sig = ctx.checker.getResolvedSignature(expr);
   if (sig) {
     const decl = sig.getDeclaration();
-    if (decl && decl.modifiers) {
+    if (decl && (decl as any).modifiers) {
       // Exclude async generators — they return AsyncGenerator objects, not Promises.
       // Wrapping in Promise.resolve() would destroy the .next() method.
       if (ts.isFunctionLike(decl) && (decl as ts.FunctionLikeDeclaration).asteriskToken) return false;
-      for (const mod of decl.modifiers) {
+      for (const mod of (decl as any).modifiers) {
         if (mod.kind === ts.SyntaxKind.AsyncKeyword) return true;
       }
     }
@@ -2286,7 +2286,7 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
         (isCallableRHS || localIsClosureRef) &&
         resultType.kind === "ref" &&
         localIsClosureRef &&
-        localType?.kind !== "externref"
+        (localType as any)?.kind !== "externref"
       ) {
         if (localIdx < fctx.params.length) {
           fctx.params[localIdx]!.type = resultType;

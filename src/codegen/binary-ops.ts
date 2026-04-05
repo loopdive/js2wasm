@@ -863,7 +863,11 @@ export function compileBinaryExpression(
         if (!ts.isIdentifier(e)) return false;
         const idx = fctx.localMap.get(e.text);
         if (idx === undefined) return false;
-        const type = idx < fctx.params.length ? fctx.params[idx] : fctx.locals[idx - fctx.params.length]?.type;
+        const entry = idx < fctx.params.length ? fctx.params[idx] : fctx.locals[idx - fctx.params.length];
+        const type =
+          entry && typeof entry === "object" && "type" in entry
+            ? (entry as { type: ValType }).type
+            : (entry as ValType | undefined);
         return type?.kind === "i32";
       };
       return isI32Local(expr.left) || isI32Local(expr.right);
