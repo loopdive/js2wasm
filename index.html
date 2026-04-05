@@ -81,12 +81,32 @@
         vector-effect: non-scaling-stroke;
       }
 
+      @keyframes glow-fade {
+        0% {
+          opacity: 0;
+        }
+        10% {
+          opacity: 0.5;
+        }
+        80% {
+          opacity: 0.5;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
       .puzzle-bg #puzzle-bg-glow {
         stroke: url(#puzzle-glow-gradient);
         stroke-width: 2.4;
         stroke-linecap: round;
         stroke-linejoin: round;
-        opacity: 0.95;
+        animation: glow-fade 6.7s ease infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .puzzle-bg #puzzle-bg-glow {
+          animation: none;
+          opacity: 0.3;
+        }
       }
 
       .site-nav,
@@ -943,6 +963,8 @@
           <stop offset="50%" stop-color="#f3eeff" stop-opacity="1"></stop>
           <stop offset="65%" stop-color="#beb0ff" stop-opacity="0"></stop>
           <stop offset="100%" stop-color="#beb0ff" stop-opacity="0"></stop>
+          <animate attributeName="y1" values="-50%;100%" dur="6.7s" repeatCount="indefinite" />
+          <animate attributeName="y2" values="-10%;150%" dur="6.7s" repeatCount="indefinite" />
         </linearGradient>
         <filter id="puzzle-glow-filter" x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="0.8" result="blur"></feGaussianBlur>
@@ -1712,51 +1734,7 @@
         });
       })();
 
-      (function animateGlowWave() {
-        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-        const grad = document.getElementById("puzzle-glow-gradient");
-        const glowPath = document.getElementById("puzzle-bg-glow");
-        if (!grad || !glowPath) return;
-
-        // No blur filter — removed for cleaner look
-
-        const startY1 = -50,
-          endY1 = 100;
-        const startY2 = -10,
-          endY2 = 150;
-        const duration = 6667;
-        let start = 0;
-        let raf = 0;
-
-        const ease = (t) => t * t * (3 - 2 * t); // smoothstep — gentler in the middle
-
-        const step = (now) => {
-          if (!start) start = now;
-          const elapsed = now - start;
-          const t = Math.min(elapsed / duration, 1);
-          const e = ease(t);
-          grad.setAttribute("y1", startY1 + (endY1 - startY1) * e + "%");
-          grad.setAttribute("y2", startY2 + (endY2 - startY2) * e + "%");
-          // Fade in first 10%, fade out last 20%
-          if (t < 0.1) {
-            glowPath.style.opacity = String((t / 0.1) * 0.5);
-          } else if (t > 0.8) {
-            glowPath.style.opacity = String(0.5 * (1 - (t - 0.8) / 0.2));
-          } else {
-            glowPath.style.opacity = "0.5";
-          }
-          if (t < 1) {
-            raf = requestAnimationFrame(step);
-          } else {
-            // Reset and loop
-            start = 0;
-            glowPath.style.opacity = "0";
-            raf = requestAnimationFrame(step);
-          }
-        };
-
-        raf = requestAnimationFrame(step);
-      })();
+      // Glow wave animation is now pure CSS/SMIL — no JS needed
 
       (async function hydrateCompatibilityStat() {
         const rateEl = document.getElementById("compat-pass-rate");
