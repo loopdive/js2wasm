@@ -21,12 +21,12 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      binaryen: "/workspace/playground/stubs/binaryen.js",
-      path: "/workspace/playground/stubs/path-shim.js",
-      "node:path": "/workspace/playground/stubs/path-shim.js",
-      "node:fs": "/workspace/playground/stubs/node-fs-stub.js",
-      "node:child_process": "/workspace/playground/stubs/node-stub.js",
-      "node:os": "/workspace/playground/stubs/node-stub.js",
+      binaryen: resolve(import.meta.dirname, "stubs/binaryen.js"),
+      path: resolve(import.meta.dirname, "stubs/path-shim.js"),
+      "node:path": resolve(import.meta.dirname, "stubs/path-shim.js"),
+      "node:fs": resolve(import.meta.dirname, "stubs/node-fs-stub.js"),
+      "node:child_process": resolve(import.meta.dirname, "stubs/node-stub.js"),
+      "node:os": resolve(import.meta.dirname, "stubs/node-stub.js"),
     },
   },
   server: {
