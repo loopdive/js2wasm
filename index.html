@@ -81,6 +81,20 @@
         vector-effect: non-scaling-stroke;
       }
 
+      @keyframes glow-fade-soft {
+        0% {
+          opacity: 0;
+        }
+        10% {
+          opacity: 0.5;
+        }
+        80% {
+          opacity: 0.5;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
       @keyframes glow-fade {
         0% {
           opacity: 0;
@@ -100,12 +114,12 @@
         stroke-width: 4;
         stroke-linecap: round;
         stroke-linejoin: round;
-        animation: glow-fade 13.4s ease infinite;
-        filter: blur(4px);
+        filter: blur(8px);
+        animation: glow-fade-soft 13.4s ease infinite;
       }
       .puzzle-bg #puzzle-bg-glow-sharp {
         stroke: url(#puzzle-glow-gradient);
-        stroke-width: 1.5;
+        stroke-width: 2.5;
         stroke-linecap: round;
         stroke-linejoin: round;
         animation: glow-fade 13.4s ease infinite;
