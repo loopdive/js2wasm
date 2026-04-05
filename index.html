@@ -489,6 +489,7 @@
         gap: 48px;
         margin-top: 56px;
         align-items: start;
+        grid-template-rows: auto auto;
       }
 
       .diagram-panel {
@@ -515,8 +516,7 @@
       }
 
       .edition-chart {
-        margin-top: 56px;
-        max-width: 640px;
+        grid-column: span 2;
       }
 
       .benchmark-bars {
@@ -610,6 +610,9 @@
       @media (max-width: 1120px) {
         .conformance-diagrams {
           grid-template-columns: 1fr;
+        }
+        .edition-chart {
+          grid-column: span 1;
         }
       }
 
@@ -1363,11 +1366,10 @@
               </p>
             </div>
           </div>
-        </div>
-
-        <div class="edition-chart">
-          <h3 class="diagram-title">ECMAScript Edition Coverage</h3>
-          <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
+          <div class="diagram-panel edition-chart">
+            <h3 class="diagram-title">ECMAScript Edition Coverage (absolute)</h3>
+            <t262-edition-bars src="./benchmarks/results/test262-editions.json"></t262-edition-bars>
+          </div>
         </div>
 
         <div class="feat-filter">
