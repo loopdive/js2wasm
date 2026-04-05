@@ -63,7 +63,7 @@ export function compileStringLiteral(
   }
 
   // Truly unreachable — all paths above should succeed
-  reportError(ctx, node ?? expr, `String literal not registered: "${value}"`);
+  reportError(ctx, node!, `String literal not registered: "${value}"`);
   return null;
 }
 
