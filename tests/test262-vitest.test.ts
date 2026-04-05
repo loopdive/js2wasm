@@ -426,8 +426,9 @@ afterAll(() => {
 
     let gitHash = "unknown";
     try {
-      const { execSync } = require("child_process");
       gitHash = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+      const dirty = execSync("git status --porcelain -- src/", { encoding: "utf-8" }).trim();
+      if (dirty) gitHash += "+dirty";
     } catch {}
 
     let index: any[] = [];
