@@ -74,11 +74,14 @@
 
       .puzzle-bg path {
         fill: none;
-        stroke: rgba(255, 255, 255, 0.1);
+        stroke: rgba(255, 255, 255, 0.05);
         stroke-width: 2;
         stroke-linecap: round;
         stroke-linejoin: round;
         vector-effect: non-scaling-stroke;
+      }
+      .puzzle-bg #puzzle-bg-path {
+        filter: blur(1px);
       }
 
       @keyframes glow-fade-soft {
@@ -103,7 +106,7 @@
           opacity: 1;
         }
         80% {
-          opacity: 1;
+          opacity:;
         }
         100% {
           opacity: 0;
@@ -115,15 +118,15 @@
         stroke-linecap: round;
         stroke-linejoin: round;
         filter: blur(8px);
-        animation: glow-fade-soft 13.4s ease infinite;
+        animation: glow-fade-soft 15s ease infinite;
       }
       .puzzle-bg #puzzle-bg-glow-sharp {
         stroke: url(#puzzle-glow-gradient);
         stroke-width: 2.5;
         stroke-linecap: round;
         stroke-linejoin: round;
-        animation: glow-fade 13.4s ease infinite;
-        filter: blur(1px);
+        animation: glow-fade 15s ease infinite;
+        filter: blur(0.5px);
       }
       @media (prefers-reduced-motion: reduce) {
         .puzzle-bg #puzzle-bg-glow,
@@ -988,8 +991,8 @@
           <stop offset="55%" stop-color="#ffffff" stop-opacity="1"></stop>
           <stop offset="70%" stop-color="#d4c8ff" stop-opacity="0"></stop>
           <stop offset="100%" stop-color="#ffffff" stop-opacity="0"></stop>
-          <animate attributeName="y1" values="-50%;100%" dur="13.4s" repeatCount="indefinite" />
-          <animate attributeName="y2" values="-10%;150%" dur="13.4s" repeatCount="indefinite" />
+          <animate attributeName="y1" values="-50%;100%" dur="15s" repeatCount="indefinite" />
+          <animate attributeName="y2" values="-10%;150%" dur="15s" repeatCount="indefinite" />
         </linearGradient>
         <filter id="puzzle-glow-filter" x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="0.8" result="blur"></feGaussianBlur>
