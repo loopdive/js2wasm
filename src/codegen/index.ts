@@ -12467,35 +12467,12 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
         const castTypeIdx = (prev as any).typeIdx;
         const castDef = ctx.mod.types[castTypeIdx];
         if (castDef && castDef.kind === "func") isFuncref = true;
-      } else if (prev.op === "ref.null") {
-        // ref.null with typeIdx: check if the type is in the funcref hierarchy
-        // (extern.convert_any expects anyref, not funcref) (#822)
-        const nullTypeIdx = (prev as any).typeIdx;
-        if (nullTypeIdx === undefined) {
-          // ref.null with undefined typeIdx — invalid, replace with ref.null.extern
-          isFuncref = true; // triggers replacement below
-        } else {
-          const nullDef = ctx.mod.types[nullTypeIdx];
-          if (nullDef && nullDef.kind === "func") isFuncref = true;
-        }
       }
 
       if (isAlreadyExternref || isFuncref) {
-        if (isFuncref && prev.op === "ref.null") {
-          // ref.null $functype + extern.convert_any → ref.null.extern (#822)
-          // Replace both instructions with a single ref.null.extern
-          instrs.splice(j - 1, 2, { op: "ref.null.extern" } as Instr);
-          j--; // re-check this position
-        } else if (isFuncref && prev.op === "ref.func") {
-          // ref.func + extern.convert_any → drop ref.func, push ref.null.extern
-          // (lossy but valid: can't convert funcref to externref)
-          instrs.splice(j - 1, 2, { op: "ref.null.extern" } as Instr);
-          j--;
-        } else {
-          // For externref: remove redundant extern.convert_any (already externref)
-          // For funcref: remove invalid extern.convert_any (funcref is not subtype of anyref)
-          instrs.splice(j, 1);
-        }
+        // For externref: remove redundant extern.convert_any (already externref)
+        // For funcref: remove invalid extern.convert_any (funcref is not subtype of anyref)
+        instrs.splice(j, 1);
       }
     }
 
