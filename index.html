@@ -10,7 +10,7 @@
         document.head.appendChild(base);
       })();
     </script>
-    <title>js2wasm</title>
+    <title>JS2 - Javascript compiler</title>
     <meta
       name="description"
       content="js2wasm is an ahead-of-time compiler that compiles JavaScript and TypeScript to WebAssembly GC."
@@ -1127,9 +1127,8 @@
       <path id="puzzle-bg-glow-sharp"></path>
     </svg>
     <nav class="site-nav">
-      <a class="nav-logo" href="./" aria-label="js2wasm home">
-        <img src="/jswasmlogo.png" alt="js2wasm logo" />
-        <span>js2wasm</span>
+      <a class="nav-logo" href="./" aria-label="js2 home">
+        <span>js2</span>
       </a>
       <ul class="nav-links">
         <li><a href="#goals">Goals</a></li>
@@ -1148,7 +1147,7 @@
         <section class="hero">
           <h1
             id="hero-title"
-            data-texts='["JS2 - A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
+            data-texts='["JS2: Anext generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
             "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
           >
             <span class="hero-title-shell">
@@ -1174,7 +1173,7 @@
 
       <section class="section-pad" id="goals">
         <div class="intro">
-          <h2>Javascript compatible.</h2>
+          <h2>JS2: Next generation JavaScript compiler.</h2>
           <p>
             Our goal is to make familiar JavaScript and TypeScript code more secure and lightweight so it can run in
             places where a JS engine is too heavy, insecure, or too expensive to embed per module.
@@ -1310,9 +1309,9 @@
         <div class="code-copy">
           <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
-            js2wasm parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm operations,
-            and keeps host effects isolated at imports and exports. The playground is used as a real development tool
-            for inspecting WAT, profiling codegen, and comparing Wasm against native JS execution.
+            js2 parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm operations, and
+            keeps host effects isolated at imports and exports. The playground is used as a real development tool for
+            inspecting WAT, profiling codegen, and comparing Wasm against native JS execution.
           </p>
           <div class="stats-inline">
             <div class="stat-inline">
@@ -1397,7 +1396,7 @@
     <footer>
       <div class="footer-top">
         <div class="footer-brand">
-          <img src="/jswasmlogo.png" alt="js2wasm logo" />
+          <img src="/jswasmlogo.png" alt="js2 logo" />
           <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
         </div>
         <div class="footer-cols">
@@ -1428,7 +1427,7 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <span>js2wasm GitHub Pages site</span>
+        <span>js2 GitHub Pages site</span>
         <span>Built from the same artifacts used for compiler development.</span>
       </div>
     </footer>
