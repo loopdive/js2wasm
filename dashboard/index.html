@@ -72,15 +72,15 @@
       /* Metric cards row */
       .metrics-row {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 16px;
-        margin-bottom: 32px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px 32px;
+        margin-bottom: 40px;
       }
 
       .metric-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        padding: 20px;
+        background: none;
+        border: none;
+        padding: 0;
       }
 
       .metric-card .label {
@@ -88,12 +88,13 @@
         text-transform: uppercase;
         letter-spacing: 0.08em;
         color: var(--text-muted);
-        margin-bottom: 6px;
+        margin-bottom: 4px;
       }
 
       .metric-card .value {
-        font-size: 28px;
+        font-size: 32px;
         font-weight: 600;
+        color: var(--text);
         letter-spacing: -0.5px;
       }
 
@@ -131,9 +132,10 @@
       }
 
       .panel {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        padding: 20px;
+        background: none;
+        border: none;
+        border-top: 1px solid var(--border);
+        padding: 20px 0;
         overflow: visible;
       }
 
