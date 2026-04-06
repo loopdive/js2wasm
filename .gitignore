@@ -37,3 +37,4 @@ tests/fixtures/*.imports.js
 benchmarks/results/test262-results-*.jsonl
 benchmarks/results/memory-monitor-*.jsonl
 .playwright-cli/
+benchmarks/results/test262-report.json
