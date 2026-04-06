@@ -142,12 +142,13 @@ class SiteNav extends HTMLElement {
           <li><a href="#mission">Mission</a></li>
           <li><a href="#goals">Compatibility</a></li>
           <li><a href="#how-it-works">How it works</a></li>
+          <li><a href="#roadmap">Roadmap</a></li>
           <li><a href="#links">Links</a></li>
           `
               : ""
           }
-          <li><a href="${base}dashboard/">Dashboard</a></li>
-          <li><a href="${base}benchmarks/report.html">Report</a></li>
+          <li><a href="${base}progress/">Progress</a></li>
+          <li><a href="${base}benchmarks/report.html">Status</a></li>
         </ul>
         <div class="nav-actions">
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">GitHub</a>
