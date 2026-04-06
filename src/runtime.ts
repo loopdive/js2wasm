@@ -41,6 +41,7 @@ const _SC_DEFINED = 8;
 const _SC_ACCESSOR = 16;
 
 function _getSidecarDescs(obj: object): Map<string | symbol, number> {
+  if (!_canBeWeakKey(obj)) return new Map();
   let m = _wasmPropDescs.get(obj);
   if (!m) {
     m = new Map();
@@ -137,7 +138,13 @@ function _isWasmStruct(obj: any): boolean {
   }
 }
 
+/** Check if a value can be used as a WeakMap/WeakSet key (must be object or function). */
+function _canBeWeakKey(obj: any): boolean {
+  return obj != null && (typeof obj === "object" || typeof obj === "function");
+}
+
 function _getSidecar(obj: object): Record<string | symbol, any> {
+  if (!_canBeWeakKey(obj)) return Object.create(null) as Record<string | symbol, any>;
   let sc = _wasmStructProps.get(obj);
   if (!sc) {
     sc = Object.create(null) as Record<string | symbol, any>;
@@ -147,15 +154,18 @@ function _getSidecar(obj: object): Record<string | symbol, any> {
 }
 
 function _sidecarGet(obj: any, key: any): any {
+  if (!_canBeWeakKey(obj)) return undefined;
   const sc = _wasmStructProps.get(obj);
   return sc?.[key];
 }
 
 function _sidecarSet(obj: any, key: any, val: any): void {
+  if (!_canBeWeakKey(obj)) return;
   _getSidecar(obj)[key] = val;
 }
 
 function _sidecarDelete(obj: any, key: any): boolean {
+  if (!_canBeWeakKey(obj)) return false;
   const sc = _wasmStructProps.get(obj);
   if (sc && key in sc) {
     delete sc[key];
