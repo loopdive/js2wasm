@@ -21,3 +21,6 @@
 - CLAUDE.md updated with new features, CLI flags, and sprint history
 - Backlog reorganized as sequential milestones (JS runtime → arch → platform)
 - Issues #618-#634 cover failure patterns from error analysis
+
+---
+_Issues not completed in this sprint were returned to the backlog._

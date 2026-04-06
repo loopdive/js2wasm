@@ -16,8 +16,8 @@ Your branch has merge commits from `git merge main` — that's normal. **ff-only
 
 1. [ ] You are in `/workspace` on `main`: `pwd && git branch --show-current`
 2. [ ] You already merged main into your branch: `git merge main` (on your branch)
-3. [ ] You ran equiv tests ON YOUR BRANCH (not on main)
-4. [ ] Test proof exists: `.claude/nonces/merge-proof.json` (hook validates this)
+3. [ ] You ran equiv tests ON YOUR BRANCH (not on main) — **only required if the branch touches compiler source** (`src/`). UI-only changes (HTML, CSS, landing page, report page, dashboard, `scripts/`, `components/`) skip equiv tests.
+4. [ ] Test proof exists: `.claude/nonces/merge-proof.json` (hook validates this) — **skip for UI-only branches** (no `src/` changes)
 5. [ ] Merge: `git merge --ff-only <branch>`
 6. [ ] If ff-only fails: go back to your branch, `git merge main` again, recreate proof, retry
 

@@ -250,10 +250,11 @@ const EDITION_NAMES: Record<number, string> = {
   2023: "ES2023",
   2024: "ES2024",
   2025: "ES2025",
-  0: "Other",
+  0: "ES3/Core",
+  [-1]: "Proposals",
 };
 
-const EDITION_ORDER = [5, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 0];
+const EDITION_ORDER = [5, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, -1, 0];
 
 // ---------------------------------------------------------------------------
 // Frontmatter parsing
@@ -351,8 +352,8 @@ function classifyEdition(fm: Frontmatter, filePath: string): number {
       if (yr !== undefined && yr > max) max = yr;
     }
     if (max > 0) return max;
-    // Features listed but none in our map — likely ES2015+ feature
-    // Fall through to path heuristics
+    // Features listed but none in our map — proposal or stage-3+ feature
+    return -1;
   }
 
   // Priority 4: path heuristics
@@ -469,7 +470,7 @@ async function main() {
     const edition = classifyEdition(fm, file);
     const key = normalizeStatus(status);
 
-    if (edition === 0) unclassified++;
+    if (edition === 0 || edition === -1) unclassified++;
     else classified++;
 
     const bucket = buckets[edition] ?? (buckets[edition] = { pass: 0, fail: 0, ce: 0, skip: 0 });
@@ -482,8 +483,7 @@ async function main() {
     const b = buckets[yr];
     if (!b) continue;
     const total = b.pass + b.fail + b.ce + b.skip;
-    if (total === 0 && yr !== 0) continue; // skip empty non-Other buckets
-    if (total === 0 && yr === 0) continue; // skip empty Other too
+    if (total === 0) continue; // skip empty buckets
 
     const name = EDITION_NAMES[yr] ?? `ES${yr}`;
     output.push({

@@ -14,6 +14,10 @@ Active file/function claims by agents. **Check before editing. Update when start
 | File | Function/Area | Agent | Issue | Since |
 |------|--------------|-------|-------|-------|
 | index.html | nav HTML + CSS | dev-976 | #976 | 2026-04-06 |
+| index.html | renderBenchmarkChart JS + bench CSS | dev-980 | #982 | 2026-04-06 |
+| components/perf-benchmark-chart.js | new file | dev-980 | #982 | 2026-04-06 |
+| public/benchmarks/report.html | renderBenchmarks + bench-card CSS | dev-980 | #982 | 2026-04-06 |
+| scripts/build-pages.js | component copy list | dev-980 | #982 | 2026-04-06 |
 | dashboard/index.html | nav insertion | dev-976 | #976 | 2026-04-06 |
 | components/site-nav.js | new file | dev-976 | #976 | 2026-04-06 |
 | src/codegen/property-access.ts | compileElementAccess, compilePropertyAccess | dev-848 | #848 | 2026-04-06 |

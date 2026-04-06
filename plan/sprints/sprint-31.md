@@ -165,3 +165,11 @@ For EACH issue:
 3. **Run test262 with fresh cache** after merges to get real numbers (clear cache or add `--no-cache`).
 4. **Don't prematurely mark issues as "verified fixed"** when the test262 runner still shows failures — investigate the discrepancy first.
 5. **Ralph loop discipline**: when the loop says "start next sprint," actually start the next sequential sprint, don't exit.
+
+## Planning Notes (merged from sprint-31-planning.md)
+
+- PO smoke-tested #839 (158 CE), #828 (149 CE), #866 (71 FAIL), #854 (126 FAIL), #851 (~100 FAIL)
+- Architect assessed: #839 safe (~20-line guard), #828 clear root cause, #866 needs spec first (two sub-bugs)
+- SM enforced: 1 task per dev, wait for merge before next claim, smoke-test all candidates
+---
+_Issues not completed in this sprint were returned to the backlog._

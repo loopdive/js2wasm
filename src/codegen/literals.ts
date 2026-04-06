@@ -1111,20 +1111,30 @@ export function compileArrayLiteral(
     let tupleType = ctxTupleType;
     if (expr.elements.length > 1) {
       const ctxElemTypes = getTupleElementTypes(ctx, ctxTupleType);
-      const allSameKind = ctxElemTypes.length > 0 && ctxElemTypes.every((t) => t.kind === ctxElemTypes[0]!.kind);
-      if (allSameKind) {
-        const actualType = ctx.checker.getTypeAtLocation(expr);
-        if (actualType && isTupleType(actualType)) {
-          const actualElemTypes = getTupleElementTypes(ctx, actualType);
-          const actualHeterogeneous =
-            actualElemTypes.length > 1 && !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
-          if (actualHeterogeneous) {
-            tupleType = actualType;
+      // If the contextual tuple type has fewer slots than the literal has elements,
+      // the tuple would truncate data. Fall through to vec path (#971).
+      // This happens when destructuring rest `[x, ...y] = [1, 2, 3]` gives a
+      // contextual type of [number, number] but the literal has 3 elements.
+      if (ctxElemTypes.length < expr.elements.length) {
+        // Don't use tuple — fall through to vec
+      } else {
+        const allSameKind = ctxElemTypes.length > 0 && ctxElemTypes.every((t) => t.kind === ctxElemTypes[0]!.kind);
+        if (allSameKind) {
+          const actualType = ctx.checker.getTypeAtLocation(expr);
+          if (actualType && isTupleType(actualType)) {
+            const actualElemTypes = getTupleElementTypes(ctx, actualType);
+            const actualHeterogeneous =
+              actualElemTypes.length > 1 && !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
+            if (actualHeterogeneous) {
+              tupleType = actualType;
+            }
           }
         }
+        return compileTupleLiteral(ctx, fctx, expr, tupleType);
       }
+    } else {
+      return compileTupleLiteral(ctx, fctx, expr, tupleType);
     }
-    return compileTupleLiteral(ctx, fctx, expr, tupleType);
   }
 
   if (expr.elements.length === 0) {

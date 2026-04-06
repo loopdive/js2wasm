@@ -19,3 +19,6 @@
 - Milestones merged into goals, plan/milestones/ removed
 - Goal graph created at plan/goals/goal-graph.md
 - Audit and update of all goals with session issues
+
+---
+_Issues not completed in this sprint were returned to the backlog._
