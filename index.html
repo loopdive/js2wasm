@@ -631,15 +631,43 @@
         }
       }
 
-      .how-cols {
+      .how-sidebyside {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 24px;
+        grid-template-columns: auto auto auto;
+        gap: 0;
         margin-top: 48px;
+        align-items: start;
+        width: fit-content;
+      }
+      .how-arrow {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 0 20px;
+        align-self: start;
+        padding-top: 120px;
+      }
+      .how-arrow-label {
+        font-family: var(--mono);
+        font-size: 9px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--fg-faint);
+      }
+      .how-arrow svg {
+        display: block;
       }
       @media (max-width: 980px) {
-        .how-cols {
+        .how-sidebyside {
           grid-template-columns: 1fr;
+        }
+        .how-arrow {
+          flex-direction: row;
+          padding: 8px 0;
+        }
+        .how-arrow svg {
+          transform: rotate(90deg);
         }
       }
       .how-step {
@@ -661,23 +689,21 @@
       }
       .how-code {
         font-family: var(--mono);
-        font-size: 12px;
-        line-height: 1.6;
+        font-size: 14px;
+        line-height: 1.8;
         color: var(--fg-soft);
-        background: rgba(255, 255, 255, 0.03);
-        padding: 16px 18px;
-        border-radius: 8px;
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        padding: 24px 28px;
         overflow-x: auto;
         white-space: pre;
         margin: 0;
         position: relative;
+        width: fit-content;
       }
       .how-code.wat {
-        background: rgba(100, 70, 200, 0.06);
-        max-width: 520px;
       }
       .how-code.shell {
-        background: rgba(255, 255, 255, 0.02);
         color: var(--fg-faint);
       }
       .how-code-label {
@@ -686,7 +712,7 @@
         font-size: 9px;
         letter-spacing: 0.08em;
         color: var(--fg-faint);
-        text-align: right;
+        text-align: left;
         margin-top: 6px;
         opacity: 0.5;
       }
@@ -956,8 +982,8 @@
       }
 
       .feat-panel {
-        columns: 3;
-        column-gap: 28px;
+        columns: 2;
+        column-gap: 48px;
       }
 
       .feat-panel-head {
@@ -1034,14 +1060,15 @@
       }
       .feat-row details pre {
         font-family: var(--mono);
-        font-size: 11px;
-        line-height: 1.5;
-        white-space: pre-wrap;
-        max-width: 40ch;
+        font-size: 14px;
+        line-height: 1.8;
+        white-space: pre;
+        max-width: 100%;
         color: var(--fg-soft);
-        background: rgba(255, 255, 255, 0.03);
-        padding: 12px 14px;
-        border-radius: 8px;
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        padding: 24px 28px;
+        border-radius: 0;
         overflow-x: auto;
         margin: 10px 0 0;
         position: relative;
@@ -1056,8 +1083,8 @@
         color: rgba(255, 255, 255, 0.2);
       }
       .feat-row details pre.wat {
-        background: rgba(100, 70, 200, 0.06);
-        margin-top: 6px;
+        background: var(--bg-soft);
+        margin-top: 16px;
       }
       .feat-row details pre.wat::after {
         content: "WAT";
@@ -1106,24 +1133,7 @@
         line-height: 1.3;
         margin-top: -2px;
       }
-      .feat-row pre .kw {
-        color: #c792ea;
-      }
-      .feat-row pre .str {
-        color: #c3e88d;
-      }
-      .feat-row pre .num {
-        color: #f78c6c;
-      }
-      .feat-row pre .cm {
-        color: #546e7a;
-      }
-      .feat-row pre .fn {
-        color: #82aaff;
-      }
-      .feat-row pre .op {
-        color: #89ddff;
-      }
+      /* Shiki provides inline styles for syntax highlighting */
 
       .feat-name {
         font-size: 15px;
@@ -1179,14 +1189,14 @@
         color: #f87171;
       }
 
-      @media (max-width: 1200px) {
-        .feat-panel {
-          columns: 2;
-        }
-      }
-      @media (max-width: 720px) {
+      @media (max-width: 980px) {
         .feat-panel {
           columns: 1;
+        }
+        .feat-row details pre,
+        .how-code {
+          white-space: pre-wrap;
+          max-width: 40ch;
         }
       }
     </style>
@@ -1425,7 +1435,8 @@ const ok = a &gt; 0 &amp;&amp; b &gt; 0;
 const bits = n | 0xFF;</pre
                   >
                   <pre class="wat">
-(func $example (param f64 f64) (result f64)
+(func $example (param f64 f64)
+    (result f64)
   local.get 0
   local.get 1
   f64.add               ;; a + b
@@ -1470,7 +1481,7 @@ delete obj.b;</pre
 ;; delete obj.b
 local.get $obj
 ref.null extern
-struct.set $Obj $b     ;; set to null</pre
+struct.set $Obj $b</pre
                   >
                 </details>
               </div>
@@ -1487,7 +1498,7 @@ f64.const 1
 drop
 f64.const 2
 drop
-f64.const 3           ;; last value kept</pre
+f64.const 3</pre
                   >
                 </details>
               </div>
@@ -1511,7 +1522,7 @@ outer: for (let i = 0; i &lt; 3; i++) {
     (block $inner
       (loop $inner_loop
         ;; if j === 1
-        br $outer_loop  ;; continue outer
+        br $outer_loop
       ))
     br $outer_loop
   ))</pre
@@ -1532,7 +1543,7 @@ for (const key in obj) {
                   >
                   <pre class="wat">
 local.get $obj
-call $Object.keys       ;; host import
+call $Object.keys
 local.set $keys
 ;; iterate keys array</pre
                   >
@@ -1597,11 +1608,11 @@ var legacy = true;</pre
   (local $name externref)
   (local $legacy i32)
   f64.const 1
-  local.set $count       ;; let count = 1
+  local.set $count
   string.const "hello"
-  local.set $name        ;; const name = "hello"
+  local.set $name
   i32.const 1
-  local.set $legacy)     ;; var legacy = true</pre
+  local.set $legacy)</pre
                   >
                 </details>
               </div>
@@ -1619,10 +1630,11 @@ function greet(name) {
 const add = (a, b) =&gt; a + b;</pre
                   >
                   <pre class="wat">
-(func $greet (param (ref null $str)) (result (ref null $str))
+(func $greet (param (ref null $str))
+    (result (ref null $str))
   string.const "Hi "
   local.get 0         ;; name
-  string.concat        ;; native string op
+  string.concat
   return)</pre
                   >
                 </details>
@@ -1645,7 +1657,8 @@ for (let i = 0; i &lt; 10; i++) {
 }</pre
                   >
                   <pre class="wat">
-(func $test (param f64) (result f64)
+(func $test (param f64)
+    (result f64)
   local.get 0
   f64.const 0
   f64.gt
@@ -1690,7 +1703,7 @@ try {
                   <pre>throw new Error("something went wrong");</pre>
                   <pre class="wat">
 (func $__module_init
-  i32.const 1              ;; Error tag
+  i32.const 1
   string.const "something went wrong"
   struct.new $Error
   throw 0)</pre
@@ -1716,9 +1729,10 @@ const obj = {
   (field $name externref)
   (field $version f64)))
 
-(func $obj_greet (param (ref null $obj)) (result externref)
+(func $obj_greet (param (ref null $obj))
+    (result externref)
   local.get 0
-  struct.get $obj $name    ;; this.name
+  struct.get $obj $name
   return)</pre
                   >
                 </details>
@@ -1731,7 +1745,7 @@ const obj = {
                   <summary></summary>
                   <pre>
 "hello".toUpperCase();   // "HELLO"
-"a,b,c".split(",");      // ["a", "b", "c"]
+"a,b,c".split(",");
 "hello".slice(1, 3);      // "el"</pre
                   >
                   <pre class="wat">
@@ -1742,7 +1756,7 @@ const obj = {
   ;; "hello".slice(1, 3)
   string.const "hello"
   i32.const 1  i32.const 3
-  string.substring)        ;; native WasmGC</pre
+  string.substring)</pre
                   >
                 </details>
               </div>
@@ -1765,7 +1779,7 @@ parseInt("42");
   f64.const 2
   local.set $b
   local.get $a  local.get $b
-  f64.max               ;; Math.max(1, 2)
+  f64.max
   drop)</pre
                   >
                 </details>
@@ -1783,8 +1797,8 @@ const str = JSON.stringify({ a: 1 });</pre
                   >
                   <pre class="wat">
 (func $__module_init
-  global.get 0           ;; '{"a": 1}'
-  call $JSON.parse       ;; → externref
+  global.get 0
+  call $JSON.parse
   global.set $obj)</pre
                   >
                 </details>
@@ -1801,7 +1815,7 @@ throw new RangeError("out of bounds");</pre
                   >
                   <pre class="wat">
 (func $__module_init
-  i32.const 2              ;; TypeError tag
+  i32.const 2
   string.const "expected string"
   struct.new $TypeError
   throw 0)</pre
@@ -1816,17 +1830,19 @@ throw new RangeError("out of bounds");</pre
                 <details>
                   <summary></summary>
                   <pre>
-const doubled = [1, 2, 3].map(x =&gt; x * 2);
-const sum = arr.reduce((a, b) =&gt; a + b, 0);
+const doubled = [1, 2,
+  3].map(x =&gt; x * 2);
+const sum = arr.reduce((a,
+  b) =&gt; a + b, 0);
 const found = arr.find(x =&gt; x &gt; 5);</pre
                   >
                   <pre class="wat">
 (func $__module_init
-  ;; [1, 2, 3].map(x =&amp;gt; x * 2)
+  ;; [1, 2, 3].map(x =&amp;gt; x...
   f64.const 1  f64.const 2  f64.const 3
   array.new_fixed 3
   ref.func $callback
-  call $__arr_map          ;; WasmGC array map)</pre
+  call $__arr_map</pre
                   >
                   <div class="feat-explain">
                     Most built-in methods work. Some iterator edge cases and sparse array handling incomplete.
@@ -1841,14 +1857,14 @@ const found = arr.find(x =&gt; x &gt; 5);</pre
                 <details>
                   <summary></summary>
                   <pre>
-/hello/i.test("Hello World"); // true
-"abc123".match(/\d+/);         // ["123"]</pre
+/hello/i.test("Hello World");
+"abc123".match(/\d+/);</pre
                   >
                   <pre class="wat">
 (func $__module_init
-  global.get $re           ;; /hello/i
+  global.get $re
   string.const "Hello World"
-  call $regexp_test)       ;; host import</pre
+  call $regexp_test)</pre
                   >
                   <div class="feat-explain">Basic patterns work. Named groups and lookbehind partially supported.</div>
                 </details>
@@ -1867,15 +1883,16 @@ const obj = {
 };</pre
                   >
                   <pre class="wat">
-(func $get_value (param (ref null $obj)) (result f64)
+(func $get_value (param (ref null $obj))
+    (result f64)
   local.get 0
-  struct.get $obj $_v      ;; return this._v
+  struct.get $obj $_v
 )
 
 (func $set_value (param (ref null $obj)) (param f64)
   local.get 0
   local.get 1
-  struct.set $obj $_v)     ;; this._v = v</pre
+  struct.set $obj $_v)</pre
                   >
                   <div class="feat-explain">Basic get/set works. Object.defineProperty partially supported.</div>
                 </details>
@@ -1910,12 +1927,14 @@ const square = x =&gt; x * x;
 const greet = () =&gt; "hello";</pre
                   >
                   <pre class="wat">
-(func $add (param f64 f64) (result f64)
+(func $add (param f64 f64)
+    (result f64)
   local.get 0
   local.get 1
   f64.add)
 
-(func $square (param f64) (result f64)
+(func $square (param f64)
+    (result f64)
   local.get 0
   local.get 0
   f64.mul)</pre
@@ -1932,10 +1951,10 @@ const greet = () =&gt; "hello";</pre
                   <pre class="wat">
 (func $__module_init
   string.const "Hello "
-  local.get $name          ;; "world"
+  local.get $name
   string.concat
   string.const "!"
-  string.concat)           ;; → "Hello world!"</pre
+  string.concat)</pre
                   >
                 </details>
               </div>
@@ -1951,7 +1970,7 @@ const [first, ...rest] = items;
 const { a: x = 0 } = opts;</pre
                   >
                   <pre class="wat">
-;; typed object → direct struct access
+;; typed object → direct struct ...
 (func $__module_init
   local.get $obj
   struct.get $Obj $a     ;; a
@@ -1976,7 +1995,7 @@ function sum(...args) { }</pre
   ;; [...arr, 4]
   f64.const 1  f64.const 2  f64.const 3
   f64.const 4
-  array.new_fixed $f64arr 4)  ;; [1,2,3,4]</pre
+  array.new_fixed $f64arr 4)</pre
                   >
                 </details>
               </div>
@@ -1988,11 +2007,12 @@ function sum(...args) { }</pre
                   <summary></summary>
                   <pre>function greet(name = "world") { }</pre>
                   <pre class="wat">
-(func $greet (param externref) (result externref)
+(func $greet (param externref)
+    (result externref)
   local.get 0
   ref.is_null
   (if (then
-    global.get 1           ;; "world"
+    global.get 1
     local.set 0))
   local.get 0
   return)</pre
@@ -2014,7 +2034,7 @@ const obj = { [key]: 42 };</pre
   ;; { [key]: 42 }
   global.get $key          ;; "id"
   f64.const 42
-  struct.new $obj)          ;; → { id: 42 }</pre
+  struct.new $obj)</pre
                   >
                 </details>
               </div>
@@ -2029,11 +2049,11 @@ const obj = { [key]: 42 };</pre
 (func $__module_init
   ;; for (const x of arr)
   local.get $arr
-  struct.get $Vec $data    ;; get backing array
-  struct.get $Vec $len     ;; get length
+  struct.get $Vec $data
+  struct.get $Vec $len
   (loop $for_of
     local.get $i
-    array.get $data        ;; x = arr[i]
+    array.get $data
     ;; ... process x
     br_if $for_of))</pre
                   >
@@ -2053,7 +2073,8 @@ function* range(n) {
 }</pre
                   >
                   <pre class="wat">
-(func $range (param f64) (result (ref $Gen))
+(func $range (param f64)
+    (result (ref $Gen))
   ;; yield values into WasmGC array
   array.new_default $f64arr 0
   local.set $buf
@@ -2094,7 +2115,8 @@ class Dog extends Animal { }</pre
   (field $__tag i32)
   (field $name externref)))
 
-(func $Animal_new (param externref) (result (ref null $Animal))
+(func $Animal_new (param externref)
+    (result (ref null $Animal))
   struct.new $Animal
   local.get 0
   struct.set $Animal $name)</pre
@@ -2120,12 +2142,12 @@ s.has(2); // true</pre
                   >
                   <pre class="wat">
 (func $__module_init
-  call $Map_new            ;; new Map() — host
+  call $Map_new
   global.set $m
   global.get $m
   string.const "key"
   f64.const 42
-  call $Map_set)           ;; host import</pre
+  call $Map_set)</pre
                   >
                   <div class="feat-explain">Core operations work. Some iteration edge cases incomplete.</div>
                 </details>
@@ -2145,10 +2167,10 @@ obj[id] = 42;</pre
 (func $__module_init
   global.get $nextId
   i32.const 1
-  i32.add                  ;; unique id++
+  i32.add
   global.set $nextId
   global.get $nextId
-  global.set $id)          ;; Symbol("id")</pre
+  global.set $id)</pre
                   >
                   <div class="feat-explain">
                     Creation and basic use work. Well-known symbols (Symbol.iterator) partial.
@@ -2170,13 +2192,13 @@ view[0] = 42;</pre
                   <pre class="wat">
 (func $__module_init
   i32.const 16
-  call $ArrayBuffer_new    ;; host import
-  call $Int32Array_from    ;; host import
+  call $ArrayBuffer_new
+  call $Int32Array_from
   global.set $view
   global.get $view
   i32.const 0
   f64.const 42
-  call $TypedArray_set)    ;; host import</pre
+  call $TypedArray_set)</pre
                   >
                   <div class="feat-explain">Int8 through Float64 arrays work. BigInt64Array not yet.</div>
                 </details>
@@ -2192,7 +2214,8 @@ import { foo } from "./mod";
 export function bar() { return 1; }</pre
                   >
                   <pre class="wat">
-(func $bar (export "bar") (result f64)
+(func $bar (export "bar")
+    (result f64)
   f64.const 1
   return)</pre
                   >
@@ -2258,9 +2281,9 @@ Object.values({ x: 10 });
                   <pre class="wat">
 (func $__module_init
   f64.const 1  f64.const 2
-  struct.new $obj          ;; { a: 1, b: 2 }
+  struct.new $obj
   extern.convert_any
-  call $Object.entries)    ;; host import</pre
+  call $Object.entries)</pre
                   >
                 </details>
               </div>
@@ -2285,16 +2308,17 @@ Object.values({ x: 10 });
                 <details>
                   <summary></summary>
                   <pre>
-const clone = { ...original, extra: 1 };
+const clone = { ...original,
+  extra: 1 };
 const { a, ...rest } = obj;</pre
                   >
                   <pre class="wat">
 (func $__module_init
   ;; { ...original, extra: 2 }
   local.get $original
-  struct.get $Obj $x       ;; copy field x
-  f64.const 2              ;; extra: 2
-  struct.new $Clone)       ;; new struct</pre
+  struct.get $Obj $x
+  f64.const 2
+  struct.new $Clone)</pre
                   >
                 </details>
               </div>
@@ -2309,11 +2333,11 @@ const { a, ...rest } = obj;</pre
                   <pre class="wat">
 (func $process (param externref)
   local.get 0
-  call $__iterator         ;; host import
+  call $__iterator
   local.set $iter
   (loop $for_await
     local.get $iter
-    call $__iterator_next  ;; host import
+    call $__iterator_next
     ;; ... process chunk
     br_if $for_await))</pre
                   >
@@ -2331,7 +2355,8 @@ const { a, ...rest } = obj;</pre
                   <summary></summary>
                   <pre>const name = user?.profile?.name;</pre>
                   <pre class="wat">
-(func $test (param externref) (result externref)
+(func $test (param externref)
+    (result externref)
   local.get 0
   ref.is_null
   (if (result externref)
@@ -2349,7 +2374,8 @@ const { a, ...rest } = obj;</pre
                   <summary></summary>
                   <pre>const val = input ?? "default";</pre>
                   <pre class="wat">
-(func $test (param f64) (result f64)
+(func $test (param f64)
+    (result f64)
   local.get 0        ;; x
   call $__is_nullish
   (if (result f64)
@@ -2368,7 +2394,7 @@ const { a, ...rest } = obj;</pre
                   <pre>globalThis.console;</pre>
                   <pre class="wat">
 (func $__module_init
-  call $__get_globalThis   ;; host import
+  call $__get_globalThis
   global.set $g)</pre
                   >
                 </details>
@@ -2442,7 +2468,8 @@ class Counter {
   (field $__tag i32)
   (field $count f64)))
 
-(func $Counter_new (result (ref null $Counter))
+(func $Counter_new
+    (result (ref null $Counter))
   i32.const 0     ;; __tag
   f64.const 0     ;; count = 0
   struct.new $Counter)</pre
@@ -2458,12 +2485,12 @@ class Counter {
                   <pre>throw new Error("fail", { cause: origErr });</pre>
                   <pre class="wat">
 (func $fail
-  i32.const 1              ;; Error tag
+  i32.const 1
   string.const "root"
   struct.new $Error        ;; cause
   i32.const 1
   string.const "fail"
-  struct.new $ErrorCause   ;; with cause field
+  struct.new $ErrorCause
   throw 0)</pre
                   >
                 </details>
@@ -2482,9 +2509,9 @@ class Counter {
 (func $__module_init
   ;; [1,2,3].at(-1)
   local.get $arr
-  i32.const -1             ;; negative index
+  i32.const -1
   local.get $len
-  i32.add                  ;; len + (-1) = last
+  i32.add
   array.get $data)         ;; → 3</pre
                   >
                 </details>
@@ -2538,7 +2565,7 @@ struct.get $Vec $data
                   <pre class="wat">
 f64.const 2
 f64.const 10
-call $Math.pow         ;; or f64.mul chain</pre
+call $Math.pow</pre
                   >
                 </details>
               </div>
@@ -2609,7 +2636,8 @@ const obj = Object.fromEntries(
                 <details>
                   <summary></summary>
                   <pre>
-[1, 2, 3, 2].findLast(x =&gt; x === 2);
+[1, 2, 3,
+  2].findLast(x =&gt; x === 2);
 // → 2 (last match)</pre
                   >
                   <div class="feat-explain">Iterates WasmGC array from end. Callback via host import.</div>
@@ -2764,7 +2792,7 @@ var x = 5;</pre
                   <pre class="wat">
 ;; var hoisted to function scope
 (local $x f64)
-f64.const 0           ;; undefined init
+f64.const 0
 local.set $x
 ;; ... later
 f64.const 5
@@ -2818,8 +2846,8 @@ function f() {
                 <details>
                   <summary></summary>
                   <pre>
-const n = 0777; // forbidden in strict
-const ok = 0o777; // ES2015 octal works</pre
+const n = 0777;
+const ok = 0o777;</pre
                   >
                   <div class="feat-explain">Legacy octal forbidden in strict mode. ES2015 0o prefix works.</div>
                 </details>
@@ -2845,7 +2873,7 @@ escape("hello world");
                   <summary></summary>
                   <pre>
 function f() {
-  return f.caller; // forbidden strict
+  return f.caller;
 }</pre
                   >
                   <div class="feat-explain">Forbidden in strict mode. Not available in Wasm.</div>
@@ -2937,16 +2965,17 @@ match (value) {
 
       <section class="section-pad" id="how-it-works">
         <div class="intro">
-          <h2>From JavaScript to WebAssembly in one step.</h2>
+          <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
             Write regular JavaScript. The compiler produces a .wasm binary that runs anywhere WebAssembly runs &mdash;
-            browser, server, edge. No interpreter embedded, no garbage collector shipped.
+            browser, server, edge. No interpreter embedded, no garbage collector shipped. The module is isolated from
+            its host and other modules and thus the surface for supply chain attacks through dependencies is reduced.
           </p>
         </div>
 
-        <div class="how-cols">
+        <div class="how-sidebyside">
           <div class="how-step">
-            <h3 class="how-step-title">1. Write JavaScript</h3>
+            <h3 class="how-step-title">JavaScript</h3>
             <pre class="how-code js">
 function fibonacci(n) {
   if (n &lt;= 1) return n;
@@ -2960,147 +2989,112 @@ export function run() {
             >
             <span class="how-code-label">app.js</span>
           </div>
-
-          <div class="how-step">
-            <h3 class="how-step-title">2. Compile to Wasm</h3>
-            <pre class="how-code shell">
-$ npx js2wasm app.js -o app.wasm
-
-# inspect the output
-$ npx js2wasm app.js --wat</pre
-            >
-            <span class="how-code-label">terminal</span>
+          <div class="how-arrow">
+            <svg width="40" height="16" viewBox="0 0 40 16">
+              <path d="M0 8h32m0 0l-6-5m6 5l-6 5" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" fill="none" />
+            </svg>
+            <span class="how-arrow-label">compile</span>
           </div>
-
           <div class="how-step">
-            <h3 class="how-step-title">3. Run it</h3>
-            <pre class="how-code js">
-import { readFileSync } from "fs";
+            <h3 class="how-step-title">WebAssembly</h3>
+            <pre class="how-code wat">
+(func $fibonacci (param f64) (result f64)
+  local.get 0
+  f64.const 1
+  f64.le
+  (if (result f64)
+    (then local.get 0)
+    (else
+      local.get 0  f64.const 1  f64.sub
+      call $fibonacci
+      local.get 0  f64.const 2  f64.sub
+      call $fibonacci
+      f64.add)))
 
-const wasm = readFileSync("app.wasm");
-const { instance } = await
-  WebAssembly.instantiate(wasm);
-
-console.log(instance.exports.run());
-// &rarr; 55</pre
+(func $run (export "run") (result f64)
+  f64.const 10
+  call $fibonacci)</pre
             >
-            <span class="how-code-label">run.mjs</span>
+            <span class="how-code-label">app.wat</span>
           </div>
         </div>
 
-        <div class="how-step" style="margin-top: 40px">
-          <h3 class="how-step-title">Compiled output</h3>
+        <div class="how-step" style="margin-top: 48px">
+          <h3 class="how-step-title">Using DOM and JS APIs</h3>
           <p class="how-sub">
-            The compiler lowers JavaScript into typed Wasm instructions. No runtime interpreter &mdash; every function
-            becomes native Wasm ops.
+            DOM access and browser APIs compile to typed host imports. The compiler generates the bindings &mdash; you
+            just write normal JavaScript.
           </p>
-          <pre class="how-code wat">
-(module
-  (func $fibonacci (param f64) (result f64)
-    local.get 0
-    f64.const 1
-    f64.le
-    (if (result f64)
-      (then local.get 0)
-      (else
-        local.get 0
-        f64.const 1
-        f64.sub
-        call $fibonacci       ;; fib(n-1)
-        local.get 0
-        f64.const 2
-        f64.sub
-        call $fibonacci       ;; fib(n-2)
-        f64.add)))
+          <div class="how-sidebyside">
+            <div class="how-step">
+              <pre class="how-code js">
+const el = document.createElement("div");
+el.textContent = "Hello from Wasm";
+el.style.color = "blue";
+document.body.appendChild(el);</pre
+              >
+              <span class="how-code-label">dom.js</span>
+            </div>
+            <div class="how-arrow">
+              <svg width="40" height="16" viewBox="0 0 40 16">
+                <path d="M0 8h32m0 0l-6-5m6 5l-6 5" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" fill="none" />
+              </svg>
+              <span class="how-arrow-label">compile</span>
+            </div>
+            <div class="how-step">
+              <pre class="how-code wat">
+(import "env" "global_document"
+  (func $doc (result externref)))
+(import "env" "__extern_method_call"
+  (func $call (param externref externref)
+    (result externref)))
 
-  (func $run (export "run") (result f64)
-    f64.const 10
-    call $fibonacci))</pre
-          >
-          <span class="how-code-label">app.wat</span>
+(func $__module_init
+  call $doc
+  string.const "div"
+  call $call              ;; createElement
+  local.tee $el
+  string.const "textContent"
+  string.const "Hello from Wasm"
+  call $__extern_set      ;; el.textContent = ...
+  local.get $el
+  string.const "color"
+  string.const "blue"
+  call $__style_set       ;; el.style.color = ...
+  call $doc
+  string.const "body"
+  call $__extern_get      ;; document.body
+  local.get $el
+  call $call)             ;; .appendChild(el)</pre
+              >
+              <span class="how-code-label">dom.wat</span>
+            </div>
+          </div>
         </div>
 
-        <div class="how-step" style="margin-top: 40px">
-          <h3 class="how-step-title">How DOM and JS APIs work</h3>
-          <p class="how-sub">
-            The Wasm module doesn't embed a JavaScript engine. Browser APIs are injected as
-            <strong>host imports</strong>
-            &mdash; functions the host provides at instantiation. The compiler emits
-            <code>call</code>
-            instructions that cross the Wasm/JS boundary via
-            <code>externref</code>
-            handles.
-          </p>
+        <div class="how-step" style="margin-top: 56px">
+          <h3 class="how-step-title">Import and run</h3>
           <pre class="how-code js">
-// The host provides these imports
-const imports = {
-  env: {
-    __str_concat: (a, b) =&gt; a + b,
-    __extern_set: (obj, key, val) =&gt;
-      obj[key] = val,
-    __extern_get: (obj, key) =&gt;
-      obj[key],
-    __make_callback: (id) =&gt;
-      (...args) =&gt;
-        wasm.exports[id](...args),
-  }
-};
+import { js2 } from "js2wasm";
 
-const { instance } = await
-  WebAssembly.instantiate(wasm, imports);</pre
+// Pure computation — runs standalone
+const app = await js2.import("./app.js");
+console.log(app.run()); // → 55
+
+// DOM example — pass browser globals
+const dom = await js2.import("./dom.js", { document });
+// div is already appended to document.body</pre
           >
-          <span class="how-code-label">host imports</span>
-          <p class="how-sub" style="margin-top: 16px">
-            Pure computations (math, control flow, structs) compile to standalone Wasm &mdash; no imports needed. Only
-            features that touch the outside world (DOM, I/O, regex, JSON) use host imports. The
-            <span style="color: #fbbf24">host</span>
-            labels in the feature table show which features need them.
+          <span class="how-code-label">run.ts</span>
+          <p class="how-sub" style="margin-top: 12px">
+            <code>js2.import()</code>
+            instantiates the cached compiled module or compiles on demand if needed, builds host imports, instantiates,
+            and returns typed exports. Pass browser globals as dependencies for DOM access.
           </p>
         </div>
       </section>
 
       <hr class="divider" />
-
-      <section class="section-pad code-section" id="approach">
-        <div class="code-copy">
-          <h2>Compiled ahead of time, no interpreter.</h2>
-          <p>
-            js2 parses and checks JavaScript or TypeScript, lowers supported semantics into typed Wasm operations, and
-            keeps host effects isolated at imports and exports. The playground is used as a real development tool for
-            inspecting WAT, profiling codegen, and comparing Wasm against native JS execution.
-          </p>
-          <div class="stats-inline">
-            <div class="stat-inline">
-              <strong>WAT</strong>
-              inspect the exact lowered module
-            </div>
-            <div class="stat-inline">
-              <strong>Bench</strong>
-              compare Wasm against JS side by side
-            </div>
-            <div class="stat-inline">
-              <strong>DOM</strong>
-              run browser-hosted imports in the sandbox
-            </div>
-            <div class="stat-inline">
-              <strong>Plan</strong>
-              connect regressions to tracked sprint work
-            </div>
-          </div>
-        </div>
-        <pre class="code-block"><span class="cm">;; DOM-oriented JS lowers to Wasm plus explicit host imports</span>
-(<span class="kw">module</span>
-  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"global_document"</span> (<span class="kw">func</span> <span class="fn">$global_document</span> (<span class="kw">result</span> externref)))
-  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"Document_createElement"</span> (<span class="kw">func</span> <span class="fn">$create</span> (<span class="kw">param</span> externref externref) (<span class="kw">result</span> externref)))
-  (<span class="kw">import</span> <span class="str">"env"</span> <span class="str">"Element_appendChild"</span> (<span class="kw">func</span> <span class="fn">$append</span> (<span class="kw">param</span> externref externref) (<span class="kw">result</span> externref)))
-  (<span class="kw">import</span> <span class="str">"string_constants"</span> <span class="str">"div"</span> (<span class="kw">global</span> <span class="fn">$div</span> externref))
-  (<span class="kw">func</span> <span class="fn">$main</span> (<span class="kw">export</span> <span class="str">"main"</span>)
-    call <span class="fn">$global_document</span>
-    global.get <span class="fn">$div</span>
-    call <span class="fn">$create</span>
-    call <span class="fn">$append</span>
-    drop))</pre>
-      </section>
 
       <hr class="divider" />
 
@@ -3382,71 +3376,25 @@ const { instance } = await
       // Glow wave animation is now pure CSS/SMIL — no JS needed
 
       // Minimal syntax highlighter for feature code examples
-      (function highlightFeatureCode() {
-        const KW =
-          /\b(const|let|var|function|class|extends|new|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|async|await|yield|import|export|from|of|in|typeof|instanceof|static|get|set|with)\b/g;
-        const STR = /(["'`])(?:(?!\1)[^\\]|\\.)*?\1/g;
-        const NUM = /\b(\d+(?:\.\d+)?n?)\b/g;
-        const CM = /(\/\/[^\n]*)/g;
-        const FN = /\b([a-zA-Z_$][\w$]*)\s*(?=\()/g;
-        const OP = /([=!&|?:+\-*/%.]+|=&gt;|&lt;|&gt;)/g;
-        // WAT keywords
-        const WAT_KW =
-          /\b(func|param|result|local|global|struct|field|type|if|then|else|loop|block|br|br_if|call|return|try|do|catch|catch_all|ref|mut|i32|i64|f32|f64|externref)\b/g;
-        const WAT_OP =
-          /\b(local\.get|local\.set|local\.tee|global\.get|global\.set|struct\.new|struct\.get|struct\.set|ref\.null|ref\.is_null|string\.const|f64\.const|i32\.const|f64\.add|f64\.mul|f64\.neg|f64\.gt|i32\.lt_s|i32\.trunc_sat_f64_s|call_indirect|drop)\b/g;
-
-        function highlightJS(pre) {
-          let html = pre.textContent.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-          const strings = [];
-          html = html.replace(STR, (m) => {
-            strings.push(m);
-            return `__STR${strings.length - 1}__`;
-          });
-          const comments = [];
-          html = html.replace(CM, (m) => {
-            comments.push(m);
-            return `__CM${comments.length - 1}__`;
-          });
-          html = html.replace(KW, '<span class="kw">$1</span>');
-          html = html.replace(FN, '<span class="fn">$1</span>');
-          html = html.replace(NUM, '<span class="num">$1</span>');
-          comments.forEach((c, i) => {
-            html = html.replace(`__CM${i}__`, `<span class="cm">${c}</span>`);
-          });
-          strings.forEach((s, i) => {
-            html = html.replace(`__STR${i}__`, `<span class="str">${s}</span>`);
-          });
-          pre.innerHTML = html;
+      // Syntax highlight feature examples and how-it-works code blocks with shiki
+      (async function highlightWithShiki() {
+        try {
+          const { codeToHtml } = await import("https://esm.sh/shiki@4.0.2/bundle/web");
+          const pres = document.querySelectorAll(".feat-row pre, .how-code");
+          for (const pre of pres) {
+            const code = pre.textContent || "";
+            if (!code.trim()) continue;
+            const isWat = pre.classList.contains("wat");
+            const isShell = pre.classList.contains("shell");
+            const lang = isWat ? "wasm" : isShell ? "shellscript" : "javascript";
+            const html = await codeToHtml(code.trim(), { lang, theme: "material-theme-ocean" });
+            // Extract inner HTML from shiki's <pre><code>...</code></pre>
+            const match = html.match(/<code[^>]*>([\s\S]*)<\/code>/);
+            if (match) pre.innerHTML = match[1];
+          }
+        } catch {
+          // Shiki failed to load — keep unhighlighted code
         }
-
-        function highlightWAT(pre) {
-          let html = pre.textContent.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-          const comments = [];
-          html = html.replace(/(;;[^\n]*)/g, (m) => {
-            comments.push(m);
-            return `__CM${comments.length - 1}__`;
-          });
-          const strings = [];
-          html = html.replace(/"[^"]*"/g, (m) => {
-            strings.push(m);
-            return `__STR${strings.length - 1}__`;
-          });
-          html = html.replace(WAT_OP, '<span class="fn">$1</span>');
-          html = html.replace(WAT_KW, '<span class="kw">$1</span>');
-          html = html.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="num">$1</span>');
-          html = html.replace(/(\$[\w._]+)/g, '<span class="str">$1</span>');
-          comments.forEach((c, i) => {
-            html = html.replace(`__CM${i}__`, `<span class="cm">${c}</span>`);
-          });
-          strings.forEach((s, i) => {
-            html = html.replace(`__STR${i}__`, `<span class="str">${s}</span>`);
-          });
-          pre.innerHTML = html;
-        }
-
-        document.querySelectorAll(".feat-row pre:not(.wat)").forEach(highlightJS);
-        document.querySelectorAll(".feat-row pre.wat").forEach(highlightWAT);
       })();
 
       // Strict mode toggle for feature table

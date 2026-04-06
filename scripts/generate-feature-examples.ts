@@ -12,6 +12,7 @@
 import { compile } from "../src/index.js";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { createHighlighter } from "shiki";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const OUT_FILE = join(ROOT, "public", "feature-examples.json");
@@ -38,6 +39,8 @@ interface FeatureResult extends FeatureDef {
   wat: string | null;
   compileSuccess: boolean;
   compileError?: string;
+  jsHtml?: string;
+  watHtml?: string;
 }
 
 // ── Feature definitions ──────────────────────────────────────────────────
@@ -1089,6 +1092,31 @@ async function main() {
   }
 
   console.log(`\n${passed} compiled, ${skipped} skipped, ${failed} failed`);
+
+  // Syntax highlight all code with shiki
+  console.log("\nHighlighting with shiki...");
+  const highlighter = await createHighlighter({
+    themes: ["material-theme-ocean"],
+    langs: ["javascript", "wasm"],
+  });
+
+  for (const r of results) {
+    try {
+      r.jsHtml = highlighter.codeToHtml(r.js, { lang: "javascript", theme: "material-theme-ocean" });
+    } catch {
+      r.jsHtml = undefined;
+    }
+    if (r.wat) {
+      try {
+        r.watHtml = highlighter.codeToHtml(r.wat, { lang: "wasm", theme: "material-theme-ocean" });
+      } catch {
+        r.watHtml = undefined;
+      }
+    }
+  }
+
+  highlighter.dispose();
+  console.log("Highlighting done.");
 
   const output = {
     generated: new Date().toISOString(),
