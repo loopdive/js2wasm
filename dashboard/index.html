@@ -1,1044 +1,1157 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>js2wasm Sprint Dashboard</title>
-<style>
-  :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --surface-2: #242836;
-    --border: #2e3345;
-    --text: #e1e4ed;
-    --text-muted: #8b90a0;
-    --accent: #6c8aff;
-    --accent-dim: #4a5fa0;
-    --green: #34d399;
-    --green-dim: rgba(52, 211, 153, 0.15);
-    --red: #f87171;
-    --red-dim: rgba(248, 113, 113, 0.15);
-    --yellow: #fbbf24;
-    --yellow-dim: rgba(251, 191, 36, 0.15);
-    --orange: #fb923c;
-    --purple: #a78bfa;
-    --radius: 8px;
-    --font: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
-  }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>js2wasm Sprint Dashboard</title>
+    <style>
+      :root {
+        --bg: #060a14;
+        --surface: rgba(255, 255, 255, 0.05);
+        --surface-2: rgba(255, 255, 255, 0.08);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: #ffffff;
+        --text-muted: rgba(255, 255, 255, 0.46);
+        --accent: #6c8aff;
+        --accent-dim: #4a5fa0;
+        --green: #4ade80;
+        --green-dim: rgba(74, 222, 128, 0.1);
+        --red: #f87171;
+        --red-dim: rgba(248, 113, 113, 0.1);
+        --yellow: #fbbf24;
+        --yellow-dim: rgba(251, 191, 36, 0.1);
+        --orange: #fb923c;
+        --purple: #a78bfa;
+        --radius: 0;
+        --font: "JetBrains Mono", "SF Mono", SFMono-Regular, Consolas, monospace;
+      }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-  body {
-    font-family: var(--font);
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.5;
-    padding: 24px;
-    min-height: 100vh;
-  }
+      body {
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+        padding: 48px;
+        min-height: 100vh;
+        max-width: 1400px;
+        margin: 0 auto;
+      }
 
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 24px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border);
-  }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 32px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+      }
 
-  header h1 {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--accent);
-    letter-spacing: -0.5px;
-  }
+      header h1 {
+        font-size: 18px;
+        font-weight: 500;
+        color: var(--text);
+        letter-spacing: 0.02em;
+      }
 
-  header .meta {
-    font-size: 12px;
-    color: var(--text-muted);
-    text-align: right;
-  }
+      header .meta {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-align: right;
+      }
 
-  header .meta .updated { color: var(--green); }
+      header .meta .updated {
+        color: var(--text-muted);
+      }
 
-  /* Metric cards row */
-  .metrics-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
-    margin-bottom: 24px;
-  }
+      /* Metric cards row */
+      .metrics-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 32px;
+      }
 
-  .metric-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px;
-  }
+      .metric-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        padding: 20px;
+      }
 
-  .metric-card .label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-muted);
-    margin-bottom: 4px;
-  }
+      .metric-card .label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 6px;
+      }
 
-  .metric-card .value {
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -1px;
-  }
+      .metric-card .value {
+        font-size: 28px;
+        font-weight: 600;
+        letter-spacing: -0.5px;
+      }
 
-  .metric-card .sub {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
+      .metric-card .sub {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 2px;
+      }
 
-  .metric-card .value.green { color: var(--green); }
-  .metric-card .value.red { color: var(--red); }
-  .metric-card .value.yellow { color: var(--yellow); }
-  .metric-card .value.accent { color: var(--accent); }
+      .metric-card .value.green {
+        color: var(--green);
+      }
+      .metric-card .value.red {
+        color: var(--red);
+      }
+      .metric-card .value.yellow {
+        color: var(--yellow);
+      }
+      .metric-card .value.accent {
+        color: var(--accent);
+      }
 
-  /* Section layout */
-  .grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 24px;
-  }
+      /* Section layout */
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 32px;
+      }
 
-  @media (max-width: 1100px) {
-    .grid-2 { grid-template-columns: 1fr; }
-  }
+      @media (max-width: 1100px) {
+        .grid-2 {
+          grid-template-columns: 1fr;
+        }
+      }
 
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px;
-    overflow: visible;
-  }
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        padding: 20px;
+        overflow: visible;
+      }
 
-  .panel h2 {
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-muted);
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-  }
+      .panel h2 {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
 
-  .panel-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-  }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+      }
 
-  .panel-head h2 {
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
+      .panel-head h2 {
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
 
-  .panel-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+      .panel-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
 
-  .panel-actions a {
-    color: var(--accent);
-    text-decoration: none;
-    font-size: 12px;
-  }
+      .panel-actions a {
+        color: var(--accent);
+        text-decoration: none;
+        font-size: 12px;
+      }
 
-  .panel-actions a:hover {
-    text-decoration: underline;
-  }
+      .panel-actions a:hover {
+        text-decoration: underline;
+      }
 
-  .sprint-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+      .sprint-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
 
-  .sprint-controls label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-muted);
-  }
+      .sprint-controls label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-muted);
+      }
 
-  .sprint-controls input,
-  .sprint-controls select {
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 8px;
-    font-family: var(--font);
-    font-size: 12px;
-  }
+      .sprint-controls input,
+      .sprint-controls select {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-family: var(--font);
+        font-size: 12px;
+      }
 
-  .sprint-controls input {
-    width: 84px;
-  }
+      .sprint-controls input {
+        width: 84px;
+      }
 
-  /* Kanban board */
-  .kanban {
-    margin-bottom: 24px;
-  }
+      /* Kanban board */
+      .kanban {
+        margin-bottom: 24px;
+      }
 
-  .kanban-board {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    min-height: 300px;
-  }
+      .kanban-board {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        min-height: 300px;
+      }
 
-  @media (max-width: 900px) {
-    .kanban-board { grid-template-columns: repeat(2, 1fr); }
-  }
+      @media (max-width: 900px) {
+        .kanban-board {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
 
-  .kanban-col {
-    background: var(--bg);
-    border-radius: var(--radius);
-    padding: 10px;
-    min-height: 200px;
-  }
+      .kanban-col {
+        background: var(--bg);
+        border-radius: var(--radius);
+        padding: 10px;
+        min-height: 200px;
+      }
 
-  .kanban-col-header {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
+      .kanban-col-header {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
 
-  .kanban-col-header .count {
-    background: var(--surface-2);
-    border-radius: 10px;
-    padding: 1px 8px;
-    font-size: 10px;
-    color: var(--text-muted);
-  }
+      .kanban-col-header .count {
+        background: var(--surface-2);
+        border-radius: 10px;
+        padding: 1px 8px;
+        font-size: 10px;
+        color: var(--text-muted);
+      }
 
-  .kanban-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px;
-    margin-bottom: 6px;
-    font-size: 12px;
-    cursor: default;
-    transition: border-color 0.15s;
-  }
+      .kanban-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        cursor: default;
+        transition: border-color 0.15s;
+      }
 
-  .kanban-card:hover {
-    border-color: var(--accent-dim);
-  }
+      .kanban-card:hover {
+        border-color: var(--accent-dim);
+      }
 
-  .kanban-card .issue-num {
-    color: var(--accent);
-    font-weight: 600;
-  }
+      .kanban-card .issue-num {
+        color: var(--accent);
+        font-weight: 600;
+      }
 
-  .kanban-card .title {
-    color: var(--text);
-    margin-top: 2px;
-    line-height: 1.3;
-  }
+      .kanban-card .title {
+        color: var(--text);
+        margin-top: 2px;
+        line-height: 1.3;
+      }
 
-  .kanban-card .card-meta {
-    display: flex;
-    gap: 6px;
-    margin-top: 6px;
-    flex-wrap: wrap;
-  }
+      .kanban-card .card-meta {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+        flex-wrap: wrap;
+      }
 
-  .tag {
-    font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-weight: 500;
-  }
+      .tag {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
 
-  .tag.high { background: var(--red-dim); color: var(--red); }
-  .tag.medium { background: var(--yellow-dim); color: var(--yellow); }
-  .tag.low { background: rgba(107, 138, 255, 0.15); color: var(--accent); }
+      .tag.high {
+        background: var(--red-dim);
+        color: var(--red);
+      }
+      .tag.medium {
+        background: var(--yellow-dim);
+        color: var(--yellow);
+      }
+      .tag.low {
+        background: rgba(107, 138, 255, 0.15);
+        color: var(--accent);
+      }
 
-  /* Chart canvas */
-  .chart-container {
-    position: relative;
-    width: 100%;
-    height: 280px;
-    overflow: visible;
-  }
+      /* Chart canvas */
+      .chart-container {
+        position: relative;
+        width: 100%;
+        height: 280px;
+        overflow: visible;
+      }
 
-  canvas {
-    width: 100% !important;
-    height: 100% !important;
-  }
+      canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
 
-  /* Sprint table */
-  .sprint-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
+      /* Sprint table */
+      .sprint-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
 
-  .sprint-table th {
-    text-align: left;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-muted);
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-  }
+      .sprint-table th {
+        text-align: left;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-muted);
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border);
+      }
 
-  .sprint-table td {
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-  }
+      .sprint-table td {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
+      }
 
-  .sprint-table tr:last-child td { border-bottom: none; }
-  .sprint-table tr:hover td { background: var(--surface-2); }
+      .sprint-table tr:last-child td {
+        border-bottom: none;
+      }
+      .sprint-table tr:hover td {
+        background: var(--surface-2);
+      }
 
-  /* Process health badges */
-  .health-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
+      /* Process health badges */
+      .health-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
 
-  .health-item {
-    background: var(--bg);
-    border-radius: 6px;
-    padding: 12px;
-    text-align: center;
-  }
+      .health-item {
+        background: var(--bg);
+        border-radius: 6px;
+        padding: 12px;
+        text-align: center;
+      }
 
-  .health-item .h-val {
-    font-size: 22px;
-    font-weight: 700;
-  }
+      .health-item .h-val {
+        font-size: 22px;
+        font-weight: 700;
+      }
 
-  .health-item .h-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
+      .health-item .h-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-muted);
+        margin-top: 2px;
+      }
 
-  /* Velocity sparkline */
-  .velocity-bar {
-    display: flex;
-    align-items: flex-end;
-    gap: 3px;
-    height: 60px;
-    margin-top: 8px;
-  }
+      /* Velocity sparkline */
+      .velocity-bar {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 60px;
+        margin-top: 8px;
+      }
 
-  .velocity-bar .bar {
-    flex: 1;
-    background: var(--accent);
-    border-radius: 2px 2px 0 0;
-    min-width: 4px;
-    position: relative;
-  }
+      .velocity-bar .bar {
+        flex: 1;
+        background: var(--accent);
+        border-radius: 2px 2px 0 0;
+        min-width: 4px;
+        position: relative;
+      }
 
-  .velocity-bar .bar:hover::after {
-    content: attr(data-tip);
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--surface-2);
-    color: var(--text);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 10px;
-    white-space: nowrap;
-  }
+      .velocity-bar .bar:hover::after {
+        content: attr(data-tip);
+        position: absolute;
+        bottom: calc(100% + 4px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--surface-2);
+        color: var(--text);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        white-space: nowrap;
+      }
 
-  /* Loading state */
-  .loading {
-    color: var(--text-muted);
-    font-size: 13px;
-    text-align: center;
-    padding: 40px;
-  }
+      /* Loading state */
+      .loading {
+        color: var(--text-muted);
+        font-size: 13px;
+        text-align: center;
+        padding: 40px;
+      }
 
-  .loading::after {
-    content: '';
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin-left: 8px;
-    vertical-align: middle;
-  }
+      .loading::after {
+        content: "";
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-left: 8px;
+        vertical-align: middle;
+      }
 
-  @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
 
-  /* Scrollable kanban columns */
-  .kanban-col-body {
-    max-height: 400px;
-    overflow-y: auto;
-  }
+      /* Scrollable kanban columns */
+      .kanban-col-body {
+        max-height: 400px;
+        overflow-y: auto;
+      }
 
-  .kanban-col-body::-webkit-scrollbar { width: 4px; }
-  .kanban-col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-</style>
-</head>
-<body>
-
-<header>
-  <h1>js2wasm Sprint Dashboard</h1>
-  <div class="meta">
-    <div class="updated" id="last-updated">Loading...</div>
-    <div id="sprint-label">—</div>
-  </div>
-</header>
-
-<!-- Metric cards -->
-<div class="metrics-row" id="metrics-row">
-  <div class="metric-card"><div class="label">Official Test262 Pass Rate</div><div class="value accent" id="m-passrate">—</div><div class="sub" id="m-passrate-sub"></div></div>
-  <div class="metric-card"><div class="label">Issues Done</div><div class="value green" id="m-done">—</div><div class="sub" id="m-done-sub"></div></div>
-  <div class="metric-card"><div class="label">Issues Ready</div><div class="value yellow" id="m-ready">—</div><div class="sub" id="m-ready-sub"></div></div>
-  <div class="metric-card"><div class="label">Blocked</div><div class="value red" id="m-blocked">—</div><div class="sub" id="m-blocked-sub"></div></div>
-  <div class="metric-card"><div class="label">Compile Errors</div><div class="value" id="m-ce">—</div><div class="sub" id="m-ce-sub"></div></div>
-  <div class="metric-card"><div class="label">Failures</div><div class="value" id="m-fail">—</div><div class="sub" id="m-fail-sub"></div></div>
-</div>
-
-<!-- Kanban -->
-<div class="panel kanban">
-  <div class="panel-head">
-    <h2>Issue Board</h2>
-    <div class="panel-actions">
-      <div class="sprint-controls">
-        <label for="sprint-input">Sprint</label>
-        <input id="sprint-input" type="number" min="1" step="1" placeholder="32" />
-        <select id="sprint-select"></select>
+      .kanban-col-body::-webkit-scrollbar {
+        width: 4px;
+      }
+      .kanban-col-body::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>js2wasm Sprint Dashboard</h1>
+      <div class="meta">
+        <div class="updated" id="last-updated">Loading...</div>
+        <div id="sprint-label">—</div>
       </div>
-      <a href="../issues-graph.html">dependency graph</a>
+    </header>
+
+    <!-- Metric cards -->
+    <div class="metrics-row" id="metrics-row">
+      <div class="metric-card">
+        <div class="label">Official Test262 Pass Rate</div>
+        <div class="value accent" id="m-passrate">—</div>
+        <div class="sub" id="m-passrate-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Issues Done</div>
+        <div class="value green" id="m-done">—</div>
+        <div class="sub" id="m-done-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Issues Ready</div>
+        <div class="value yellow" id="m-ready">—</div>
+        <div class="sub" id="m-ready-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Blocked</div>
+        <div class="value red" id="m-blocked">—</div>
+        <div class="sub" id="m-blocked-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Compile Errors</div>
+        <div class="value" id="m-ce">—</div>
+        <div class="sub" id="m-ce-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Failures</div>
+        <div class="value" id="m-fail">—</div>
+        <div class="sub" id="m-fail-sub"></div>
+      </div>
     </div>
-  </div>
-  <div class="kanban-board" id="kanban-board">
-    <div class="kanban-col">
-      <div class="kanban-col-header">Blocked <span class="count" id="col-blocked-count">0</span></div>
-      <div class="kanban-col-body" id="col-blocked"></div>
+
+    <!-- Kanban -->
+    <div class="panel kanban">
+      <div class="panel-head">
+        <h2>Issue Board</h2>
+        <div class="panel-actions">
+          <div class="sprint-controls">
+            <label for="sprint-input">Sprint</label>
+            <input id="sprint-input" type="number" min="1" step="1" placeholder="32" />
+            <select id="sprint-select"></select>
+          </div>
+          <a href="../issues-graph.html">dependency graph</a>
+        </div>
+      </div>
+      <div class="kanban-board" id="kanban-board">
+        <div class="kanban-col">
+          <div class="kanban-col-header">
+            Blocked
+            <span class="count" id="col-blocked-count">0</span>
+          </div>
+          <div class="kanban-col-body" id="col-blocked"></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header">
+            Ready
+            <span class="count" id="col-ready-count">0</span>
+          </div>
+          <div class="kanban-col-body" id="col-ready"></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header">
+            In Progress
+            <span class="count" id="col-inprogress-count">0</span>
+          </div>
+          <div class="kanban-col-body" id="col-inprogress"></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header">
+            Done
+            <span class="count" id="col-done-count">0</span>
+          </div>
+          <div class="kanban-col-body" id="col-done"></div>
+        </div>
+      </div>
     </div>
-    <div class="kanban-col">
-      <div class="kanban-col-header">Ready <span class="count" id="col-ready-count">0</span></div>
-      <div class="kanban-col-body" id="col-ready"></div>
+
+    <!-- Charts row -->
+    <div class="grid-2">
+      <div class="panel">
+        <h2>Official Test262 Pass Rate Trend</h2>
+        <div class="chart-container">
+          <canvas id="chart-passrate"></canvas>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Test262 Breakdown Trend</h2>
+        <div class="chart-container">
+          <canvas id="chart-breakdown"></canvas>
+        </div>
+      </div>
     </div>
-    <div class="kanban-col">
-      <div class="kanban-col-header">In Progress <span class="count" id="col-inprogress-count">0</span></div>
-      <div class="kanban-col-body" id="col-inprogress"></div>
+
+    <!-- Sprint history + Process health -->
+    <div class="grid-2">
+      <div class="panel">
+        <h2>Sprint History</h2>
+        <div id="sprint-history">
+          <div class="loading">Loading sprint data</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Process Health</h2>
+        <div class="health-grid" id="health-grid">
+          <div class="health-item">
+            <div class="h-val green" id="h-total-done">—</div>
+            <div class="h-label">Issues Completed</div>
+          </div>
+          <div class="health-item">
+            <div class="h-val accent" id="h-total-runs">—</div>
+            <div class="h-label">Test262 Runs</div>
+          </div>
+          <div class="health-item">
+            <div class="h-val green" id="h-pass-delta">—</div>
+            <div class="h-label">Pass Δ (All Time)</div>
+          </div>
+          <div class="health-item">
+            <div class="h-val yellow" id="h-ready-ratio">—</div>
+            <div class="h-label">Ready / Total</div>
+          </div>
+        </div>
+        <h2 style="margin-top: 16px">Velocity (issues per sprint)</h2>
+        <div class="velocity-bar" id="velocity-bar"></div>
+      </div>
     </div>
-    <div class="kanban-col">
-      <div class="kanban-col-header">Done <span class="count" id="col-done-count">0</span></div>
-      <div class="kanban-col-body" id="col-done"></div>
-    </div>
-  </div>
-</div>
 
-<!-- Charts row -->
-<div class="grid-2">
-  <div class="panel">
-    <h2>Official Test262 Pass Rate Trend</h2>
-    <div class="chart-container">
-      <canvas id="chart-passrate"></canvas>
-    </div>
-  </div>
-  <div class="panel">
-    <h2>Test262 Breakdown Trend</h2>
-    <div class="chart-container">
-      <canvas id="chart-breakdown"></canvas>
-    </div>
-  </div>
-</div>
+    <script src="data.js" onerror=""></script>
+    <script>
+      // ── Data loading ──────────────────────────────────────────────
+      // The dashboard works in two modes:
+      // 1. Served via HTTP (npx serve) — fetches JSON/files via relative paths
+      // 2. Opened as file:// — uses embedded data (generated by build-data.sh)
+      //
+      // For mode 1, we try fetch first. For mode 2, we fall back to EMBEDDED_DATA.
 
-<!-- Sprint history + Process health -->
-<div class="grid-2">
-  <div class="panel">
-    <h2>Sprint History</h2>
-    <div id="sprint-history">
-      <div class="loading">Loading sprint data</div>
-    </div>
-  </div>
-  <div class="panel">
-    <h2>Process Health</h2>
-    <div class="health-grid" id="health-grid">
-      <div class="health-item"><div class="h-val green" id="h-total-done">—</div><div class="h-label">Issues Completed</div></div>
-      <div class="health-item"><div class="h-val accent" id="h-total-runs">—</div><div class="h-label">Test262 Runs</div></div>
-      <div class="health-item"><div class="h-val green" id="h-pass-delta">—</div><div class="h-label">Pass Δ (All Time)</div></div>
-      <div class="health-item"><div class="h-val yellow" id="h-ready-ratio">—</div><div class="h-label">Ready / Total</div></div>
-    </div>
-    <h2 style="margin-top:16px">Velocity (issues per sprint)</h2>
-    <div class="velocity-bar" id="velocity-bar"></div>
-  </div>
-</div>
+      const EMBEDDED_DATA = window.__DASHBOARD_DATA__ || null;
 
-<script src="data.js" onerror=""></script>
-<script>
-// ── Data loading ──────────────────────────────────────────────
-// The dashboard works in two modes:
-// 1. Served via HTTP (npx serve) — fetches JSON/files via relative paths
-// 2. Opened as file:// — uses embedded data (generated by build-data.sh)
-//
-// For mode 1, we try fetch first. For mode 2, we fall back to EMBEDDED_DATA.
-
-const EMBEDDED_DATA = window.__DASHBOARD_DATA__ || null;
-
-async function loadJSON(path) {
-  try {
-    const res = await fetch(path);
-    if (!res.ok) throw new Error(res.status);
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-async function loadText(path) {
-  try {
-    const res = await fetch(path);
-    if (!res.ok) throw new Error(res.status);
-    return await res.text();
-  } catch {
-    return null;
-  }
-}
-
-// ── Frontmatter parser ───────────────────────────────────────
-function parseFrontmatter(text) {
-  const m = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!m) return {};
-  const obj = {};
-  for (const line of m[1].split('\n')) {
-    const idx = line.indexOf(':');
-    if (idx < 0) continue;
-    const key = line.slice(0, idx).trim();
-    let val = line.slice(idx + 1).trim();
-    // Strip quotes
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
-      val = val.slice(1, -1);
-    // Parse arrays like [481, 482]
-    if (val.startsWith('[') && val.endsWith(']')) {
-      val = val.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean);
-    }
-    obj[key] = val;
-  }
-  return obj;
-}
-
-function extractTitle(text) {
-  const m = text.match(/^#\s+.*?—\s*(.+)$/m) || text.match(/^#\s+(.+)$/m);
-  return m ? m[1].trim() : 'Untitled';
-}
-
-function extractStatus(text) {
-  const m = text.match(/status:\s*(\S+)/i);
-  return m ? m[1] : null;
-}
-
-// ── Chart drawing (no dependencies) ──────────────────────────
-function drawChart(canvas, opts) {
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.parentElement.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  ctx.scale(dpr, dpr);
-  const W = rect.width;
-  const H = rect.height;
-
-  const primarySeries = opts.series.filter(s => !s.secondaryY);
-  const secondarySeries = opts.series.filter(s => s.secondaryY);
-  const hasSecondaryAxis = secondarySeries.length > 0;
-
-  const pad = { top: 20, right: hasSecondaryAxis ? 55 : 16, bottom: 40, left: 55 };
-  const plotW = W - pad.left - pad.right;
-  const plotH = H - pad.top - pad.bottom;
-  let yMin = Infinity, yMax = -Infinity;
-  if (opts.stacked) {
-    yMin = 0;
-    const n = primarySeries[0].data.length;
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      for (const s of primarySeries) sum += s.data[i];
-      if (sum > yMax) yMax = sum;
-    }
-  } else {
-    for (const s of primarySeries) {
-      for (const v of s.data) {
-        if (v < yMin) yMin = v;
-        if (v > yMax) yMax = v;
+      async function loadJSON(path) {
+        try {
+          const res = await fetch(path);
+          if (!res.ok) throw new Error(res.status);
+          return await res.json();
+        } catch {
+          return null;
+        }
       }
-    }
-  }
-  const yRange = yMax - yMin || 1;
-  yMin = Math.max(0, yMin - yRange * 0.05);
-  yMax = yMax + yRange * 0.05;
 
-  // Secondary Y axis range
-  let y2Min = Infinity, y2Max = -Infinity;
-  for (const s of secondarySeries) {
-    for (const v of s.data) {
-      if (v < y2Min) y2Min = v;
-      if (v > y2Max) y2Max = v;
-    }
-  }
-  if (secondarySeries.length > 0) {
-    const y2Range = y2Max - y2Min || 1;
-    y2Min = Math.max(0, y2Min - y2Range * 0.05);
-    y2Max = y2Max + y2Range * 0.05;
-  }
-
-  const hasSecondary = hasSecondaryAxis;
-
-  const n = opts.labels.length;
-
-  function xPos(i) { return pad.left + (i / Math.max(n - 1, 1)) * plotW; }
-  function yPos(v) { return pad.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH; }
-  function y2Pos(v) { return pad.top + plotH - ((v - y2Min) / (y2Max - y2Min)) * plotH; }
-
-  // Grid lines
-  ctx.strokeStyle = 'rgba(46,51,69,0.6)';
-  ctx.lineWidth = 1;
-  const gridCount = 5;
-  for (let i = 0; i <= gridCount; i++) {
-    const y = pad.top + (i / gridCount) * plotH;
-    ctx.beginPath();
-    ctx.moveTo(pad.left, y);
-    ctx.lineTo(pad.left + plotW, y);
-    ctx.stroke();
-
-    // Y label
-    const val = yMax - (i / gridCount) * (yMax - yMin);
-    ctx.fillStyle = '#8b90a0';
-    ctx.font = '10px ' + getComputedStyle(document.body).fontFamily;
-    ctx.textAlign = 'right';
-    ctx.fillText(opts.formatY ? opts.formatY(val) : Math.round(val).toLocaleString(), pad.left - 8, y + 4);
-  }
-
-  // Secondary Y axis labels (right side)
-  if (hasSecondary) {
-    for (let i = 0; i <= gridCount; i++) {
-      const y = pad.top + (i / gridCount) * plotH;
-      const val = y2Max - (i / gridCount) * (y2Max - y2Min);
-      ctx.fillStyle = '#6c8aff';
-      ctx.font = '10px ' + getComputedStyle(document.body).fontFamily;
-      ctx.textAlign = 'left';
-      ctx.fillText(opts.formatY2 ? opts.formatY2(val) : Math.round(val).toLocaleString(), pad.left + plotW + 8, y + 4);
-    }
-  }
-
-  // X labels (show ~8 labels max)
-  const step = Math.max(1, Math.floor(n / 8));
-  ctx.fillStyle = '#8b90a0';
-  ctx.textAlign = 'center';
-  ctx.font = '10px ' + getComputedStyle(document.body).fontFamily;
-  for (let i = 0; i < n; i += step) {
-    ctx.fillText(opts.labels[i], xPos(i), H - pad.bottom + 16);
-  }
-
-  // Draw series (stacked area or line)
-  if (opts.stacked) {
-    // Build cumulative stacks (bottom to top)
-    const n = opts.series[0].data.length;
-    const cumulative = Array.from({ length: opts.series.length }, () => new Array(n).fill(0));
-    for (let si = 0; si < opts.series.length; si++) {
-      for (let i = 0; i < n; i++) {
-        cumulative[si][i] = (si > 0 ? cumulative[si - 1][i] : 0) + opts.series[si].data[i];
+      async function loadText(path) {
+        try {
+          const res = await fetch(path);
+          if (!res.ok) throw new Error(res.status);
+          return await res.text();
+        } catch {
+          return null;
+        }
       }
-    }
-    // Draw from top to bottom so lower areas aren't covered
-    for (let si = opts.series.length - 1; si >= 0; si--) {
-      const s = opts.series[si];
-      const top = cumulative[si];
-      const bottom = si > 0 ? cumulative[si - 1] : top.map(() => 0);
 
-      // Fill area — pass band more opaque to stand out
-      ctx.globalAlpha = si === 0 ? 0.3 : 0.06;
-      ctx.fillStyle = s.color;
-      ctx.beginPath();
-      for (let i = 0; i < n; i++) {
-        const x = xPos(i);
-        if (i === 0) ctx.moveTo(x, yPos(top[i]));
-        else ctx.lineTo(x, yPos(top[i]));
+      // ── Frontmatter parser ───────────────────────────────────────
+      function parseFrontmatter(text) {
+        const m = text.match(/^---\n([\s\S]*?)\n---/);
+        if (!m) return {};
+        const obj = {};
+        for (const line of m[1].split("\n")) {
+          const idx = line.indexOf(":");
+          if (idx < 0) continue;
+          const key = line.slice(0, idx).trim();
+          let val = line.slice(idx + 1).trim();
+          // Strip quotes
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
+            val = val.slice(1, -1);
+          // Parse arrays like [481, 482]
+          if (val.startsWith("[") && val.endsWith("]")) {
+            val = val
+              .slice(1, -1)
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+          }
+          obj[key] = val;
+        }
+        return obj;
       }
-      for (let i = n - 1; i >= 0; i--) {
-        ctx.lineTo(xPos(i), yPos(bottom[i]));
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha = 1;
 
-      // Stroke top edge — pass line prominent, others subtle
-      ctx.globalAlpha = si === 0 ? 1 : 0.45;
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = si === 0 ? 2 : 0.75;
-      ctx.beginPath();
-      for (let i = 0; i < n; i++) {
-        const x = xPos(i);
-        if (i === 0) ctx.moveTo(x, yPos(top[i]));
-        else ctx.lineTo(x, yPos(top[i]));
+      function extractTitle(text) {
+        const m = text.match(/^#\s+.*?—\s*(.+)$/m) || text.match(/^#\s+(.+)$/m);
+        return m ? m[1].trim() : "Untitled";
       }
-      ctx.stroke();
-    }
-  } else {
-    for (const s of opts.series) {
-      const posFunc = s.secondaryY ? y2Pos : yPos;
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 2;
-      ctx.lineJoin = 'round';
-      ctx.beginPath();
-      for (let i = 0; i < s.data.length; i++) {
-        const x = xPos(i);
-        const y = posFunc(s.data[i]);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+
+      function extractStatus(text) {
+        const m = text.match(/status:\s*(\S+)/i);
+        return m ? m[1] : null;
       }
-      ctx.stroke();
 
-      // Area fill
-      if (s.fill) {
-        ctx.globalAlpha = 0.08;
-        ctx.fillStyle = s.color;
-        ctx.lineTo(xPos(s.data.length - 1), pad.top + plotH);
-        ctx.lineTo(xPos(0), pad.top + plotH);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 1;
+      // ── Chart drawing (no dependencies) ──────────────────────────
+      function drawChart(canvas, opts) {
+        const ctx = canvas.getContext("2d");
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+        const W = rect.width;
+        const H = rect.height;
+
+        const primarySeries = opts.series.filter((s) => !s.secondaryY);
+        const secondarySeries = opts.series.filter((s) => s.secondaryY);
+        const hasSecondaryAxis = secondarySeries.length > 0;
+
+        const pad = { top: 20, right: hasSecondaryAxis ? 55 : 16, bottom: 40, left: 55 };
+        const plotW = W - pad.left - pad.right;
+        const plotH = H - pad.top - pad.bottom;
+        let yMin = Infinity,
+          yMax = -Infinity;
+        if (opts.stacked) {
+          yMin = 0;
+          const n = primarySeries[0].data.length;
+          for (let i = 0; i < n; i++) {
+            let sum = 0;
+            for (const s of primarySeries) sum += s.data[i];
+            if (sum > yMax) yMax = sum;
+          }
+        } else {
+          for (const s of primarySeries) {
+            for (const v of s.data) {
+              if (v < yMin) yMin = v;
+              if (v > yMax) yMax = v;
+            }
+          }
+        }
+        const yRange = yMax - yMin || 1;
+        yMin = Math.max(0, yMin - yRange * 0.05);
+        yMax = yMax + yRange * 0.05;
+
+        // Secondary Y axis range
+        let y2Min = Infinity,
+          y2Max = -Infinity;
+        for (const s of secondarySeries) {
+          for (const v of s.data) {
+            if (v < y2Min) y2Min = v;
+            if (v > y2Max) y2Max = v;
+          }
+        }
+        if (secondarySeries.length > 0) {
+          const y2Range = y2Max - y2Min || 1;
+          y2Min = Math.max(0, y2Min - y2Range * 0.05);
+          y2Max = y2Max + y2Range * 0.05;
+        }
+
+        const hasSecondary = hasSecondaryAxis;
+
+        const n = opts.labels.length;
+
+        function xPos(i) {
+          return pad.left + (i / Math.max(n - 1, 1)) * plotW;
+        }
+        function yPos(v) {
+          return pad.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+        }
+        function y2Pos(v) {
+          return pad.top + plotH - ((v - y2Min) / (y2Max - y2Min)) * plotH;
+        }
+
+        // Grid lines
+        ctx.strokeStyle = "rgba(46,51,69,0.6)";
+        ctx.lineWidth = 1;
+        const gridCount = 5;
+        for (let i = 0; i <= gridCount; i++) {
+          const y = pad.top + (i / gridCount) * plotH;
+          ctx.beginPath();
+          ctx.moveTo(pad.left, y);
+          ctx.lineTo(pad.left + plotW, y);
+          ctx.stroke();
+
+          // Y label
+          const val = yMax - (i / gridCount) * (yMax - yMin);
+          ctx.fillStyle = "#8b90a0";
+          ctx.font = "10px " + getComputedStyle(document.body).fontFamily;
+          ctx.textAlign = "right";
+          ctx.fillText(opts.formatY ? opts.formatY(val) : Math.round(val).toLocaleString(), pad.left - 8, y + 4);
+        }
+
+        // Secondary Y axis labels (right side)
+        if (hasSecondary) {
+          for (let i = 0; i <= gridCount; i++) {
+            const y = pad.top + (i / gridCount) * plotH;
+            const val = y2Max - (i / gridCount) * (y2Max - y2Min);
+            ctx.fillStyle = "#6c8aff";
+            ctx.font = "10px " + getComputedStyle(document.body).fontFamily;
+            ctx.textAlign = "left";
+            ctx.fillText(
+              opts.formatY2 ? opts.formatY2(val) : Math.round(val).toLocaleString(),
+              pad.left + plotW + 8,
+              y + 4,
+            );
+          }
+        }
+
+        // X labels (show ~8 labels max)
+        const step = Math.max(1, Math.floor(n / 8));
+        ctx.fillStyle = "#8b90a0";
+        ctx.textAlign = "center";
+        ctx.font = "10px " + getComputedStyle(document.body).fontFamily;
+        for (let i = 0; i < n; i += step) {
+          ctx.fillText(opts.labels[i], xPos(i), H - pad.bottom + 16);
+        }
+
+        // Draw series (stacked area or line)
+        if (opts.stacked) {
+          // Build cumulative stacks (bottom to top)
+          const n = opts.series[0].data.length;
+          const cumulative = Array.from({ length: opts.series.length }, () => new Array(n).fill(0));
+          for (let si = 0; si < opts.series.length; si++) {
+            for (let i = 0; i < n; i++) {
+              cumulative[si][i] = (si > 0 ? cumulative[si - 1][i] : 0) + opts.series[si].data[i];
+            }
+          }
+          // Draw from top to bottom so lower areas aren't covered
+          for (let si = opts.series.length - 1; si >= 0; si--) {
+            const s = opts.series[si];
+            const top = cumulative[si];
+            const bottom = si > 0 ? cumulative[si - 1] : top.map(() => 0);
+
+            // Fill area — pass band more opaque to stand out
+            ctx.globalAlpha = si === 0 ? 0.3 : 0.06;
+            ctx.fillStyle = s.color;
+            ctx.beginPath();
+            for (let i = 0; i < n; i++) {
+              const x = xPos(i);
+              if (i === 0) ctx.moveTo(x, yPos(top[i]));
+              else ctx.lineTo(x, yPos(top[i]));
+            }
+            for (let i = n - 1; i >= 0; i--) {
+              ctx.lineTo(xPos(i), yPos(bottom[i]));
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1;
+
+            // Stroke top edge — pass line prominent, others subtle
+            ctx.globalAlpha = si === 0 ? 1 : 0.45;
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = si === 0 ? 2 : 0.75;
+            ctx.beginPath();
+            for (let i = 0; i < n; i++) {
+              const x = xPos(i);
+              if (i === 0) ctx.moveTo(x, yPos(top[i]));
+              else ctx.lineTo(x, yPos(top[i]));
+            }
+            ctx.stroke();
+          }
+        } else {
+          for (const s of opts.series) {
+            const posFunc = s.secondaryY ? y2Pos : yPos;
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = 2;
+            ctx.lineJoin = "round";
+            ctx.beginPath();
+            for (let i = 0; i < s.data.length; i++) {
+              const x = xPos(i);
+              const y = posFunc(s.data[i]);
+              if (i === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Area fill
+            if (s.fill) {
+              ctx.globalAlpha = 0.08;
+              ctx.fillStyle = s.color;
+              ctx.lineTo(xPos(s.data.length - 1), pad.top + plotH);
+              ctx.lineTo(xPos(0), pad.top + plotH);
+              ctx.closePath();
+              ctx.fill();
+              ctx.globalAlpha = 1;
+            }
+          }
+        }
+
+        // Legend
+        let lx = pad.left;
+        ctx.font = "11px " + getComputedStyle(document.body).fontFamily;
+        for (const s of opts.series) {
+          ctx.fillStyle = s.color;
+          ctx.fillRect(lx, H - 12, 12, 3);
+          ctx.fillStyle = "#8b90a0";
+          ctx.textAlign = "left";
+          ctx.fillText(s.label, lx + 16, H - 6);
+          lx += ctx.measureText(s.label).width + 32;
+        }
       }
-    }
-  }
 
-  // Legend
-  let lx = pad.left;
-  ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
-  for (const s of opts.series) {
-    ctx.fillStyle = s.color;
-    ctx.fillRect(lx, H - 12, 12, 3);
-    ctx.fillStyle = '#8b90a0';
-    ctx.textAlign = 'left';
-    ctx.fillText(s.label, lx + 16, H - 6);
-    lx += ctx.measureText(s.label).width + 32;
-  }
-}
-
-// ── Kanban card ──────────────────────────────────────────────
-function makeCard(id, title, fm) {
-  const priority = fm.priority || 'medium';
-  const feasibility = fm.feasibility || '';
-  let meta = `<span class="tag ${priority}">${priority}</span>`;
-  if (feasibility) meta += `<span class="tag low">${feasibility}</span>`;
-  return `<div class="kanban-card">
+      // ── Kanban card ──────────────────────────────────────────────
+      function makeCard(id, title, fm) {
+        const priority = fm.priority || "medium";
+        const feasibility = fm.feasibility || "";
+        let meta = `<span class="tag ${priority}">${priority}</span>`;
+        if (feasibility) meta += `<span class="tag low">${feasibility}</span>`;
+        return `<div class="kanban-card">
     <div class="issue-num">#${id}</div>
     <div class="title">${title}</div>
     <div class="card-meta">${meta}</div>
   </div>`;
-}
+      }
 
-function getLatestSprint(sprints) {
-  return [...sprints]
-    .filter(s => Number.isFinite(s.sprintNumber))
-    .filter(s => !/planning/i.test(s.name || ''))
-    .filter(s => /^\d{4}-\d{2}-\d{2}$/.test((s.date || '').trim()))
-    .sort((a, b) => a.sprintNumber - b.sprintNumber)
-    .at(-1) || null;
-}
+      function getLatestSprint(sprints) {
+        return (
+          [...sprints]
+            .filter((s) => Number.isFinite(s.sprintNumber))
+            .filter((s) => !/planning/i.test(s.name || ""))
+            .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test((s.date || "").trim()))
+            .sort((a, b) => a.sprintNumber - b.sprintNumber)
+            .at(-1) || null
+        );
+      }
 
-function buildSprintOptions(sprints) {
-  const byNumber = new Map();
-  for (const sprint of sprints) {
-    if (!Number.isFinite(sprint.sprintNumber)) continue;
-    const existing = byNumber.get(sprint.sprintNumber);
-    if (!existing) {
-      byNumber.set(sprint.sprintNumber, sprint);
-      continue;
-    }
-    const currentScore = (/planning/i.test(existing.name || '') ? 0 : 1) + (/^\d{4}-\d{2}-\d{2}$/.test((existing.date || '').trim()) ? 1 : 0);
-    const nextScore = (/planning/i.test(sprint.name || '') ? 0 : 1) + (/^\d{4}-\d{2}-\d{2}$/.test((sprint.date || '').trim()) ? 1 : 0);
-    if (nextScore >= currentScore) byNumber.set(sprint.sprintNumber, sprint);
-  }
-  return [...byNumber.values()].sort((a, b) => a.sprintNumber - b.sprintNumber);
-}
+      function buildSprintOptions(sprints) {
+        const byNumber = new Map();
+        for (const sprint of sprints) {
+          if (!Number.isFinite(sprint.sprintNumber)) continue;
+          const existing = byNumber.get(sprint.sprintNumber);
+          if (!existing) {
+            byNumber.set(sprint.sprintNumber, sprint);
+            continue;
+          }
+          const currentScore =
+            (/planning/i.test(existing.name || "") ? 0 : 1) +
+            (/^\d{4}-\d{2}-\d{2}$/.test((existing.date || "").trim()) ? 1 : 0);
+          const nextScore =
+            (/planning/i.test(sprint.name || "") ? 0 : 1) +
+            (/^\d{4}-\d{2}-\d{2}$/.test((sprint.date || "").trim()) ? 1 : 0);
+          if (nextScore >= currentScore) byNumber.set(sprint.sprintNumber, sprint);
+        }
+        return [...byNumber.values()].sort((a, b) => a.sprintNumber - b.sprintNumber);
+      }
 
-function filterIssuesForSprint(issues, sprint) {
-  if (!sprint || !Array.isArray(sprint.issueIds) || sprint.issueIds.length === 0) return issues;
-  const allowed = new Set(sprint.issueIds.map(String));
-  return {
-    blocked: (issues.blocked || []).filter(iss => allowed.has(String(iss.id))),
-    ready: (issues.ready || []).filter(iss => allowed.has(String(iss.id))),
-    inprogress: (issues.inprogress || []).filter(iss => allowed.has(String(iss.id))),
-    done: (issues.done || []).filter(iss => allowed.has(String(iss.id))),
-  };
-}
+      function filterIssuesForSprint(issues, sprint) {
+        if (!sprint || !Array.isArray(sprint.issueIds) || sprint.issueIds.length === 0) return issues;
+        const allowed = new Set(sprint.issueIds.map(String));
+        return {
+          blocked: (issues.blocked || []).filter((iss) => allowed.has(String(iss.id))),
+          ready: (issues.ready || []).filter((iss) => allowed.has(String(iss.id))),
+          inprogress: (issues.inprogress || []).filter((iss) => allowed.has(String(iss.id))),
+          done: (issues.done || []).filter((iss) => allowed.has(String(iss.id))),
+        };
+      }
 
-function renderIssueBoard(issues) {
-  const cols = {
-    blocked: { el: document.getElementById('col-blocked'), count: document.getElementById('col-blocked-count') },
-    ready: { el: document.getElementById('col-ready'), count: document.getElementById('col-ready-count') },
-    inprogress: { el: document.getElementById('col-inprogress'), count: document.getElementById('col-inprogress-count') },
-    done: { el: document.getElementById('col-done'), count: document.getElementById('col-done-count') },
-  };
+      function renderIssueBoard(issues) {
+        const cols = {
+          blocked: { el: document.getElementById("col-blocked"), count: document.getElementById("col-blocked-count") },
+          ready: { el: document.getElementById("col-ready"), count: document.getElementById("col-ready-count") },
+          inprogress: {
+            el: document.getElementById("col-inprogress"),
+            count: document.getElementById("col-inprogress-count"),
+          },
+          done: { el: document.getElementById("col-done"), count: document.getElementById("col-done-count") },
+        };
 
-  for (const [status, col] of Object.entries(cols)) {
-    const list = issues[status] || [];
-    col.count.textContent = list.length;
-    const display = status === 'done' ? list.slice(-20).reverse() : list.slice(0, 30);
-    col.el.innerHTML = display.map(iss =>
-      makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)
-    ).join('');
-    if (list.length > display.length) {
-      col.el.innerHTML += `<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:8px">
+        for (const [status, col] of Object.entries(cols)) {
+          const list = issues[status] || [];
+          col.count.textContent = list.length;
+          const display = status === "done" ? list.slice(-20).reverse() : list.slice(0, 30);
+          col.el.innerHTML = display.map((iss) => makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)).join("");
+          if (list.length > display.length) {
+            col.el.innerHTML += `<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:8px">
         +${list.length - display.length} more
       </div>`;
-    }
-  }
-}
+          }
+        }
+      }
 
-// ── Main ─────────────────────────────────────────────────────
-async function main() {
-  // Load test262 run data
-  let runs = null;
-  runs = await loadJSON('../benchmarks/results/runs/index.json');
-  if (!runs) runs = await loadJSON('data/runs.json');
-  if (!runs && EMBEDDED_DATA) runs = EMBEDDED_DATA.runs;
-  if (!runs) runs = [];
+      // ── Main ─────────────────────────────────────────────────────
+      async function main() {
+        // Load test262 run data
+        let runs = null;
+        runs = await loadJSON("../benchmarks/results/runs/index.json");
+        if (!runs) runs = await loadJSON("data/runs.json");
+        if (!runs && EMBEDDED_DATA) runs = EMBEDDED_DATA.runs;
+        if (!runs) runs = [];
 
-  // Load issue lists from embedded data or show static counts
-  // Since file:// can't list directories, we embed issue data via build script
-  // For now, we parse from what we can fetch or use embedded data
-  let issues = { blocked: [], ready: [], inprogress: [], done: [] };
+        // Load issue lists from embedded data or show static counts
+        // Since file:// can't list directories, we embed issue data via build script
+        // For now, we parse from what we can fetch or use embedded data
+        let issues = { blocked: [], ready: [], inprogress: [], done: [] };
 
-  if (EMBEDDED_DATA && EMBEDDED_DATA.issues) {
-    issues = EMBEDDED_DATA.issues;
-  } else {
-    // Try loading issue index if available
-    const issueIndex = await loadJSON('./data/issues.json');
-    if (issueIndex) {
-      issues = issueIndex;
-    }
-  }
+        if (EMBEDDED_DATA && EMBEDDED_DATA.issues) {
+          issues = EMBEDDED_DATA.issues;
+        } else {
+          // Try loading issue index if available
+          const issueIndex = await loadJSON("./data/issues.json");
+          if (issueIndex) {
+            issues = issueIndex;
+          }
+        }
 
-  // Load sprint data
-  let sprints = [];
-  if (EMBEDDED_DATA && EMBEDDED_DATA.sprints) {
-    sprints = EMBEDDED_DATA.sprints;
-  } else {
-    const sprintIndex = await loadJSON('./data/sprints.json');
-    if (sprintIndex) sprints = sprintIndex;
-  }
-  sprints = sprints
-    .map(s => ({ ...s, sprintNumber: Number(s.sprintNumber ?? String(s.name).match(/(\d+)/)?.[1] ?? NaN) }))
-    .sort((a, b) => (a.sprintNumber || 0) - (b.sprintNumber || 0));
+        // Load sprint data
+        let sprints = [];
+        if (EMBEDDED_DATA && EMBEDDED_DATA.sprints) {
+          sprints = EMBEDDED_DATA.sprints;
+        } else {
+          const sprintIndex = await loadJSON("./data/sprints.json");
+          if (sprintIndex) sprints = sprintIndex;
+        }
+        sprints = sprints
+          .map((s) => ({ ...s, sprintNumber: Number(s.sprintNumber ?? String(s.name).match(/(\d+)/)?.[1] ?? NaN) }))
+          .sort((a, b) => (a.sprintNumber || 0) - (b.sprintNumber || 0));
 
-  // ── Update timestamp ──
-  document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleString();
+        // ── Update timestamp ──
+        document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleString();
 
-  // ── Metrics ──
-  if (runs.length > 0) {
-    const latest = runs[runs.length - 1];
-    // Use strict-mode pass rate (ES module compatible) when available, fall back to all tests
-    const strictPass = latest.strict_pass ?? latest.pass;
-    const strictTotal = latest.strict_total ?? latest.total;
-    const passRate = ((strictPass / strictTotal) * 100).toFixed(1);
-    document.getElementById('m-passrate').textContent = passRate + '%';
-    document.getElementById('m-passrate-sub').textContent =
-      `${strictPass.toLocaleString()} / ${strictTotal.toLocaleString()} tests (strict mode)`;
+        // ── Metrics ──
+        if (runs.length > 0) {
+          const latest = runs[runs.length - 1];
+          // Use strict-mode pass rate (ES module compatible) when available, fall back to all tests
+          const strictPass = latest.strict_pass ?? latest.pass;
+          const strictTotal = latest.strict_total ?? latest.total;
+          const passRate = ((strictPass / strictTotal) * 100).toFixed(1);
+          document.getElementById("m-passrate").textContent = passRate + "%";
+          document.getElementById("m-passrate-sub").textContent =
+            `${strictPass.toLocaleString()} / ${strictTotal.toLocaleString()} tests (strict mode)`;
 
-    document.getElementById('m-ce').textContent = latest.ce.toLocaleString();
-    document.getElementById('m-ce').className = 'value ' + (latest.ce > 2000 ? 'red' : latest.ce > 500 ? 'yellow' : 'green');
-    document.getElementById('m-ce-sub').textContent = 'compile errors';
+          document.getElementById("m-ce").textContent = latest.ce.toLocaleString();
+          document.getElementById("m-ce").className =
+            "value " + (latest.ce > 2000 ? "red" : latest.ce > 500 ? "yellow" : "green");
+          document.getElementById("m-ce-sub").textContent = "compile errors";
 
-    document.getElementById('m-fail').textContent = latest.fail.toLocaleString();
-    document.getElementById('m-fail').className = 'value ' + (latest.fail > 3000 ? 'red' : latest.fail > 1000 ? 'yellow' : 'green');
-    document.getElementById('m-fail-sub').textContent = 'runtime failures';
+          document.getElementById("m-fail").textContent = latest.fail.toLocaleString();
+          document.getElementById("m-fail").className =
+            "value " + (latest.fail > 3000 ? "red" : latest.fail > 1000 ? "yellow" : "green");
+          document.getElementById("m-fail-sub").textContent = "runtime failures";
 
-    // Pass delta from first run
-    if (runs.length > 1) {
-      const first = runs[0];
-      const delta = latest.pass - first.pass;
-      document.getElementById('h-pass-delta').textContent =
-        (delta >= 0 ? '+' : '') + delta.toLocaleString();
-    }
-  }
+          // Pass delta from first run
+          if (runs.length > 1) {
+            const first = runs[0];
+            const delta = latest.pass - first.pass;
+            document.getElementById("h-pass-delta").textContent = (delta >= 0 ? "+" : "") + delta.toLocaleString();
+          }
+        }
 
-  // Issue counts
-  document.getElementById('m-done').textContent = issues.done.length.toLocaleString();
-  document.getElementById('m-done-sub').textContent = 'issues completed';
-  document.getElementById('m-ready').textContent = issues.ready.length.toLocaleString();
-  document.getElementById('m-ready-sub').textContent = 'issues in backlog';
-  document.getElementById('m-blocked').textContent = issues.blocked.length.toLocaleString();
-  document.getElementById('m-blocked-sub').textContent = 'waiting on deps';
+        // Issue counts
+        document.getElementById("m-done").textContent = issues.done.length.toLocaleString();
+        document.getElementById("m-done-sub").textContent = "issues completed";
+        document.getElementById("m-ready").textContent = issues.ready.length.toLocaleString();
+        document.getElementById("m-ready-sub").textContent = "issues in backlog";
+        document.getElementById("m-blocked").textContent = issues.blocked.length.toLocaleString();
+        document.getElementById("m-blocked-sub").textContent = "waiting on deps";
 
-  // ── Kanban board ──
-  const sprintLabel = document.getElementById('sprint-label');
-  const sprintInput = document.getElementById('sprint-input');
-  const sprintSelect = document.getElementById('sprint-select');
-  const sprintOptions = buildSprintOptions(sprints);
-  const latestSprint = getLatestSprint(sprintOptions);
-  let selectedSprint = latestSprint;
+        // ── Kanban board ──
+        const sprintLabel = document.getElementById("sprint-label");
+        const sprintInput = document.getElementById("sprint-input");
+        const sprintSelect = document.getElementById("sprint-select");
+        const sprintOptions = buildSprintOptions(sprints);
+        const latestSprint = getLatestSprint(sprintOptions);
+        let selectedSprint = latestSprint;
 
-  sprintSelect.innerHTML = sprintOptions
-    .filter(s => Number.isFinite(s.sprintNumber))
-    .map(s => `<option value="${s.sprintNumber}">Sprint ${s.sprintNumber}</option>`)
-    .join('');
+        sprintSelect.innerHTML = sprintOptions
+          .filter((s) => Number.isFinite(s.sprintNumber))
+          .map((s) => `<option value="${s.sprintNumber}">Sprint ${s.sprintNumber}</option>`)
+          .join("");
 
-  function syncSprintControls(numberValue) {
-    sprintInput.value = numberValue ? String(numberValue) : '';
-    sprintSelect.value = numberValue ? String(numberValue) : '';
-  }
+        function syncSprintControls(numberValue) {
+          sprintInput.value = numberValue ? String(numberValue) : "";
+          sprintSelect.value = numberValue ? String(numberValue) : "";
+        }
 
-  function renderSprintBoard() {
-    const scopedIssues = filterIssuesForSprint(issues, selectedSprint);
-    renderIssueBoard(scopedIssues);
-    sprintLabel.textContent = selectedSprint
-      ? `Board: Sprint ${selectedSprint.sprintNumber}`
-      : 'Board: All issues';
-    syncSprintControls(selectedSprint?.sprintNumber ?? '');
-  }
+        function renderSprintBoard() {
+          const scopedIssues = filterIssuesForSprint(issues, selectedSprint);
+          renderIssueBoard(scopedIssues);
+          sprintLabel.textContent = selectedSprint
+            ? `Board: Sprint ${selectedSprint.sprintNumber}`
+            : "Board: All issues";
+          syncSprintControls(selectedSprint?.sprintNumber ?? "");
+        }
 
-  function setSprintByNumber(numberValue) {
-    const sprintNumber = Number(numberValue);
-    const found = sprintOptions.find(s => s.sprintNumber === sprintNumber) || null;
-    if (!found) return;
-    selectedSprint = found;
-    renderSprintBoard();
-  }
+        function setSprintByNumber(numberValue) {
+          const sprintNumber = Number(numberValue);
+          const found = sprintOptions.find((s) => s.sprintNumber === sprintNumber) || null;
+          if (!found) return;
+          selectedSprint = found;
+          renderSprintBoard();
+        }
 
-  if (latestSprint) {
-    renderSprintBoard();
-  } else {
-    renderIssueBoard(issues);
-    sprintLabel.textContent = 'Board: All issues';
-  }
+        if (latestSprint) {
+          renderSprintBoard();
+        } else {
+          renderIssueBoard(issues);
+          sprintLabel.textContent = "Board: All issues";
+        }
 
-  sprintInput.addEventListener('change', () => setSprintByNumber(sprintInput.value));
-  sprintSelect.addEventListener('change', () => setSprintByNumber(sprintSelect.value));
+        sprintInput.addEventListener("change", () => setSprintByNumber(sprintInput.value));
+        sprintSelect.addEventListener("change", () => setSprintByNumber(sprintSelect.value));
 
-  // ── Test262 Charts ──
-  if (runs.length > 0) {
-    // Subsample for readability if too many points
-    let chartRuns = runs;
-    if (runs.length > 60) {
-      const step = Math.ceil(runs.length / 60);
-      chartRuns = runs.filter((_, i) => i % step === 0 || i === runs.length - 1);
-    }
+        // ── Test262 Charts ──
+        if (runs.length > 0) {
+          // Subsample for readability if too many points
+          let chartRuns = runs;
+          if (runs.length > 60) {
+            const step = Math.ceil(runs.length / 60);
+            chartRuns = runs.filter((_, i) => i % step === 0 || i === runs.length - 1);
+          }
 
-    const labels = chartRuns.map(r => {
-      const d = new Date(r.timestamp);
-      return `${d.getMonth() + 1}/${d.getDate()}`;
-    });
+          const labels = chartRuns.map((r) => {
+            const d = new Date(r.timestamp);
+            return `${d.getMonth() + 1}/${d.getDate()}`;
+          });
 
-    // Pass rate chart with absolute pass count overlay
-    drawChart(document.getElementById('chart-passrate'), {
-      labels,
-      series: [
-        {
-          label: 'Pass Rate %',
-          data: chartRuns.map(r => (r.pass / r.total) * 100),
-          color: '#34d399',
-          fill: true,
-        },
-        {
-          label: 'Pass Count',
-          data: chartRuns.map(r => r.pass),
-          color: '#6c8aff',
-          fill: false,
-          secondaryY: true,
-        },
-      ],
-      formatY: v => v.toFixed(0) + '%',
-      formatY2: v => (v >= 1000 ? (v / 1000).toFixed(1) + 'K' : Math.round(v).toString()),
-    });
+          // Pass rate chart with absolute pass count overlay
+          drawChart(document.getElementById("chart-passrate"), {
+            labels,
+            series: [
+              {
+                label: "Pass Rate %",
+                data: chartRuns.map((r) => (r.pass / r.total) * 100),
+                color: "#34d399",
+                fill: true,
+              },
+              {
+                label: "Pass Count",
+                data: chartRuns.map((r) => r.pass),
+                color: "#6c8aff",
+                fill: false,
+                secondaryY: true,
+              },
+            ],
+            formatY: (v) => v.toFixed(0) + "%",
+            formatY2: (v) => (v >= 1000 ? (v / 1000).toFixed(1) + "K" : Math.round(v).toString()),
+          });
 
-    // Breakdown chart (stacked area — pass + fail + CE + skip = total)
-    drawChart(document.getElementById('chart-breakdown'), {
-      labels,
-      stacked: true,
-      series: [
-        { label: 'Pass', data: chartRuns.map(r => r.pass), color: '#34d399' },
-        { label: 'Fail', data: chartRuns.map(r => r.fail), color: '#f87171' },
-        { label: 'CE', data: chartRuns.map(r => r.ce), color: '#fbbf24' },
-        { label: 'Skip', data: chartRuns.map(r => r.total - r.pass - r.fail - (r.ce || 0)), color: '#4a5fa0' },
-      ],
-    });
-  }
+          // Breakdown chart (stacked area — pass + fail + CE + skip = total)
+          drawChart(document.getElementById("chart-breakdown"), {
+            labels,
+            stacked: true,
+            series: [
+              { label: "Pass", data: chartRuns.map((r) => r.pass), color: "#34d399" },
+              { label: "Fail", data: chartRuns.map((r) => r.fail), color: "#f87171" },
+              { label: "CE", data: chartRuns.map((r) => r.ce), color: "#fbbf24" },
+              { label: "Skip", data: chartRuns.map((r) => r.total - r.pass - r.fail - (r.ce || 0)), color: "#4a5fa0" },
+            ],
+          });
+        }
 
-  // ── Process health ──
-  const totalIssues = issues.done.length + issues.ready.length + issues.blocked.length + issues.inprogress.length;
-  document.getElementById('h-total-done').textContent = issues.done.length;
-  document.getElementById('h-total-runs').textContent = runs.length;
-  document.getElementById('h-ready-ratio').textContent =
-    issues.ready.length + ' / ' + totalIssues;
+        // ── Process health ──
+        const totalIssues = issues.done.length + issues.ready.length + issues.blocked.length + issues.inprogress.length;
+        document.getElementById("h-total-done").textContent = issues.done.length;
+        document.getElementById("h-total-runs").textContent = runs.length;
+        document.getElementById("h-ready-ratio").textContent = issues.ready.length + " / " + totalIssues;
 
-  // ── Sprint history ──
-  if (sprints.length > 0) {
-    const rows = sprints.map(s =>
-      `<tr>
+        // ── Sprint history ──
+        if (sprints.length > 0) {
+          const rows = sprints
+            .map(
+              (s) =>
+                `<tr>
         <td>${s.name}</td>
-        <td>${s.date || '—'}</td>
-        <td>${s.baseline || '—'}</td>
-        <td>${s.result || '—'}</td>
-        <td>${s.issueCount || '—'}</td>
-      </tr>`
-    ).join('');
-    document.getElementById('sprint-history').innerHTML = `
+        <td>${s.date || "—"}</td>
+        <td>${s.baseline || "—"}</td>
+        <td>${s.result || "—"}</td>
+        <td>${s.issueCount || "—"}</td>
+      </tr>`,
+            )
+            .join("");
+          document.getElementById("sprint-history").innerHTML = `
       <table class="sprint-table">
         <thead><tr><th>Sprint</th><th>Date</th><th>Baseline</th><th>Result</th><th>Issues</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
-  } else {
-    document.getElementById('sprint-history').innerHTML =
-      '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center">No sprint data loaded. Run <code>node dashboard/build-data.js</code> to generate.</div>';
-  }
+        } else {
+          document.getElementById("sprint-history").innerHTML =
+            '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center">No sprint data loaded. Run <code>node dashboard/build-data.js</code> to generate.</div>';
+        }
 
-  // ── Velocity bar chart ──
-  if (sprints.length > 0) {
-    const maxIssues = Math.max(...sprints.map(s => s.issueCount || 0), 1);
-    document.getElementById('velocity-bar').innerHTML = sprints.map(s => {
-      const h = ((s.issueCount || 0) / maxIssues) * 100;
-      return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="${s.name}: ${s.issueCount || 0} issues"></div>`;
-    }).join('');
-  }
-}
+        // ── Velocity bar chart ──
+        if (sprints.length > 0) {
+          const maxIssues = Math.max(...sprints.map((s) => s.issueCount || 0), 1);
+          document.getElementById("velocity-bar").innerHTML = sprints
+            .map((s) => {
+              const h = ((s.issueCount || 0) / maxIssues) * 100;
+              return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="${s.name}: ${s.issueCount || 0} issues"></div>`;
+            })
+            .join("");
+        }
+      }
 
-// ── Run on load ──
-main().catch(err => console.error('Dashboard error:', err));
+      // ── Run on load ──
+      main().catch((err) => console.error("Dashboard error:", err));
 
-// ── Resize handler for charts ──
-let resizeTimer;
-window.addEventListener('resize', () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => main(), 200);
-});
-</script>
-
-</body>
+      // ── Resize handler for charts ──
+      let resizeTimer;
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => main(), 200);
+      });
+    </script>
+  </body>
 </html>
