@@ -1388,12 +1388,19 @@ function resolveImport(
           buf.push(v);
         };
       if (name === "__create_generator")
-        return (buf: any[]) => {
+        return (buf: any[], pendingThrow: any) => {
           let index = 0;
           return {
             next() {
               if (index < buf.length) {
                 return { value: buf[index++], done: false };
+              }
+              // If the generator body threw before yielding all values,
+              // re-throw on the first next() call after buffer is exhausted.
+              if (pendingThrow !== null && pendingThrow !== undefined) {
+                const e = pendingThrow;
+                pendingThrow = null;
+                throw e;
               }
               return { value: undefined, done: true };
             },
