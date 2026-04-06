@@ -39,4 +39,34 @@ describe("#847 — for-of destructuring with externref elements", () => {
     `);
     expect(result).toBe(100);
   });
+
+  it("for-of assign destructuring into module-level globals", async () => {
+    const result = await runWasm(`
+      let v1: number = 0;
+      let v2: number = 0;
+      export function test(): number {
+        const arr = [[1, 2], [3, 4]];
+        for ([v1, v2] of arr) { }
+        if (v1 !== 3) return 0;
+        if (v2 !== 4) return 0;
+        return 1;
+      }
+    `);
+    expect(result).toBe(1);
+  });
+
+  it("for-of assign destructuring into module globals with defaults", async () => {
+    const result = await runWasm(`
+      let a: number = 0;
+      let b: number = 0;
+      export function test(): number {
+        const arr = [[1], [3]];
+        for ([a, b = 99] of arr) { }
+        if (a !== 3) return 0;
+        if (b !== 99) return 0;
+        return 1;
+      }
+    `);
+    expect(result).toBe(1);
+  });
 });

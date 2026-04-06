@@ -4485,8 +4485,16 @@ function compileForOfAssignDestructuring(
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) continue;
 
-      const targetLocal = fctx.localMap.get(targetName);
-      if (targetLocal === undefined) continue;
+      let targetLocal = fctx.localMap.get(targetName);
+      let targetSyncGlobalIdx: number | undefined;
+      if (targetLocal === undefined) {
+        const globalIdx = ctx.moduleGlobals.get(targetName);
+        if (globalIdx === undefined) continue;
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+        const globalType = globalDef?.type ?? { kind: "externref" as const };
+        targetLocal = allocLocal(fctx, targetName, globalType);
+        targetSyncGlobalIdx = globalIdx;
+      }
 
       const fieldEntry2 = fields[fieldIdx];
       if (!fieldEntry2) continue;
@@ -4498,6 +4506,10 @@ function compileForOfAssignDestructuring(
         coerceType(ctx, fctx, fieldType, targetType);
       }
       emitCoercedLocalSet(ctx, fctx, targetLocal, fieldType);
+      if (targetSyncGlobalIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: targetLocal });
+        fctx.body.push({ op: "global.set", index: targetSyncGlobalIdx });
+      }
     }
   } else if (ts.isArrayLiteralExpression(expr)) {
     // for ([x, y] of arr) — elem is a vec struct or tuple struct, extract by index
@@ -4531,14 +4543,28 @@ function compileForOfAssignDestructuring(
           oobInit = el.right;
         }
         if (oobInit && ts.isIdentifier(oobTarget)) {
-          const oobLocal = fctx.localMap.get(oobTarget.text);
+          let oobLocal = fctx.localMap.get(oobTarget.text);
+          let oobSyncGlobalIdx: number | undefined;
+          if (oobLocal === undefined) {
+            const globalIdx = ctx.moduleGlobals.get(oobTarget.text);
+            if (globalIdx !== undefined) {
+              const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+              const globalType = globalDef?.type ?? { kind: "externref" as const };
+              oobLocal = allocLocal(fctx, oobTarget.text, globalType);
+              oobSyncGlobalIdx = globalIdx;
+            }
+          }
           if (oobLocal !== undefined) {
             const oobType = getLocalType(fctx, oobLocal);
             const instrs = collectInstrs(fctx, () => {
               compileExpression(ctx, fctx, oobInit!, oobType ?? { kind: "f64" });
-              fctx.body.push({ op: "local.set", index: oobLocal } as Instr);
+              fctx.body.push({ op: "local.set", index: oobLocal! } as Instr);
             });
             fctx.body.push(...instrs);
+            if (oobSyncGlobalIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: oobLocal });
+              fctx.body.push({ op: "global.set", index: oobSyncGlobalIdx });
+            }
           }
         }
       }
@@ -4562,14 +4588,28 @@ function compileForOfAssignDestructuring(
             oobInit = el.right;
           }
           if (oobInit && ts.isIdentifier(oobTarget)) {
-            const oobLocal = fctx.localMap.get(oobTarget.text);
+            let oobLocal = fctx.localMap.get(oobTarget.text);
+            let oobSyncGlobalIdx: number | undefined;
+            if (oobLocal === undefined) {
+              const globalIdx = ctx.moduleGlobals.get(oobTarget.text);
+              if (globalIdx !== undefined) {
+                const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+                const globalType = globalDef?.type ?? { kind: "externref" as const };
+                oobLocal = allocLocal(fctx, oobTarget.text, globalType);
+                oobSyncGlobalIdx = globalIdx;
+              }
+            }
             if (oobLocal !== undefined) {
               const oobType = getLocalType(fctx, oobLocal);
               const instrs = collectInstrs(fctx, () => {
                 compileExpression(ctx, fctx, oobInit!, oobType ?? { kind: "f64" });
-                fctx.body.push({ op: "local.set", index: oobLocal } as Instr);
+                fctx.body.push({ op: "local.set", index: oobLocal! } as Instr);
               });
               fctx.body.push(...instrs);
+              if (oobSyncGlobalIdx !== undefined) {
+                fctx.body.push({ op: "local.get", index: oobLocal });
+                fctx.body.push({ op: "global.set", index: oobSyncGlobalIdx });
+              }
             }
           }
           continue;
@@ -4597,8 +4637,16 @@ function compileForOfAssignDestructuring(
 
         if (!ts.isIdentifier(targetEl)) continue;
 
-        const targetLocal = fctx.localMap.get(targetEl.text);
-        if (targetLocal === undefined) continue;
+        let targetLocal = fctx.localMap.get(targetEl.text);
+        let tupleSyncGlobalIdx: number | undefined;
+        if (targetLocal === undefined) {
+          const globalIdx = ctx.moduleGlobals.get(targetEl.text);
+          if (globalIdx === undefined) continue;
+          const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+          const globalType = globalDef?.type ?? { kind: "externref" as const };
+          targetLocal = allocLocal(fctx, targetEl.text, globalType);
+          tupleSyncGlobalIdx = globalIdx;
+        }
 
         const targetType = getLocalType(fctx, targetLocal);
         fctx.body.push({ op: "local.get", index: elemLocal });
@@ -4612,6 +4660,11 @@ function compileForOfAssignDestructuring(
             coerceType(ctx, fctx, fieldType, targetType);
           }
           fctx.body.push({ op: "local.set", index: targetLocal });
+        }
+
+        if (tupleSyncGlobalIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: targetLocal });
+          fctx.body.push({ op: "global.set", index: tupleSyncGlobalIdx });
         }
       }
     } else {
@@ -4647,8 +4700,16 @@ function compileForOfAssignDestructuring(
 
         if (!ts.isIdentifier(targetEl)) continue;
 
-        const targetLocal = fctx.localMap.get(targetEl.text);
-        if (targetLocal === undefined) continue;
+        let targetLocal = fctx.localMap.get(targetEl.text);
+        let vecSyncGlobalIdx: number | undefined;
+        if (targetLocal === undefined) {
+          const globalIdx = ctx.moduleGlobals.get(targetEl.text);
+          if (globalIdx === undefined) continue;
+          const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+          const globalType = globalDef?.type ?? { kind: "externref" as const };
+          targetLocal = allocLocal(fctx, targetEl.text, globalType);
+          vecSyncGlobalIdx = globalIdx;
+        }
 
         const targetType = getLocalType(fctx, targetLocal);
 
@@ -4673,12 +4734,12 @@ function compileForOfAssignDestructuring(
             fctx.body.push({ op: "local.get", index: arrDataLocal } as Instr);
             fctx.body.push({ op: "i32.const", value: i } as Instr);
             fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx } as Instr);
-            emitDefaultValueCheck(ctx, fctx, innerElemType, targetLocal, defaultInit!, targetType ?? undefined);
+            emitDefaultValueCheck(ctx, fctx, innerElemType, targetLocal!, defaultInit!, targetType ?? undefined);
           });
           // Else branch: OOB — apply default directly
           const elseInstrs = collectInstrs(fctx, () => {
             compileExpression(ctx, fctx, defaultInit!, hintType);
-            fctx.body.push({ op: "local.set", index: targetLocal } as Instr);
+            fctx.body.push({ op: "local.set", index: targetLocal! } as Instr);
           });
           fctx.body.push({
             op: "if",
@@ -4701,6 +4762,11 @@ function compileForOfAssignDestructuring(
             }
             fctx.body.push({ op: "local.set", index: targetLocal });
           }
+        }
+
+        if (vecSyncGlobalIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: targetLocal });
+          fctx.body.push({ op: "global.set", index: vecSyncGlobalIdx });
         }
       }
     }
@@ -4755,8 +4821,16 @@ function compileForOfAssignDestructuringExternref(
 
     if (!ts.isIdentifier(targetEl)) continue;
 
-    const targetLocal = fctx.localMap.get(targetEl.text);
-    if (targetLocal === undefined) continue;
+    let targetLocal = fctx.localMap.get(targetEl.text);
+    let extSyncGlobalIdx: number | undefined;
+    if (targetLocal === undefined) {
+      const globalIdx = ctx.moduleGlobals.get(targetEl.text);
+      if (globalIdx === undefined) continue;
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+      const globalType = globalDef?.type ?? { kind: "externref" as const };
+      targetLocal = allocLocal(fctx, targetEl.text, globalType);
+      extSyncGlobalIdx = globalIdx;
+    }
 
     // Emit: __extern_get(elem, box(i)) -> externref
     fctx.body.push({ op: "local.get", index: elemLocal });
@@ -4770,6 +4844,11 @@ function compileForOfAssignDestructuringExternref(
     } else {
       // Coerce externref to target local's type and set
       emitCoercedLocalSet(ctx, fctx, targetLocal, { kind: "externref" });
+    }
+
+    if (extSyncGlobalIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: targetLocal });
+      fctx.body.push({ op: "global.set", index: extSyncGlobalIdx });
     }
   }
 }
@@ -5257,8 +5336,16 @@ function compileForOfIteratorAssignDestructuring(
           ? prop.initializer.text
           : propName;
 
-      const targetLocal = fctx.localMap.get(targetName);
-      if (targetLocal === undefined) continue;
+      let targetLocal = fctx.localMap.get(targetName);
+      let iterObjSyncGlobalIdx: number | undefined;
+      if (targetLocal === undefined) {
+        const globalIdx = ctx.moduleGlobals.get(targetName);
+        if (globalIdx === undefined) continue;
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+        const globalType = globalDef?.type ?? { kind: "externref" as const };
+        targetLocal = allocLocal(fctx, targetName, globalType);
+        iterObjSyncGlobalIdx = globalIdx;
+      }
 
       // Register string constant for property name
       addStringConstantGlobal(ctx, propName);
@@ -5276,6 +5363,11 @@ function compileForOfIteratorAssignDestructuring(
 
       // Coerce externref to target local's type and set
       emitCoercedLocalSet(ctx, fctx, targetLocal, { kind: "externref" });
+
+      if (iterObjSyncGlobalIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: targetLocal });
+        fctx.body.push({ op: "global.set", index: iterObjSyncGlobalIdx });
+      }
     }
   } else if (ts.isArrayLiteralExpression(expr)) {
     // for ([x, y] of iterable) — use __extern_get(elem, box(i)) for each element
@@ -5297,10 +5389,27 @@ function compileForOfIteratorAssignDestructuring(
       const el = expr.elements[i]!;
       if (ts.isOmittedExpression(el)) continue;
       if (ts.isSpreadElement(el)) continue;
-      if (!ts.isIdentifier(el)) continue;
 
-      const targetLocal = fctx.localMap.get(el.text);
-      if (targetLocal === undefined) continue;
+      // Handle assignment with default: [v = 10]
+      let targetElIter: ts.Expression = el;
+      let defaultInitIter: ts.Expression | undefined;
+      if (ts.isBinaryExpression(el) && el.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        targetElIter = el.left;
+        defaultInitIter = el.right;
+      }
+
+      if (!ts.isIdentifier(targetElIter)) continue;
+
+      let targetLocal = fctx.localMap.get(targetElIter.text);
+      let iterArrSyncGlobalIdx: number | undefined;
+      if (targetLocal === undefined) {
+        const globalIdx = ctx.moduleGlobals.get(targetElIter.text);
+        if (globalIdx === undefined) continue;
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+        const globalType = globalDef?.type ?? { kind: "externref" as const };
+        targetLocal = allocLocal(fctx, targetElIter.text, globalType);
+        iterArrSyncGlobalIdx = globalIdx;
+      }
 
       // Emit: __extern_get(elem, box(i)) -> externref
       fctx.body.push({ op: "local.get", index: elemLocal });
@@ -5308,8 +5417,18 @@ function compileForOfIteratorAssignDestructuring(
       fctx.body.push({ op: "call", funcIdx: boxIdx });
       fctx.body.push({ op: "call", funcIdx: getIdx! });
 
-      // Coerce externref to target local's type and set
-      emitCoercedLocalSet(ctx, fctx, targetLocal, { kind: "externref" });
+      if (defaultInitIter) {
+        const targetType = getLocalType(fctx, targetLocal);
+        emitDefaultValueCheck(ctx, fctx, { kind: "externref" }, targetLocal, defaultInitIter, targetType ?? undefined);
+      } else {
+        // Coerce externref to target local's type and set
+        emitCoercedLocalSet(ctx, fctx, targetLocal, { kind: "externref" });
+      }
+
+      if (iterArrSyncGlobalIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: targetLocal });
+        fctx.body.push({ op: "global.set", index: iterArrSyncGlobalIdx });
+      }
     }
   }
 }
