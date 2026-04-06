@@ -138,7 +138,8 @@ class SiteNav extends HTMLElement {
           ${
             isLanding
               ? `
-          <li><a href="#goals">Goals</a></li>
+          <li><a href="#mission">Mission</a></li>
+          <li><a href="#goals">Compatibility</a></li>
           <li><a href="#how-it-works">How it works</a></li>
           <li><a href="#links">Links</a></li>
           `
