@@ -193,6 +193,13 @@ mkdirSync(PAGES_DIST, { recursive: true });
 copyDirectory(PLAYGROUND_DIST, PAGES_DIST);
 copyDirectory(PLAYGROUND_EXAMPLES_DIR, join(PAGES_DIST, "examples"));
 
+// Overwrite Vite-built report pages with the latest public/ versions (which include
+// web components like <t262-donut> that Vite doesn't process).
+const PUBLIC_REPORT = join(ROOT, "public", "benchmarks", "results", "report.html");
+const PUBLIC_REPORT_SHORT = join(ROOT, "public", "benchmarks", "report.html");
+copyFileIfExists(PUBLIC_REPORT, join(PAGES_DIST, "benchmarks", "results", "report.html"));
+copyFileIfExists(PUBLIC_REPORT_SHORT, join(PAGES_DIST, "benchmarks", "report.html"));
+
 // Add the static dashboard route and pre-generated dashboard data.
 copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "progress", "index.html"));
 copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "progress", "data"));
