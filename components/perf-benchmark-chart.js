@@ -4,7 +4,7 @@
  * Attributes:
  *   src     — URL to playground-benchmark-sidebar.json
  *   title   — chart heading (default: "Benchmark Performance (Wasm vs JS)")
- *   legend  — legend text (default: "JS line = native JS speed (1x). Right of JS = faster than JS.")
+ *   legend  — legend text (default: "WASM runtime performance relative to JS (larger is better)")
  *
  * Usage:
  *   <perf-benchmark-chart src="./benchmarks/results/playground-benchmark-sidebar.json"></perf-benchmark-chart>
@@ -12,7 +12,7 @@
 
 class PerfBenchmarkChart extends HTMLElement {
   static get observedAttributes() {
-    return ["src", "title", "legend"];
+    return ["src", "title", "legend", "mode"];
   }
 
   constructor() {
@@ -40,7 +40,7 @@ class PerfBenchmarkChart extends HTMLElement {
   _render() {
     const src = this.getAttribute("src") || "./benchmarks/results/playground-benchmark-sidebar.json";
     const title = this.getAttribute("title") || "Benchmark Performance (Wasm vs JS)";
-    const legend = this.getAttribute("legend") || "JS line = native JS speed (1x). Right of JS = faster than JS.";
+    const legend = this.getAttribute("legend") || "WASM runtime performance relative to JS (larger is better)";
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -179,21 +179,52 @@ class PerfBenchmarkChart extends HTMLElement {
         this.style.display = "none";
         return;
       }
-      const rows = await resp.json();
-      if (!Array.isArray(rows) || rows.length === 0) {
-        this.style.display = "none";
-        return;
-      }
+      const json = await resp.json();
+      const mode = this.getAttribute("mode") || "perf";
 
-      // Compute ratios
-      const ratios = [];
-      for (const row of rows) {
-        const wasmUs = Number(row?.wasmUs ?? 0);
-        const jsUs = Number(row?.jsUs ?? 0);
-        if (wasmUs <= 0 || jsUs <= 0) continue;
-        ratios.push({ ...row, ratio: jsUs / wasmUs });
+      // Transform data based on mode into [{name, ratio, label}]
+      let ratios;
+      if (mode === "size") {
+        const benchmarks = json?.benchmarks ?? json;
+        if (!Array.isArray(benchmarks) || benchmarks.length === 0) {
+          this.style.display = "none";
+          return;
+        }
+        ratios = benchmarks.map((b) => {
+          const wasmBytes = b.wasmSizeGzip;
+          const jsBytes = b.jsSizeGzip;
+          const ratio = wasmBytes / Math.max(jsBytes, 1);
+          const kb = (wasmBytes / 1024).toFixed(1);
+          return { name: b.name, ratio, label: kb + " KB" };
+        });
+      } else if (mode === "coldstart") {
+        const benchmarks = json?.benchmarks ?? json;
+        if (!Array.isArray(benchmarks) || benchmarks.length === 0) {
+          this.style.display = "none";
+          return;
+        }
+        ratios = benchmarks.map((b) => {
+          const wasmMs = b.wasmCompileMs;
+          const jsMs = b.jsParseMs;
+          const ratio = jsMs / Math.max(wasmMs, 0.0001);
+          return { name: b.name, ratio };
+        });
+      } else {
+        // Default perf mode: ratio = jsUs / wasmUs (higher = wasm faster)
+        const rows = Array.isArray(json) ? json : [];
+        if (rows.length === 0) {
+          this.style.display = "none";
+          return;
+        }
+        ratios = [];
+        for (const row of rows) {
+          const wasmUs = Number(row?.wasmUs ?? 0);
+          const jsUs = Number(row?.jsUs ?? 0);
+          if (wasmUs <= 0 || jsUs <= 0) continue;
+          ratios.push({ ...row, ratio: jsUs / wasmUs });
+        }
       }
-      if (ratios.length === 0) {
+      if (!ratios || ratios.length === 0) {
         this.style.display = "none";
         return;
       }
@@ -207,7 +238,7 @@ class PerfBenchmarkChart extends HTMLElement {
       const barData = [];
       for (const row of ratios) {
         const ratio = row.ratio;
-        const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
+        const label = row.name || row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") || "unknown";
 
         let targetLeft, targetWidth;
         if (ratio >= 1) {
@@ -239,6 +270,7 @@ class PerfBenchmarkChart extends HTMLElement {
 
         barData.push({
           ratio,
+          customLabel: row.label || null,
           targetLeft,
           targetWidth,
           gradDir,
@@ -264,7 +296,11 @@ class PerfBenchmarkChart extends HTMLElement {
           const curWidth = t * d.targetWidth;
           const curLeft = d.ratio >= 1 ? d.targetLeft : jsPos - t * (jsPos - d.targetLeft);
           const curRatio = t * d.ratio;
-          const scoreText = curRatio >= 10 ? `${Math.round(curRatio)}x` : `${curRatio.toFixed(1)}x`;
+          const scoreText = d.customLabel
+            ? d.customLabel
+            : curRatio >= 10
+              ? `${Math.round(curRatio)}x`
+              : `${curRatio.toFixed(1)}x`;
 
           const curEdgeOp = (0.1 + t * (parseFloat(d.edgeOpacity) - 0.1)).toFixed(2);
           const curTextOp = (t * parseFloat(d.textOpacity)).toFixed(2);

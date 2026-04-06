@@ -444,6 +444,8 @@
       /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
       /* Benchmark performance chart is now in <perf-benchmark-chart> shadow DOM */
 
+      /* Size/coldstart charts reuse <perf-benchmark-chart> with mode="size"|"coldstart" */
+
       .edition-chart {
         grid-column: span 1;
       }
@@ -1216,7 +1218,7 @@
             <perf-benchmark-chart
               src="./benchmarks/results/playground-benchmark-sidebar.json"
               title="Benchmark Performance (Wasm vs JS)"
-              legend="JS line = native JS speed (1x). Right of JS = faster than JS."
+              legend="WASM runtime performance relative to JS (larger is better)"
             ></perf-benchmark-chart>
           </div>
           <div class="diagram-panel edition-chart">
@@ -1226,6 +1228,22 @@
           <div class="diagram-panel edition-chart">
             <h3 class="diagram-title">Edition Coverage (pass rate)</h3>
             <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="percentage"></t262-edition-bars>
+          </div>
+          <div class="diagram-panel">
+            <perf-benchmark-chart
+              src="./benchmarks/results/size-benchmarks.json"
+              mode="size"
+              title="Module Size (gzip)"
+              legend="GZIP compressed module size (smaller is better)"
+            ></perf-benchmark-chart>
+          </div>
+          <div class="diagram-panel">
+            <perf-benchmark-chart
+              src="./benchmarks/results/size-benchmarks.json"
+              mode="coldstart"
+              title="Parse Speed"
+              legend="Module parse speed (larger is better)"
+            ></perf-benchmark-chart>
           </div>
         </div>
 
@@ -2864,13 +2882,13 @@ export function run() {
         <div class="size-compare">
           <div class="size-bar">
             <span class="size-bar-label">.js</span>
-            <div class="size-bar-track" style="width: 109px"><div class="size-bar-fill" style="width: 100%"></div></div>
-            <span class="size-bar-value">109 B gzip</span>
+            <div class="size-bar-track" id="how-fib-js-track" style="width: 109px"><div class="size-bar-fill" style="width: 100%"></div></div>
+            <span class="size-bar-value" id="how-fib-js-value">109 B gzip</span>
           </div>
           <div class="size-bar">
             <span class="size-bar-label">.wasm</span>
-            <div class="size-bar-track" style="width: 189px"><div class="size-bar-fill" style="width: 100%"></div></div>
-            <span class="size-bar-value">189 B gzip</span>
+            <div class="size-bar-track" id="how-fib-wasm-track" style="width: 189px"><div class="size-bar-fill" style="width: 100%"></div></div>
+            <span class="size-bar-value" id="how-fib-wasm-value">189 B gzip</span>
           </div>
         </div>
 
@@ -2928,17 +2946,17 @@ document.body.appendChild(el);</pre
           <div class="size-compare">
             <div class="size-bar">
               <span class="size-bar-label">.js</span>
-              <div class="size-bar-track" style="width: 129px">
+              <div class="size-bar-track" id="how-dom-js-track" style="width: 129px">
                 <div class="size-bar-fill" style="width: 100%"></div>
               </div>
-              <span class="size-bar-value">129 B gzip</span>
+              <span class="size-bar-value" id="how-dom-js-value">129 B gzip</span>
             </div>
             <div class="size-bar">
               <span class="size-bar-label">.wasm</span>
-              <div class="size-bar-track" style="width: 291px">
+              <div class="size-bar-track" id="how-dom-wasm-track" style="width: 291px">
                 <div class="size-bar-fill" style="width: 100%"></div>
               </div>
-              <span class="size-bar-value">291 B gzip</span>
+              <span class="size-bar-value" id="how-dom-wasm-value">291 B gzip</span>
             </div>
           </div>
         </div>
@@ -3330,6 +3348,31 @@ const dom = await js2.import("./dom.js", { document });
         } catch {
           // Keep the build-time fallback when the report file is unavailable.
         }
+      })();
+
+      (async function updateHowItWorksSizes() {
+        try {
+          const resp = await fetch("./benchmarks/results/size-benchmarks.json");
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const { fib, dom } = data.howItWorks ?? {};
+          if (fib) {
+            const s = 291 / Math.max(fib.jsSizeGzip, fib.wasmSizeGzip);
+            const el = (id) => document.getElementById(id);
+            if (el("how-fib-js-track")) el("how-fib-js-track").style.width = Math.round(fib.jsSizeGzip * s) + "px";
+            if (el("how-fib-js-value")) el("how-fib-js-value").textContent = fib.jsSizeGzip + " B gzip";
+            if (el("how-fib-wasm-track")) el("how-fib-wasm-track").style.width = Math.round(fib.wasmSizeGzip * s) + "px";
+            if (el("how-fib-wasm-value")) el("how-fib-wasm-value").textContent = fib.wasmSizeGzip + " B gzip";
+          }
+          if (dom) {
+            const s = 291 / Math.max(dom.jsSizeGzip, dom.wasmSizeGzip);
+            const el = (id) => document.getElementById(id);
+            if (el("how-dom-js-track")) el("how-dom-js-track").style.width = Math.round(dom.jsSizeGzip * s) + "px";
+            if (el("how-dom-js-value")) el("how-dom-js-value").textContent = dom.jsSizeGzip + " B gzip";
+            if (el("how-dom-wasm-track")) el("how-dom-wasm-track").style.width = Math.round(dom.wasmSizeGzip * s) + "px";
+            if (el("how-dom-wasm-value")) el("how-dom-wasm-value").textContent = dom.wasmSizeGzip + " B gzip";
+          }
+        } catch { /* keep static fallbacks */ }
       })();
 
       (function typeHeroTitle() {
