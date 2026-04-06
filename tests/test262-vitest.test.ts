@@ -7,7 +7,7 @@
  * Run: pnpm run test:262  (runs both phases via run-test262-vitest.sh)
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync, copyFileSync } from "fs";
 import { Worker } from "worker_threads";
 
 // Prevent unhandled Promise rejections from crashing the vitest fork.
@@ -397,6 +397,13 @@ afterAll(() => {
     skip_reasons: { ...skipReasonCounts },
   };
   writeSync(REPORT_PATH, JSON.stringify(report, null, 2));
+
+  // Sync to public/ so Vite dev and build:pages have fresh data
+  try {
+    const publicReport = join(RESULTS_DIR, "..", "..", "public", "benchmarks", "results", "test262-report.json");
+    mkdirSync(join(RESULTS_DIR, "..", "..", "public", "benchmarks", "results"), { recursive: true });
+    copyFileSync(REPORT_PATH, publicReport);
+  } catch {}
 
   const ecEntries = Object.entries(errorCategoryCounts).sort((a, b) => b[1] - a[1]);
   if (ecEntries.length > 0) {
