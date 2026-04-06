@@ -14902,6 +14902,18 @@ export function destructureParamArray(
         // Only allocate if not already pre-allocated by ensureBindingLocals
         if (!fctx.localMap.has(restName)) {
           allocLocal(fctx, restName, paramType);
+        } else {
+          // ensureBindingLocals may have pre-allocated with a different vec type
+          // (e.g. vec_f64 from TS type inference) while the externref conversion
+          // path produces vec_externref. Reallocate with the correct type (#971).
+          const existingIdx = fctx.localMap.get(restName)!;
+          const slotIdx = existingIdx - fctx.params.length;
+          if (slotIdx >= 0) {
+            const slot = fctx.locals[slotIdx];
+            if (slot && !valTypesMatch(slot.type, paramType)) {
+              allocLocal(fctx, restName, paramType);
+            }
+          }
         }
         const restLocal = fctx.localMap.get(restName)!;
         fctx.body.push({ op: "local.set", index: restLocal });

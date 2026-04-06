@@ -2877,6 +2877,19 @@ function compileArrayDestructuringAssignment(
           let restLocalIdx = fctx.localMap.get(restName);
           if (restLocalIdx === undefined) {
             restLocalIdx = allocLocal(fctx, restName, resultType);
+          } else {
+            // If the rest local was pre-allocated as externref (e.g. var y;),
+            // allocate a fresh local with the correct vec type and redirect
+            // the name mapping. The old externref slot becomes dead.
+            // Cannot change type in-place: earlier __get_undefined() init
+            // targets externref and would cause illegal cast (#962, #971).
+            const existingSlotIdx = restLocalIdx - fctx.params.length;
+            if (existingSlotIdx >= 0) {
+              const slot = fctx.locals[existingSlotIdx];
+              if (slot && slot.type.kind === "externref") {
+                restLocalIdx = allocLocal(fctx, restName, resultType);
+              }
+            }
           }
           const tmpLen = allocLocal(fctx, `__rest_len_${fctx.locals.length}`, {
             kind: "i32",
