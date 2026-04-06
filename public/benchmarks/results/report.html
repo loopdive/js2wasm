@@ -4,27 +4,51 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>js2wasm Test262 Conformance Trend</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      :root {
+        --bg: #060a14;
+        --surface: rgba(255, 255, 255, 0.05);
+        --surface-hover: rgba(255, 255, 255, 0.08);
+        --border: rgba(255, 255, 255, 0.12);
+        --fg: #ffffff;
+        --fg-soft: rgba(255, 255, 255, 0.68);
+        --fg-faint: rgba(255, 255, 255, 0.46);
+        --mono: "JetBrains Mono", "SF Mono", SFMono-Regular, Consolas, monospace;
+        --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --pass: #3fb950;
+        --fail: #f85149;
+        --ce: #d29922;
+        --skip: rgba(255, 255, 255, 0.4);
+        --rate: rgba(255, 255, 255, 0.75);
+      }
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: #0d1117;
-        color: #c9d1d9;
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--fg);
         padding: 24px;
+        padding-top: 88px;
         max-width: 1200px;
         margin: 0 auto;
       }
       h1 {
-        color: #58a6ff;
+        color: var(--fg);
         margin-bottom: 8px;
         font-size: 24px;
+        font-weight: 600;
       }
       .subtitle {
-        color: #8b949e;
+        color: var(--fg-faint);
         margin-bottom: 24px;
         font-size: 14px;
       }
@@ -35,14 +59,13 @@
         flex-wrap: wrap;
       }
       .stat-card {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
         padding: 16px 24px;
         min-width: 140px;
       }
       .stat-card .label {
-        color: #8b949e;
+        color: var(--fg-faint);
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: 1px;
@@ -53,29 +76,28 @@
         margin-top: 4px;
       }
       .stat-card .value.pass {
-        color: #3fb950;
+        color: var(--pass);
       }
       .stat-card .value.fail {
-        color: #f85149;
+        color: var(--fail);
       }
       .stat-card .value.ce {
-        color: #d29922;
+        color: var(--ce);
       }
       .stat-card .value.skip {
-        color: #8b949e;
+        color: var(--fg-soft);
       }
       .stat-card .value.rate {
-        color: #58a6ff;
+        color: var(--fg);
       }
       .chart-container {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
         padding: 24px;
         margin-bottom: 24px;
       }
       .chart-container h2 {
-        color: #c9d1d9;
+        color: var(--fg-soft);
         font-size: 16px;
         margin-bottom: 16px;
       }
@@ -94,7 +116,7 @@
         align-items: center;
         gap: 6px;
         font-size: 13px;
-        color: #8b949e;
+        color: var(--fg-faint);
       }
       .legend-dot {
         width: 12px;
@@ -102,13 +124,12 @@
         border-radius: 50%;
       }
       .table-container {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
         padding: 24px;
       }
       .table-container h2 {
-        color: #c9d1d9;
+        color: var(--fg-soft);
         font-size: 16px;
         margin-bottom: 16px;
       }
@@ -121,10 +142,10 @@
       td {
         text-align: left;
         padding: 8px 12px;
-        border-bottom: 1px solid #21262d;
+        border-bottom: 1px solid var(--border);
       }
       th {
-        color: #8b949e;
+        color: var(--fg-faint);
         font-weight: 600;
         font-size: 11px;
         text-transform: uppercase;
@@ -135,28 +156,27 @@
         font-variant-numeric: tabular-nums;
       }
       tr:hover {
-        background: #1c2128;
+        background: var(--surface-hover);
       }
       .delta {
         font-size: 11px;
         margin-left: 4px;
       }
       .delta.up {
-        color: #3fb950;
+        color: var(--pass);
       }
       .delta.down {
-        color: #f85149;
+        color: var(--fail);
       }
       #loading {
-        color: #8b949e;
+        color: var(--fg-faint);
         text-align: center;
         padding: 48px;
       }
       .tooltip {
         position: absolute;
-        background: #1c2128;
-        border: 1px solid #30363d;
-        border-radius: 6px;
+        background: rgba(6, 10, 20, 0.92);
+        border: 1px solid var(--border);
         padding: 8px 12px;
         font-size: 12px;
         pointer-events: none;
@@ -164,9 +184,14 @@
         z-index: 10;
         white-space: nowrap;
       }
+      code {
+        font-family: var(--mono);
+        font-size: 0.9em;
+      }
     </style>
   </head>
   <body>
+    <site-nav base="../../"></site-nav>
     <h1>js2wasm Test262 Conformance</h1>
     <p class="subtitle">Historical trend of test262 pass/fail/compile-error counts</p>
     <p class="subtitle" id="run-timestamp" style="display: none"></p>
@@ -178,10 +203,11 @@
         margin-bottom: 12px;
         cursor: pointer;
         font-size: 13px;
-        color: #8b949e;
+        color: rgba(255, 255, 255, 0.46);
       "
     >
-      <input type="checkbox" id="strict-toggle" checked /> Strict mode
+      <input type="checkbox" id="strict-toggle" checked />
+      Strict mode
     </label>
 
     <div id="skip-reasons-container" class="table-container" style="display: none; margin-bottom: 24px">
@@ -206,23 +232,23 @@
         <div id="chart"></div>
         <div class="legend">
           <div class="legend-item">
-            <div class="legend-dot" style="background: #3fb950"></div>
+            <div class="legend-dot" style="background: rgba(255, 255, 255, 0.9)"></div>
             Pass
           </div>
           <div class="legend-item">
-            <div class="legend-dot" style="background: #f85149"></div>
+            <div class="legend-dot" style="background: rgba(255, 255, 255, 0.4)"></div>
             Fail
           </div>
           <div class="legend-item">
-            <div class="legend-dot" style="background: #d29922"></div>
+            <div class="legend-dot" style="background: rgba(255, 255, 255, 0.25)"></div>
             Compile Error
           </div>
           <div class="legend-item">
-            <div class="legend-dot" style="background: #8b949e"></div>
+            <div class="legend-dot" style="background: rgba(255, 255, 255, 0.15)"></div>
             Skip
           </div>
           <div class="legend-item">
-            <div class="legend-dot" style="background: #58a6ff"></div>
+            <div class="legend-dot" style="background: rgba(255, 255, 255, 0.65)"></div>
             Pass Rate %
           </div>
         </div>
@@ -250,11 +276,11 @@
 
     <script>
       const COLORS = {
-        pass: "#3fb950",
-        fail: "#f85149",
-        ce: "#d29922",
-        skip: "#8b949e",
-        rate: "#58a6ff",
+        pass: "rgba(255,255,255,0.9)",
+        fail: "rgba(255,255,255,0.4)",
+        ce: "rgba(255,255,255,0.25)",
+        skip: "rgba(255,255,255,0.15)",
+        rate: "rgba(255,255,255,0.65)",
       };
 
       async function loadData() {
@@ -335,11 +361,11 @@
         for (let i = 0; i <= gridSteps; i++) {
           const val = (yMax / gridSteps) * i;
           const yPos = y(val);
-          svg += `<line x1="${PAD.left}" y1="${yPos}" x2="${W - PAD.right}" y2="${yPos}" stroke="#21262d" stroke-width="1"/>`;
-          svg += `<text x="${PAD.left - 8}" y="${yPos + 4}" text-anchor="end" fill="#484f58" font-size="11">${(val / 1000).toFixed(0)}k</text>`;
+          svg += `<line x1="${PAD.left}" y1="${yPos}" x2="${W - PAD.right}" y2="${yPos}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+          svg += `<text x="${PAD.left - 8}" y="${yPos + 4}" text-anchor="end" fill="rgba(255,255,255,0.3)" font-size="11">${(val / 1000).toFixed(0)}k</text>`;
           // Right axis: percentage
           const pct = (i / gridSteps) * 100;
-          svg += `<text x="${W - PAD.right + 8}" y="${yPos + 4}" text-anchor="start" fill="#484f58" font-size="11">${pct.toFixed(0)}%</text>`;
+          svg += `<text x="${W - PAD.right + 8}" y="${yPos + 4}" text-anchor="start" fill="rgba(255,255,255,0.3)" font-size="11">${pct.toFixed(0)}%</text>`;
         }
 
         // X-axis labels (show up to 8)
@@ -348,9 +374,9 @@
           const xPos = x(i);
           const d = new Date(data[i].timestamp);
           const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          svg += `<text x="${xPos}" y="${H - PAD.bottom + 20}" text-anchor="middle" fill="#484f58" font-size="11">${label}</text>`;
+          svg += `<text x="${xPos}" y="${H - PAD.bottom + 20}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="11">${label}</text>`;
           const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-          svg += `<text x="${xPos}" y="${H - PAD.bottom + 34}" text-anchor="middle" fill="#484f58" font-size="10">${time}</text>`;
+          svg += `<text x="${xPos}" y="${H - PAD.bottom + 34}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10">${time}</text>`;
         }
 
         // Stacked area: skip (bottom) + ce + fail + pass (top)
@@ -412,8 +438,8 @@
         }
 
         // Axis labels
-        svg += `<text x="${PAD.left - 45}" y="${PAD.top + plotH / 2}" text-anchor="middle" fill="#484f58" font-size="12" transform="rotate(-90 ${PAD.left - 45} ${PAD.top + plotH / 2})">Test Count</text>`;
-        svg += `<text x="${W - PAD.right + 45}" y="${PAD.top + plotH / 2}" text-anchor="middle" fill="#484f58" font-size="12" transform="rotate(90 ${W - PAD.right + 45} ${PAD.top + plotH / 2})">Pass Rate</text>`;
+        svg += `<text x="${PAD.left - 45}" y="${PAD.top + plotH / 2}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="12" transform="rotate(-90 ${PAD.left - 45} ${PAD.top + plotH / 2})">Test Count</text>`;
+        svg += `<text x="${W - PAD.right + 45}" y="${PAD.top + plotH / 2}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="12" transform="rotate(90 ${W - PAD.right + 45} ${PAD.top + plotH / 2})">Pass Rate</text>`;
 
         svg += "</svg>";
         document.getElementById("chart").innerHTML = svg;
@@ -549,5 +575,6 @@
         }
       })();
     </script>
+    <script src="../../components/site-nav.js"></script>
   </body>
 </html>
