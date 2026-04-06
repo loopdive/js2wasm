@@ -188,14 +188,6 @@
         font-family: var(--mono);
         font-size: 0.9em;
       }
-      .donut-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-      }
-      .donut-container h2 {
-        width: 100%;
-      }
     </style>
   </head>
   <body>
@@ -234,11 +226,6 @@
     <div id="loading">Loading data...</div>
     <div id="content" style="display: none">
       <div class="stats-row" id="stats-row"></div>
-
-      <div class="chart-container donut-container">
-        <h2>Conformance Score</h2>
-        <t262-donut id="donut-chart"></t262-donut>
-      </div>
 
       <div class="chart-container">
         <h2>Conformance Trend</h2>
@@ -512,18 +499,13 @@
           .join("");
       }
 
-      let reportUrl = null;
-
       async function loadReport() {
         // Try relative path first (works when built into pages-dist),
         // then try absolute path from repo root (works in local dev)
         for (const url of ["test262-report.json", "/benchmarks/results/test262-report.json"]) {
           try {
             const res = await fetch(url);
-            if (res.ok) {
-              reportUrl = url;
-              return await res.json();
-            }
+            if (res.ok) return await res.json();
           } catch {}
         }
         return null;
@@ -589,27 +571,10 @@
 
         if (rawData && rawData.length > 0) {
           renderAll();
-
-          // Wire up the donut component
-          if (reportUrl) {
-            const donut = document.getElementById("donut-chart");
-            donut.setAttribute("src", reportUrl);
-            // Initial strict state: strict-toggle is checked by default, so no include-sloppy
-          }
-
-          document.getElementById("strict-toggle").addEventListener("change", () => {
-            const donut = document.getElementById("donut-chart");
-            if (document.getElementById("strict-toggle").checked) {
-              donut.removeAttribute("include-sloppy");
-            } else {
-              donut.setAttribute("include-sloppy", "");
-            }
-            renderAll();
-          });
+          document.getElementById("strict-toggle").addEventListener("change", renderAll);
         }
       })();
     </script>
-    <script src="../../components/t262-charts.js"></script>
     <script src="../../components/site-nav.js"></script>
   </body>
 </html>
