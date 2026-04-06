@@ -1464,10 +1464,16 @@ export function compileArrowAsClosure(
   if (isGenerator && ts.isBlock(body)) {
     // Generator function expression: eagerly evaluate body, collect yields
     // into a buffer, then wrap with __create_generator.
+    // The body is wrapped in try/catch so that exceptions thrown before any yields
+    // are captured as a "pending throw" and deferred to the first next() call,
+    // matching lazy generator semantics (#928).
     const bufferLocal = allocLocal(liftedFctx, "__gen_buffer", { kind: "externref" });
+    const pendingThrowLocal = allocLocal(liftedFctx, "__gen_pending_throw", { kind: "externref" });
     const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
     liftedFctx.body.push({ op: "call", funcIdx: createBufIdx });
     liftedFctx.body.push({ op: "local.set", index: bufferLocal });
+    liftedFctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+    liftedFctx.body.push({ op: "local.set", index: pendingThrowLocal });
 
     // Wrap body in a block so return can br out
     const bodyInstrs: Instr[] = [];
@@ -1489,15 +1495,30 @@ export function compileArrowAsClosure(
     liftedFctx.generatorReturnDepth = undefined;
 
     liftedFctx.body = outerBody;
-    liftedFctx.body.push({
-      op: "block",
-      blockType: { kind: "empty" },
-      body: bodyInstrs,
-    });
 
-    // Return __create_generator(__gen_buffer)
+    // Wrap generator body block in try/catch to capture exceptions as pending throw
+    const tagIdx = ensureExnTag(ctx);
+    const getCaughtIdx = ctx.funcMap.get("__get_caught_exception");
+    const catchBody: Instr[] = [{ op: "local.set", index: pendingThrowLocal } as unknown as Instr];
+    const catchAllBody: Instr[] =
+      getCaughtIdx !== undefined
+        ? [
+            { op: "call", funcIdx: getCaughtIdx } as Instr,
+            { op: "local.set", index: pendingThrowLocal } as unknown as Instr,
+          ]
+        : [];
+    liftedFctx.body.push({
+      op: "try",
+      blockType: { kind: "empty" },
+      body: [{ op: "block", blockType: { kind: "empty" }, body: bodyInstrs }],
+      catches: [{ tagIdx, body: catchBody }],
+      catchAll: catchAllBody,
+    } as unknown as Instr);
+
+    // Return __create_generator(__gen_buffer, __gen_pending_throw)
     const createGenIdx = ctx.funcMap.get("__create_generator")!;
     liftedFctx.body.push({ op: "local.get", index: bufferLocal });
+    liftedFctx.body.push({ op: "local.get", index: pendingThrowLocal });
     liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
     conciseBodyHasValue = true; // generator return value is already on stack
   } else if (ts.isBlock(body)) {

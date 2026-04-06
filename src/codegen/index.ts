@@ -2880,8 +2880,12 @@ function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorSt
     const pushRefType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
     addImport(ctx, "env", "__gen_push_ref", { kind: "func", typeIdx: pushRefType });
 
+    // __create_generator: (buf: externref, pendingThrow: externref) -> externref
+    // Takes a buffer of yielded values and an optional pending exception,
+    // returns a Generator-like object that defers the throw to the first next() call.
+    const createGenType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__create_generator", { kind: "func", typeIdx: createGenType });
     const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__create_generator", { kind: "func", typeIdx: genType });
     addImport(ctx, "env", "__gen_next", { kind: "func", typeIdx: genType });
 
     const genReturnType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
@@ -2895,6 +2899,12 @@ function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorSt
 
     const resultDoneType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "__gen_result_done", { kind: "func", typeIdx: resultDoneType });
+
+    // Ensure __get_caught_exception is available for generator body try/catch wrappers
+    if (!ctx.funcMap.has("__get_caught_exception")) {
+      const getCaughtType = addFuncType(ctx, [], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__get_caught_exception", { kind: "func", typeIdx: getCaughtType });
+    }
   }
 
   // ── collectIteratorImports finalize ──
@@ -8363,14 +8373,16 @@ function collectGeneratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile)
       typeIdx: pushRefType,
     });
 
-    // __create_generator: (externref) → externref
-    // Takes a JS array of yielded values, returns a Generator-like object
-    const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    // __create_generator: (buf: externref, pendingThrow: externref) → externref
+    // Takes a buffer of yielded values and an optional pending exception,
+    // returns a Generator-like object that defers the throw to the first next() call.
+    const createGenType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__create_generator", {
       kind: "func",
-      typeIdx: genType,
+      typeIdx: createGenType,
     });
 
+    const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     // __gen_next: (generator: externref) → externref (calls gen.next(), returns IteratorResult)
     addImport(ctx, "env", "__gen_next", {
       kind: "func",
@@ -8409,6 +8421,15 @@ function collectGeneratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile)
       kind: "func",
       typeIdx: resultDoneType,
     });
+
+    // Ensure __get_caught_exception is available for generator body try/catch wrappers
+    if (!ctx.funcMap.has("__get_caught_exception")) {
+      const getCaughtType = addFuncType(ctx, [], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__get_caught_exception", {
+        kind: "func",
+        typeIdx: getCaughtType,
+      });
+    }
   }
 }
 
@@ -13077,10 +13098,14 @@ export function compileClassBodies(
       if (isGeneratorMethod && member.body) {
         // Generator method: eagerly evaluate body, collect yields into a buffer,
         // then wrap with __create_generator to return a Generator-like object.
+        // Body is wrapped in try/catch to defer thrown exceptions to first next() (#928).
         const bufferLocal = allocLocal(fctx, "__gen_buffer", { kind: "externref" });
+        const pendingThrowLocal = allocLocal(fctx, "__gen_pending_throw", { kind: "externref" });
         const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
         fctx.body.push({ op: "call", funcIdx: createBufIdx });
         fctx.body.push({ op: "local.set", index: bufferLocal });
+        fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+        fctx.body.push({ op: "local.set", index: pendingThrowLocal });
 
         // Wrap body in a block so return can br out
         // Use pushBody/popBody so the outer body stays reachable for global-index
@@ -13103,15 +13128,30 @@ export function compileClassBodies(
 
         const bodyInstrs = fctx.body;
         popBody(fctx, savedGenBody);
-        fctx.body.push({
-          op: "block",
-          blockType: { kind: "empty" },
-          body: bodyInstrs,
-        });
 
-        // Return __create_generator(__gen_buffer)
+        // Wrap generator body block in try/catch to capture exceptions as pending throw
+        const tagIdx = ensureExnTag(ctx);
+        const getCaughtIdx = ctx.funcMap.get("__get_caught_exception");
+        const catchBody: Instr[] = [{ op: "local.set", index: pendingThrowLocal } as unknown as Instr];
+        const catchAllBody: Instr[] =
+          getCaughtIdx !== undefined
+            ? [
+                { op: "call", funcIdx: getCaughtIdx } as Instr,
+                { op: "local.set", index: pendingThrowLocal } as unknown as Instr,
+              ]
+            : [];
+        fctx.body.push({
+          op: "try",
+          blockType: { kind: "empty" },
+          body: [{ op: "block", blockType: { kind: "empty" }, body: bodyInstrs }],
+          catches: [{ tagIdx, body: catchBody }],
+          catchAll: catchAllBody.length > 0 ? catchAllBody : undefined,
+        } as unknown as Instr);
+
+        // Return __create_generator(__gen_buffer, __gen_pending_throw)
         const createGenIdx = ctx.funcMap.get("__create_generator")!;
         fctx.body.push({ op: "local.get", index: bufferLocal });
+        fctx.body.push({ op: "local.get", index: pendingThrowLocal });
         fctx.body.push({ op: "call", funcIdx: createGenIdx });
       } else if (member.body) {
         for (const stmt of member.body.statements) {
@@ -14103,12 +14143,16 @@ function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclaration, 
   if (isGenerator) {
     // Generator function: eagerly evaluate body, collect yields into a JS array,
     // then wrap it with __create_generator to return a Generator-like object.
+    // Body is wrapped in try/catch to defer thrown exceptions to first next() (#928).
     const bufferLocal = allocLocal(fctx, "__gen_buffer", { kind: "externref" });
+    const pendingThrowLocal = allocLocal(fctx, "__gen_pending_throw", { kind: "externref" });
 
     // Create buffer: __gen_buffer = __gen_create_buffer()
     const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
     fctx.body.push({ op: "call", funcIdx: createBufIdx });
     fctx.body.push({ op: "local.set", index: bufferLocal });
+    fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+    fctx.body.push({ op: "local.set", index: pendingThrowLocal });
 
     // Wrap the generator body in a block so that `return` statements inside
     // the body can `br` out to the generator creation code instead of
@@ -14139,18 +14183,33 @@ function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclaration, 
     for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
     fctx.generatorReturnDepth = undefined;
 
-    // Restore outer body and wrap compiled body in a block
+    // Restore outer body and wrap compiled body in a try/catch(block)
     const bodyInstrs = fctx.body;
     popBody(fctx, savedGenBody);
-    fctx.body.push({
-      op: "block",
-      blockType: { kind: "empty" },
-      body: bodyInstrs,
-    });
 
-    // Return __create_generator(__gen_buffer)
+    // Wrap generator body block in try/catch to capture exceptions as pending throw
+    const tagIdx = ensureExnTag(ctx);
+    const getCaughtIdx = ctx.funcMap.get("__get_caught_exception");
+    const catchBody: Instr[] = [{ op: "local.set", index: pendingThrowLocal } as unknown as Instr];
+    const catchAllBody: Instr[] =
+      getCaughtIdx !== undefined
+        ? [
+            { op: "call", funcIdx: getCaughtIdx } as Instr,
+            { op: "local.set", index: pendingThrowLocal } as unknown as Instr,
+          ]
+        : [];
+    fctx.body.push({
+      op: "try",
+      blockType: { kind: "empty" },
+      body: [{ op: "block", blockType: { kind: "empty" }, body: bodyInstrs }],
+      catches: [{ tagIdx, body: catchBody }],
+      catchAll: catchAllBody.length > 0 ? catchAllBody : undefined,
+    } as unknown as Instr);
+
+    // Return __create_generator(__gen_buffer, __gen_pending_throw)
     const createGenIdx = ctx.funcMap.get("__create_generator")!;
     fctx.body.push({ op: "local.get", index: bufferLocal });
+    fctx.body.push({ op: "local.get", index: pendingThrowLocal });
     fctx.body.push({ op: "call", funcIdx: createGenIdx });
     // The externref Generator object is now on the stack as the return value
   } else {
