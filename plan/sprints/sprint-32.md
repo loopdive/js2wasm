@@ -116,3 +116,10 @@ CE reduction is approaching diminishing returns (1,433 → fragmented small patt
 | 5 | #843 | 15,259 | 15,251 | (combined w/ #836) | merged (super in object literals + base classes) |
 | 6 | #856 | 15,251 | 15,526 | +275 pass (combined w/ #834) | merged (ValidateAndApplyPropertyDescriptor for WasmGC) |
 | 7 | #834 | 15,251 | 15,526 | (combined above) | merged (ES2025 Set methods + collection extern classes) |
+
+## Planning Notes (merged from sprint-32-planning.md)
+
+- STF presentability sprint — ordered tasks to match reviewer evaluation path (README → Roadmap → Demo → Engineering)
+- Priority 1: README (#885), Priority 2: ROADMAP (#887), Priority 3: Landing page, Priority 4: Playground
+---
+_Issues not completed in this sprint were returned to the backlog._

@@ -150,3 +150,6 @@ Parallel tracks, refactoring last:
 4. **reasoning_effort in issues** — drives model selection
 5. **Never dismiss regressions** — always bisect first (memory saved)
 6. **Merge proof in worktree** — hook checks both locations
+
+---
+_Issues not completed in this sprint were returned to the backlog._

@@ -84,3 +84,6 @@ Note: #931, #946, #947, #948 are already DONE in sprint 37. Do NOT dispatch thes
 ## Retrospective
 
 (To be filled after sprint completion)
+
+---
+_Issues not completed in this sprint were returned to the backlog._
