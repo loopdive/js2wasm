@@ -585,6 +585,10 @@ function resolveImport(
           ReferenceError,
           AggregateError,
           Test262Error,
+          // TC39 Explicit Resource Management (stage 3 / Node.js 22+)
+          ...(typeof DisposableStack !== "undefined" ? { DisposableStack } : {}),
+          ...(typeof AsyncDisposableStack !== "undefined" ? { AsyncDisposableStack } : {}),
+          ...(typeof SuppressedError !== "undefined" ? { SuppressedError } : {}),
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor)
