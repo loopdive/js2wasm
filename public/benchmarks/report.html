@@ -415,6 +415,44 @@
         border-radius: 2px;
         flex-shrink: 0;
       }
+      .bench-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 1rem;
+      }
+      .bench-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem;
+      }
+      .bench-snippet-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+      .bench-snippet-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .bench-snippet-head {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .bench-snippet-card pre {
+        margin: 0;
+        padding: 1rem;
+        overflow-x: auto;
+        font-size: 0.72rem;
+        line-height: 1.5;
+        white-space: pre;
+        font-family: "SF Mono", SFMono-Regular, Consolas, monospace;
+      }
       .bench-name {
         font-weight: 600;
         font-size: 0.875rem;
@@ -622,6 +660,12 @@
       const REPORT_JSON = "results/test262-report.json";
       const HISTORY_JSON = "results/history.json";
       const RESULTS_JSONL = "results/test262-results.jsonl";
+      const BENCH_SUITE_FILES = [
+        "benchmarks/suites/strings.ts",
+        "benchmarks/suites/arrays.ts",
+        "benchmarks/suites/dom.ts",
+        "benchmarks/suites/mixed.ts",
+      ];
       const BASE_PATH = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
 
       function assetPath(path) {
@@ -954,6 +998,28 @@
         } catch {
           return null;
         }
+      }
+
+      async function loadBenchmarkSnippets() {
+        const snippets = new Map();
+        await Promise.all(
+          BENCH_SUITE_FILES.map(async (path) => {
+            try {
+              const resp = await fetch(assetPath(path));
+              if (!resp.ok) return;
+              const source = await resp.text();
+              const pattern = /name:\s*"([^"]+)"[\s\S]*?source:\s*`([\s\S]*?)`,/g;
+              for (const match of source.matchAll(pattern)) {
+                const name = match[1];
+                const snippet = match[2].replace(/^\n+|\n+$/g, "");
+                if (name && snippet) snippets.set(name, snippet);
+              }
+            } catch {
+              // Keep the benchmark cards visible even if snippet files are unavailable.
+            }
+          }),
+        );
+        return snippets;
       }
 
       function shortName(cat) {
@@ -1997,6 +2063,114 @@
         }
       }
 
+      function renderBenchmarks(data, snippets, container) {
+        container.appendChild(el("h2", null, "Performance Benchmarks"));
+        container.appendChild(
+          makeLegend([
+            ["JavaScript", "var(--text-muted)"],
+            ["Host-call (wasm)", "var(--accent)"],
+            ["GC-native (wasm)", "var(--pass)"],
+          ]),
+        );
+
+        const byName = new Map();
+        for (const b of data) {
+          if (!byName.has(b.name)) byName.set(b.name, {});
+          byName.get(b.name)[b.strategy] = b;
+        }
+
+        const benchGroups = new Map();
+        for (const [name, strats] of byName) {
+          const group = name.split("/")[0];
+          if (!benchGroups.has(group)) benchGroups.set(group, []);
+          benchGroups.get(group).push({ name, strats });
+        }
+
+        const stratColors = {
+          js: "var(--text-muted)",
+          "host-call": "var(--accent)",
+          "gc-native": "var(--pass)",
+        };
+
+        for (const [group, benchmarks] of benchGroups) {
+          container.appendChild(el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)));
+          const grid = el("div", { className: "bench-grid" });
+
+          for (const { name, strats } of benchmarks) {
+            const card = el("div", { className: "bench-card" });
+            const nameEl = el("div", { className: "bench-name" }, name.split("/")[1]);
+
+            // Speedup info
+            const js = strats["js"];
+            const hc = strats["host-call"];
+            const gc = strats["gc-native"];
+            if (js && hc) {
+              const ratio = js.medianMs / hc.medianMs;
+              if (ratio > 1) {
+                const sp = el(
+                  "span",
+                  { className: "speedup", style: { color: "var(--pass)" } },
+                  "host " + ratio.toFixed(1) + "\u00d7 faster",
+                );
+                nameEl.appendChild(sp);
+              } else if (ratio < 0.5) {
+                const sp = el(
+                  "span",
+                  { className: "speedup", style: { color: "var(--error)" } },
+                  "host " + (1 / ratio).toFixed(1) + "\u00d7 slower",
+                );
+                nameEl.appendChild(sp);
+              }
+            }
+            card.appendChild(nameEl);
+
+            let localMax = 0;
+            for (const b of Object.values(strats)) if (b.medianMs > localMax) localMax = b.medianMs;
+            if (localMax === 0) localMax = 1;
+
+            for (const strategy of ["js", "host-call", "gc-native"]) {
+              const b = strats[strategy];
+              if (!b) continue;
+              const barW = Math.max(1, (b.medianMs / localMax) * 100);
+
+              const row = el("div", { className: "bench-row" });
+              row.appendChild(el("span", { className: "bench-label" }, strategy));
+
+              const barBg = el("div", { className: "bench-bar-bg" });
+              barBg.appendChild(
+                el("div", {
+                  className: "bench-bar",
+                  style: {
+                    width: barW + "%",
+                    background: stratColors[strategy],
+                  },
+                }),
+              );
+              row.appendChild(barBg);
+
+              row.appendChild(el("span", { className: "bench-time" }, fmt(b.medianMs)));
+              card.appendChild(row);
+            }
+
+            grid.appendChild(card);
+          }
+          container.appendChild(grid);
+
+          const snippetEntries = benchmarks
+            .map(({ name }) => ({ name, snippet: snippets.get(name) }))
+            .filter((entry) => !!entry.snippet);
+          if (snippetEntries.length > 0) {
+            const snippetGrid = el("div", { className: "bench-snippet-grid" });
+            for (const entry of snippetEntries) {
+              const card = el("div", { className: "bench-snippet-card" });
+              card.appendChild(el("div", { className: "bench-snippet-head" }, entry.name.split("/")[1]));
+              card.appendChild(el("pre", null, entry.snippet));
+              snippetGrid.appendChild(card);
+            }
+            container.appendChild(snippetGrid);
+          }
+        }
+      }
       const STRAT_COLORS = {
         js: "#8b949e",
         "host-call": "#58a6ff",
@@ -2147,7 +2321,12 @@
       }
 
       async function main() {
-        const [conformance, history] = await Promise.all([loadReportWithFallback(), loadJSON(HISTORY_JSON)]);
+        const [conformance, benchmarks, history, snippets] = await Promise.all([
+          loadReportWithFallback(),
+          loadJSON(BENCH_JSON),
+          loadJSON(HISTORY_JSON),
+          loadBenchmarkSnippets(),
+        ]);
         const app = document.getElementById("app");
         app.textContent = "";
 
@@ -2162,6 +2341,9 @@
         const perfChart = document.createElement("perf-benchmark-chart");
         perfChart.setAttribute("src", "results/playground-benchmark-sidebar.json");
         app.appendChild(perfChart);
+        if (benchmarks) {
+          renderBenchmarks(benchmarks, snippets, app);
+        }
 
         if (history && history.length >= 2) {
           renderTrends(history, app);
