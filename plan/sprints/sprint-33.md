@@ -69,3 +69,6 @@ Sprint 32 baseline was stale (17,252 from old session). Current state: 15,526 pa
 ### Remaining for STF
 - #884: Add at minimum equiv tests to GitHub Actions (doesn't need sharded runner)
 - Verify GitHub Pages actually deploys when pushed (can't test locally)
+
+---
+_Issues not completed in this sprint were returned to the backlog._
