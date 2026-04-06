@@ -193,6 +193,13 @@ mkdirSync(PAGES_DIST, { recursive: true });
 copyDirectory(PLAYGROUND_DIST, PAGES_DIST);
 copyDirectory(PLAYGROUND_EXAMPLES_DIR, join(PAGES_DIST, "examples"));
 
+// Overwrite Vite-built report pages with the latest public/ versions (which include
+// web components like <t262-donut> that Vite doesn't process).
+const PUBLIC_REPORT = join(ROOT, "public", "benchmarks", "results", "report.html");
+const PUBLIC_REPORT_SHORT = join(ROOT, "public", "benchmarks", "report.html");
+copyFileIfExists(PUBLIC_REPORT, join(PAGES_DIST, "benchmarks", "results", "report.html"));
+copyFileIfExists(PUBLIC_REPORT_SHORT, join(PAGES_DIST, "benchmarks", "report.html"));
+
 // Add the static dashboard route and pre-generated dashboard data.
 copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "progress", "index.html"));
 copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "progress", "data"));
@@ -245,6 +252,10 @@ copyFileIfExists(
   join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "test262-report.json"),
 );
+copyFileIfExists(
+  join(BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"),
+  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"),
+);
 
 // Disable Jekyll processing so all generated assets are published as-is.
 writeFileSync(join(PAGES_DIST, ".nojekyll"), "");
@@ -258,6 +269,7 @@ copyFileIfExists(
   join(PUBLIC_BENCH, "playground-benchmark-sidebar.json"),
 );
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-editions.json"), join(PUBLIC_BENCH, "test262-editions.json"));
+copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"), join(PUBLIC_BENCH, "size-benchmarks.json"));
 
 // Copy web components to pages-dist root and dashboard
 const COMPONENTS_DIR = join(ROOT, "components");

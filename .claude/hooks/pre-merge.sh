@@ -19,10 +19,19 @@ source /workspace/.claude/hooks/event-log.sh
 # Detect: is this merging TO main (ff-only) or merging main INTO a branch?
 # ff-only anywhere in the command = merging to main
 if echo "$CMD" | grep -q '\-\-ff-only'; then
-  # Merging TO main — require test proof
+  # Merging TO main — require test proof (unless UI-only branch)
+  BRANCH=$(echo "$CMD" | sed 's/.*--ff-only[[:space:]]*//' | awk '{print $1}')
+
+  # Skip proof for UI-only branches (no src/ changes)
+  SRC_CHANGES=$(git diff main..."$BRANCH" --name-only 2>/dev/null | grep '^src/' | head -1)
+  if [ -z "$SRC_CHANGES" ]; then
+    log_event "merge_to_main_ui_only" "branch=$BRANCH"
+    jq -n '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: "UI-only branch (no src/ changes) — proof skipped. POST-MERGE: move issue to done/, update dep graph."}}'
+    exit 0
+  fi
+
   # Check multiple locations for the proof file (in priority order)
   PROOF=""
-  BRANCH=$(echo "$CMD" | sed 's/.*--ff-only[[:space:]]*//' | awk '{print $1}')
   for candidate in \
     "/tmp/merge-proof.json" \
     "/workspace/.claude/worktrees/$BRANCH/.claude/nonces/merge-proof.json" \
