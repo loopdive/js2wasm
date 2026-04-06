@@ -22,3 +22,6 @@
 - Test262 run at 02:11 UTC: 10,444 pass
 - Dual-mode architecture pattern established (#679 strings, #682 RegExp)
 - This became an architecture principle documented in CLAUDE.md
+
+---
+_Issues not completed in this sprint were returned to the backlog._
