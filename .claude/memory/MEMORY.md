@@ -59,5 +59,6 @@
 - [feedback_check_before_cleanup.md](feedback_check_before_cleanup.md) — Check worktree diffs before removing
 - [feedback_refactoring_failures.md](feedback_refactoring_failures.md) — After refactoring: check missing imports first, not circular deps
 - [feedback_sprint_tags.md](feedback_sprint_tags.md) — Tag sprint-N/begin at start, sprint/N at end
+- [feedback_no_stash_before_merge.md](feedback_no_stash_before_merge.md) — Never stash before merge, commit first
 
 Most project context lives in `/workspace/CLAUDE.md`.
