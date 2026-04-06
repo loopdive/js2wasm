@@ -206,6 +206,7 @@ copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "progress", "data"))
 copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "progress", "data.js"));
 copyFile(join(PLAN_DIR, "issues-graph.html"), join(PAGES_DIST, "issues-graph.html"));
 copyFile(join(PLAN_DIR, "graph-data.json"), join(PAGES_DIST, "graph-data.json"));
+copyDirectory(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
 
 // Add the benchmark data files fetched by the public report pages.
 copyFileIfExists(
