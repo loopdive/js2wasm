@@ -213,9 +213,9 @@ copyFileIfExists(PUBLIC_REPORT, join(PAGES_DIST, "benchmarks", "results", "repor
 copyFileIfExists(PUBLIC_REPORT_SHORT, join(PAGES_DIST, "benchmarks", "report.html"));
 
 // Add the static dashboard route and pre-generated dashboard data.
-copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "progress", "index.html"));
-copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "progress", "data"));
-copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "progress", "data.js"));
+copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "dashboard", "index.html"));
+copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "dashboard", "data"));
+copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"));
 copyFile(join(PLAN_DIR, "issues-graph.html"), join(PAGES_DIST, "issues-graph.html"));
 copyFile(join(PLAN_DIR, "graph-data.json"), join(PAGES_DIST, "graph-data.json"));
 copyDirectory(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
@@ -295,7 +295,7 @@ for (const file of ["site-nav.js", "t262-charts.js", "trend-chart.js", "perf-ben
 // Copy sprint-stats.json to dashboard data
 copyFileIfExists(
   join(ROOT, "dashboard", "data", "sprint-stats.json"),
-  join(PAGES_DIST, "progress", "data", "sprint-stats.json"),
+  join(PAGES_DIST, "dashboard", "data", "sprint-stats.json"),
 );
 
 console.log(`GitHub Pages artifact ready at ${PAGES_DIST}`);

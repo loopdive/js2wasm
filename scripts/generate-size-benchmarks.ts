@@ -112,8 +112,12 @@ interface SizeEntry {
   jsSizeGzip: number;
   wasmSizeRaw: number;
   wasmSizeGzip: number;
+  hostJsGzip: number;
+  wasmTotalGzip: number;
   jsParseMs: number;
   wasmCompileMs: number;
+  hostJsParseMs: number;
+  wasmTotalMs: number;
 }
 
 function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string): SizeEntry | null {
@@ -125,6 +129,7 @@ function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string)
   }
 
   const wasmBinary = result.binary;
+  const hostJs = result.importsHelper || "";
   const jsBuf = Buffer.from(jsSrc, "utf8");
 
   // Gzip sizes
@@ -132,11 +137,12 @@ function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string)
   const jsSizeGzip = gzip(jsBuf);
   const wasmSizeRaw = wasmBinary.byteLength;
   const wasmSizeGzip = gzip(wasmBinary);
+  const hostJsGzip = hostJs ? gzip(Buffer.from(hostJs, "utf8")) : 0;
+  const wasmTotalGzip = wasmSizeGzip + hostJsGzip;
 
   // JS parse time: new Function(transpiled body)
   const transpiledJs = transpileToJs(tsSrc);
   const jsParseMs = timeSync(() => {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     new Function(transpiledJs);
   });
 
@@ -146,6 +152,15 @@ function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string)
     new WebAssembly.Module(binaryBuffer);
   });
 
+  // Host JS parse time (strip export keywords for new Function compatibility)
+  const hostJsStripped = hostJs.replace(/^export\s+/gm, "");
+  const hostJsParseMs = hostJsStripped
+    ? timeSync(() => {
+        new Function(hostJsStripped);
+      })
+    : 0;
+  const wasmTotalMs = wasmCompileMs + hostJsParseMs;
+
   return {
     name,
     label,
@@ -153,8 +168,12 @@ function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string)
     jsSizeGzip,
     wasmSizeRaw,
     wasmSizeGzip,
+    hostJsGzip,
+    wasmTotalGzip,
     jsParseMs: Math.round(jsParseMs * 1e4) / 1e4,
     wasmCompileMs: Math.round(wasmCompileMs * 1e4) / 1e4,
+    hostJsParseMs: Math.round(hostJsParseMs * 1e4) / 1e4,
+    wasmTotalMs: Math.round(wasmTotalMs * 1e4) / 1e4,
   };
 }
 
@@ -177,16 +196,20 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
   }
 
   const wasmBinary = result.binary;
+  const hostJs = result.importsHelper || "";
 
-  // For the JS side, use the raw TypeScript source as "what the user writes"
-  const jsBuf = Buffer.from(tsSrc, "utf8");
+  // For the JS side, include entry + helpers (the JS version imports helpers too)
+  const fullJsSrc = tsSrc + "\n" + HELPERS_SOURCE;
+  const jsBuf = Buffer.from(fullJsSrc, "utf8");
   const jsSizeRaw = jsBuf.byteLength;
   const jsSizeGzip = gzip(jsBuf);
   const wasmSizeRaw = wasmBinary.byteLength;
   const wasmSizeGzip = gzip(wasmBinary);
+  const hostJsGzip = hostJs ? gzip(Buffer.from(hostJs, "utf8")) : 0;
+  const wasmTotalGzip = wasmSizeGzip + hostJsGzip;
 
-  // JS parse time: transpile + new Function
-  const transpiledJs = transpileToJs(tsSrc);
+  // JS parse time: transpile entry + helpers
+  const transpiledJs = transpileToJs(fullJsSrc);
   const jsParseMs = timeSync(() => {
     new Function(transpiledJs);
   });
@@ -197,6 +220,15 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
     new WebAssembly.Module(binaryBuffer);
   });
 
+  // Host JS parse time (strip export keywords for new Function compatibility)
+  const hostJsStripped = hostJs.replace(/^export\s+/gm, "");
+  const hostJsParseMs = hostJsStripped
+    ? timeSync(() => {
+        new Function(hostJsStripped);
+      })
+    : 0;
+  const wasmTotalMs = wasmCompileMs + hostJsParseMs;
+
   return {
     name,
     label,
@@ -204,8 +236,12 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
     jsSizeGzip,
     wasmSizeRaw,
     wasmSizeGzip,
+    hostJsGzip,
+    wasmTotalGzip,
     jsParseMs: Math.round(jsParseMs * 1e4) / 1e4,
     wasmCompileMs: Math.round(wasmCompileMs * 1e4) / 1e4,
+    hostJsParseMs: Math.round(hostJsParseMs * 1e4) / 1e4,
+    wasmTotalMs: Math.round(wasmTotalMs * 1e4) / 1e4,
   };
 }
 

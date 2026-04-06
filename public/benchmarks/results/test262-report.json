@@ -1,47 +1,47 @@
 {
-  "timestamp": "2026-04-06T07:33:51+02:00",
+  "timestamp": "2026-04-06T14:55:21+02:00",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
     "total": 43120,
-    "pass": 18464,
-    "fail": 21596,
-    "compile_error": 1737,
+    "pass": 18611,
+    "fail": 21447,
+    "compile_error": 1739,
     "compile_timeout": 10,
     "skip": 1313,
-    "compilable": 40060,
+    "compilable": 40058,
     "stale": 0
   },
   "official_summary": {
     "total": 43120,
-    "pass": 18464,
-    "fail": 21596,
-    "compile_error": 1737,
+    "pass": 18611,
+    "fail": 21447,
+    "compile_error": 1739,
     "compile_timeout": 10,
     "skip": 1313,
-    "compilable": 40060,
+    "compilable": 40058,
     "stale": 0
   },
   "full_summary": {
     "total": 43120,
-    "pass": 18464,
-    "fail": 21596,
-    "compile_error": 1737,
+    "pass": 18611,
+    "fail": 21447,
+    "compile_error": 1739,
     "compile_timeout": 10,
     "skip": 1313,
-    "compilable": 40060,
+    "compilable": 40058,
     "stale": 0
   },
   "strict_summary": {
     "total": 40611,
-    "pass": 17578,
-    "fail": 20393,
-    "compile_error": 1657,
+    "pass": 17724,
+    "fail": 20245,
+    "compile_error": 1659,
     "compile_timeout": 10,
     "skip": 973,
-    "compilable": 37971,
+    "compilable": 37969,
     "stale": 0
   },
   "scope_summaries": {
@@ -67,12 +67,12 @@
     },
     "standard": {
       "total": 42034,
-      "pass": 18016,
-      "fail": 20998,
-      "compile_error": 1697,
+      "pass": 18163,
+      "fail": 20849,
+      "compile_error": 1699,
       "compile_timeout": 10,
       "skip": 1313,
-      "compilable": 39014,
+      "compilable": 39012,
       "stale": 0
     }
   },
@@ -133,8 +133,8 @@
     },
     {
       "name": "built-ins/AsyncDisposableStack",
-      "pass": 3,
-      "fail": 49,
+      "pass": 5,
+      "fail": 47,
       "compile_error": 0,
       "compile_timeout": 0,
       "skip": 0,
@@ -232,8 +232,8 @@
     },
     {
       "name": "built-ins/DisposableStack",
-      "pass": 2,
-      "fail": 89,
+      "pass": 27,
+      "fail": 64,
       "compile_error": 0,
       "compile_timeout": 0,
       "skip": 0,
@@ -277,8 +277,8 @@
     },
     {
       "name": "built-ins/GeneratorPrototype",
-      "pass": 7,
-      "fail": 42,
+      "pass": 9,
+      "fail": 40,
       "compile_error": 12,
       "compile_timeout": 0,
       "skip": 0,
@@ -475,8 +475,8 @@
     },
     {
       "name": "built-ins/SuppressedError",
-      "pass": 0,
-      "fail": 22,
+      "pass": 2,
+      "fail": 20,
       "compile_error": 0,
       "compile_timeout": 0,
       "skip": 0,
@@ -484,8 +484,8 @@
     },
     {
       "name": "built-ins/Symbol",
-      "pass": 40,
-      "fail": 58,
+      "pass": 41,
+      "fail": 57,
       "compile_error": 0,
       "compile_timeout": 0,
       "skip": 0,
@@ -736,9 +736,9 @@
     },
     {
       "name": "language/expressions",
-      "pass": 4622,
-      "fail": 5092,
-      "compile_error": 454,
+      "pass": 4665,
+      "fail": 5047,
+      "compile_error": 456,
       "compile_timeout": 0,
       "skip": 524,
       "total": 10692
@@ -880,8 +880,8 @@
     },
     {
       "name": "language/statements",
-      "pass": 3661,
-      "fail": 4915,
+      "pass": 3733,
+      "fail": 4843,
       "compile_error": 550,
       "compile_timeout": 4,
       "skip": 207,
@@ -907,18 +907,18 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 8564,
-    "illegal_cast": 416,
-    "type_error": 6366,
-    "other": 1999,
-    "wasm_compile": 2976,
-    "null_deref": 603,
-    "runtime_error": 1662,
+    "assertion_fail": 8643,
+    "other": 1764,
+    "wasm_compile": 3233,
+    "range_error": 19,
+    "null_deref": 606,
+    "illegal_cast": 425,
+    "type_error": 6141,
+    "runtime_error": 1637,
     "negative_test_fail": 624,
     "oob": 47,
-    "range_error": 19,
-    "unreachable": 31,
-    "promise_error": 26
+    "promise_error": 27,
+    "unreachable": 20
   },
   "skip_reasons": {
     "ES5 legacy: with statement (strict mode disallowed)": 386,
