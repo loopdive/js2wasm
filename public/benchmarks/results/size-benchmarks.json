@@ -1,0 +1,77 @@
+{
+  "timestamp": "2026-04-06T05:41:17.577Z",
+  "howItWorks": {
+    "fib": {
+      "name": "fib",
+      "label": "fibonacci",
+      "jsSizeRaw": 146,
+      "jsSizeGzip": 109,
+      "wasmSizeRaw": 207,
+      "wasmSizeGzip": 154,
+      "jsParseMs": 0.001,
+      "wasmCompileMs": 0.0011
+    },
+    "dom": {
+      "name": "dom",
+      "label": "DOM append",
+      "jsSizeRaw": 133,
+      "jsSizeGzip": 129,
+      "wasmSizeRaw": 509,
+      "wasmSizeGzip": 291,
+      "jsParseMs": 0.0008,
+      "wasmCompileMs": 0.0019
+    }
+  },
+  "benchmarks": [
+    {
+      "name": "fib",
+      "label": "fibonacci",
+      "jsSizeRaw": 578,
+      "jsSizeGzip": 375,
+      "wasmSizeRaw": 2977,
+      "wasmSizeGzip": 1455,
+      "jsParseMs": 0.0028,
+      "wasmCompileMs": 0.006
+    },
+    {
+      "name": "loop",
+      "label": "loop 1M",
+      "jsSizeRaw": 528,
+      "jsSizeGzip": 361,
+      "wasmSizeRaw": 2931,
+      "wasmSizeGzip": 1444,
+      "jsParseMs": 0.0011,
+      "wasmCompileMs": 0.0056
+    },
+    {
+      "name": "string",
+      "label": "string concat",
+      "jsSizeRaw": 554,
+      "jsSizeGzip": 372,
+      "wasmSizeRaw": 3000,
+      "wasmSizeGzip": 1443,
+      "jsParseMs": 0.0012,
+      "wasmCompileMs": 0.01
+    },
+    {
+      "name": "array",
+      "label": "array fill+sum",
+      "jsSizeRaw": 632,
+      "jsSizeGzip": 414,
+      "wasmSizeRaw": 3140,
+      "wasmSizeGzip": 1583,
+      "jsParseMs": 0.0033,
+      "wasmCompileMs": 0.0058
+    },
+    {
+      "name": "dom",
+      "label": "DOM 100 els",
+      "jsSizeRaw": 786,
+      "jsSizeGzip": 442,
+      "wasmSizeRaw": 3096,
+      "wasmSizeGzip": 1495,
+      "jsParseMs": 0.0035,
+      "wasmCompileMs": 0.0057
+    }
+  ]
+}
