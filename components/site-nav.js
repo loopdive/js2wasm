@@ -57,8 +57,9 @@ class SiteNav extends HTMLElement {
         }
 
         .nav-logo span {
-          font-size: 0.8rem;
+          font-size: 1.2rem;
           text-transform: uppercase;
+          font-weight: bold;
           letter-spacing: 0.08em;
           color: var(--fg-soft, rgba(255, 255, 255, 0.68));
           font-family: var(--font, Inter, ui-sans-serif, system-ui, sans-serif);
@@ -132,7 +133,7 @@ class SiteNav extends HTMLElement {
       </style>
       <nav class="site-nav">
         <a class="nav-logo" href="${base}" aria-label="js2 home">
-          <span>js2</span>
+          <span>JS<sup style="font-size:0.55em;vertical-align:super;margin-left:1px">2</sup></span>
         </a>
         <ul class="nav-links">
           ${
