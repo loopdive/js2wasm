@@ -259,4 +259,16 @@ copyFileIfExists(
 );
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-editions.json"), join(PUBLIC_BENCH, "test262-editions.json"));
 
+// Copy web components to pages-dist root and dashboard
+const COMPONENTS_DIR = join(ROOT, "components");
+for (const file of ["site-nav.js", "t262-charts.js", "trend-chart.js"]) {
+  copyFileIfExists(join(COMPONENTS_DIR, file), join(PAGES_DIST, "components", file));
+}
+
+// Copy sprint-stats.json to dashboard data
+copyFileIfExists(
+  join(ROOT, "dashboard", "data", "sprint-stats.json"),
+  join(PAGES_DIST, "dashboard", "data", "sprint-stats.json"),
+);
+
 console.log(`GitHub Pages artifact ready at ${PAGES_DIST}`);
