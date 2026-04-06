@@ -42,6 +42,7 @@ On the runtime side, class computed properties (#848, 1,015 FAIL) and for-of des
 | 13 | **#979** | Report page: add nav bar + landing page styling | UI | Medium | sonnet | Align report.html with landing page design system |
 | 14 | **#980** | Auto-generate size + load time benchmarks | UI/DX | Medium | sonnet | Script + chart for module size and cold start |
 | 15 | **#981** | Reuse t262-donut on report page | UI | Medium | sonnet | Replace report's custom donut with landing page component |
+| 16 | **#982** | Extract perf benchmark chart web component | UI | Medium | sonnet | Single component for landing page + report page benchmarks |
 
 ## Dev Paths (3 devs max)
 

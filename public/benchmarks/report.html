@@ -49,18 +49,9 @@
         margin-bottom: 0.25rem;
       }
       .brand {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.2rem;
-        margin-bottom: 0.25rem;
-        overflow: visible;
-      }
-      .brand-logo {
-        display: block;
-        height: 60px;
-        object-fit: contain;
-        max-width: 100%;
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
       }
       h2 {
         font-size: 1.25rem;
@@ -73,11 +64,6 @@
         font-weight: 600;
         margin: 1.5rem 0 0.5rem;
         color: var(--text-muted);
-      }
-      .subtitle {
-        color: var(--text-muted);
-        font-size: 0.875rem;
-        margin-bottom: 2rem;
       }
       .timestamp {
         color: var(--text-muted);
@@ -116,111 +102,7 @@
         font-size: 0.875rem;
         color: var(--text-muted);
       }
-      .gauge-card {
-        display: grid;
-        grid-template-columns: 1fr;
-        justify-items: center;
-        min-height: 220px;
-        overflow: visible;
-      }
-      @media (max-width: 900px) {
-        .gauge-card {
-          grid-template-columns: 1fr;
-        }
-      }
-      .gauge-orbit {
-        position: relative;
-        width: min(100%, 380px);
-        height: 340px;
-        margin: 0 auto;
-      }
-      .gauge-wrap {
-        position: relative;
-        display: grid;
-        place-items: center;
-        margin: 0 auto;
-        width: 250px;
-        aspect-ratio: 1 / 1;
-        border-radius: 50%;
-        background: conic-gradient(
-          var(--pass) 0deg var(--gauge-pass-end),
-          rgba(248, 81, 73, 0.18) var(--gauge-pass-end) var(--gauge-fail-end),
-          rgba(210, 153, 34, 0.18) var(--gauge-fail-end) var(--gauge-error-end),
-          rgba(139, 148, 158, 0.14) var(--gauge-error-end) 360deg
-        );
-      }
-      .gauge-wrap::before {
-        content: "";
-        position: absolute;
-        inset: 22px;
-        border-radius: 50%;
-        background: var(--bg);
-        border: 1px solid rgba(255, 255, 255, 0.04);
-      }
-      .gauge-center {
-        position: absolute;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        transform: translateY(8px);
-      }
-      .gauge-center .gauge-value {
-        font-size: 2.5rem;
-        font-weight: 800;
-        line-height: 1;
-      }
-      .gauge-center .gauge-caption {
-        margin-top: 0.35rem;
-        display: grid;
-        gap: 0.05rem;
-        justify-items: center;
-        color: var(--text-muted);
-      }
-      .gauge-center .gauge-caption-main {
-        font-size: 0.86rem;
-        letter-spacing: 0.08em;
-      }
-      .gauge-center .gauge-caption-sub {
-        font-size: 0.78rem;
-        letter-spacing: 0.08em;
-      }
-      .gauge-core {
-        position: absolute;
-        inset: 45px 0 0;
-        display: grid;
-        place-items: center;
-      }
-      .gauge-copy {
-        display: none;
-      }
-      .orbit-stat {
-        position: absolute;
-        display: grid;
-        gap: 0.15rem;
-        text-align: center;
-        font-variant-numeric: tabular-nums;
-        width: 120px;
-        transform: translate(-50%, -50%);
-      }
-      .orbit-connector {
-        position: absolute;
-        height: 1px;
-        background: rgba(255, 255, 255, 0.18);
-        transform-origin: left center;
-        pointer-events: none;
-      }
-      .orbit-stat .orbit-value {
-        font-size: 1rem;
-        font-weight: 700;
-      }
-      .orbit-stat .orbit-label {
-        font-size: 0.68rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-      }
+      /* Donut chart handled by <t262-donut> web component */
       .edition-timeline-section {
         margin: -0.35rem 0 2rem;
       }
@@ -421,9 +303,7 @@
         gap: 1rem;
       }
       .bench-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        padding: 1rem;
+        padding: 1rem 0;
       }
       .bench-name {
         font-weight: 600;
@@ -657,11 +537,7 @@
   </head>
   <body>
     <site-nav base="../../"></site-nav>
-    <div class="brand">
-      <img class="brand-logo" id="brand-logo" alt="js2wasm logo" />
-      <h1>js2wasm</h1>
-    </div>
-    <div class="subtitle">ECMAScript conformance (test 262 test suite)</div>
+    <h1 class="brand">ECMAScript conformance</h1>
     <div id="app"><div class="no-data">Loading report data…</div></div>
 
     <script>
@@ -674,11 +550,6 @@
       function assetPath(path) {
         if (!BASE_PATH) return `/${path}`;
         return `${BASE_PATH}/${path}`;
-      }
-
-      const brandLogo = document.getElementById("brand-logo");
-      if (brandLogo) {
-        brandLogo.src = assetPath("jswasmlogo.png");
       }
 
       // If the report.json is empty/corrupt, rebuild it from the JSONL on the fly
@@ -1344,106 +1215,7 @@
         return card;
       }
 
-      function makeGaugeCard(summary, percent, captionSubtext) {
-        const card = el("div", { className: "gauge-card" });
-        const pass = summary.pass || 0;
-        const failCount = summary.fail || 0;
-        const errorCount = summary.compile_error || 0;
-        const skipCount = summary.skip || 0;
-        const total = summary.total || pass + failCount + errorCount + skipCount + (summary.compile_timeout || 0);
-        const totalSafe = Math.max(total, 1);
-        const passDeg = (pass / totalSafe) * 360;
-        const failDeg = passDeg + (failCount / totalSafe) * 360;
-        const errorDeg = failDeg + (errorCount / totalSafe) * 360;
-        card.style.setProperty("--gauge-pass-end", `${passDeg}deg`);
-        card.style.setProperty("--gauge-fail-end", `${failDeg}deg`);
-        card.style.setProperty("--gauge-error-end", `${errorDeg}deg`);
-
-        const centerX = 190;
-        const centerY = 193;
-        const orbitPoint = (angleFromTop, radius) => {
-          const rad = ((angleFromTop - 90) * Math.PI) / 180;
-          return {
-            x: centerX + Math.cos(rad) * radius,
-            y: centerY + Math.sin(rad) * radius,
-            rad,
-          };
-        };
-        const makeOrbitStat = (className, value, label, color, angleFromTop, labelRadius) => {
-          const labelPoint = orbitPoint(angleFromTop, labelRadius);
-          const lineStart = orbitPoint(angleFromTop, 126);
-          const dx = labelPoint.x - lineStart.x;
-          const dy = labelPoint.y - lineStart.y;
-          const lineLength = Math.max(Math.sqrt(dx * dx + dy * dy) - 34, 0);
-          return [
-            el("div", {
-              className: "orbit-connector",
-              style: {
-                left: `${lineStart.x}px`,
-                top: `${lineStart.y}px`,
-                width: `${lineLength}px`,
-                transform: `rotate(${angleFromTop - 90}deg)`,
-              },
-            }),
-            el(
-              "div",
-              {
-                className: `orbit-stat ${className}`,
-                style: {
-                  left: `${labelPoint.x}px`,
-                  top: `${labelPoint.y}px`,
-                },
-              },
-              el("div", { className: "orbit-value", style: { color } }, value),
-              el("div", { className: "orbit-label" }, label),
-            ),
-          ];
-        };
-
-        const gauge = el(
-          "div",
-          { className: "gauge-orbit" },
-          ...makeOrbitStat("pass", pass.toLocaleString(), "Passed", "var(--pass)", passDeg / 2, 184),
-          ...makeOrbitStat("failed", failCount.toLocaleString(), "Failed", "var(--fail)", (passDeg + failDeg) / 2, 194),
-          ...makeOrbitStat(
-            "error",
-            errorCount.toLocaleString(),
-            "Compile Errors",
-            "var(--error)",
-            (failDeg + errorDeg) / 2,
-            180,
-          ),
-          ...makeOrbitStat(
-            "unsupported",
-            skipCount.toLocaleString(),
-            "Unsupported",
-            "var(--text-muted)",
-            (errorDeg + 360) / 2,
-            214,
-          ),
-          el(
-            "div",
-            { className: "gauge-core" },
-            el(
-              "div",
-              { className: "gauge-wrap" },
-              el(
-                "div",
-                { className: "gauge-center" },
-                el("div", { className: "gauge-value", style: { color: "var(--pass)" } }, percent.toFixed(1) + "%"),
-                el(
-                  "div",
-                  { className: "gauge-caption" },
-                  el("div", { className: "gauge-caption-main" }, "ECMAScript"),
-                  el("div", { className: "gauge-caption-sub" }, captionSubtext || "conformance"),
-                ),
-              ),
-            ),
-          ),
-        );
-        card.appendChild(gauge);
-        return card;
-      }
+      // Gauge card replaced by <t262-donut> web component
 
       function makeScopeSummary(...parts) {
         const summary = {
@@ -1560,7 +1332,9 @@
         }
 
         const summary = el("div", { className: "summary" });
-        const summaryCardHost = el("div");
+        const donutEl = document.createElement("t262-donut");
+        donutEl.id = "donut-chart";
+        donutEl.style.setProperty("--t262-bg", "#060a14");
         const controlsHost = el("div", { className: "filter-toggles", style: { marginTop: "1rem" } });
         const legacyToggle = el("label", { className: "filter-toggle" });
         const legacyCheckbox = el("input", { type: "checkbox", checked: "checked" });
@@ -1604,12 +1378,12 @@
               scoreState.includeProposals ? proposalSummary : null,
             );
           }
-          const passRate = pct(s.pass, s.total);
-          const caption = strictCheckbox.checked
-            ? "strict mode"
-            : scopeLabel(scoreState.includeLegacy, scoreState.includeProposals);
-          summaryCardHost.textContent = "";
-          summaryCardHost.appendChild(makeGaugeCard(s, passRate, caption));
+          const ce = (s.compile_error || 0) + (s.compile_timeout || 0);
+          donutEl.setAttribute("pass", s.pass || 0);
+          donutEl.setAttribute("fail", s.fail || 0);
+          donutEl.setAttribute("ce", ce);
+          donutEl.setAttribute("skip", s.skip || 0);
+          donutEl.setAttribute("total", s.total || 0);
         }
 
         legacyCheckbox.addEventListener("change", () => {
@@ -1630,7 +1404,7 @@
 
         syncToggleStyles();
         renderSummaryCard();
-        summary.appendChild(summaryCardHost);
+        summary.appendChild(donutEl);
         summary.appendChild(controlsHost);
         if (summaryStamp) summary.appendChild(summaryStamp);
 
@@ -2319,5 +2093,6 @@
       main();
     </script>
     <script src="../../components/site-nav.js"></script>
+    <script src="../../components/t262-charts.js"></script>
   </body>
 </html>
