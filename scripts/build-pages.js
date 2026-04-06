@@ -20,6 +20,7 @@ const PAGES_DIST = join(ROOT, "pages-dist");
 const DASHBOARD_DIR = join(ROOT, "dashboard");
 const PLAN_DIR = join(ROOT, "plan");
 const BENCHMARKS_RESULTS_DIR = join(ROOT, "benchmarks", "results");
+const PUBLIC_BENCH = join(ROOT, "public", "benchmarks", "results");
 const RUNS_DIR = join(BENCHMARKS_RESULTS_DIR, "runs");
 const PLAYGROUND_DATA_DIR = join(PAGES_DIST, "playground-data");
 const PLAYGROUND_APP_DATA_DIR = join(PAGES_DIST, "playground", "playground-data");
@@ -65,9 +66,20 @@ function latestMatchingFile(dir, suffix) {
   return join(dir, matches[matches.length - 1]);
 }
 
-function resolvePreferredFile(primarySource, fallbackSource) {
+function latestNamedFile(dir, prefix, suffix) {
+  if (!existsSync(dir)) return null;
+  const matches = readdirSync(dir)
+    .filter((name) => name.startsWith(prefix) && name.endsWith(suffix))
+    .sort();
+  if (matches.length === 0) return null;
+  return join(dir, matches[matches.length - 1]);
+}
+
+function resolvePreferredFile(primarySource, ...fallbackSources) {
   if (existsSync(primarySource)) return primarySource;
-  if (fallbackSource && existsSync(fallbackSource)) return fallbackSource;
+  for (const fallbackSource of fallbackSources) {
+    if (fallbackSource && existsSync(fallbackSource)) return fallbackSource;
+  }
   throw new Error(`Required path does not exist: ${primarySource}`);
 }
 
@@ -216,10 +228,13 @@ copyFileIfExists(
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "latest.json"), join(PAGES_DIST, "benchmarks", "results", "latest.json"));
 const test262ReportSource = resolvePreferredFile(
   join(BENCHMARKS_RESULTS_DIR, "test262-report.json"),
+  join(PUBLIC_BENCH, "test262-report.json"),
+  latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-report-", ".json"),
   latestMatchingFile(RUNS_DIR, "-report.json"),
 );
 const test262ResultsSource = resolvePreferredFile(
   join(BENCHMARKS_RESULTS_DIR, "test262-results.jsonl"),
+  latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-results-", ".jsonl"),
   latestMatchingFile(RUNS_DIR, "-results.jsonl"),
 );
 copyFile(test262ReportSource, join(PAGES_DIST, "benchmarks", "results", "test262-report.json"));
@@ -262,7 +277,6 @@ copyFileIfExists(
 writeFileSync(join(PAGES_DIST, ".nojekyll"), "");
 
 // Sync benchmark data to public/ for the landing page (Vite serves public/ as static)
-const PUBLIC_BENCH = join(ROOT, "public", "benchmarks", "results");
 mkdirSync(PUBLIC_BENCH, { recursive: true });
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-report.json"), join(PUBLIC_BENCH, "test262-report.json"));
 copyFileIfExists(
