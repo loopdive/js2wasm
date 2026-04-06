@@ -172,6 +172,7 @@ End of sprint:
 - Batch doc/plan commits on main AFTER all pending agent merges, not between them (doc commits force agents to re-merge main)
 - Verify equivalence tests passed (dev runs them via `/test-and-merge` skill)
 - Complete post-merge issue cleanup (move to done/, update dep graph) before dispatching next task
+- **Tag sprints when closed**: `git tag sprint/N` on the final commit. Sprint stats are auto-generated from tags during `build:pages`.
 
 ### Sprint planning (PO + Architect + Tech Lead)
 

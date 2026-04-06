@@ -335,20 +335,20 @@
   {
     "name": "sprint 32",
     "sprintNumber": 32,
+    "date": "2026-04-03",
+    "baseline": "15,187 pass / 42,934 official (35.4%) — post sprint-31 session",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [822, 831, 834, 836, 840, 842, 843, 845, 855, 856]
+  },
+  {
+    "name": "sprint 33",
+    "sprintNumber": 33,
     "date": "2026-03-31",
     "baseline": "17,252 pass / 48,088 total (35.9%) — clean baseline, cache disabled, isolated worktree build",
     "result": "",
     "issueCount": 0,
     "issueIds": [882, 883, 884, 885, 886, 887, 888]
-  },
-  {
-    "name": "sprint 33",
-    "sprintNumber": 33,
-    "date": "2026-04-02",
-    "baseline": "",
-    "result": "",
-    "issueCount": 0,
-    "issueIds": [896, 897, 898, 899, 900, 901, 902]
   },
   {
     "name": "sprint 34 planning",
@@ -362,19 +362,53 @@
   {
     "name": "sprint 34",
     "sprintNumber": 34,
-    "date": "TBD (after sprint-33 completes)",
-    "baseline": "TBD (sprint-33 result)",
+    "date": "2026-04-03",
+    "baseline": "15,526 pass / 42,934 official (36.2%) — post sprint-35 final",
     "result": "",
     "issueCount": 0,
-    "issueIds": [831, 840, 844, 845, 849, 856, 858, 863]
+    "issueIds": [896, 897, 898, 899, 900, 901, 902]
   },
   {
     "name": "sprint 35",
     "sprintNumber": 35,
     "date": "2026-04-03",
-    "baseline": "15,187 pass / 42,934 official (35.4%) — post sprint-31 session",
+    "baseline": "17,583 pass / 43,120 official (40.8%) — post sprint-33",
     "result": "",
     "issueCount": 0,
-    "issueIds": [822, 829, 831, 844, 845, 855, 856]
+    "issueIds": [797, 799, 822, 829, 831, 840, 844, 845, 849, 853, 855, 856, 858, 863, 924, 925]
+  },
+  {
+    "name": "sprint 36",
+    "sprintNumber": 36,
+    "date": "2026-04-03",
+    "baseline": "17,717 pass / 43,120 official (41.1%) — post sprint 35",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      910, 911, 912, 913, 914, 915, 916, 917, 918, 919, 920, 921, 922, 923, 924, 927, 931, 932, 933, 942, 944
+    ]
+  },
+  {
+    "name": "sprint 37",
+    "sprintNumber": 37,
+    "date": "2026-04-04 (sprint 36 wrapping)",
+    "baseline": "17,822 pass / 43,120 total (41.3%) — post sprint 36, cache disabled, pre-filter proposals active",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      739, 763, 766, 797, 799, 802, 828, 848, 851, 852, 910, 911, 912, 913, 923, 933, 934, 943, 944, 945, 946
+    ]
+  },
+  {
+    "name": "sprint 38",
+    "sprintNumber": 38,
+    "date": "2026-04-04 (after sprint 37)",
+    "baseline": "18,791 pass / 43,120 (43.6%) -- sprint 37 final",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      766, 799, 822, 845, 855, 856, 858, 948, 954, 955, 956, 957, 958, 959, 960, 961, 962, 963, 964, 965, 966, 967, 968,
+      969, 970, 971, 972
+    ]
   }
 ]
