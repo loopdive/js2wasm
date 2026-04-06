@@ -13,7 +13,7 @@ Issues where the compiler emits invalid Wasm (type errors, missing args, bad cas
 | [945](../ready/945.md) | **HIGH** | __vec_get: extern.convert_any fails on integer TypedArray elements | **780 CE** | Ready |
 | [822](../ready/822.md) | **HIGH** | Wasm type mismatch compile errors (all sub-patterns) | **~907 CE** | Ready |
 | [839](../ready/839.md) | High | return_call stack args / type mismatch in constructors | **158 CE** | Ready |
-| [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **154 CE** | Ready |
+| [984](../ready/984.md) | Medium | Regression: compileExpression receives undefined AST nodes in class/private generator paths | **154 CE** | Ready |
 | [829](../ready/829.md) | Medium | Unsupported assignment target compile errors | **141 CE** | Ready |
 | [844](../ready/844.md) | Medium | Unsupported new expression for built-in classes | **85 CE** | Ready |
 | [845](../ready/845.md) | Medium | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** | Ready |
@@ -47,20 +47,20 @@ Issues where compiled Wasm runs but produces wrong values or wrong error types.
 | [786](../ready/786.md) | Medium | Multi-assertion failures (returned N > 2) | **2,142 FAIL** | In-progress |
 | [766](../ready/766.md) | High | Symbol.iterator protocol for custom iterables | ~500 FAIL | Ready |
 | [761](../ready/761.md) | High | Rest/spread silently dropped in destructuring | ~200 FAIL | Ready |
-| [856](../ready/856.md) | Medium | Expected TypeError but got wrong error type | **136 FAIL** | Ready |
+| [856](../done/856.md) | Medium | Expected TypeError but got wrong error type | **71 FAIL** | In progress |
 | [850](../ready/850.md) | High | Object-to-primitive: valueOf/toString not called | **135 FAIL** | Ready |
 | [849](../ready/849.md) | Medium | Mapped arguments object sync with named params | **200 FAIL** | Ready |
 | [855](../ready/855.md) | Medium | Promise resolution and async error handling | **210 FAIL** | Ready |
 | [859](../ready/859.md) | High | Map.forEach callback captures are immutable snapshots (runtime hang) | **1 hang** | Ready |
 | [860](../ready/860.md) | Medium | Promise executor and property-assigned fns not compiled as host callbacks | **1 hang** | Ready |
 | [858](../ready/858.md) | Medium | Worker/timeout exits and eval-code null deref | **182 FAIL** | Ready |
-| [853](../ready/853.md) | Medium | WebAssembly objects are opaque (for-in/Object.create) | **58 FAIL** | Ready |
+| [983](../ready/983.md) | High | WasmGC objects leak to JS host as opaque values | **1,087 FAIL** | Ready |
 | [778](../ready/778.md) | Medium | Illegal cast errors (ref.cast wrong type) | 135 FAIL | Ready |
 | [737](../ready/737.md) | Medium | Undefined-handling edge cases | 276 FAIL | Ready |
 | [821](../ready/821.md) | High | BindingElement null guard over-triggering | 537 FAIL | Review |
 | [764](../ready/764.md) | Medium | Immutable global assignment error | 240 CE | Ready |
 | [928](../ready/928.md) | Medium | Unknown failure tests with empty error message | **209 FAIL** | Ready |
-| [929](../ready/929.md) | Medium | Object.defineProperty called on non-object | **53 FAIL** | Ready |
+| [929](../ready/929.md) | Medium | Object.defineProperty called on non-object | **88 FAIL** | Ready |
 | [930](../ready/930.md) | Medium | Not-a-constructor detection for built-in methods | **68 FAIL** | Ready |
 
 ## 3. Built-in Methods -- Array, Set, Map, Math, Error, RegExp
@@ -129,7 +129,7 @@ Issues where built-in method implementations are missing, incomplete, or incorre
 | [834](../ready/834.md) | Low | ES2025 Set methods (union, intersection, etc.) | 216 skip | Ready |
 | [837](../ready/837.md) | Low | Map/WeakMap upsert (getOrInsert/getOrInsertComputed) | ~110 skip | Ready |
 | [838](../ready/838.md) | Low | BigInt64Array / BigUint64Array typed arrays | 19 skip | Ready |
-| [830](../ready/830.md) | Low | DisposableStack extern class missing | **38 CE** | Ready |
+| [830](../ready/830.md) | Low | DisposableStack extern class missing | **39 FAIL** | Ready |
 | [844](../ready/844.md) | Medium | Unsupported new for built-in classes (SAB, AggregateError, etc.) | **85 CE** | Ready (also in Compiler) |
 | [675](../ready/675.md) | Medium | Dynamic import() | 471 tests | Ready |
 | [671](../backlog/671.md) | Low | with statement support | 272 tests | Backlog |
