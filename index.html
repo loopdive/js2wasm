@@ -1251,26 +1251,21 @@
             <p>Move existing package ecosystems toward Wasm hosts instead of forcing rewrites into other languages.</p>
           </article>
         </div>
+        <div class="intro" style="margin-top: 56px">
+          <h2>JS & NPM compatible.</h2>
+          <p>
+            Compile existing Javascript code to WebAssembly and run it anywhere - in a browser, Node.js or WebAssembly runtime or even compatible to a native executable without shipping a JS runtime.
+          </p>
+        </div>
 
         <div class="intro" style="margin-top: 56px">
-          <h2>Module sandboxing.</h2>
+          <h2>Plug & Play composition.</h2>
           <p>
-            While JavaScript in the browser is running in a sandbox, dependencies are not isolated from each other and
-            one foul module risks it all, as has been proven by recent supply chain attacks. In Node.js it is worse —
-            any program has full access to the file system and network.
+            Dependencies are resolved at link or runtime and thus code can be composed by module consumers, breaking down dependencies on toolchains, platforms, or applications.
           </p>
         </div>
         <div class="intro" style="margin-top: 56px">
-          <h2>JavaScript compatible.</h2>
-          <p>
-            While JavaScript in the browser is running in a sandbox, dependencies are not isolated from each other and
-            one foul module risks it all, as has been proven by recent supply chain attacks. In Node.js it is worse —
-            any program has full access to the file system and network.
-          </p>
-        </div>
-        
-        <div class="intro" style="margin-top: 56px">
-          <h2>Modular in a new WebAssembly.</h2>
+          <h2>Module Sandboxing.</h2>
           <p>
             While JavaScript in the browser is running in a sandbox, dependencies are not isolated from each other and
             one foul module risks it all, as has been proven by recent supply chain attacks. In Node.js it is worse —
@@ -3133,7 +3128,7 @@ const dom = await js2.import("./dom.js", { document });
         </p>
         <div class="cta-actions">
           <a class="btn-solid" href="./playground/">Open Playground</a>
-          <a class="btn-outline" href="./progress/">Project Progress</a>
+          <a class="btn-outline" href="./dashboard/">Project Progress</a>
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">View Source</a>
         </div>
       </section>
@@ -3150,7 +3145,7 @@ const dom = await js2.import("./dom.js", { document });
             <h4>Project</h4>
             <ul>
               <li><a href="./playground/">Playground</a></li>
-              <li><a href="./progress/">Progress</a></li>
+              <li><a href="./dashboard/">Progress</a></li>
               <li><a href="./benchmarks/report.html">Conformance Report</a></li>
             </ul>
           </div>

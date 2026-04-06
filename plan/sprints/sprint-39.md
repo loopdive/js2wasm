@@ -39,6 +39,7 @@ On the runtime side, class computed properties (#848, 1,015 FAIL) and for-of des
 | 10 | **#975** | Sprint file cleanup — remove orphan issue refs | Process | Easy | sonnet | Cleanup closed sprint files, remove -planning.md |
 | 11 | **#977** | Edition chart: rename "Other" to "ES3/Core" | UI | Easy | sonnet | Update generate-editions.ts |
 | 12 | **#978** | Responsive burger menu for site-nav | UI | Medium | sonnet | Mobile nav collapse, reference webassembly-org.loopdive.com |
+| 13 | **#979** | Report page: add nav bar + landing page styling | UI | Medium | sonnet | Align report.html with landing page design system |
 
 ## Dev Paths (3 devs max)
 

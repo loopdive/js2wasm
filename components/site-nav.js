@@ -136,18 +136,11 @@ class SiteNav extends HTMLElement {
           <span>JS<sup style="font-size:0.55em;vertical-align:super;margin-left:1px">2</sup></span>
         </a>
         <ul class="nav-links">
-          ${
-            isLanding
-              ? `
-          <li><a href="#mission">Mission</a></li>
-          <li><a href="#goals">Compatibility</a></li>
-          <li><a href="#how-it-works">How it works</a></li>
-          <li><a href="#roadmap">Roadmap</a></li>
-          <li><a href="#links">Links</a></li>
-          `
-              : ""
-          }
-          <li><a href="${base}progress/">Progress</a></li>
+          <li><a href="${isLanding ? "" : base}#mission">Mission</a></li>
+          <li><a href="${isLanding ? "" : base}#goals">Compatibility</a></li>
+          <li><a href="${isLanding ? "" : base}#how-it-works">How it works</a></li>
+          <li><a href="${isLanding ? "" : base}#roadmap">Roadmap</a></li>
+          <li><a href="${base}dashboard/">Progress</a></li>
           <li><a href="${base}benchmarks/report.html">Status</a></li>
         </ul>
         <div class="nav-actions">
