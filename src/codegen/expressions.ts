@@ -3801,20 +3801,22 @@ function compileElementAssignment(
   // Handle ClassName[key] = value for static setter accessors and static properties (#848)
   if (ts.isIdentifier(target.expression)) {
     const objName = target.expression.text;
-    if (ctx.classSet.has(objName)) {
+    // Resolve class expressions (var C = class {}) through the expr-name map
+    const resolvedClass = ctx.classExprNameMap.get(objName) ?? objName;
+    if (ctx.classSet.has(resolvedClass)) {
       const key = resolveComputedKeyExpression(ctx, target.argumentExpression);
       if (key !== undefined) {
         // Check static accessor setter first
-        const accessorKey = `${objName}_${key}`;
+        const accessorKey = `${resolvedClass}_${key}`;
         if (ctx.classAccessorSet.has(accessorKey)) {
-          const setterName = `${objName}_set_${key}`;
+          const setterName = `${resolvedClass}_set_${key}`;
           const funcIdx = ctx.funcMap.get(setterName);
           if (funcIdx !== undefined) {
-            return emitSetterCallWithDummy(ctx, fctx, objName, setterName, funcIdx, value);
+            return emitSetterCallWithDummy(ctx, fctx, resolvedClass, setterName, funcIdx, value);
           }
         }
         // Check static property global
-        const fullName = `${objName}_${key}`;
+        const fullName = `${resolvedClass}_${key}`;
         const globalIdx = ctx.staticProps.get(fullName);
         if (globalIdx !== undefined) {
           const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
@@ -3837,7 +3839,9 @@ function compileElementAssignment(
     ts.isIdentifier(target.expression.expression) &&
     target.expression.name.text === "prototype"
   ) {
-    const className = target.expression.expression.text;
+    const rawName = target.expression.expression.text;
+    // Resolve class expressions (var C = class {}) through the expr-name map
+    const className = ctx.classExprNameMap.get(rawName) ?? rawName;
     if (ctx.classSet.has(className)) {
       const key = resolveComputedKeyExpression(ctx, target.argumentExpression);
       if (key !== undefined) {

@@ -10266,7 +10266,7 @@ export function collectClassDeclaration(
   for (const member of decl.members) {
     if (ts.isPropertyDeclaration(member) && member.name) {
       const fieldName = resolveClassMemberName(ctx, member.name);
-      if (!fieldName) continue; // dynamic computed name — skip
+      if (fieldName === undefined) continue; // dynamic computed name — skip
       if (hasStaticModifier(member)) continue; // handled below
       // Skip if this field is already defined in parent
       if (parentFields.some((f) => f.name === fieldName)) continue;
@@ -10380,7 +10380,7 @@ export function collectClassDeclaration(
   for (const member of decl.members) {
     if (ts.isMethodDeclaration(member) && member.name) {
       const methodName = resolveClassMemberName(ctx, member.name);
-      if (!methodName) continue; // dynamic computed name — skip
+      if (methodName === undefined) continue; // dynamic computed name — skip
       ownMethodNames.add(methodName);
 
       // Abstract methods have no body — skip generating a wasm function stub
@@ -10475,7 +10475,7 @@ export function collectClassDeclaration(
 
     if (ts.isGetAccessorDeclaration(member) && member.name) {
       const propName = resolveClassMemberName(ctx, member.name);
-      if (!propName) continue; // dynamic computed name — skip
+      if (propName === undefined) continue; // dynamic computed name — skip
       const accessorKey = `${className}_${propName}`;
       ctx.classAccessorSet.add(accessorKey);
       if (hasStaticModifier(member)) {
@@ -10514,7 +10514,7 @@ export function collectClassDeclaration(
 
     if (ts.isSetAccessorDeclaration(member) && member.name) {
       const propName = resolveClassMemberName(ctx, member.name);
-      if (!propName) continue; // dynamic computed name — skip
+      if (propName === undefined) continue; // dynamic computed name — skip
       const accessorKey = `${className}_${propName}`;
       ctx.classAccessorSet.add(accessorKey);
       if (hasStaticModifier(member)) {
@@ -10606,7 +10606,7 @@ export function collectClassDeclaration(
   for (const member of decl.members) {
     if (ts.isPropertyDeclaration(member) && member.name && hasStaticModifier(member)) {
       const propName = resolveClassMemberName(ctx, member.name);
-      if (!propName) continue; // dynamic computed name — skip
+      if (propName === undefined) continue; // dynamic computed name — skip
       const fullName = `${className}_${propName}`;
       if (ctx.staticProps.has(fullName)) continue; // skip if already registered
 
@@ -12838,7 +12838,7 @@ export function compileClassBodies(
           for (const member of ancDecl.members) {
             if (ts.isPropertyDeclaration(member) && member.name && member.initializer && !hasStaticModifier(member)) {
               const fieldName = resolveClassMemberName(ctx, member.name);
-              if (!fieldName) continue;
+              if (fieldName === undefined) continue;
               const fieldIdx = fields.findIndex((f) => f.name === fieldName);
               if (fieldIdx !== -1) {
                 fctx.body.push({ op: "local.get", index: selfLocal });
@@ -12886,7 +12886,7 @@ export function compileClassBodies(
     for (const member of decl.members) {
       if (ts.isPropertyDeclaration(member) && member.name && member.initializer && !hasStaticModifier(member)) {
         const fieldName = resolveClassMemberName(ctx, member.name);
-        if (!fieldName) continue; // dynamic computed name — skip
+        if (fieldName === undefined) continue; // dynamic computed name — skip
         const fieldIdx = fields.findIndex((f) => f.name === fieldName);
         if (fieldIdx !== -1) {
           fctx.body.push({ op: "local.get", index: selfLocal });
@@ -12928,7 +12928,7 @@ export function compileClassBodies(
   for (const member of decl.members) {
     if (ts.isMethodDeclaration(member) && member.name) {
       const methodName = resolveClassMemberName(ctx, member.name);
-      if (!methodName) continue; // dynamic computed name — skip
+      if (methodName === undefined) continue; // dynamic computed name — skip
       const fullName = `${className}_${methodName}`;
       if (compiledMethods.has(fullName)) continue; // already compiled
       compiledMethods.add(fullName);
@@ -13153,7 +13153,7 @@ export function compileClassBodies(
   for (const member of decl.members) {
     if (ts.isGetAccessorDeclaration(member) && member.name) {
       const propName = resolveClassMemberName(ctx, member.name);
-      if (!propName) continue; // dynamic computed name — skip
+      if (propName === undefined) continue; // dynamic computed name — skip
       const getterName = `${className}_get_${propName}`;
       if (compiledAccessors.has(getterName)) continue; // already compiled
       compiledAccessors.add(getterName);
@@ -13232,7 +13232,7 @@ export function compileClassBodies(
 
     if (ts.isSetAccessorDeclaration(member) && member.name) {
       const propName = resolveClassMemberName(ctx, member.name);
-      if (!propName) continue; // dynamic computed name — skip
+      if (propName === undefined) continue; // dynamic computed name — skip
       const setterName = `${className}_set_${propName}`;
       if (compiledAccessors.has(setterName)) continue; // already compiled
       compiledAccessors.add(setterName);

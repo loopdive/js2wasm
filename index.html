@@ -263,6 +263,35 @@
         z-index: 1;
       }
 
+      .btn-outline,
+      .btn-solid {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        border: 1px solid var(--line);
+        transition:
+          background 0.15s ease,
+          border-color 0.15s ease,
+          opacity 0.15s ease;
+      }
+      .btn-outline:hover {
+        background: var(--surface-hover);
+        border-color: var(--line-strong);
+      }
+      .btn-solid {
+        color: var(--bg);
+        background: var(--fg);
+        border-color: var(--fg);
+      }
+      .btn-solid:hover {
+        opacity: 0.9;
+      }
+
       .hero-actions .btn-solid,
       .hero-actions .btn-outline {
         min-height: 50px;

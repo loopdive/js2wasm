@@ -1732,20 +1732,36 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // By hoisting these vars to module globals, class methods can access them.
   const hoistedVars = new Set<string>();
   // Find var declarations with numeric initializers
-  const varDeclPattern = /\bvar\s+(\w+)\s*=\s*(\d+)\s*;/g;
+  const varDeclNumericPattern = /\bvar\s+(\w+)\s*=\s*(\d+)\s*;/g;
+  // Find uninitialized var declarations: var x;
+  const varDeclUninitPattern = /\bvar\s+(\w+)\s*;/g;
   const classBodyPattern = /\bclass\s+\w*\s*(?:extends\s+\w+\s*)?\{([\s\S]*?)\n\}/g;
   // Collect all class bodies
   const classBodies: string[] = [];
   for (const cm of body.matchAll(classBodyPattern)) {
     classBodies.push(cm[1]!);
   }
+  // Track hoisted var metadata for proper declaration generation
+  const hoistedVarMeta = new Map<string, { type: "number"; init: string } | { type: "any" }>();
   if (classBodies.length > 0) {
     const classBodyText = classBodies.join("\n");
-    for (const vm of body.matchAll(varDeclPattern)) {
+    for (const vm of body.matchAll(varDeclNumericPattern)) {
       const varName = vm[1]!;
+      const initVal = vm[2]!;
       // Check if this variable is referenced in any class body
       if (new RegExp(`\\b${varName}\\b`).test(classBodyText)) {
         hoistedVars.add(varName);
+        hoistedVarMeta.set(varName, { type: "number", init: initVal });
+      }
+    }
+    // Also hoist uninitialized vars referenced in class bodies
+    for (const vm of body.matchAll(varDeclUninitPattern)) {
+      const varName = vm[1]!;
+      if (hoistedVars.has(varName)) continue; // already captured by numeric pattern
+      // Check if this variable is referenced (written or read) in any class body
+      if (new RegExp(`\\b${varName}\\b`).test(classBodyText)) {
+        hoistedVars.add(varName);
+        hoistedVarMeta.set(varName, { type: "any" });
       }
     }
   }
@@ -1755,12 +1771,15 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   let bodyForFunc = body;
   if (hoistedVars.size > 0) {
     for (const v of hoistedVars) {
-      // Extract the initial value from the var declaration
-      const initMatch = bodyForFunc.match(new RegExp(`\\bvar\\s+${v}\\s*=\\s*(\\d+)\\s*;`));
-      const initVal = initMatch ? initMatch[1] : "0";
-      hoistedDecls += `let ${v}: number = ${initVal};\n`;
-      // Remove the var declaration from the function body
-      bodyForFunc = bodyForFunc.replace(new RegExp(`\\bvar\\s+${v}\\s*=\\s*\\d+\\s*;`), ``);
+      const meta = hoistedVarMeta.get(v);
+      if (meta?.type === "number") {
+        hoistedDecls += `let ${v}: number = ${meta.init};\n`;
+        bodyForFunc = bodyForFunc.replace(new RegExp(`\\bvar\\s+${v}\\s*=\\s*${meta.init}\\s*;`), ``);
+      } else {
+        // Uninit var: hoist as any (externref in Wasm)
+        hoistedDecls += `let ${v}: any;\n`;
+        bodyForFunc = bodyForFunc.replace(new RegExp(`\\bvar\\s+${v}\\s*;`), ``);
+      }
     }
   }
 
