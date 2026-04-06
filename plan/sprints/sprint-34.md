@@ -72,3 +72,9 @@ Final test262 numbers: pending (run in progress)
 1. **Fork-per-file equiv tests** — vitest.config.ts changed to `singleFork: false`. Eliminates memory accumulation (+157 more tests pass). Also discovered #923: compiler leaks state between `compile()` calls.
 2. **Always dispatch max parallel devs** for independent issues — don't serialize when work can be parallelized.
 3. **Verify agent received narrowed scope** before it starts coding — check for confirmation message.
+
+## Planning Notes (merged from sprint-34-planning.md)
+
+- Target: cross 40% pass rate (~637 more passes needed above 18,599 baseline)
+- PO smoke-tested 12 candidates: #829 closed as fixed, rest confirmed real
+- Issues not completed in this sprint were moved to backlog.

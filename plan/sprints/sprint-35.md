@@ -106,3 +106,6 @@ Issues already completed in sprint 35 are removed. Remaining:
 4. **Runner instability is a blocker** — created #943. Must fix before CI can be trusted.
 3. **Use atomic writes for report.json** — write to .tmp, then rename
 4. **Create task list at sprint start, not mid-sprint** (reinforcing existing memory)
+
+---
+_Issues not completed in this sprint were returned to the backlog._

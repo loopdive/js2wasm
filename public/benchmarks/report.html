@@ -415,56 +415,10 @@
         border-radius: 2px;
         flex-shrink: 0;
       }
-      .bench-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-        gap: 1rem;
-      }
-      .bench-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        padding: 1rem;
-      }
       .bench-name {
         font-weight: 600;
         font-size: 0.875rem;
         margin-bottom: 0.75rem;
-      }
-      .bench-row {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.375rem;
-        font-size: 0.75rem;
-      }
-      .bench-label {
-        width: 70px;
-        flex-shrink: 0;
-        color: var(--text-muted);
-        font-family: var(--mono);
-      }
-      .bench-bar-bg {
-        flex: 1;
-        height: 14px;
-        background: var(--bar-bg);
-        border-radius: 3px;
-        overflow: hidden;
-      }
-      .bench-bar {
-        height: 100%;
-        border-radius: 3px;
-        min-width: 2px;
-      }
-      .bench-time {
-        width: 80px;
-        text-align: right;
-        flex-shrink: 0;
-        font-family: var(--mono);
-        color: var(--text-muted);
-      }
-      .speedup {
-        font-size: 0.6875rem;
-        margin-left: 0.5rem;
       }
       .timestamp {
         font-size: 0.75rem;
@@ -666,7 +620,6 @@
 
     <script>
       const REPORT_JSON = "results/test262-report.json";
-      const BENCH_JSON = "results/latest.json";
       const HISTORY_JSON = "results/history.json";
       const RESULTS_JSONL = "results/test262-results.jsonl";
       const BASE_PATH = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
@@ -2044,101 +1997,6 @@
         }
       }
 
-      function renderBenchmarks(data, container) {
-        container.appendChild(el("h2", null, "Performance Benchmarks"));
-        container.appendChild(
-          makeLegend([
-            ["JavaScript", "var(--text-muted)"],
-            ["Host-call (wasm)", "var(--accent)"],
-            ["GC-native (wasm)", "var(--pass)"],
-          ]),
-        );
-
-        const byName = new Map();
-        for (const b of data) {
-          if (!byName.has(b.name)) byName.set(b.name, {});
-          byName.get(b.name)[b.strategy] = b;
-        }
-
-        const benchGroups = new Map();
-        for (const [name, strats] of byName) {
-          const group = name.split("/")[0];
-          if (!benchGroups.has(group)) benchGroups.set(group, []);
-          benchGroups.get(group).push({ name, strats });
-        }
-
-        const stratColors = {
-          js: "var(--text-muted)",
-          "host-call": "var(--accent)",
-          "gc-native": "var(--pass)",
-        };
-
-        for (const [group, benchmarks] of benchGroups) {
-          container.appendChild(el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)));
-          const grid = el("div", { className: "bench-grid" });
-
-          for (const { name, strats } of benchmarks) {
-            const card = el("div", { className: "bench-card" });
-            const nameEl = el("div", { className: "bench-name" }, name.split("/")[1]);
-
-            // Speedup info
-            const js = strats["js"];
-            const hc = strats["host-call"];
-            const gc = strats["gc-native"];
-            if (js && hc) {
-              const ratio = js.medianMs / hc.medianMs;
-              if (ratio > 1) {
-                const sp = el(
-                  "span",
-                  { className: "speedup", style: { color: "var(--pass)" } },
-                  "host " + ratio.toFixed(1) + "\u00d7 faster",
-                );
-                nameEl.appendChild(sp);
-              } else if (ratio < 0.5) {
-                const sp = el(
-                  "span",
-                  { className: "speedup", style: { color: "var(--error)" } },
-                  "host " + (1 / ratio).toFixed(1) + "\u00d7 slower",
-                );
-                nameEl.appendChild(sp);
-              }
-            }
-            card.appendChild(nameEl);
-
-            let localMax = 0;
-            for (const b of Object.values(strats)) if (b.medianMs > localMax) localMax = b.medianMs;
-            if (localMax === 0) localMax = 1;
-
-            for (const strategy of ["js", "host-call", "gc-native"]) {
-              const b = strats[strategy];
-              if (!b) continue;
-              const barW = Math.max(1, (b.medianMs / localMax) * 100);
-
-              const row = el("div", { className: "bench-row" });
-              row.appendChild(el("span", { className: "bench-label" }, strategy));
-
-              const barBg = el("div", { className: "bench-bar-bg" });
-              barBg.appendChild(
-                el("div", {
-                  className: "bench-bar",
-                  style: {
-                    width: barW + "%",
-                    background: stratColors[strategy],
-                  },
-                }),
-              );
-              row.appendChild(barBg);
-
-              row.appendChild(el("span", { className: "bench-time" }, fmt(b.medianMs)));
-              card.appendChild(row);
-            }
-
-            grid.appendChild(card);
-          }
-          container.appendChild(grid);
-        }
-      }
-
       const STRAT_COLORS = {
         js: "#8b949e",
         "host-call": "#58a6ff",
@@ -2289,11 +2147,7 @@
       }
 
       async function main() {
-        const [conformance, benchmarks, history] = await Promise.all([
-          loadReportWithFallback(),
-          loadJSON(BENCH_JSON),
-          loadJSON(HISTORY_JSON),
-        ]);
+        const [conformance, history] = await Promise.all([loadReportWithFallback(), loadJSON(HISTORY_JSON)]);
         const app = document.getElementById("app");
         app.textContent = "";
 
@@ -2305,9 +2159,9 @@
           );
         }
 
-        if (benchmarks) {
-          renderBenchmarks(benchmarks, app);
-        }
+        const perfChart = document.createElement("perf-benchmark-chart");
+        perfChart.setAttribute("src", "results/playground-benchmark-sidebar.json");
+        app.appendChild(perfChart);
 
         if (history && history.length >= 2) {
           renderTrends(history, app);
@@ -2318,6 +2172,7 @@
 
       main();
     </script>
+    <script src="../../components/perf-benchmark-chart.js"></script>
     <script src="../../components/site-nav.js"></script>
   </body>
 </html>

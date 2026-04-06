@@ -165,3 +165,6 @@ If #797 and #799 both land, conformance could reach 55-60%. The infrastructure f
 2. **Smaller issues for large features** — #852 would benefit from being split into sub-issues by error type (null_deref vs illegal_cast vs iterator creation) so progress is easier to measure.
 3. **Test262 gate on #948-style analysis issues** — WAT analysis issues don't change behavior, so equiv tests are sufficient. But for any issue that touches codegen, require at least a scoped test262 batch (e.g., the relevant test category) before merge.
 4. **Record test262 category deltas in issue files** — The dev who worked on #852 recorded `arrow-function/dstr: 6→40`. This should be standard for all compiler issues. Add it to the done-definition checklist.
+
+---
+_Issues not completed in this sprint were returned to the backlog._
