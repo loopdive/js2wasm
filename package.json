@@ -33,7 +33,7 @@
     "generate:editions": "npx tsx scripts/generate-editions.ts",
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
-    "build:pages": "node dashboard/build-data.js && pnpm run build:playground && node scripts/build-pages.js",
+    "build:pages": "npx tsx scripts/sprint-stats.ts && node dashboard/build-data.js && pnpm run build:playground && node scripts/build-pages.js",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
     "prepare": "husky"
   },

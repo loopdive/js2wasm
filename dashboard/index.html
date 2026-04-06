@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>js2wasm Sprint Dashboard</title>
+    <title>Project JS2</title>
     <style>
       :root {
         --bg: #060a14;
@@ -23,7 +23,8 @@
         --orange: #fb923c;
         --purple: #a78bfa;
         --radius: 0;
-        --font: "JetBrains Mono", "SF Mono", SFMono-Regular, Consolas, monospace;
+        --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --mono: "JetBrains Mono", "SF Mono", SFMono-Regular, Consolas, monospace;
       }
 
       * {
@@ -37,26 +38,24 @@
         background: var(--bg);
         color: var(--text);
         line-height: 1.6;
-        padding: 48px;
+        padding: 24px 48px 48px;
         min-height: 100vh;
-        max-width: 1400px;
-        margin: 0 auto;
+        margin: 0;
       }
 
       header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 32px;
-        padding-bottom: 20px;
+
         border-bottom: 1px solid var(--border);
       }
 
       header h1 {
-        font-size: 18px;
-        font-weight: 500;
+        font-size: 20px;
+        font-weight: 600;
         color: var(--text);
-        letter-spacing: 0.02em;
+        letter-spacing: -0.02em;
       }
 
       header .meta {
@@ -69,52 +68,53 @@
         color: var(--text-muted);
       }
 
-      /* Metric cards row */
+      /* Metric cards row — matches landing page .stats-grid */
       .metrics-row {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 12px 32px;
-        margin-bottom: 40px;
+        display: flex;
+        flex: 1;
+        justify-content: space-evenly;
+        border: none;
+        margin: 0;
+        flex-wrap: nowrap;
+        min-width: 0;
       }
 
       .metric-card {
-        background: none;
-        border: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         padding: 0;
+        border: none;
+        background: none;
+        white-space: nowrap;
+      }
+
+      .metric-card .value {
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.05em;
+        color: var(--text);
+        margin-bottom: 8px;
+        order: -1;
       }
 
       .metric-card .label {
         font-size: 10px;
+        color: rgba(255, 255, 255, 0.35);
         text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: var(--text-muted);
-        margin-bottom: 4px;
-      }
-
-      .metric-card .value {
-        font-size: 32px;
-        font-weight: 600;
-        color: var(--text);
-        letter-spacing: -0.5px;
+        letter-spacing: 0.06em;
       }
 
       .metric-card .sub {
-        font-size: 11px;
-        color: var(--text-muted);
-        margin-top: 2px;
+        display: none;
       }
 
-      .metric-card .value.green {
-        color: var(--green);
-      }
-      .metric-card .value.red {
-        color: var(--red);
-      }
-      .metric-card .value.yellow {
-        color: var(--yellow);
-      }
+      .metric-card .value.green,
+      .metric-card .value.red,
+      .metric-card .value.yellow,
       .metric-card .value.accent {
-        color: var(--accent);
+        color: #ffffff;
       }
 
       /* Section layout */
@@ -134,16 +134,17 @@
       .panel {
         background: none;
         border: none;
-        border-top: 1px solid var(--border);
+
         padding: 20px 0;
         overflow: visible;
       }
 
       .panel h2 {
+        font-family: var(--mono);
         font-size: 11px;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        color: var(--text-muted);
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.46);
         margin-bottom: 12px;
         padding-bottom: 8px;
         border-bottom: 1px solid var(--border);
@@ -221,7 +222,6 @@
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 12px;
-        min-height: 300px;
       }
 
       @media (max-width: 900px) {
@@ -257,41 +257,50 @@
       }
 
       .kanban-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 10px;
-        margin-bottom: 6px;
-        font-size: 12px;
+        padding: 18px 18px 20px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.025);
+        margin-bottom: 8px;
         cursor: default;
-        transition: border-color 0.15s;
+        transition:
+          background 0.18s ease,
+          border-color 0.18s ease;
       }
 
       .kanban-card:hover {
-        border-color: var(--accent-dim);
-      }
-
-      .kanban-card .issue-num {
-        color: var(--accent);
-        font-weight: 600;
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.22);
       }
 
       .kanban-card .title {
-        color: var(--text);
-        margin-top: 2px;
-        line-height: 1.3;
+        display: block;
+        font-size: 16px;
+        font-weight: 600;
+        color: #ffffff;
+        margin-bottom: 8px;
+      }
+
+      .kanban-card .card-footer {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .kanban-card .issue-num {
+        color: rgba(255, 255, 255, 0.46);
+        font-size: 12px;
       }
 
       .kanban-card .card-meta {
         display: flex;
         gap: 6px;
-        margin-top: 6px;
         flex-wrap: wrap;
       }
 
       .tag {
-        font-size: 10px;
-        padding: 1px 6px;
+        font-size: 12px;
+        padding: 2px 8px;
         border-radius: 4px;
         font-weight: 500;
       }
@@ -310,16 +319,10 @@
       }
 
       /* Chart canvas */
-      .chart-container {
-        position: relative;
+      trend-chart {
+        display: block;
         width: 100%;
-        height: 280px;
-        overflow: visible;
-      }
-
-      canvas {
-        width: 100% !important;
-        height: 100% !important;
+        max-width: 600px;
       }
 
       /* Sprint table */
@@ -437,10 +440,7 @@
         }
       }
 
-      /* Scrollable kanban columns */
       .kanban-col-body {
-        max-height: 400px;
-        overflow-y: auto;
       }
 
       .kanban-col-body::-webkit-scrollbar {
@@ -450,53 +450,66 @@
         background: var(--border);
         border-radius: 2px;
       }
+      #sprint-history::-webkit-scrollbar {
+        height: 4px;
+      }
+      #sprint-history {
+        scrollbar-width: none;
+      }
+      #sprint-history:hover {
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+      }
+      #sprint-history::-webkit-scrollbar {
+        height: 0;
+      }
+      #sprint-history:hover::-webkit-scrollbar {
+        height: 4px;
+      }
+      #sprint-history::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #sprint-history::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
     </style>
   </head>
   <body>
-    <header>
-      <h1>js2wasm Sprint Dashboard</h1>
-      <div class="meta">
-        <div class="updated" id="last-updated">Loading...</div>
-        <div id="sprint-label">—</div>
+    <header
+      style="display: flex; align-items: baseline; gap: 8px; border-bottom: none; padding-bottom: 0; flex-wrap: wrap"
+    >
+      <h1 style="font-size: 32px; margin: 0">JS2</h1>
+      <div class="metrics-row" id="metrics-row">
+        <div class="metric-card">
+          <span class="value" id="m-passrate">—</span>
+          <span class="label">pass</span>
+        </div>
+        <div class="metric-card">
+          <span class="value" id="m-duration">—</span>
+          <span class="label">duration</span>
+        </div>
+        <div class="metric-card">
+          <span class="value" id="m-sprint">—</span>
+          <span class="label">sprint</span>
+        </div>
+        <div class="metric-card">
+          <span class="value" id="m-done">—</span>
+          <span class="label">done</span>
+        </div>
+        <div class="metric-card">
+          <span class="value" id="m-ready">—</span>
+          <span class="label">ready</span>
+        </div>
       </div>
+      <div
+        id="sprint-history"
+        style="overflow-x: auto; margin-left: -48px; margin-right: -48px; width: calc(100% + 96px)"
+      ></div>
     </header>
 
-    <!-- Metric cards -->
-    <div class="metrics-row" id="metrics-row">
-      <div class="metric-card">
-        <div class="label">Official Test262 Pass Rate</div>
-        <div class="value accent" id="m-passrate">—</div>
-        <div class="sub" id="m-passrate-sub"></div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Issues Done</div>
-        <div class="value green" id="m-done">—</div>
-        <div class="sub" id="m-done-sub"></div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Issues Ready</div>
-        <div class="value yellow" id="m-ready">—</div>
-        <div class="sub" id="m-ready-sub"></div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Blocked</div>
-        <div class="value red" id="m-blocked">—</div>
-        <div class="sub" id="m-blocked-sub"></div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Compile Errors</div>
-        <div class="value" id="m-ce">—</div>
-        <div class="sub" id="m-ce-sub"></div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Failures</div>
-        <div class="value" id="m-fail">—</div>
-        <div class="sub" id="m-fail-sub"></div>
-      </div>
-    </div>
-
     <!-- Kanban -->
-    <div class="panel kanban">
+    <div class="panel kanban" style="border-top: none">
       <div class="panel-head">
         <h2>Issue Board</h2>
         <div class="panel-actions">
@@ -544,26 +557,43 @@
     <div class="grid-2">
       <div class="panel">
         <h2>Official Test262 Pass Rate Trend</h2>
-        <div class="chart-container">
-          <canvas id="chart-passrate"></canvas>
-        </div>
+        <trend-chart id="chart-passrate" mode="line" height="280"></trend-chart>
       </div>
       <div class="panel">
         <h2>Test262 Breakdown Trend</h2>
-        <div class="chart-container">
-          <canvas id="chart-breakdown"></canvas>
-        </div>
+        <trend-chart id="chart-breakdown" mode="stacked" height="280"></trend-chart>
       </div>
     </div>
 
-    <!-- Sprint history + Process health -->
+    <!-- Issues dependency graph -->
+    <h2
+      style="
+        font-family: var(--mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.46);
+        margin: 24px 0 12px;
+      "
+    >
+      Issue Dependency Graph
+    </h2>
+    <iframe
+      id="graph-iframe"
+      src="../plan/issues-graph.html"
+      style="width: 100%; height: 600px; border: 1px solid var(--border); background: #060a14; pointer-events: none"
+      onclick="this.style.pointerEvents = 'auto'"
+    ></iframe>
+    <script>
+      const gf = document.getElementById("graph-iframe");
+      gf.addEventListener("click", () => (gf.style.pointerEvents = "auto"));
+      document.addEventListener("click", (e) => {
+        if (!gf.contains(e.target)) gf.style.pointerEvents = "none";
+      });
+    </script>
+
+    <!-- Process health -->
     <div class="grid-2">
-      <div class="panel">
-        <h2>Sprint History</h2>
-        <div id="sprint-history">
-          <div class="loading">Loading sprint data</div>
-        </div>
-      </div>
       <div class="panel">
         <h2>Process Health</h2>
         <div class="health-grid" id="health-grid">
@@ -584,11 +614,12 @@
             <div class="h-label">Ready / Total</div>
           </div>
         </div>
-        <h2 style="margin-top: 16px">Velocity (issues per sprint)</h2>
+        <h2 style="margin-top: 16px">Velocity (issues per hour)</h2>
         <div class="velocity-bar" id="velocity-bar"></div>
       </div>
     </div>
 
+    <script src="../components/trend-chart.js"></script>
     <script src="data.js" onerror=""></script>
     <script>
       // ── Data loading ──────────────────────────────────────────────
@@ -656,215 +687,33 @@
         return m ? m[1] : null;
       }
 
-      // ── Chart drawing (no dependencies) ──────────────────────────
-      function drawChart(canvas, opts) {
-        const ctx = canvas.getContext("2d");
-        const dpr = window.devicePixelRatio || 1;
-        const rect = canvas.parentElement.getBoundingClientRect();
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        ctx.scale(dpr, dpr);
-        const W = rect.width;
-        const H = rect.height;
-
-        const primarySeries = opts.series.filter((s) => !s.secondaryY);
-        const secondarySeries = opts.series.filter((s) => s.secondaryY);
-        const hasSecondaryAxis = secondarySeries.length > 0;
-
-        const pad = { top: 20, right: hasSecondaryAxis ? 55 : 16, bottom: 40, left: 55 };
-        const plotW = W - pad.left - pad.right;
-        const plotH = H - pad.top - pad.bottom;
-        let yMin = Infinity,
-          yMax = -Infinity;
-        if (opts.stacked) {
-          yMin = 0;
-          const n = primarySeries[0].data.length;
-          for (let i = 0; i < n; i++) {
-            let sum = 0;
-            for (const s of primarySeries) sum += s.data[i];
-            if (sum > yMax) yMax = sum;
-          }
-        } else {
-          for (const s of primarySeries) {
-            for (const v of s.data) {
-              if (v < yMin) yMin = v;
-              if (v > yMax) yMax = v;
-            }
-          }
-        }
-        const yRange = yMax - yMin || 1;
-        yMin = Math.max(0, yMin - yRange * 0.05);
-        yMax = yMax + yRange * 0.05;
-
-        // Secondary Y axis range
-        let y2Min = Infinity,
-          y2Max = -Infinity;
-        for (const s of secondarySeries) {
-          for (const v of s.data) {
-            if (v < y2Min) y2Min = v;
-            if (v > y2Max) y2Max = v;
-          }
-        }
-        if (secondarySeries.length > 0) {
-          const y2Range = y2Max - y2Min || 1;
-          y2Min = Math.max(0, y2Min - y2Range * 0.05);
-          y2Max = y2Max + y2Range * 0.05;
-        }
-
-        const hasSecondary = hasSecondaryAxis;
-
-        const n = opts.labels.length;
-
-        function xPos(i) {
-          return pad.left + (i / Math.max(n - 1, 1)) * plotW;
-        }
-        function yPos(v) {
-          return pad.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
-        }
-        function y2Pos(v) {
-          return pad.top + plotH - ((v - y2Min) / (y2Max - y2Min)) * plotH;
-        }
-
-        // Grid lines
-        ctx.strokeStyle = "rgba(46,51,69,0.6)";
-        ctx.lineWidth = 1;
-        const gridCount = 5;
-        for (let i = 0; i <= gridCount; i++) {
-          const y = pad.top + (i / gridCount) * plotH;
-          ctx.beginPath();
-          ctx.moveTo(pad.left, y);
-          ctx.lineTo(pad.left + plotW, y);
-          ctx.stroke();
-
-          // Y label
-          const val = yMax - (i / gridCount) * (yMax - yMin);
-          ctx.fillStyle = "#8b90a0";
-          ctx.font = "10px " + getComputedStyle(document.body).fontFamily;
-          ctx.textAlign = "right";
-          ctx.fillText(opts.formatY ? opts.formatY(val) : Math.round(val).toLocaleString(), pad.left - 8, y + 4);
-        }
-
-        // Secondary Y axis labels (right side)
-        if (hasSecondary) {
-          for (let i = 0; i <= gridCount; i++) {
-            const y = pad.top + (i / gridCount) * plotH;
-            const val = y2Max - (i / gridCount) * (y2Max - y2Min);
-            ctx.fillStyle = "#6c8aff";
-            ctx.font = "10px " + getComputedStyle(document.body).fontFamily;
-            ctx.textAlign = "left";
-            ctx.fillText(
-              opts.formatY2 ? opts.formatY2(val) : Math.round(val).toLocaleString(),
-              pad.left + plotW + 8,
-              y + 4,
-            );
-          }
-        }
-
-        // X labels (show ~8 labels max)
-        const step = Math.max(1, Math.floor(n / 8));
-        ctx.fillStyle = "#8b90a0";
-        ctx.textAlign = "center";
-        ctx.font = "10px " + getComputedStyle(document.body).fontFamily;
-        for (let i = 0; i < n; i += step) {
-          ctx.fillText(opts.labels[i], xPos(i), H - pad.bottom + 16);
-        }
-
-        // Draw series (stacked area or line)
-        if (opts.stacked) {
-          // Build cumulative stacks (bottom to top)
-          const n = opts.series[0].data.length;
-          const cumulative = Array.from({ length: opts.series.length }, () => new Array(n).fill(0));
-          for (let si = 0; si < opts.series.length; si++) {
-            for (let i = 0; i < n; i++) {
-              cumulative[si][i] = (si > 0 ? cumulative[si - 1][i] : 0) + opts.series[si].data[i];
-            }
-          }
-          // Draw from top to bottom so lower areas aren't covered
-          for (let si = opts.series.length - 1; si >= 0; si--) {
-            const s = opts.series[si];
-            const top = cumulative[si];
-            const bottom = si > 0 ? cumulative[si - 1] : top.map(() => 0);
-
-            // Fill area — pass band more opaque to stand out
-            ctx.globalAlpha = si === 0 ? 0.3 : 0.06;
-            ctx.fillStyle = s.color;
-            ctx.beginPath();
-            for (let i = 0; i < n; i++) {
-              const x = xPos(i);
-              if (i === 0) ctx.moveTo(x, yPos(top[i]));
-              else ctx.lineTo(x, yPos(top[i]));
-            }
-            for (let i = n - 1; i >= 0; i--) {
-              ctx.lineTo(xPos(i), yPos(bottom[i]));
-            }
-            ctx.closePath();
-            ctx.fill();
-            ctx.globalAlpha = 1;
-
-            // Stroke top edge — pass line prominent, others subtle
-            ctx.globalAlpha = si === 0 ? 1 : 0.45;
-            ctx.strokeStyle = s.color;
-            ctx.lineWidth = si === 0 ? 2 : 0.75;
-            ctx.beginPath();
-            for (let i = 0; i < n; i++) {
-              const x = xPos(i);
-              if (i === 0) ctx.moveTo(x, yPos(top[i]));
-              else ctx.lineTo(x, yPos(top[i]));
-            }
-            ctx.stroke();
-          }
-        } else {
-          for (const s of opts.series) {
-            const posFunc = s.secondaryY ? y2Pos : yPos;
-            ctx.strokeStyle = s.color;
-            ctx.lineWidth = 2;
-            ctx.lineJoin = "round";
-            ctx.beginPath();
-            for (let i = 0; i < s.data.length; i++) {
-              const x = xPos(i);
-              const y = posFunc(s.data[i]);
-              if (i === 0) ctx.moveTo(x, y);
-              else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-
-            // Area fill
-            if (s.fill) {
-              ctx.globalAlpha = 0.08;
-              ctx.fillStyle = s.color;
-              ctx.lineTo(xPos(s.data.length - 1), pad.top + plotH);
-              ctx.lineTo(xPos(0), pad.top + plotH);
-              ctx.closePath();
-              ctx.fill();
-              ctx.globalAlpha = 1;
-            }
-          }
-        }
-
-        // Legend
-        let lx = pad.left;
-        ctx.font = "11px " + getComputedStyle(document.body).fontFamily;
-        for (const s of opts.series) {
-          ctx.fillStyle = s.color;
-          ctx.fillRect(lx, H - 12, 12, 3);
-          ctx.fillStyle = "#8b90a0";
-          ctx.textAlign = "left";
-          ctx.fillText(s.label, lx + 16, H - 6);
-          lx += ctx.measureText(s.label).width + 32;
-        }
-      }
-
       // ── Kanban card ──────────────────────────────────────────────
       function makeCard(id, title, fm) {
         const priority = fm.priority || "medium";
         const feasibility = fm.feasibility || "";
-        let meta = `<span class="tag ${priority}">${priority}</span>`;
-        if (feasibility) meta += `<span class="tag low">${feasibility}</span>`;
+        const prioTips = {
+          critical: "Blocks other work or causes regressions",
+          high: "Important for sprint goals",
+          medium: "Standard priority",
+          low: "Nice to have",
+        };
+        const feasTips = {
+          easy: "Quick fix, well-understood",
+          medium: "Moderate complexity",
+          hard: "Requires deep analysis or architectural changes",
+        };
+        let meta = "";
+        if (priority !== "medium")
+          meta += `<span class="tag ${priority}" title="${prioTips[priority] || ""}">${priority}</span>`;
+        if (feasibility && feasibility !== "medium")
+          meta += `<span class="tag ${feasibility === "hard" ? "high" : "low"}" title="${feasTips[feasibility] || ""}">${feasibility}</span>`;
         return `<div class="kanban-card">
-    <div class="issue-num">#${id}</div>
-    <div class="title">${title}</div>
-    <div class="card-meta">${meta}</div>
-  </div>`;
+        <div class="title">${title}</div>
+        <div class="card-footer">
+          <div class="issue-num">#${id}</div>
+          <div class="card-meta">${meta}</div>
+        </div>
+      </div>`;
       }
 
       function getLatestSprint(sprints) {
@@ -927,8 +776,8 @@
           col.el.innerHTML = display.map((iss) => makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)).join("");
           if (list.length > display.length) {
             col.el.innerHTML += `<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:8px">
-        +${list.length - display.length} more
-      </div>`;
+            +${list.length - display.length} more
+          </div>`;
           }
         }
       }
@@ -970,7 +819,8 @@
           .sort((a, b) => (a.sprintNumber || 0) - (b.sprintNumber || 0));
 
         // ── Update timestamp ──
-        document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleString();
+        const updEl = document.getElementById("last-updated");
+        if (updEl) updEl.textContent = "Updated: " + new Date().toLocaleString();
 
         // ── Metrics ──
         if (runs.length > 0) {
@@ -980,34 +830,33 @@
           const strictTotal = latest.strict_total ?? latest.total;
           const passRate = ((strictPass / strictTotal) * 100).toFixed(1);
           document.getElementById("m-passrate").textContent = passRate + "%";
-          document.getElementById("m-passrate-sub").textContent =
-            `${strictPass.toLocaleString()} / ${strictTotal.toLocaleString()} tests (strict mode)`;
-
-          document.getElementById("m-ce").textContent = latest.ce.toLocaleString();
-          document.getElementById("m-ce").className =
-            "value " + (latest.ce > 2000 ? "red" : latest.ce > 500 ? "yellow" : "green");
-          document.getElementById("m-ce-sub").textContent = "compile errors";
-
-          document.getElementById("m-fail").textContent = latest.fail.toLocaleString();
-          document.getElementById("m-fail").className =
-            "value " + (latest.fail > 3000 ? "red" : latest.fail > 1000 ? "yellow" : "green");
-          document.getElementById("m-fail-sub").textContent = "runtime failures";
-
-          // Pass delta from first run
-          if (runs.length > 1) {
-            const first = runs[0];
-            const delta = latest.pass - first.pass;
-            document.getElementById("h-pass-delta").textContent = (delta >= 0 ? "+" : "") + delta.toLocaleString();
-          }
         }
+
+        // Current sprint number (latest tag)
+        try {
+          const tagResp = await fetch("data/sprint-stats.json");
+          if (tagResp.ok) {
+            const stats = await tagResp.json();
+            const arr = stats.sprints || stats;
+            const last = arr[arr.length - 1];
+            if (last) document.getElementById("m-sprint").textContent = last.sprint;
+          }
+        } catch {}
 
         // Issue counts
         document.getElementById("m-done").textContent = issues.done.length.toLocaleString();
-        document.getElementById("m-done-sub").textContent = "issues completed";
         document.getElementById("m-ready").textContent = issues.ready.length.toLocaleString();
-        document.getElementById("m-ready-sub").textContent = "issues in backlog";
-        document.getElementById("m-blocked").textContent = issues.blocked.length.toLocaleString();
-        document.getElementById("m-blocked-sub").textContent = "waiting on deps";
+        // Project duration in weeks from sprint-stats repoStart
+        try {
+          const statsResp = await fetch("data/sprint-stats.json");
+          if (statsResp.ok) {
+            const sd = await statsResp.json();
+            if (sd.repoStart) {
+              const weeks = (Date.now() / 1000 - sd.repoStart) / (7 * 24 * 3600);
+              document.getElementById("m-duration").textContent = weeks.toFixed(1) + "w";
+            }
+          }
+        } catch {}
 
         // ── Kanban board ──
         const sprintLabel = document.getElementById("sprint-label");
@@ -1015,7 +864,22 @@
         const sprintSelect = document.getElementById("sprint-select");
         const sprintOptions = buildSprintOptions(sprints);
         const latestSprint = getLatestSprint(sprintOptions);
-        let selectedSprint = latestSprint;
+        // Default to first incomplete sprint (has ready issues)
+        const firstIncomplete = sprintOptions
+          .filter((s) => Number.isFinite(s.sprintNumber) && s.issueIds && s.issueIds.length > 0)
+          .sort((a, b) => a.sprintNumber - b.sprintNumber)
+          .find((s) => {
+            const scopedIssues = filterIssuesForSprint(issues, s);
+            return scopedIssues.ready.length > 0 || scopedIssues.inprogress.length > 0;
+          });
+        let selectedSprint = firstIncomplete || latestSprint;
+
+        // Clamp input to available sprints
+        const validNums = sprintOptions.filter((s) => Number.isFinite(s.sprintNumber)).map((s) => s.sprintNumber);
+        if (validNums.length > 0) {
+          sprintInput.min = Math.min(...validNums);
+          sprintInput.max = Math.max(...validNums);
+        }
 
         sprintSelect.innerHTML = sprintOptions
           .filter((s) => Number.isFinite(s.sprintNumber))
@@ -1030,9 +894,10 @@
         function renderSprintBoard() {
           const scopedIssues = filterIssuesForSprint(issues, selectedSprint);
           renderIssueBoard(scopedIssues);
-          sprintLabel.textContent = selectedSprint
-            ? `Board: Sprint ${selectedSprint.sprintNumber}`
-            : "Board: All issues";
+          if (sprintLabel)
+            sprintLabel.textContent = selectedSprint
+              ? `Board: Sprint ${selectedSprint.sprintNumber}`
+              : "Board: All issues";
           syncSprintControls(selectedSprint?.sprintNumber ?? "");
         }
 
@@ -1048,7 +913,7 @@
           renderSprintBoard();
         } else {
           renderIssueBoard(issues);
-          sprintLabel.textContent = "Board: All issues";
+          if (sprintLabel) sprintLabel.textContent = "Board: All issues";
         }
 
         sprintInput.addEventListener("change", () => setSprintByNumber(sprintInput.value));
@@ -1068,39 +933,41 @@
             return `${d.getMonth() + 1}/${d.getDate()}`;
           });
 
-          // Pass rate chart with absolute pass count overlay
-          drawChart(document.getElementById("chart-passrate"), {
-            labels,
-            series: [
-              {
-                label: "Pass Rate %",
-                data: chartRuns.map((r) => (r.pass / r.total) * 100),
-                color: "#34d399",
-                fill: true,
-              },
-              {
-                label: "Pass Count",
-                data: chartRuns.map((r) => r.pass),
-                color: "#6c8aff",
-                fill: false,
-                secondaryY: true,
-              },
-            ],
-            formatY: (v) => v.toFixed(0) + "%",
-            formatY2: (v) => (v >= 1000 ? (v / 1000).toFixed(1) + "K" : Math.round(v).toString()),
+          // Prepare data with labels for the trend-chart component
+          const trendData = chartRuns.map((r) => {
+            const d = new Date(r.timestamp);
+            return {
+              label: `${d.getMonth() + 1}/${d.getDate()}`,
+              passRate: (r.pass / r.total) * 100,
+              pass: r.pass,
+              fail: r.fail,
+              ce: r.ce || 0,
+              skip: r.total - r.pass - r.fail - (r.ce || 0),
+            };
           });
 
-          // Breakdown chart (stacked area — pass + fail + CE + skip = total)
-          drawChart(document.getElementById("chart-breakdown"), {
-            labels,
-            stacked: true,
-            series: [
-              { label: "Pass", data: chartRuns.map((r) => r.pass), color: "#34d399" },
-              { label: "Fail", data: chartRuns.map((r) => r.fail), color: "#f87171" },
-              { label: "CE", data: chartRuns.map((r) => r.ce), color: "#fbbf24" },
-              { label: "Skip", data: chartRuns.map((r) => r.total - r.pass - r.fail - (r.ce || 0)), color: "#4a5fa0" },
-            ],
-          });
+          // Pass rate chart
+          const prChart = document.getElementById("chart-passrate");
+          prChart.setAttribute("labels-key", "label");
+          prChart.setAttribute(
+            "series",
+            JSON.stringify([{ key: "passRate", color: "#fff", fill: true, lineOpacity: 1 }]),
+          );
+          prChart.data = trendData;
+
+          // Breakdown chart (stacked)
+          const bdChart = document.getElementById("chart-breakdown");
+          bdChart.setAttribute("labels-key", "label");
+          bdChart.setAttribute(
+            "series",
+            JSON.stringify([
+              { key: "pass", color: "#ffffff", areaOpacity: 0.15 },
+              { key: "fail", color: "rgba(255,255,255,0.5)", areaOpacity: 0.06 },
+              { key: "ce", color: "rgba(255,255,255,0.35)", areaOpacity: 0.04 },
+              { key: "skip", color: "rgba(255,255,255,0.2)", areaOpacity: 0.03 },
+            ]),
+          );
+          bdChart.data = trendData;
         }
 
         // ── Process health ──
@@ -1109,39 +976,147 @@
         document.getElementById("h-total-runs").textContent = runs.length;
         document.getElementById("h-ready-ratio").textContent = issues.ready.length + " / " + totalIssues;
 
-        // ── Sprint history ──
+        // ── Sprint history (vertical timeline) ──
         if (sprints.length > 0) {
-          const rows = sprints
-            .map(
-              (s) =>
-                `<tr>
-        <td>${s.name}</td>
-        <td>${s.date || "—"}</td>
-        <td>${s.baseline || "—"}</td>
-        <td>${s.result || "—"}</td>
-        <td>${s.issueCount || "—"}</td>
-      </tr>`,
-            )
-            .join("");
-          document.getElementById("sprint-history").innerHTML = `
-      <table class="sprint-table">
-        <thead><tr><th>Sprint</th><th>Date</th><th>Baseline</th><th>Result</th><th>Issues</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-        } else {
-          document.getElementById("sprint-history").innerHTML =
-            '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center">No sprint data loaded. Run <code>node dashboard/build-data.js</code> to generate.</div>';
-        }
+          let sprintStats = null;
+          try {
+            const resp = await fetch("data/sprint-stats.json");
+            if (resp.ok) sprintStats = await resp.json();
+          } catch {}
 
-        // ── Velocity bar chart ──
-        if (sprints.length > 0) {
-          const maxIssues = Math.max(...sprints.map((s) => s.issueCount || 0), 1);
-          document.getElementById("velocity-bar").innerHTML = sprints
-            .map((s) => {
-              const h = ((s.issueCount || 0) / maxIssues) * 100;
-              return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="${s.name}: ${s.issueCount || 0} issues"></div>`;
-            })
-            .join("");
+          if (sprintStats && (sprintStats.sprints || sprintStats).length > 1) {
+            const rawStats = sprintStats.sprints || sprintStats;
+            const ss = rawStats.filter((s) => s.sprint > 0 && s.epoch);
+            const minEpoch = sprintStats.repoStart || ss[0].epoch;
+            const maxEpoch = sprintStats.repoEnd || ss[ss.length - 1].epoch;
+            const range = maxEpoch - minEpoch || 1;
+            const ONE_WEEK = 7 * 24 * 3600;
+            const VIEWPORT_W = 1000; // 1 week = this many SVG units = 100vw
+            const pxPerSec = VIEWPORT_W / ONE_WEEK;
+            const H = 100;
+            const PAD = { top: 40, bottom: 30, left: 30, right: 30 };
+            const plotW = range * pxPerSec;
+            const W = plotW + PAD.left + PAD.right;
+            const lineY = PAD.top;
+
+            const xPos = (epoch) => PAD.left + (epoch - minEpoch) * pxPerSec;
+
+            let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;overflow:visible">`;
+
+            // Horizontal timeline line
+            svg += `<line x1="${PAD.left}" y1="${lineY}" x2="${PAD.left + plotW}" y2="${lineY}" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>`;
+
+            // Commit dots
+            const commitEpochs = sprintStats.commitEpochs || [];
+            for (const ce of commitEpochs) {
+              if (ce < minEpoch || ce > maxEpoch) continue;
+              const cx = xPos(ce);
+              svg += `<circle cx="${cx}" cy="${lineY}" r="2.5" fill="rgba(248,113,113,0.35)"/>`;
+            }
+
+            // Date ticks — one per calendar day
+            const startDay = new Date(minEpoch * 1000);
+            startDay.setHours(0, 0, 0, 0);
+            const endDay = new Date(maxEpoch * 1000);
+            endDay.setHours(23, 59, 59, 999);
+            for (let d = new Date(startDay); d <= endDay; d.setDate(d.getDate() + 1)) {
+              const dayEpoch = d.getTime() / 1000;
+              if (dayEpoch < minEpoch || dayEpoch > maxEpoch) continue;
+              const dx = xPos(dayEpoch);
+              svg += `<line x1="${dx}" y1="${lineY - 10}" x2="${dx}" y2="${lineY + 10}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+              const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+              const label = d.getDate() === 1 ? months[d.getMonth()] : String(d.getDate());
+              const size = d.getDate() === 1 ? 14 : 12;
+              const opacity = d.getDate() === 1 ? 0.5 : 0.3;
+              svg += `<text x="${dx}" y="${lineY + 28}" text-anchor="middle" fill="rgba(255,255,255,${opacity})" font-size="${size}" font-family="monospace">${label}</text>`;
+            }
+
+            // Playhead (hidden initially)
+            svg += `<line id="tl-playhead" x1="0" y1="${lineY - 16}" x2="0" y2="${lineY + 16}" stroke="#fbbf24" stroke-width="2" opacity="0"/>`;
+
+            // Sprint dots — clickable, hide labels that are too close
+            const MIN_LABEL_GAP = 25;
+            let lastLabelX = -Infinity;
+            for (let i = ss.length - 1; i >= 0; i--) {
+              const s = ss[i];
+              const cx = xPos(s.epoch);
+              svg += `<rect x="${cx - 14}" y="${lineY - 22}" width="28" height="55" fill="transparent" data-sprint="${s.sprint}" style="cursor:pointer"/>`;
+              svg += `<circle cx="${cx}" cy="${lineY}" r="5" fill="#fff" data-sprint="${s.sprint}" style="cursor:pointer"/>`;
+              if (lastLabelX - cx >= MIN_LABEL_GAP || lastLabelX === -Infinity) {
+                svg += `<text x="${cx}" y="${lineY - 14}" text-anchor="middle" fill="#fff" font-size="13" font-weight="600" data-sprint="${s.sprint}" style="cursor:pointer">${s.sprint}</text>`;
+                lastLabelX = cx;
+              }
+            }
+
+            svg += `</svg>`;
+            const el = document.getElementById("sprint-history");
+            el.style.overflowX = "auto";
+            el.innerHTML = svg;
+            el.scrollLeft = el.scrollWidth;
+
+            // Sprint positions for playhead
+            const sprintPos = {};
+            for (const s of ss) sprintPos[s.sprint] = xPos(s.epoch);
+
+            // Click -> move playhead + select sprint on kanban
+            el.addEventListener("click", (e) => {
+              const t = e.target.closest("[data-sprint]");
+              if (!t) return;
+              const n = t.dataset.sprint;
+              const ph = el.querySelector("#tl-playhead");
+              if (ph && sprintPos[n] != null) {
+                ph.setAttribute("x1", sprintPos[n]);
+                ph.setAttribute("x2", sprintPos[n]);
+                ph.setAttribute("opacity", "1");
+              }
+              el.querySelectorAll("circle[data-sprint]").forEach((c) =>
+                c.setAttribute("fill", c.dataset.sprint === n ? "#fbbf24" : "#fff"),
+              );
+              if (typeof setSprintByNumber === "function") setSprintByNumber(n);
+            });
+          } else {
+            document.getElementById("sprint-history").innerHTML =
+              '<div style="color:var(--text-muted);font-size:12px;padding:16px">No sprint tags found.</div>';
+          }
+
+          // ── Velocity bar chart (issues per hour from sprint-stats) ──
+          const velStats = sprintStats ? sprintStats.sprints || sprintStats : [];
+          if (velStats.length > 0) {
+            function parseDuration(d) {
+              if (!d) return 0;
+              let hours = 0;
+              const dm = d.match(/(\d+)d/);
+              if (dm) hours += parseInt(dm[1]) * 24;
+              const hm = d.match(/(\d+)h/);
+              if (hm) hours += parseInt(hm[1]);
+              const mm = d.match(/(\d+)m/);
+              if (mm) hours += parseInt(mm[1]) / 60;
+              return hours || 1;
+            }
+            const velocities = velStats
+              .filter((s) => s.sprint > 0 && s.issues > 0)
+              .map((s) => ({
+                sprint: s.sprint,
+                rate: s.issues / parseDuration(s.duration),
+                issues: s.issues,
+                duration: s.duration,
+              }));
+            const maxRate = Math.max(...velocities.map((v) => v.rate), 0.1);
+            document.getElementById("velocity-bar").innerHTML = velocities
+              .map((v) => {
+                const h = (v.rate / maxRate) * 100;
+                return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="Sprint ${v.sprint}: ${v.rate.toFixed(1)} issues/h (${v.issues} in ${v.duration})"></div>`;
+              })
+              .join("");
+          } else if (sprints.length > 0) {
+            const maxIssues = Math.max(...sprints.map((s) => s.issueCount || 0), 1);
+            document.getElementById("velocity-bar").innerHTML = sprints
+              .map((s) => {
+                const h = ((s.issueCount || 0) / maxIssues) * 100;
+                return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="${s.name}: ${s.issueCount || 0} issues"></div>`;
+              })
+              .join("");
+          }
         }
       }
 

@@ -655,6 +655,36 @@
         text-transform: uppercase;
         color: var(--fg-faint);
       }
+      .size-compare {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 16px;
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+      .size-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .size-bar-label {
+        color: var(--fg-faint);
+        min-width: 40px;
+        text-align: right;
+      }
+      .size-bar-track {
+        height: 14px;
+        position: relative;
+      }
+      .size-bar-fill {
+        height: 100%;
+        background: linear-gradient(to right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2));
+      }
+      .size-bar-value {
+        color: var(--fg-faint);
+        white-space: nowrap;
+      }
       .how-arrow svg {
         display: block;
       }
@@ -1309,7 +1339,7 @@
             derived from ECMAScript Test262 pass rates and known compiler limitations.
           </p>
         </div>
-        <div class="stats-grid">
+        <!-- <div class="stats-grid">
           <div class="stat-item">
             <div class="stat-number" id="compat-pass-rate">40.8%</div>
             <div class="stat-label" id="compat-pass-rate-label">compatible with the official ECMAScript Test Suite</div>
@@ -1328,7 +1358,7 @@
               JavaScript feature areas implemented (&gt;50% tests passing)
             </div>
           </div>
-        </div>
+        </div> -->
 
         <div class="conformance-diagrams">
           <div class="diagram-panel">
@@ -3018,6 +3048,18 @@ export function run() {
             <span class="how-code-label">app.wat</span>
           </div>
         </div>
+        <div class="size-compare">
+          <div class="size-bar">
+            <span class="size-bar-label">.js</span>
+            <div class="size-bar-track" style="width: 109px"><div class="size-bar-fill" style="width: 100%"></div></div>
+            <span class="size-bar-value">109 B gzip</span>
+          </div>
+          <div class="size-bar">
+            <span class="size-bar-label">.wasm</span>
+            <div class="size-bar-track" style="width: 189px"><div class="size-bar-fill" style="width: 100%"></div></div>
+            <span class="size-bar-value">189 B gzip</span>
+          </div>
+        </div>
 
         <div class="how-step" style="margin-top: 48px">
           <h3 class="how-step-title">Using DOM and JS APIs</h3>
@@ -3068,6 +3110,22 @@ document.body.appendChild(el);</pre
   call $call)             ;; .appendChild(el)</pre
               >
               <span class="how-code-label">dom.wat</span>
+            </div>
+          </div>
+          <div class="size-compare">
+            <div class="size-bar">
+              <span class="size-bar-label">.js</span>
+              <div class="size-bar-track" style="width: 129px">
+                <div class="size-bar-fill" style="width: 100%"></div>
+              </div>
+              <span class="size-bar-value">129 B gzip</span>
+            </div>
+            <div class="size-bar">
+              <span class="size-bar-label">.wasm</span>
+              <div class="size-bar-track" style="width: 291px">
+                <div class="size-bar-fill" style="width: 100%"></div>
+              </div>
+              <span class="size-bar-value">291 B gzip</span>
             </div>
           </div>
         </div>

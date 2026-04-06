@@ -700,124 +700,97 @@
     "skip": 6580,
     "total": 48088,
     "gitHash": "08cc4778",
-    "note": "clean baseline \u2014 cache disabled, conformance count (not vitest count)"
+    "note": "clean baseline — cache disabled, conformance count (not vitest count)"
+  },
+  {
+    "timestamp": "2026-03-31T21:25:14.552Z",
+    "pass": 2,
+    "fail": 86,
+    "ce": 41420,
+    "skip": 6580,
+    "total": 48088,
+    "gitHash": "e8e59e74"
+  },
+  {
+    "timestamp": "2026-03-31T21:28:41.269Z",
+    "pass": 2,
+    "fail": 86,
+    "ce": 41420,
+    "skip": 6580,
+    "total": 48088,
+    "gitHash": "e8e59e74"
+  },
+  {
+    "timestamp": "2026-03-31T21:30:42.868Z",
+    "pass": 2,
+    "fail": 86,
+    "ce": 41420,
+    "skip": 6580,
+    "total": 48088,
+    "gitHash": "e8e59e74"
+  },
+  {
+    "timestamp": "2026-04-03T18:18:33.886Z",
+    "pass": 10,
+    "fail": 77,
+    "ce": 41599,
+    "skip": 6402,
+    "total": 48088,
+    "gitHash": "3ce41b5e"
   },
   { "timestamp": "20260331-192021", "pass": 15246, "fail": 24668, "ce": 1653, "skip": 6580, "total": 48174 },
   { "timestamp": "20260331-215747", "pass": 15155, "fail": 24723, "ce": 1689, "skip": 6580, "total": 48174 },
   { "timestamp": "20260401-003615", "pass": 15160, "fail": 24740, "ce": 1683, "skip": 6580, "total": 48174 },
   { "timestamp": "20260401-022648", "pass": 15159, "fail": 24733, "ce": 1683, "skip": 1348, "total": 42934 },
+  { "timestamp": "20260403-054305", "pass": 15103, "fail": 24773, "ce": 1699, "skip": 1348, "total": 42934 },
   { "timestamp": "20260403-062352", "pass": 15104, "fail": 24788, "ce": 1684, "skip": 1348, "total": 42934 },
   { "timestamp": "20260403-064018", "pass": 15187, "fail": 24956, "ce": 1433, "skip": 1348, "total": 42934 },
   { "timestamp": "20260403-073330", "pass": 15187, "fail": 24956, "ce": 1433, "skip": 1348, "total": 42934 },
-  {
-    "timestamp": "2026-03-20T04:55:22.520Z",
-    "pass": 10975,
-    "fail": 7381,
-    "ce": 5018,
-    "skip": 1421,
-    "total": 24795,
-    "gitHash": "unknown"
-  },
-  {
-    "timestamp": "2026-03-28T18:26:11.835Z",
-    "pass": 8198,
-    "fail": 12511,
-    "ce": 1130,
-    "skip": 6580,
-    "total": 28419,
-    "gitHash": "ab24369b"
-  },
-  {
-    "timestamp": "2026-03-28T19:27:59.122Z",
-    "pass": 11824,
-    "fail": 15819,
-    "ce": 1288,
-    "skip": 6580,
-    "total": 35511,
-    "gitHash": "7257206d"
-  },
-  {
-    "timestamp": "2026-03-31T01:24:13.763Z",
-    "pass": 2179,
-    "fail": 2644,
-    "ce": 355,
-    "skip": 833,
-    "total": 6011,
-    "gitHash": "4be8d50d",
-    "chunk": true
-  },
-  {
-    "timestamp": "2026-03-31T01:24:29.966Z",
-    "pass": 2141,
-    "fail": 2692,
-    "ce": 358,
-    "skip": 820,
-    "total": 6011,
-    "gitHash": "4be8d50d",
-    "chunk": true
-  },
-  {
-    "timestamp": "2026-03-31T01:27:24.124Z",
-    "pass": 2149,
-    "fail": 2669,
-    "ce": 374,
-    "skip": 819,
-    "total": 6011,
-    "gitHash": "4be8d50d",
-    "chunk": true
-  },
-  {
-    "timestamp": "2026-03-31T01:27:25.033Z",
-    "pass": 2176,
-    "fail": 2629,
-    "ce": 378,
-    "skip": 828,
-    "total": 6011,
-    "gitHash": "4be8d50d",
-    "chunk": true
-  },
-  {
-    "timestamp": "2026-03-31T01:30:36.773Z",
-    "pass": 2122,
-    "fail": 2686,
-    "ce": 382,
-    "skip": 821,
-    "total": 6011,
-    "gitHash": "4be8d50d",
-    "chunk": true
-  },
-  {
-    "timestamp": "2026-03-31T01:30:48.052Z",
-    "pass": 2149,
-    "fail": 2657,
-    "ce": 381,
-    "skip": 824,
-    "total": 6011,
-    "gitHash": "4be8d50d",
-    "chunk": true
-  },
-  {
-    "timestamp": "2026-03-31T01:33:52.591Z",
-    "pass": 2192,
-    "fail": 2666,
-    "ce": 334,
-    "skip": 819,
-    "total": 6011,
-    "gitHash": "4be8d50d",
-    "chunk": true
-  },
-  {
-    "timestamp": "2026-03-31T01:34:01.003Z",
-    "pass": 2158,
-    "fail": 2682,
-    "ce": 355,
-    "skip": 816,
-    "total": 6011,
-    "gitHash": "4be8d50d",
-    "chunk": true
-  },
-  { "timestamp": "20260403-054305", "pass": 15103, "fail": 24773, "ce": 1699, "skip": 1348, "total": 42934 },
   { "timestamp": "20260403-080540", "pass": 15259, "fail": 24883, "ce": 1434, "skip": 1348, "total": 42934 },
   { "timestamp": "20260403-131217", "pass": 15251, "fail": 24931, "ce": 1394, "skip": 1348, "total": 42934 },
-  { "timestamp": "20260403-140826", "pass": 15526, "fail": 24656, "ce": 1394, "skip": 1348, "total": 42934 }
+  { "timestamp": "20260403-140826", "pass": 15526, "fail": 24656, "ce": 1394, "skip": 1348, "total": 42934 },
+  { "timestamp": "20260403-144514", "pass": 17583, "fail": 21385, "ce": 2795, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260403-172236", "pass": 17583, "fail": 21385, "ce": 2795, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-021526", "pass": 16268, "fail": 21133, "ce": 4361, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-023825", "pass": 16268, "fail": 21133, "ce": 4361, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-025747", "pass": 16268, "fail": 21133, "ce": 4361, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-033322", "pass": 17822, "fail": 21186, "ce": 2755, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-042134", "pass": 17037, "fail": 21870, "ce": 2856, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-044510", "pass": 17110, "fail": 21799, "ce": 2854, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-051120", "pass": 17598, "fail": 21557, "ce": 2608, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-053539", "pass": 17194, "fail": 22434, "ce": 2135, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-061527", "pass": 17241, "fail": 22388, "ce": 2134, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-081945", "pass": 17248, "fail": 22381, "ce": 2134, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-094140", "pass": 18288, "fail": 21341, "ce": 2134, "skip": 1348, "total": 43120 },
+  { "timestamp": "20260404-110009", "pass": 18288, "fail": 21341, "ce": 2134, "skip": 1348, "total": 43120 },
+  {
+    "timestamp": "20260404-142339",
+    "pass": 18256,
+    "fail": 21538,
+    "ce": 1969,
+    "skip": 1348,
+    "total": 43120,
+    "strict_pass": 18256,
+    "strict_total": 43120
+  },
+  {
+    "timestamp": "20260404-171016",
+    "pass": 18594,
+    "fail": 21165,
+    "ce": 2003,
+    "skip": 1348,
+    "total": 43120,
+    "strict_pass": 18594,
+    "strict_total": 43120
+  },
+  {
+    "timestamp": "20260406-002306",
+    "pass": 18408,
+    "fail": 21652,
+    "ce": 1737,
+    "skip": 1313,
+    "total": 43120,
+    "strict_pass": 17522,
+    "strict_total": 40611
+  }
 ]
