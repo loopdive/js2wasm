@@ -37,6 +37,8 @@ On the runtime side, class computed properties (#848, 1,015 FAIL) and for-of des
 | 8 | **#830** | DisposableStack extern class missing | **39 CE** | Easy | sonnet | Stub extern class + host import |
 | 9 | **#929** | Object.defineProperty called on non-object | **53 FAIL** | Medium | sonnet | Boxing fix for ODP host import args |
 | 10 | **#975** | Sprint file cleanup — remove orphan issue refs | Process | Easy | sonnet | Cleanup closed sprint files, remove -planning.md |
+| 11 | **#977** | Edition chart: rename "Other" to "ES3/Core" | UI | Easy | sonnet | Update generate-editions.ts |
+| 12 | **#978** | Responsive burger menu for site-nav | UI | Medium | sonnet | Mobile nav collapse, reference webassembly-org.loopdive.com |
 
 ## Dev Paths (3 devs max)
 

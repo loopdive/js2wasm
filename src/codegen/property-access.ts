@@ -850,8 +850,10 @@ export function compilePropertyAccess(
   // Check for static property access: ClassName.staticProp
   if (ts.isIdentifier(expr.expression)) {
     const objName = expr.expression.text;
-    if (ctx.classSet.has(objName)) {
-      const fullName = `${objName}_${propName}`;
+    // Resolve class expressions (var C = class {}) through the expr-name map
+    const resolvedClass = ctx.classExprNameMap.get(objName) ?? objName;
+    if (ctx.classSet.has(resolvedClass)) {
+      const fullName = `${resolvedClass}_${propName}`;
       const globalIdx = ctx.staticProps.get(fullName);
       if (globalIdx !== undefined) {
         fctx.body.push({ op: "global.get", index: globalIdx });
@@ -861,7 +863,7 @@ export function compilePropertyAccess(
       // ClassName.prototype — return a singleton prototype global (externref)
       // so that Object.getPrototypeOf(instance) === ClassName.prototype holds.
       if (propName === "prototype") {
-        if (emitLazyProtoGet(ctx, fctx, objName)) {
+        if (emitLazyProtoGet(ctx, fctx, resolvedClass)) {
           return { kind: "externref" };
         }
         // Fallback: return null externref
@@ -870,7 +872,7 @@ export function compilePropertyAccess(
       }
       // ClassName.constructor — return the constructor function reference
       if (propName === "constructor") {
-        const ctorName = `${objName}_constructor`;
+        const ctorName = `${resolvedClass}_constructor`;
         const funcIdx = ctx.funcMap.get(ctorName);
         if (funcIdx !== undefined) {
           fctx.body.push({ op: "ref.func", funcIdx });
@@ -897,12 +899,12 @@ export function compilePropertyAccess(
         }
       }
       // ClassName.accessor — invoke static getter (#848)
-      const accessorKey = `${objName}_${propName}`;
+      const accessorKey = `${resolvedClass}_${propName}`;
       if (ctx.classAccessorSet.has(accessorKey)) {
-        const getterName = `${objName}_get_${propName}`;
+        const getterName = `${resolvedClass}_get_${propName}`;
         const funcIdx = ctx.funcMap.get(getterName);
         if (funcIdx !== undefined) {
-          const retType = emitGetterCallWithDummy(ctx, fctx, objName, getterName, funcIdx);
+          const retType = emitGetterCallWithDummy(ctx, fctx, resolvedClass, getterName, funcIdx);
           return retType ?? { kind: "externref" };
         }
       }
@@ -1957,21 +1959,23 @@ export function compileElementAccess(
   // identifier doesn't compile to a useful runtime value for struct access.
   if (ts.isIdentifier(expr.expression)) {
     const objName = expr.expression.text;
-    if (ctx.classSet.has(objName)) {
+    // Resolve class expressions (var C = class {}) through the expr-name map
+    const resolvedClass = ctx.classExprNameMap.get(objName) ?? objName;
+    if (ctx.classSet.has(resolvedClass)) {
       const key = resolveComputedKeyExpression(ctx, expr.argumentExpression);
       if (key !== undefined) {
         // Check static accessor first
-        const accessorKey = `${objName}_${key}`;
+        const accessorKey = `${resolvedClass}_${key}`;
         if (ctx.classAccessorSet.has(accessorKey)) {
-          const getterName = `${objName}_get_${key}`;
+          const getterName = `${resolvedClass}_get_${key}`;
           const funcIdx = ctx.funcMap.get(getterName);
           if (funcIdx !== undefined) {
-            const retType = emitGetterCallWithDummy(ctx, fctx, objName, getterName, funcIdx);
+            const retType = emitGetterCallWithDummy(ctx, fctx, resolvedClass, getterName, funcIdx);
             return retType ?? { kind: "externref" };
           }
         }
         // Check static property global
-        const fullName = `${objName}_${key}`;
+        const fullName = `${resolvedClass}_${key}`;
         const globalIdx = ctx.staticProps.get(fullName);
         if (globalIdx !== undefined) {
           fctx.body.push({ op: "global.get", index: globalIdx });
@@ -1997,7 +2001,9 @@ export function compileElementAccess(
     ts.isIdentifier(expr.expression.expression) &&
     expr.expression.name.text === "prototype"
   ) {
-    const className = expr.expression.expression.text;
+    const rawName = expr.expression.expression.text;
+    // Resolve class expressions (var C = class {}) through the expr-name map
+    const className = ctx.classExprNameMap.get(rawName) ?? rawName;
     if (ctx.classSet.has(className)) {
       const key = resolveComputedKeyExpression(ctx, expr.argumentExpression);
       if (key !== undefined) {
