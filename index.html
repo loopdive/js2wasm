@@ -539,6 +539,15 @@
         color: var(--fg-faint);
       }
 
+      #size-bench-bars .bench-row,
+      #coldstart-bench-bars .bench-row {
+        grid-template-columns: 90px 1fr;
+      }
+
+      .size-bench-group-spacer {
+        height: 8px;
+      }
+
       @media (max-width: 1120px) {
         .conformance-diagrams {
           grid-template-columns: 1fr;
@@ -1358,6 +1367,16 @@
           <div class="diagram-panel edition-chart">
             <h3 class="diagram-title">Edition Coverage (pass rate)</h3>
             <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="percentage"></t262-edition-bars>
+          </div>
+          <div class="diagram-panel" id="size-bench-size-panel" style="display:none">
+            <h3 class="diagram-title">Module Size (gzip)</h3>
+            <div class="benchmark-bars" id="size-bench-bars"></div>
+            <p class="benchmark-legend">JS = source the user writes &middot; Wasm = compiled binary</p>
+          </div>
+          <div class="diagram-panel" id="size-bench-cold-panel" style="display:none">
+            <h3 class="diagram-title">Cold Start Time</h3>
+            <div class="benchmark-bars" id="coldstart-bench-bars"></div>
+            <p class="benchmark-legend">JS = parse time &middot; Wasm = WebAssembly.Module compile time</p>
           </div>
         </div>
 
@@ -2993,16 +3012,16 @@ export function run() {
             <span class="how-code-label">app.wat</span>
           </div>
         </div>
-        <div class="size-compare">
+        <div class="size-compare" id="how-fib-compare">
           <div class="size-bar">
             <span class="size-bar-label">.js</span>
-            <div class="size-bar-track" style="width: 109px"><div class="size-bar-fill" style="width: 100%"></div></div>
-            <span class="size-bar-value">109 B gzip</span>
+            <div class="size-bar-track" id="how-fib-js-track" style="width: 109px"><div class="size-bar-fill" style="width: 100%"></div></div>
+            <span class="size-bar-value" id="how-fib-js-value">109 B gzip</span>
           </div>
           <div class="size-bar">
             <span class="size-bar-label">.wasm</span>
-            <div class="size-bar-track" style="width: 189px"><div class="size-bar-fill" style="width: 100%"></div></div>
-            <span class="size-bar-value">189 B gzip</span>
+            <div class="size-bar-track" id="how-fib-wasm-track" style="width: 189px"><div class="size-bar-fill" style="width: 100%"></div></div>
+            <span class="size-bar-value" id="how-fib-wasm-value">189 B gzip</span>
           </div>
         </div>
 
@@ -3057,20 +3076,20 @@ document.body.appendChild(el);</pre
               <span class="how-code-label">dom.wat</span>
             </div>
           </div>
-          <div class="size-compare">
+          <div class="size-compare" id="how-dom-compare">
             <div class="size-bar">
               <span class="size-bar-label">.js</span>
-              <div class="size-bar-track" style="width: 129px">
+              <div class="size-bar-track" id="how-dom-js-track" style="width: 129px">
                 <div class="size-bar-fill" style="width: 100%"></div>
               </div>
-              <span class="size-bar-value">129 B gzip</span>
+              <span class="size-bar-value" id="how-dom-js-value">129 B gzip</span>
             </div>
             <div class="size-bar">
               <span class="size-bar-label">.wasm</span>
-              <div class="size-bar-track" style="width: 291px">
+              <div class="size-bar-track" id="how-dom-wasm-track" style="width: 291px">
                 <div class="size-bar-fill" style="width: 100%"></div>
               </div>
-              <span class="size-bar-value">291 B gzip</span>
+              <span class="size-bar-value" id="how-dom-wasm-value">291 B gzip</span>
             </div>
           </div>
         </div>
@@ -3624,6 +3643,156 @@ const dom = await js2.import("./dom.js", { document });
           window.addEventListener("resize", positionBaseline);
         } catch {
           document.getElementById("benchmark-chart")?.remove();
+        }
+      })();
+
+      (async function renderSizeBenchmarks() {
+        const sizePanel = document.getElementById("size-bench-size-panel");
+        const coldPanel = document.getElementById("size-bench-cold-panel");
+        const sizeBars = document.getElementById("size-bench-bars");
+        const coldBars = document.getElementById("coldstart-bench-bars");
+
+        try {
+          const resp = await fetch("./benchmarks/results/size-benchmarks.json");
+          if (!resp.ok) return;
+          const data = await resp.json();
+
+          // Update how-it-works size bars from measured data
+          const { fib, dom } = data.howItWorks ?? {};
+          if (fib) {
+            const maxPx = Math.max(fib.jsSizeGzip, fib.wasmSizeGzip);
+            const scale = 291 / maxPx;
+            const jsTrack = document.getElementById("how-fib-js-track");
+            const jsVal = document.getElementById("how-fib-js-value");
+            const wasmTrack = document.getElementById("how-fib-wasm-track");
+            const wasmVal = document.getElementById("how-fib-wasm-value");
+            if (jsTrack) jsTrack.style.width = Math.round(fib.jsSizeGzip * scale) + "px";
+            if (jsVal) jsVal.textContent = fib.jsSizeGzip + " B gzip";
+            if (wasmTrack) wasmTrack.style.width = Math.round(fib.wasmSizeGzip * scale) + "px";
+            if (wasmVal) wasmVal.textContent = fib.wasmSizeGzip + " B gzip";
+          }
+          if (dom) {
+            const maxPx = Math.max(dom.jsSizeGzip, dom.wasmSizeGzip);
+            const scale = 291 / maxPx;
+            const jsTrack = document.getElementById("how-dom-js-track");
+            const jsVal = document.getElementById("how-dom-js-value");
+            const wasmTrack = document.getElementById("how-dom-wasm-track");
+            const wasmVal = document.getElementById("how-dom-wasm-value");
+            if (jsTrack) jsTrack.style.width = Math.round(dom.jsSizeGzip * scale) + "px";
+            if (jsVal) jsVal.textContent = dom.jsSizeGzip + " B gzip";
+            if (wasmTrack) wasmTrack.style.width = Math.round(dom.wasmSizeGzip * scale) + "px";
+            if (wasmVal) wasmVal.textContent = dom.wasmSizeGzip + " B gzip";
+          }
+
+          // Render size + cold start charts
+          const benchmarks = data.benchmarks;
+          if (!Array.isArray(benchmarks) || benchmarks.length === 0 || !sizeBars || !coldBars) return;
+
+          const maxSize = Math.max(...benchmarks.map((b) => Math.max(b.jsSizeGzip, b.wasmSizeGzip)));
+          const maxTime = Math.max(...benchmarks.map((b) => Math.max(b.jsParseMs, b.wasmCompileMs)));
+
+          const sizeBarData = [];
+          const coldBarData = [];
+
+          function makeBarRow(nameLabel, targetPct, valueLabel) {
+            const row = document.createElement("div");
+            row.className = "bench-row";
+            row.innerHTML =
+              '<span class="bench-name">' +
+              nameLabel +
+              '</span><div class="bench-track">' +
+              '<div class="bench-fill" style="left:0;width:0%;background:linear-gradient(to right,rgba(255,255,255,0.05),rgba(255,255,255,0.2));border-radius:4px;position:absolute;height:100%;top:0"></div>' +
+              '<span class="bench-value" style="position:absolute;left:0;padding-left:6px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,0);font-family:var(--mono);font-size:12px;font-weight:600;z-index:2;white-space:nowrap">' +
+              valueLabel +
+              "</span></div>";
+            return {
+              el: row,
+              fill: row.querySelector(".bench-fill"),
+              value: row.querySelector(".bench-value"),
+              targetPct,
+            };
+          }
+
+          for (let i = 0; i < benchmarks.length; i++) {
+            const b = benchmarks[i];
+
+            // Module size rows
+            const jsSize = makeBarRow(b.name + ".js", (b.jsSizeGzip / maxSize) * 100, b.jsSizeGzip + " B");
+            const wasmSize = makeBarRow(b.name + ".wasm", (b.wasmSizeGzip / maxSize) * 100, b.wasmSizeGzip + " B");
+            sizeBars.appendChild(jsSize.el);
+            sizeBars.appendChild(wasmSize.el);
+            sizeBarData.push(jsSize, wasmSize);
+
+            // Cold start rows
+            const jsTime = makeBarRow(
+              b.name + ".js",
+              (b.jsParseMs / maxTime) * 100,
+              b.jsParseMs < 0.01 ? b.jsParseMs.toFixed(4) + " ms" : b.jsParseMs.toFixed(3) + " ms",
+            );
+            const wasmTime = makeBarRow(
+              b.name + ".wasm",
+              (b.wasmCompileMs / maxTime) * 100,
+              b.wasmCompileMs < 0.01 ? b.wasmCompileMs.toFixed(4) + " ms" : b.wasmCompileMs.toFixed(3) + " ms",
+            );
+            coldBars.appendChild(jsTime.el);
+            coldBars.appendChild(wasmTime.el);
+            coldBarData.push(jsTime, wasmTime);
+
+            // Group spacer
+            if (i < benchmarks.length - 1) {
+              const sp1 = document.createElement("div");
+              sp1.className = "size-bench-group-spacer";
+              sizeBars.appendChild(sp1);
+              const sp2 = document.createElement("div");
+              sp2.className = "size-bench-group-spacer";
+              coldBars.appendChild(sp2);
+            }
+          }
+
+          if (sizePanel) sizePanel.style.display = "";
+          if (coldPanel) coldPanel.style.display = "";
+
+          // Animate bars when visible
+          const duration = 3293;
+          const ease = (t) => 1 - (1 - t) * (1 - t);
+
+          function makeAnimator(barData) {
+            let startTs = null;
+            return function animateBars(ts) {
+              if (!startTs) startTs = ts;
+              const t = ease(Math.min((ts - startTs) / duration, 1));
+              for (const d of barData) {
+                const w = t * d.targetPct;
+                d.fill.style.width = w + "%";
+                d.fill.style.background =
+                  "linear-gradient(to right,rgba(255,255,255,0.05),rgba(255,255,255," +
+                  (0.1 + t * 0.15).toFixed(2) +
+                  "))";
+                d.value.style.left = w + "%";
+                d.value.style.color = "rgba(255,255,255," + (t * 0.7).toFixed(2) + ")";
+              }
+              if (t < 1) requestAnimationFrame(animateBars);
+            };
+          }
+
+          const sizePanelEl = sizePanel;
+          if (sizePanelEl) {
+            const obs = new IntersectionObserver(
+              (entries) => {
+                for (const e of entries) {
+                  if (e.isIntersecting) {
+                    obs.disconnect();
+                    requestAnimationFrame(makeAnimator(sizeBarData));
+                    requestAnimationFrame(makeAnimator(coldBarData));
+                  }
+                }
+              },
+              { threshold: 0.2 },
+            );
+            obs.observe(sizePanelEl);
+          }
+        } catch {
+          /* keep static fallbacks */
         }
       })();
 

@@ -245,6 +245,10 @@ copyFileIfExists(
   join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "test262-report.json"),
 );
+copyFileIfExists(
+  join(BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"),
+  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"),
+);
 
 // Disable Jekyll processing so all generated assets are published as-is.
 writeFileSync(join(PAGES_DIST, ".nojekyll"), "");
@@ -258,6 +262,7 @@ copyFileIfExists(
   join(PUBLIC_BENCH, "playground-benchmark-sidebar.json"),
 );
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-editions.json"), join(PUBLIC_BENCH, "test262-editions.json"));
+copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"), join(PUBLIC_BENCH, "size-benchmarks.json"));
 
 // Copy web components to pages-dist root and dashboard
 const COMPONENTS_DIR = join(ROOT, "components");
