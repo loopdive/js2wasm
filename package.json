@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "binaryen": "^125.0.0",
+    "shiki": "^4.0.2",
     "typescript": "^5.7"
   },
   "devDependencies": {
