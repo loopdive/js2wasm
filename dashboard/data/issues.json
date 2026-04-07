@@ -1,79 +1,14 @@
 {
-  "blocked": [
-    {
-      "id": "762",
-      "title": "#762 -- Generator .next(value) arguments are silently ignored",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [
-        "680"
-      ],
-      "goal": "",
-      "status": null
-    },
-    {
-      "id": "747",
-      "title": "Escape analysis for stack allocation",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "",
-      "status": null
-    },
-    {
-      "id": "746",
-      "title": "Inline property tables: struct-based property access for inferred shapes",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "",
-      "status": null
-    },
-    {
-      "id": "744",
-      "title": "Function monomorphization for polymorphic call sites",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "",
-      "status": null
-    },
-    {
-      "id": "742",
-      "title": "Extract and refactor compileCallExpression (3,350 lines)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "688"
-      ],
-      "goal": "",
-      "status": null
-    },
-    {
-      "id": "735",
-      "title": "#735 -- Async iteration correctness (329 tests)",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "680",
-        "681"
-      ],
-      "goal": "",
-      "status": null
-    },
-    {
-      "id": "700",
-      "title": "Reuse ts.CompilerHost across compilations (~25% speedup)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "699"
-      ],
-      "goal": "",
-      "status": null
-    }
-  ],
   "ready": [
+    {
+      "id": "1000",
+      "title": "Normalize issue frontmatter and repopulate historical sprint issue assignments",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": "ready"
+    },
     {
       "id": "999",
       "title": "for-of / for-await-of destructuring still emits f64↔externref and struct field mismatches (75 CE)",
@@ -243,7 +178,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "926",
@@ -252,7 +187,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "test-infra",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "913",
@@ -261,101 +196,79 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "912",
       "title": "Remove circular dependencies from the core codegen backend",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "909",
-        "910",
-        "911"
-      ],
+      "depends_on": ["909", "910", "911"],
       "goal": "contributor-readiness",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "911",
       "title": "Split statements.ts into control-flow, variables, destructuring, loops, and functions modules",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "909"
-      ],
+      "depends_on": ["909"],
       "goal": "contributor-readiness",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "910",
       "title": "Split expressions.ts into syntax-family modules",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "909"
-      ],
+      "depends_on": ["909"],
       "goal": "contributor-readiness",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "908",
       "title": "Remove redundant codegen in inlined top-level numeric loops",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "906",
-        "907"
-      ],
+      "depends_on": ["906", "907"],
       "goal": "performance",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "907",
       "title": "Replace __init_done runtime guards with start/init entry semantics",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "900"
-      ],
+      "depends_on": ["900"],
       "goal": "runtime-simplicity",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "906",
       "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "800",
-        "898"
-      ],
+      "depends_on": ["800", "898"],
       "goal": "performance",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "905",
       "title": "Support versioned shapes for compile-time-known prototype mutation",
       "priority": "medium",
       "feasibility": "hard",
-      "depends_on": [
-        "743",
-        "746"
-      ],
+      "depends_on": ["743", "746"],
       "goal": "property-model",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "904",
       "title": "Add link-time specialization after separate compilation",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "33",
-        "743"
-      ],
+      "depends_on": ["33", "743"],
       "goal": "compiler-architecture",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "903",
@@ -364,7 +277,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "compiler-architecture",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "893",
@@ -373,7 +286,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "892",
@@ -382,7 +295,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "891",
@@ -391,7 +304,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "890",
@@ -400,7 +313,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "889",
@@ -409,7 +322,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "888",
@@ -418,18 +331,16 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "performance",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "884",
       "title": "CI: GitHub Actions test262 on every PR",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "882"
-      ],
+      "depends_on": ["882"],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "882",
@@ -438,51 +349,43 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "881",
       "title": "Dashboard: real-time resource monitoring — memory graphs, agent widgets, test progress",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "876"
-      ],
+      "depends_on": ["876"],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "880",
       "title": "Dashboard: issue flow visualization — time from ready to done per issue",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "876"
-      ],
+      "depends_on": ["876"],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "879",
       "title": "Dashboard: process health metrics — checklist compliance, merge protocol, hook blocks",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "876"
-      ],
+      "depends_on": ["876"],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "878",
       "title": "Dashboard: active agent status panel with current task and uptime",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "876"
-      ],
+      "depends_on": ["876"],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "874",
@@ -500,7 +403,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "872",
@@ -509,51 +412,34 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
-    },
-    {
-      "id": "871",
-      "title": "Playground: default example throws WebAssembly.Exception at runtime",
-      "priority": "critical",
-      "feasibility": "medium",
-      "depends_on": [
-        "861"
-      ],
-      "goal": "maintainability",
-      "status": "review"
+      "status": "ready"
     },
     {
       "id": "870",
       "title": "Playground: Monaco web workers fail to load, UI freezes",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "861"
-      ],
+      "depends_on": ["861"],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "868",
       "title": "Playground: lazy-load test262 tree and file contents on demand",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "867"
-      ],
+      "depends_on": ["867"],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "867",
       "title": "Playground: interactive test262 conformance explorer with inline errors",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "861"
-      ],
+      "depends_on": ["861"],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "865",
@@ -562,7 +448,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "platform-support",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "862",
@@ -580,16 +466,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
-    },
-    {
-      "id": "860",
-      "title": "Promise executor and property-assigned functions not compiled as host callbacks",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review"
+      "status": "ready"
     },
     {
       "id": "859",
@@ -610,22 +487,11 @@
       "status": "ready"
     },
     {
-      "id": "856",
-      "title": "Expected TypeError but got wrong error type (136 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review"
-    },
-    {
       "id": "855",
       "title": "Promise resolution and async error handling (210 tests)",
       "priority": "critical",
       "feasibility": "hard",
-      "depends_on": [
-        "944"
-      ],
+      "depends_on": ["944"],
       "goal": "core-semantics",
       "status": "regression"
     },
@@ -639,22 +505,13 @@
       "status": "ready"
     },
     {
-      "id": "846",
-      "title": "assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests)",
-      "priority": "critical",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review"
-    },
-    {
       "id": "838",
       "title": "BigInt64Array / BigUint64Array typed arrays",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "837",
@@ -663,7 +520,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "833",
@@ -672,7 +529,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "832",
@@ -681,7 +538,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "830",
@@ -690,25 +547,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
-    },
-    {
-      "id": "826",
-      "title": "Illegal cast failures (1,276 runtime failures)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review"
-    },
-    {
-      "id": "825",
-      "title": "Null dereference failures (2,295 runtime failures)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review"
+      "status": "ready"
     },
     {
       "id": "824",
@@ -717,16 +556,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": null
-    },
-    {
-      "id": "821",
-      "title": "BindingElement null guard over-triggering",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review"
+      "status": "ready"
     },
     {
       "id": "820",
@@ -744,7 +574,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "810",
@@ -753,7 +583,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "809",
@@ -762,7 +592,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "808",
@@ -771,7 +601,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "807",
@@ -780,7 +610,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "806",
@@ -789,7 +619,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "805",
@@ -798,7 +628,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "804",
@@ -807,7 +637,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "803",
@@ -816,16 +646,16 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "802",
-      "title": "#802 -- Dynamic prototype support (Object.setPrototypeOf, Object.create with dynamic proto)",
+      "title": "- Dynamic prototype support (Object.setPrototypeOf, Object.create with dynamic proto)",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "property-model",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "788",
@@ -847,12 +677,12 @@
     },
     {
       "id": "773",
-      "title": "#773 -- Monomorphize functions: compile with call-site types, not generic externref",
+      "title": "- Monomorphize functions: compile with call-site types, not generic externref",
       "priority": "critical",
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "745",
@@ -861,7 +691,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "743",
@@ -870,7 +700,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "741",
@@ -879,27 +709,25 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "739",
-      "title": "#739 -- Object.defineProperty correctness (262 tests)",
+      "title": "- Object.defineProperty correctness (262 tests)",
       "priority": "medium",
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "699",
       "title": "Shared compiler pool for vitest test262 runner",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "694"
-      ],
+      "depends_on": ["694"],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "688",
@@ -908,7 +736,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "687",
@@ -917,7 +745,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "685",
@@ -926,7 +754,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "684",
@@ -935,7 +763,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "682",
@@ -944,18 +772,16 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "681",
       "title": "Pure Wasm iterator protocol (eliminate 5 host imports)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "680"
-      ],
+      "depends_on": ["680"],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "680",
@@ -964,7 +790,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "674",
@@ -973,7 +799,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "661",
@@ -982,7 +808,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "652",
@@ -991,7 +817,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "644",
@@ -1000,63 +826,52 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "642",
       "title": "Deno/Cloudflare loader plugins",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "599"
-      ],
+      "depends_on": ["599"],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "641",
       "title": "Shopify Functions template",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "578",
-        "599"
-      ],
+      "depends_on": ["578", "599"],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "640",
       "title": "WASI HTTP handler (unlocks serverless edge)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "578"
-      ],
+      "depends_on": ["578"],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "639",
       "title": "Full Component Model adapter (canonical ABI)",
       "priority": "critical",
       "feasibility": "hard",
-      "depends_on": [
-        "600"
-      ],
+      "depends_on": ["600"],
       "goal": "",
-      "status": null
+      "status": "ready"
     },
     {
       "id": "485",
       "title": "Well-known Symbols for RegExp protocol (87 tests)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "goal": "",
-      "status": null
+      "status": "ready"
     }
   ],
   "inprogress": [
@@ -1071,7 +886,7 @@
     },
     {
       "id": "786",
-      "title": "#786 -- Multi-assertion failures: returned N > 2 (~1,183 tests)",
+      "title": "- Multi-assertion failures: returned N > 2 (~1,183 tests)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -1079,10 +894,75 @@
       "status": "in-progress"
     }
   ],
+  "review": [
+    {
+      "id": "871",
+      "title": "Playground: default example throws WebAssembly.Exception at runtime",
+      "priority": "critical",
+      "feasibility": "medium",
+      "depends_on": ["861"],
+      "goal": "maintainability",
+      "status": "review"
+    },
+    {
+      "id": "860",
+      "title": "Promise executor and property-assigned functions not compiled as host callbacks",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "856",
+      "title": "Expected TypeError but got wrong error type (136 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "846",
+      "title": "assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests)",
+      "priority": "critical",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "826",
+      "title": "Illegal cast failures (1,276 runtime failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "825",
+      "title": "Null dereference failures (2,295 runtime failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    },
+    {
+      "id": "821",
+      "title": "BindingElement null guard over-triggering",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "review"
+    }
+  ],
   "done": [
     {
       "id": "797",
-      "title": "#797 -- Property descriptor subsystem (~5,000 tests)",
+      "title": "- Property descriptor subsystem (~5,000 tests)",
       "priority": "critical",
       "feasibility": "hard",
       "depends_on": [],
@@ -1091,7 +971,7 @@
     },
     {
       "id": "796",
-      "title": "#796 -- Destructuring initializer not evaluated when value is not undefined (121 fail)",
+      "title": "- Destructuring initializer not evaluated when value is not undefined (121 fail)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -1100,7 +980,7 @@
     },
     {
       "id": "795",
-      "title": "missing unbox coercion (57 CE)",
+      "title": "- f64.add on externref — missing unbox coercion (57 CE)",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
@@ -1121,9 +1001,7 @@
       "title": "#797b -- Object.getOwnPropertyDescriptor compile-time resolution",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "797a"
-      ],
+      "depends_on": ["797a"],
       "goal": "property-model",
       "status": "done"
     },
@@ -1132,9 +1010,7 @@
       "title": "#797d -- Object.freeze/seal/preventExtensions compile-away",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "797a"
-      ],
+      "depends_on": ["797a"],
       "goal": "property-model",
       "status": "done"
     },
@@ -1152,9 +1028,7 @@
       "title": "Follow-up to #931: source-anchored locations for compiler catch paths",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "931"
-      ],
+      "depends_on": ["931"],
       "goal": "developer-experience",
       "status": "done"
     },
@@ -1190,9 +1064,7 @@
       "title": "Add site-nav to report page and align styling with landing page",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "976"
-      ],
+      "depends_on": ["976"],
       "goal": "contributor-readiness",
       "status": "done"
     },
@@ -1201,9 +1073,7 @@
       "title": "Add responsive burger menu to site-nav component",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "976"
-      ],
+      "depends_on": ["976"],
       "goal": "contributor-readiness",
       "status": "done"
     },
@@ -1266,11 +1136,7 @@
       "title": "Mixed assertion failures after sprint 38 merges (~180 tests)",
       "priority": "medium",
       "feasibility": "hard",
-      "depends_on": [
-        "967",
-        "968",
-        "969"
-      ],
+      "depends_on": ["967", "968", "969"],
       "goal": "core-semantics",
       "status": "done"
     },
@@ -1333,9 +1199,7 @@
       "title": "Promise .then() not resolving on all Promise types (531 tests)",
       "priority": "critical",
       "feasibility": "hard",
-      "depends_on": [
-        "963"
-      ],
+      "depends_on": ["963"],
       "goal": "core-semantics",
       "status": "done"
     },
@@ -1508,7 +1372,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "942",
@@ -1533,9 +1397,7 @@
       "title": "Add String.fromCodePoint to WASI/standalone string helpers",
       "priority": "low",
       "feasibility": "easy",
-      "depends_on": [
-        "935"
-      ],
+      "depends_on": ["935"],
       "goal": "contributor-readiness",
       "status": "done"
     },
@@ -1598,9 +1460,7 @@
       "title": "Migrate report.html charts to shared t262-charts.js web components",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "925"
-      ],
+      "depends_on": ["925"],
       "goal": "contributor-readiness",
       "status": "done"
     },
@@ -1638,7 +1498,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "927",
@@ -1647,7 +1507,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "925",
@@ -1717,10 +1577,7 @@
       "title": "Create a curated batch of contributor-friendly starter issues with exact file ownership and acceptance criteria",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "914",
-        "915"
-      ],
+      "depends_on": ["914", "915"],
       "goal": "contributor-readiness",
       "status": "done"
     },
@@ -1731,7 +1588,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": null
+      "status": "done"
     },
     {
       "id": "916",
@@ -1774,22 +1631,18 @@
       "title": "Remove helper-call coercion from pure numeric recursive call/return paths",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "897"
-      ],
+      "depends_on": ["897"],
       "goal": "performance",
-      "status": null
+      "status": "done"
     },
     {
       "id": "901",
       "title": "Remove helper-call coercion from numeric GC-array element access",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "896"
-      ],
+      "depends_on": ["896"],
       "goal": "performance",
-      "status": null
+      "status": "done"
     },
     {
       "id": "900",
@@ -1807,7 +1660,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": null
+      "status": "done"
     },
     {
       "id": "898",
@@ -1816,7 +1669,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": null
+      "status": "done"
     },
     {
       "id": "897",
@@ -1825,7 +1678,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": null
+      "status": "done"
     },
     {
       "id": "896",
@@ -1834,7 +1687,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": null
+      "status": "done"
     },
     {
       "id": "895",
@@ -1861,16 +1714,14 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "done"
     },
     {
       "id": "886",
       "title": "Public test262 conformance report page",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "883"
-      ],
+      "depends_on": ["883"],
       "goal": "maintainability",
       "status": "done"
     },
@@ -1881,7 +1732,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "maintainability",
-      "status": null
+      "status": "done"
     },
     {
       "id": "883",
@@ -2016,7 +1867,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "843",
@@ -2034,7 +1885,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "840",
@@ -2043,7 +1894,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "836",
@@ -2097,7 +1948,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "822",
@@ -2106,7 +1957,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "819",
@@ -2128,7 +1979,7 @@
     },
     {
       "id": "798",
-      "title": "#798 -- try/catch JS exception interop (~3,000 tests)",
+      "title": "- try/catch JS exception interop (~3,000 tests)",
       "priority": "critical",
       "feasibility": "hard",
       "depends_on": [],
@@ -2149,9 +2000,7 @@
       "title": "#798b -- Catch variable unwrap",
       "priority": "high",
       "feasibility": "easy",
-      "depends_on": [
-        "798a"
-      ],
+      "depends_on": ["798a"],
       "goal": "error-model",
       "status": "done"
     },
@@ -2160,9 +2009,7 @@
       "title": "#798c -- Rethrow instruction for throw-of-catch-variable",
       "priority": "high",
       "feasibility": "easy",
-      "depends_on": [
-        "798a"
-      ],
+      "depends_on": ["798a"],
       "goal": "error-model",
       "status": "done"
     },
@@ -2171,9 +2018,7 @@
       "title": "Promise resolution and async error handling (210 tests)",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "944"
-      ],
+      "depends_on": ["944"],
       "goal": "core-semantics",
       "status": "done"
     },
@@ -2220,7 +2065,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "829",
@@ -2229,7 +2074,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "817",
@@ -2242,7 +2087,7 @@
     },
     {
       "id": "816",
-      "title": "#816 -- Remove overly broad String/prototype skip filter (1,073 tests re-enabled)",
+      "title": "- Remove overly broad String/prototype skip filter (1,073 tests re-enabled)",
       "priority": "high",
       "feasibility": "high",
       "depends_on": [],
@@ -2251,7 +2096,7 @@
     },
     {
       "id": "815",
-      "title": "#815 -- Regression: -617 pass from patch-rescue commits",
+      "title": "- Regression: -617 pass from patch-rescue commits",
       "priority": "critical",
       "feasibility": "medium",
       "depends_on": [],
@@ -2260,7 +2105,7 @@
     },
     {
       "id": "814",
-      "title": "#814 -- ArrayBuffer \"no dependency provided for extern class\" (413 tests)",
+      "title": "- ArrayBuffer 'no dependency provided for extern class' (413 tests)",
       "priority": "high",
       "feasibility": "easy",
       "depends_on": [],
@@ -2269,12 +2114,12 @@
     },
     {
       "id": "799",
-      "title": "#799 -- Prototype chain subsystem (~2,500 tests)",
+      "title": "- Prototype chain subsystem (~2,500 tests)",
       "priority": "critical",
       "feasibility": "hard",
       "depends_on": [],
       "goal": "property-model",
-      "status": null
+      "status": "done"
     },
     {
       "id": "799a",
@@ -2310,11 +2155,11 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": null
+      "status": "done"
     },
     {
       "id": "813",
-      "title": "#813 -- gen.next is not a function (1,164 tests)",
+      "title": "- gen.next is not a function (1,164 tests)",
       "priority": "critical",
       "feasibility": "medium",
       "depends_on": [],
@@ -2323,7 +2168,7 @@
     },
     {
       "id": "812",
-      "title": "#812 -- Test262Error \"no dependency provided for extern class\" (801 tests)",
+      "title": "- Test262Error 'no dependency provided for extern class' (801 tests)",
       "priority": "critical",
       "feasibility": "easy",
       "depends_on": [],
@@ -2332,18 +2177,16 @@
     },
     {
       "id": "801",
-      "title": "#801 -- Array literal type mismatch in nested destructuring defaults (537 fail)",
+      "title": "- Array literal type mismatch in nested destructuring defaults (537 fail)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "794"
-      ],
+      "depends_on": ["794"],
       "goal": "core-semantics",
       "status": "done"
     },
     {
       "id": "800",
-      "title": "#800 -- Audit: replace runtime emulation with compile-time resolution",
+      "title": "- Audit: replace runtime emulation with compile-time resolution",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -2352,7 +2195,7 @@
     },
     {
       "id": "794",
-      "title": "#794 -- BindingElement null guard over-triggering in destructuring (537 fail)",
+      "title": "- BindingElement null guard over-triggering in destructuring (537 fail)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2361,7 +2204,7 @@
     },
     {
       "id": "793",
-      "title": "#793 -- Infinite compilation loop on private-methods class expressions (5 tests)",
+      "title": "- Infinite compilation loop on private-methods class expressions (5 tests)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -2370,7 +2213,7 @@
     },
     {
       "id": "792",
-      "title": "#792 -- emitGuardedRefCast conflates \"wrong type\" with \"null\" (net-zero from #789)",
+      "title": "- emitGuardedRefCast conflates 'wrong type' with 'null' (net-zero from #789)",
       "priority": "critical",
       "feasibility": "medium",
       "depends_on": [],
@@ -2379,7 +2222,7 @@
     },
     {
       "id": "791",
-      "title": "#791 -- SyntaxError detection gaps: code compiles when it should not",
+      "title": "- SyntaxError detection gaps: code compiles when it should not",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2388,7 +2231,7 @@
     },
     {
       "id": "790",
-      "title": "#790 -- assert.throws(ReferenceError) not implemented (788 tests)",
+      "title": "- assert.throws(ReferenceError) not implemented (788 tests)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2397,7 +2240,7 @@
     },
     {
       "id": "789",
-      "title": "#789 -- TypeError null/undefined guard over-triggering (15,630 tests)",
+      "title": "- TypeError null/undefined guard over-triggering (15,630 tests)",
       "priority": "critical",
       "feasibility": "hard",
       "depends_on": [],
@@ -2406,7 +2249,7 @@
     },
     {
       "id": "787",
-      "title": "#787 -- Wrong values in assert.sameValue and other first-assertion failures (~3,517 tests)",
+      "title": "- Wrong values in assert.sameValue and other first-assertion failures (~3,517 tests)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2415,7 +2258,7 @@
     },
     {
       "id": "785",
-      "title": "#785 -- Null pointer traps in compiled Wasm code (~1,604 tests)",
+      "title": "- Null pointer traps in compiled Wasm code (~1,604 tests)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2424,7 +2267,7 @@
     },
     {
       "id": "784",
-      "title": "#784 -- Expected SyntaxError but compiled successfully (~2,657 tests)",
+      "title": "- Expected SyntaxError but compiled successfully (~2,657 tests)",
       "priority": "medium",
       "feasibility": "hard",
       "depends_on": [],
@@ -2433,7 +2276,7 @@
     },
     {
       "id": "783",
-      "title": "#783 -- assert.throws failures: missing exception throwing (~3,293 tests)",
+      "title": "- assert.throws failures: missing exception throwing (~3,293 tests)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2442,7 +2285,7 @@
     },
     {
       "id": "782",
-      "title": "#782 -- Destructuring binding patterns produce wrong values (~3,487 tests)",
+      "title": "- Destructuring binding patterns produce wrong values (~3,487 tests)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2451,7 +2294,7 @@
     },
     {
       "id": "781",
-      "title": "#781 -- TypeError (null/undefined access) in language constructs (~2,841 tests)",
+      "title": "- TypeError (null/undefined access) in language constructs (~2,841 tests)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2460,7 +2303,7 @@
     },
     {
       "id": "780",
-      "title": "#780 -- TypeError (null/undefined access) in built-in method dispatch (~9,128 tests)",
+      "title": "- TypeError (null/undefined access) in built-in method dispatch (~9,128 tests)",
       "priority": "critical",
       "feasibility": "hard",
       "depends_on": [],
@@ -2469,7 +2312,7 @@
     },
     {
       "id": "778",
-      "title": "#778 -- RuntimeError: illegal cast (135 tests)",
+      "title": "- RuntimeError: illegal cast (135 tests)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -2478,25 +2321,25 @@
     },
     {
       "id": "777",
-      "title": "#777 -- \"immutable global\" assignment error (240 CE)",
+      "title": "- 'immutable global' assignment error (240 CE)",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "776",
-      "title": "#776 -- \"not enough arguments on the stack for call\" (362 CE)",
+      "title": "- 'not enough arguments on the stack for call' (362 CE)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "775",
-      "title": "#775 -- Null pointer traps should be catchable TypeError (1,604 tests)",
+      "title": "- Null pointer traps should be catchable TypeError (1,604 tests)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2505,25 +2348,25 @@
     },
     {
       "id": "774",
-      "title": "#774 -- Missing early error checks: tests expect SyntaxError but compile successfully",
+      "title": "- Missing early error checks: tests expect SyntaxError but compile successfully",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "772",
-      "title": "#772 -- Insert missing extern.convert_any at call sites (1,299 CE)",
+      "title": "- Insert missing extern.convert_any at call sites (1,299 CE)",
       "priority": "critical",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "771",
-      "title": "#771 -- Arguments object incomplete (~617 tests)",
+      "title": "- Arguments object incomplete (~617 tests)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2532,7 +2375,7 @@
     },
     {
       "id": "770",
-      "title": "#770 -- propertyHelper.js verifyProperty not implemented (~1,219 tests)",
+      "title": "- propertyHelper.js verifyProperty not implemented (~1,219 tests)",
       "priority": "critical",
       "feasibility": "medium",
       "depends_on": [],
@@ -2541,122 +2384,115 @@
     },
     {
       "id": "769",
-      "title": "#769 -- Missing RegExp_new import after lib.d.ts refactoring (~600 CE)",
+      "title": "- Missing RegExp_new import after lib.d.ts refactoring (~600 CE)",
       "priority": "critical",
       "feasibility": "easy",
-      "depends_on": [
-        "740"
-      ],
+      "depends_on": ["740"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "768",
-      "title": "#768 -- throwOnNull default regression: ~6400 tests fail with TypeError (null/undefined access)",
+      "title": "- throwOnNull default regression: ~6400 tests fail with TypeError (null/undefined access)",
       "priority": "critical",
       "feasibility": "easy",
-      "depends_on": [
-        "716",
-        "728"
-      ],
+      "depends_on": ["716", "728"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "767",
-      "title": "#767 -- Equivalence test coverage gaps: RegExp, Promise, async iterators",
+      "title": "- Equivalence test coverage gaps: RegExp, Promise, async iterators",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "766",
-      "title": "#766 -- Symbol.iterator protocol for custom iterables",
+      "title": "- Symbol.iterator protocol for custom iterables",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "765",
-      "title": "#765 -- Compile error triage: 4,443 remaining CEs by pattern",
+      "title": "- Compile error triage: 4,443 remaining CEs by pattern",
       "priority": "critical",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "764",
-      "title": "#764 -- \"immutable global\" assignment error (240 CE)",
+      "title": "- 'immutable global' assignment error (240 CE)",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "763",
-      "title": "#763 -- RegExp runtime method gaps (exec, match, replace, split)",
+      "title": "- RegExp runtime method gaps (exec, match, replace, split)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "761",
-      "title": "#761 -- Rest/spread elements silently dropped in destructuring (5 codegen paths)",
+      "title": "- Rest/spread elements silently dropped in destructuring (5 codegen paths)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "754",
-      "title": "#754 -- RegExp_new import not registered from real TypeScript lib files (1,468 CE)",
+      "title": "- RegExp_new import not registered from real TypeScript lib files (1,468 CE)",
       "priority": "critical",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "740",
-      "title": "#740 -- Remove duplicated lib.d.ts copies, read from typescript package at runtime",
+      "title": "- Remove duplicated lib.d.ts copies, read from typescript package at runtime",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "738",
-      "title": "#738 -- instanceof correctness (276 tests)",
+      "title": "- instanceof correctness (276 tests)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "678"
-      ],
+      "depends_on": ["678"],
       "goal": "builtin-methods, class-system",
       "status": "done"
     },
     {
       "id": "737",
-      "title": "#737 -- Undefined-handling edge cases (276 tests)",
+      "title": "- Undefined-handling edge cases (276 tests)",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "736",
-      "title": "#736 -- SyntaxError detection at compile time (316 tests)",
+      "title": "- SyntaxError detection at compile time (316 tests)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -2665,7 +2501,7 @@
     },
     {
       "id": "734",
-      "title": "#734 -- Array method correctness (343 tests)",
+      "title": "- Array method correctness (343 tests)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -2674,27 +2510,25 @@
     },
     {
       "id": "733",
-      "title": "#733 -- RangeError validation in built-ins (442 tests)",
+      "title": "- RangeError validation in built-ins (442 tests)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "732",
-      "title": "#732 -- hasOwnProperty correctness (520 tests)",
+      "title": "- hasOwnProperty correctness (520 tests)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "678"
-      ],
+      "depends_on": ["678"],
       "goal": "property-model",
       "status": "done"
     },
     {
       "id": "731",
-      "title": "#731 -- Function/class .name property (558 tests)",
+      "title": "- Function/class .name property (558 tests)",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
@@ -2703,7 +2537,7 @@
     },
     {
       "id": "730",
-      "title": "#730 -- Missing exception paths: 708 tests expect throws but code runs to completion",
+      "title": "- Missing exception paths: 708 tests expect throws but code runs to completion",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -2712,46 +2546,39 @@
     },
     {
       "id": "729",
-      "title": "#729 -- Class feature codegen gaps (1,161 tests)",
+      "title": "- Class feature codegen gaps (1,161 tests)",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "678"
-      ],
+      "depends_on": ["678"],
       "goal": "",
       "status": "done"
     },
     {
       "id": "728",
-      "title": "#728 -- Null pointer dereference should throw TypeError, not trap (1,604 tests)",
+      "title": "- Null pointer dereference should throw TypeError, not trap (1,604 tests)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "695"
-      ],
+      "depends_on": ["695"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "727",
-      "title": "#727 -- Sub-classify assertion failures (11,480 tests return wrong values)",
+      "title": "- Sub-classify assertion failures (11,480 tests return wrong values)",
       "priority": "high",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "726",
-      "title": "#726 -- TypeError regression: ref.cast guard returns ref.null for valid objects (1,948 tests)",
+      "title": "- TypeError regression: ref.cast guard returns ref.null for valid objects (1,948 tests)",
       "priority": "critical",
       "feasibility": "medium",
-      "depends_on": [
-        "695",
-        "706"
-      ],
+      "depends_on": ["695", "706"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "725",
@@ -2769,16 +2596,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "723",
-      "title": "#723 -- TDZ violations: throw ReferenceError before let/const init (230 FAIL)",
+      "title": "- TDZ violations: throw ReferenceError before let/const init (230 FAIL)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "722",
@@ -2805,7 +2632,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "719",
@@ -2814,7 +2641,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "718",
@@ -2845,12 +2672,12 @@
     },
     {
       "id": "715",
-      "title": "#715 -- Fix 3,622 test262 crashes: emitNullGuardedStructGet missing ctx parameter",
+      "title": "- Fix 3,622 test262 crashes: emitNullGuardedStructGet missing ctx parameter",
       "priority": "critical",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "714",
@@ -2859,7 +2686,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "713",
@@ -2868,7 +2695,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "712",
@@ -2886,7 +2713,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "710",
@@ -2895,7 +2722,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "709",
@@ -2904,7 +2731,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "708",
@@ -2922,7 +2749,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "706",
@@ -2938,11 +2765,9 @@
       "title": "Wasm validation: not enough arguments on the stack (361 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "698"
-      ],
+      "depends_on": ["698"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "704",
@@ -2969,7 +2794,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "701",
@@ -2978,36 +2803,34 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "698",
-      "title": "#698 -- Call type mismatch residual (1,044 CE)",
+      "title": "- Call type mismatch residual (1,044 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "659"
-      ],
+      "depends_on": ["659"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "697",
-      "title": "#697 -- Struct type errors for non-class structs (944 CE residual)",
+      "title": "- Struct type errors for non-class structs (944 CE residual)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "696",
-      "title": "Classify \"other fail\" runtime errors (4,649 FAIL)",
+      "title": "Classify 'other fail' runtime errors (4,649 FAIL)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "695",
@@ -3016,18 +2839,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "694",
       "title": "Migrate test262 runner to vitest with per-test disk cache",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "693"
-      ],
+      "depends_on": ["693"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "693",
@@ -3043,36 +2864,27 @@
       "title": "Async pipelined execution: overlap load/compile/run stages",
       "priority": "medium",
       "feasibility": "hard",
-      "depends_on": [
-        "689",
-        "690",
-        "691"
-      ],
+      "depends_on": ["689", "690", "691"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "691",
       "title": "Pipeline architecture: interleave stages and minimize memory pressure",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "689",
-        "690"
-      ],
+      "depends_on": ["689", "690"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "690",
       "title": "Streaming test results with incremental report updates and zero-copy worker IPC",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "689"
-      ],
+      "depends_on": ["689"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "689",
@@ -3081,7 +2893,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "686",
@@ -3099,27 +2911,23 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "679",
       "title": "Dual string backend: js-host mode vs standalone mode",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "599"
-      ],
+      "depends_on": ["599"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "678",
       "title": "Dynamic prototype chain traversal",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "631"
-      ],
+      "depends_on": ["631"],
       "goal": "",
       "status": "done"
     },
@@ -3128,11 +2936,9 @@
       "title": "Full property descriptor support (writable/enumerable/configurable)",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "125"
-      ],
+      "depends_on": ["125"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "676",
@@ -3141,7 +2947,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "675",
@@ -3150,7 +2956,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "673",
@@ -3168,18 +2974,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "670",
       "title": "Proxy trap execution (beyond pass-through)",
       "priority": "critical",
       "feasibility": "medium",
-      "depends_on": [
-        "498"
-      ],
+      "depends_on": ["498"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "669",
@@ -3188,34 +2992,34 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "668",
-      "title": "\"String literal not registered\" for empty string (43 CE)",
+      "title": "'String literal not registered' for empty string (43 CE)",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "667",
-      "title": "\"hint is not defined\" in toPrimitive coercion (71 CE)",
+      "title": "'hint is not defined' in toPrimitive coercion (71 CE)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "666",
-      "title": "Suppress \"await outside async\" diagnostic (146 CE)",
+      "title": "Suppress 'await outside async' diagnostic (146 CE)",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "665",
@@ -3233,16 +3037,14 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "663",
-      "title": "#663 -- Null pointer dereferences from missing property access (2,050 FAIL)",
+      "title": "- Null pointer dereferences from missing property access (2,050 FAIL)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "647"
-      ],
+      "depends_on": ["647"],
       "goal": "",
       "status": "done"
     },
@@ -3269,20 +3071,16 @@
       "title": "Call type mismatch residual (609 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "626"
-      ],
+      "depends_on": ["626"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "658",
       "title": "local.set type mismatch residual (659 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "625"
-      ],
+      "depends_on": ["625"],
       "goal": "",
       "status": "done"
     },
@@ -3291,31 +3089,27 @@
       "title": "Yield outside generator residual (411 CE)",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "628"
-      ],
+      "depends_on": ["628"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "656",
       "title": "Null pointer dereferences (2,050 FAIL)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "647"
-      ],
+      "depends_on": ["647"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "655",
-      "title": "#655 -- Stack fallthrough errors (671 CE)",
+      "title": "- Stack fallthrough errors (671 CE)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "654",
@@ -3324,7 +3118,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "653",
@@ -3333,7 +3127,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "651",
@@ -3342,7 +3136,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "650",
@@ -3358,11 +3152,9 @@
       "title": "Residual stack underflow (876 CE)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "627"
-      ],
+      "depends_on": ["627"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "648",
@@ -3378,9 +3170,7 @@
       "title": "Residual null pointer dereferences (1,374 FAIL)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "622"
-      ],
+      "depends_on": ["622"],
       "goal": "",
       "status": "done"
     },
@@ -3389,22 +3179,18 @@
       "title": "Residual undefined .kind: more AST node handlers (5,329 CE)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "619"
-      ],
+      "depends_on": ["619"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "645",
       "title": "Add testTypedArray.js to allowed includes (1,731 skip)",
       "priority": "high",
       "feasibility": "easy",
-      "depends_on": [
-        "608"
-      ],
+      "depends_on": ["608"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "643",
@@ -3413,7 +3199,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "638",
@@ -3431,7 +3217,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "636",
@@ -3440,7 +3226,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "635",
@@ -3449,7 +3235,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "634",
@@ -3458,7 +3244,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "633",
@@ -3467,7 +3253,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "632",
@@ -3476,7 +3262,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "631",
@@ -3494,7 +3280,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "629",
@@ -3503,7 +3289,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "628",
@@ -3530,7 +3316,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "625",
@@ -3539,7 +3325,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "624",
@@ -3548,18 +3334,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "623",
       "title": "Worker timeout: 559 tests killed after 60s",
       "priority": "high",
       "feasibility": "easy",
-      "depends_on": [
-        "610"
-      ],
+      "depends_on": ["610"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "622",
@@ -3568,7 +3352,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "621",
@@ -3577,7 +3361,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "620",
@@ -3586,7 +3370,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "619",
@@ -3604,7 +3388,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "617",
@@ -3622,7 +3406,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "614",
@@ -3640,7 +3424,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "612",
@@ -3649,7 +3433,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "611",
@@ -3658,7 +3442,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "609",
@@ -3667,7 +3451,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "608",
@@ -3676,7 +3460,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "607",
@@ -3685,18 +3469,16 @@
       "feasibility": "varies",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "606",
       "title": "Test harness gaps: propertyHelper.js, assert.throws, String() indexer (1,105 tests)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "125"
-      ],
+      "depends_on": ["125"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "605",
@@ -3714,7 +3496,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "548",
@@ -3723,7 +3505,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "547",
@@ -3768,7 +3550,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "542",
@@ -3786,7 +3568,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "540",
@@ -3813,7 +3595,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "536",
@@ -3822,7 +3604,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "535",
@@ -3831,7 +3613,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "534",
@@ -3849,7 +3631,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "532",
@@ -3894,7 +3676,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "526",
@@ -3903,7 +3685,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "525",
@@ -3912,7 +3694,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "524",
@@ -3921,7 +3703,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "523",
@@ -3930,7 +3712,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "522",
@@ -3957,7 +3739,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "519",
@@ -3984,7 +3766,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "516",
@@ -4054,9 +3836,7 @@
       "title": "Post-fix error analysis: create issues from fresh test262 run",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "goal": "",
       "status": "done"
     },
@@ -4067,7 +3847,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "507",
@@ -4076,7 +3856,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "506",
@@ -4085,29 +3865,25 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "505",
       "title": "Playground: integrate test262 results into test262 browser panel",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "504",
       "title": "Auto-generated README feature coverage + benchmark tables",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "503",
@@ -4116,18 +3892,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "502",
       "title": "Quick wins: narrow stale skip filters (~1,160 tests)",
       "priority": "critical",
       "feasibility": "easy",
-      "depends_on": [
-        "471"
-      ],
+      "depends_on": ["471"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "501",
@@ -4136,7 +3910,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "500",
@@ -4145,18 +3919,16 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "499",
       "title": "with statement via static identifier dispatch (94 tests)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "488"
-      ],
+      "depends_on": ["488"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "54",
@@ -4165,7 +3937,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "53",
@@ -4174,7 +3946,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "52",
@@ -4183,7 +3955,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "51",
@@ -4192,7 +3964,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "50",
@@ -4201,7 +3973,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "5",
@@ -4210,7 +3982,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "512-illegal-cast-closures",
@@ -4223,7 +3995,7 @@
     },
     {
       "id": "603",
-      "title": "#603 -- Remove ~5,100 stale skip filters blocking already-implemented features",
+      "title": "- Remove ~5,100 stale skip filters blocking already-implemented features",
       "priority": "critical",
       "feasibility": "easy",
       "depends_on": [],
@@ -4232,12 +4004,12 @@
     },
     {
       "id": "602",
-      "title": "#602 -- Tail call optimization: emit return_call for recursive functions",
+      "title": "- Tail call optimization: emit return_call for recursive functions",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "601",
@@ -4253,16 +4025,13 @@
       "title": "Component Model output: WIT interfaces from TypeScript types",
       "priority": "high",
       "feasibility": "hard",
-      "depends_on": [
-        "598",
-        "599"
-      ],
+      "depends_on": ["598", "599"],
       "goal": "",
       "status": "done"
     },
     {
       "id": "599",
-      "title": "#599 -- Self-contained WasmGC strings: eliminate wasm:js-string dependency",
+      "title": "- Self-contained WasmGC strings: eliminate wasm:js-string dependency",
       "priority": "critical",
       "feasibility": "hard",
       "depends_on": [],
@@ -4276,7 +4045,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "597",
@@ -4285,7 +4054,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "596",
@@ -4294,7 +4063,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "595",
@@ -4316,12 +4085,12 @@
     },
     {
       "id": "593",
-      "title": "#593 -- Minor security/correctness fixes across emit + runtime",
+      "title": "- Minor security/correctness fixes across emit + runtime",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "592",
@@ -4337,12 +4106,9 @@
       "title": "Split expressions.ts (24,427 lines) into focused modules",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "586",
-        "587"
-      ],
+      "depends_on": ["586", "587"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "590",
@@ -4351,7 +4117,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "589",
@@ -4360,7 +4126,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "588",
@@ -4378,7 +4144,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "586",
@@ -4396,7 +4162,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "584",
@@ -4405,7 +4171,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "583",
@@ -4423,7 +4189,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "581",
@@ -4432,7 +4198,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "578",
@@ -4445,12 +4211,12 @@
     },
     {
       "id": "577",
-      "title": "#577 -- Run test262 in a worktree to avoid mid-run code changes",
+      "title": "- Run test262 in a worktree to avoid mid-run code changes",
       "priority": "high",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "576",
@@ -4468,7 +4234,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "574",
@@ -4486,7 +4252,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "572",
@@ -4499,7 +4265,7 @@
     },
     {
       "id": "571",
-      "title": "#571 -- struct.new argument count mismatch (231 CE)",
+      "title": "- struct.new argument count mismatch (231 CE)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -4508,12 +4274,12 @@
     },
     {
       "id": "568",
-      "title": "#568 -- Wasm validation: local.set type mismatch (198 CE)",
+      "title": "- Wasm validation: local.set type mismatch (198 CE)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "567",
@@ -4531,7 +4297,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "564",
@@ -4549,7 +4315,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "562",
@@ -4558,7 +4324,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "561",
@@ -4567,7 +4333,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "560",
@@ -4576,7 +4342,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "559",
@@ -4585,7 +4351,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "558",
@@ -4666,7 +4432,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "497",
@@ -4675,7 +4441,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "496",
@@ -4691,11 +4457,9 @@
       "title": "Array-like objects with numeric keys (77 tests)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "488"
-      ],
+      "depends_on": ["488"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "494",
@@ -4704,16 +4468,16 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "493",
-      "title": "#493 -- Narrow prototype chain skip filter (502 tests, was 233 at filing)",
+      "title": "- Narrow prototype chain skip filter (502 tests, was 233 at filing)",
       "priority": "medium",
       "feasibility": "low",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "492",
@@ -4722,7 +4486,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "491",
@@ -4731,7 +4495,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "490",
@@ -4740,7 +4504,7 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "489",
@@ -4749,7 +4513,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "488",
@@ -4758,63 +4522,52 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "487",
       "title": "User Symbol as property key via tagged struct variant (~60 tests)",
       "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "481",
-        "483"
-      ],
+      "depends_on": ["481", "483"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "486",
       "title": "Well-known Symbol.toStringTag and Symbol.hasInstance (22 tests)",
       "priority": "low",
       "feasibility": "easy",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "484",
       "title": "Well-known Symbol.species for constructor delegation (52 tests)",
       "priority": "medium",
       "feasibility": "hard",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "483",
       "title": "Symbol() constructor and typeof symbol (207 tests)",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "471"
-      ],
+      "depends_on": ["471"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "482",
       "title": "Well-known Symbol.toPrimitive for type coercion (113 tests)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "481",
@@ -4823,7 +4576,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "480",
@@ -4929,9 +4682,7 @@
       "title": "React milestone 3: hooks state machine (useState, useEffect)",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "455"
-      ],
+      "depends_on": ["455"],
       "goal": "",
       "status": "done"
     },
@@ -5066,9 +4817,7 @@
       "title": "Compile pako (zlib) to Wasm and benchmark vs JS",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "450"
-      ],
+      "depends_on": ["450"],
       "goal": "",
       "status": "done"
     },
@@ -5356,9 +5105,7 @@
       "title": "Generator type mismatch errors (19 CE)",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "287"
-      ],
+      "depends_on": ["287"],
       "goal": "",
       "status": "done"
     },
@@ -5486,7 +5233,7 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "407",
@@ -5553,12 +5300,12 @@
     },
     {
       "id": "400",
-      "title": "#400 -- Endo/SES-like freezing/locking of insecure language features",
+      "title": "- Endo/SES-like freezing/locking of insecure language features",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "399",
@@ -5567,7 +5314,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "398",
@@ -5580,7 +5327,7 @@
     },
     {
       "id": "397",
-      "title": "#397 -- assert.throws test support (952 SKIP)",
+      "title": "- assert.throws test support (952 SKIP)",
       "priority": "medium",
       "feasibility": "hard",
       "depends_on": [],
@@ -5592,15 +5339,13 @@
       "title": "Null pointer dereference in destructuring (118 FAIL)",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [
-        "394"
-      ],
+      "depends_on": ["394"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "395",
-      "title": "#395 -- Runtime \"fn is not a function\" errors (70 FAIL)",
+      "title": "- Runtime 'fn is not a function' errors (70 FAIL)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -5618,21 +5363,21 @@
     },
     {
       "id": "393",
-      "title": "#393 -- Compound assignment on externref element access (13 CE)",
+      "title": "- Compound assignment on externref element access (13 CE)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "392",
-      "title": "#392 -- Unknown field access on class structs (18 CE)",
+      "title": "- Unknown field access on class structs (18 CE)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "391",
@@ -5645,30 +5390,30 @@
     },
     {
       "id": "390",
-      "title": "#390 -- Assignment to non-array types (70 CE)",
+      "title": "- Assignment to non-array types (70 CE)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "389",
-      "title": "#389 -- Element access on class instances (76 CE)",
+      "title": "- Element access on class instances (76 CE)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "388",
-      "title": "#388 -- Element access on externref (104 CE)",
+      "title": "- Element access on externref (104 CE)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "387",
@@ -5677,124 +5422,124 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "386",
-      "title": "#386 -- Remaining small CE patterns",
+      "title": "- Remaining small CE patterns",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "385",
-      "title": "#385 -- Array method argument count errors",
+      "title": "- Array method argument count errors",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "384",
-      "title": "#384 -- replaceAll and other missing string methods",
+      "title": "- replaceAll and other missing string methods",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "383",
-      "title": "#383 -- Label not allowed / let declaration errors",
+      "title": "- Label not allowed / let declaration errors",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "382",
-      "title": "#382 -- Spread argument in super/function calls",
+      "title": "- Spread argument in super/function calls",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "381",
-      "title": "#381 -- Nullish coalescing false positives",
+      "title": "- Nullish coalescing false positives",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "380",
-      "title": "#380 -- Unknown variable/function in test scope",
+      "title": "- Unknown variable/function in test scope",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "379",
-      "title": "#379 -- Tuple/destructuring type errors",
+      "title": "- Tuple/destructuring type errors",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "378",
-      "title": "#378 -- Increment/decrement on property/element access",
+      "title": "- Increment/decrement on property/element access",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "377",
-      "title": "#377 -- Getter/setter accessor edge cases",
+      "title": "- Getter/setter accessor edge cases",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "376",
-      "title": "#376 -- Decorator syntax support",
+      "title": "- Decorator syntax support",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "375",
-      "title": "#375 -- Unsupported expression: SuperKeyword",
+      "title": "- Unsupported expression: SuperKeyword",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "374",
-      "title": "#374 -- Miscellaneous small patterns",
+      "title": "- Miscellaneous small patterns",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "373",
@@ -5807,25 +5552,25 @@
     },
     {
       "id": "372",
-      "title": "#372 -- String.prototype.matchAll",
+      "title": "- String.prototype.matchAll",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "371",
-      "title": "#371 -- import.meta support",
+      "title": "- import.meta support",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "370",
-      "title": "#370 -- WeakMap and WeakSet (skip filter narrowing)",
+      "title": "- WeakMap and WeakSet (skip filter narrowing)",
       "priority": "low",
       "feasibility": "hard",
       "depends_on": [],
@@ -5834,39 +5579,39 @@
     },
     {
       "id": "369",
-      "title": "#369 -- globalThis support",
+      "title": "- globalThis support",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "368",
-      "title": "#368 -- Global/arrow `this` reference",
+      "title": "- Global/arrow `this` reference",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "367",
-      "title": "#367 -- String variable concatenation in comparisons",
+      "title": "- String variable concatenation in comparisons",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "366",
-      "title": "#366 -- Object.create support",
+      "title": "- Object.create support",
       "priority": "low",
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "365",
@@ -5879,21 +5624,21 @@
     },
     {
       "id": "364",
-      "title": "#364 -- call/apply on arrow functions",
+      "title": "- call/apply on arrow functions",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "363",
-      "title": "#363 -- Tagged template .raw property and identity",
+      "title": "- Tagged template .raw property and identity",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "362",
@@ -5915,7 +5660,7 @@
     },
     {
       "id": "360",
-      "title": "#360 -- JSON.stringify result comparison",
+      "title": "- JSON.stringify result comparison",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
@@ -5924,25 +5669,25 @@
     },
     {
       "id": "359",
-      "title": "#359 -- Object mutability methods (Object.freeze/seal/preventExtensions)",
+      "title": "- Object mutability methods (Object.freeze/seal/preventExtensions)",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "357",
-      "title": "#357 -- IIFE tagged templates",
+      "title": "- IIFE tagged templates",
       "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "356",
-      "title": "#356 -- Closure-as-value in assert and array-like objects",
+      "title": "- Closure-as-value in assert and array-like objects",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
@@ -5951,12 +5696,12 @@
     },
     {
       "id": "355",
-      "title": "#355 -- Object.keys/values/entries completion",
+      "title": "- Object.keys/values/entries completion",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "354",
@@ -5969,7 +5714,7 @@
     },
     {
       "id": "353",
-      "title": "#353 -- For-of with generators and custom iterators",
+      "title": "- For-of with generators and custom iterators",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -5978,12 +5723,12 @@
     },
     {
       "id": "352",
-      "title": "#352 -- Delete operator",
+      "title": "- Delete operator",
       "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "351",
@@ -6005,7 +5750,7 @@
     },
     {
       "id": "349",
-      "title": "#349 -- String() constructor as function",
+      "title": "- String() constructor as function",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
@@ -6014,39 +5759,39 @@
     },
     {
       "id": "348",
-      "title": "#348 -- Null/undefined arithmetic coercion",
+      "title": "- Null/undefined arithmetic coercion",
       "priority": "high",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "347",
-      "title": "#347 -- Function/class .name property completion",
+      "title": "- Function/class .name property completion",
       "priority": "high",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "345",
-      "title": "#345 -- Symbol.iterator and iterable protocol",
+      "title": "- Symbol.iterator and iterable protocol",
       "priority": "medium",
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "344",
-      "title": "#344 -- Wrapper constructors (new Number, new String, new Boolean)",
+      "title": "- Wrapper constructors (new Number, new String, new Boolean)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "343",
@@ -6059,30 +5804,30 @@
     },
     {
       "id": "342",
-      "title": "#342 -- Array.prototype.method.call/apply patterns",
+      "title": "- Array.prototype.method.call/apply patterns",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "341",
-      "title": "#341 -- Property introspection (hasOwnProperty, propertyIsEnumerable)",
+      "title": "- Property introspection (hasOwnProperty, propertyIsEnumerable)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "340",
-      "title": "#340 -- Error throwing and try/catch/finally",
+      "title": "- Error throwing and try/catch/finally",
       "priority": "high",
       "feasibility": "hard",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "339",
@@ -6095,52 +5840,52 @@
     },
     {
       "id": "338",
-      "title": "#338 -- Negative test support in test262 runner",
+      "title": "- Negative test support in test262 runner",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "337",
-      "title": "#337 -- Null property access at runtime",
+      "title": "- Null property access at runtime",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "336",
-      "title": "#336 -- For-of assignment destructuring on non-struct refs",
+      "title": "- For-of assignment destructuring on non-struct refs",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "335",
-      "title": "#335 -- Parser comma errors (non-computed-property contexts)",
+      "title": "- Parser comma errors (non-computed-property contexts)",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "334",
-      "title": "#334 -- Private class fields and methods",
+      "title": "- Private class fields and methods",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "333",
-      "title": "#333 -- Dynamic import modifier syntax errors",
+      "title": "- Dynamic import modifier syntax errors",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
@@ -6149,84 +5894,84 @@
     },
     {
       "id": "332",
-      "title": "#332 -- Export declaration at top level errors",
+      "title": "- Export declaration at top level errors",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "331",
-      "title": "#331 -- Strict mode arguments/eval identifier restriction",
+      "title": "- Strict mode arguments/eval identifier restriction",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "330",
-      "title": "#330 -- ClassExpression in unsupported positions",
+      "title": "- ClassExpression in unsupported positions",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "329",
-      "title": "#329 -- Object.setPrototypeOf support",
+      "title": "- Object.setPrototypeOf support",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "328",
-      "title": "#328 -- OmittedExpression (array holes/elision)",
+      "title": "- OmittedExpression (array holes/elision)",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "327",
-      "title": "#327 -- Object-to-primitive coercion (valueOf/toString)",
+      "title": "- Object-to-primitive coercion (valueOf/toString)",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "326",
-      "title": "#326 -- Array element access out of bounds",
+      "title": "- Array element access out of bounds",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "325",
-      "title": "#325 -- Null pointer dereference at runtime",
+      "title": "- Null pointer dereference at runtime",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "324",
-      "title": "#324 -- Runtime test failures (wrong return values)",
+      "title": "- Runtime test failures (wrong return values)",
       "priority": "high",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "323",
@@ -6242,11 +5987,9 @@
       "title": "[ts2wasm] Inline trig/transcendental Math methods as pure Wasm",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "321"
-      ],
+      "depends_on": ["321"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "321",
@@ -6262,10 +6005,7 @@
       "title": "[ts2wasm] Codegen: Dead import and type elimination",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "317",
-        "321"
-      ],
+      "depends_on": ["317", "321"],
       "goal": "",
       "status": "done"
     },
@@ -6276,19 +6016,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "318",
       "title": "[ts2wasm] Codegen: Infer parameter types from call-site arguments for untyped functions",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "317",
-        "320"
-      ],
+      "depends_on": ["317", "320"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "317",
@@ -6306,19 +6043,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "315",
       "title": "Issue #315: Wasm validation error audit -- systematic fix for type mismatches",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "277",
-        "178"
-      ],
+      "depends_on": ["277", "178"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "314",
@@ -6327,7 +6061,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "313",
@@ -6336,7 +6070,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "312",
@@ -6345,7 +6079,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "311",
@@ -6354,7 +6088,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "310",
@@ -6363,7 +6097,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "309",
@@ -6381,7 +6115,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "307",
@@ -6390,7 +6124,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "306",
@@ -6399,7 +6133,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "305",
@@ -6408,7 +6142,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "304",
@@ -6417,7 +6151,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "303",
@@ -6426,7 +6160,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "302",
@@ -6435,7 +6169,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "301",
@@ -6444,19 +6178,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "300",
       "title": "Issue #300: Runtime failures -- object to primitive conversion",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "138",
-        "139"
-      ],
+      "depends_on": ["138", "139"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "299",
@@ -6465,7 +6196,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "298",
@@ -6474,7 +6205,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "297",
@@ -6483,7 +6214,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "296",
@@ -6492,7 +6223,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "295",
@@ -6501,7 +6232,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "294",
@@ -6510,7 +6241,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "293",
@@ -6519,7 +6250,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "292",
@@ -6528,7 +6259,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "291",
@@ -6537,7 +6268,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "290",
@@ -6546,7 +6277,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "289",
@@ -6555,7 +6286,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "288",
@@ -6564,19 +6295,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "287",
       "title": "Issue #287: Generator function compile errors -- yield in nested contexts",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "241",
-        "267"
-      ],
+      "depends_on": ["241", "267"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "286",
@@ -6585,7 +6313,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "285",
@@ -6594,7 +6322,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "284",
@@ -6603,7 +6331,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "283",
@@ -6612,7 +6340,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "282",
@@ -6621,7 +6349,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "281",
@@ -6630,7 +6358,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "280",
@@ -6639,7 +6367,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "279",
@@ -6648,7 +6376,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "278",
@@ -6657,7 +6385,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "277",
@@ -6666,7 +6394,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "276",
@@ -6675,7 +6403,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "275",
@@ -6684,7 +6412,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "274",
@@ -6693,7 +6421,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "273",
@@ -6702,7 +6430,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "272",
@@ -6711,7 +6439,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "271",
@@ -6720,7 +6448,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "270",
@@ -6729,7 +6457,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "269",
@@ -6738,7 +6466,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "268",
@@ -6747,7 +6475,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "267",
@@ -6756,7 +6484,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "266",
@@ -6765,7 +6493,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "265",
@@ -6774,7 +6502,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "264",
@@ -6783,7 +6511,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "263",
@@ -6792,7 +6520,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "262",
@@ -6801,7 +6529,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "261",
@@ -6810,7 +6538,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "260",
@@ -6828,7 +6556,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "258",
@@ -6837,7 +6565,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "257",
@@ -6846,7 +6574,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "256",
@@ -6855,7 +6583,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "255",
@@ -6864,7 +6592,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "254",
@@ -6873,7 +6601,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "253",
@@ -6882,7 +6610,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "252",
@@ -6891,7 +6619,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "251",
@@ -6900,7 +6628,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "250",
@@ -6909,7 +6637,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "249",
@@ -6918,7 +6646,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "248",
@@ -6927,7 +6655,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "247",
@@ -6936,7 +6664,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "246",
@@ -6945,7 +6673,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "245",
@@ -6954,7 +6682,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "244",
@@ -6963,7 +6691,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "243",
@@ -6972,7 +6700,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "242",
@@ -6981,7 +6709,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "241",
@@ -6990,7 +6718,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "240",
@@ -6999,7 +6727,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "239",
@@ -7008,7 +6736,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "238",
@@ -7017,7 +6745,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "237",
@@ -7026,7 +6754,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "236",
@@ -7035,7 +6763,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "235",
@@ -7044,7 +6772,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "234",
@@ -7053,7 +6781,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "233",
@@ -7062,7 +6790,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "232",
@@ -7071,7 +6799,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "231",
@@ -7080,7 +6808,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "230",
@@ -7089,7 +6817,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "229",
@@ -7098,7 +6826,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "228",
@@ -7107,7 +6835,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "227",
@@ -7116,7 +6844,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "226",
@@ -7125,7 +6853,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "225",
@@ -7134,7 +6862,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "224",
@@ -7143,7 +6871,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "223",
@@ -7152,7 +6880,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "222",
@@ -7161,7 +6889,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "221",
@@ -7170,16 +6898,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "220",
-      "title": "#220 -- ClassDeclaration compile errors in all statement positions",
+      "title": "- ClassDeclaration compile errors in all statement positions",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "219",
@@ -7188,7 +6916,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "218",
@@ -7197,16 +6925,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "217",
-      "title": "#217 -- While/do-while with string/object loop conditions and labeled block break",
+      "title": "- While/do-while with string/object loop conditions and labeled block break",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "216",
@@ -7215,7 +6943,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "215",
@@ -7224,7 +6952,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "214",
@@ -7233,16 +6961,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "213",
-      "title": "#213 -- Bug: New expression spread arguments",
+      "title": "- Bug: New expression spread arguments",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "212",
@@ -7251,16 +6979,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "211",
-      "title": "#211 -- Function statement runtime failures",
+      "title": "- Function statement runtime failures",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "210",
@@ -7269,16 +6997,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "209",
-      "title": "#209 -- For-loop continue with string concatenation: any-typed += dispatch",
+      "title": "- For-loop continue with string concatenation: any-typed += dispatch",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "208",
@@ -7287,7 +7015,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "207",
@@ -7296,7 +7024,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "206",
@@ -7305,7 +7033,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "205",
@@ -7314,7 +7042,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "204",
@@ -7332,16 +7060,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "202",
-      "title": "Variable scope and hoisting: \"Cannot find name\" / \"Unknown identifier\"",
+      "title": "Variable scope and hoisting: 'Cannot find name' / 'Unknown identifier'",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "201",
@@ -7350,7 +7078,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "200",
@@ -7359,7 +7087,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "199",
@@ -7368,7 +7096,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "198",
@@ -7377,7 +7105,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "197",
@@ -7386,7 +7114,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "196",
@@ -7395,7 +7123,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "195",
@@ -7404,7 +7132,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "194",
@@ -7413,7 +7141,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "193",
@@ -7422,7 +7150,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "192",
@@ -7431,7 +7159,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "191",
@@ -7440,7 +7168,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "190",
@@ -7449,7 +7177,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "189",
@@ -7458,7 +7186,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "188",
@@ -7467,7 +7195,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "187",
@@ -7476,7 +7204,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "186",
@@ -7485,7 +7213,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "185",
@@ -7494,16 +7222,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "184",
-      "title": "#184 -- Function arity mismatch: \"not enough arguments on the stack\"",
+      "title": "- Function arity mismatch: 'not enough arguments on the stack'",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "183",
@@ -7512,7 +7240,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "182",
@@ -7521,7 +7249,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "181",
@@ -7530,16 +7258,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "180",
-      "title": "JS var re-declaration: \"Subsequent variable declarations must have the same type\"",
+      "title": "JS var re-declaration: 'Subsequent variable declarations must have the same type'",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "179",
@@ -7548,7 +7276,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "178",
@@ -7557,16 +7285,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "177",
-      "title": "#177 -- Bug: Spread operator in new expressions",
+      "title": "- Bug: Spread operator in new expressions",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "176",
@@ -7575,7 +7303,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "175",
@@ -7584,7 +7312,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "174",
@@ -7593,30 +7321,25 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "173",
       "title": "Computed property names in class declarations",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "242",
-        "265"
-      ],
+      "depends_on": ["242", "265"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "172",
       "title": "Array.isArray edge case",
       "priority": "low",
       "feasibility": "",
-      "depends_on": [
-        "171"
-      ],
+      "depends_on": ["171"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "171",
@@ -7625,7 +7348,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "170",
@@ -7634,7 +7357,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "169",
@@ -7643,7 +7366,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "168",
@@ -7652,7 +7375,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "167",
@@ -7661,7 +7384,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "166",
@@ -7670,7 +7393,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "165",
@@ -7679,7 +7402,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "164",
@@ -7688,7 +7411,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "163",
@@ -7697,7 +7420,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "162",
@@ -7706,7 +7429,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "161",
@@ -7715,7 +7438,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "160",
@@ -7724,7 +7447,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "159",
@@ -7733,7 +7456,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "158",
@@ -7742,7 +7465,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "157",
@@ -7751,7 +7474,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "156",
@@ -7760,7 +7483,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "155",
@@ -7769,7 +7492,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "154",
@@ -7778,18 +7501,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "153",
-      "title": "#153 -- Iterator protocol for destructuring and for-of",
+      "title": "- Iterator protocol for destructuring and for-of",
       "priority": "medium",
       "feasibility": "",
-      "depends_on": [
-        "268"
-      ],
+      "depends_on": ["268"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "152",
@@ -7798,7 +7519,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "151",
@@ -7807,7 +7528,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "150",
@@ -7816,18 +7537,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "149",
       "title": "Unsupported call expression patterns",
       "priority": "high",
       "feasibility": "",
-      "depends_on": [
-        "232"
-      ],
+      "depends_on": ["232"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "148",
@@ -7836,7 +7555,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "147",
@@ -7845,25 +7564,25 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "146",
-      "title": "#146 -- Unknown identifier errors from scope/hoisting issues",
+      "title": "- Unknown identifier errors from scope/hoisting issues",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "145",
-      "title": "boolean/string/void as number",
+      "title": "Issue #145: allowJs type flexibility — boolean/string/void as number",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "144",
@@ -7872,7 +7591,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "143",
@@ -7881,7 +7600,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "142",
@@ -7890,7 +7609,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "141",
@@ -7899,7 +7618,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "140",
@@ -7908,7 +7627,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "139",
@@ -7917,7 +7636,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "138",
@@ -7926,7 +7645,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "137",
@@ -7935,7 +7654,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "136",
@@ -7944,7 +7663,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "135",
@@ -7953,7 +7672,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "134",
@@ -7962,7 +7681,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "133",
@@ -7971,7 +7690,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "132",
@@ -7980,7 +7699,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "131",
@@ -7989,7 +7708,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "130",
@@ -7998,18 +7717,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "129",
       "title": "propertyHelper.js test262 harness (341 tests)",
       "priority": "medium",
       "feasibility": "easy",
-      "depends_on": [
-        "125"
-      ],
+      "depends_on": ["125"],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "128",
@@ -8018,7 +7735,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "127",
@@ -8027,7 +7744,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "126",
@@ -8036,7 +7753,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "125",
@@ -8045,7 +7762,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "124",
@@ -8054,7 +7771,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "123",
@@ -8063,7 +7780,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "122",
@@ -8072,7 +7789,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "121",
@@ -8081,7 +7798,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "120",
@@ -8090,7 +7807,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "119",
@@ -8099,7 +7816,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "118",
@@ -8108,7 +7825,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "117",
@@ -8117,7 +7834,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "116",
@@ -8126,34 +7843,34 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "115",
-      "title": "while/do-while loop internal variable scope crash",
+      "title": "Issue 115: Bug — while/do-while loop internal variable scope crash",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "114",
-      "title": "\"Codegen error: vec data field not ref\"",
+      "title": "Issue 114: Bug — 'Codegen error: vec data field not ref'",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "113",
-      "title": "\"Object literal type not mapped to struct\"",
+      "title": "Issue 113: Bug — 'Object literal type not mapped to struct'",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "112",
@@ -8162,7 +7879,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "111",
@@ -8171,7 +7888,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "110",
@@ -8180,7 +7897,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "109",
@@ -8189,7 +7906,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "108",
@@ -8198,7 +7915,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "107",
@@ -8207,61 +7924,61 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "106",
-      "title": "built-ins/Object extended + built-ins/Array constructor",
+      "title": "Issue 106: Test262 — built-ins/Object extended + built-ins/Array constructor",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "105",
-      "title": "built-ins/Map, built-ins/Set, built-ins/Promise",
+      "title": "Issue 105: Test262 — built-ins/Map, built-ins/Set, built-ins/Promise",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "104",
-      "title": "language/ top-level categories",
+      "title": "Issue 104: Test262 — language/ top-level categories",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "103",
-      "title": "built-ins/String prototype methods",
+      "title": "Issue 103: Test262 — built-ins/String prototype methods",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "102",
-      "title": "language/expressions remaining",
+      "title": "Issue 102: Test262 — language/expressions remaining",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "101",
-      "title": "language/statements remaining",
+      "title": "Issue 101: Test262 — language/statements remaining",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "100",
@@ -8270,7 +7987,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "99",
@@ -8279,7 +7996,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "98",
@@ -8288,7 +8005,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "97",
@@ -8297,88 +8014,88 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "96",
-      "title": "built-ins/JSON",
+      "title": "Issue 96: Test262 coverage — built-ins/JSON",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "95",
-      "title": "built-ins/isNaN + isFinite",
+      "title": "Issue 95: Test262 coverage — built-ins/isNaN + isFinite",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "94",
-      "title": "language/function-code",
+      "title": "Issue 94: Test262 coverage — language/function-code",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "93",
-      "title": "built-ins/Object",
+      "title": "Issue 93: Test262 coverage — built-ins/Object",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "92",
-      "title": "language/types (coercion)",
+      "title": "Issue 92: Test262 coverage — language/types (coercion)",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "91",
-      "title": "built-ins/Number",
+      "title": "Issue 91: Test262 coverage — built-ins/Number",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "90",
-      "title": "built-ins/Array",
+      "title": "Issue 90: Test262 coverage — built-ins/Array",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "89",
-      "title": "language/statements",
+      "title": "Issue 89: Test262 coverage — language/statements",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "88",
-      "title": "language/expressions",
+      "title": "Issue 88: Test262 coverage — language/expressions",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "87",
@@ -8387,7 +8104,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "86",
@@ -8396,7 +8113,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "85",
@@ -8405,7 +8122,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "84",
@@ -8414,7 +8131,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "83",
@@ -8423,7 +8140,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "82",
@@ -8432,7 +8149,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "81",
@@ -8441,7 +8158,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "80",
@@ -8450,25 +8167,25 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "79",
-      "title": "boxed `any` with runtime dispatch",
+      "title": "Issue 79: Gradual typing — boxed `any` with runtime dispatch",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "78",
-      "title": "builtins and static methods",
+      "title": "Issue 78: Standard library coverage — builtins and static methods",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "77",
@@ -8477,7 +8194,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "76",
@@ -8486,7 +8203,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "75",
@@ -8495,90 +8212,88 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "74",
       "title": "Issue 74: WASM SIMD support for string and array operations",
       "priority": "low",
       "feasibility": "",
-      "depends_on": [
-        "70"
-      ],
+      "depends_on": ["70"],
       "goal": "",
       "status": "done"
     },
     {
       "id": "73",
-      "title": "JS vs host-call vs GC-native vs linear-memory performance",
+      "title": "Issue 73: Benchmark — JS vs host-call vs GC-native vs linear-memory performance",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "72",
-      "title": "WasmGC-native arrays",
+      "title": "Issue 72: Fast mode — WasmGC-native arrays",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "71",
-      "title": "WasmGC-native strings",
+      "title": "Issue 71: Fast mode — WasmGC-native strings",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "70",
-      "title": "optimize for performance with restricted TypeScript",
+      "title": "Issue 70: Fast mode — optimize for performance with restricted TypeScript",
       "priority": "low",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "69",
-      "title": "restrict TypeScript to a secure subset",
+      "title": "Issue 69: Safe mode — restrict TypeScript to a secure subset",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "68",
-      "title": "scope wasm module access to a subtree",
+      "title": "Issue 68: DOM containment — scope wasm module access to a subtree",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "67",
-      "title": "replace Proxy with compiler manifest",
+      "title": "Issue 67: Closed import objects — replace Proxy with compiler manifest",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "66",
-      "title": "runtime import hardening",
+      "title": "Issue 66: Security design doc — runtime import hardening",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "65",
@@ -8587,7 +8302,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "64",
@@ -8596,7 +8311,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "63",
@@ -8605,7 +8320,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "62",
@@ -8614,7 +8329,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "61",
@@ -8623,7 +8338,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "60",
@@ -8632,7 +8347,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "59",
@@ -8641,7 +8356,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "58",
@@ -8650,7 +8365,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "57",
@@ -8659,7 +8374,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "56",
@@ -8668,7 +8383,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "55",
@@ -8677,7 +8392,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "49",
@@ -8686,7 +8401,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "48",
@@ -8695,7 +8410,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "47",
@@ -8704,7 +8419,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "46",
@@ -8713,16 +8428,16 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "45",
-      "title": "Error reporting with source locations",
+      "title": "Issue #45 — Error reporting with source locations",
       "priority": "medium",
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "44",
@@ -8731,7 +8446,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "43",
@@ -8740,7 +8455,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "42",
@@ -8749,7 +8464,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "41",
@@ -8758,7 +8473,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "40",
@@ -8767,7 +8482,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "39",
@@ -8776,7 +8491,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "38",
@@ -8785,7 +8500,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "37",
@@ -8794,7 +8509,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "36",
@@ -8803,7 +8518,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "35",
@@ -8812,7 +8527,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "34",
@@ -8821,7 +8536,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "33",
@@ -8830,7 +8545,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "32",
@@ -8839,7 +8554,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "31",
@@ -8848,7 +8563,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "30",
@@ -8857,7 +8572,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "29",
@@ -8866,7 +8581,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "28",
@@ -8875,7 +8590,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "27",
@@ -8884,7 +8599,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "26",
@@ -8893,7 +8608,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "25",
@@ -8902,7 +8617,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "24",
@@ -8911,7 +8626,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "23",
@@ -8920,7 +8635,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "22",
@@ -8929,7 +8644,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "21",
@@ -8938,7 +8653,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "20",
@@ -8947,7 +8662,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "19",
@@ -8956,7 +8671,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "18",
@@ -8965,7 +8680,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "17",
@@ -8974,7 +8689,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "16",
@@ -8983,7 +8698,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "15",
@@ -8992,7 +8707,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "14",
@@ -9001,7 +8716,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "13",
@@ -9010,7 +8725,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "12",
@@ -9019,7 +8734,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "11",
@@ -9028,7 +8743,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "10",
@@ -9037,7 +8752,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "9",
@@ -9046,7 +8761,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "8",
@@ -9055,7 +8770,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "7",
@@ -9064,7 +8779,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "6",
@@ -9073,7 +8788,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "4",
@@ -9082,7 +8797,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "3",
@@ -9091,7 +8806,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "2",
@@ -9100,7 +8815,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "1",
@@ -9109,7 +8824,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "analysis-2026-03-25",
@@ -9118,7 +8833,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "log",
@@ -9127,7 +8842,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "sprint-1",
@@ -9136,7 +8851,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "sprint-2",
@@ -9145,7 +8860,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     },
     {
       "id": "sprint-3",
@@ -9154,7 +8869,7 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
-      "status": null
+      "status": "done"
     }
   ]
 }

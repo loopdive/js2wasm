@@ -65,7 +65,7 @@ class T262Donut extends HTMLElement {
       { value: pass, color: "rgba(255,255,255,1)", label: "Pass" },
       { value: fail, color: "rgba(255,255,255,0.2)", label: "Fail" },
       { value: ce, color: "rgba(255,255,255,0.2)", label: "CE" },
-      { value: skip, color: "rgba(255,255,255,0.2)", label: "Skip" },
+      { value: skip, color: "rgba(255,255,255,0.2)", label: "Skipped" },
     ];
 
     // Build the conic-gradient donut
@@ -101,7 +101,7 @@ class T262Donut extends HTMLElement {
       makeOrbitStat(pass, "Passed", "rgba(255,255,255,0.9)", passDeg / 2, 164, "pass") +
       makeOrbitStat(fail, "Failed", "rgba(255,255,255,0.7)", (passDeg + failDeg) / 2, 170) +
       makeOrbitStat(ce, "Compile Errors", "rgba(255,255,255,0.7)", (failDeg + ceDeg) / 2, 164) +
-      makeOrbitStat(skip, "Unsupported", "rgba(255,255,255,0.7)", (ceDeg + 360) / 2, 178);
+      makeOrbitStat(skip, "Skipped", "rgba(255,255,255,0.7)", (ceDeg + 360) / 2, 178);
 
     // Build legend
     const legendHTML = segments

@@ -1358,14 +1358,8 @@
         const legacyToggle = el("label", { className: "filter-toggle" });
         const legacyCheckbox = el("input", { type: "checkbox", checked: "checked" });
         legacyToggle.appendChild(legacyCheckbox);
-        legacyToggle.appendChild(el("span", null, "legacy"));
+        legacyToggle.appendChild(el("span", null, "legacy (Annex B)"));
         controlsHost.appendChild(legacyToggle);
-
-        const proposalToggle = el("label", { className: "filter-toggle" });
-        const proposalCheckbox = el("input", { type: "checkbox" });
-        proposalToggle.appendChild(proposalCheckbox);
-        proposalToggle.appendChild(el("span", null, "proposals"));
-        controlsHost.appendChild(proposalToggle);
 
         // Strict mode toggle — checked by default, persisted in localStorage
         const strictToggle = el("label", { className: "filter-toggle" });
@@ -1379,11 +1373,9 @@
 
         function syncToggleStyles() {
           legacyToggle.classList.toggle("active", legacyCheckbox.checked);
-          proposalToggle.classList.toggle("active", proposalCheckbox.checked);
           strictToggle.classList.toggle("active", strictCheckbox.checked);
-          // Dim scope toggles when strict mode overrides them
-          legacyToggle.style.opacity = strictCheckbox.checked ? "0.4" : "";
-          proposalToggle.style.opacity = strictCheckbox.checked ? "0.4" : "";
+          // Hide legacy toggle in strict mode (strict_summary already includes Annex B strict tests)
+          legacyToggle.style.display = strictCheckbox.checked ? "none" : "";
         }
 
         function renderSummaryCard() {
@@ -1391,11 +1383,7 @@
           if (strictCheckbox.checked && data.strict_summary) {
             s = data.strict_summary;
           } else {
-            s = makeScopeSummary(
-              standardSummary,
-              scoreState.includeLegacy ? legacySummary : null,
-              scoreState.includeProposals ? proposalSummary : null,
-            );
+            s = makeScopeSummary(standardSummary, scoreState.includeLegacy ? legacySummary : null);
           }
           const ce = (s.compile_error || 0) + (s.compile_timeout || 0);
           donutEl.setAttribute("pass", s.pass || 0);
@@ -1407,11 +1395,6 @@
 
         legacyCheckbox.addEventListener("change", () => {
           scoreState.includeLegacy = legacyCheckbox.checked;
-          syncToggleStyles();
-          renderSummaryCard();
-        });
-        proposalCheckbox.addEventListener("change", () => {
-          scoreState.includeProposals = proposalCheckbox.checked;
           syncToggleStyles();
           renderSummaryCard();
         });
