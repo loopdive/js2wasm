@@ -1,3 +1,8 @@
+---
+title: "Sprint 3: Eliminate remaining runtime failures and reduce compile errors by ~1500"
+status: done
+sprint: Session
+---
 # Sprint 3: Eliminate remaining runtime failures and reduce compile errors by ~1500
 
 ## Sprint Goal
