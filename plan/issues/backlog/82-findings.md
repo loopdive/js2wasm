@@ -1,3 +1,8 @@
+---
+title: "Issue #82 - Research Findings: Implementation Strategies"
+status: backlog
+sprint: Backlog
+---
 # Issue #82 - Research Findings: Implementation Strategies
 
 ## 1. AssemblyScript

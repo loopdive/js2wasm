@@ -1,3 +1,8 @@
+---
+title: "Sprint 1: Fix test262 failures and reduce compile errors"
+status: done
+sprint: Session
+---
 # Sprint 1: Fix test262 failures and reduce compile errors
 
 ## Sprint Goal
