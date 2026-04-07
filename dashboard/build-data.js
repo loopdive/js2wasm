@@ -171,17 +171,19 @@ function loadIssuesFromDir(dir) {
 }
 
 const issues = {
-  blocked: loadIssuesFromDir(join(ROOT, "plan/issues/blocked")),
   ready: loadIssuesFromDir(join(ROOT, "plan/issues/ready")),
   inprogress: [], // in-progress issues are in ready/ with status: in-progress
+  review: [], // review issues are in ready/ with status: review
   done: loadIssuesFromDir(join(ROOT, "plan/issues/done")),
 };
 
-// Split ready into ready vs in-progress based on frontmatter status
+// Split ready into ready vs in-progress vs review based on frontmatter status
 const ready = [];
 for (const iss of issues.ready) {
   if (iss.status === "in-progress" || iss.status === "in_progress") {
     issues.inprogress.push(iss);
+  } else if (iss.status === "review" || iss.status === "in-review" || iss.status === "in_review") {
+    issues.review.push(iss);
   } else {
     ready.push(iss);
   }
@@ -190,7 +192,7 @@ issues.ready = ready;
 
 writeFileSync(join(OUT, "issues.json"), JSON.stringify(issues, null, 2));
 console.log(
-  `Issues: ${issues.blocked.length} blocked, ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.done.length} done`,
+  `Issues: ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.done.length} done`,
 );
 
 // ── Load test262 runs ────────────────────────────────────────

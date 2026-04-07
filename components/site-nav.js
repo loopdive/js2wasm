@@ -283,7 +283,6 @@ class SiteNav extends HTMLElement {
           <li><a href="${isLanding ? "" : base}#how-it-works">How it works</a></li>
           <li><a href="${isLanding ? "" : base}#roadmap">Roadmap</a></li>
           <li><a href="${base}dashboard/">Progress</a></li>
-          <li><a href="${base}benchmarks/report.html">Status</a></li>
         </ul>
         <div class="nav-actions">
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">GitHub</a>
@@ -300,7 +299,6 @@ class SiteNav extends HTMLElement {
           <li><a href="${isLanding ? "" : base}#how-it-works">How it works</a></li>
           <li><a href="${isLanding ? "" : base}#roadmap">Roadmap</a></li>
           <li><a href="${base}dashboard/">Progress</a></li>
-          <li><a href="${base}benchmarks/report.html">Status</a></li>
         </ul>
         <div class="mobile-actions">
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">GitHub</a>

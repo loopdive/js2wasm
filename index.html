@@ -1185,6 +1185,9 @@
             Which JS language features compile to WebAssembly today, and which are still on the roadmap. Status is
             derived from ECMAScript Test262 pass rates and known compiler limitations.
           </p>
+          <p style="margin-top: 1.25rem">
+            <a class="btn-outline" href="./benchmarks/report.html">Compatibility Test Report</a>
+          </p>
         </div>
         <!-- <div class="stats-grid">
           <div class="stat-item">
@@ -1214,13 +1217,6 @@
               style="--t262-bg: var(--bg, #060a14)"
             ></t262-donut>
           </div>
-          <div class="diagram-panel">
-            <perf-benchmark-chart
-              src="./benchmarks/results/playground-benchmark-sidebar.json"
-              title="Benchmark Performance (Wasm vs JS)"
-              legend="WASM runtime performance relative to JS (larger is better)"
-            ></perf-benchmark-chart>
-          </div>
           <div class="diagram-panel edition-chart">
             <h3 class="diagram-title">Edition Coverage (tests)</h3>
             <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="absolute"></t262-edition-bars>
@@ -1228,6 +1224,13 @@
           <div class="diagram-panel edition-chart">
             <h3 class="diagram-title">Edition Coverage (pass rate)</h3>
             <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="percentage"></t262-edition-bars>
+          </div>
+          <div class="diagram-panel">
+            <perf-benchmark-chart
+              src="./benchmarks/results/playground-benchmark-sidebar.json"
+              title="Benchmark Performance (Wasm vs JS)"
+              legend="WASM runtime performance relative to JS (larger is better)"
+            ></perf-benchmark-chart>
           </div>
           <div class="diagram-panel">
             <perf-benchmark-chart

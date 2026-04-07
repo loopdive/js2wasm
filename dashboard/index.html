@@ -236,6 +236,11 @@
           grid-template-columns: repeat(2, 1fr);
         }
       }
+      @media (max-width: 600px) {
+        .kanban-board {
+          grid-template-columns: 1fr;
+        }
+      }
 
       .kanban-col {
         background: var(--bg);
@@ -531,13 +536,6 @@
       <div class="kanban-board" id="kanban-board">
         <div class="kanban-col">
           <div class="kanban-col-header">
-            Blocked
-            <span class="count" id="col-blocked-count">0</span>
-          </div>
-          <div class="kanban-col-body" id="col-blocked"></div>
-        </div>
-        <div class="kanban-col">
-          <div class="kanban-col-header">
             Ready
             <span class="count" id="col-ready-count">0</span>
           </div>
@@ -549,6 +547,13 @@
             <span class="count" id="col-inprogress-count">0</span>
           </div>
           <div class="kanban-col-body" id="col-inprogress"></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header">
+            In Review
+            <span class="count" id="col-review-count">0</span>
+          </div>
+          <div class="kanban-col-body" id="col-review"></div>
         </div>
         <div class="kanban-col">
           <div class="kanban-col-header">
@@ -778,12 +783,12 @@
 
       function renderIssueBoard(issues) {
         const cols = {
-          blocked: { el: document.getElementById("col-blocked"), count: document.getElementById("col-blocked-count") },
           ready: { el: document.getElementById("col-ready"), count: document.getElementById("col-ready-count") },
           inprogress: {
             el: document.getElementById("col-inprogress"),
             count: document.getElementById("col-inprogress-count"),
           },
+          review: { el: document.getElementById("col-review"), count: document.getElementById("col-review-count") },
           done: { el: document.getElementById("col-done"), count: document.getElementById("col-done-count") },
         };
 
@@ -812,7 +817,7 @@
         // Load issue lists from embedded data or show static counts
         // Since file:// can't list directories, we embed issue data via build script
         // For now, we parse from what we can fetch or use embedded data
-        let issues = { blocked: [], ready: [], inprogress: [], done: [] };
+        let issues = { ready: [], inprogress: [], review: [], done: [] };
 
         if (EMBEDDED_DATA && EMBEDDED_DATA.issues) {
           issues = EMBEDDED_DATA.issues;
