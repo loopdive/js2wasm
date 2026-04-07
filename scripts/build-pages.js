@@ -226,16 +226,24 @@ copyFileIfExists(
   join(PAGES_DIST, "benchmarks", "results", "history.json"),
 );
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "latest.json"), join(PAGES_DIST, "benchmarks", "results", "latest.json"));
+// Preference order:
+//   1. test262-current.{jsonl,json}  — committed by the nightly workflow,
+//      always present in CI checkouts. THIS is what GitHub Pages should serve.
+//   2. test262-results.jsonl symlink — local dev, points at the latest run.
+//   3. latest test262-results-*.jsonl in benchmarks/results/ — local dev fallback.
+//
+// Do NOT fall back to runs/ archive — those files can be months old and would
+// silently poison the deployed dashboard.
 const test262ReportSource = resolvePreferredFile(
+  join(BENCHMARKS_RESULTS_DIR, "test262-current.json"),
   join(BENCHMARKS_RESULTS_DIR, "test262-report.json"),
   join(PUBLIC_BENCH, "test262-report.json"),
   latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-report-", ".json"),
-  latestMatchingFile(RUNS_DIR, "-report.json"),
 );
 const test262ResultsSource = resolvePreferredFile(
+  join(BENCHMARKS_RESULTS_DIR, "test262-current.jsonl"),
   join(BENCHMARKS_RESULTS_DIR, "test262-results.jsonl"),
   latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-results-", ".jsonl"),
-  latestMatchingFile(RUNS_DIR, "-results.jsonl"),
 );
 copyFile(test262ReportSource, join(PAGES_DIST, "benchmarks", "results", "test262-report.json"));
 copyFile(test262ResultsSource, join(PAGES_DIST, "benchmarks", "results", "test262-results.jsonl"));

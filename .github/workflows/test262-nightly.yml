@@ -1,0 +1,78 @@
+name: Test262 Nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: write # commit refreshed results back to main
+
+concurrency:
+  group: test262-nightly
+  cancel-in-progress: false
+
+jobs:
+  test262:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache test262 incremental cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .test262-cache
+            benchmarks/results/test262-cache.json
+          key: test262-cache-${{ hashFiles('src/**/*.ts') }}
+          restore-keys: |
+            test262-cache-
+
+      - name: Run test262
+        run: pnpm run test:262
+
+      - name: Promote results to stable filename
+        # build-pages.js reads benchmarks/results/test262-current.* — copy the
+        # latest run there so the next deploy picks it up. Stable names so we
+        # don't keep adding new files to git.
+        run: |
+          set -e
+          cd benchmarks/results
+          # The runner updates the symlinks; resolve them to real files.
+          REAL_JSONL="$(readlink test262-results.jsonl || echo test262-results.jsonl)"
+          REAL_REPORT="$(readlink test262-report.json || echo test262-report.json)"
+          cp "$REAL_JSONL" test262-current.jsonl
+          cp "$REAL_REPORT" test262-current.json
+          ls -la test262-current.*
+
+      - name: Commit refreshed results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
+          TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
+          git commit -m "chore(test262): refresh results — ${PASS}/${TOTAL} pass [skip ci]"
+          git push
