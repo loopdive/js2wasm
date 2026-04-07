@@ -630,149 +630,147 @@ export function generateModule(
   const mod = createEmptyModule();
   const ctx = createCodegenContext(mod, ast.checker, options);
   try {
+    // WASI target: register linear memory, bump pointer global, and WASI imports
+    if (ctx.wasi) {
+      registerWasiImports(ctx, ast.sourceFile);
+    }
 
-  // WASI target: register linear memory, bump pointer global, and WASI imports
-  if (ctx.wasi) {
-    registerWasiImports(ctx, ast.sourceFile);
-  }
+    // $AnyValue struct type is now registered lazily via ensureAnyValueType()
 
-  // $AnyValue struct type is now registered lazily via ensureAnyValueType()
+    // Note: console imports handled by unified collector (skipped in WASI mode via registerWasiImports)
+    // First pass: collect declare namespaces (registers imports before local funcs)
+    collectExternDeclarations(ctx, ast.sourceFile);
 
-  // Note: console imports handled by unified collector (skipped in WASI mode via registerWasiImports)
-  // First pass: collect declare namespaces (registers imports before local funcs)
-  collectExternDeclarations(ctx, ast.sourceFile);
-
-  // Scan lib files for DOM extern classes + globals (only if user code uses DOM)
-  // After lib.d.ts refactoring, TS loads individual lib files (lib.es5.d.ts, etc.)
-  if (sourceUsesLibGlobals(ast.sourceFile)) {
-    for (const sf of ast.program.getSourceFiles()) {
-      const baseName = sf.fileName.split("/").pop() ?? sf.fileName;
-      if (baseName.startsWith("lib.") && baseName.endsWith(".d.ts")) {
-        collectExternDeclarations(ctx, sf);
-        collectDeclaredGlobals(ctx, sf, ast.sourceFile);
+    // Scan lib files for DOM extern classes + globals (only if user code uses DOM)
+    // After lib.d.ts refactoring, TS loads individual lib files (lib.es5.d.ts, etc.)
+    if (sourceUsesLibGlobals(ast.sourceFile)) {
+      for (const sf of ast.program.getSourceFiles()) {
+        const baseName = sf.fileName.split("/").pop() ?? sf.fileName;
+        if (baseName.startsWith("lib.") && baseName.endsWith(".d.ts")) {
+          collectExternDeclarations(ctx, sf);
+          collectDeclaredGlobals(ctx, sf, ast.sourceFile);
+        }
       }
     }
-  }
 
-  // Register built-in collection types as extern classes if not already collected from lib files
-  registerBuiltinExternClasses(ctx);
+    // Register built-in collection types as extern classes if not already collected from lib files
+    registerBuiltinExternClasses(ctx);
 
-  // Pre-pass: detect empty object literals that get properties assigned later
-  // Must run before import collectors so that widened types are known
-  collectEmptyObjectWidening(ctx, ast.checker, ast.sourceFile);
+    // Pre-pass: detect empty object literals that get properties assigned later
+    // Must run before import collectors so that widened types are known
+    collectEmptyObjectWidening(ctx, ast.checker, ast.sourceFile);
 
-  // Register only the extern class imports actually used in source code
-  collectUsedExternImports(ctx, ast.sourceFile);
+    // Register only the extern class imports actually used in source code
+    collectUsedExternImports(ctx, ast.sourceFile);
 
-  // Single-pass collection of all source imports (#592):
-  // console, primitives, string literals, string methods, Math, parseInt/parseFloat,
-  // String.fromCharCode, Promise, JSON, callbacks, functional array methods,
-  // union types, generators, iterators, for-in/in-expr/Object.keys string literals,
-  // wrapper constructors, unknown constructor imports.
-  collectAllSourceImports(ctx, ast.sourceFile);
+    // Single-pass collection of all source imports (#592):
+    // console, primitives, string literals, string methods, Math, parseInt/parseFloat,
+    // String.fromCharCode, Promise, JSON, callbacks, functional array methods,
+    // union types, generators, iterators, for-in/in-expr/Object.keys string literals,
+    // wrapper constructors, unknown constructor imports.
+    collectAllSourceImports(ctx, ast.sourceFile);
 
-  // Emit inline Wasm implementations for Math methods (after all imports are registered)
-  if (ctx.pendingMathMethods.size > 0) {
-    emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
-  }
+    // Emit inline Wasm implementations for Math methods (after all imports are registered)
+    if (ctx.pendingMathMethods.size > 0) {
+      emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
+    }
 
-  // Emit wrapper valueOf functions (after all imports registered, before user funcs)
-  emitWrapperValueOfFunctions(ctx);
+    // Emit wrapper valueOf functions (after all imports registered, before user funcs)
+    emitWrapperValueOfFunctions(ctx);
 
-  // Second pass: collect all function declarations and interfaces
-  collectDeclarations(ctx, ast.sourceFile);
+    // Second pass: collect all function declarations and interfaces
+    collectDeclarations(ctx, ast.sourceFile);
 
-  // Shape inference: detect array-like variables and override their types
-  applyShapeInference(ctx, ast.checker, ast.sourceFile);
+    // Shape inference: detect array-like variables and override their types
+    applyShapeInference(ctx, ast.checker, ast.sourceFile);
 
-  // Third pass: compile function bodies
-  compileDeclarations(ctx, ast.sourceFile);
+    // Third pass: compile function bodies
+    compileDeclarations(ctx, ast.sourceFile);
 
-  // Fixup pass: reconcile struct.new argument counts with actual struct field counts.
-  // Dynamic field additions during expression compilation can add fields to struct types
-  // after the constructor's struct.new was already emitted (#516).
-  fixupStructNewArgCounts(ctx);
+    // Fixup pass: reconcile struct.new argument counts with actual struct field counts.
+    // Dynamic field additions during expression compilation can add fields to struct types
+    // after the constructor's struct.new was already emitted (#516).
+    fixupStructNewArgCounts(ctx);
 
-  // Fixup pass: insert extern.convert_any after struct.new when the result
-  // is stored into an externref local/global.
-  fixupStructNewResultCoercion(ctx);
+    // Fixup pass: insert extern.convert_any after struct.new when the result
+    // is stored into an externref local/global.
+    fixupStructNewResultCoercion(ctx);
 
-  // Build per-shape default property flags table for all user-visible structs
-  buildShapePropFlagsTable(ctx);
+    // Build per-shape default property flags table for all user-visible structs
+    buildShapePropFlagsTable(ctx);
 
-  // Collect ref.func targets so the binary emitter can add a declarative element segment
-  collectDeclaredFuncRefs(ctx);
+    // Collect ref.func targets so the binary emitter can add a declarative element segment
+    collectDeclaredFuncRefs(ctx);
 
-  // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
-  const importNames = mod.imports.map((imp) => imp.name);
-  for (const [key, info] of ctx.externClasses) {
-    const prefix = `${info.importPrefix}_`;
-    const isUsed = importNames.some((n) => n.startsWith(prefix));
-    if (key === info.className && isUsed) {
-      mod.externClasses.push({
-        importPrefix: info.importPrefix,
-        namespacePath: info.namespacePath,
-        className: info.className,
-        constructorParams: info.constructorParams,
-        methods: info.methods,
-        properties: info.properties,
+    // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
+    const importNames = mod.imports.map((imp) => imp.name);
+    for (const [key, info] of ctx.externClasses) {
+      const prefix = `${info.importPrefix}_`;
+      const isUsed = importNames.some((n) => n.startsWith(prefix));
+      if (key === info.className && isUsed) {
+        mod.externClasses.push({
+          importPrefix: info.importPrefix,
+          namespacePath: info.namespacePath,
+          className: info.className,
+          constructorParams: info.constructorParams,
+          methods: info.methods,
+          properties: info.properties,
+        });
+      }
+    }
+    mod.stringLiteralValues = ctx.stringLiteralValues;
+    mod.asyncFunctions = ctx.asyncFunctions;
+
+    // Emit exported struct field getter helpers for the runtime.
+    // These allow JS host imports to read WasmGC struct fields that are
+    // otherwise opaque to JS (V8 returns undefined for direct property access).
+    emitStructFieldGetters(ctx);
+
+    // Emit __vec_get / __vec_len exports for runtime iterator fallback on WasmGC arrays
+    emitVecAccessExports(ctx);
+
+    // Emit __call_@@iterator export for runtime Symbol.iterator dispatch on WasmGC structs
+    emitIteratorMethodExport(ctx);
+
+    // Emit __call_fn_0 export for calling zero-arg closures from JS (#851)
+    emitClosureCallExport(ctx);
+
+    // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
+    emitToPrimitiveMethodExports(ctx);
+
+    // WASI: export _start entry point (before dead import elimination adjusts indices)
+    if (ctx.wasi) {
+      addWasiStartExport(ctx);
+    }
+
+    // Export the exception tag so the exec worker can extract thrown payloads
+    // via WebAssembly.Exception.getArg(tag, 0).
+    if (ctx.exnTagIdx >= 0) {
+      const numImportTags = mod.imports.filter((i) => i.desc.kind === "tag").length;
+      mod.exports.push({
+        name: "__exn_tag",
+        desc: { kind: "tag", index: numImportTags + ctx.exnTagIdx },
       });
     }
-  }
-  mod.stringLiteralValues = ctx.stringLiteralValues;
-  mod.asyncFunctions = ctx.asyncFunctions;
 
-  // Emit exported struct field getter helpers for the runtime.
-  // These allow JS host imports to read WasmGC struct fields that are
-  // otherwise opaque to JS (V8 returns undefined for direct property access).
-  emitStructFieldGetters(ctx);
+    // Mark leaf struct types as final for V8 devirtualization
+    markLeafStructsFinal(mod);
 
-  // Emit __vec_get / __vec_len exports for runtime iterator fallback on WasmGC arrays
-  emitVecAccessExports(ctx);
+    // Dead import and type elimination pass
+    eliminateDeadImports(mod);
 
-  // Emit __call_@@iterator export for runtime Symbol.iterator dispatch on WasmGC structs
-  emitIteratorMethodExport(ctx);
+    // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
+    repairStructTypeMismatches(mod);
 
-  // Emit __call_fn_0 export for calling zero-arg closures from JS (#851)
-  emitClosureCallExport(ctx);
+    // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
+    peepholeOptimize(mod);
 
-  // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
-  emitToPrimitiveMethodExports(ctx);
+    // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
+    stackBalance(mod);
 
-  // WASI: export _start entry point (before dead import elimination adjusts indices)
-  if (ctx.wasi) {
-    addWasiStartExport(ctx);
-  }
-
-  // Export the exception tag so the exec worker can extract thrown payloads
-  // via WebAssembly.Exception.getArg(tag, 0).
-  if (ctx.exnTagIdx >= 0) {
-    const numImportTags = mod.imports.filter((i) => i.desc.kind === "tag").length;
-    mod.exports.push({
-      name: "__exn_tag",
-      desc: { kind: "tag", index: numImportTags + ctx.exnTagIdx },
-    });
-  }
-
-  // Mark leaf struct types as final for V8 devirtualization
-  markLeafStructsFinal(mod);
-
-  // Dead import and type elimination pass
-  eliminateDeadImports(mod);
-
-  // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
-  repairStructTypeMismatches(mod);
-
-  // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
-  peepholeOptimize(mod);
-
-  // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
-  stackBalance(mod);
-
-  // Late fixup: repair extern.convert_any applied to non-anyref values.
-  // Must run after all other passes since they can introduce invalid coercions.
-  fixupExternConvertAny(ctx);
-
+    // Late fixup: repair extern.convert_any applied to non-anyref values.
+    // Must run after all other passes since they can introduce invalid coercions.
+    fixupExternConvertAny(ctx);
   } catch (e) {
     reportErrorNoNode(ctx, `Codegen error: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -1833,137 +1831,135 @@ export function generateMultiModule(
   const mod = createEmptyModule();
   const ctx = createCodegenContext(mod, multiAst.checker, options);
   try {
+    // WASI target: register linear memory, bump pointer global, and WASI imports
+    if (ctx.wasi) {
+      registerWasiImports(ctx, multiAst.entryFile);
+    }
 
-  // WASI target: register linear memory, bump pointer global, and WASI imports
-  if (ctx.wasi) {
-    registerWasiImports(ctx, multiAst.entryFile);
-  }
+    // $AnyValue struct type is now registered lazily via ensureAnyValueType()
 
-  // $AnyValue struct type is now registered lazily via ensureAnyValueType()
+    // Phase 1: Collect extern declarations first (needed before import collectors)
+    for (const sf of multiAst.sourceFiles) {
+      collectExternDeclarations(ctx, sf);
+    }
 
-  // Phase 1: Collect extern declarations first (needed before import collectors)
-  for (const sf of multiAst.sourceFiles) {
-    collectExternDeclarations(ctx, sf);
-  }
-
-  // Scan lib files for DOM extern classes + globals (only if any user code uses DOM)
-  // After lib.d.ts refactoring, TS loads individual lib files (lib.es5.d.ts, etc.)
-  const anyUsesDom = multiAst.sourceFiles.some((sf) => sourceUsesLibGlobals(sf));
-  if (anyUsesDom) {
-    for (const libSf of multiAst.program.getSourceFiles()) {
-      const baseName = libSf.fileName.split("/").pop() ?? libSf.fileName;
-      if (baseName.startsWith("lib.") && baseName.endsWith(".d.ts")) {
-        collectExternDeclarations(ctx, libSf);
-        for (const sf of multiAst.sourceFiles) {
-          if (sourceUsesLibGlobals(sf)) {
-            collectDeclaredGlobals(ctx, libSf, sf);
+    // Scan lib files for DOM extern classes + globals (only if any user code uses DOM)
+    // After lib.d.ts refactoring, TS loads individual lib files (lib.es5.d.ts, etc.)
+    const anyUsesDom = multiAst.sourceFiles.some((sf) => sourceUsesLibGlobals(sf));
+    if (anyUsesDom) {
+      for (const libSf of multiAst.program.getSourceFiles()) {
+        const baseName = libSf.fileName.split("/").pop() ?? libSf.fileName;
+        if (baseName.startsWith("lib.") && baseName.endsWith(".d.ts")) {
+          collectExternDeclarations(ctx, libSf);
+          for (const sf of multiAst.sourceFiles) {
+            if (sourceUsesLibGlobals(sf)) {
+              collectDeclaredGlobals(ctx, libSf, sf);
+            }
           }
         }
       }
     }
-  }
 
-  // Register built-in collection types as extern classes if not already collected from lib files
-  registerBuiltinExternClasses(ctx);
+    // Register built-in collection types as extern classes if not already collected from lib files
+    registerBuiltinExternClasses(ctx);
 
-  // Pre-pass: detect empty object literals that get properties assigned later
-  // Must run before import collectors so that widened types are known
-  for (const sf of multiAst.sourceFiles) {
-    collectEmptyObjectWidening(ctx, multiAst.checker, sf);
-  }
+    // Pre-pass: detect empty object literals that get properties assigned later
+    // Must run before import collectors so that widened types are known
+    for (const sf of multiAst.sourceFiles) {
+      collectEmptyObjectWidening(ctx, multiAst.checker, sf);
+    }
 
-  // Single-pass collection of all source imports for each file (#592)
-  for (const sf of multiAst.sourceFiles) {
-    collectUsedExternImports(ctx, sf);
-    collectAllSourceImports(ctx, sf);
-  }
+    // Single-pass collection of all source imports for each file (#592)
+    for (const sf of multiAst.sourceFiles) {
+      collectUsedExternImports(ctx, sf);
+      collectAllSourceImports(ctx, sf);
+    }
 
-  // Emit inline Wasm implementations for Math methods (after all imports are registered)
-  if (ctx.pendingMathMethods.size > 0) {
-    emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
-  }
+    // Emit inline Wasm implementations for Math methods (after all imports are registered)
+    if (ctx.pendingMathMethods.size > 0) {
+      emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
+    }
 
-  // Emit wrapper valueOf functions (after all imports registered, before user funcs)
-  emitWrapperValueOfFunctions(ctx);
+    // Emit wrapper valueOf functions (after all imports registered, before user funcs)
+    emitWrapperValueOfFunctions(ctx);
 
-  // Phase 2: Collect all declarations — only entry file gets Wasm exports
-  for (const sf of multiAst.sourceFiles) {
-    const isEntry = sf === multiAst.entryFile;
-    collectDeclarations(ctx, sf, isEntry);
-  }
+    // Phase 2: Collect all declarations — only entry file gets Wasm exports
+    for (const sf of multiAst.sourceFiles) {
+      const isEntry = sf === multiAst.entryFile;
+      collectDeclarations(ctx, sf, isEntry);
+    }
 
-  // Shape inference: detect array-like variables and override their types
-  for (const sf of multiAst.sourceFiles) {
-    applyShapeInference(ctx, multiAst.checker, sf);
-  }
+    // Shape inference: detect array-like variables and override their types
+    for (const sf of multiAst.sourceFiles) {
+      applyShapeInference(ctx, multiAst.checker, sf);
+    }
 
-  // Phase 3: Compile all function bodies
-  for (const sf of multiAst.sourceFiles) {
-    compileDeclarations(ctx, sf);
-  }
+    // Phase 3: Compile all function bodies
+    for (const sf of multiAst.sourceFiles) {
+      compileDeclarations(ctx, sf);
+    }
 
-  // Fixup pass: reconcile struct.new argument counts with actual struct field counts.
-  fixupStructNewArgCounts(ctx);
+    // Fixup pass: reconcile struct.new argument counts with actual struct field counts.
+    fixupStructNewArgCounts(ctx);
 
-  // Fixup pass: insert extern.convert_any after struct.new when the result
-  // is stored into an externref local/global.
-  fixupStructNewResultCoercion(ctx);
+    // Fixup pass: insert extern.convert_any after struct.new when the result
+    // is stored into an externref local/global.
+    fixupStructNewResultCoercion(ctx);
 
-  // Build per-shape default property flags table for all user-visible structs
-  buildShapePropFlagsTable(ctx);
+    // Build per-shape default property flags table for all user-visible structs
+    buildShapePropFlagsTable(ctx);
 
-  // Collect ref.func targets so the binary emitter can add a declarative element segment
-  collectDeclaredFuncRefs(ctx);
+    // Collect ref.func targets so the binary emitter can add a declarative element segment
+    collectDeclaredFuncRefs(ctx);
 
-  // Copy metadata for .d.ts / helper generation
-  const importNames = mod.imports.map((imp) => imp.name);
-  for (const [key, info] of ctx.externClasses) {
-    const prefix = `${info.importPrefix}_`;
-    const isUsed = importNames.some((n) => n.startsWith(prefix));
-    if (key === info.className && isUsed) {
-      mod.externClasses.push({
-        importPrefix: info.importPrefix,
-        namespacePath: info.namespacePath,
-        className: info.className,
-        constructorParams: info.constructorParams,
-        methods: info.methods,
-        properties: info.properties,
+    // Copy metadata for .d.ts / helper generation
+    const importNames = mod.imports.map((imp) => imp.name);
+    for (const [key, info] of ctx.externClasses) {
+      const prefix = `${info.importPrefix}_`;
+      const isUsed = importNames.some((n) => n.startsWith(prefix));
+      if (key === info.className && isUsed) {
+        mod.externClasses.push({
+          importPrefix: info.importPrefix,
+          namespacePath: info.namespacePath,
+          className: info.className,
+          constructorParams: info.constructorParams,
+          methods: info.methods,
+          properties: info.properties,
+        });
+      }
+    }
+    mod.stringLiteralValues = ctx.stringLiteralValues;
+    mod.asyncFunctions = ctx.asyncFunctions;
+
+    // WASI: export _start entry point (before dead import elimination adjusts indices)
+    if (ctx.wasi) {
+      addWasiStartExport(ctx);
+    }
+
+    // Export the exception tag so the exec worker can extract thrown payloads
+    // via WebAssembly.Exception.getArg(tag, 0).
+    if (ctx.exnTagIdx >= 0) {
+      const numImportTags = mod.imports.filter((i) => i.desc.kind === "tag").length;
+      mod.exports.push({
+        name: "__exn_tag",
+        desc: { kind: "tag", index: numImportTags + ctx.exnTagIdx },
       });
     }
-  }
-  mod.stringLiteralValues = ctx.stringLiteralValues;
-  mod.asyncFunctions = ctx.asyncFunctions;
 
-  // WASI: export _start entry point (before dead import elimination adjusts indices)
-  if (ctx.wasi) {
-    addWasiStartExport(ctx);
-  }
+    // Mark leaf struct types as final for V8 devirtualization
+    markLeafStructsFinal(mod);
 
-  // Export the exception tag so the exec worker can extract thrown payloads
-  // via WebAssembly.Exception.getArg(tag, 0).
-  if (ctx.exnTagIdx >= 0) {
-    const numImportTags = mod.imports.filter((i) => i.desc.kind === "tag").length;
-    mod.exports.push({
-      name: "__exn_tag",
-      desc: { kind: "tag", index: numImportTags + ctx.exnTagIdx },
-    });
-  }
+    // Dead import and type elimination pass
+    eliminateDeadImports(mod);
 
-  // Mark leaf struct types as final for V8 devirtualization
-  markLeafStructsFinal(mod);
+    // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
+    repairStructTypeMismatches(mod);
 
-  // Dead import and type elimination pass
-  eliminateDeadImports(mod);
+    // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
+    peepholeOptimize(mod);
 
-  // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
-  repairStructTypeMismatches(mod);
-
-  // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
-  peepholeOptimize(mod);
-
-  // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
-  stackBalance(mod);
-
+    // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
+    stackBalance(mod);
   } catch (e) {
     reportErrorNoNode(ctx, `Codegen error: ${e instanceof Error ? e.message : String(e)}`);
   }
