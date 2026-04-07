@@ -6,7 +6,10 @@
     "baseline": "",
     "result": "",
     "issueCount": 0,
-    "issueIds": []
+    "issueIds": [],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": false
   },
   {
     "name": "sprint 1",
@@ -16,9 +19,63 @@
     "result": "1,509 pass / ~23,000 total",
     "issueCount": 0,
     "issueIds": [
-      116, 119, 128, 129, 130, 131, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 148, 150, 151, 152, 154, 155, 156,
-      157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 168, 169, 172
-    ]
+      116,
+      119,
+      128,
+      129,
+      130,
+      131,
+      136,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      148,
+      150,
+      151,
+      152,
+      154,
+      155,
+      156,
+      157,
+      158,
+      159,
+      160,
+      161,
+      162,
+      163,
+      164,
+      165,
+      166,
+      168,
+      169,
+      172
+    ],
+    "completedIssueIds": [
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115
+    ],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 2",
@@ -28,9 +85,96 @@
     "result": "~1,509+ pass (merged same day as Sprint 1)",
     "issueCount": 0,
     "issueIds": [
-      175, 177, 180, 181, 183, 186, 187, 191, 193, 195, 196, 197, 200, 203, 205, 207, 208, 209, 210, 211, 212, 213, 214,
-      215, 216, 217, 218, 219, 220, 221, 222, 223, 224
-    ]
+      175,
+      177,
+      180,
+      181,
+      183,
+      186,
+      187,
+      191,
+      193,
+      195,
+      196,
+      197,
+      200,
+      203,
+      205,
+      207,
+      208,
+      209,
+      210,
+      211,
+      212,
+      213,
+      214,
+      215,
+      216,
+      217,
+      218,
+      219,
+      220,
+      221,
+      222,
+      223,
+      224
+    ],
+    "completedIssueIds": [
+      116,
+      117,
+      118,
+      119,
+      120,
+      122,
+      126,
+      127,
+      128,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      175,
+      177,
+      180,
+      181,
+      183,
+      184,
+      185,
+      186,
+      187,
+      191,
+      193,
+      195,
+      196,
+      197,
+      200,
+      203,
+      205,
+      206,
+      207,
+      208,
+      209,
+      210,
+      211,
+      212,
+      213,
+      214,
+      215,
+      216,
+      217,
+      218,
+      219,
+      220,
+      221,
+      222,
+      223,
+      224
+    ],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 3",
@@ -40,8 +184,45 @@
     "result": "merged same session, incremental improvements",
     "issueCount": 0,
     "issueIds": [
-      225, 226, 227, 228, 231, 233, 236, 240, 244, 245, 246, 247, 248, 251, 252, 253, 254, 255, 256, 257, 316
-    ]
+      225,
+      226,
+      227,
+      228,
+      231,
+      233,
+      236,
+      240,
+      244,
+      245,
+      246,
+      247,
+      248,
+      251,
+      252,
+      253,
+      254,
+      255,
+      256
+    ],
+    "completedIssueIds": [
+      225,
+      226,
+      231,
+      233,
+      236,
+      240,
+      245,
+      246,
+      247,
+      248,
+      251,
+      252,
+      253,
+      255,
+      256
+    ],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 4",
@@ -51,9 +232,38 @@
     "result": "incremental (same multi-day session)",
     "issueCount": 0,
     "issueIds": [
-      257, 258, 259, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 272, 273, 275, 276, 277, 278, 279, 280, 281, 282,
-      283, 284, 285, 286, 316
-    ]
+      257,
+      258,
+      259,
+      261,
+      262,
+      263,
+      264,
+      265,
+      266,
+      267,
+      268,
+      269,
+      270,
+      272,
+      273,
+      275,
+      276,
+      277,
+      278,
+      279,
+      280,
+      281,
+      282,
+      283,
+      284,
+      285,
+      286,
+      316
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 5",
@@ -63,9 +273,38 @@
     "result": "incremental improvements in runtime correctness",
     "issueCount": 0,
     "issueIds": [
-      178, 234, 235, 238, 239, 250, 260, 274, 289, 290, 292, 293, 294, 295, 296, 297, 298, 299, 301, 302, 303, 304, 306,
-      308, 315, 317, 321, 322, 323
-    ]
+      178,
+      234,
+      235,
+      238,
+      239,
+      250,
+      260,
+      274,
+      289,
+      290,
+      292,
+      293,
+      294,
+      295,
+      296,
+      297,
+      298,
+      299,
+      301,
+      302,
+      303,
+      304,
+      306,
+      308,
+      315,
+      317,
+      321,
+      322
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 6",
@@ -75,9 +314,54 @@
     "result": "significant test262 category expansion",
     "issueCount": 0,
     "issueIds": [
-      121, 138, 139, 141, 142, 143, 146, 147, 149, 165, 176, 179, 182, 188, 189, 190, 194, 198, 199, 201, 202, 227, 228,
-      229, 230, 232, 237, 241, 243, 249, 261, 267, 279, 287, 288, 291, 300, 305, 307, 309, 314, 318, 319, 320
-    ]
+      121,
+      138,
+      139,
+      141,
+      142,
+      143,
+      146,
+      147,
+      149,
+      165,
+      176,
+      179,
+      182,
+      188,
+      189,
+      190,
+      194,
+      198,
+      199,
+      201,
+      202,
+      227,
+      228,
+      229,
+      230,
+      232,
+      237,
+      241,
+      243,
+      249,
+      261,
+      267,
+      279,
+      287,
+      288,
+      291,
+      300,
+      305,
+      307,
+      309,
+      314,
+      318,
+      319,
+      320
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 7",
@@ -87,9 +371,47 @@
     "result": "~6,366 pass (first test262 run recorded at end of day)",
     "issueCount": 0,
     "issueIds": [
-      324, 325, 326, 327, 328, 330, 331, 332, 334, 335, 336, 337, 338, 341, 342, 344, 347, 348, 349, 352, 355, 357, 358,
-      361, 362, 367, 368, 369, 375, 377, 378, 379, 380, 381, 382, 385, 386
-    ]
+      324,
+      325,
+      326,
+      327,
+      328,
+      330,
+      331,
+      332,
+      334,
+      335,
+      336,
+      337,
+      338,
+      341,
+      342,
+      344,
+      347,
+      348,
+      349,
+      352,
+      355,
+      357,
+      358,
+      361,
+      362,
+      367,
+      368,
+      369,
+      375,
+      377,
+      378,
+      379,
+      380,
+      381,
+      382,
+      385,
+      386
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 8",
@@ -99,10 +421,57 @@
     "result": "incremental (no test262 run recorded this day)",
     "issueCount": 0,
     "issueIds": [
-      153, 173, 174, 204, 329, 331, 337, 339, 340, 343, 344, 345, 346, 350, 351, 353, 354, 356, 357, 358, 359, 360, 362,
-      363, 364, 365, 366, 370, 371, 372, 373, 374, 376, 383, 384, 387, 388, 389, 390, 391, 392, 393, 395, 396, 397, 398,
+      153,
+      173,
+      174,
+      204,
+      329,
+      331,
+      337,
+      339,
+      340,
+      343,
+      344,
+      345,
+      346,
+      350,
+      351,
+      353,
+      354,
+      356,
+      357,
+      358,
+      359,
+      360,
+      362,
+      363,
+      364,
+      365,
+      366,
+      370,
+      371,
+      372,
+      373,
+      374,
+      376,
+      383,
+      384,
+      387,
+      388,
+      389,
+      390,
+      391,
+      392,
+      393,
+      395,
+      396,
+      397,
+      398,
       407
-    ]
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 9",
@@ -111,7 +480,29 @@
     "baseline": "building on Sprint 8",
     "result": "no test262 run recorded for this date",
     "issueCount": 0,
-    "issueIds": [408, 412, 413, 416, 417, 420, 421, 423, 425, 427, 436, 438, 441, 444, 448, 455, 458, 461]
+    "issueIds": [
+      408,
+      412,
+      413,
+      416,
+      417,
+      420,
+      421,
+      423,
+      425,
+      427,
+      436,
+      438,
+      441,
+      444,
+      448,
+      455,
+      458,
+      461
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 10",
@@ -120,7 +511,23 @@
     "baseline": "~6,366 pass (test262 run at 21:35 UTC)",
     "result": "6,366 pass / 23,021 total (first recorded run)",
     "issueCount": 0,
-    "issueIds": [437, 439, 440, 449, 452, 454, 455, 456, 457, 462, 469, 488]
+    "issueIds": [
+      437,
+      439,
+      440,
+      449,
+      452,
+      454,
+      455,
+      456,
+      457,
+      462,
+      469,
+      488
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 11",
@@ -129,7 +536,13 @@
     "baseline": "6,366 pass / 23,021 total",
     "result": "6,366 pass / 23,025 total (second run, minimal change)",
     "issueCount": 0,
-    "issueIds": [493, 556]
+    "issueIds": [
+      493,
+      556
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 12",
@@ -138,7 +551,17 @@
     "baseline": "5,753 pass / 22,974 total (regression from skip filter changes)",
     "result": "5,797 pass / 22,974 total → 7,139 pass / 22,974 total",
     "issueCount": 0,
-    "issueIds": [124, 125, 323, 498, 557, 596, 679]
+    "issueIds": [
+      124,
+      125,
+      323,
+      498,
+      557,
+      596
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 13",
@@ -147,7 +570,20 @@
     "baseline": "7,139 pass / 22,974 total",
     "result": "9,560 pass / 47,983 total (test set nearly doubled)",
     "issueCount": 0,
-    "issueIds": [597, 618, 634, 642, 651]
+    "issueIds": [
+      597,
+      618,
+      634,
+      642,
+      651
+    ],
+    "completedIssueIds": [
+      597,
+      618,
+      634
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 14",
@@ -156,7 +592,34 @@
     "baseline": "9,560 pass / 47,983 total",
     "result": "10,444 pass / 47,773 total",
     "issueCount": 0,
-    "issueIds": [123, 333, 490, 635, 638, 649, 652, 665, 668, 670, 679, 682]
+    "issueIds": [
+      123,
+      333,
+      490,
+      635,
+      638,
+      649,
+      652,
+      665,
+      668,
+      670,
+      679,
+      682
+    ],
+    "completedIssueIds": [
+      123,
+      333,
+      490,
+      635,
+      638,
+      649,
+      665,
+      668,
+      670,
+      679
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 15",
@@ -165,7 +628,26 @@
     "baseline": "10,444 pass / 47,773 total",
     "result": "10,974 pass → 15,244 pass (by end of day runs)",
     "issueCount": 0,
-    "issueIds": [672, 673, 676, 678, 683, 686, 687, 700]
+    "issueIds": [
+      672,
+      673,
+      676,
+      678,
+      683,
+      686,
+      687,
+      700
+    ],
+    "completedIssueIds": [
+      672,
+      673,
+      676,
+      678,
+      683,
+      686
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 16",
@@ -174,7 +656,15 @@
     "baseline": "~15,244 pass (from 03-20 evening run)",
     "result": "15,232 pass / 48,097 total",
     "issueCount": 0,
-    "issueIds": [695, 697, 702, 725]
+    "issueIds": [
+      695,
+      697,
+      702,
+      725
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 17",
@@ -183,7 +673,24 @@
     "baseline": "15,232 pass / 48,097 total",
     "result": "14,757 pass / 48,097 total → 14,720 pass / 48,102 total",
     "issueCount": 0,
-    "issueIds": [726, 728, 739, 742, 745, 748, 750, 751, 754]
+    "issueIds": [
+      726,
+      728,
+      739,
+      742,
+      745,
+      748,
+      750,
+      751,
+      754
+    ],
+    "completedIssueIds": [
+      726,
+      728,
+      754
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 18",
@@ -192,7 +699,27 @@
     "baseline": "14,720 pass / 48,102 total",
     "result": "14,720 pass / 48,102 total (stable)",
     "issueCount": 0,
-    "issueIds": [761, 763, 764, 767, 768, 773, 776, 777]
+    "issueIds": [
+      761,
+      763,
+      764,
+      767,
+      768,
+      773,
+      776,
+      777
+    ],
+    "completedIssueIds": [
+      761,
+      763,
+      764,
+      767,
+      768,
+      776,
+      777
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 19",
@@ -201,7 +728,13 @@
     "baseline": "14,720 pass / 48,102 total",
     "result": "14,120 pass / 48,102 total → 15,997 pass / 49,642 total",
     "issueCount": 0,
-    "issueIds": [767, 774]
+    "issueIds": [
+      767,
+      774
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 20",
@@ -210,7 +743,10 @@
     "baseline": "15,997 pass / 49,642 total",
     "result": "no test262 run recorded",
     "issueCount": 0,
-    "issueIds": []
+    "issueIds": [],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 21",
@@ -219,7 +755,28 @@
     "baseline": "~15,997 pass / 49,642 total",
     "result": "15,410 pass / 49,663 total",
     "issueCount": 0,
-    "issueIds": [729, 732, 734, 738, 771, 775, 779, 780, 788]
+    "issueIds": [
+      729,
+      732,
+      734,
+      738,
+      771,
+      775,
+      779,
+      780,
+      788
+    ],
+    "completedIssueIds": [
+      729,
+      732,
+      734,
+      738,
+      771,
+      775,
+      780
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 22",
@@ -228,7 +785,39 @@
     "baseline": "15,410 pass / 49,663 total",
     "result": "15,579 pass / 49,833 total",
     "issueCount": 0,
-    "issueIds": [494, 766, 770, 778, 789, 790, 796, 797, 799, 800, 801, 811, 813, 815]
+    "issueIds": [
+      494,
+      766,
+      770,
+      778,
+      789,
+      790,
+      796,
+      797,
+      799,
+      800,
+      801,
+      811,
+      813,
+      815
+    ],
+    "completedIssueIds": [
+      494,
+      766,
+      770,
+      778,
+      789,
+      790,
+      796,
+      797,
+      799,
+      800,
+      801,
+      813,
+      815
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 23",
@@ -237,7 +826,13 @@
     "baseline": "15,579 pass / 49,833 total",
     "result": "15,362 pass / 49,834 total (full run)",
     "issueCount": 0,
-    "issueIds": [789, 815]
+    "issueIds": [
+      789,
+      815
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 24",
@@ -246,7 +841,18 @@
     "baseline": "~15,182 pass / 49,840 total",
     "result": "14,169 pass → 14,616 pass / 49,880 total",
     "issueCount": 0,
-    "issueIds": [675, 696, 701, 733, 736, 737, 816]
+    "issueIds": [
+      675,
+      696,
+      701,
+      733,
+      736,
+      737,
+      816
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 25",
@@ -255,7 +861,21 @@
     "baseline": "14,616 pass / 49,880 total",
     "result": "15,197 pass / 49,881 total (+1,028 session gain)",
     "issueCount": 0,
-    "issueIds": [761, 763, 766, 778, 789, 793, 815, 817, 818, 823]
+    "issueIds": [
+      761,
+      763,
+      766,
+      778,
+      789,
+      793,
+      815,
+      817,
+      818,
+      823
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 26",
@@ -264,7 +884,18 @@
     "baseline": "15,197 pass / 49,881 total (stale cache)",
     "result": "13,289 pass / 36,828 total (fresh run with worker threads)",
     "issueCount": 0,
-    "issueIds": [779, 819, 820, 822]
+    "issueIds": [
+      779,
+      819,
+      820,
+      822
+    ],
+    "completedIssueIds": [
+      819,
+      822
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 27",
@@ -273,7 +904,21 @@
     "baseline": "13,289 pass (honest baseline)",
     "result": "17,612 pass / 48,086 total → 18,546 pass / 48,086 total",
     "issueCount": 0,
-    "issueIds": [674, 832, 833, 834, 835, 836, 837, 838]
+    "issueIds": [
+      674,
+      832,
+      833,
+      834,
+      835,
+      836,
+      837,
+      838
+    ],
+    "completedIssueIds": [
+      834
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 28",
@@ -282,7 +927,28 @@
     "baseline": "18,546 pass / 48,086 total",
     "result": "18,117 pass / 47,835 total → 18,186 pass / 47,782 total",
     "issueCount": 0,
-    "issueIds": [848, 850, 851, 852, 857, 859, 860, 861, 862, 864]
+    "issueIds": [
+      848,
+      850,
+      851,
+      852,
+      857,
+      859,
+      860,
+      861,
+      862,
+      864
+    ],
+    "completedIssueIds": [
+      848,
+      850,
+      851,
+      852,
+      857,
+      864
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 29",
@@ -292,9 +958,46 @@
     "result": "18,284 pass / 48,088 total",
     "issueCount": 0,
     "issueIds": [
-      825, 827, 836, 839, 840, 841, 843, 844, 846, 847, 849, 854, 856, 863, 864, 865, 866, 867, 868, 869, 870, 871, 872,
+      825,
+      827,
+      839,
+      840,
+      841,
+      843,
+      844,
+      846,
+      847,
+      849,
+      854,
+      856,
+      863,
+      864,
+      865,
+      866,
+      867,
+      868,
+      869,
+      870,
+      871,
+      872,
       873
-    ]
+    ],
+    "completedIssueIds": [
+      827,
+      839,
+      840,
+      841,
+      843,
+      844,
+      847,
+      849,
+      856,
+      863,
+      864,
+      866
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 30",
@@ -303,16 +1006,32 @@
     "baseline": "18,284 pass / 48,088 total (38.0%)",
     "result": "18,599 pass / 48,088 total (38.7%)",
     "issueCount": 5,
-    "issueIds": [822, 824, 825, 827, 846, 847, 848, 850, 852, 857, 866]
-  },
-  {
-    "name": "sprint 31 planning",
-    "sprintNumber": 31,
-    "date": "2026-03-29",
-    "baseline": "",
-    "result": "",
-    "issueCount": 0,
-    "issueIds": [822, 828, 839, 851, 854, 866]
+    "issueIds": [
+      822,
+      824,
+      825,
+      827,
+      846,
+      847,
+      848,
+      850,
+      852,
+      857,
+      866
+    ],
+    "completedIssueIds": [
+      822,
+      827,
+      846,
+      847,
+      848,
+      850,
+      852,
+      857,
+      866
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 31",
@@ -321,16 +1040,41 @@
     "baseline": "15,246 pass / 48,174 total (31.7%) — honest baseline, no cache, negative test bug fixed",
     "result": "",
     "issueCount": 0,
-    "issueIds": [822, 826, 828, 839, 851, 854, 862, 866, 868, 876, 877, 891, 894, 895]
-  },
-  {
-    "name": "sprint 32 planning",
-    "sprintNumber": 32,
-    "date": "2026-03-31",
-    "baseline": "",
-    "result": "",
-    "issueCount": 0,
-    "issueIds": [882, 883, 884, 885, 886, 887, 888]
+    "issueIds": [
+      822,
+      826,
+      828,
+      839,
+      851,
+      854,
+      862,
+      866,
+      868,
+      876,
+      877,
+      891,
+      894,
+      895
+    ],
+    "completedIssueIds": [
+      822,
+      826,
+      828,
+      839,
+      849,
+      851,
+      854,
+      862,
+      866,
+      868,
+      876,
+      877,
+      894,
+      895,
+      909
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 32",
@@ -339,7 +1083,32 @@
     "baseline": "15,187 pass / 42,934 official (35.4%) — post sprint-31 session",
     "result": "",
     "issueCount": 0,
-    "issueIds": [822, 831, 834, 836, 840, 842, 843, 845, 855, 856]
+    "issueIds": [
+      822,
+      831,
+      834,
+      836,
+      840,
+      842,
+      843,
+      845,
+      855,
+      856
+    ],
+    "completedIssueIds": [
+      822,
+      831,
+      834,
+      836,
+      840,
+      842,
+      843,
+      845,
+      855,
+      856
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 33",
@@ -348,16 +1117,23 @@
     "baseline": "17,252 pass / 48,088 total (35.9%) — clean baseline, cache disabled, isolated worktree build",
     "result": "",
     "issueCount": 0,
-    "issueIds": [882, 883, 884, 885, 886, 887, 888]
-  },
-  {
-    "name": "sprint 34 planning",
-    "sprintNumber": 34,
-    "date": "2026-03-29",
-    "baseline": "18,599 pass / 48,088 total (38.7%) — sprint 31 still in progress",
-    "result": "",
-    "issueCount": 0,
-    "issueIds": [831, 840, 844, 845, 849, 856, 858, 863]
+    "issueIds": [
+      883,
+      884,
+      885,
+      886,
+      887,
+      888
+    ],
+    "completedIssueIds": [
+      883,
+      885,
+      886,
+      887,
+      888
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 34",
@@ -366,7 +1142,23 @@
     "baseline": "15,526 pass / 42,934 official (36.2%) — post sprint-35 final",
     "result": "",
     "issueCount": 0,
-    "issueIds": [896, 897, 898, 899, 900, 901, 902]
+    "issueIds": [
+      896,
+      897,
+      898,
+      899,
+      900,
+      901,
+      902
+    ],
+    "completedIssueIds": [
+      896,
+      898,
+      899,
+      900
+    ],
+    "explicitCarryOver": false,
+    "isClosed": true
   },
   {
     "name": "sprint 35",
@@ -375,7 +1167,31 @@
     "baseline": "17,583 pass / 43,120 official (40.8%) — post sprint-33",
     "result": "",
     "issueCount": 0,
-    "issueIds": [797, 799, 822, 829, 831, 840, 844, 845, 849, 853, 855, 856, 858, 863, 924, 925]
+    "issueIds": [
+      822,
+      845,
+      849,
+      853,
+      855,
+      858,
+      863,
+      924,
+      925
+    ],
+    "completedIssueIds": [
+      822,
+      831,
+      845,
+      849,
+      853,
+      855,
+      858,
+      863,
+      924,
+      925
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 36",
@@ -385,8 +1201,41 @@
     "result": "",
     "issueCount": 0,
     "issueIds": [
-      910, 911, 912, 913, 914, 915, 916, 917, 918, 919, 920, 921, 922, 923, 924, 927, 931, 932, 933, 942, 944
-    ]
+      914,
+      915,
+      916,
+      917,
+      918,
+      919,
+      920,
+      921,
+      922,
+      923,
+      927,
+      931,
+      932,
+      933,
+      942
+    ],
+    "completedIssueIds": [
+      914,
+      915,
+      916,
+      917,
+      918,
+      919,
+      920,
+      921,
+      922,
+      923,
+      927,
+      931,
+      932,
+      933,
+      942
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 37",
@@ -396,8 +1245,57 @@
     "result": "",
     "issueCount": 0,
     "issueIds": [
-      739, 763, 766, 797, 799, 802, 828, 848, 851, 852, 910, 911, 912, 913, 923, 933, 934, 943, 944, 945, 946
-    ]
+      739,
+      763,
+      766,
+      797,
+      799,
+      828,
+      848,
+      851,
+      852,
+      910,
+      911,
+      912,
+      913,
+      923,
+      933,
+      934,
+      943,
+      945,
+      946
+    ],
+    "completedIssueIds": [
+      763,
+      766,
+      797,
+      799,
+      828,
+      848,
+      851,
+      852,
+      919,
+      923,
+      930,
+      931,
+      933,
+      934,
+      936,
+      937,
+      938,
+      939,
+      941,
+      945,
+      946,
+      947,
+      948,
+      950,
+      951,
+      952,
+      953
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
   },
   {
     "name": "sprint 38",
@@ -407,8 +1305,122 @@
     "result": "",
     "issueCount": 0,
     "issueIds": [
-      766, 799, 822, 845, 855, 856, 858, 948, 954, 955, 956, 957, 958, 959, 960, 961, 962, 963, 964, 965, 966, 967, 968,
-      969, 970, 971, 972
-    ]
+      766,
+      799,
+      822,
+      845,
+      855,
+      856,
+      858,
+      954,
+      955,
+      956,
+      957,
+      958,
+      959,
+      960,
+      961,
+      962,
+      963,
+      964,
+      965,
+      966,
+      967,
+      968,
+      969,
+      970,
+      971,
+      972
+    ],
+    "completedIssueIds": [
+      766,
+      799,
+      822,
+      845,
+      855,
+      856,
+      858,
+      954,
+      955,
+      956,
+      957,
+      958,
+      959,
+      960,
+      961,
+      962,
+      963,
+      964,
+      965,
+      966,
+      967,
+      968,
+      969,
+      970,
+      971,
+      972
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 39 planning",
+    "sprintNumber": 39,
+    "date": "2026-04-06",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [],
+    "completedIssueIds": [
+      985,
+      989
+    ],
+    "explicitCarryOver": false,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 39",
+    "sprintNumber": 39,
+    "date": "2026-04-06 to 2026-04-07",
+    "baseline": "18,408 pass / 21,652 fail / 2,973 CE / 43,120 total (42.7%)",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [],
+    "completedIssueIds": [
+      985,
+      989
+    ],
+    "explicitCarryOver": true,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 40",
+    "sprintNumber": 40,
+    "date": "2026-04-07",
+    "baseline": "18,899 pass / 21,164 fail / 1,734 CE / 10 CT / 43,120 total (43.8%)",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      830,
+      929,
+      983,
+      984,
+      986,
+      987,
+      988,
+      990,
+      991,
+      992,
+      993,
+      994,
+      995,
+      996,
+      997,
+      998,
+      999
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isClosed": false
   }
 ]
