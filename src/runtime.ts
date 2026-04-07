@@ -2179,15 +2179,16 @@ export function buildImports(
  *  (Chrome 130+, Firefox 135+), falling back to the JS polyfill.
  *  Uses importedStringConstants to provide string literals as globals. */
 export async function instantiateWasm(
-  binary: BufferSource,
+  binary: ArrayBuffer | ArrayBufferView,
   env: Record<string, Function>,
   stringConstants?: Record<string, WebAssembly.Global>,
 ): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
   const sc = stringConstants ?? {};
+  const bytes = binary as BufferSource;
   if (JS_STRINGS_NATIVE_BUILTIN) {
     try {
       const { instance } = await (WebAssembly.instantiate as Function)(
-        binary,
+        bytes,
         { env, string_constants: sc },
         { builtins: ["js-string"], importedStringConstants: "string_constants" },
       );
@@ -2196,7 +2197,7 @@ export async function instantiateWasm(
       // Fall through to the JS polyfill path.
     }
   }
-  const { instance } = await WebAssembly.instantiate(binary, {
+  const { instance } = await WebAssembly.instantiate(bytes, {
     env,
     "wasm:js-string": jsString,
     string_constants: sc,
