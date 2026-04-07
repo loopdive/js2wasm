@@ -756,7 +756,17 @@
       }
 
       function filterIssuesForSprint(issues, sprint) {
-        if (!sprint || !Array.isArray(sprint.issueIds) || sprint.issueIds.length === 0) return issues;
+        if (!sprint) return issues;
+        if (sprint.isClosed) {
+          const completed = new Set((sprint.completedIssueIds || []).map(String));
+          return {
+            blocked: [],
+            ready: [],
+            inprogress: [],
+            done: (issues.done || []).filter((iss) => completed.has(String(iss.id))),
+          };
+        }
+        if (!Array.isArray(sprint.issueIds) || sprint.issueIds.length === 0) return issues;
         const allowed = new Set(sprint.issueIds.map(String));
         return {
           blocked: (issues.blocked || []).filter((iss) => allowed.has(String(iss.id))),
