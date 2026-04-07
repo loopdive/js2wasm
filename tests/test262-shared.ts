@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, it } from "vitest";
 import { availableParallelism } from "os";
 import { CompilerPool, type TestResult } from "../scripts/compiler-pool.js";
 import {
+  buildNegativeCompileSource,
   classifyError,
   classifyTestScope,
   findTestFiles,
@@ -334,13 +335,15 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
                 meta.negative.phase === "early" ||
                 meta.negative.phase === "resolution");
             const isRuntimeNegative = meta.negative?.phase === "runtime";
+            const compileSource = isNegative ? buildNegativeCompileSource(source, meta, category) : wrapped;
+            const lineAdjustOffset = isNegative ? 0 : wrapOffset;
 
             // Multi-file compilation for FIXTURE imports (handled in-process)
             const fixtures = resolveFixtures(source, filePath);
             if (fixtures.length > 0) {
               // Fixture tests are rare — compile in-process
               try {
-                const vfiles: Record<string, string> = { "./test.ts": wrapped };
+                const vfiles: Record<string, string> = { "./test.ts": compileSource };
                 for (const fixPath of fixtures) {
                   vfiles["./" + relative(dirname(filePath), fixPath)] = readFileSync(fixPath, "utf-8");
                 }
@@ -379,7 +382,7 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
             const wasmPath = "";
             const metaPath = "";
             const r = await pool!.runTest(
-              wrapped,
+              compileSource,
               {
                 isNegative: isNegative || false,
                 isRuntimeNegative: isRuntimeNegative || false,
@@ -399,7 +402,7 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
             }
 
             if (r.status === "compile_error" || r.status === "compile_timeout") {
-              const error = r.error ? adjustErrorLines(r.error, wrapOffset) : r.status;
+              const error = r.error ? adjustErrorLines(r.error, lineAdjustOffset) : r.status;
               recordResult(relPath, category, r.status, error, timing, scopeInfo);
               return;
             }

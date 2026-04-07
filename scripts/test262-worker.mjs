@@ -49,6 +49,129 @@ function doCompile(source, sourceMapUrl) {
       });
 }
 
+function extractWasmFuncName(err) {
+  const stack = err?.stack ?? err?.message ?? String(err);
+  const atMatch = stack.match(/at\s+(\w[\w$]*)\s+\(wasm:\/\//);
+  if (atMatch) return atMatch[1];
+  const fnMatch = stack.match(/function\s+#\d+:"([^"]+)"/);
+  if (fnMatch) return fnMatch[1];
+  return undefined;
+}
+
+function extractWasmByteOffset(err) {
+  const text = `${err?.message ?? ""}\n${err?.stack ?? ""}`;
+  const hexMatch = text.match(/:0x([0-9a-fA-F]+)/);
+  if (hexMatch) return parseInt(hexMatch[1], 16);
+  const plusMatch = text.match(/@\+(\d+)/);
+  if (plusMatch) return parseInt(plusMatch[1], 10);
+  const offsetMatch = text.match(/\boffset\s+(\d+)\b/i);
+  if (offsetMatch) return parseInt(offsetMatch[1], 10);
+  return undefined;
+}
+
+function decodeVLQSegment(segment) {
+  const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const values = [];
+  let i = 0;
+  while (i < segment.length) {
+    let vlq = 0;
+    let shift = 0;
+    let continuation = true;
+    while (continuation && i < segment.length) {
+      const digit = BASE64.indexOf(segment[i]);
+      if (digit === -1) break;
+      vlq |= (digit & 0x1f) << shift;
+      continuation = (digit & 0x20) !== 0;
+      shift += 5;
+      i++;
+    }
+    const isNeg = (vlq & 1) === 1;
+    values.push(isNeg ? -(vlq >>> 1) : vlq >>> 1);
+  }
+  return values;
+}
+
+function lookupSourceMapOffset(sourceMapJson, wasmOffset) {
+  try {
+    const sm = JSON.parse(sourceMapJson);
+    const mappings = sm.mappings;
+    if (!mappings) return undefined;
+    const sources = sm.sources ?? [];
+    const segments = mappings.split(",");
+    let absWasmOffset = 0;
+    let absSourceIdx = 0;
+    let absLine = 0;
+    let absCol = 0;
+    let best;
+    for (const seg of segments) {
+      if (!seg) continue;
+      const values = decodeVLQSegment(seg);
+      if (values.length < 4) continue;
+      absWasmOffset += values[0];
+      absSourceIdx += values[1];
+      absLine += values[2];
+      absCol += values[3];
+      if (absWasmOffset <= wasmOffset) {
+        best = { line: absLine + 1, column: absCol + 1, source: sources[absSourceIdx] ?? "" };
+      } else {
+        break;
+      }
+    }
+    return best;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractWatFunctionSnippet(wat, funcName) {
+  if (!wat) return undefined;
+  const lines = wat.split("\n");
+  let start = -1;
+  if (funcName) start = lines.findIndex((line) => line.includes(`(func $${funcName}`));
+  if (start === -1) start = lines.findIndex((line) => line.includes("(func "));
+  if (start === -1) return undefined;
+  const snippet = lines
+    .slice(start, Math.min(start + 8, lines.length))
+    .map((line) => line.trim())
+    .join(" ");
+  return snippet.length > 220 ? `${snippet.slice(0, 217)}...` : snippet;
+}
+
+async function buildInvalidBinaryError(source, sourceMapUrl, result) {
+  let detailErr;
+  try {
+    const imports = buildImports(result.imports, undefined, result.stringPool);
+    await WebAssembly.instantiate(result.binary, imports);
+  } catch (err) {
+    detailErr = err;
+  }
+
+  const parts = [];
+  const offset = detailErr ? extractWasmByteOffset(detailErr) : undefined;
+  const mapped = offset !== undefined && result.sourceMap ? lookupSourceMapOffset(result.sourceMap, offset) : undefined;
+  const funcName = detailErr ? extractWasmFuncName(detailErr) : undefined;
+  if (mapped) parts.push(`L${mapped.line}:${mapped.column}`);
+  parts.push(`invalid Wasm binary (${detailErr?.message ?? "WebAssembly.validate failed"})`);
+  if (funcName) parts.push(`[in ${funcName}()]`);
+  if (offset !== undefined) parts.push(`[@+${offset}]`);
+
+  try {
+    const watResult = compile(source, {
+      fileName: "test.ts",
+      sourceMap: true,
+      sourceMapUrl: sourceMapUrl || "test.wasm.map",
+      emitWat: true,
+      skipSemanticDiagnostics: true,
+    });
+    if (watResult.success && watResult.wat) {
+      const snippet = extractWatFunctionSnippet(watResult.wat, funcName);
+      if (snippet) parts.push(`[wat: ${snippet}]`);
+    }
+  } catch {}
+
+  return parts.join(" ");
+}
+
 process.on("message", async (msg) => {
   const { id, source, execute, isNegative, isRuntimeNegative } = msg;
   const compileStart = performance.now();
@@ -107,9 +230,20 @@ process.on("message", async (msg) => {
     return;
   }
 
+  if (execute && isNegative && result.errors.length > 0) {
+    process.send({
+      id,
+      status: "pass",
+      compileMs,
+      errorCodes: result.errors.filter((e) => e.code).map((e) => e.code),
+    });
+    postCompileCleanup();
+    return;
+  }
+
   // Validate Wasm binary before proceeding
   if (!WebAssembly.validate(result.binary)) {
-    const errMsg = "invalid Wasm binary (WebAssembly.validate failed)";
+    const errMsg = await buildInvalidBinaryError(source, msg.sourceMapUrl, result);
     if (msg.wasmPath && msg.metaPath) {
       try {
         writeFileSync(msg.wasmPath, new Uint8Array(0));

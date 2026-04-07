@@ -144,8 +144,9 @@ export function test(): f64 {
       const funcName = extractWasmFuncName(err);
       // We expect some function name (could be "test" or an internal name)
       // The key thing is that extractWasmFuncName doesn't crash
-      const enriched = enrichErrorMessage(err.message, err, result.sourceMap, 0);
-      expect(enriched).toContain(err.message);
+      const baseMessage = err?.message ?? String(err);
+      const enriched = enrichErrorMessage(baseMessage, err, result.sourceMap, 0);
+      expect(enriched).toContain(baseMessage);
       // If we got a function name, it should be in the enriched message
       if (funcName) {
         expect(enriched).toContain(`in ${funcName}()`);
