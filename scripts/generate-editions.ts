@@ -18,8 +18,8 @@
  * Issue: #959
  */
 
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { join, dirname } from "path";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -237,6 +237,7 @@ const FEATURE_EDITION: Record<string, number> = {
 };
 
 const EDITION_NAMES: Record<number, string> = {
+  0: "≤ ES3",
   3: "ES3",
   5: "ES5",
   2015: "ES2015",
@@ -250,11 +251,10 @@ const EDITION_NAMES: Record<number, string> = {
   2023: "ES2023",
   2024: "ES2024",
   2025: "ES2025",
-  0: "ES3/Core",
   [-1]: "Proposals",
 };
 
-const EDITION_ORDER = [5, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, -1, 0];
+const EDITION_ORDER = [0, 5, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
 
 // ---------------------------------------------------------------------------
 // Frontmatter parsing
