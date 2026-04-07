@@ -35,6 +35,27 @@ const DEFAULT_BLOCKED_MEMBERS = new Set([
   "insertAdjacentHTML",
 ]);
 
+function getApproxSourceLocation(sourceFile: ts.SourceFile): { line: number; column: number } {
+  const anchor = sourceFile.statements[0] ?? sourceFile;
+  const { line, character } = sourceFile.getLineAndCharacterOfPosition(anchor.getStart(sourceFile));
+  return { line: line + 1, column: character + 1 };
+}
+
+function pushSourceAnchoredDiagnostic(
+  errors: CompileError[],
+  sourceFile: ts.SourceFile,
+  message: string,
+  severity: "error" | "warning",
+): void {
+  const loc = getApproxSourceLocation(sourceFile);
+  errors.push({
+    message,
+    line: loc.line,
+    column: loc.column,
+    severity,
+  });
+}
+
 /** Validate source against safe mode restrictions. Returns errors for violations. */
 function validateSafeMode(sourceFile: ts.SourceFile, checker: ts.TypeChecker, options: CompileOptions): CompileError[] {
   const errors: CompileError[] = [];
@@ -176,6 +197,17 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   function addError(node: ts.Node, message: string) {
     const p = pos(node);
     errors.push({ message, line: p.line, column: p.column, severity: "error" });
+  }
+
+  function findInnermostNodeAtPosition(node: ts.Node, position: number): ts.Node {
+    let best: ts.Node = node;
+    function visit(current: ts.Node): void {
+      if (position < current.getFullStart() || position >= current.getEnd()) return;
+      best = current;
+      ts.forEachChild(current, visit);
+    }
+    visit(node);
+    return best;
   }
 
   /**
@@ -372,6 +404,11 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     return false;
   }
 
+  function isUsingDeclarationStatement(node: ts.Node): node is ts.VariableStatement {
+    if (!ts.isVariableStatement(node)) return false;
+    return (node.declarationList.flags & ts.NodeFlags.Using) !== 0;
+  }
+
   function visit(node: ts.Node): void {
     // Check prefix/postfix increment/decrement on arguments/eval in strict mode
     // Also check increment/decrement on optional chaining (always invalid)
@@ -423,6 +460,9 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       if (name && isStrictMode(node)) {
         addError(node.left, `Cannot assign to '${name}' in strict mode`);
       }
+      if (hasOptionalChain(node.left)) {
+        addError(node, "Optional chaining is not valid in the left-hand side of an assignment expression");
+      }
       if (isInvalidAssignmentTarget(node.left, /* allowDestructuring */ true)) {
         addError(node, "Invalid left-hand side in assignment");
       }
@@ -453,6 +493,9 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         const name = isArgumentsOrEval(node.left);
         if (name && isStrictMode(node)) {
           addError(node.left, `Cannot assign to '${name}' in strict mode`);
+        }
+        if (hasOptionalChain(node.left)) {
+          addError(node, "Optional chaining is not valid in the left-hand side of an assignment expression");
         }
         // Compound assignment to non-simple targets (call expressions, binary, etc.)
         if (isInvalidAssignmentTarget(node.left)) {
@@ -1653,18 +1696,25 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     // because regular \n and \r are handled by TS parser's ASI behavior.
     // After wrapTest resolves Unicode escapes, these characters appear literally.
 
-    // ── HTML-like comment (-->) in module code ─────────────────────
-    // ES spec: SingleLineHTMLCloseComment is only valid in scripts, not modules.
-    // Since we compile as modules (export {}), --> is a SyntaxError.
-    // Only check if the source contains --> outside of string literals.
-    // Note: this is detected by checking raw source text for --> at the start of a line.
-
-    // ── 'using' declarations in statement positions ──────────────────
-    // ES spec: UsingDeclaration is not a valid Statement — it's a
-    // LexicalDeclaration variant only valid in StatementList positions.
-    // In TS, 'using' may be parsed as a regular identifier + expression.
-    // We detect the pattern: for (...) using x = ...; (using in single-statement position)
-    // by checking if a variable statement with name "using" is in statement position.
+    // ── 'using' / 'await using' placement restrictions ───────────────
+    if (isUsingDeclarationStatement(node)) {
+      const parent = node.parent;
+      if (parent && (ts.isCaseClause(parent) || ts.isDefaultClause(parent))) {
+        addError(node, "Using declarations cannot appear directly in switch case/default statement lists");
+      }
+      if (parent && isStatementPosition(parent, node)) {
+        addError(node, "Using declarations cannot appear in a single-statement context");
+      }
+      if (ts.isSourceFile(parent) && !ts.isExternalModule(parent)) {
+        const isAwaitUsing = (node.declarationList.flags & ts.NodeFlags.AwaitUsing) === ts.NodeFlags.AwaitUsing;
+        addError(
+          node,
+          isAwaitUsing
+            ? "'await using' declarations are not allowed at the top level of scripts"
+            : "'using' declarations are not allowed at the top level of scripts",
+        );
+      }
+    }
 
     // ── Fields named "constructor" in class ──────────────────────────
     // ES spec: It is a Syntax Error if PropName of a ClassElement is "constructor"
@@ -2430,9 +2480,18 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   }
 
   // ── HTML close comment (-->) in module code ──────────────────────
-  // NOTE: Check disabled (#952). Our test262 wrapper puts script-mode tests
-  // (which allow -->) inside module code (export function test() {}), causing
-  // false positives. The compiler handles --> gracefully regardless.
+  // HTML-like comments are allowed in scripts but not in modules.
+  // Check the raw source so we still catch cases TS tokenizes permissively.
+  if (ts.isExternalModule(sourceFile)) {
+    for (const line of sourceFile.text.split(/\r?\n/u)) {
+      if (/^\s*(?:;+\s*)?-->/.test(line)) {
+        const offset = sourceFile.text.indexOf(line);
+        const lineNode = findInnermostNodeAtPosition(sourceFile, offset);
+        addError(lineNode, "HTML close comments are not allowed in module code");
+        break;
+      }
+    }
+  }
 
   // ── Duplicate class constructors ──────────────────────────────────
   // ES spec: It is a Syntax Error if PrototypePropertyNameList of ClassElementList
@@ -3012,14 +3071,28 @@ export function compileSource(
           severity: err.severity ?? "error",
         });
       }
+      if (result.errors.some((err) => err.message.startsWith("Codegen error:"))) {
+        return {
+          binary: new Uint8Array(0),
+          wat: "",
+          dts: "",
+          importsHelper: "",
+          success: false,
+          errors,
+          stringPool: [],
+          imports: [],
+          hasMain: false,
+          hasTopLevelStatements: false,
+        };
+      }
     }
   } catch (e) {
-    errors.push({
-      message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
-      line: 0,
-      column: 0,
-      severity: "error",
-    });
+    pushSourceAnchoredDiagnostic(
+      errors,
+      ast.sourceFile,
+      `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
+      "error",
+    );
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -3073,12 +3146,12 @@ export function compileSource(
       binary = emitBinary(mod);
     }
   } catch (e) {
-    errors.push({
-      message: `Binary emit error: ${e instanceof Error ? e.message : String(e)}`,
-      line: 0,
-      column: 0,
-      severity: "error",
-    });
+    pushSourceAnchoredDiagnostic(
+      errors,
+      ast.sourceFile,
+      `Binary emit error: ${e instanceof Error ? e.message : String(e)}`,
+      "error",
+    );
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -3101,12 +3174,7 @@ export function compileSource(
       binary = optResult.binary;
     }
     if (optResult.warning) {
-      errors.push({
-        message: optResult.warning,
-        line: 0,
-        column: 0,
-        severity: "warning",
-      });
+      pushSourceAnchoredDiagnostic(errors, ast.sourceFile, optResult.warning, "warning");
     }
   }
 
@@ -3117,12 +3185,12 @@ export function compileSource(
       wat = emitWat(mod);
     } catch (e) {
       // WAT emit failure is non-fatal
-      errors.push({
-        message: `WAT emit warning: ${e instanceof Error ? e.message : String(e)}`,
-        line: 0,
-        column: 0,
-        severity: "warning",
-      });
+      pushSourceAnchoredDiagnostic(
+        errors,
+        ast.sourceFile,
+        `WAT emit warning: ${e instanceof Error ? e.message : String(e)}`,
+        "warning",
+      );
     }
   }
 
@@ -3308,14 +3376,28 @@ export function compileMultiSource(
           severity: err.severity ?? "error",
         });
       }
+      if (result.errors.some((err) => err.message.startsWith("Codegen error:"))) {
+        return {
+          binary: new Uint8Array(0),
+          wat: "",
+          dts: "",
+          importsHelper: "",
+          success: false,
+          errors,
+          stringPool: [],
+          imports: [],
+          hasMain: false,
+          hasTopLevelStatements: false,
+        };
+      }
     }
   } catch (e) {
-    errors.push({
-      message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
-      line: 0,
-      column: 0,
-      severity: "error",
-    });
+    pushSourceAnchoredDiagnostic(
+      errors,
+      multiAst.entryFile,
+      `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
+      "error",
+    );
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -3361,12 +3443,12 @@ export function compileMultiSource(
       binary = emitBinary(mod);
     }
   } catch (e) {
-    errors.push({
-      message: `Binary emit error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
-      line: 0,
-      column: 0,
-      severity: "error",
-    });
+    pushSourceAnchoredDiagnostic(
+      errors,
+      multiAst.entryFile,
+      `Binary emit error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
+      "error",
+    );
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -3389,12 +3471,7 @@ export function compileMultiSource(
       binary = optResult.binary;
     }
     if (optResult.warning) {
-      errors.push({
-        message: optResult.warning,
-        line: 0,
-        column: 0,
-        severity: "warning",
-      });
+      pushSourceAnchoredDiagnostic(errors, multiAst.entryFile, optResult.warning, "warning");
     }
   }
 
@@ -3403,12 +3480,12 @@ export function compileMultiSource(
     try {
       wat = emitWat(mod);
     } catch (e) {
-      errors.push({
-        message: `WAT emit warning: ${e instanceof Error ? e.message : String(e)}`,
-        line: 0,
-        column: 0,
-        severity: "warning",
-      });
+      pushSourceAnchoredDiagnostic(
+        errors,
+        multiAst.entryFile,
+        `WAT emit warning: ${e instanceof Error ? e.message : String(e)}`,
+        "warning",
+      );
     }
   }
 
@@ -3527,14 +3604,28 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
           severity: err.severity ?? "error",
         });
       }
+      if (result.errors.some((err) => err.message.startsWith("Codegen error:"))) {
+        return {
+          binary: new Uint8Array(0),
+          wat: "",
+          dts: "",
+          importsHelper: "",
+          success: false,
+          errors,
+          stringPool: [],
+          imports: [],
+          hasMain: false,
+          hasTopLevelStatements: false,
+        };
+      }
     }
   } catch (e) {
-    errors.push({
-      message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
-      line: 0,
-      column: 0,
-      severity: "error",
-    });
+    pushSourceAnchoredDiagnostic(
+      errors,
+      multiAst.entryFile,
+      `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
+      "error",
+    );
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -3574,12 +3665,12 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       binary = emitBinary(mod);
     }
   } catch (e) {
-    errors.push({
-      message: `Binary emit error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
-      line: 0,
-      column: 0,
-      severity: "error",
-    });
+    pushSourceAnchoredDiagnostic(
+      errors,
+      multiAst.entryFile,
+      `Binary emit error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
+      "error",
+    );
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -3601,12 +3692,7 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       binary = optResult.binary;
     }
     if (optResult.warning) {
-      errors.push({
-        message: optResult.warning,
-        line: 0,
-        column: 0,
-        severity: "warning",
-      });
+      pushSourceAnchoredDiagnostic(errors, multiAst.entryFile, optResult.warning, "warning");
     }
   }
 
@@ -3615,12 +3701,12 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
     try {
       wat = emitWat(mod);
     } catch (e) {
-      errors.push({
-        message: `WAT emit warning: ${e instanceof Error ? e.message : String(e)}`,
-        line: 0,
-        column: 0,
-        severity: "warning",
-      });
+      pushSourceAnchoredDiagnostic(
+        errors,
+        multiAst.entryFile,
+        `WAT emit warning: ${e instanceof Error ? e.message : String(e)}`,
+        "warning",
+      );
     }
   }
 
@@ -3984,13 +4070,16 @@ export function compileToObjectSource(source: string, options: CompileOptions = 
         severity: "error",
       });
     }
+    if (result.errors.some((err) => err.message.startsWith("Codegen error:"))) {
+      return { object: new Uint8Array(0), success: false, errors };
+    }
   } catch (e) {
-    errors.push({
-      message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
-      line: 0,
-      column: 0,
-      severity: "error",
-    });
+    pushSourceAnchoredDiagnostic(
+      errors,
+      ast.sourceFile,
+      `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
+      "error",
+    );
     return { object: new Uint8Array(0), success: false, errors };
   }
 
@@ -3998,12 +4087,12 @@ export function compileToObjectSource(source: string, options: CompileOptions = 
   try {
     object = emitObject(mod);
   } catch (e) {
-    errors.push({
-      message: `Object emit error: ${e instanceof Error ? e.message : String(e)}`,
-      line: 0,
-      column: 0,
-      severity: "error",
-    });
+    pushSourceAnchoredDiagnostic(
+      errors,
+      ast.sourceFile,
+      `Object emit error: ${e instanceof Error ? e.message : String(e)}`,
+      "error",
+    );
     return { object: new Uint8Array(0), success: false, errors };
   }
 

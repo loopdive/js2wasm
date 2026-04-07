@@ -28,7 +28,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { createCodegenContext } from "./context/create-context.js";
 import { popBody, pushBody } from "./context/bodies.js";
-import { reportError } from "./context/errors.js";
+import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal, allocTempLocal, deduplicateLocals, getLocalType, releaseTempLocal } from "./context/locals.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type {
@@ -629,6 +629,7 @@ export function generateModule(
 } {
   const mod = createEmptyModule();
   const ctx = createCodegenContext(mod, ast.checker, options);
+  try {
 
   // WASI target: register linear memory, bump pointer global, and WASI imports
   if (ctx.wasi) {
@@ -771,6 +772,10 @@ export function generateModule(
   // Late fixup: repair extern.convert_any applied to non-anyref values.
   // Must run after all other passes since they can introduce invalid coercions.
   fixupExternConvertAny(ctx);
+
+  } catch (e) {
+    reportErrorNoNode(ctx, `Codegen error: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   return { module: mod, errors: ctx.errors };
 }
@@ -1827,6 +1832,7 @@ export function generateMultiModule(
 } {
   const mod = createEmptyModule();
   const ctx = createCodegenContext(mod, multiAst.checker, options);
+  try {
 
   // WASI target: register linear memory, bump pointer global, and WASI imports
   if (ctx.wasi) {
@@ -1957,6 +1963,10 @@ export function generateMultiModule(
 
   // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
   stackBalance(mod);
+
+  } catch (e) {
+    reportErrorNoNode(ctx, `Codegen error: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   return { module: mod, errors: ctx.errors };
 }
