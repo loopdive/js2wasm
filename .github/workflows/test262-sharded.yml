@@ -135,7 +135,7 @@ jobs:
         run: |
           mkdir -p merged-reports
           find shard-artifacts -name 'blob-*.json' -exec cp {} merged-reports/ \;
-          pnpm exec vitest run --merge-reports=merged-reports --reporter=default --reporter=json --outputFile.json=merged-reports/vitest-report.json
+          pnpm exec vitest --merge-reports=merged-reports --reporter=default --reporter=json --outputFile.json=merged-reports/vitest-report.json
 
       - name: Merge test262 JSONL results
         run: |
