@@ -79,5 +79,5 @@ jobs:
           fi
           PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
           TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
-          git commit -m "chore(test262): refresh results — ${PASS}/${TOTAL} pass [skip ci]"
+          git commit -m "chore(test262): refresh results — ${PASS}/${TOTAL} pass"
           git push
