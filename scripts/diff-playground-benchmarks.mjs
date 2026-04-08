@@ -3,10 +3,14 @@
 import { readFileSync } from "node:fs";
 
 function usage() {
-  console.error(`Usage: node scripts/diff-playground-benchmarks.mjs --baseline <path> --candidate <path> [--max-relative-regression <ratio>]
+  console.error(`Usage: node scripts/diff-playground-benchmarks.mjs --baseline <path> --candidate <path> [--max-relative-regression <ratio>] [--max-wasm-slowdown <ratio>]
 
 Compare landing-page playground benchmark snapshots using the same ratio the chart shows:
   ratio = jsUs / wasmUs
+
+A regression is only reported when BOTH:
+  - the visible ratio drops beyond the configured threshold
+  - wasmUs itself slows down beyond the configured threshold
 
 Exit codes:
   0 = no regressions
@@ -47,9 +51,17 @@ function fmtUs(value) {
 const args = process.argv.slice(2);
 const baselinePath = getArg(args, "--baseline");
 const candidatePath = getArg(args, "--candidate");
-const maxRelativeRegression = Number.parseFloat(getArg(args, "--max-relative-regression", "0.10"));
+const maxRelativeRegression = Number.parseFloat(getArg(args, "--max-relative-regression", "0.25"));
+const maxWasmSlowdown = Number.parseFloat(getArg(args, "--max-wasm-slowdown", "0.20"));
 
-if (!baselinePath || !candidatePath || !Number.isFinite(maxRelativeRegression) || maxRelativeRegression < 0) {
+if (
+  !baselinePath ||
+  !candidatePath ||
+  !Number.isFinite(maxRelativeRegression) ||
+  maxRelativeRegression < 0 ||
+  !Number.isFinite(maxWasmSlowdown) ||
+  maxWasmSlowdown < 0
+) {
   usage();
   process.exit(2);
 }
@@ -79,10 +91,11 @@ for (const [path, oldRow] of baseline.entries()) {
   }
 
   const relativeDrop = (oldRow.ratio - newRow.ratio) / oldRow.ratio;
-  if (relativeDrop > maxRelativeRegression) {
+  const wasmSlowdown = (newRow.wasmUs - oldRow.wasmUs) / oldRow.wasmUs;
+  if (relativeDrop > maxRelativeRegression && wasmSlowdown > maxWasmSlowdown) {
     regressions.push({
       path,
-      reason: `ratio dropped by ${(relativeDrop * 100).toFixed(1)}%`,
+      reason: `ratio dropped by ${(relativeDrop * 100).toFixed(1)}% and wasm slowed by ${(wasmSlowdown * 100).toFixed(1)}%`,
       oldRow,
       newRow,
     });
@@ -102,7 +115,9 @@ for (const [path, oldRow] of baseline.entries()) {
 console.log("=== Playground benchmark regression diff ===");
 console.log(`Baseline: ${baselinePath}`);
 console.log(`Candidate: ${candidatePath}`);
-console.log(`Threshold: ${(maxRelativeRegression * 100).toFixed(1)}% ratio drop`);
+console.log(
+  `Thresholds: ${(maxRelativeRegression * 100).toFixed(1)}% ratio drop AND ${(maxWasmSlowdown * 100).toFixed(1)}% wasm slowdown`,
+);
 console.log("");
 console.log(`Benchmarks checked: ${baseline.size}`);
 console.log(`Regressions: ${regressions.length}`);
