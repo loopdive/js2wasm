@@ -1,0 +1,137 @@
+name: Test262 Sharded
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      include_proposals:
+        description: "Include proposal tests"
+        required: false
+        default: false
+        type: boolean
+      compiler_pool_size:
+        description: "Compiler workers per shard runner"
+        required: false
+        default: "4"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test262-sharded-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test262-shard:
+    name: test262 shard ${{ matrix.chunk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+
+    env:
+      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
+      TEST262_INCLUDE_PROPOSALS: ${{ inputs.include_proposals && '1' || '0' }}
+      RUN_TIMESTAMP: ${{ github.run_id }}-chunk${{ matrix.chunk }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache test262 incremental cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .test262-cache
+            benchmarks/results/test262-cache.json
+          key: test262-cache-${{ hashFiles('src/**/*.ts') }}-chunk-${{ matrix.chunk }}
+          restore-keys: |
+            test262-cache-${{ hashFiles('src/**/*.ts') }}-
+            test262-cache-
+
+      - name: Build compiler bundles
+        run: |
+          pnpm run build:compiler-bundle
+          ./node_modules/.bin/esbuild src/runtime.ts --bundle --platform=node --format=esm \
+            --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen
+
+      - name: Run shard
+        run: |
+          mkdir -p vitest-blob
+          node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
+            --reporter=blob \
+            --outputFile=vitest-blob/blob-${{ matrix.chunk }}.json
+
+      - name: Upload shard artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test262-shard-${{ matrix.chunk }}
+          path: |
+            vitest-blob/blob-${{ matrix.chunk }}.json
+            benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
+          if-no-files-found: warn
+
+  merge:
+    name: merge shard reports
+    needs: test262-shard
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: shard-artifacts
+          pattern: test262-shard-*
+          merge-multiple: false
+
+      - name: Merge Vitest blob reports
+        run: |
+          mkdir -p merged-reports
+          find shard-artifacts -name 'blob-*.json' -exec cp {} merged-reports/ \;
+          node node_modules/vitest/dist/cli.js --merge-reports=merged-reports --reporter=default --reporter=json --outputFile=merged-reports/vitest-report.json
+
+      - name: Upload merged reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test262-merged-report
+          path: |
+            .vitest-reports/**
+            merged-reports/**
+          if-no-files-found: warn
