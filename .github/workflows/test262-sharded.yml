@@ -21,6 +21,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: test262-sharded-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
@@ -98,7 +101,6 @@ jobs:
         with:
           name: test262-shard-${{ matrix.chunk }}
           path: |
-            vitest-blob/blob-${{ matrix.chunk }}.json
             benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
           if-no-files-found: warn
 
@@ -130,12 +132,6 @@ jobs:
           path: shard-artifacts
           pattern: test262-shard-*
           merge-multiple: false
-
-      - name: Merge Vitest blob reports
-        run: |
-          mkdir -p merged-reports
-          find shard-artifacts -name 'blob-*.json' -exec cp {} merged-reports/ \;
-          pnpm exec vitest --merge-reports=merged-reports --reporter=default --reporter=json --outputFile.json=merged-reports/vitest-report.json
 
       - name: Merge test262 JSONL results
         run: |
@@ -189,7 +185,6 @@ jobs:
         with:
           name: test262-merged-report
           path: |
-            .vitest-reports/**
             merged-reports/**
           if-no-files-found: warn
 
