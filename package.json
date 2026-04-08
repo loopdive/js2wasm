@@ -25,7 +25,7 @@
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
-    "refresh:benchmarks": "pnpm exec tsx benchmarks/run.ts && pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && pnpm run generate:size-benchmarks",
+    "refresh:benchmarks": "npx tsx benchmarks/run.ts && pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && pnpm run generate:size-benchmarks",
     "build:compiler-bundle": "esbuild scripts/compiler-bundle-entry.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript --external:binaryen",
     "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
     "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
