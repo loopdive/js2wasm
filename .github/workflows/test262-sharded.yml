@@ -3,6 +3,8 @@ name: Test262 Sharded
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       include_proposals:
@@ -17,7 +19,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: test262-sharded-${{ github.event.pull_request.number || github.ref }}
@@ -25,6 +27,7 @@ concurrency:
 
 jobs:
   test262-shard:
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
     name: test262 shard ${{ matrix.chunk }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -100,10 +103,10 @@ jobs:
           if-no-files-found: warn
 
   merge:
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
     name: merge shard reports
     needs: test262-shard
     runs-on: ubuntu-latest
-    if: always()
 
     steps:
       - name: Checkout
@@ -134,6 +137,131 @@ jobs:
           find shard-artifacts -name 'blob-*.json' -exec cp {} merged-reports/ \;
           pnpm exec vitest run --merge-reports=merged-reports --reporter=default --reporter=json --outputFile.json=merged-reports/vitest-report.json
 
+      - name: Merge test262 JSONL results
+        run: |
+          mkdir -p merged-reports
+          find shard-artifacts -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > merged-reports/test262-results-merged.jsonl
+          test -s merged-reports/test262-results-merged.jsonl
+
+      - name: Build merged test262 report
+        run: |
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+          from datetime import datetime, timezone
+
+          jsonl_path = "merged-reports/test262-results-merged.jsonl"
+          report_path = "merged-reports/test262-report-merged.json"
+          include_proposals = "${{ inputs.include_proposals && '1' || '0' }}" == "1"
+
+          statuses = Counter()
+          official_statuses = Counter()
+          strict_counts = Counter()
+          cats = {}
+          errors = Counter()
+          skips = Counter()
+          scope_counts = {
+              "standard": Counter(),
+              "annex_b": Counter(),
+              "proposal": Counter(),
+          }
+
+          with open(jsonl_path) as f:
+              for line in f:
+                  if not line.strip():
+                      continue
+                  r = json.loads(line)
+                  s = r["status"]
+                  statuses[s] += 1
+                  scope = r.get("scope", "standard")
+                  scope_counts.setdefault(scope, Counter())
+                  scope_counts[scope][s] += 1
+                  if r.get("scope_official", scope != "proposal"):
+                      official_statuses[s] += 1
+                      if r.get("strict", "both") != "no":
+                          strict_counts[s] += 1
+                  cat = r.get("category", "unknown")
+                  if cat not in cats:
+                      cats[cat] = {
+                          "pass": 0,
+                          "fail": 0,
+                          "compile_error": 0,
+                          "compile_timeout": 0,
+                          "skip": 0,
+                          "total": 0,
+                      }
+                  cats[cat][s] = cats[cat].get(s, 0) + 1
+                  cats[cat]["total"] += 1
+                  if r.get("error_category"):
+                      errors[r["error_category"]] += 1
+                  if s == "skip" and r.get("error"):
+                      skips[r["error"]] += 1
+
+          def build_summary(counter):
+              return {
+                  "total": sum(counter.values()),
+                  "pass": counter.get("pass", 0),
+                  "fail": counter.get("fail", 0),
+                  "compile_error": counter.get("compile_error", 0),
+                  "compile_timeout": counter.get("compile_timeout", 0),
+                  "skip": counter.get("skip", 0),
+                  "compilable": counter.get("pass", 0) + counter.get("fail", 0),
+                  "stale": 0,
+              }
+
+          report = {
+              "timestamp": datetime.now(timezone.utc).isoformat(),
+              "mode": {
+                  "include_proposals": 1 if include_proposals else 0,
+                  "label": "full test262" if include_proposals else "official test262 (default scope)",
+              },
+              "summary": build_summary(official_statuses),
+              "official_summary": build_summary(official_statuses),
+              "full_summary": build_summary(statuses),
+              "strict_summary": build_summary(strict_counts),
+              "scope_summaries": {name: build_summary(counter) for name, counter in sorted(scope_counts.items())},
+              "categories": [{"name": n, **c} for n, c in sorted(cats.items())],
+              "error_categories": dict(errors),
+              "skip_reasons": dict(skips),
+          }
+
+          with open(report_path, "w") as f:
+              json.dump(report, f, indent=2)
+          PY
+
+      - name: Compare against current main baseline
+        id: regression_diff
+        if: github.event_name != 'push'
+        run: |
+          mkdir -p merged-reports
+          BASELINE="benchmarks/results/test262-current.jsonl"
+          if [ ! -f "$BASELINE" ]; then
+            echo "Missing baseline JSONL: $BASELINE"
+            exit 2
+          fi
+          set +e
+          npx tsx scripts/diff-test262.ts "$BASELINE" merged-reports/test262-results-merged.jsonl --quiet \
+            > merged-reports/test262-regressions.txt
+          exit_code=$?
+          set -e
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Unexpected diff-test262 exit code $exit_code"
+            exit "$exit_code"
+          fi
+          if [ "$exit_code" -eq 1 ]; then
+            echo "regressions=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "regressions=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail on regressions
+        if: github.event_name != 'push' && steps.regression_diff.outputs.regressions == 'true'
+        run: |
+          echo "test262 regressions detected relative to benchmarks/results/test262-current.jsonl"
+          cat merged-reports/test262-regressions.txt
+          exit 1
+
       - name: Upload merged reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -143,3 +271,46 @@ jobs:
             .vitest-reports/**
             merged-reports/**
           if-no-files-found: warn
+
+  promote-baseline:
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+    name: promote merged report to main baseline
+    needs: merge
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download merged reports
+        uses: actions/download-artifact@v4
+        with:
+          path: shard-artifacts
+          pattern: test262-merged-report
+          merge-multiple: true
+
+      - name: Promote merged artifacts to stable baseline
+        run: |
+          mkdir -p benchmarks/results
+          cp shard-artifacts/merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+          cp shard-artifacts/merged-reports/test262-report-merged.json benchmarks/results/test262-current.json
+          cp shard-artifacts/merged-reports/test262-report-merged.json benchmarks/results/test262-report.json
+          cp shard-artifacts/merged-reports/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
+
+      - name: Commit refreshed baseline
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl
+          if git diff --cached --quiet; then
+            echo "No baseline changes to commit."
+            exit 0
+          fi
+          PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
+          TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
+          git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]"
+          git push
