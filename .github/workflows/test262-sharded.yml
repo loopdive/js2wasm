@@ -60,7 +60,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 25
-          cache: pnpm
 
       - name: Setup pnpm via Corepack
         run: |
@@ -125,7 +124,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 25
-          cache: pnpm
 
       - name: Setup pnpm via Corepack
         run: |
