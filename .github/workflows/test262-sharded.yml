@@ -77,9 +77,17 @@ jobs:
       - name: Run shard
         run: |
           mkdir -p vitest-blob
+          set +e
           node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
             --reporter=blob \
             --outputFile=vitest-blob/blob-${{ matrix.chunk }}.json
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Vitest exited with unexpected code $exit_code"
+            exit "$exit_code"
+          fi
+          echo "vitest_exit_code=$exit_code" >> "$GITHUB_OUTPUT"
 
       - name: Upload shard artifacts
         uses: actions/upload-artifact@v4
