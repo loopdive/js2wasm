@@ -17,6 +17,11 @@ on:
         required: false
         default: "4"
         type: string
+      allow_regressions:
+        description: "Allow regressions and continue anyway"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -152,7 +157,6 @@ jobs:
 
       - name: Compare against current main baseline
         id: regression_diff
-        if: github.event_name != 'push'
         run: |
           mkdir -p merged-reports
           BASELINE="benchmarks/results/test262-current.jsonl"
@@ -177,7 +181,7 @@ jobs:
           fi
 
       - name: Fail on regressions
-        if: github.event_name != 'push' && steps.regression_diff.outputs.regressions == 'true'
+        if: steps.regression_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.allow_regressions)
         run: |
           echo "test262 regressions detected relative to benchmarks/results/test262-current.jsonl"
           cat merged-reports/test262-regressions.txt
@@ -193,7 +197,7 @@ jobs:
           if-no-files-found: warn
 
   promote-baseline:
-    if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && needs.merge.result == 'success'
     name: promote merged report to main baseline
     needs: merge
     runs-on: ubuntu-latest
