@@ -212,10 +212,10 @@ jobs:
       - name: Promote merged artifacts to stable baseline
         run: |
           mkdir -p benchmarks/results
-          cp shard-artifacts/merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
-          cp shard-artifacts/merged-reports/test262-report-merged.json benchmarks/results/test262-current.json
-          cp shard-artifacts/merged-reports/test262-report-merged.json benchmarks/results/test262-report.json
-          cp shard-artifacts/merged-reports/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
+          cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+          cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-current.json
+          cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-report.json
+          cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
 
       - name: Commit refreshed baseline
         run: |
