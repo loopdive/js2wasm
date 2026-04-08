@@ -122,7 +122,7 @@ interface SizeEntry {
 
 function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string): SizeEntry | null {
   // Compile TypeScript → Wasm
-  const result = compile(tsSrc, { fileName: `${name}.ts` });
+  const result = compile(tsSrc, { fileName: `${name}.ts`, optimize: 4 });
   if (!result.success) {
     console.error(`  [${name}] compile failed: ${result.errors[0]?.message}`);
     return null;
@@ -188,6 +188,7 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
       "examples/benchmarks/helpers.ts": HELPERS_SOURCE,
     },
     entryPath,
+    { optimize: 4 },
   );
 
   if (!result.success) {
