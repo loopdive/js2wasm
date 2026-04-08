@@ -1,0 +1,131 @@
+name: Refresh Benchmarks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      allow_performance_regressions:
+        description: "Allow performance regressions and continue anyway"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: benchmark-refresh-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  refresh-benchmarks:
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Snapshot current performance baseline
+        run: |
+          mkdir -p benchmark-baseline
+          cp benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
+
+      - name: Refresh benchmark artifacts
+        run: pnpm run refresh:benchmarks
+
+      - name: Compare landing-page benchmark performance
+        id: benchmark_diff
+        run: |
+          mkdir -p benchmark-reports
+          set +e
+          node scripts/diff-playground-benchmarks.mjs \
+            --baseline benchmark-baseline/playground-benchmark-sidebar.json \
+            --candidate benchmarks/results/playground-benchmark-sidebar.json \
+            --max-relative-regression 0.10 \
+            > benchmark-reports/performance-regressions.txt
+          exit_code=$?
+          set -e
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Unexpected benchmark diff exit code $exit_code"
+            exit "$exit_code"
+          fi
+          if [ "$exit_code" -eq 1 ]; then
+            echo "regressions=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "regressions=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail on performance regressions
+        if: steps.benchmark_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.allow_performance_regressions) && !(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'benchmark-regression-approved'))
+        run: |
+          echo "Landing-page benchmark regressions detected relative to benchmarks/results/playground-benchmark-sidebar.json"
+          cat benchmark-reports/performance-regressions.txt
+          exit 1
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: benchmark-refresh-report
+          path: |
+            benchmark-reports/**
+            benchmarks/results/latest.json
+            benchmarks/results/latest.md
+            benchmarks/results/history.json
+            benchmarks/results/playground-benchmark-sidebar.json
+            benchmarks/results/size-benchmarks.json
+            public/benchmarks/results/playground-benchmark-sidebar.json
+            public/benchmarks/results/size-benchmarks.json
+            playground/public/benchmarks/results/playground-benchmark-sidebar.json
+          if-no-files-found: warn
+
+      - name: Commit refreshed benchmark baseline
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.actor != 'github-actions[bot]'
+        run: |
+          latest_json=$(find benchmarks/results -maxdepth 1 -type f -name '20??-??-??T*.json' | sort | tail -n 1)
+          latest_md=$(find benchmarks/results -maxdepth 1 -type f -name '20??-??-??T*.md' | sort | tail -n 1)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            "$latest_json" \
+            "$latest_md" \
+            benchmarks/results/latest.json \
+            benchmarks/results/latest.md \
+            benchmarks/results/history.json \
+            benchmarks/results/playground-benchmark-sidebar.json \
+            benchmarks/results/size-benchmarks.json \
+            public/benchmarks/results/playground-benchmark-sidebar.json \
+            public/benchmarks/results/size-benchmarks.json \
+            playground/public/benchmarks/results/playground-benchmark-sidebar.json
+          if git diff --cached --quiet; then
+            echo "No benchmark changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(benchmarks): refresh published performance baselines"
+          git push
