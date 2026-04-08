@@ -53,7 +53,14 @@ jobs:
       - name: Snapshot current performance baseline
         run: |
           mkdir -p benchmark-baseline
-          cp benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
+          if [ -f public/benchmarks/results/playground-benchmark-sidebar.json ]; then
+            cp public/benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
+          elif [ -f playground/public/benchmarks/results/playground-benchmark-sidebar.json ]; then
+            cp playground/public/benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
+          else
+            echo "Missing committed playground benchmark baseline."
+            exit 2
+          fi
 
       - name: Refresh benchmark artifacts
         run: pnpm run refresh:benchmarks
