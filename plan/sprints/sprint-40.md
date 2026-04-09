@@ -70,6 +70,7 @@ that remains after the Sprint 39 cleanup pass.
 | 27 | **#1003** | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Medium | sonnet | Extends #1000 with richer machine-readable issue metadata |
 | 28 | **#1007** | Re-run historical test262 checkpoints with the current harness for comparable conformance history | Historical benchmark normalization | Medium | sonnet | Rebuild daily history with separate official, proposal, and legacy counts so the timeline becomes comparable |
 | 29 | **#1008** | Add mobile-first layout support to the playground | Playground mobile UX | Medium | sonnet | Replace desktop-only panel assumptions with a mobile layout and folded sidebar navigation |
+| 30 | **#1009** | Investigate report-page benchmark outliers where Wasm is much slower than JS | Report benchmark analysis | Medium | sonnet | Classify the worst report-page slowdowns into host-boundary cost, missing specialization, measurement artifact, or real optimization work |
 
 ## Acceptance Criteria
 
@@ -85,6 +86,7 @@ that remains after the Sprint 39 cleanup pass.
 - [ ] Finish the planning-data normalization tracked in `#1000` and `#1003`
 - [ ] Add a reproducible retrospective checkpoint runner and normalized comparable history for `#1007`
 - [ ] Land mobile-first playground layout support and folded sidebar navigation for `#1008`
+- [ ] Produce an outlier analysis for the report-page benchmark cases where Wasm is much slower than JS and split real follow-up work from measurement artifacts for `#1009`
 - [ ] Keep Sprint 40 scoped to genuine carry-over only; newly discovered work starts in Sprint 41
 
 ## Results
