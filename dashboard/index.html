@@ -994,7 +994,11 @@
         }
 
         // ── Process health ──
-        const totalIssues = issues.done.length + issues.ready.length + issues.blocked.length + issues.inprogress.length;
+        const totalIssues =
+          (issues.done || []).length +
+          (issues.ready || []).length +
+          (issues.blocked || []).length +
+          (issues.inprogress || []).length;
         document.getElementById("h-total-done").textContent = issues.done.length;
         document.getElementById("h-total-runs").textContent = runs.length;
         document.getElementById("h-ready-ratio").textContent = issues.ready.length + " / " + totalIssues;

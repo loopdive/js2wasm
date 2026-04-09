@@ -219,7 +219,7 @@ function loadSprints(): any[] {
   const sprints: any[] = [];
   const doneBySprint = loadDoneSprintMap();
   for (const f of readdirSync(dir)
-    .filter((f) => f.endsWith(".md"))
+    .filter((f) => /^sprint-\d+\.md$/.test(f))
     .sort((a, b) => {
       const numA = parseInt(a.match(/(\d+)/)?.[1] ?? "0", 10);
       const numB = parseInt(b.match(/(\d+)/)?.[1] ?? "0", 10);

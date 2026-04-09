@@ -10,8 +10,13 @@ Every open issue file (in `ready/` or `blocked/`) has YAML frontmatter:
 
 ```markdown
 ---
+created: 2026-03-12
+updated: 2026-03-12
 priority: high          # critical, high, medium, low
 depends_on: [317, 321]  # issue numbers that must be done first ([] if none)
+es_edition: es2020      # or multi / n/a
+language_feature: regexp
+task_type: bug          # bug, feature, test, refactor, planning
 files:                   # source files this issue needs to modify
   - src/codegen/expressions.ts
   - src/codegen/index.ts
@@ -38,8 +43,13 @@ Add `completed:` date to the existing frontmatter:
 
 ```markdown
 ---
+created: 2026-03-12
+updated: 2026-03-20
 priority: high
 depends_on: [317, 321]
+es_edition: es2020
+language_feature: regexp
+task_type: bug
 files:
   - src/codegen/expressions.ts
 completed: 2026-03-12

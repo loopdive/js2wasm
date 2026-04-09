@@ -7,6 +7,11 @@ sprint: Backlog
 
 **Current state** (2026-04-07, official scope): 18,899 pass | 21,164 fail | 1,734 CE | 10 CT | 1,313 skip
 
+**Assignment note** (2026-04-09): this backlog is a global open-issue index.
+Some entries are actively assigned to Sprint 39 or Sprint 40; closed-sprint
+carry-over was normalized so open issues no longer point at stale completed
+sprints.
+
 ---
 
 ## 1. Compiler Correctness -- Type Mismatches, AST Nodes, return_call
@@ -39,8 +44,8 @@ Issues where compiled Wasm runs but produces wrong values or wrong error types.
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
 | [846](../ready/846.md) | **CRITICAL** | assert.throws not thrown for invalid built-in args | **2,799 FAIL** | Ready |
-| [820](../ready/820.md) | **CRITICAL** | TypeError / null dereference failures (umbrella) | **6,077 FAIL** | Ready |
-| [779](../ready/779.md) | **CRITICAL** | Assert failures: wrong values (umbrella/analysis) | **10,099 FAIL** | Ready |
+| [820](../ready/820.md) | **CRITICAL** | Nullish TypeError / null-pointer / illegal-cast umbrella | **6,993 FAIL** | Ready |
+| [779](../ready/779.md) | **CRITICAL** | Assert failures: wrong values (umbrella/analysis) | **8,674 FAIL** | Ready |
 | [825](../ready/825.md) | High | Null dereference failures (sub-issue of #820) | **2,295 FAIL** | Ready |
 | [826](../ready/826.md) | High | Illegal cast failures (sub-issue of #820) | **1,276 FAIL** | Ready |
 | [786](../ready/786.md) | Medium | Multi-assertion failures (returned N > 2) | **2,142 FAIL** | In-progress |
@@ -83,8 +88,9 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [824](../ready/824.md) | High | Compilation timeouts (10s limit) | **548 CE** | Ready |
+| [824](../ready/824.md) | High | Timeout umbrella / timeout reporting cleanup | Historical `548 CE` stale bucket | Ready |
 | [1000](../ready/1000.md) | High | Normalize issue frontmatter and repopulate historical sprint issue assignments | Planning / dashboard correctness | Ready |
+| [1003](../ready/1003.md) | High | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Ready |
 | [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX | Ready |
 | [699](../ready/699.md) | High | Shared compiler pool for test262 | Perf | Ready |
 | [832](../ready/832.md) | Medium | Upgrade to TypeScript 6.x for Unicode 16.0 identifiers | 82 skip | Ready |
@@ -119,7 +125,8 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 | [810](../ready/810.md) | Medium | Extract class compilation -> class-codegen.ts | Maintainability | Ready (sub of #688) |
 | [811](../ready/811.md) | Medium | Extract fixup passes -> fixups.ts | Maintainability | Ready (sub of #688) |
 | [652](../ready/652.md) | Low | Compile-time ARC / static lifetime analysis | Research | Ready |
-| [682](../ready/682.md) | Medium | RegExp Wasm engine for standalone mode | No host in WASI | Ready |
+| [682](../ready/682.md) | Medium | RegExp standalone engine / embedded backend for non-JS targets | No host in WASI | Ready |
+| [1002](../ready/1002.md) | Medium | RegExp js-host mode completion | Remaining host-wrapper and Symbol protocol correctness | Ready |
 
 ## 10. Performance Optimization
 
@@ -133,6 +140,7 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 | [747](../blocked/747.md) | Medium | Escape analysis / stack allocation | Perf | Blocked |
 | [699](../ready/699.md) | High | Shared compiler pool for test262 | Test perf | Ready |
 | [700](../blocked/700.md) | High | Reuse ts.CompilerHost across compilations | 25% speedup | Blocked by #699 |
+| [1001](../ready/1001.md) | Medium | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark | Ready |
 | [991](../ready/991.md) | High | Iterator helper generator-reentrancy tests hit 30s compiler timeout | ~90s worker time/run | Ready |
 | [993](../ready/993.md) | High | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | ~90s worker time/run | Ready |
 | [992](../ready/992.md) | Medium | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | 30s worker time/run | Ready |

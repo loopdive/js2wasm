@@ -171,6 +171,7 @@ function loadIssuesFromDir(dir) {
 }
 
 const issues = {
+  blocked: loadIssuesFromDir(join(ROOT, "plan/issues/blocked")),
   ready: loadIssuesFromDir(join(ROOT, "plan/issues/ready")),
   inprogress: [], // in-progress issues are in ready/ with status: in-progress
   review: [], // review issues are in ready/ with status: review
@@ -192,7 +193,7 @@ issues.ready = ready;
 
 writeFileSync(join(OUT, "issues.json"), JSON.stringify(issues, null, 2));
 console.log(
-  `Issues: ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.done.length} done`,
+  `Issues: ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.blocked.length} blocked, ${issues.done.length} done`,
 );
 
 // ── Load test262 runs ────────────────────────────────────────
@@ -222,7 +223,7 @@ const sprints = [];
 const doneBySprint = loadDoneSprintMap();
 if (existsSync(sprintsDir)) {
   for (const f of readdirSync(sprintsDir)
-    .filter((f) => f.endsWith(".md"))
+    .filter((f) => /^sprint-\d+\.md$/.test(f))
     .sort((a, b) => {
       const numA = parseInt(a.match(/(\d+)/)?.[1] ?? "0", 10);
       const numB = parseInt(b.match(/(\d+)/)?.[1] ?? "0", 10);

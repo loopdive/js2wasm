@@ -44,10 +44,15 @@ for m in matches[:5]:
 ---
 id: {N}
 title: "{description} ({count} tests)"
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
 priority: {high|medium|low}
 feasibility: {easy|medium|hard}
 depends_on: []
 goal: core-semantics
+es_edition: {es5|es2015|es2016|es2017|es2018|es2019|es2020|es2021|es2022|es2023|es2024|multi|n/a}
+language_feature: {normalized-feature-slug}
+task_type: {bug|feature|test|refactor|planning}
 ---
 
 # #{N} -- {title}
@@ -79,5 +84,12 @@ Root cause: {why the compiler produces wrong output}
 - {specific test files that must pass}
 - >={target} of {total} tests fixed
 ```
+
+Required metadata rules:
+- `created` is the first known creation date and should not change later
+- `updated` must be bumped whenever the issue meaningfully changes
+- `es_edition` should capture the relevant language edition, or `multi` / `n/a`
+- `language_feature` should be a stable machine-readable feature or subsystem slug
+- `task_type` must be one of `bug`, `feature`, `test`, `refactor`, `planning`
 
 5. Add to dependency graph and backlog.
