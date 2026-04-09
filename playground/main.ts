@@ -25,6 +25,10 @@ const rawExampleModules = import.meta.glob("./examples/**/*.ts", {
   query: "?raw",
   import: "default",
 });
+const rawEquivTestModules = import.meta.glob(["../tests/equivalence/**/*.test.ts", "../tests/ts-wasm-equivalence.test.ts"], {
+  query: "?raw",
+  import: "default",
+});
 
 function isPagesPlaygroundPath(): boolean {
   return /\/playground\/?$/.test(window.location.pathname);
@@ -1126,6 +1130,7 @@ const t262FilesCache = new Map<string, string[]>();
 let staticT262Files: Record<string, string[]> | null = null;
 let staticT262FileResults: Record<string, T262FileResult[]> | null = null;
 let staticEquivTests: { name: string; source: string }[] | null = null;
+let bundledEquivTests: { name: string; source: string }[] | null = null;
 const prefersStaticPlaygroundData =
   location.protocol === "https:" || (location.hostname !== "localhost" && location.hostname !== "127.0.0.1");
 
@@ -1149,22 +1154,78 @@ async function fetchText(path: string): Promise<string | null> {
   }
 }
 
+async function fetchJsonFromPaths<T>(paths: string[]): Promise<T | null> {
+  for (const path of paths) {
+    const data = await fetchJson<T>(path);
+    if (data != null) return data;
+  }
+  return null;
+}
+
 async function loadStaticEquivTests(): Promise<{ name: string; source: string }[]> {
   if (staticEquivTests) return staticEquivTests;
-  staticEquivTests = (await fetchJson<{ name: string; source: string }[]>("playground-data/equiv-tests.json")) ?? [];
+  staticEquivTests =
+    (await fetchJsonFromPaths<{ name: string; source: string }[]>([
+      "/playground-data/equiv-tests.json",
+      "/playground/playground-data/equiv-tests.json",
+      "playground-data/equiv-tests.json",
+    ])) ?? [];
   return staticEquivTests;
+}
+
+function parseEquivTestsFromContent(content: string): { name: string; source: string }[] {
+  const tests: { name: string; source: string }[] = [];
+  const itRegex = /it\((["'])(.*?)\1[\s\S]*?(?:compileToWasm|assertEquivalent)\(\s*`([\s\S]*?)`/g;
+  let match: RegExpExecArray | null;
+  while ((match = itRegex.exec(content)) !== null) {
+    const name = match[2];
+    let source = match[3];
+    const lines = source.split("\n");
+    const nonEmpty = lines.filter((l) => l.trim().length > 0);
+    if (nonEmpty.length > 0) {
+      const minIndent = Math.min(...nonEmpty.map((l) => l.match(/^(\s*)/)?.[1].length ?? 0));
+      source = lines
+        .map((l) => l.slice(minIndent))
+        .join("\n")
+        .trim();
+    }
+    tests.push({ name, source });
+  }
+  return tests;
+}
+
+async function loadBundledEquivTests(): Promise<{ name: string; source: string }[]> {
+  if (bundledEquivTests) return bundledEquivTests;
+  const tests: { name: string; source: string }[] = [];
+  for (const key of Object.keys(rawEquivTestModules).sort()) {
+    const loader = rawEquivTestModules[key] as (() => Promise<string>) | undefined;
+    if (!loader) continue;
+    const content = await loader();
+    tests.push(...parseEquivTestsFromContent(content));
+  }
+  bundledEquivTests = tests;
+  return bundledEquivTests;
 }
 
 async function loadStaticT262Files(): Promise<Record<string, string[]>> {
   if (staticT262Files) return staticT262Files;
-  staticT262Files = (await fetchJson<Record<string, string[]>>("playground-data/test262-files.json")) ?? {};
+  staticT262Files =
+    (await fetchJsonFromPaths<Record<string, string[]>>([
+      "/playground-data/test262-files.json",
+      "/playground/playground-data/test262-files.json",
+      "playground-data/test262-files.json",
+    ])) ?? {};
   return staticT262Files;
 }
 
 async function loadStaticT262FileResults(): Promise<Record<string, T262FileResult[]>> {
   if (staticT262FileResults) return staticT262FileResults;
   staticT262FileResults =
-    (await fetchJson<Record<string, T262FileResult[]>>("playground-data/test262-file-results.json")) ?? {};
+    (await fetchJsonFromPaths<Record<string, T262FileResult[]>>([
+      "/playground-data/test262-file-results.json",
+      "/playground/playground-data/test262-file-results.json",
+      "playground-data/test262-file-results.json",
+    ])) ?? {};
   return staticT262FileResults;
 }
 
@@ -1391,15 +1452,26 @@ async function loadEquivIndex(): Promise<EquivTest[]> {
   if (!prefersStaticPlaygroundData) {
     data = await fetchJson<EquivTest[]>("/api/equiv-index");
   }
-  if (!data) {
+  if ((!data || data.length === 0) && prefersStaticPlaygroundData) {
     const staticTests = await loadStaticEquivTests();
-    data = staticTests.map((t, index) => ({ name: t.name, index }));
+    if (staticTests.length > 0) {
+      data = staticTests.map((t, index) => ({ name: t.name, index }));
+    }
+  }
+  if ((!data || data.length === 0) && !prefersStaticPlaygroundData) {
+    const bundledTests = await loadBundledEquivTests();
+    if (bundledTests.length > 0) {
+      data = bundledTests.map((t, index) => ({ name: t.name, index }));
+    }
   }
   if ((!data || data.length === 0) && prefersStaticPlaygroundData) {
     data = await fetchJson<EquivTest[]>("/api/equiv-index");
   }
-  equivIndex = data ?? [];
-  return equivIndex;
+  if (data && data.length > 0) {
+    equivIndex = data;
+    return equivIndex;
+  }
+  return [];
 }
 
 async function loadEquivSource(idx: number): Promise<string> {
@@ -1407,8 +1479,8 @@ async function loadEquivSource(idx: number): Promise<string> {
     const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
     if (apiData !== null) return apiData;
   }
-  const staticTests = await loadStaticEquivTests();
-  const source = staticTests[idx]?.source;
+  const localTests = prefersStaticPlaygroundData ? await loadStaticEquivTests() : await loadBundledEquivTests();
+  const source = localTests[idx]?.source;
   if (source != null) return source;
   if (prefersStaticPlaygroundData) {
     const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
