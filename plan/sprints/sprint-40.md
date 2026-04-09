@@ -44,34 +44,36 @@ that remains after the Sprint 39 cleanup pass.
 | 11 | **#988** | FinalizationRegistry constructor unsupported | **23 CE** | Low | sonnet | Residual built-in constructor gap after #844 cleanup |
 | 12 | **#990** | Residual early-error families after Sprint 39 partial fixes | **327 FAIL** | Hard | opus | Remaining `using`, module grammar, reserved-word, class/static semantics |
 | 13 | **#1002** | RegExp js-host mode completion | Built-ins correctness | Medium | sonnet | Finish Symbol protocol and remaining host-wrapper semantics independently of standalone-engine work |
+| 14 | **#1006** | Support `eval` via JS host import | JS-host semantics / eval correctness | Medium | sonnet | Route non-compiled-away `eval` through explicit host imports instead of failing as unsupported |
 
 ### Phase 2: Timeout elimination
 
 | Order | Issue | Title | Impact | Effort | Model | Notes |
 |-------|-------|-------|--------|--------|-------|-------|
-| 14 | **#824** | Timeout umbrella / timeout reporting cleanup | Historical `548 CE` stale bucket, current runner timeout-model cleanup | Medium | sonnet | Umbrella that now explains the move from old `10s` compile-error counting to targeted `#991`–`#996` worker-timeout fixes |
-| 15 | **#991** | Iterator helper generator-reentrancy timeout cluster | **3 CT** | Medium | sonnet | `filter` / `flatMap` / `map` generator-is-running tests burn ~90s worker time/run |
-| 16 | **#993** | Legacy try-statement timeout cluster | **3 CT** | Medium | sonnet | `S12.14_A9/A11/A12_T3` burn ~90s worker time/run |
-| 17 | **#992** | Iterator.prototype.take timeout | **1 CT** | Medium | sonnet | `limit-less-than-total.js` singleton timeout |
-| 18 | **#994** | Class static-private-getter timeout | **1 CT** | Medium | sonnet | singleton class/private lowering timeout |
-| 19 | **#995** | localeCompare singleton timeout | **1 CT** | Low | sonnet | string built-in compile-path outlier |
-| 20 | **#996** | toSorted comparefn singleton timeout | **1 CT** | Low | sonnet | array sorting/helper compile-path outlier |
+| 15 | **#824** | Timeout umbrella / timeout reporting cleanup | Historical `548 CE` stale bucket, current runner timeout-model cleanup | Medium | sonnet | Umbrella that now explains the move from old `10s` compile-error counting to targeted `#991`–`#996` worker-timeout fixes |
+| 16 | **#991** | Iterator helper generator-reentrancy timeout cluster | **3 CT** | Medium | sonnet | `filter` / `flatMap` / `map` generator-is-running tests burn ~90s worker time/run |
+| 17 | **#993** | Legacy try-statement timeout cluster | **3 CT** | Medium | sonnet | `S12.14_A9/A11/A12_T3` burn ~90s worker time/run |
+| 18 | **#992** | Iterator.prototype.take timeout | **1 CT** | Medium | sonnet | `limit-less-than-total.js` singleton timeout |
+| 19 | **#994** | Class static-private-getter timeout | **1 CT** | Medium | sonnet | singleton class/private lowering timeout |
+| 20 | **#995** | localeCompare singleton timeout | **1 CT** | Low | sonnet | string built-in compile-path outlier |
+| 21 | **#996** | toSorted comparefn singleton timeout | **1 CT** | Low | sonnet | array sorting/helper compile-path outlier |
 
 ### Phase 3: Benchmark and planning follow-ups
 
 | Order | Issue | Title | Impact | Effort | Model | Notes |
 |-------|-------|-------|--------|--------|-------|-------|
-| 21 | **#832** | Upgrade to TypeScript 6.x for Unicode 16.0.0 support | 82 skips / parser currency | Medium | sonnet | Brings current Unicode identifier support into scope |
-| 22 | **#1001** | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark regression | Medium | sonnet | Specialize counted append loops instead of generic growable vec-wrapper lowering |
-| 23 | **#1004** | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark regression | Medium | sonnet | Reduce repeated concat work on the default optimized path, not only via `fast: true` |
-| 24 | **#1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Server/runtime startup benchmarking | Medium | sonnet | Add a reproducible fresh-process cold-start benchmark distinct from browser incremental loading |
-| 25 | **#1000** | Normalize issue frontmatter and repopulate historical sprint issue assignments | Process / dashboard correctness | Medium | sonnet | Planning-data cleanup for issue frontmatter, done log, and historical sprint Kanban reconstruction |
-| 26 | **#1003** | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Medium | sonnet | Extends #1000 with richer machine-readable issue metadata |
+| 22 | **#832** | Upgrade to TypeScript 6.x for Unicode 16.0.0 support | 82 skips / parser currency | Medium | sonnet | Brings current Unicode identifier support into scope |
+| 23 | **#1001** | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark regression | Medium | sonnet | Specialize counted append loops instead of generic growable vec-wrapper lowering |
+| 24 | **#1004** | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark regression | Medium | sonnet | Reduce repeated concat work on the default optimized path, not only via `fast: true` |
+| 25 | **#1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Server/runtime startup benchmarking | Medium | sonnet | Add a reproducible fresh-process cold-start benchmark distinct from browser incremental loading |
+| 26 | **#1000** | Normalize issue frontmatter and repopulate historical sprint issue assignments | Process / dashboard correctness | Medium | sonnet | Planning-data cleanup for issue frontmatter, done log, and historical sprint Kanban reconstruction |
+| 27 | **#1003** | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Medium | sonnet | Extends #1000 with richer machine-readable issue metadata |
 
 ## Acceptance Criteria
 
 - [ ] Reduce at least one of the large newly isolated carry-over buckets `#983` or `#984`
 - [ ] Close or substantially reduce the residual `#990` early-error families left after Sprint 39
+- [ ] Land or clearly scope JS-host `eval` support for `#1006`
 - [ ] Remove the 10 known `compile_timeout` cases from the full official-scope run
 - [ ] Land at least one of the enriched invalid-Wasm follow-ups `#997`, `#998`, or `#999`
 - [ ] Upgrade or validate the parser/toolchain path needed for `#832` so Unicode 16 identifier tests can run
