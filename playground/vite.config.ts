@@ -14,14 +14,12 @@ export default defineConfig({
     // Pre-bundle heavy deps so Vite doesn't transform them on each page load.
     // compiler-bundle.mjs (3.2MB) and runtime-bundle.mjs (3.2MB) cause OOM without this.
     include: ["typescript", "monaco-editor/esm/vs/editor/editor.api"],
-    exclude: ["binaryen"],
     esbuildOptions: {
       target: "esnext",
     },
   },
   resolve: {
     alias: {
-      binaryen: resolve(import.meta.dirname, "stubs/binaryen.js"),
       path: resolve(import.meta.dirname, "stubs/path-shim.js"),
       "node:path": resolve(import.meta.dirname, "stubs/path-shim.js"),
       "node:fs": resolve(import.meta.dirname, "stubs/node-fs-stub.js"),
@@ -54,7 +52,6 @@ export default defineConfig({
     emptyOutDir: true,
     target: "esnext",
     rollupOptions: {
-      external: ["binaryen"],
       input: {
         index: resolve(import.meta.dirname, "../index.html"),
         playground: resolve(import.meta.dirname, "index.html"),

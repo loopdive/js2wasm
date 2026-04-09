@@ -319,6 +319,10 @@ function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string)
 function measureMultiSizes(name: string, label: string, entryPath: string): SizeEntry | null {
   const absPath = path.resolve(ROOT, "playground", entryPath);
   const tsSrc = fs.readFileSync(absPath, "utf8");
+  const usesBenchmarkHelpers =
+    entryPath === "examples/benchmarks.ts" ||
+    entryPath.startsWith("examples/benchmarks/") ||
+    /^\s*import\s+\{[^}]+\}\s+from\s+["']\.\/(?:benchmarks\/)?helpers\.ts["'];?\s*$/m.test(tsSrc);
 
   // Compile using compileMulti to resolve helpers import
   const result = compileMulti(
@@ -339,7 +343,7 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
   const hostJs = result.importsHelper || "";
 
   // For the JS side, include entry + helpers (the JS version imports helpers too)
-  const fullJsSrc = tsSrc + "\n" + HELPERS_SOURCE;
+  const fullJsSrc = usesBenchmarkHelpers ? `${tsSrc}\n${HELPERS_SOURCE}` : tsSrc;
   const jsBuf = Buffer.from(fullJsSrc, "utf8");
   const jsSizeRaw = jsBuf.byteLength;
   const jsSizeGzip = gzip(jsBuf);

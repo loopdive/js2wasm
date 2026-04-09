@@ -85,6 +85,10 @@ export interface OptimizeResult {
 
 let _binaryenModulePromise: Promise<any | null> | null = null;
 
+function isBrowserLikeRuntime(): boolean {
+  return typeof window !== "undefined" || typeof (globalThis as any).WorkerGlobalScope !== "undefined";
+}
+
 /**
  * Optimize a Wasm binary using Binaryen.
  * Returns the optimized binary, or the original if optimization is unavailable.
@@ -156,7 +160,52 @@ export async function optimizeBinaryAsync(binary: Uint8Array, options: OptimizeO
 
 async function getBinaryenModule(): Promise<any | null> {
   if (_binaryenModulePromise) return _binaryenModulePromise;
-  _binaryenModulePromise = import("binaryen").then((mod: any) => mod.default ?? mod).catch(() => null);
+  _binaryenModulePromise = (async () => {
+    const browserLike = isBrowserLikeRuntime();
+    const globalObject = globalThis as any;
+    const hadProcess = "process" in globalObject;
+    const hadOwnProcess = Object.prototype.hasOwnProperty.call(globalObject, "process");
+    const previousProcess = globalObject.process;
+
+    // The Binaryen browser build auto-detects Node via globalThis.process. In the
+    // Vite playground bundle that global can still exist, which sends Binaryen
+    // down its Node-only initialization path and makes optimization unavailable.
+    if (browserLike && hadProcess) {
+      try {
+        delete globalObject.process;
+      } catch {
+        // Ignore; assign below to shadow inherited globals if needed.
+      }
+      globalObject.process = undefined;
+    }
+
+    try {
+      const mod = await import("binaryen");
+      return mod.default ?? mod;
+    } catch {
+      return null;
+    } finally {
+      if (browserLike) {
+        if (hadProcess) {
+          if (hadOwnProcess) {
+            globalObject.process = previousProcess;
+          } else {
+            try {
+              delete globalObject.process;
+            } catch {
+              // Ignore: restoring absence is best-effort.
+            }
+          }
+        } else {
+          try {
+            delete globalObject.process;
+          } catch {
+            // Ignore: restoring absence is best-effort.
+          }
+        }
+      }
+    }
+  })();
   return _binaryenModulePromise;
 }
 

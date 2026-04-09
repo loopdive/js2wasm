@@ -1,22 +1,22 @@
 [
   {
     "path": "examples/benchmarks/fib.ts",
-    "wasmUs": 2814.826777777777,
-    "jsUs": 8045.82523148148
+    "wasmUs": 3365.303632183906,
+    "jsUs": 9538.549333333332
   },
   {
     "path": "examples/benchmarks/loop.ts",
-    "wasmUs": 968.9386472491914,
-    "jsUs": 2562.505932038836
+    "wasmUs": 2940.977632768362,
+    "jsUs": 3022.123824858759
   },
   {
     "path": "examples/benchmarks/string.ts",
-    "wasmUs": 2.808596227302115,
-    "jsUs": 2.5789035278447052
+    "wasmUs": 3.9186728806882427,
+    "jsUs": 3.1931112043002523
   },
   {
     "path": "examples/benchmarks/array.ts",
-    "wasmUs": 40.136183306277054,
-    "jsUs": 30.98157359307349
+    "wasmUs": 55.023520897412666,
+    "jsUs": 38.79689089922203
   }
 ]

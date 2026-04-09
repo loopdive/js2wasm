@@ -3846,10 +3846,15 @@ async function runBenchmark() {
   log("Optimizing WASM with Binaryen…");
   await yield_();
   const optResult = await optimizeBinaryAsync(lastResult.binary, { level: 4 });
+  const optimizationStatus = optResult.optimized
+    ? "Binaryen optimization applied."
+    : optResult.warning
+      ? `Binaryen optimization skipped. ${optResult.warning}`
+      : "Binaryen optimization skipped.";
   if (optResult.optimized) {
     log("Binaryen optimization applied.");
-  } else if (optResult.warning) {
-    log(`Binaryen unavailable: ${optResult.warning}`);
+  } else {
+    log("Binaryen optimization skipped.");
   }
 
   const { env: wasmEnv, setExports } = buildEnv(lastResult, () => {});
@@ -4012,6 +4017,9 @@ async function runBenchmark() {
   const nameW = Math.max(10, ...results.map((r) => r.name.length));
 
   const lines: string[] = [
+    optimizationStatus,
+    `wasm:js-string -> ${nativeBuiltins ? "native builtins" : "JS polyfill"}`,
+    "",
     "Benchmark" + " ".repeat(nameW - 9 + 2) + "  WASM          JS        Ratio     n",
     "\u2500".repeat(nameW + 52),
   ];
