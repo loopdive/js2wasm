@@ -1,5 +1,9 @@
 # Sprint 38 -- Correctness: Promise, Destructuring Completion & Codegen Peephole
 
+> Historical sprint note: Sprint 38 is closed. Open issues that remained from
+> this plan were returned to the backlog rather than left assigned to a closed
+> sprint.
+
 **Date**: 2026-04-04 (after sprint 37)
 **Goal**: Fix remaining high-impact correctness failures + apply codegen peephole optimizations discovered via WAT analysis
 **Baseline**: 18,791 pass / 43,120 (43.6%) -- sprint 37 final
