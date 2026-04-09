@@ -269,6 +269,13 @@ copyFileIfExists(
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
 );
 copyFileIfExists(
+  join(BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"),
+  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"),
+);
+if (existsSync(join(BENCHMARKS_RESULTS_DIR, "loadtime"))) {
+  copyDirectory(join(BENCHMARKS_RESULTS_DIR, "loadtime"), join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime"));
+}
+copyFileIfExists(
   join(BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
 );
@@ -293,6 +300,10 @@ copyFileIfExists(
 );
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-editions.json"), join(PUBLIC_BENCH, "test262-editions.json"));
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"), join(PUBLIC_BENCH, "size-benchmarks.json"));
+copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"), join(PUBLIC_BENCH, "loadtime-benchmarks.json"));
+if (existsSync(join(BENCHMARKS_RESULTS_DIR, "loadtime"))) {
+  copyDirectory(join(BENCHMARKS_RESULTS_DIR, "loadtime"), join(PUBLIC_BENCH, "loadtime"));
+}
 
 // Copy web components to pages-dist root and dashboard
 const COMPONENTS_DIR = join(ROOT, "components");

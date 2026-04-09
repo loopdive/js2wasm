@@ -65,6 +65,7 @@ export const optimizeBinaryAsync = __mod.optimizeBinaryAsync;
 export const buildImports = __mod.buildImports;
 export const buildStringConstants = __mod.buildStringConstants;
 export const instantiateWasm = __mod.instantiateWasm;
+export const instantiateWasmStreaming = __mod.instantiateWasmStreaming;
 `;
     },
 

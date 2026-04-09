@@ -26,6 +26,129 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const HELPERS_PATH = path.resolve(ROOT, "playground", "examples", "benchmarks", "helpers.ts");
 const RESULTS_PATH = path.resolve(ROOT, "benchmarks", "results", "size-benchmarks.json");
 const PUBLIC_PATH = path.resolve(ROOT, "public", "benchmarks", "results", "size-benchmarks.json");
+const LOADTIME_RESULTS_PATH = path.resolve(ROOT, "benchmarks", "results", "loadtime-benchmarks.json");
+const LOADTIME_PUBLIC_PATH = path.resolve(ROOT, "public", "benchmarks", "results", "loadtime-benchmarks.json");
+const LOADTIME_RESULTS_DIR = path.resolve(ROOT, "benchmarks", "results", "loadtime");
+const LOADTIME_PUBLIC_DIR = path.resolve(ROOT, "public", "benchmarks", "results", "loadtime");
+
+const LOADTIME_RUNTIME_SOURCE = `const jsString = {
+  concat: (a, b) => a + b,
+  length: (s) => s.length,
+  equals: (a, b) => (a === b ? 1 : 0),
+  substring: (s, start, end) => s.substring(start, end),
+  charCodeAt: (s, i) => s.charCodeAt(i),
+};
+
+export function buildStringConstants(stringPool = []) {
+  const constants = {};
+  for (const s of stringPool) {
+    if (!(s in constants)) {
+      constants[s] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
+    }
+  }
+  return constants;
+}
+
+function resolveImport(intent, deps, callbackState) {
+  switch (intent?.type) {
+    case "declared_global":
+      return () => deps?.[intent.name];
+    case "extern_class":
+      if (intent.action === "new") {
+        const ctor = deps?.globalThis?.[intent.className] ?? globalThis[intent.className];
+        return (...args) => new ctor(...args);
+      }
+      if (intent.action === "method") {
+        return (self, ...args) => self[intent.member](...args);
+      }
+      if (intent.action === "get") {
+        return (self) => self[intent.member];
+      }
+      if (intent.action === "set") {
+        return (self, value) => {
+          self[intent.member] = value;
+        };
+      }
+      return () => undefined;
+    case "builtin":
+      if (intent.name === "number_toString") return (v) => String(v);
+      if (intent.name === "number_toFixed") return (v, digits) => Number(v).toFixed(digits);
+      if (intent.name === "__get_undefined") return () => undefined;
+      if (intent.name?.startsWith("__concat_")) return (...parts) => parts.join("");
+      return () => undefined;
+    case "extern_get":
+      return (obj, key) => obj?.[key];
+    case "callback_maker":
+      return (id, cap) => (...args) => callbackState.getExports()?.[\`__cb_\${id}\`]?.(cap, ...args);
+    case "box":
+      if (intent.targetType === "boolean") return (v) => Boolean(v);
+      return (v) => v;
+    case "console_log":
+      return (v) => console.log(v);
+    case "date_now":
+      return () => Date.now();
+    default:
+      return () => undefined;
+  }
+}
+
+export function buildImports(manifest, deps = {}, stringPool = []) {
+  let wasmExports;
+  const callbackState = { getExports: () => wasmExports };
+  const env = {};
+  for (const imp of manifest ?? []) {
+    if (imp.module !== "env" || imp.kind !== "func") continue;
+    env[imp.name] = resolveImport(imp.intent, deps, callbackState);
+  }
+  return {
+    env,
+    "wasm:js-string": jsString,
+    string_constants: buildStringConstants(stringPool),
+    setExports(exports) {
+      wasmExports = exports;
+    },
+  };
+}
+
+export async function instantiateWasm(binary, env, stringConstants = {}) {
+  if (typeof WebAssembly.instantiate === "function") {
+    try {
+      const { instance } = await WebAssembly.instantiate(binary, { env, string_constants: stringConstants }, {
+        builtins: ["js-string"],
+        importedStringConstants: "string_constants",
+      });
+      return { instance, nativeBuiltins: true };
+    } catch {
+      // Fall through.
+    }
+  }
+  const { instance } = await WebAssembly.instantiate(binary, {
+    env,
+    "wasm:js-string": jsString,
+    string_constants: stringConstants,
+  });
+  return { instance, nativeBuiltins: false };
+}
+
+export async function instantiateWasmStreaming(source, env, stringConstants = {}) {
+  const response =
+    source instanceof Response ? source : source instanceof Promise ? await source : await fetch(source);
+  const fallback = response.clone();
+  if (typeof WebAssembly.instantiateStreaming === "function") {
+    try {
+      const { instance } = await WebAssembly.instantiateStreaming(
+        response,
+        { env, string_constants: stringConstants },
+        { builtins: ["js-string"], importedStringConstants: "string_constants" },
+      );
+      return { instance, nativeBuiltins: true };
+    } catch {
+      // Fall through.
+    }
+  }
+  return instantiateWasm(new Uint8Array(await fallback.arrayBuffer()), env, stringConstants);
+}
+`;
 
 const HELPERS_SOURCE = fs.readFileSync(HELPERS_PATH, "utf8");
 
@@ -70,6 +193,7 @@ const BENCHMARKS = [
   { name: "string", label: "string concat", path: "examples/benchmarks/string.ts" },
   { name: "array", label: "array fill+sum", path: "examples/benchmarks/array.ts" },
   { name: "dom", label: "DOM 100 els", path: "examples/benchmarks/dom.ts" },
+  { name: "calendar", label: "default calendar", path: "examples/dom/calendar.ts" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -90,6 +214,11 @@ function transpileToJs(tsSource: string): string {
     },
   });
   return result.outputText;
+}
+
+function parseModule(jsSource: string): void {
+  const scriptCompatible = jsSource.replace(/^\s*import\s+[^;]+;\s*$/gm, "").replace(/^export\s+/gm, "");
+  new Function(scriptCompatible);
 }
 
 /** Measure time in ms for a synchronous operation (median over N iterations). */
@@ -119,6 +248,17 @@ interface SizeEntry {
   hostJsParseMs: number;
   wasmTotalMs: number;
 }
+
+interface LoadtimeEntry {
+  name: string;
+  label: string;
+  jsUrl: string;
+  wasmUrl: string;
+  imports: unknown[];
+  stringPool: string[];
+}
+
+const loadtimeEntries: LoadtimeEntry[] = [];
 
 function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string): SizeEntry | null {
   // Compile TypeScript → Wasm
@@ -153,10 +293,9 @@ function measureSizes(name: string, label: string, jsSrc: string, tsSrc: string)
   });
 
   // Host JS parse time (strip export keywords for new Function compatibility)
-  const hostJsStripped = hostJs.replace(/^export\s+/gm, "");
-  const hostJsParseMs = hostJsStripped
+  const hostJsParseMs = hostJs
     ? timeSync(() => {
-        new Function(hostJsStripped);
+        parseModule(hostJs);
       })
     : 0;
   const wasmTotalMs = wasmCompileMs + hostJsParseMs;
@@ -222,13 +361,14 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
   });
 
   // Host JS parse time (strip export keywords for new Function compatibility)
-  const hostJsStripped = hostJs.replace(/^export\s+/gm, "");
-  const hostJsParseMs = hostJsStripped
+  const hostJsParseMs = hostJs
     ? timeSync(() => {
-        new Function(hostJsStripped);
+        parseModule(hostJs);
       })
     : 0;
   const wasmTotalMs = wasmCompileMs + hostJsParseMs;
+
+  emitLoadtimeArtifacts(name, label, fullJsSrc, result.binary, result.imports, result.stringPool);
 
   return {
     name,
@@ -244,6 +384,45 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
     hostJsParseMs: Math.round(hostJsParseMs * 1e4) / 1e4,
     wasmTotalMs: Math.round(wasmTotalMs * 1e4) / 1e4,
   };
+}
+
+function toBrowserModuleSource(source: string): string {
+  const stripped = source.replace(/^\s*import\s+[^;]+;\s*$/gm, "").replace(/^export\s+/gm, "");
+  return ts.transpileModule(stripped, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ES2022,
+    },
+  }).outputText;
+}
+
+function emitLoadtimeArtifacts(
+  name: string,
+  label: string,
+  jsSource: string,
+  wasmBinary: Uint8Array,
+  imports: unknown[],
+  stringPool: string[],
+): void {
+  const jsRel = `loadtime/${name}.mjs`;
+  const wasmRel = `loadtime/${name}.wasm`;
+  const jsModuleSource = toBrowserModuleSource(jsSource);
+
+  fs.mkdirSync(LOADTIME_RESULTS_DIR, { recursive: true });
+  fs.mkdirSync(LOADTIME_PUBLIC_DIR, { recursive: true });
+  fs.writeFileSync(path.join(LOADTIME_RESULTS_DIR, `${name}.mjs`), jsModuleSource);
+  fs.writeFileSync(path.join(LOADTIME_PUBLIC_DIR, `${name}.mjs`), jsModuleSource);
+  fs.writeFileSync(path.join(LOADTIME_RESULTS_DIR, `${name}.wasm`), wasmBinary);
+  fs.writeFileSync(path.join(LOADTIME_PUBLIC_DIR, `${name}.wasm`), wasmBinary);
+
+  loadtimeEntries.push({
+    name,
+    label,
+    jsUrl: jsRel,
+    wasmUrl: wasmRel,
+    imports,
+    stringPool,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -302,5 +481,16 @@ fs.writeFileSync(RESULTS_PATH, JSON.stringify(output, null, 2) + "\n");
 fs.mkdirSync(path.dirname(PUBLIC_PATH), { recursive: true });
 fs.copyFileSync(RESULTS_PATH, PUBLIC_PATH);
 
+const loadtimeOutput = {
+  timestamp: new Date().toISOString(),
+  benchmarks: loadtimeEntries,
+};
+fs.writeFileSync(LOADTIME_RESULTS_PATH, JSON.stringify(loadtimeOutput, null, 2) + "\n");
+fs.writeFileSync(LOADTIME_PUBLIC_PATH, JSON.stringify(loadtimeOutput, null, 2) + "\n");
+fs.writeFileSync(path.join(LOADTIME_RESULTS_DIR, "runtime.js"), LOADTIME_RUNTIME_SOURCE);
+fs.writeFileSync(path.join(LOADTIME_PUBLIC_DIR, "runtime.js"), LOADTIME_RUNTIME_SOURCE);
+
 console.log(`\nWrote ${RESULTS_PATH}`);
 console.log(`Copied to ${PUBLIC_PATH}`);
+console.log(`Wrote ${LOADTIME_RESULTS_PATH}`);
+console.log(`Copied to ${LOADTIME_PUBLIC_PATH}`);

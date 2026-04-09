@@ -2205,6 +2205,49 @@ export async function instantiateWasm(
   return { instance, nativeBuiltins: false };
 }
 
+/** Instantiate a precompiled Wasm module from a Response/URL using streaming compilation
+ *  when available, falling back to byte instantiation if needed.
+ *  Shared runtime helpers stay outside the module-specific payload. */
+export async function instantiateWasmStreaming(
+  source: Response | Promise<Response> | RequestInfo | URL,
+  env: Record<string, Function>,
+  stringConstants?: Record<string, WebAssembly.Global>,
+): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
+  const sc = stringConstants ?? {};
+  const response =
+    source instanceof Response ? source : source instanceof Promise ? await source : await fetch(source);
+  const byteFallback = response.clone();
+
+  if (typeof WebAssembly.instantiateStreaming === "function") {
+    if (JS_STRINGS_NATIVE_BUILTIN) {
+      try {
+        const { instance } = await (WebAssembly.instantiateStreaming as Function)(
+          response,
+          { env, string_constants: sc },
+          { builtins: ["js-string"], importedStringConstants: "string_constants" },
+        );
+        return { instance, nativeBuiltins: true };
+      } catch {
+        // Fall back to clone and try non-streaming below.
+      }
+    } else {
+      try {
+        const { instance } = await WebAssembly.instantiateStreaming(response, {
+          env,
+          "wasm:js-string": jsString,
+          string_constants: sc,
+        } as WebAssembly.Imports);
+        return { instance, nativeBuiltins: false };
+      } catch {
+        // Fall back to byte instantiation below.
+      }
+    }
+  }
+
+  const bytes = new Uint8Array(await byteFallback.arrayBuffer());
+  return instantiateWasm(bytes, env, sc);
+}
+
 /** Compile TypeScript source and instantiate the Wasm module. */
 export async function compileAndInstantiate(source: string, deps?: Record<string, any>): Promise<WebAssembly.Exports> {
   const result = compileSource(source);
