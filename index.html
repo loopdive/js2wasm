@@ -910,6 +910,7 @@
         justify-content: flex-end;
       }
       .feat-edition-passbar-track {
+        display: block;
         width: 92px;
         height: 7px;
         border-radius: 999px;
@@ -918,6 +919,7 @@
         border: 1px solid rgba(255, 255, 255, 0.08);
       }
       .feat-edition-passbar-fill {
+        display: block;
         height: 100%;
         background: linear-gradient(90deg, rgba(63, 185, 80, 0.82), rgba(63, 185, 80, 1));
       }
@@ -3017,14 +3019,6 @@ const dom = await js2.import("./dom.js", { document });
           <a class="link-card" href="./benchmarks/report.html">
             <strong>Report</strong>
             <span>See current test262 pass rates, history, proposal coverage, and benchmark summaries.</span>
-          </a>
-          <a class="link-card" href="./issues-graph.html">
-            <strong>Issues Graph</strong>
-            <span>Explore planning dependencies between backlog items and implementation themes.</span>
-          </a>
-          <a class="link-card" href="./wasm-treemap.html">
-            <strong>Wasm Treemap</strong>
-            <span>Inspect binary size distribution across functions and sections in generated modules.</span>
           </a>
         </div>
       </section>

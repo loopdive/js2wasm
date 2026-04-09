@@ -13,7 +13,7 @@
 
 class PerfBenchmarkChart extends HTMLElement {
   static get observedAttributes() {
-    return ["src", "title", "legend", "mode"];
+    return ["src", "title", "legend", "mode", "benchmark"];
   }
 
   constructor() {
@@ -91,7 +91,7 @@ class PerfBenchmarkChart extends HTMLElement {
 
         .bench-row {
           display: grid;
-          grid-template-columns: 100px 1fr;
+          grid-template-columns: 112px 1fr;
           align-items: center;
           gap: 16px;
         }
@@ -101,6 +101,7 @@ class PerfBenchmarkChart extends HTMLElement {
           font-size: 13px;
           color: var(--fg-soft, rgba(255,255,255,0.55));
           text-align: right;
+          white-space: nowrap;
         }
 
         .bench-track {
@@ -137,6 +138,9 @@ class PerfBenchmarkChart extends HTMLElement {
           transform: translateY(-50%);
           z-index: 2;
           white-space: nowrap;
+          text-shadow:
+            0 1px 1px rgba(6, 10, 20, 0.85),
+            0 0 10px rgba(6, 10, 20, 0.45);
         }
 
         .legend {
@@ -207,6 +211,30 @@ class PerfBenchmarkChart extends HTMLElement {
     return samples[Math.floor(samples.length / 2)] ?? 0;
   }
 
+  async _waitForStableLoadBenchmarkStart() {
+    if (document.readyState !== "complete") {
+      await new Promise((resolve) => window.addEventListener("load", resolve, { once: true }));
+    }
+
+    if (document.fonts?.ready) {
+      try {
+        await document.fonts.ready;
+      } catch {
+        // Ignore font readiness failures and continue.
+      }
+    }
+
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    if ("requestIdleCallback" in window) {
+      await new Promise((resolve) => {
+        window.requestIdleCallback(() => resolve(), { timeout: 500 });
+      });
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+  }
+
   async _load(src) {
     const shadow = this.shadowRoot;
     const container = shadow.querySelector(".bench-bars");
@@ -221,10 +249,30 @@ class PerfBenchmarkChart extends HTMLElement {
       }
       const json = await resp.json();
       const mode = this.getAttribute("mode") || "perf";
+      const benchmarkFilter = (this.getAttribute("benchmark") || "").trim();
 
       // Transform data based on mode into [{name, ratio, label}]
       let ratios;
-      if (mode === "size") {
+      if (mode === "benchmark-runtime") {
+        const rows = Array.isArray(json) ? json : [];
+        if (rows.length === 0 || !benchmarkFilter) {
+          this.style.display = "none";
+          return;
+        }
+        const filtered = rows.filter((row) => row?.name === benchmarkFilter);
+        const jsRow = filtered.find((row) => row?.strategy === "js");
+        if (!jsRow || !(jsRow.medianMs > 0)) {
+          this.style.display = "none";
+          return;
+        }
+        ratios = filtered
+          .filter((row) => row?.strategy && row.strategy !== "js" && row.medianMs > 0)
+          .map((row) => ({
+            name: row.strategy,
+            ratio: jsRow.medianMs / row.medianMs,
+            label: (jsRow.medianMs / row.medianMs).toFixed(1) + "x",
+          }));
+      } else if (mode === "size") {
         const benchmarks = json?.benchmarks ?? json;
         if (!Array.isArray(benchmarks) || benchmarks.length === 0) {
           this.style.display = "none";
@@ -254,6 +302,7 @@ class PerfBenchmarkChart extends HTMLElement {
           this.style.display = "none";
           return;
         }
+        await this._waitForStableLoadBenchmarkStart();
         const manifestUrl = new URL(src, window.location.href);
         const runtimeUrl = new URL("./loadtime/runtime.js", manifestUrl).href;
         const { buildImports, instantiateWasmStreaming } = await import(/* @vite-ignore */ runtimeUrl);
@@ -272,9 +321,17 @@ class PerfBenchmarkChart extends HTMLElement {
             console.warn("[perf-benchmark-chart] loadtime benchmark skipped", bench?.name, error);
           }
         }
-      } else {
-        // Default perf mode: ratio = jsUs / wasmUs (higher = wasm faster)
-        const rows = Array.isArray(json) ? json : [];
+        } else {
+          // Default perf mode: ratio = jsUs / wasmUs (higher = wasm faster)
+        let rows = Array.isArray(json) ? json : [];
+        if (benchmarkFilter) {
+          rows = rows.filter((row) => {
+            const path = String(row?.path || "");
+            const shortPath = path.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "");
+            const shortName = String(row?.name || "");
+            return shortPath === benchmarkFilter || shortName === benchmarkFilter || path === benchmarkFilter;
+          });
+        }
         if (rows.length === 0) {
           this.style.display = "none";
           return;
@@ -374,15 +431,15 @@ class PerfBenchmarkChart extends HTMLElement {
 
           const barEnd = d.ratio >= 1 ? curLeft + curWidth : curLeft;
           if (d.ratio >= 1) {
-            d.valueEl.style.left = barEnd + "%";
+            d.valueEl.style.left = `min(calc(${barEnd}% + 10px), calc(100% - 3.6ch))`;
             d.valueEl.style.removeProperty("right");
-            d.valueEl.style.paddingLeft = "6px";
+            d.valueEl.style.paddingLeft = "0";
             d.valueEl.style.paddingRight = "";
           } else {
-            d.valueEl.style.removeProperty("left");
-            d.valueEl.style.right = 100 - barEnd + "%";
-            d.valueEl.style.paddingLeft = "";
-            d.valueEl.style.paddingRight = "6px";
+            d.valueEl.style.left = `max(calc(${barEnd}% + 10px), 12%)`;
+            d.valueEl.style.removeProperty("right");
+            d.valueEl.style.paddingLeft = "0";
+            d.valueEl.style.paddingRight = "";
           }
           d.valueEl.style.color = `rgba(255,255,255,${curTextOp})`;
           d.valueEl.textContent = scoreText;
