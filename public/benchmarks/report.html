@@ -106,6 +106,16 @@
       .edition-timeline-section {
         margin: -0.35rem 0 2rem;
       }
+      .edition-bar-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 1rem;
+        margin: 0 0 1.5rem;
+      }
+      .edition-bar-grid h3 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+      }
       .edition-track {
         position: relative;
         height: 92px;
@@ -1423,6 +1433,23 @@
           summary.appendChild(staleCard);
         }
 
+        const editionBarsSection = el("div", {
+          className: "edition-bar-grid",
+        });
+        const editionTestsCard = el("div", null, el("h3", null, "Edition Coverage (tests)"));
+        const editionTestsBars = document.createElement("t262-edition-bars");
+        editionTestsBars.setAttribute("src", "results/test262-editions.json");
+        editionTestsBars.setAttribute("mode", "absolute");
+        editionTestsCard.appendChild(editionTestsBars);
+        editionBarsSection.appendChild(editionTestsCard);
+
+        const editionRateCard = el("div", null, el("h3", null, "Edition Coverage (pass rate)"));
+        const editionRateBars = document.createElement("t262-edition-bars");
+        editionRateBars.setAttribute("src", "results/test262-editions.json");
+        editionRateBars.setAttribute("mode", "percentage");
+        editionRateCard.appendChild(editionRateBars);
+        editionBarsSection.appendChild(editionRateCard);
+
         const editionSection = el("div", {
           className: "edition-timeline-section",
         });
@@ -1454,6 +1481,7 @@
         }
 
         container.appendChild(summary);
+        container.appendChild(editionBarsSection);
         container.appendChild(editionSection);
 
         // --- Unsupported features (skip reasons) ---

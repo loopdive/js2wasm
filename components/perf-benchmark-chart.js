@@ -1,10 +1,11 @@
 /**
- * <perf-benchmark-chart> — animated Wasm vs JS performance bar chart.
+ * <perf-benchmark-chart> — animated Wasm vs JS comparison chart.
  *
  * Attributes:
  *   src     — URL to playground-benchmark-sidebar.json
  *   title   — chart heading (default: "Benchmark Performance (Wasm vs JS)")
  *   legend  — legend text (default: "WASM runtime performance relative to JS (larger is better)")
+ *   mode    — perf | size | coldstart | loadtime
  *
  * Usage:
  *   <perf-benchmark-chart src="./benchmarks/results/playground-benchmark-sidebar.json"></perf-benchmark-chart>
@@ -167,6 +168,45 @@ class PerfBenchmarkChart extends HTMLElement {
     this._load(src);
   }
 
+  async _measureJsModuleLoad(jsUrl, rounds = 3) {
+    const samples = [];
+    for (let i = 0; i < rounds; i++) {
+      const cacheBust = `${jsUrl}${jsUrl.includes("?") ? "&" : "?"}load=${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
+      const t0 = performance.now();
+      const response = await fetch(cacheBust, { cache: "no-store" });
+      const source = await response.text();
+      const blob = new Blob([source], { type: "text/javascript" });
+      const blobUrl = URL.createObjectURL(blob);
+      try {
+        await import(/* @vite-ignore */ blobUrl);
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
+      samples.push(performance.now() - t0);
+    }
+    samples.sort((a, b) => a - b);
+    return samples[Math.floor(samples.length / 2)] ?? 0;
+  }
+
+  async _measureWasmLoad(entry, wasmUrl, instantiateWasmStreaming, buildImports, rounds = 3) {
+    const samples = [];
+    for (let i = 0; i < rounds; i++) {
+      const imports = buildImports(entry.imports ?? [], {
+        document,
+        window,
+        performance,
+        globalThis,
+      }, entry.stringPool ?? []);
+      const cacheBust = `${wasmUrl}${wasmUrl.includes("?") ? "&" : "?"}load=${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
+      const t0 = performance.now();
+      const result = await instantiateWasmStreaming(fetch(cacheBust, { cache: "no-store" }), imports.env, imports.string_constants);
+      if (imports.setExports) imports.setExports(result.instance.exports);
+      samples.push(performance.now() - t0);
+    }
+    samples.sort((a, b) => a - b);
+    return samples[Math.floor(samples.length / 2)] ?? 0;
+  }
+
   async _load(src) {
     const shadow = this.shadowRoot;
     const container = shadow.querySelector(".bench-bars");
@@ -191,11 +231,10 @@ class PerfBenchmarkChart extends HTMLElement {
           return;
         }
         ratios = benchmarks.map((b) => {
-          const wasmBytes = b.wasmSizeGzip;
+          const wasmBytes = b.wasmTotalGzip ?? b.wasmSizeGzip;
           const jsBytes = b.jsSizeGzip;
           const ratio = wasmBytes / Math.max(jsBytes, 1);
-          const kb = (wasmBytes / 1024).toFixed(1);
-          return { name: b.name, ratio, label: kb + " KB" };
+          return { name: b.name, ratio, label: ratio.toFixed(1) + "x" };
         });
       } else if (mode === "coldstart") {
         const benchmarks = json?.benchmarks ?? json;
@@ -209,6 +248,30 @@ class PerfBenchmarkChart extends HTMLElement {
           const ratio = jsMs / Math.max(wasmMs, 0.0001);
           return { name: b.name, ratio };
         });
+      } else if (mode === "loadtime") {
+        const benchmarks = json?.benchmarks ?? json;
+        if (!Array.isArray(benchmarks) || benchmarks.length === 0) {
+          this.style.display = "none";
+          return;
+        }
+        const manifestUrl = new URL(src, window.location.href);
+        const runtimeUrl = new URL("./loadtime/runtime.js", manifestUrl).href;
+        const { buildImports, instantiateWasmStreaming } = await import(/* @vite-ignore */ runtimeUrl);
+        ratios = [];
+        for (const bench of benchmarks) {
+          if (!bench?.jsUrl || !bench?.wasmUrl) continue;
+          try {
+            const jsUrl = new URL(bench.jsUrl, manifestUrl).href;
+            const wasmUrl = new URL(bench.wasmUrl, manifestUrl).href;
+            const jsMs = await this._measureJsModuleLoad(jsUrl);
+            const wasmMs = await this._measureWasmLoad(bench, wasmUrl, instantiateWasmStreaming, buildImports);
+            if (jsMs <= 0 || wasmMs <= 0) continue;
+            const ratio = jsMs / wasmMs;
+            ratios.push({ name: bench.name, ratio, label: ratio.toFixed(1) + "x" });
+          } catch (error) {
+            console.warn("[perf-benchmark-chart] loadtime benchmark skipped", bench?.name, error);
+          }
+        }
       } else {
         // Default perf mode: ratio = jsUs / wasmUs (higher = wasm faster)
         const rows = Array.isArray(json) ? json : [];

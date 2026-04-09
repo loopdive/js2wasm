@@ -890,9 +890,43 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.12);
         margin-bottom: 6px;
         text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
       }
       .feat-edition:first-of-type {
         padding-top: 0;
+      }
+      .feat-edition-label {
+        min-width: 0;
+      }
+      .feat-edition-passbar {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+        min-width: 160px;
+        justify-content: flex-end;
+      }
+      .feat-edition-passbar-track {
+        width: 92px;
+        height: 7px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .feat-edition-passbar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, rgba(63, 185, 80, 0.82), rgba(63, 185, 80, 1));
+      }
+      .feat-edition-passbar-text {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.58);
+        min-width: 42px;
+        text-align: right;
       }
       .feat-row {
         display: grid;
@@ -1217,35 +1251,23 @@
               style="--t262-bg: var(--bg, #060a14)"
             ></t262-donut>
           </div>
-          <div class="diagram-panel edition-chart">
-            <h3 class="diagram-title">Edition Coverage (tests)</h3>
-            <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="absolute"></t262-edition-bars>
-          </div>
-          <div class="diagram-panel edition-chart">
-            <h3 class="diagram-title">Edition Coverage (pass rate)</h3>
-            <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="percentage"></t262-edition-bars>
+          <div class="diagram-panel">
+            <h3 class="diagram-title">ECMAScript Conformance Pass Rate Over Time</h3>
+            <trend-chart id="conformance-history-chart" mode="line" height="260"></trend-chart>
           </div>
           <div class="diagram-panel">
             <perf-benchmark-chart
               src="./benchmarks/results/playground-benchmark-sidebar.json"
-              title="Benchmark Performance (Wasm vs JS)"
-              legend="WASM runtime performance relative to JS (larger is better)"
+              title="Runtime Speed"
+              legend="Wasm runtime speed relative to JS (larger is better)"
             ></perf-benchmark-chart>
           </div>
           <div class="diagram-panel">
             <perf-benchmark-chart
-              src="./benchmarks/results/size-benchmarks.json"
-              mode="size"
-              title="Module Size (gzip)"
-              legend="GZIP compressed module size (smaller is better)"
-            ></perf-benchmark-chart>
-          </div>
-          <div class="diagram-panel">
-            <perf-benchmark-chart
-              src="./benchmarks/results/size-benchmarks.json"
-              mode="coldstart"
-              title="Parse Speed"
-              legend="Module parse speed (larger is better)"
+              src="./benchmarks/results/loadtime-benchmarks.json"
+              mode="loadtime"
+              title="Loading Speed"
+              legend="Wasm loading speed relative to JS (larger is better)"
             ></perf-benchmark-chart>
           </div>
         </div>
@@ -3065,6 +3087,7 @@ const dom = await js2.import("./dom.js", { document });
     <script type="module" src="./components/site-nav.js"></script>
     <script type="module" src="./components/t262-charts.js"></script>
     <script type="module" src="./components/perf-benchmark-chart.js"></script>
+    <script src="./components/trend-chart.js"></script>
 
     <script>
       (function mountPuzzleBackground() {
@@ -3321,6 +3344,104 @@ const dom = await js2.import("./dom.js", { document });
       })();
 
       // Conformance diagrams are now rendered by <t262-donut> and <t262-edition-bars> web components.
+
+      (async function hydrateConformanceHistoryChart() {
+        const chart = document.getElementById("conformance-history-chart");
+        if (!chart) return;
+        try {
+          const resp = await fetch("./benchmarks/results/runs/index.json");
+          if (!resp.ok) return;
+          const runs = await resp.json();
+          if (!Array.isArray(runs)) return;
+
+          const points = runs
+            .filter((run) => Number(run?.total ?? 0) >= 40000 && Number(run?.pass ?? 0) >= 0)
+            .sort((a, b) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")))
+            .map((run) => {
+              const total = Number(run.total || 0);
+              const pass = Number(run.pass || 0);
+              const ts = String(run.timestamp || "");
+              return {
+                label: ts ? ts.slice(5, 10) : "",
+                rate: total > 0 ? (pass / total) * 100 : 0,
+              };
+            })
+            .filter((point) => point.rate >= 5);
+
+          if (points.length < 2) return;
+
+          chart.setAttribute("labels-key", "label");
+          chart.setAttribute(
+            "series",
+            JSON.stringify([
+              {
+                key: "rate",
+                color: "#ffffff",
+                fill: true,
+              },
+            ]),
+          );
+          chart.data = points;
+        } catch {
+          // Leave the chart empty when the historical run index is unavailable.
+        }
+      })();
+
+      (async function hydrateEditionPassBars() {
+        const editionMap = new Map([
+          ["ES3 / Core", "≤ ES3"],
+          ["ES5", "ES5"],
+          ["ES2015", "ES2015"],
+          ["ES2016", "ES2016"],
+          ["ES2017", "ES2017"],
+          ["ES2018", "ES2018"],
+          ["ES2019", "ES2019"],
+          ["ES2020", "ES2020"],
+          ["ES2021", "ES2021"],
+          ["ES2022", "ES2022"],
+          ["ES2023", "ES2023"],
+          ["ES2024", "ES2024"],
+          ["ES2025", "ES2025"],
+        ]);
+
+        try {
+          const resp = await fetch("./benchmarks/results/test262-editions.json");
+          if (!resp.ok) return;
+          const editions = await resp.json();
+          if (!Array.isArray(editions)) return;
+
+          const byEdition = new Map(editions.map((row) => [String(row.edition), row]));
+
+          document.querySelectorAll(".feat-edition").forEach((el) => {
+            if (el.querySelector(".feat-edition-passbar")) return;
+            const label = (el.textContent || "").trim();
+            const editionKey = editionMap.get(label);
+
+            const labelSpan = document.createElement("span");
+            labelSpan.className = "feat-edition-label";
+            labelSpan.textContent = label;
+            el.textContent = "";
+            el.appendChild(labelSpan);
+
+            if (!editionKey) return;
+            const row = byEdition.get(editionKey);
+            if (!row) return;
+
+            const pct = Number(row.pct ?? 0);
+            const bar = document.createElement("span");
+            bar.className = "feat-edition-passbar";
+            bar.innerHTML = `
+              <span class="feat-edition-passbar-track">
+                <span class="feat-edition-passbar-fill" style="width:${Math.max(0, Math.min(100, pct))}%"></span>
+              </span>
+              <span class="feat-edition-passbar-text">${pct}%</span>
+            `;
+            el.appendChild(bar);
+          });
+        } catch {
+          // Leave the edition labels unchanged if the summary file is unavailable.
+        }
+      })();
 
       (async function hydrateFeatureCoverage() {
         const coverageEl = document.getElementById("feature-coverage");
