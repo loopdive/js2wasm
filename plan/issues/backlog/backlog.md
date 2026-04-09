@@ -143,6 +143,8 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 | [1001](../ready/1001.md) | Medium | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark | Ready |
 | [1004](../ready/1004.md) | Medium | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark | Ready |
 | [1005](../ready/1005.md) | Medium | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Startup benchmarking | Ready |
+| [1007](../ready/1007.md) | Medium | Re-run historical test262 checkpoints with the current harness for comparable conformance history | Historical benchmark normalization | Ready |
+| [1008](../ready/1008.md) | Medium | Add mobile-first layout support to the playground | Playground mobile UX | Ready |
 | [991](../ready/991.md) | High | Iterator helper generator-reentrancy tests hit 30s compiler timeout | ~90s worker time/run | Ready |
 | [993](../ready/993.md) | High | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | ~90s worker time/run | Ready |
 | [992](../ready/992.md) | Medium | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | 30s worker time/run | Ready |

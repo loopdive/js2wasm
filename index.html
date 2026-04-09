@@ -440,6 +440,35 @@
         color: var(--fg-faint);
         margin: 0 0 28px;
       }
+      .diagram-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-top: 14px;
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--fg-faint);
+        letter-spacing: 0.04em;
+      }
+      .diagram-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .diagram-legend-line {
+        width: 18px;
+        height: 0;
+        border-top: 2px solid rgba(255, 255, 255, 0.9);
+      }
+      .diagram-legend-line.total {
+        border-top-width: 1px;
+        border-top-color: rgba(141, 154, 184, 1);
+        border-top-style: dotted;
+      }
+      .diagram-legend-line.passed {
+        border-top-width: 1px;
+        border-top-color: rgba(255, 255, 255, 0.82);
+      }
 
       /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
       /* Benchmark performance chart is now in <perf-benchmark-chart> shadow DOM */
@@ -489,36 +518,6 @@
         text-transform: uppercase;
         color: var(--fg-faint);
       }
-      .size-compare {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-top: 16px;
-        font-family: var(--mono);
-        font-size: 11px;
-      }
-      .size-bar {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .size-bar-label {
-        color: var(--fg-faint);
-        min-width: 40px;
-        text-align: right;
-      }
-      .size-bar-track {
-        height: 14px;
-        position: relative;
-      }
-      .size-bar-fill {
-        height: 100%;
-        background: linear-gradient(to right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2));
-      }
-      .size-bar-value {
-        color: var(--fg-faint);
-        white-space: nowrap;
-      }
       .how-arrow svg {
         display: block;
       }
@@ -538,11 +537,21 @@
         position: relative;
       }
       .how-step-title {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
         font-family: var(--mono);
         font-size: 12px;
         letter-spacing: 0.06em;
         color: var(--fg-soft);
         margin-bottom: 12px;
+      }
+      .how-step-size {
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        color: var(--fg-faint);
+        text-transform: none;
       }
       .how-sub {
         font-size: 14px;
@@ -840,6 +849,9 @@
       }
       .feat-tables.strict-only .feat-section[data-sloppy] {
         display: none;
+      }
+      .feat-tables.host-off .feat-row:has(.feat-host) {
+        opacity: 0.72;
       }
       .feat-tables {
         margin-top: 16px;
@@ -1255,7 +1267,21 @@
           </div>
           <div class="diagram-panel">
             <h3 class="diagram-title">ECMAScript Conformance Pass Rate Over Time</h3>
-            <trend-chart id="conformance-history-chart" mode="line" height="260"></trend-chart>
+            <trend-chart id="conformance-history-chart" mode="step" height="260" x-key="time"></trend-chart>
+            <div class="diagram-legend">
+              <span class="diagram-legend-item">
+                <span class="diagram-legend-line"></span>
+                <span>Pass rate</span>
+              </span>
+              <span class="diagram-legend-item">
+                <span class="diagram-legend-line passed"></span>
+                <span>Tests passed</span>
+              </span>
+              <span class="diagram-legend-item">
+                <span class="diagram-legend-line total"></span>
+                <span>Total tests run</span>
+              </span>
+            </div>
           </div>
           <div class="diagram-panel">
             <perf-benchmark-chart
@@ -1278,6 +1304,10 @@
           <label class="feat-toggle">
             <input type="checkbox" id="strict-only-toggle" checked />
             <span>Strict mode</span>
+          </label>
+          <label class="feat-toggle">
+            <input type="checkbox" id="host-support-toggle" checked />
+            <span>JS host</span>
           </label>
         </div>
 
@@ -2863,7 +2893,10 @@ match (value) {
 
         <div class="how-sidebyside">
           <div class="how-step">
-            <h3 class="how-step-title">JavaScript</h3>
+            <h3 class="how-step-title">
+              <span>JavaScript</span>
+              <span class="how-step-size" id="how-fib-js-size">(0.1 KB gzipped)</span>
+            </h3>
             <pre class="how-code js">
 function fibonacci(n) {
   if (n &lt;= 1) return n;
@@ -2884,7 +2917,10 @@ export function run() {
             <span class="how-arrow-label">compile</span>
           </div>
           <div class="how-step">
-            <h3 class="how-step-title">WebAssembly</h3>
+            <h3 class="how-step-title">
+              <span>WebAssembly</span>
+              <span class="how-step-size" id="how-fib-wasm-size">(0.2 KB gzipped)</span>
+            </h3>
             <pre class="how-code wat">
 (func $fibonacci (param f64) (result f64)
   local.get 0
@@ -2906,19 +2942,6 @@ export function run() {
             <span class="how-code-label">app.wat</span>
           </div>
         </div>
-        <div class="size-compare">
-          <div class="size-bar">
-            <span class="size-bar-label">.js</span>
-            <div class="size-bar-track" id="how-fib-js-track" style="width: 109px"><div class="size-bar-fill" style="width: 100%"></div></div>
-            <span class="size-bar-value" id="how-fib-js-value">109 B gzip</span>
-          </div>
-          <div class="size-bar">
-            <span class="size-bar-label">.wasm</span>
-            <div class="size-bar-track" id="how-fib-wasm-track" style="width: 189px"><div class="size-bar-fill" style="width: 100%"></div></div>
-            <span class="size-bar-value" id="how-fib-wasm-value">189 B gzip</span>
-          </div>
-        </div>
-
         <div class="how-step" style="margin-top: 48px">
           <h3 class="how-step-title">Using DOM and JS APIs</h3>
           <p class="how-sub">
@@ -2927,6 +2950,10 @@ export function run() {
           </p>
           <div class="how-sidebyside">
             <div class="how-step">
+              <h3 class="how-step-title">
+                <span>JavaScript</span>
+                <span class="how-step-size" id="how-dom-js-size">(0.1 KB gzipped)</span>
+              </h3>
               <pre class="how-code js">
 const el = document.createElement("div");
 el.textContent = "Hello from Wasm";
@@ -2942,6 +2969,10 @@ document.body.appendChild(el);</pre
               <span class="how-arrow-label">compile</span>
             </div>
             <div class="how-step">
+              <h3 class="how-step-title">
+                <span>WebAssembly</span>
+                <span class="how-step-size" id="how-dom-wasm-size">(0.3 KB gzipped)</span>
+              </h3>
               <pre class="how-code wat">
 (import "env" "global_document"
   (func $doc (result externref)))
@@ -2968,22 +2999,6 @@ document.body.appendChild(el);</pre
   call $call)             ;; .appendChild(el)</pre
               >
               <span class="how-code-label">dom.wat</span>
-            </div>
-          </div>
-          <div class="size-compare">
-            <div class="size-bar">
-              <span class="size-bar-label">.js</span>
-              <div class="size-bar-track" id="how-dom-js-track" style="width: 129px">
-                <div class="size-bar-fill" style="width: 100%"></div>
-              </div>
-              <span class="size-bar-value" id="how-dom-js-value">129 B gzip</span>
-            </div>
-            <div class="size-bar">
-              <span class="size-bar-label">.wasm</span>
-              <div class="size-bar-track" id="how-dom-wasm-track" style="width: 291px">
-                <div class="size-bar-fill" style="width: 100%"></div>
-              </div>
-              <span class="size-bar-value" id="how-dom-wasm-value">291 B gzip</span>
             </div>
           </div>
         </div>
@@ -3283,15 +3298,23 @@ const dom = await js2.import("./dom.js", { document });
         }
       })();
 
-      // Strict mode toggle for feature table
+      // Feature table toggles
       (function () {
-        const toggle = document.getElementById("strict-only-toggle");
+        const strictToggle = document.getElementById("strict-only-toggle");
+        const hostToggle = document.getElementById("host-support-toggle");
         const tables = document.querySelector(".feat-tables");
-        if (toggle && tables) {
+        if (tables) {
           tables.classList.add("strict-only");
-          toggle.addEventListener("change", () => {
-            tables.classList.toggle("strict-only", toggle.checked);
-          });
+          const sync = () => {
+            if (strictToggle) tables.classList.toggle("strict-only", strictToggle.checked);
+            if (hostToggle) tables.classList.toggle("host-off", !hostToggle.checked);
+            if (typeof window.updateEditionPassBars === "function") {
+              window.updateEditionPassBars();
+            }
+          };
+          sync();
+          strictToggle?.addEventListener("change", sync);
+          hostToggle?.addEventListener("change", sync);
         }
       })();
 
@@ -3330,24 +3353,129 @@ const dom = await js2.import("./dom.js", { document });
         const chart = document.getElementById("conformance-history-chart");
         if (!chart) return;
         try {
+          const projectStart = new Date("2026-02-27T00:00:00Z");
+          const parseRunTimestamp = (value) => {
+            const raw = String(value || "");
+            if (!raw) return null;
+            const isoDate = new Date(raw);
+            if (Number.isFinite(isoDate.getTime())) return isoDate;
+            const compact = raw.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/);
+            if (compact) {
+              const [, y, m, d, hh, mm, ss] = compact;
+              return new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}Z`);
+            }
+            return null;
+          };
+          const formatLabel = (date) =>
+            `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
           const resp = await fetch("./benchmarks/results/runs/index.json");
           if (!resp.ok) return;
           const runs = await resp.json();
           if (!Array.isArray(runs)) return;
 
-          const points = runs
-            .filter((run) => Number(run?.total ?? 0) >= 40000 && Number(run?.pass ?? 0) >= 0)
-            .sort((a, b) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")))
+          const rawPoints = runs
+            .filter((run) => Number(run?.total ?? 0) > 1 && Number(run?.pass ?? 0) >= 0)
+            .sort((a, b) => {
+              const ta = parseRunTimestamp(a.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+              const tb = parseRunTimestamp(b.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+              return ta - tb;
+            })
             .map((run) => {
               const total = Number(run.total || 0);
               const pass = Number(run.pass || 0);
               const ts = String(run.timestamp || "");
+              const date = parseRunTimestamp(ts);
               return {
-                label: ts ? ts.slice(5, 10) : "",
+                label: date ? formatLabel(date) : "",
+                timestamp: ts,
+                time: date?.getTime() ?? 0,
+                pass,
+                total,
                 rate: total > 0 ? (pass / total) * 100 : 0,
               };
             })
-            .filter((point) => point.rate >= 5);
+            .filter((point) => point.total > 0 && point.rate >= 5);
+
+          const points = [];
+          for (const point of rawPoints) {
+            const prev = points.at(-1);
+            if (prev && point.total < prev.total * 0.75) continue;
+            points.push(point);
+          }
+
+          const firstPoint = points[0];
+          if (firstPoint?.timestamp) {
+            const firstDate = new Date(firstPoint.timestamp);
+            if (
+              Number.isFinite(firstDate.getTime()) &&
+              firstDate.getTime() - projectStart.getTime() > 12 * 60 * 60 * 1000
+            ) {
+              points.unshift({
+                label: formatLabel(projectStart),
+                timestamp: projectStart.toISOString(),
+                time: projectStart.getTime(),
+                pass: 0,
+                total: 0,
+                rate: 0,
+              });
+            }
+          }
+
+          const lastRun = runs
+            .filter((run) => Number(run?.total ?? 0) > 1 && Number(run?.pass ?? 0) >= 0)
+            .sort((a, b) => {
+              const ta = parseRunTimestamp(a.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+              const tb = parseRunTimestamp(b.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+              return ta - tb;
+            })
+            .at(-1);
+
+          if (lastRun) {
+            const ts = String(lastRun.timestamp || "");
+            const total = Number(lastRun.total || 0);
+            const pass = Number(lastRun.pass || 0);
+            const lastRate = total > 0 ? (pass / total) * 100 : 0;
+            const lastDate = ts ? new Date(ts) : null;
+            const now = new Date();
+            if (
+              Number.isFinite(lastRate) &&
+              lastRate >= 5 &&
+              lastDate instanceof Date &&
+              Number.isFinite(lastDate.getTime()) &&
+              now.getTime() - lastDate.getTime() > 12 * 60 * 60 * 1000
+            ) {
+              points.push({
+                label: formatLabel(now),
+                timestamp: now.toISOString(),
+                time: now.getTime(),
+                pass,
+                total,
+                rate: lastRate,
+              });
+            }
+          }
+
+          if (points.length === 0) {
+            const now = new Date();
+            points.push(
+              {
+                label: formatLabel(projectStart),
+                timestamp: projectStart.toISOString(),
+                time: projectStart.getTime(),
+                pass: 0,
+                total: 0,
+                rate: 0,
+              },
+              {
+                label: formatLabel(now),
+                timestamp: now.toISOString(),
+                time: now.getTime(),
+                pass: 0,
+                total: 0,
+                rate: 0,
+              },
+            );
+          }
 
           if (points.length < 2) return;
 
@@ -3360,6 +3488,21 @@ const dom = await js2.import("./dom.js", { document });
                 color: "#ffffff",
                 fill: true,
               },
+              {
+                key: "pass",
+                color: "rgba(255,255,255,0.82)",
+                axis: "right",
+                lineWidth: 1,
+                lineOpacity: 0.5,
+              },
+              {
+                key: "total",
+                color: "rgba(141, 154, 184, 1)",
+                axis: "right",
+                lineWidth: 1,
+                lineOpacity: 1,
+                dasharray: "1 3",
+              },
             ]),
           );
           chart.data = points;
@@ -3368,60 +3511,68 @@ const dom = await js2.import("./dom.js", { document });
         }
       })();
 
-      (async function hydrateEditionPassBars() {
-        const editionMap = new Map([
-          ["ES3 / Core", "≤ ES3"],
-          ["ES5", "ES5"],
-          ["ES2015", "ES2015"],
-          ["ES2016", "ES2016"],
-          ["ES2017", "ES2017"],
-          ["ES2018", "ES2018"],
-          ["ES2019", "ES2019"],
-          ["ES2020", "ES2020"],
-          ["ES2021", "ES2021"],
-          ["ES2022", "ES2022"],
-          ["ES2023", "ES2023"],
-          ["ES2024", "ES2024"],
-          ["ES2025", "ES2025"],
-        ]);
+      (function hydrateEditionPassBars() {
+        const strictToggle = document.getElementById("strict-only-toggle");
+        const hostToggle = document.getElementById("host-support-toggle");
 
-        try {
-          const resp = await fetch("./benchmarks/results/test262-editions.json");
-          if (!resp.ok) return;
-          const editions = await resp.json();
-          if (!Array.isArray(editions)) return;
+        const scoreRow = (row, hostEnabled) => {
+          const badge = row.querySelector(".feat-badge");
+          const usesHost = !!row.querySelector(".feat-host");
+          if (!badge) return 0;
+          if (usesHost && !hostEnabled) return 0;
+          if (badge.classList.contains("full")) return 1;
+          if (badge.classList.contains("partial")) return 0.5;
+          return 0;
+        };
 
-          const byEdition = new Map(editions.map((row) => [String(row.edition), row]));
+        const updateEditionPassBars = () => {
+          const strictOnly = strictToggle ? strictToggle.checked : true;
+          const hostEnabled = hostToggle ? hostToggle.checked : true;
 
-          document.querySelectorAll(".feat-edition").forEach((el) => {
-            if (el.querySelector(".feat-edition-passbar")) return;
-            const label = (el.textContent || "").trim();
-            const editionKey = editionMap.get(label);
+          document.querySelectorAll(".feat-section").forEach((section) => {
+            const el = section.querySelector(".feat-edition");
+            if (!el) return;
 
-            const labelSpan = document.createElement("span");
-            labelSpan.className = "feat-edition-label";
-            labelSpan.textContent = label;
-            el.textContent = "";
-            el.appendChild(labelSpan);
+            let labelSpan = el.querySelector(".feat-edition-label");
+            if (!labelSpan) {
+              const label = (el.textContent || "").trim();
+              labelSpan = document.createElement("span");
+              labelSpan.className = "feat-edition-label";
+              labelSpan.textContent = label;
+              el.textContent = "";
+              el.appendChild(labelSpan);
+            }
 
-            if (!editionKey) return;
-            const row = byEdition.get(editionKey);
-            if (!row) return;
+            let bar = el.querySelector(".feat-edition-passbar");
+            if (!bar) {
+              bar = document.createElement("span");
+              bar.className = "feat-edition-passbar";
+              bar.innerHTML = `
+                <span class="feat-edition-passbar-track">
+                  <span class="feat-edition-passbar-fill"></span>
+                </span>
+                <span class="feat-edition-passbar-text"></span>
+              `;
+              el.appendChild(bar);
+            }
 
-            const pct = Number(row.pct ?? 0);
-            const bar = document.createElement("span");
-            bar.className = "feat-edition-passbar";
-            bar.innerHTML = `
-              <span class="feat-edition-passbar-track">
-                <span class="feat-edition-passbar-fill" style="width:${Math.max(0, Math.min(100, pct))}%"></span>
-              </span>
-              <span class="feat-edition-passbar-text">${pct}%</span>
-            `;
-            el.appendChild(bar);
+            const rows = Array.from(section.querySelectorAll(".feat-row")).filter((row) => {
+              if (strictOnly && row.hasAttribute("data-sloppy")) return false;
+              return true;
+            });
+
+            const total = rows.length;
+            const score = rows.reduce((sum, row) => sum + scoreRow(row, hostEnabled), 0);
+            const pct = total > 0 ? Math.round((score / total) * 100) : 0;
+            const fill = bar.querySelector(".feat-edition-passbar-fill");
+            const text = bar.querySelector(".feat-edition-passbar-text");
+            if (fill) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+            if (text) text.textContent = `${pct}%`;
           });
-        } catch {
-          // Leave the edition labels unchanged if the summary file is unavailable.
-        }
+        };
+
+        updateEditionPassBars();
+        window.updateEditionPassBars = updateEditionPassBars;
       })();
 
       (async function hydrateFeatureCoverage() {
@@ -3461,21 +3612,20 @@ const dom = await js2.import("./dom.js", { document });
           if (!resp.ok) return;
           const data = await resp.json();
           const { fib, dom } = data.howItWorks ?? {};
+          const el = (id) => document.getElementById(id);
+          const formatKb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+          const setSize = (id, bytes) => {
+            const node = el(id);
+            if (!node || typeof bytes !== "number") return;
+            node.textContent = `(${formatKb(bytes)} gzipped)`;
+          };
           if (fib) {
-            const s = 291 / Math.max(fib.jsSizeGzip, fib.wasmSizeGzip);
-            const el = (id) => document.getElementById(id);
-            if (el("how-fib-js-track")) el("how-fib-js-track").style.width = Math.round(fib.jsSizeGzip * s) + "px";
-            if (el("how-fib-js-value")) el("how-fib-js-value").textContent = fib.jsSizeGzip + " B gzip";
-            if (el("how-fib-wasm-track")) el("how-fib-wasm-track").style.width = Math.round(fib.wasmSizeGzip * s) + "px";
-            if (el("how-fib-wasm-value")) el("how-fib-wasm-value").textContent = fib.wasmSizeGzip + " B gzip";
+            setSize("how-fib-js-size", fib.jsSizeGzip);
+            setSize("how-fib-wasm-size", fib.wasmSizeGzip);
           }
           if (dom) {
-            const s = 291 / Math.max(dom.jsSizeGzip, dom.wasmSizeGzip);
-            const el = (id) => document.getElementById(id);
-            if (el("how-dom-js-track")) el("how-dom-js-track").style.width = Math.round(dom.jsSizeGzip * s) + "px";
-            if (el("how-dom-js-value")) el("how-dom-js-value").textContent = dom.jsSizeGzip + " B gzip";
-            if (el("how-dom-wasm-track")) el("how-dom-wasm-track").style.width = Math.round(dom.wasmSizeGzip * s) + "px";
-            if (el("how-dom-wasm-value")) el("how-dom-wasm-value").textContent = dom.wasmSizeGzip + " B gzip";
+            setSize("how-dom-js-size", dom.jsSizeGzip);
+            setSize("how-dom-wasm-size", dom.wasmSizeGzip);
           }
         } catch { /* keep static fallbacks */ }
       })();

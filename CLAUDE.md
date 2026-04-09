@@ -189,7 +189,7 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 - PO creates the task queue at sprint start (tech lead dispatches to devs)
 - Dev agents self-serve: after completing a task, they check `TaskList` and claim the next unowned task
 - Dev agents do NOT exit after completing a task — they always check TaskList first
-- Only the tech lead runs full test262; dev agents run scoped tests and equivalence tests
+- Dev agents do NOT run full test262 locally; they run scoped local checks, push their branch, and open a PR to trigger GitHub Actions
 
 ### Controlling agents
 - **Pause (between tasks)**: create a task with `[PAUSE]` in the subject. Agents stop when they reach it and wait idle.
@@ -200,22 +200,21 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 - **Session registry**: track active agent sessions in `plan/agent-sessions.md` so sessions can be resumed. When respawning, pass the context summary in the spawn prompt.
 - **Orphaned agents** (lost team context after crash): check worktrees for commits (`git -C <wt> log --oneline main..HEAD`) and uncommitted work (`git -C <wt> diff --stat`). Save any work, then kill the process. Write `## Suspended Work` in the issue file manually with the worktree path and state.
 
-### Merge protocol (dedicated tester agents, devs don't run test262)
+### Merge protocol (PR + CI, devs don't run local test262)
 
-**Devs do NOT run test262.** The shared `/workspace` causes branch contention that corrupts results. Instead:
+**Devs do NOT run local test262.** Branch validation now happens in GitHub Actions:
 
 1. **Dev merges main INTO their branch** — `git merge main` (not rebase)
-2. **Dev signals tech lead**: `"Branch <name> ready for test. Commit <hash>. Worktree: <path>."`
-3. **Tech lead spawns a short-lived tester agent** (`isolation: "worktree"`) that runs `/test-and-merge` skill on the branch
-4. **Tester runs equiv tests + full test262** on the integrated branch, reports results, terminates (~600MB agent overhead, frees immediately)
-5. **Tech lead approves/rejects** based on pass count delta from baseline
-6. **If approved**: tester merges to main with `git merge --ff-only`, does post-merge cleanup
-7. **If rejected**: dev fixes on their branch, signals again
-8. **One tester at a time.** Tech lead queues branches. ~8.2GB total per test run.
-9. **Never use `git merge` (without --ff-only) on main.** Hook blocks non-ff-only merges to main.
+2. **Dev runs scoped local checks only** — issue-targeted compile/run checks and any narrow local tests needed for confidence
+3. **Dev pushes the branch to origin**
+4. **Dev opens a PR against `main`**
+5. **GitHub Actions runs sharded test262 on the PR branch** and compares against the current `main` baseline
+6. **Tech lead approves/rejects based on PR CI** and any review findings
+7. **If approved**: merge the PR, then the same workflow runs again on `main` and refreshes the baseline
+8. **If rejected**: dev fixes on their branch, pushes again, and lets the PR workflow re-run
+9. **Never use `git merge` (without --ff-only) on main.** Main should move through reviewed PRs and protected checks.
 10. **Never rebase.** Merge preserves history and is safely reversible.
-11. **Devs continue working on next task** while waiting for test results — they don't block.
-12. **Main never sees untested code.** The tester creates a merge proof at `.claude/nonces/merge-proof.json` before ff-only merge. Hook validates it.
+11. **Devs continue working on next task** while waiting for PR checks — they don't block.
 
 ### Issue completion (tester post-merge)
 1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
