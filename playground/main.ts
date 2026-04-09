@@ -858,7 +858,7 @@ function createFileEntry(
 
 const files: FileEntry[] = [
   createFileEntry(
-    "input/example.ts",
+    "examples/dom/calendar.ts",
     "typescript",
     false,
     "input",
@@ -876,7 +876,7 @@ monaco.editor.createModel(
 );
 
 const fileMap = new Map<string, FileEntry>(files.map((f) => [f.path, f]));
-const inputFile = fileMap.get("input/example.ts")!;
+const inputFile = fileMap.get("examples/dom/calendar.ts")!;
 let inputModelChangeDisposable: monaco.IDisposable | null = null;
 
 function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
@@ -905,6 +905,7 @@ function setInputSourceModel(virtualPath: string, source: string): void {
   inputFile.path = virtualPath;
   inputFile.displayName = virtualPath.split("/").pop()!;
   inputFile.model = model;
+  syncOutputDisplayNames();
   (tabDefs["ts-source"] as EditorTabDef).model = model;
   const sourcePanelId = layout.findPanelForTab("ts-source");
   if (sourcePanelId && layout.getActiveTabForPanel(sourcePanelId) !== "ts-source") {
@@ -916,6 +917,7 @@ function setInputSourceModel(virtualPath: string, source: string): void {
     if (layout.getActiveTabForPanel(slot.panelId) !== "ts-source") continue;
     slot.editor.setModel(model);
   }
+  updateTabLabel("ts-source", inputFile.displayName, tabTooltips["ts-source"]);
 }
 
 async function loadBundledExampleSource(path: string): Promise<string | null> {
@@ -969,7 +971,7 @@ async function openLocalImportedSource(specifier: string): Promise<boolean> {
     setInputSourceModel(resolvedPath, content);
     revealSourceTab();
     t262SetActive(resolvedPath);
-    updateTabLabel("ts-source", resolvedPath.split("/").pop() ?? "example.ts");
+    updateTabLabel("ts-source", resolvedPath.split("/").pop() ?? "example.ts", tabTooltips["ts-source"]);
     t262Loading = false;
     return true;
   } catch {
@@ -1019,15 +1021,28 @@ const slotRight = createEditorSlot();
 slotRight.editor.setModel(watFile.model);
 slotRight.editor.updateOptions({ readOnly: true, glyphMargin: true });
 
+syncOutputDisplayNames();
+
 // Tab ID ↔ file path mapping
 const tabToFile: Record<string, string> = {
-  "ts-source": "input/example.ts",
+  "ts-source": "examples/dom/calendar.ts",
   "wat-output": "output/example.wat",
   "wasm-hex": "output/example.wasm",
   "modular-ts": "output/example.js",
 };
 const fileToTab: Record<string, string> = {};
 for (const [tab, file] of Object.entries(tabToFile)) fileToTab[file] = tab;
+
+function sourceBaseName(): string {
+  return inputFile.displayName.replace(/\.[^.]+$/, "") || "example";
+}
+
+function syncOutputDisplayNames(): void {
+  const base = sourceBaseName();
+  watFile.displayName = `${base}.wat`;
+  wasmHexFile.displayName = `${base}.wasm`;
+  modularFile.displayName = `${base}.js`;
+}
 
 // Find the editor currently showing a given tab
 function editorForTab(tabId: string): monaco.editor.IStandaloneCodeEditor | null {
@@ -1398,7 +1413,7 @@ async function t262LoadAndShow(filePath: string) {
   revealSourceTab();
   t262SetActive(filePath);
   const fname = t262FileName(filePath);
-  updateTabLabel("ts-source", fname);
+  updateTabLabel("ts-source", fname, tabTooltips["ts-source"]);
   compileOnly();
   t262Loading = false;
 }
@@ -1690,7 +1705,7 @@ async function t262Render() {
       setInputSourceModel(ex.path, content);
       revealSourceTab();
       t262SetActive(ex.path);
-      updateTabLabel("ts-source", ex.name);
+      updateTabLabel("ts-source", ex.name, tabTooltips["ts-source"]);
       compileOnly();
       t262Loading = false;
     });
@@ -1706,7 +1721,7 @@ async function t262Render() {
     setInputSourceModel(bench.path, content);
     revealSourceTab();
     t262SetActive(bench.path);
-    updateTabLabel("ts-source", bench.name);
+    updateTabLabel("ts-source", bench.name, tabTooltips["ts-source"]);
     compileOnly();
     t262Loading = false;
   }
@@ -2024,7 +2039,7 @@ async function t262Render() {
             setInputSourceModel("input/example.ts", source);
             revealSourceTab();
             t262SetActive(path);
-            updateTabLabel("ts-source", t.name);
+            updateTabLabel("ts-source", t.name, tabTooltips["ts-source"]);
             compileOnly();
             t262Loading = false;
           });
@@ -2113,6 +2128,7 @@ let xPinned = false;
 let xDecos: monaco.editor.IEditorDecorationsCollection[] = [];
 let xHexSpanDeco: monaco.editor.IEditorDecorationsCollection | null = null;
 let xLastHoveredSpan: ByteSpan | null = null;
+let xHoverTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Hex editor state (declared early, used by layout callbacks and editor handlers)
 let lastWasmData: WasmData | null = null;
@@ -2152,10 +2168,10 @@ const layoutRoot = document.getElementById("layout-root")!;
 const layout = new LayoutManager(layoutRoot);
 
 // Register all tabs
-layout.registerTab({ id: "ts-source", title: "TypeScript (.ts)", kind: "editor", permanent: true });
-layout.registerTab({ id: "wat-output", title: "WebAssembly Text Format (.wat)", kind: "editor", permanent: true });
-layout.registerTab({ id: "wasm-hex", title: "WebAssembly Binary (.wasm)", kind: "editor" });
-layout.registerTab({ id: "modular-ts", title: "JavaScript (.js)", kind: "editor" });
+layout.registerTab({ id: "ts-source", title: inputFile.displayName, kind: "editor", permanent: true });
+layout.registerTab({ id: "wat-output", title: watFile.displayName, kind: "editor", permanent: true });
+layout.registerTab({ id: "wasm-hex", title: wasmHexFile.displayName, kind: "editor" });
+layout.registerTab({ id: "modular-ts", title: modularFile.displayName, kind: "editor" });
 layout.registerTab({ id: "errors", title: "Errors", kind: "dom" });
 layout.registerTab({ id: "preview", title: "Preview", kind: "dom" });
 layout.registerTab({ id: "console", title: "Console", kind: "dom" });
@@ -2240,7 +2256,7 @@ syncSidebarToggleButton();
 
 const fmtSize = (b: number) => (b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`);
 
-const tabBaseTitles: Record<string, string> = {
+const tabTooltips: Record<string, string> = {
   "ts-source": "TypeScript (.ts)",
   "wat-output": "WebAssembly Text Format (.wat)",
   "wasm-hex": "WebAssembly Binary (.wasm)",
@@ -2266,31 +2282,42 @@ function updateTabSizes() {
   for (const [tabId, filePath] of Object.entries(tabToFile)) {
     const file = fileMap.get(filePath);
     if (!file) continue;
-    const baseTitle = tabBaseTitles[tabId] ?? tabId;
+    const baseTitle = file.displayName || tabId;
 
-    const raw = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
-    if (raw === 0) {
-      updateTabLabel(tabId, baseTitle);
+    if (tabId === "wat-output") {
+      updateTabLabel(tabId, baseTitle, tabTooltips[tabId]);
       continue;
     }
 
-    updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)})`);
+    const raw = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
+    if (raw === 0) {
+      updateTabLabel(tabId, baseTitle, tabTooltips[tabId]);
+      continue;
+    }
+
+    updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)})`, tabTooltips[tabId]);
 
     // Compute gzip size async
     const gzInput = file.binaryData ?? new TextEncoder().encode(file.model.getValue());
     gzipSize(gzInput).then((gz) => {
-      updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)} / ${fmtSize(gz)} gz)`);
+      updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)} / ${fmtSize(gz)} gz)`, tabTooltips[tabId]);
     });
   }
 }
 
-function updateTabLabel(tabId: string, text: string) {
+function updateTabLabel(tabId: string, text: string, tooltip?: string) {
   const el = layout.getTabElement(tabId);
   if (el) {
     const label = el.querySelector(".panel-tab-label");
     if (label) label.textContent = text;
+    if (tooltip) {
+      el.title = tooltip;
+      if (label instanceof HTMLElement) label.title = tooltip;
+    }
   }
 }
+
+updateTabSizes();
 
 // Convenience functions replacing old tab management
 function openFileTab(path: string) {
@@ -2301,7 +2328,8 @@ function openFileTab(path: string) {
 }
 
 function revealSourceTab(): void {
-  openFileTab("input/example.ts");
+  const panelId = layout.findPanelForTab("ts-source");
+  if (panelId) layout.switchTab(panelId, "ts-source");
   requestAnimationFrame(() => {
     editorForTab("ts-source")?.focus();
   });
@@ -2389,7 +2417,6 @@ function xReapplyPinned() {
   treemap.highlightNode(xTarget.treemapPath);
 }
 
-let xHoverTimer: ReturnType<typeof setTimeout> | null = null;
 const X_HOVER_DELAY = 500; // ms before hover highlight kicks in
 
 function setHighlightTarget(target: HighlightTarget | null, source: HighlightSource) {
@@ -3239,7 +3266,7 @@ function compileOnly() {
   // Auto-open mod.wat tab on first successful compile
   if (result.success && !hasCompiledOnce) {
     hasCompiledOnce = true;
-    openFileTab("output/example.wat");
+    openFileTab(watFile.path);
   }
 
   showOutputPanel(result.success ? "preview" : "errors");
@@ -3481,7 +3508,7 @@ async function runBenchmark() {
     setInputSourceModel("examples/benchmarks.ts", normalizeBenchmarkHelperImport(content, "examples/benchmarks.ts"));
     revealSourceTab();
     t262SetActive("examples/benchmarks.ts");
-    updateTabLabel("ts-source", "benchmarks.ts");
+    updateTabLabel("ts-source", "benchmarks.ts", tabTooltips["ts-source"]);
 
     lastResult = null;
     t262Loading = false;
@@ -3705,10 +3732,10 @@ resetLayoutBtn.addEventListener("click", () => {
   sessionStorage.removeItem(STORAGE_KEY);
   t262ActivePath = null;
   t262Loading = true;
-  setInputSourceModel("input/example.ts", DEFAULT_SOURCE);
+  setInputSourceModel("examples/dom/calendar.ts", DEFAULT_SOURCE);
   revealSourceTab();
   t262Loading = false;
-  updateTabLabel("ts-source", "example.ts");
+  updateTabLabel("ts-source", "calendar.ts", tabTooltips["ts-source"]);
   layout.resetLayout();
   clearSavedLayout();
   compileOnly();

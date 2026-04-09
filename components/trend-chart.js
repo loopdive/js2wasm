@@ -2,7 +2,7 @@
  * <trend-chart> — Reusable stacked area / line SVG chart component.
  *
  * Usage:
- *   <trend-chart src="./data.json" mode="stacked|line" height="240"></trend-chart>
+ *   <trend-chart src="./data.json" mode="stacked|line|step" height="240"></trend-chart>
  *
  * JSON format: array of objects with numeric fields. The component reads
  * `series` attribute for field names and colors:
@@ -13,7 +13,7 @@
 
 class TrendChart extends HTMLElement {
   static get observedAttributes() {
-    return ["src", "series", "mode", "height", "labels-key"];
+    return ["src", "series", "mode", "height", "labels-key", "x-key"];
   }
 
   constructor() {
@@ -71,14 +71,43 @@ class TrendChart extends HTMLElement {
     const plotW = W - PAD.left - PAD.right;
     const plotH = H - PAD.top - PAD.bottom;
     const n = data.length;
-
-    const x = (i) => PAD.left + (i / (n - 1)) * plotW;
+    const xKey = this.getAttribute("x-key") || null;
+    const x = this._buildXAccessor(data, xKey, PAD.left, plotW, n);
 
     if (mode === "stacked") {
       this._renderStacked(data, seriesDef, W, H, PAD, plotW, plotH, n, x, labelsKey);
     } else {
-      this._renderLine(data, seriesDef, W, H, PAD, plotW, plotH, n, x, labelsKey);
+      this._renderLine(data, seriesDef, W, H, PAD, plotW, plotH, n, x, labelsKey, mode === "step");
     }
+  }
+
+  _buildXAccessor(data, xKey, left, plotW, n) {
+    if (xKey) {
+      const values = data.map((d) => Number(d?.[xKey]));
+      const valid = values.every((v) => Number.isFinite(v));
+      if (valid) {
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const range = max - min || 1;
+        return (i) => left + ((values[i] - min) / range) * plotW;
+      }
+    }
+    return (i) => left + (i / Math.max(n - 1, 1)) * plotW;
+  }
+
+  _buildXLabels(data, labelsKey, x, H, PAD) {
+    let labels = "";
+    let lastX = -Infinity;
+    const minGap = 42;
+    for (let i = 0; i < data.length; i++) {
+      const xi = x(i);
+      const isEdge = i === 0 || i === data.length - 1;
+      if (!isEdge && xi - lastX < minGap) continue;
+      const label = labelsKey ? String(data[i][labelsKey] || "") : String(i);
+      labels += `<text x="${xi}" y="${H - PAD.bottom + 16}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10" font-family="monospace">${label}</text>`;
+      lastX = xi;
+    }
+    return labels;
   }
 
   _renderStacked(data, seriesDef, W, H, PAD, plotW, plotH, n, x, labelsKey) {
@@ -120,12 +149,7 @@ class TrendChart extends HTMLElement {
     }
 
     // X labels
-    let xLabels = "";
-    const step = Math.max(1, Math.floor(n / 8));
-    for (let i = 0; i < n; i += step) {
-      const label = labelsKey ? String(data[i][labelsKey] || "") : String(i);
-      xLabels += `<text x="${x(i)}" y="${H - PAD.bottom + 16}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10" font-family="monospace">${label}</text>`;
-    }
+    const xLabels = this._buildXLabels(data, labelsKey, x, H, PAD);
 
     // Gradient for pass area
     let defs = `<defs>
@@ -185,26 +209,47 @@ class TrendChart extends HTMLElement {
       </svg>`;
   }
 
-  _renderLine(data, seriesDef, W, H, PAD, plotW, plotH, n, x, labelsKey) {
-    // Find y range across all series
-    let yMin = Infinity,
-      yMax = -Infinity;
-    for (const s of seriesDef) {
-      for (const d of data) {
-        const v = Number(d[s.key] || 0);
-        if (v < yMin) yMin = v;
-        if (v > yMax) yMax = v;
-      }
-    }
-    const range = yMax - yMin || 1;
-    yMin = Math.max(0, yMin - range * 0.05);
-    yMax = yMax + range * 0.05;
+  _renderLine(data, seriesDef, W, H, PAD, plotW, plotH, n, x, labelsKey, stepped = false) {
+    const leftSeries = seriesDef.filter((s) => (s.axis || "left") !== "right");
+    const rightSeries = seriesDef.filter((s) => s.axis === "right");
 
-    const y = (val) => PAD.top + plotH - ((val - yMin) / (yMax - yMin)) * plotH;
+    const calcDomain = (series) => {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const s of series) {
+        for (const d of data) {
+          const v = Number(d[s.key] || 0);
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+      }
+      if (!Number.isFinite(min) || !Number.isFinite(max)) {
+        return { min: 0, max: 1 };
+      }
+      const range = max - min || 1;
+      return {
+        min: Math.max(0, min - range * 0.05),
+        max: max + range * 0.05,
+      };
+    };
+
+    const leftDomain = calcDomain(leftSeries.length ? leftSeries : seriesDef);
+    const rightDomain = rightSeries.length ? calcDomain(rightSeries) : null;
+
+    const makeY = (domain) => (val) => PAD.top + plotH - ((val - domain.min) / (domain.max - domain.min || 1)) * plotH;
+    const yLeft = makeY(leftDomain);
+    const yRight = rightDomain ? makeY(rightDomain) : null;
+    const yForSeries = (series) => (series.axis === "right" && yRight ? yRight : yLeft);
 
     const linePath = (valFn) => {
       let p = `M ${x(0)} ${valFn(0)}`;
-      for (let i = 1; i < n; i++) p += ` L ${x(i)} ${valFn(i)}`;
+      for (let i = 1; i < n; i++) {
+        if (stepped) {
+          p += ` L ${x(i)} ${valFn(i - 1)} L ${x(i)} ${valFn(i)}`;
+        } else {
+          p += ` L ${x(i)} ${valFn(i)}`;
+        }
+      }
       return p;
     };
 
@@ -212,29 +257,30 @@ class TrendChart extends HTMLElement {
     const gridSteps = 4;
     let gridSvg = "";
     for (let i = 0; i <= gridSteps; i++) {
-      const val = yMax - (i / gridSteps) * (yMax - yMin);
-      const yPos = y(val);
+      const val = leftDomain.max - (i / gridSteps) * (leftDomain.max - leftDomain.min);
+      const yPos = yLeft(val);
       gridSvg += `<line x1="${PAD.left}" y1="${yPos}" x2="${W - PAD.right}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
       gridSvg += `<text x="${PAD.left - 8}" y="${yPos + 4}" text-anchor="end" fill="rgba(255,255,255,0.3)" font-size="10" font-family="monospace">${val >= 1000 ? (val / 1000).toFixed(1) + "k" : val.toFixed(0)}</text>`;
+      if (rightDomain) {
+        const rightVal = rightDomain.max - (i / gridSteps) * (rightDomain.max - rightDomain.min);
+        gridSvg += `<text x="${W - PAD.right + 8}" y="${yPos + 4}" text-anchor="start" fill="rgba(255,255,255,0.16)" font-size="10" font-family="monospace">${rightVal >= 1000 ? (rightVal / 1000).toFixed(0) + "k" : rightVal.toFixed(0)}</text>`;
+      }
     }
 
     // X labels
-    let xLabels = "";
-    const step = Math.max(1, Math.floor(n / 8));
-    for (let i = 0; i < n; i += step) {
-      const label = labelsKey ? String(data[i][labelsKey] || "") : String(i);
-      xLabels += `<text x="${x(i)}" y="${H - PAD.bottom + 16}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10" font-family="monospace">${label}</text>`;
-    }
+    const xLabels = this._buildXLabels(data, labelsKey, x, H, PAD);
 
     // Lines + gradient fills
     let paths = "";
     for (let si = 0; si < seriesDef.length; si++) {
       const s = seriesDef[si];
       const color = s.color || "#fff";
-      const width = si === 0 ? 2 : 1.5;
+      const width = s.lineWidth ?? (si === 0 ? 2 : 1.5);
       const opacity = s.lineOpacity ?? 1;
+      const dasharray = s.dasharray ? ` stroke-dasharray="${s.dasharray}"` : "";
+      const y = yForSeries(s);
 
-      paths += `<path d="${linePath((i) => y(Number(data[i][s.key] || 0)))}" fill="none" stroke="${color}" stroke-width="${width}" opacity="${opacity}"/>`;
+      paths += `<path d="${linePath((i) => y(Number(data[i][s.key] || 0)))}" fill="none" stroke="${color}" stroke-width="${width}" opacity="${opacity}"${dasharray}/>`;
 
       if (s.fill) {
         const gradId = `grad-${si}`;
@@ -254,6 +300,7 @@ class TrendChart extends HTMLElement {
     let dots = "";
     if (seriesDef.length > 0) {
       const s = seriesDef[0];
+      const y = yForSeries(s);
       for (let i = 0; i < n; i++) {
         const v = Number(data[i][s.key] || 0);
         dots += `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="rgba(255,255,255,0.9)"/>`;
