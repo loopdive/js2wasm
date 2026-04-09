@@ -265,20 +265,20 @@ export function test262Plugin(): Plugin {
   let cachedEquivTests: { name: string; source: string }[] | null = null;
 
   function getEquivTests(): { name: string; source: string }[] {
-    if (cachedEquivTests) return cachedEquivTests;
+    if (cachedEquivTests && cachedEquivTests.length > 0) return cachedEquivTests;
     const tests: { name: string; source: string }[] = [];
     const testFiles = [
       join(projectRoot, "tests", "ts-wasm-equivalence.test.ts"),
       ...collectFiles(join(projectRoot, "tests", "equivalence")).filter((file) => file.endsWith(".test.ts")),
     ].filter((file, index, all) => existsSync(file) && all.indexOf(file) === index);
 
-    const itRegex = /it\("([^"]+)"[\s\S]*?(?:compileToWasm|assertEquivalent)\(\s*`([\s\S]*?)`/g;
+    const itRegex = /it\((["'])(.*?)\1[\s\S]*?(?:compileToWasm|assertEquivalent)\(\s*`([\s\S]*?)`/g;
     for (const testFile of testFiles) {
       const content = readFileSync(testFile, "utf-8");
       let match;
       while ((match = itRegex.exec(content)) !== null) {
-        const name = match[1];
-        let source = match[2];
+        const name = match[2];
+        let source = match[3];
         const lines = source.split("\n");
         const nonEmpty = lines.filter((l) => l.trim().length > 0);
         if (nonEmpty.length > 0) {
@@ -292,7 +292,7 @@ export function test262Plugin(): Plugin {
       }
     }
 
-    cachedEquivTests = tests;
+    if (tests.length > 0) cachedEquivTests = tests;
     return tests;
   }
 
