@@ -128,6 +128,8 @@ class SiteNav extends HTMLElement {
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          gap: 8px;
+          box-sizing: border-box;
           min-height: 38px;
           padding: 0 16px;
           border-radius: 8px;
@@ -141,6 +143,20 @@ class SiteNav extends HTMLElement {
             background 0.15s ease,
             border-color 0.15s ease,
             opacity 0.15s ease;
+        }
+
+        .btn-icon {
+          width: 14px;
+          height: 14px;
+          display: inline-block;
+          flex: 0 0 auto;
+        }
+
+        .btn-icon svg {
+          width: 100%;
+          height: 100%;
+          display: block;
+          fill: currentColor;
         }
 
         .btn-outline:hover {
@@ -269,7 +285,23 @@ class SiteNav extends HTMLElement {
           }
 
           .mobile-panel .mobile-actions a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 38px;
+            padding: 0 16px;
             text-align: center;
+          }
+
+          .mobile-panel .mobile-actions .btn-outline {
+            color: var(--fg, #ffffff);
+          }
+
+          .mobile-panel .mobile-actions .btn-solid {
+            color: var(--bg, #060a14);
+            background: var(--fg, #ffffff);
+            border-color: var(--fg, #ffffff);
           }
         }
       </style>
@@ -285,7 +317,14 @@ class SiteNav extends HTMLElement {
           <li><a href="${base}dashboard/">Progress</a></li>
         </ul>
         <div class="nav-actions">
-          <a class="btn-outline" href="https://github.com/loopdive/js2wasm">GitHub</a>
+          <a class="btn-outline" href="https://github.com/loopdive/js2wasm">
+            <span class="btn-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" focusable="false">
+                <path d="M8 0C3.58 0 0 3.67 0 8.2c0 3.63 2.29 6.71 5.47 7.8.4.08.55-.18.55-.4 0-.2-.01-.87-.01-1.58-2.01.38-2.53-.5-2.69-.96-.09-.24-.48-.96-.82-1.15-.28-.16-.68-.56-.01-.57.63-.01 1.08.59 1.23.83.72 1.24 1.87.89 2.33.68.07-.54.28-.89.51-1.09-1.78-.21-3.64-.92-3.64-4.09 0-.91.32-1.66.84-2.25-.08-.21-.37-1.07.08-2.22 0 0 .69-.23 2.26.86A7.6 7.6 0 0 1 8 3.58c.68 0 1.37.09 2.01.27 1.57-1.09 2.26-.86 2.26-.86.45 1.15.16 2.01.08 2.22.52.59.84 1.34.84 2.25 0 3.18-1.87 3.88-3.65 4.09.29.26.54.75.54 1.52 0 1.1-.01 1.98-.01 2.25 0 .22.14.49.55.4A8.21 8.21 0 0 0 16 8.2C16 3.67 12.42 0 8 0Z"></path>
+              </svg>
+            </span>
+            <span>GitHub</span>
+          </a>
           <a class="btn-solid" href="${base}playground/">Playground</a>
         </div>
         <button class="burger" aria-label="Toggle menu">
@@ -301,7 +340,14 @@ class SiteNav extends HTMLElement {
           <li><a href="${base}dashboard/">Progress</a></li>
         </ul>
         <div class="mobile-actions">
-          <a class="btn-outline" href="https://github.com/loopdive/js2wasm">GitHub</a>
+          <a class="btn-outline" href="https://github.com/loopdive/js2wasm">
+            <span class="btn-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" focusable="false">
+                <path d="M8 0C3.58 0 0 3.67 0 8.2c0 3.63 2.29 6.71 5.47 7.8.4.08.55-.18.55-.4 0-.2-.01-.87-.01-1.58-2.01.38-2.53-.5-2.69-.96-.09-.24-.48-.96-.82-1.15-.28-.16-.68-.56-.01-.57.63-.01 1.08.59 1.23.83.72 1.24 1.87.89 2.33.68.07-.54.28-.89.51-1.09-1.78-.21-3.64-.92-3.64-4.09 0-.91.32-1.66.84-2.25-.08-.21-.37-1.07.08-2.22 0 0 .69-.23 2.26.86A7.6 7.6 0 0 1 8 3.58c.68 0 1.37.09 2.01.27 1.57-1.09 2.26-.86 2.26-.86.45 1.15.16 2.01.08 2.22.52.59.84 1.34.84 2.25 0 3.18-1.87 3.88-3.65 4.09.29.26.54.75.54 1.52 0 1.1-.01 1.98-.01 2.25 0 .22.14.49.55.4A8.21 8.21 0 0 0 16 8.2C16 3.67 12.42 0 8 0Z"></path>
+              </svg>
+            </span>
+            <span>GitHub</span>
+          </a>
           <a class="btn-solid" href="${base}playground/">Playground</a>
         </div>
       </div>
