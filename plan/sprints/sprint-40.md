@@ -63,8 +63,10 @@ that remains after the Sprint 39 cleanup pass.
 |-------|-------|-------|--------|--------|-------|-------|
 | 21 | **#832** | Upgrade to TypeScript 6.x for Unicode 16.0.0 support | 82 skips / parser currency | Medium | sonnet | Brings current Unicode identifier support into scope |
 | 22 | **#1001** | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark regression | Medium | sonnet | Specialize counted append loops instead of generic growable vec-wrapper lowering |
-| 23 | **#1000** | Normalize issue frontmatter and repopulate historical sprint issue assignments | Process / dashboard correctness | Medium | sonnet | Planning-data cleanup for issue frontmatter, done log, and historical sprint Kanban reconstruction |
-| 24 | **#1003** | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Medium | sonnet | Extends #1000 with richer machine-readable issue metadata |
+| 23 | **#1004** | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark regression | Medium | sonnet | Reduce repeated concat work on the default optimized path, not only via `fast: true` |
+| 24 | **#1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Server/runtime startup benchmarking | Medium | sonnet | Add a reproducible fresh-process cold-start benchmark distinct from browser incremental loading |
+| 25 | **#1000** | Normalize issue frontmatter and repopulate historical sprint issue assignments | Process / dashboard correctness | Medium | sonnet | Planning-data cleanup for issue frontmatter, done log, and historical sprint Kanban reconstruction |
+| 26 | **#1003** | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Medium | sonnet | Extends #1000 with richer machine-readable issue metadata |
 
 ## Acceptance Criteria
 
@@ -74,6 +76,8 @@ that remains after the Sprint 39 cleanup pass.
 - [ ] Land at least one of the enriched invalid-Wasm follow-ups `#997`, `#998`, or `#999`
 - [ ] Upgrade or validate the parser/toolchain path needed for `#832` so Unicode 16 identifier tests can run
 - [ ] Land a counted-array fast path for `#1001` or otherwise recover the lost `array.ts` benchmark advantage
+- [ ] Land compile-time / counted-loop concat optimization for `#1004` or substantially reduce the `string.ts` benchmark slowdown
+- [ ] Add a reproducible cold-start benchmark for `#1005` comparing Wasmtime, Wasm-in-Node, and JS-in-Node
 - [ ] Finish the planning-data normalization tracked in `#1000` and `#1003`
 - [ ] Keep Sprint 40 scoped to genuine carry-over only; newly discovered work starts in Sprint 41
 

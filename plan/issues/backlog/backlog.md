@@ -141,6 +141,8 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 | [699](../ready/699.md) | High | Shared compiler pool for test262 | Test perf | Ready |
 | [700](../blocked/700.md) | High | Reuse ts.CompilerHost across compilations | 25% speedup | Blocked by #699 |
 | [1001](../ready/1001.md) | Medium | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark | Ready |
+| [1004](../ready/1004.md) | Medium | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark | Ready |
+| [1005](../ready/1005.md) | Medium | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Startup benchmarking | Ready |
 | [991](../ready/991.md) | High | Iterator helper generator-reentrancy tests hit 30s compiler timeout | ~90s worker time/run | Ready |
 | [993](../ready/993.md) | High | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | ~90s worker time/run | Ready |
 | [992](../ready/992.md) | Medium | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | 30s worker time/run | Ready |

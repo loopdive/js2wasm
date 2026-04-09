@@ -307,40 +307,53 @@
         border-radius: 2px;
         flex-shrink: 0;
       }
-      .bench-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-        gap: 1rem;
-      }
-      .bench-card {
-        padding: 1rem 0;
+      .bench-section {
+        width: calc(100vw - 4rem);
+        margin-left: calc(50% - 50vw + 2rem);
+        margin-right: calc(50% - 50vw + 2rem);
       }
       .bench-snippet-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
         gap: 1rem;
         margin-top: 1rem;
       }
       .bench-snippet-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        overflow: hidden;
+        display: inline-block;
+        flex: 1 1 560px;
+        min-width: 320px;
+        max-width: 100%;
+        overflow: visible;
       }
       .bench-snippet-head {
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid var(--border);
+        padding: 0 0 0.75rem;
         font-size: 0.8rem;
         font-weight: 600;
       }
+      .bench-example-chart {
+        margin: 0 0 1rem;
+        min-width: 0;
+        max-width: calc(40ch + 76px);
+      }
       .bench-snippet-card pre {
         margin: 0;
-        padding: 1rem;
         overflow-x: auto;
-        font-size: 0.72rem;
-        line-height: 1.5;
-        white-space: pre;
-        font-family: "SF Mono", SFMono-Regular, Consolas, monospace;
+      }
+      .report-code-block {
+        display: inline-block;
+        min-width: 0;
+        width: max-content;
+        max-width: calc(40ch + 76px);
+        overflow-x: auto;
+        padding: 34px 38px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: #0c1220;
+        font-family: var(--mono);
+        font-size: 14px;
+        line-height: 1.8;
+        color: rgba(255, 255, 255, 0.72);
+        margin: 0;
       }
       .bench-name {
         font-weight: 600;
@@ -543,8 +556,6 @@
 
     <script>
       const REPORT_JSON = "results/test262-report.json";
-      const BENCH_JSON = "results/latest.json";
-      const HISTORY_JSON = "results/history.json";
       const RESULTS_JSONL = "results/test262-results.jsonl";
       const BENCH_SUITE_FILES = [
         "benchmarks/suites/strings.ts",
@@ -881,6 +892,26 @@
         }
       }
 
+      let prettierBundlePromise = null;
+      async function formatBenchmarkSnippet(source) {
+        try {
+          prettierBundlePromise ||= Promise.all([
+            import("https://esm.sh/prettier@3.8.1/standalone"),
+            import("https://esm.sh/prettier@3.8.1/plugins/typescript"),
+            import("https://esm.sh/prettier@3.8.1/plugins/estree"),
+          ]);
+          const [{ format }, tsPlugin, estreePlugin] = await prettierBundlePromise;
+          return await format(source, {
+            parser: "typescript",
+            plugins: [tsPlugin.default ?? tsPlugin, estreePlugin.default ?? estreePlugin],
+            printWidth: 40,
+            semi: true,
+          });
+        } catch {
+          return source;
+        }
+      }
+
       async function loadBenchmarkSnippets() {
         const snippets = new Map();
         await Promise.all(
@@ -892,7 +923,8 @@
               const pattern = /name:\s*"([^"]+)"[\s\S]*?source:\s*`([\s\S]*?)`,/g;
               for (const match of source.matchAll(pattern)) {
                 const name = match[1];
-                const snippet = match[2].replace(/^\n+|\n+$/g, "");
+                const rawSnippet = match[2].replace(/^\n+|\n+$/g, "");
+                const snippet = await formatBenchmarkSnippet(rawSnippet);
                 if (name && snippet) snippets.set(name, snippet);
               }
             } catch {
@@ -1848,113 +1880,50 @@
         }
       }
 
-      function renderBenchmarks(data, snippets, container) {
-        container.appendChild(el("h2", null, "Performance Benchmarks"));
-        container.appendChild(
-          makeLegend([
-            ["JavaScript", "var(--text-muted)"],
-            ["Host-call (wasm)", "var(--accent)"],
-            ["GC-native (wasm)", "var(--pass)"],
-          ]),
-        );
-
-        const byName = new Map();
-        for (const b of data) {
-          if (!byName.has(b.name)) byName.set(b.name, {});
-          byName.get(b.name)[b.strategy] = b;
-        }
-
-        const benchGroups = new Map();
-        for (const [name, strats] of byName) {
-          const group = name.split("/")[0];
-          if (!benchGroups.has(group)) benchGroups.set(group, []);
-          benchGroups.get(group).push({ name, strats });
-        }
-
-        const stratColors = {
-          js: "var(--text-muted)",
-          "host-call": "var(--accent)",
-          "gc-native": "var(--pass)",
-        };
-
-        for (const [group, benchmarks] of benchGroups) {
-          container.appendChild(el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)));
-          const grid = el("div", { className: "bench-grid" });
-
-          for (const { name, strats } of benchmarks) {
-            const card = el("div", { className: "bench-card" });
-            const nameEl = el("div", { className: "bench-name" }, name.split("/")[1]);
-
-            // Speedup info
-            const js = strats["js"];
-            const hc = strats["host-call"];
-            const gc = strats["gc-native"];
-            if (js && hc) {
-              const ratio = js.medianMs / hc.medianMs;
-              if (ratio > 1) {
-                const sp = el(
-                  "span",
-                  { className: "speedup", style: { color: "var(--pass)" } },
-                  "host " + ratio.toFixed(1) + "\u00d7 faster",
-                );
-                nameEl.appendChild(sp);
-              } else if (ratio < 0.5) {
-                const sp = el(
-                  "span",
-                  { className: "speedup", style: { color: "var(--error)" } },
-                  "host " + (1 / ratio).toFixed(1) + "\u00d7 slower",
-                );
-                nameEl.appendChild(sp);
-              }
+      async function highlightReportCode() {
+        try {
+          const { codeToHtml } = await import("https://esm.sh/shiki@4.0.2/bundle/web");
+          const pres = document.querySelectorAll(".report-code-block");
+          for (const pre of pres) {
+            if (pre.dataset.highlighted === "true") continue;
+            const code = pre.textContent || "";
+            if (!code.trim()) continue;
+            const html = await codeToHtml(code.trim(), { lang: "typescript", theme: "material-theme-ocean" });
+            const match = html.match(/<code[^>]*>([\s\S]*)<\/code>/);
+            if (match) {
+              pre.innerHTML = match[1];
+              pre.dataset.highlighted = "true";
             }
-            card.appendChild(nameEl);
-
-            let localMax = 0;
-            for (const b of Object.values(strats)) if (b.medianMs > localMax) localMax = b.medianMs;
-            if (localMax === 0) localMax = 1;
-
-            for (const strategy of ["js", "host-call", "gc-native"]) {
-              const b = strats[strategy];
-              if (!b) continue;
-              const barW = Math.max(1, (b.medianMs / localMax) * 100);
-
-              const row = el("div", { className: "bench-row" });
-              row.appendChild(el("span", { className: "bench-label" }, strategy));
-
-              const barBg = el("div", { className: "bench-bar-bg" });
-              barBg.appendChild(
-                el("div", {
-                  className: "bench-bar",
-                  style: {
-                    width: barW + "%",
-                    background: stratColors[strategy],
-                  },
-                }),
-              );
-              row.appendChild(barBg);
-
-              row.appendChild(el("span", { className: "bench-time" }, fmt(b.medianMs)));
-              card.appendChild(row);
-            }
-
-            grid.appendChild(card);
           }
-          container.appendChild(grid);
-
-          const snippetEntries = benchmarks
-            .map(({ name }) => ({ name, snippet: snippets.get(name) }))
-            .filter((entry) => !!entry.snippet);
-          if (snippetEntries.length > 0) {
-            const snippetGrid = el("div", { className: "bench-snippet-grid" });
-            for (const entry of snippetEntries) {
-              const card = el("div", { className: "bench-snippet-card" });
-              card.appendChild(el("div", { className: "bench-snippet-head" }, entry.name.split("/")[1]));
-              card.appendChild(el("pre", null, entry.snippet));
-              snippetGrid.appendChild(card);
-            }
-            container.appendChild(snippetGrid);
-          }
+        } catch {
+          // Keep plain code blocks if the highlighter fails to load.
         }
+      }
+
+      function renderBenchmarks(snippets, container) {
+        const section = el("div", { className: "bench-section" });
+        section.appendChild(el("h2", null, "Performance Benchmarks"));
+        const snippetEntries = [...snippets.entries()];
+        if (snippetEntries.length > 0) {
+          section.appendChild(el("h3", null, "Benchmark Code Examples"));
+          const snippetGrid = el("div", { className: "bench-snippet-grid" });
+          for (const [name, snippet] of snippetEntries) {
+            const card = el("div", { className: "bench-snippet-card" });
+            card.appendChild(el("div", { className: "bench-snippet-head" }, name.split("/")[1] || name));
+            const runtimeChart = document.createElement("perf-benchmark-chart");
+            runtimeChart.className = "bench-example-chart";
+            runtimeChart.setAttribute("src", assetPath("benchmarks/results/latest.json"));
+            runtimeChart.setAttribute("mode", "benchmark-runtime");
+            runtimeChart.setAttribute("benchmark", name);
+            runtimeChart.setAttribute("title", "Runtime Speed");
+            runtimeChart.setAttribute("legend", "Wasm runtime speed relative to JS (larger is better)");
+            card.appendChild(runtimeChart);
+            card.appendChild(el("pre", { className: "report-code-block" }, snippet));
+            snippetGrid.appendChild(card);
+          }
+          section.appendChild(snippetGrid);
+        }
+        container.appendChild(section);
       }
       const STRAT_COLORS = {
         js: "#8b949e",
@@ -2106,10 +2075,9 @@
       }
 
       async function main() {
-        const [conformance, benchmarks, history, snippets] = await Promise.all([
+        const [conformance, history, snippets] = await Promise.all([
           loadReportWithFallback(),
-          loadJSON(BENCH_JSON),
-          loadJSON(HISTORY_JSON),
+          loadJSON(assetPath("benchmarks/results/history.json")),
           loadBenchmarkSnippets(),
         ]);
         const app = document.getElementById("app");
@@ -2123,12 +2091,8 @@
           );
         }
 
-        const perfChart = document.createElement("perf-benchmark-chart");
-        perfChart.setAttribute("src", "results/playground-benchmark-sidebar.json");
-        app.appendChild(perfChart);
-        if (benchmarks) {
-          renderBenchmarks(benchmarks, snippets, app);
-        }
+        renderBenchmarks(snippets, app);
+        await highlightReportCode();
 
         if (history && history.length >= 2) {
           renderTrends(history, app);
@@ -2139,7 +2103,7 @@
 
       main();
     </script>
-    <script src="../components/perf-benchmark-chart.js"></script>
+    <script type="module" src="../components/perf-benchmark-chart.js"></script>
     <script src="../components/site-nav.js"></script>
     <script src="../components/t262-charts.js"></script>
   </body>
