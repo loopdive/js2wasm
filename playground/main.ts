@@ -883,6 +883,7 @@ function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
   inputModelChangeDisposable?.dispose();
   inputModelChangeDisposable = model.onDidChangeContent(() => {
     if (t262Loading) return;
+    clearT262FailureAnnotations();
     sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
     lastResult = null;
     compileBtn.disabled = false;
@@ -894,6 +895,7 @@ function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
 }
 
 function setInputSourceModel(virtualPath: string, source: string): void {
+  const previousModel = inputFile.model;
   const normalizedSource = canonicalizeBenchmarkHelperImports(source, virtualPath);
   const uri = monaco.Uri.parse(`file:///${virtualPath}`);
   let model = monaco.editor.getModel(uri);
@@ -901,6 +903,9 @@ function setInputSourceModel(virtualPath: string, source: string): void {
     model = monaco.editor.createModel(normalizedSource, "typescript", uri);
   } else if (model.getValue() !== normalizedSource) {
     model.setValue(normalizedSource);
+  }
+  if (previousModel !== model) {
+    monaco.editor.setModelMarkers(previousModel, T262_MARKER_OWNER, []);
   }
   inputFile.path = virtualPath;
   inputFile.displayName = virtualPath.split("/").pop()!;
@@ -967,6 +972,7 @@ async function openLocalImportedSource(specifier: string): Promise<boolean> {
     const content = resolvedPath.startsWith("examples/") ? await loadBundledExampleSource(resolvedPath) : null;
     if (content == null) return false;
     t262Loading = true;
+    clearT262FailureAnnotations();
     sessionStorage.removeItem(STORAGE_KEY);
     setInputSourceModel(resolvedPath, content);
     revealSourceTab();
@@ -1172,6 +1178,14 @@ interface T262FileResult {
   status: string;
   error?: string;
 }
+interface T262FailureAnnotation {
+  status: string;
+  message: string;
+  sourceLine: number;
+  sourceColumn: number;
+  watLine: number | null;
+  wasmLine: number | null;
+}
 type SuiteSummary = T262Report["summary"];
 interface T262TrendRun {
   timestamp: string;
@@ -1244,6 +1258,10 @@ function t262GetCategoryStats(
   return t262Report.categories.find((c) => c.name === catName) ?? null;
 }
 
+function normalizeT262ResultPath(file: string): string {
+  return file.startsWith("test/") ? file.slice(5) : file;
+}
+
 function t262StatusIcon(status: string): string {
   switch (status) {
     case "pass":
@@ -1308,6 +1326,15 @@ let t262Filter = "";
 let t262Debounce: ReturnType<typeof setTimeout> | null = null;
 let t262ActivePath = "";
 let t262Loading = false;
+let activeT262FileResult: T262FileResult | null = null;
+let pendingT262SourceDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+let pendingT262WatDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+let pendingT262WasmDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+const t262EditorDecorations = new WeakMap<
+  monaco.editor.IStandaloneCodeEditor,
+  monaco.editor.IEditorDecorationsCollection
+>();
+const T262_MARKER_OWNER = "test262-selected-result";
 
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
@@ -1405,13 +1432,185 @@ function t262SetActive(filePath: string) {
   });
 }
 
-async function t262LoadAndShow(filePath: string) {
+function clearT262FailureAnnotations() {
+  activeT262FileResult = null;
+  pendingT262SourceDecorations = [];
+  pendingT262WatDecorations = [];
+  pendingT262WasmDecorations = [];
+  monaco.editor.setModelMarkers(inputFile.model, T262_MARKER_OWNER, []);
+  monaco.editor.setModelMarkers(watFile.model, T262_MARKER_OWNER, []);
+  monaco.editor.setModelMarkers(wasmHexFile.model, T262_MARKER_OWNER, []);
+  for (const slot of editorSlots) {
+    if (!slot.panelId) continue;
+    const existing = t262EditorDecorations.get(slot.editor);
+    if (existing) existing.clear();
+    t262EditorDecorations.delete(slot.editor);
+  }
+}
+
+function t262ParseErrorLocation(error?: string): { line: number; column: number } | null {
+  if (!error) return null;
+  const match = error.match(/\bL(\d+)(?::(\d+))?\b/);
+  if (!match) return null;
+  return {
+    line: Number(match[1]) || 1,
+    column: Number(match[2]) || 1,
+  };
+}
+
+function t262DecorationStyles(status: string): { lineClass: string; textClass: string; severity: monaco.MarkerSeverity } {
+  switch (status) {
+    case "fail":
+      return { lineClass: "t262-line-fail", textClass: "t262-inline-fail", severity: monaco.MarkerSeverity.Error };
+    case "compile_error":
+      return { lineClass: "t262-line-ce", textClass: "t262-inline-ce", severity: monaco.MarkerSeverity.Warning };
+    case "skip":
+      return { lineClass: "t262-line-skip", textClass: "t262-inline-skip", severity: monaco.MarkerSeverity.Hint };
+    default:
+      return { lineClass: "", textClass: "t262-inline-fail", severity: monaco.MarkerSeverity.Info };
+  }
+}
+
+function t262BuildLineDecoration(
+  model: monaco.editor.ITextModel,
+  lineNumber: number,
+  message: string,
+  status: string,
+): monaco.editor.IModelDeltaDecoration {
+  const clampedLine = Math.min(Math.max(lineNumber, 1), model.getLineCount());
+  const styles = t262DecorationStyles(status);
+  const maxColumn = model.getLineMaxColumn(clampedLine);
+  return {
+    range: new monaco.Range(clampedLine, maxColumn, clampedLine, maxColumn),
+    options: {
+      isWholeLine: true,
+      className: styles.lineClass,
+      hoverMessage: { value: message },
+      after: {
+        content: `  ${message}`,
+        inlineClassName: styles.textClass,
+      },
+    },
+  };
+}
+
+function t262SetModelLineMarker(
+  model: monaco.editor.ITextModel,
+  lineNumber: number,
+  message: string,
+  status: string,
+  column = 1,
+) {
+  const styles = t262DecorationStyles(status);
+  const clampedLine = Math.min(Math.max(lineNumber, 1), model.getLineCount());
+  const clampedColumn = Math.min(Math.max(column, 1), model.getLineMaxColumn(clampedLine));
+  monaco.editor.setModelMarkers(model, T262_MARKER_OWNER, [
+    {
+      severity: styles.severity,
+      message,
+      startLineNumber: clampedLine,
+      startColumn: clampedColumn,
+      endLineNumber: clampedLine,
+      endColumn: model.getLineMaxColumn(clampedLine),
+    },
+  ]);
+}
+
+function applyT262DecorationsToVisibleEditors() {
+  for (const slot of editorSlots) {
+    if (!slot.panelId) continue;
+    const existing = t262EditorDecorations.get(slot.editor);
+    if (existing) existing.clear();
+
+    const model = slot.editor.getModel();
+    const pending =
+      model === inputFile.model
+        ? pendingT262SourceDecorations
+        : model === watFile.model
+          ? pendingT262WatDecorations
+          : model === wasmHexModel
+            ? pendingT262WasmDecorations
+            : [];
+
+    if (pending.length > 0) {
+      t262EditorDecorations.set(slot.editor, slot.editor.createDecorationsCollection(pending));
+    } else {
+      t262EditorDecorations.delete(slot.editor);
+    }
+  }
+}
+
+function buildT262FailureAnnotation(result: T262FileResult): T262FailureAnnotation | null {
+  if (result.status === "pass") return null;
+  const location = t262ParseErrorLocation(result.error);
+  const sourceLine = Math.min(Math.max(location?.line ?? 1, 1), inputFile.model.getLineCount());
+  const sourceColumn = location?.column ?? 1;
+  const target = lastResult?.success ? resolveTsTarget(sourceLine) : null;
+  const watRange = target ? watLineForNode(target.name, target.treemapPath) : null;
+  const wasmRange = target ? hexRangeForNode(target.name, target.treemapPath) : null;
+  return {
+    status: result.status,
+    message: result.error ?? result.status,
+    sourceLine,
+    sourceColumn,
+    watLine: watRange?.start ?? (lastResult?.success && watFile.model.getLineCount() > 0 ? 1 : null),
+    wasmLine: wasmRange?.startLineNumber ?? (lastResult?.success && wasmHexFile.model.getLineCount() > 0 ? 1 : null),
+  };
+}
+
+function syncT262FailureAnnotations() {
+  pendingT262SourceDecorations = [];
+  pendingT262WatDecorations = [];
+  pendingT262WasmDecorations = [];
+  monaco.editor.setModelMarkers(inputFile.model, T262_MARKER_OWNER, []);
+  monaco.editor.setModelMarkers(watFile.model, T262_MARKER_OWNER, []);
+  monaco.editor.setModelMarkers(wasmHexFile.model, T262_MARKER_OWNER, []);
+
+  if (!activeT262FileResult || activeT262FileResult.status === "pass") {
+    applyT262DecorationsToVisibleEditors();
+    return;
+  }
+
+  const annotation = buildT262FailureAnnotation(activeT262FileResult);
+  if (!annotation) {
+    applyT262DecorationsToVisibleEditors();
+    return;
+  }
+
+  pendingT262SourceDecorations = [
+    t262BuildLineDecoration(inputFile.model, annotation.sourceLine, annotation.message, annotation.status),
+  ];
+  t262SetModelLineMarker(
+    inputFile.model,
+    annotation.sourceLine,
+    annotation.message,
+    annotation.status,
+    annotation.sourceColumn,
+  );
+
+  if (annotation.watLine != null && watFile.model.getLineCount() > 0 && watFile.model.getValueLength() > 0) {
+    pendingT262WatDecorations = [t262BuildLineDecoration(watFile.model, annotation.watLine, annotation.message, annotation.status)];
+    t262SetModelLineMarker(watFile.model, annotation.watLine, annotation.message, annotation.status);
+  }
+
+  if (annotation.wasmLine != null && wasmHexFile.model.getLineCount() > 0 && wasmHexFile.model.getValueLength() > 0) {
+    pendingT262WasmDecorations = [
+      t262BuildLineDecoration(wasmHexFile.model, annotation.wasmLine, annotation.message, annotation.status),
+    ];
+    t262SetModelLineMarker(wasmHexFile.model, annotation.wasmLine, annotation.message, annotation.status);
+  }
+
+  applyT262DecorationsToVisibleEditors();
+}
+
+async function t262LoadAndShow(filePath: string, fileResult: T262FileResult | null = null) {
   const content = await t262LoadFile(filePath);
   t262Loading = true;
   sessionStorage.removeItem(STORAGE_KEY);
   setInputSourceModel(filePath, content);
   revealSourceTab();
   t262SetActive(filePath);
+  activeT262FileResult = fileResult;
   const fname = t262FileName(filePath);
   updateTabLabel("ts-source", fname, tabTooltips["ts-source"]);
   compileOnly();
@@ -1848,23 +2047,44 @@ async function t262Render() {
     return false;
   }
 
+  const categoryStatsCache = new Map<string, { pass: number; fail: number; skip: number; compile_error: number }>();
+
+  async function getCategoryStats(catPath: string): Promise<{ pass: number; fail: number; skip: number; compile_error: number }> {
+    if (categoryStatsCache.has(catPath)) return categoryStatsCache.get(catPath)!;
+
+    const direct = t262GetCategoryStats(catPath);
+    if (direct) {
+      categoryStatsCache.set(catPath, direct);
+      return direct;
+    }
+
+    const lookup = await getFileResultLookup(catPath);
+    const stats = { pass: 0, fail: 0, skip: 0, compile_error: 0 };
+    for (const row of lookup.values()) {
+      if (row.status === "pass") stats.pass++;
+      else if (row.status === "fail") stats.fail++;
+      else if (row.status === "skip") stats.skip++;
+      else if (row.status === "compile_error") stats.compile_error++;
+    }
+    categoryStatsCache.set(catPath, stats);
+    return stats;
+  }
+
   // Aggregate stats for a tree node (sum across all categories in subtree)
-  function nodeStats(node: T262TreeNode): { pass: number; fail: number; skip: number; ce: number; total: number } {
+  async function nodeStats(node: T262TreeNode): Promise<{ pass: number; fail: number; skip: number; ce: number; total: number }> {
     let pass = 0,
       fail = 0,
       skip = 0,
       ce = 0;
     for (const cat of node.categories) {
-      const s = t262GetCategoryStats(cat.path);
-      if (s) {
-        pass += s.pass;
-        fail += s.fail;
-        skip += s.skip;
-        ce += s.compile_error;
-      }
+      const s = await getCategoryStats(cat.path);
+      pass += s.pass;
+      fail += s.fail;
+      skip += s.skip;
+      ce += s.compile_error;
     }
     for (const child of node.children.values()) {
-      const cs = nodeStats(child);
+      const cs = await nodeStats(child);
       pass += cs.pass;
       fail += cs.fail;
       skip += cs.skip;
@@ -1885,12 +2105,18 @@ async function t262Render() {
   const fileResultLookups = new Map<string, Map<string, T262FileResult>>();
   async function getFileResultLookup(catPath: string): Promise<Map<string, T262FileResult>> {
     if (fileResultLookups.has(catPath)) return fileResultLookups.get(catPath)!;
-    const results = await t262LoadFileResults(catPath);
+    let results = await t262LoadFileResults(catPath);
+    if (results.length === 0) {
+      const parts = catPath.split("/");
+      while (parts.length > 1 && results.length === 0) {
+        parts.pop();
+        results = await t262LoadFileResults(parts.join("/"));
+      }
+    }
     const lookup = new Map<string, T262FileResult>();
     for (const r of results) {
-      // The JSONL file field is like "test/built-ins/Math/abs/S15.8.2.1_A1.js"
-      // The tree file field is like "built-ins/Math/abs/S15.8.2.1_A1.js" (relative to testBase)
-      const key = r.file.startsWith("test/") ? r.file.slice(5) : r.file;
+      const key = normalizeT262ResultPath(r.file);
+      if (!key.startsWith(`${catPath}/`)) continue;
       lookup.set(key, r);
     }
     fileResultLookups.set(catPath, lookup);
@@ -1915,7 +2141,7 @@ async function t262Render() {
       headerEl.className = "t262-cat-header";
       headerEl.style.paddingLeft = 10 + depth * 12 + "px";
       const count = nodeFileCount(child);
-      const stats = nodeStats(child);
+      const stats = await nodeStats(child);
       const badge = statsBadge(stats);
       headerEl.innerHTML = `<span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${child.name}</span> <span class="t262-cat-count">(${count})</span>${badge}`;
 
@@ -1953,14 +2179,25 @@ async function t262Render() {
 
           for (const file of displayFiles) {
             const fileEl = document.createElement("div");
-            fileEl.className = "t262-file" + (file === t262ActivePath ? " active" : "");
             const fileResult = resultLookup?.get(file);
+            const statusClass = fileResult
+              ? fileResult.status === "pass"
+                ? " t262-file-pass"
+                : fileResult.status === "fail"
+                  ? " t262-file-fail"
+                  : fileResult.status === "compile_error"
+                    ? " t262-file-ce"
+                    : fileResult.status === "skip"
+                      ? " t262-file-skip"
+                      : ""
+              : "";
+            fileEl.className = "t262-file" + statusClass + (file === t262ActivePath ? " active" : "");
             const statusHtml = fileResult ? t262StatusIcon(fileResult.status) : "";
             fileEl.innerHTML = statusHtml + t262FileName(file);
             fileEl.title = fileResult ? `${file} (${fileResult.status})` : file;
             fileEl.dataset.path = file;
             fileEl.addEventListener("click", () => {
-              t262LoadAndShow(file);
+              t262LoadAndShow(file, fileResult ?? null);
             });
             filesEl.appendChild(fileEl);
           }
@@ -2201,6 +2438,7 @@ layout.onMount = (panelId: string, tabId: string, contentEl: HTMLElement) => {
     requestAnimationFrame(() => slot!.editor.layout());
     // Apply hex decorations if this is the wasm hex tab
     if (tabId === "wasm-hex") applyHexDecorations();
+    applyT262DecorationsToVisibleEditors();
     // Re-apply pinned cross-highlight
     if (xPinned && xTarget) {
       requestAnimationFrame(() => xReapplyPinned());
@@ -3208,6 +3446,7 @@ function compileOnly() {
   for (const f of files) {
     if (f.folder === "output") f.model.setValue("");
   }
+  syncT262FailureAnnotations();
 
   const t0 = performance.now();
   const result = buildCompileResultForEditorSource(source);
@@ -3273,6 +3512,7 @@ function compileOnly() {
 
   // Update tab labels with file sizes
   updateTabSizes();
+  syncT262FailureAnnotations();
 }
 
 function buildEnv(

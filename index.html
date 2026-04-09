@@ -851,7 +851,11 @@
         display: none;
       }
       .feat-tables.host-off .feat-row:has(.feat-host) {
-        opacity: 0.72;
+        opacity: 0.92;
+      }
+      .feat-tables.host-off .feat-row:has(.feat-host) .feat-name,
+      .feat-tables.host-off .feat-row:has(.feat-host) .feat-desc {
+        color: var(--fg-faint);
       }
       .feat-tables {
         margin-top: 16px;
@@ -3305,9 +3309,33 @@ const dom = await js2.import("./dom.js", { document });
         const tables = document.querySelector(".feat-tables");
         if (tables) {
           tables.classList.add("strict-only");
+          const hostRows = Array.from(document.querySelectorAll(".feat-row")).filter((row) => row.querySelector(".feat-host"));
+          hostRows.forEach((row) => {
+            const badge = row.querySelector(".feat-badge");
+            if (!(badge instanceof HTMLElement)) return;
+            badge.dataset.origClass = Array.from(badge.classList)
+              .filter((name) => name !== "feat-badge")
+              .join(" ");
+            badge.dataset.origText = badge.textContent || "";
+          });
           const sync = () => {
             if (strictToggle) tables.classList.toggle("strict-only", strictToggle.checked);
             if (hostToggle) tables.classList.toggle("host-off", !hostToggle.checked);
+            const hostEnabled = hostToggle ? hostToggle.checked : true;
+            hostRows.forEach((row) => {
+              const badge = row.querySelector(".feat-badge");
+              if (!(badge instanceof HTMLElement)) return;
+              const origClass = badge.dataset.origClass || "";
+              const origText = badge.dataset.origText || "";
+              badge.className = "feat-badge";
+              if (hostEnabled) {
+                if (origClass) badge.classList.add(...origClass.split(/\s+/).filter(Boolean));
+                badge.textContent = origText;
+              } else {
+                badge.classList.add("none");
+                badge.textContent = "×";
+              }
+            });
             if (typeof window.updateEditionPassBars === "function") {
               window.updateEditionPassBars();
             }
