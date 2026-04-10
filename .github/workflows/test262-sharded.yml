@@ -230,11 +230,40 @@ jobs:
           mkdir -p public/benchmarks/results
           cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
 
+      - name: Append to runs/index.json (trend graph data)
+        run: |
+          node -e "
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('benchmarks/results/test262-current.json', 'utf8'));
+          const indexPath = 'benchmarks/results/runs/index.json';
+          const idx = fs.existsSync(indexPath) ? JSON.parse(fs.readFileSync(indexPath, 'utf8')) : [];
+          const entry = {
+            timestamp: new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').substring(0, 15),
+            pass: report.summary.pass,
+            fail: report.summary.fail,
+            ce: report.summary.compile_error || 0,
+            skip: report.summary.skip || 0,
+            total: report.summary.total,
+            strict_pass: (report.strict_summary || {}).pass || 0,
+            strict_total: (report.strict_summary || {}).total || 0,
+            gitHash: '${{ github.sha }}'.substring(0, 8),
+          };
+          // Deduplicate: skip if last entry has same pass+total (same compiler state)
+          const last = idx[idx.length - 1];
+          if (!last || last.pass !== entry.pass || last.total !== entry.total) {
+            idx.push(entry);
+            fs.writeFileSync(indexPath, JSON.stringify(idx, null, 2));
+            console.log('Appended to runs/index.json:', entry.pass, '/', entry.total);
+          } else {
+            console.log('Skipped duplicate entry (same pass/total as last run)');
+          }
+          "
+
       - name: Commit refreshed baseline
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json
+          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json benchmarks/results/runs/index.json
           if git diff --cached --quiet; then
             echo "No baseline changes to commit."
             exit 0
