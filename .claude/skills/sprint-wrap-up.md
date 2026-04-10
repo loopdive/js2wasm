@@ -35,12 +35,16 @@ git branch | grep -v '^\*'
 
 Delete branches that are fully merged. Keep branches with unmerged work.
 
-## Step 4: Run final test262
+## Step 4: Verify test262 ran on the final state
+
+Check that test262 has been run on the current main (either via CI sharded run
+on the last merged PR, or a local run). Do NOT run locally unless CI didn't cover it.
 
 ```bash
-# Shut down all dev agents first (free RAM)
-free -m | awk '/Mem/{print $4}'  # need >4GB
-pnpm run test:262
+# Check latest CI test262 run on main
+gh run list --workflow=test262-sharded.yml --branch=main --limit 1
+# Or check local results
+node -e "const r=JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')); console.log(r.summary.pass, '/', r.summary.total)"
 ```
 
 Record results in sprint doc.
