@@ -479,15 +479,16 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
       state.callbackFound = true;
     }
   }
-  // ── getterCallbackFound: Object.defineProperty with accessor descriptor (#929) ──
+  // ── getterCallbackFound: Object.defineProperty / Reflect.defineProperty with accessor descriptor (#929) ──
   if (!state.getterCallbackFound && ts.isCallExpression(node)) {
     if (
       ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "Object" &&
       ts.isIdentifier(node.expression.name) &&
       node.expression.name.text === "defineProperty" &&
-      node.arguments.length >= 3
+      node.arguments.length >= 3 &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      (node.expression.expression.text === "Object" || node.expression.expression.text === "Reflect")
     ) {
       const descArg = node.arguments[2]!;
       if (isAccessorDescriptor(descArg)) {
