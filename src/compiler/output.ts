@@ -241,6 +241,8 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "__gen_push_ref") return `${name}: (buf, v) => { buf.push(v); }`;
   if (name === "__create_generator")
     return `${name}: (buf, pendingThrow) => { let i = 0; return { next() { if (i < buf.length) return { value: buf[i++], done: false }; if (pendingThrow !== null && pendingThrow !== undefined) { const e = pendingThrow; pendingThrow = null; throw e; } return { value: undefined, done: true }; }, return(v) { i = buf.length; return { value: v, done: true }; }, throw(e) { i = buf.length; throw e; }, [Symbol.iterator]() { return this; } }; }`;
+  if (name === "__create_async_generator")
+    return `${name}: (buf, pendingThrow) => { let i = 0; return { next() { if (i < buf.length) return Promise.resolve({ value: buf[i++], done: false }); if (pendingThrow !== null && pendingThrow !== undefined) { const e = pendingThrow; pendingThrow = null; return Promise.reject(e); } return Promise.resolve({ value: undefined, done: true }); }, return(v) { i = buf.length; return Promise.resolve({ value: v, done: true }); }, throw(e) { i = buf.length; return Promise.reject(e); }, [Symbol.asyncIterator]() { return this; } }; }`;
   if (name === "__gen_next") return `${name}: (gen) => gen.next()`;
   if (name === "__gen_result_value") return `${name}: (r) => r.value`;
   if (name === "__gen_result_value_f64") return `${name}: (r) => Number(r.value)`;

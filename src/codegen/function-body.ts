@@ -23,7 +23,13 @@ import {
   valTypesMatch,
 } from "./shared.js";
 import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
-import { hoistVarDeclarations, hoistLetConstWithTdz, cacheStringLiterals, resolveWasmType } from "./index.js";
+import {
+  hoistVarDeclarations,
+  hoistLetConstWithTdz,
+  cacheStringLiterals,
+  resolveWasmType,
+  hasAsyncModifier,
+} from "./index.js";
 
 export function bodyUsesArguments(node: ts.Node): boolean {
   if (ts.isIdentifier(node) && node.text === "arguments") return true;
@@ -409,8 +415,12 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
       catchAll: catchAllBody.length > 0 ? catchAllBody : undefined,
     } as unknown as Instr);
 
-    // Return __create_generator(__gen_buffer, __gen_pending_throw)
-    const createGenIdx = ctx.funcMap.get("__create_generator")!;
+    // Return __create_generator or __create_async_generator depending on async flag.
+    // Note: ctx.asyncFunctions excludes async generators (by design), so we check
+    // the AST node directly to detect async function* declarations.
+    const isAsyncGenerator = hasAsyncModifier(decl);
+    const createGenName = isAsyncGenerator ? "__create_async_generator" : "__create_generator";
+    const createGenIdx = ctx.funcMap.get(createGenName)!;
     fctx.body.push({ op: "local.get", index: bufferLocal });
     fctx.body.push({ op: "local.get", index: pendingThrowLocal });
     fctx.body.push({ op: "call", funcIdx: createGenIdx });
