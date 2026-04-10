@@ -172,11 +172,10 @@ async function getBinaryenModule(): Promise<any | null> {
     // down its Node-only initialization path and makes optimization unavailable.
     if (browserLike && hadProcess) {
       try {
-        delete globalObject.process;
+        globalObject.process = undefined;
       } catch {
-        // Ignore; assign below to shadow inherited globals if needed.
+        // Ignore — some environments have a non-configurable process global.
       }
-      globalObject.process = undefined;
     }
 
     try {
@@ -186,22 +185,10 @@ async function getBinaryenModule(): Promise<any | null> {
       return null;
     } finally {
       if (browserLike) {
-        if (hadProcess) {
-          if (hadOwnProcess) {
-            globalObject.process = previousProcess;
-          } else {
-            try {
-              delete globalObject.process;
-            } catch {
-              // Ignore: restoring absence is best-effort.
-            }
-          }
+        if (hadProcess && hadOwnProcess) {
+          globalObject.process = previousProcess;
         } else {
-          try {
-            delete globalObject.process;
-          } catch {
-            // Ignore: restoring absence is best-effort.
-          }
+          globalObject.process = undefined;
         }
       }
     }
