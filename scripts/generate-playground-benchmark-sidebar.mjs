@@ -8,7 +8,15 @@ import { buildImports, compileMulti, instantiateWasm } from "./compiler-bundle.m
 const ROOT = resolve(import.meta.dirname, "..");
 const HELPERS_PATH = resolve(ROOT, "playground", "examples", "benchmarks", "helpers.ts");
 const RESULTS_PATH = resolve(ROOT, "benchmarks", "results", "playground-benchmark-sidebar.json");
-const PUBLIC_PATH = resolve(ROOT, "playground", "public", "benchmarks", "results", "playground-benchmark-sidebar.json");
+const PLAYGROUND_PUBLIC_PATH = resolve(
+  ROOT,
+  "playground",
+  "public",
+  "benchmarks",
+  "results",
+  "playground-benchmark-sidebar.json",
+);
+const PUBLIC_PATH = resolve(ROOT, "public", "benchmarks", "results", "playground-benchmark-sidebar.json");
 
 const HELPERS_SOURCE = readFileSync(HELPERS_PATH, "utf8");
 
@@ -49,6 +57,20 @@ function timeIt(fn, iters) {
   return performance.now() - t0;
 }
 
+function median(values) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function stddev(values) {
+  if (values.length <= 1) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
 async function measureBenchmark(entryPath, exportName) {
   const absEntryPath = resolve(ROOT, "playground", entryPath);
   const source = readFileSync(absEntryPath, "utf8");
@@ -81,32 +103,42 @@ async function measureBenchmark(entryPath, exportName) {
     throw new Error(`Missing JS export ${exportName} in ${entryPath}`);
   }
 
-  // Generous warmup — let JIT and caches settle
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < 80; i++) {
     wasmFn();
     jsFn();
   }
 
   const iters = calibrate(wasmFn);
-
-  // Multiple passes — take the median to reduce CI runner noise
-  const rounds = 7;
-  const wasmSamples = [];
-  const jsSamples = [];
-  for (let r = 0; r < rounds; r++) {
-    // Interleave wasm/js to spread thermal/load effects evenly
-    wasmSamples.push((timeIt(wasmFn, iters) / iters) * 1000);
-    jsSamples.push((timeIt(jsFn, iters) / iters) * 1000);
+  const warmupRounds = 2;
+  const measuredRounds = 9;
+  for (let i = 0; i < warmupRounds; i++) {
+    timeIt(wasmFn, iters);
+    timeIt(jsFn, iters);
   }
-  wasmSamples.sort((a, b) => a - b);
-  jsSamples.sort((a, b) => a - b);
-  const wasmUs = wasmSamples[Math.floor(rounds / 2)];
-  const jsUs = jsSamples[Math.floor(rounds / 2)];
+
+  const wasmSamplesUs = [];
+  const jsSamplesUs = [];
+  const ratioSamples = [];
+  for (let i = 0; i < measuredRounds; i++) {
+    const wasmUs = (timeIt(wasmFn, iters) / iters) * 1000;
+    const jsUs = (timeIt(jsFn, iters) / iters) * 1000;
+    wasmSamplesUs.push(wasmUs);
+    jsSamplesUs.push(jsUs);
+    ratioSamples.push(jsUs / Math.max(wasmUs, 0.000001));
+  }
+
+  const wasmUs = median(wasmSamplesUs);
+  const jsUs = median(jsSamplesUs);
 
   return {
     path: entryPath,
     wasmUs,
     jsUs,
+    wasmStdUs: stddev(wasmSamplesUs),
+    jsStdUs: stddev(jsSamplesUs),
+    ratioStd: stddev(ratioSamples),
+    warmupRounds,
+    measuredRounds,
   };
 }
 
@@ -122,7 +154,10 @@ for (const bench of BENCHMARKS) {
 
 mkdirSync(dirname(RESULTS_PATH), { recursive: true });
 writeFileSync(RESULTS_PATH, JSON.stringify(snapshot, null, 2) + "\n");
+mkdirSync(dirname(PLAYGROUND_PUBLIC_PATH), { recursive: true });
+copyFileSync(RESULTS_PATH, PLAYGROUND_PUBLIC_PATH);
 mkdirSync(dirname(PUBLIC_PATH), { recursive: true });
 copyFileSync(RESULTS_PATH, PUBLIC_PATH);
 console.log(`Updated ${RESULTS_PATH}`);
+console.log(`Updated ${PLAYGROUND_PUBLIC_PATH}`);
 console.log(`Updated ${PUBLIC_PATH}`);
