@@ -90,6 +90,27 @@ describe("#1014 — async generator .next() returns Promise", () => {
     expect(ret).toBe(1);
   });
 
+  it("async generator result has .done and .value properties (no-op await pattern)", async () => {
+    const ret = await run(`
+      async function* gen() { yield 42; }
+      export function test(): number {
+        const g = gen();
+        const r1 = g.next() as any;
+        // Must have .then (for Promise chaining) AND .done/.value (for no-op await)
+        if (typeof r1.then !== 'function') return 0;
+        if (r1.done !== false) return 0;
+        if (r1.value !== 42) return 0;
+        const t = (g as any).throw(new Error("x")); // marks generator done
+        if (t && typeof t.then === "function") t.then(null, () => {}); // suppress unhandled rejection
+        const r2 = g.next() as any;
+        if (typeof r2.then !== 'function') return 0;
+        if (r2.done !== true) return 0;
+        return 1;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
   it("sync generator .next() still returns plain object (no regression)", async () => {
     const ret = await run(`
       function* gen() { yield 1; yield 2; }
