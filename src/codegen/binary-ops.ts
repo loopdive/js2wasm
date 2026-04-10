@@ -7,33 +7,24 @@ import ts from "typescript";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import {
-  resolveWasmType,
-  resolveNativeTypeAnnotation,
-  addUnionImports,
-  addStringImports,
-  ensureAnyHelpers,
-} from "./index.js";
+import { resolveWasmType, resolveNativeTypeAnnotation, addUnionImports, addStringImports } from "./index.js";
+import { ensureAnyHelpers } from "./shared.js";
 import { isNumberType, isBooleanType, isBigIntType, isStringType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
+import { coerceType, flushLateImportShifts } from "./shared.js";
 import {
-  coerceType,
   compileAssignment,
   compileLogicalAssignment,
   isCompoundAssignment,
   compileCompoundAssignment,
-  compileLogicalAnd,
-  compileLogicalOr,
-  compileNullishCoalescing,
-  compileInstanceOf,
-  compileTypeofComparison,
-  tryStaticToNumber,
-  emitThrowString,
-  ensureExternIsUndefinedImport,
-  flushLateImportShifts,
-} from "./expressions.js";
+} from "./expressions/assignment.js";
+import { compileLogicalAnd, compileLogicalOr, compileNullishCoalescing } from "./expressions/logical-ops.js";
+import { tryStaticToNumber } from "./expressions/misc.js";
+import { emitThrowString } from "./expressions/helpers.js";
+import { ensureExternIsUndefinedImport } from "./expressions/late-imports.js";
+import { compileInstanceOf, compileTypeofComparison } from "./typeof-delete.js";
 import { compileStringBinaryOp } from "./string-ops.js";
 
 // ── Binary operations ─────────────────────────────────────────────────
