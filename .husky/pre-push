@@ -1,23 +1,21 @@
 #!/bin/sh
-# Refresh landing-page benchmarks locally before pushing to origin.
-# CI runners are too noisy for display-quality numbers — only local
-# measurements are committed and deployed.
+# Refresh landing-page benchmarks locally when pushing a version tag.
+# Benchmarks are tied to releases, not every push — CI runners are too
+# noisy for display-quality numbers.
 #
+# Triggers on: git push origin v1.2.3 (or any v{major}.{minor}.{patch} tag)
 # Skip with: git push --no-verify
 
-# Only run when pushing to origin (not other remotes)
 remote="$1"
 if [ "$remote" != "origin" ]; then
   exit 0
 fi
 
-# Only run when pushing main
 while read local_ref local_oid remote_ref remote_oid; do
   case "$remote_ref" in
-    refs/heads/main)
-      echo "Pre-push: refreshing benchmarks for landing page..."
+    refs/tags/v[0-9]*)
+      echo "Pre-push: version tag detected ($remote_ref) — refreshing benchmarks..."
       pnpm run refresh:benchmarks 2>&1 | tail -5
-      # Stage and amend the push commit with updated benchmark data
       git add -f \
         benchmarks/results/playground-benchmark-sidebar.json \
         benchmarks/results/size-benchmarks.json \
@@ -27,8 +25,8 @@ while read local_ref local_oid remote_ref remote_oid; do
         public/benchmarks/results/size-benchmarks.json \
         playground/public/benchmarks/results/playground-benchmark-sidebar.json 2>/dev/null
       if ! git diff --cached --quiet 2>/dev/null; then
-        git commit --amend --no-edit --no-verify
-        echo "Pre-push: benchmark data updated in latest commit."
+        git commit --no-verify -m "chore(benchmarks): refresh for $remote_ref"
+        echo "Pre-push: benchmark data committed."
       fi
       ;;
   esac

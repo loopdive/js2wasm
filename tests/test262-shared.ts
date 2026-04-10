@@ -219,7 +219,7 @@ function findNthAssert(source: string, retVal: number): string {
   const lines = source.split("\n");
   const assertStarts: { line: number; text: string }[] = [];
   for (let i = 0; i < lines.length; i++) {
-    if (/\bassert\b/.test(lines[i])) {
+    if (/^\s*(assert\b|assert\.\w+|\$DONOTEVALUATE)/.test(lines[i])) {
       const text = lines
         .slice(i, Math.min(i + 3, lines.length))
         .join(" ")
@@ -386,6 +386,7 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
               {
                 isNegative: isNegative || false,
                 isRuntimeNegative: isRuntimeNegative || false,
+                expectedErrorType: meta.negative?.type,
                 wasmPath,
                 metaPath,
                 label: relPath,
