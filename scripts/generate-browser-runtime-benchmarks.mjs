@@ -128,6 +128,14 @@ async function main() {
     throw new Error(`Missing compute runtime snapshot: ${PLAYGROUND_RESULTS_PATH}`);
   }
 
+  // Skip browser benchmarks if Playwright is not available (e.g. CI runners)
+  const pwcli = playwrightWrapperPath();
+  if (!existsSync(pwcli)) {
+    console.log(`Playwright not found at ${pwcli} — skipping browser runtime benchmarks.`);
+    console.log("Browser benchmarks only run locally (version tag pushes). CI uses Node.js benchmarks only.");
+    return;
+  }
+
   const server = createStaticServer(PUBLIC_DIR);
   await new Promise((resolve, reject) => {
     server.once("error", reject);
