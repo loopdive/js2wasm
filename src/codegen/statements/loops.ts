@@ -4,14 +4,9 @@
 import ts from "typescript";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import {
-  coerceType,
-  compileExpression,
-  emitBoundsCheckedArrayGet,
-  emitCoercedLocalSet,
-  shiftLateImportIndices,
-  valTypesMatch,
-} from "../expressions.js";
+import { coerceType, compileExpression, emitBoundsCheckedArrayGet, valTypesMatch } from "../shared.js";
+import { emitCoercedLocalSet } from "../expressions/helpers.js";
+import { shiftLateImportIndices } from "../expressions/late-imports.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { reportError, reportErrorNoNode } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
@@ -32,7 +27,7 @@ import {
   compileExternrefObjectDestructuringDecl,
   compileExternrefArrayDestructuringDecl,
 } from "./destructuring.js";
-import { compileStatement } from "../statements.js";
+import { compileStatement } from "../shared.js";
 
 export function compileWhileStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.WhileStatement): void {
   // block $break

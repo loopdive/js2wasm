@@ -9,10 +9,13 @@ import {
   compileExpression,
   emitBoundsCheckedArrayGet,
   ensureLateImport,
-  shiftLateImportIndices,
   valTypesMatch,
   VOID_RESULT,
-} from "../expressions.js";
+  registerEnsureBindingLocals,
+  registerEmitNestedBindingDefault,
+  registerEmitDefaultValueCheck,
+} from "../shared.js";
+import { shiftLateImportIndices } from "../expressions/late-imports.js";
 import { reportError } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
@@ -1989,3 +1992,9 @@ function compileStringDestructuring(
     fctx.body.push(...destructInstrs);
   }
 }
+
+// Register delegates in shared.ts so index.ts can call these without
+// importing statements/destructuring.ts directly (which would create cycles).
+registerEnsureBindingLocals(ensureBindingLocals);
+registerEmitNestedBindingDefault(emitNestedBindingDefault);
+registerEmitDefaultValueCheck(emitDefaultValueCheck);

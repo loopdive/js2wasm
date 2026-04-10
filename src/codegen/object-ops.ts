@@ -13,12 +13,14 @@ import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./regis
 import { resolveWasmType, addUnionImports, getOrRegisterTupleType, cacheStringLiterals } from "./index.js";
 import { isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction } from "../ir/types.js";
-import { compileStatement } from "./statements.js";
+import { compileStatement } from "./shared.js";
 import { coerceType } from "./shared.js";
 import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
 import { compileNativeStringLiteral } from "./string-ops.js";
-import { emitThrowString, resolveStructName, ensureLateImport, flushLateImportShifts } from "./expressions.js";
+import { ensureLateImport, flushLateImportShifts } from "./shared.js";
+import { emitThrowString } from "./expressions/helpers.js";
+import { resolveStructName } from "./expressions/misc.js";
 import { emitGuardedRefCast } from "./type-coercion.js";
 
 // ── Compile-time primitive type check for Object methods ─────────────
