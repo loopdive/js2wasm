@@ -1431,6 +1431,34 @@ function resolveImport(
             },
           };
         };
+      if (name === "__create_async_generator")
+        return (buf: any[], pendingThrow: any) => {
+          let index = 0;
+          return {
+            next() {
+              if (index < buf.length) {
+                return Promise.resolve({ value: buf[index++], done: false });
+              }
+              if (pendingThrow !== null && pendingThrow !== undefined) {
+                const e = pendingThrow;
+                pendingThrow = null;
+                return Promise.reject(e);
+              }
+              return Promise.resolve({ value: undefined, done: true });
+            },
+            return(v: any) {
+              index = buf.length;
+              return Promise.resolve({ value: v, done: true });
+            },
+            throw(e: any) {
+              index = buf.length;
+              return Promise.reject(e);
+            },
+            [Symbol.asyncIterator]() {
+              return this;
+            },
+          };
+        };
       if (name === "__gen_next")
         return (gen: any) => {
           const next = gen.next ?? _sidecarGet(gen, "next");
