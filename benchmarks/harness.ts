@@ -77,12 +77,13 @@ interface CompiledModule {
 const compileCache = new Map<string, CompiledModule>();
 
 function compileSource(source: string, fast: boolean, target?: "gc" | "linear"): CompiledModule {
-  const key = `${fast}:${target ?? "gc"}:${source}`;
+  const optimize = 4;
+  const key = `${fast}:${target ?? "gc"}:O${optimize}:${source}`;
   const cached = compileCache.get(key);
   if (cached) return cached;
 
   const t0 = performance.now();
-  const result = compile(source, { fast, target, emitWat: false });
+  const result = compile(source, { fast, target, emitWat: false, optimize });
   const compileMs = performance.now() - t0;
 
   if (!result.success) {

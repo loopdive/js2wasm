@@ -1,11 +1,18 @@
 import ts from "typescript";
 
+function isBrowserLikeRuntime(): boolean {
+  return typeof window !== "undefined" || typeof (globalThis as any).WorkerGlobalScope !== "undefined";
+}
+
 function getBundledLibFiles(): Record<string, string> | undefined {
   const files = (globalThis as any).__js2wasmTsLibFiles ?? (globalThis as any).__ts2wasmTsLibFiles;
   return files && typeof files === "object" ? (files as Record<string, string>) : undefined;
 }
 
 async function safeImport<T>(id: string): Promise<T | null> {
+  if (isBrowserLikeRuntime() && id.startsWith("node:")) {
+    return null;
+  }
   try {
     return (await import(/* @vite-ignore */ id)) as T;
   } catch {

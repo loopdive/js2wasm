@@ -1,0 +1,242 @@
+name: Test262 Sharded
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      include_proposals:
+        description: "Include proposal tests"
+        required: false
+        default: false
+        type: boolean
+      compiler_pool_size:
+        description: "Compiler workers per shard runner"
+        required: false
+        default: "4"
+        type: string
+      allow_regressions:
+        description: "Allow regressions and continue anyway"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: test262-sharded-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test262-shard:
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+    name: test262 shard ${{ matrix.chunk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+
+    env:
+      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
+      TEST262_INCLUDE_PROPOSALS: ${{ inputs.include_proposals && '1' || '0' }}
+      RUN_TIMESTAMP: ${{ github.run_id }}-chunk${{ matrix.chunk }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache test262 incremental cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            .test262-cache
+            benchmarks/results/test262-cache.json
+          key: test262-cache-${{ hashFiles('src/**/*.ts') }}-chunk-${{ matrix.chunk }}
+          restore-keys: |
+            test262-cache-${{ hashFiles('src/**/*.ts') }}-
+            test262-cache-
+
+      - name: Build compiler bundles
+        run: |
+          pnpm run build:compiler-bundle
+          ./node_modules/.bin/esbuild src/runtime.ts --bundle --platform=node --format=esm \
+            --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen
+
+      - name: Run shard
+        run: |
+          mkdir -p vitest-blob
+          set +e
+          node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
+            --reporter=blob \
+            --outputFile=vitest-blob/blob-${{ matrix.chunk }}.json
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Vitest exited with unexpected code $exit_code"
+            exit "$exit_code"
+          fi
+          echo "vitest_exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Upload shard artifacts
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-shard-${{ matrix.chunk }}
+          path: |
+            benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
+          if-no-files-found: warn
+
+  merge:
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+    name: merge shard reports
+    needs: test262-shard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download shard artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: shard-artifacts
+          pattern: test262-shard-*
+          merge-multiple: false
+
+      - name: Merge test262 JSONL results
+        run: |
+          mkdir -p merged-reports
+          find shard-artifacts -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > merged-reports/test262-results-merged.jsonl
+          test -s merged-reports/test262-results-merged.jsonl
+
+      - name: Build merged test262 report
+        run: |
+          node scripts/build-test262-report.mjs \
+            --input merged-reports/test262-results-merged.jsonl \
+            --output merged-reports/test262-report-merged.json \
+            ${{ inputs.include_proposals && '--include-proposals' || '' }}
+
+      - name: Compare against current main baseline
+        id: regression_diff
+        run: |
+          mkdir -p merged-reports
+          BASELINE="benchmarks/results/test262-current.jsonl"
+          if [ ! -f "$BASELINE" ]; then
+            echo "Missing baseline JSONL: $BASELINE"
+            exit 2
+          fi
+          set +e
+          npx tsx scripts/diff-test262.ts "$BASELINE" merged-reports/test262-results-merged.jsonl --quiet \
+            > merged-reports/test262-regressions.txt
+          exit_code=$?
+          set -e
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Unexpected diff-test262 exit code $exit_code"
+            exit "$exit_code"
+          fi
+          if [ "$exit_code" -eq 1 ]; then
+            echo "regressions=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "regressions=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail on regressions
+        if: steps.regression_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.allow_regressions)
+        run: |
+          echo "test262 regressions detected relative to benchmarks/results/test262-current.jsonl"
+          cat merged-reports/test262-regressions.txt
+          exit 1
+
+      - name: Upload merged reports
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-merged-report
+          path: |
+            merged-reports/**
+          if-no-files-found: warn
+
+  promote-baseline:
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && needs.merge.result == 'success'
+    name: promote merged report to main baseline
+    needs: merge
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download merged reports
+        uses: actions/download-artifact@v7
+        with:
+          path: shard-artifacts
+          pattern: test262-merged-report
+          merge-multiple: true
+
+      - name: Promote merged artifacts to stable baseline
+        run: |
+          mkdir -p benchmarks/results
+          rm -f benchmarks/results/test262-current.jsonl \
+            benchmarks/results/test262-current.json \
+            benchmarks/results/test262-report.json \
+            benchmarks/results/test262-results.jsonl
+          cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+          cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-current.json
+          cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-report.json
+          cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
+
+      - name: Commit refreshed baseline
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl
+          if git diff --cached --quiet; then
+            echo "No baseline changes to commit."
+            exit 0
+          fi
+          PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
+          TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
+          git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass"
+          git push

@@ -1,7 +1,8 @@
 ---
 id: 512
 title: "Fix illegal cast when closures are passed as callable parameters"
-status: review
+sprint: Sprint-21
+status: done
 priority: high
 created: 2026-03-18
 completed: 2026-03-18

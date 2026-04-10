@@ -29,3 +29,6 @@
 - Vitest-based runner with auto-worktree, disk cache, default 3 forks
 - Multiple test262 runs showing steady improvement through the day
 - Skip filters narrowed to avoid over-skipping passing tests
+
+---
+_Issues not completed in this sprint were returned to the backlog._

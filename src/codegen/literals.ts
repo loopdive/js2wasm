@@ -17,7 +17,7 @@ import { reportError } from "./context/errors.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { allocLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { nextModuleGlobalIdx } from "./registry/imports.js";
+import { nextModuleGlobalIdx, ensureExnTag } from "./registry/imports.js";
 import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
   resolveWasmType,
@@ -985,10 +985,14 @@ export function compileObjectLiteralForStruct(
       if (isGeneratorMethod && prop.body) {
         // Generator method: eagerly evaluate body, collect yields into a buffer,
         // then wrap with __create_generator to return a Generator-like object.
+        // Body is wrapped in try/catch to defer thrown exceptions to first next() (#928).
         const bufferLocal = allocLocal(methodFctx, "__gen_buffer", { kind: "externref" });
+        const pendingThrowLocal = allocLocal(methodFctx, "__gen_pending_throw", { kind: "externref" });
         const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
         methodFctx.body.push({ op: "call", funcIdx: createBufIdx });
         methodFctx.body.push({ op: "local.set", index: bufferLocal });
+        methodFctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+        methodFctx.body.push({ op: "local.set", index: pendingThrowLocal });
 
         const bodyInstrs: Instr[] = [];
         const outerBody = methodFctx.body;
@@ -1009,15 +1013,30 @@ export function compileObjectLiteralForStruct(
         methodFctx.generatorReturnDepth = undefined;
 
         methodFctx.body = outerBody;
-        methodFctx.body.push({
-          op: "block",
-          blockType: { kind: "empty" },
-          body: bodyInstrs,
-        });
 
-        // Return __create_generator(__gen_buffer)
+        // Wrap generator body block in try/catch to capture exceptions as pending throw
+        const tagIdx = ensureExnTag(ctx);
+        const getCaughtIdx = ctx.funcMap.get("__get_caught_exception");
+        const catchBody: Instr[] = [{ op: "local.set", index: pendingThrowLocal } as unknown as Instr];
+        const catchAllBody: Instr[] =
+          getCaughtIdx !== undefined
+            ? [
+                { op: "call", funcIdx: getCaughtIdx } as Instr,
+                { op: "local.set", index: pendingThrowLocal } as unknown as Instr,
+              ]
+            : [];
+        methodFctx.body.push({
+          op: "try",
+          blockType: { kind: "empty" },
+          body: [{ op: "block", blockType: { kind: "empty" }, body: bodyInstrs }],
+          catches: [{ tagIdx, body: catchBody }],
+          catchAll: catchAllBody.length > 0 ? catchAllBody : undefined,
+        } as unknown as Instr);
+
+        // Return __create_generator(__gen_buffer, __gen_pending_throw)
         const createGenIdx = ctx.funcMap.get("__create_generator")!;
         methodFctx.body.push({ op: "local.get", index: bufferLocal });
+        methodFctx.body.push({ op: "local.get", index: pendingThrowLocal });
         methodFctx.body.push({ op: "call", funcIdx: createGenIdx });
       } else if (prop.body) {
         for (const stmt of prop.body.statements) {
@@ -1111,20 +1130,30 @@ export function compileArrayLiteral(
     let tupleType = ctxTupleType;
     if (expr.elements.length > 1) {
       const ctxElemTypes = getTupleElementTypes(ctx, ctxTupleType);
-      const allSameKind = ctxElemTypes.length > 0 && ctxElemTypes.every((t) => t.kind === ctxElemTypes[0]!.kind);
-      if (allSameKind) {
-        const actualType = ctx.checker.getTypeAtLocation(expr);
-        if (actualType && isTupleType(actualType)) {
-          const actualElemTypes = getTupleElementTypes(ctx, actualType);
-          const actualHeterogeneous =
-            actualElemTypes.length > 1 && !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
-          if (actualHeterogeneous) {
-            tupleType = actualType;
+      // If the contextual tuple type has fewer slots than the literal has elements,
+      // the tuple would truncate data. Fall through to vec path (#971).
+      // This happens when destructuring rest `[x, ...y] = [1, 2, 3]` gives a
+      // contextual type of [number, number] but the literal has 3 elements.
+      if (ctxElemTypes.length < expr.elements.length) {
+        // Don't use tuple — fall through to vec
+      } else {
+        const allSameKind = ctxElemTypes.length > 0 && ctxElemTypes.every((t) => t.kind === ctxElemTypes[0]!.kind);
+        if (allSameKind) {
+          const actualType = ctx.checker.getTypeAtLocation(expr);
+          if (actualType && isTupleType(actualType)) {
+            const actualElemTypes = getTupleElementTypes(ctx, actualType);
+            const actualHeterogeneous =
+              actualElemTypes.length > 1 && !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
+            if (actualHeterogeneous) {
+              tupleType = actualType;
+            }
           }
         }
+        return compileTupleLiteral(ctx, fctx, expr, tupleType);
       }
+    } else {
+      return compileTupleLiteral(ctx, fctx, expr, tupleType);
     }
-    return compileTupleLiteral(ctx, fctx, expr, tupleType);
   }
 
   if (expr.elements.length === 0) {

@@ -282,4 +282,5 @@ export {
   checkPolicy,
   compileAndInstantiate,
   instantiateWasm,
+  instantiateWasmStreaming,
 } from "./runtime.js";

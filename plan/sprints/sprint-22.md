@@ -25,3 +25,6 @@
 - "Compile-away" principle established — resolve JS semantics statically, zero runtime overhead
 - New issues created, memory files updated, analysis from session
 - 80 commits on this date
+
+---
+_Issues not completed in this sprint were returned to the backlog._

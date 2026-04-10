@@ -21,18 +21,8 @@ Implements features and fixes. Works in isolation to avoid conflicts.
 - Claim Open tasks from the current sprint
 - Work in a **separate git worktree** on a new branch (`issue-{N}-{short-description}`)
 - Update issue status: Open → In Progress → Review
-- Create a GitHub PR when implementation is complete
+- Push the branch and create a GitHub PR when implementation is complete
 - Update the issue `.md` with implementation notes and the PR link
-
-### Tester
-Validates correctness and identifies regressions.
-
-**Responsibilities:**
-- Run test suites: equivalence tests (`pnpm test`), test262 conformance
-- Evaluate test results and identify failures or regressions
-- Create new issues in `plan/issues/` for bugs found
-- Update existing issues with test findings
-- Report test coverage and pass rates
 
 ## Sprint Lifecycle
 
@@ -43,8 +33,8 @@ Planning → Open → In Progress → Review → Done → Deploy → Next Sprint
 1. **Planning**: PO selects ~30 issues from Backlog, moves them to Sprint N (status: Open)
 2. **Open**: Developer claims tasks, begins work
 3. **In Progress**: Developer actively implementing in worktree branch
-4. **Review**: Developer done, PR created, PO reviews
-5. **Done**: PO approves, issue closed
+4. **Review**: Developer done, PR created, CI runs test262, PO reviews
+5. **Done**: PO approves after PR checks pass or are explicitly overridden, issue closed
 6. **Deploy**: All sprint items Done + tests pass → deployment
 7. **Next Sprint**: PO plans next batch based on results
 

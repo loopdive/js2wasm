@@ -59,6 +59,7 @@ async function measureBenchmark(entryPath, exportName) {
       "examples/benchmarks/helpers.ts": HELPERS_SOURCE,
     },
     entryPath,
+    { optimize: 4 },
   );
 
   if (!result.success) {

@@ -21,3 +21,6 @@
 - Difference: unblocked ~4,000 previously-skipped tests which mostly fail
 - Error categories: assertion_fail 9,259, type_error 3,730, wasm_compile 2,904
 - This became the honest baseline for future sessions
+
+---
+_Issues not completed in this sprint were returned to the backlog._

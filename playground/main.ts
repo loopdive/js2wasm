@@ -25,6 +25,13 @@ const rawExampleModules = import.meta.glob("./examples/**/*.ts", {
   query: "?raw",
   import: "default",
 });
+const rawEquivTestModules = import.meta.glob(
+  ["../tests/equivalence/**/*.test.ts", "../tests/ts-wasm-equivalence.test.ts"],
+  {
+    query: "?raw",
+    import: "default",
+  },
+);
 
 function isPagesPlaygroundPath(): boolean {
   return /\/playground\/?$/.test(window.location.pathname);
@@ -858,7 +865,7 @@ function createFileEntry(
 
 const files: FileEntry[] = [
   createFileEntry(
-    "input/example.ts",
+    "examples/dom/calendar.ts",
     "typescript",
     false,
     "input",
@@ -876,13 +883,14 @@ monaco.editor.createModel(
 );
 
 const fileMap = new Map<string, FileEntry>(files.map((f) => [f.path, f]));
-const inputFile = fileMap.get("input/example.ts")!;
+const inputFile = fileMap.get("examples/dom/calendar.ts")!;
 let inputModelChangeDisposable: monaco.IDisposable | null = null;
 
 function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
   inputModelChangeDisposable?.dispose();
   inputModelChangeDisposable = model.onDidChangeContent(() => {
     if (t262Loading) return;
+    clearT262FailureAnnotations();
     sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
     lastResult = null;
     compileBtn.disabled = false;
@@ -894,6 +902,7 @@ function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
 }
 
 function setInputSourceModel(virtualPath: string, source: string): void {
+  const previousModel = inputFile.model;
   const normalizedSource = canonicalizeBenchmarkHelperImports(source, virtualPath);
   const uri = monaco.Uri.parse(`file:///${virtualPath}`);
   let model = monaco.editor.getModel(uri);
@@ -902,9 +911,13 @@ function setInputSourceModel(virtualPath: string, source: string): void {
   } else if (model.getValue() !== normalizedSource) {
     model.setValue(normalizedSource);
   }
+  if (previousModel !== model) {
+    monaco.editor.setModelMarkers(previousModel, T262_MARKER_OWNER, []);
+  }
   inputFile.path = virtualPath;
   inputFile.displayName = virtualPath.split("/").pop()!;
   inputFile.model = model;
+  syncOutputDisplayNames();
   (tabDefs["ts-source"] as EditorTabDef).model = model;
   const sourcePanelId = layout.findPanelForTab("ts-source");
   if (sourcePanelId && layout.getActiveTabForPanel(sourcePanelId) !== "ts-source") {
@@ -916,6 +929,7 @@ function setInputSourceModel(virtualPath: string, source: string): void {
     if (layout.getActiveTabForPanel(slot.panelId) !== "ts-source") continue;
     slot.editor.setModel(model);
   }
+  updateTabLabel("ts-source", inputFile.displayName, tabTooltips["ts-source"]);
 }
 
 async function loadBundledExampleSource(path: string): Promise<string | null> {
@@ -965,11 +979,12 @@ async function openLocalImportedSource(specifier: string): Promise<boolean> {
     const content = resolvedPath.startsWith("examples/") ? await loadBundledExampleSource(resolvedPath) : null;
     if (content == null) return false;
     t262Loading = true;
+    clearT262FailureAnnotations();
     sessionStorage.removeItem(STORAGE_KEY);
     setInputSourceModel(resolvedPath, content);
     revealSourceTab();
     t262SetActive(resolvedPath);
-    updateTabLabel("ts-source", resolvedPath.split("/").pop() ?? "example.ts");
+    updateTabLabel("ts-source", resolvedPath.split("/").pop() ?? "example.ts", tabTooltips["ts-source"]);
     t262Loading = false;
     return true;
   } catch {
@@ -1019,15 +1034,28 @@ const slotRight = createEditorSlot();
 slotRight.editor.setModel(watFile.model);
 slotRight.editor.updateOptions({ readOnly: true, glyphMargin: true });
 
+syncOutputDisplayNames();
+
 // Tab ID ↔ file path mapping
 const tabToFile: Record<string, string> = {
-  "ts-source": "input/example.ts",
+  "ts-source": "examples/dom/calendar.ts",
   "wat-output": "output/example.wat",
   "wasm-hex": "output/example.wasm",
   "modular-ts": "output/example.js",
 };
 const fileToTab: Record<string, string> = {};
 for (const [tab, file] of Object.entries(tabToFile)) fileToTab[file] = tab;
+
+function sourceBaseName(): string {
+  return inputFile.displayName.replace(/\.[^.]+$/, "") || "example";
+}
+
+function syncOutputDisplayNames(): void {
+  const base = sourceBaseName();
+  watFile.displayName = `${base}.wat`;
+  wasmHexFile.displayName = `${base}.wasm`;
+  modularFile.displayName = `${base}.js`;
+}
 
 // Find the editor currently showing a given tab
 function editorForTab(tabId: string): monaco.editor.IStandaloneCodeEditor | null {
@@ -1105,6 +1133,7 @@ const t262FilesCache = new Map<string, string[]>();
 let staticT262Files: Record<string, string[]> | null = null;
 let staticT262FileResults: Record<string, T262FileResult[]> | null = null;
 let staticEquivTests: { name: string; source: string }[] | null = null;
+let bundledEquivTests: { name: string; source: string }[] | null = null;
 const prefersStaticPlaygroundData =
   location.protocol === "https:" || (location.hostname !== "localhost" && location.hostname !== "127.0.0.1");
 
@@ -1128,22 +1157,78 @@ async function fetchText(path: string): Promise<string | null> {
   }
 }
 
+async function fetchJsonFromPaths<T>(paths: string[]): Promise<T | null> {
+  for (const path of paths) {
+    const data = await fetchJson<T>(path);
+    if (data != null) return data;
+  }
+  return null;
+}
+
 async function loadStaticEquivTests(): Promise<{ name: string; source: string }[]> {
   if (staticEquivTests) return staticEquivTests;
-  staticEquivTests = (await fetchJson<{ name: string; source: string }[]>("playground-data/equiv-tests.json")) ?? [];
+  staticEquivTests =
+    (await fetchJsonFromPaths<{ name: string; source: string }[]>([
+      "/playground-data/equiv-tests.json",
+      "/playground/playground-data/equiv-tests.json",
+      "playground-data/equiv-tests.json",
+    ])) ?? [];
   return staticEquivTests;
+}
+
+function parseEquivTestsFromContent(content: string): { name: string; source: string }[] {
+  const tests: { name: string; source: string }[] = [];
+  const itRegex = /it\((["'])(.*?)\1[\s\S]*?(?:compileToWasm|assertEquivalent)\(\s*`([\s\S]*?)`/g;
+  let match: RegExpExecArray | null;
+  while ((match = itRegex.exec(content)) !== null) {
+    const name = match[2];
+    let source = match[3];
+    const lines = source.split("\n");
+    const nonEmpty = lines.filter((l) => l.trim().length > 0);
+    if (nonEmpty.length > 0) {
+      const minIndent = Math.min(...nonEmpty.map((l) => l.match(/^(\s*)/)?.[1].length ?? 0));
+      source = lines
+        .map((l) => l.slice(minIndent))
+        .join("\n")
+        .trim();
+    }
+    tests.push({ name, source });
+  }
+  return tests;
+}
+
+async function loadBundledEquivTests(): Promise<{ name: string; source: string }[]> {
+  if (bundledEquivTests) return bundledEquivTests;
+  const tests: { name: string; source: string }[] = [];
+  for (const key of Object.keys(rawEquivTestModules).sort()) {
+    const loader = rawEquivTestModules[key] as (() => Promise<string>) | undefined;
+    if (!loader) continue;
+    const content = await loader();
+    tests.push(...parseEquivTestsFromContent(content));
+  }
+  bundledEquivTests = tests;
+  return bundledEquivTests;
 }
 
 async function loadStaticT262Files(): Promise<Record<string, string[]>> {
   if (staticT262Files) return staticT262Files;
-  staticT262Files = (await fetchJson<Record<string, string[]>>("playground-data/test262-files.json")) ?? {};
+  staticT262Files =
+    (await fetchJsonFromPaths<Record<string, string[]>>([
+      "/playground-data/test262-files.json",
+      "/playground/playground-data/test262-files.json",
+      "playground-data/test262-files.json",
+    ])) ?? {};
   return staticT262Files;
 }
 
 async function loadStaticT262FileResults(): Promise<Record<string, T262FileResult[]>> {
   if (staticT262FileResults) return staticT262FileResults;
   staticT262FileResults =
-    (await fetchJson<Record<string, T262FileResult[]>>("playground-data/test262-file-results.json")) ?? {};
+    (await fetchJsonFromPaths<Record<string, T262FileResult[]>>([
+      "/playground-data/test262-file-results.json",
+      "/playground/playground-data/test262-file-results.json",
+      "playground-data/test262-file-results.json",
+    ])) ?? {};
   return staticT262FileResults;
 }
 
@@ -1156,6 +1241,14 @@ interface T262FileResult {
   file: string;
   status: string;
   error?: string;
+}
+interface T262FailureAnnotation {
+  status: string;
+  message: string;
+  sourceLine: number;
+  sourceColumn: number;
+  watLine: number | null;
+  wasmLine: number | null;
 }
 type SuiteSummary = T262Report["summary"];
 interface T262TrendRun {
@@ -1229,6 +1322,10 @@ function t262GetCategoryStats(
   return t262Report.categories.find((c) => c.name === catName) ?? null;
 }
 
+function normalizeT262ResultPath(file: string): string {
+  return file.startsWith("test/") ? file.slice(5) : file;
+}
+
 function t262StatusIcon(status: string): string {
   switch (status) {
     case "pass":
@@ -1293,6 +1390,15 @@ let t262Filter = "";
 let t262Debounce: ReturnType<typeof setTimeout> | null = null;
 let t262ActivePath = "";
 let t262Loading = false;
+let activeT262FileResult: T262FileResult | null = null;
+let pendingT262SourceDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+let pendingT262WatDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+let pendingT262WasmDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+const t262EditorDecorations = new WeakMap<
+  monaco.editor.IStandaloneCodeEditor,
+  monaco.editor.IEditorDecorationsCollection
+>();
+const T262_MARKER_OWNER = "test262-selected-result";
 
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
@@ -1349,15 +1455,26 @@ async function loadEquivIndex(): Promise<EquivTest[]> {
   if (!prefersStaticPlaygroundData) {
     data = await fetchJson<EquivTest[]>("/api/equiv-index");
   }
-  if (!data) {
+  if ((!data || data.length === 0) && prefersStaticPlaygroundData) {
     const staticTests = await loadStaticEquivTests();
-    data = staticTests.map((t, index) => ({ name: t.name, index }));
+    if (staticTests.length > 0) {
+      data = staticTests.map((t, index) => ({ name: t.name, index }));
+    }
+  }
+  if ((!data || data.length === 0) && !prefersStaticPlaygroundData) {
+    const bundledTests = await loadBundledEquivTests();
+    if (bundledTests.length > 0) {
+      data = bundledTests.map((t, index) => ({ name: t.name, index }));
+    }
   }
   if ((!data || data.length === 0) && prefersStaticPlaygroundData) {
     data = await fetchJson<EquivTest[]>("/api/equiv-index");
   }
-  equivIndex = data ?? [];
-  return equivIndex;
+  if (data && data.length > 0) {
+    equivIndex = data;
+    return equivIndex;
+  }
+  return [];
 }
 
 async function loadEquivSource(idx: number): Promise<string> {
@@ -1365,8 +1482,8 @@ async function loadEquivSource(idx: number): Promise<string> {
     const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
     if (apiData !== null) return apiData;
   }
-  const staticTests = await loadStaticEquivTests();
-  const source = staticTests[idx]?.source;
+  const localTests = prefersStaticPlaygroundData ? await loadStaticEquivTests() : await loadBundledEquivTests();
+  const source = localTests[idx]?.source;
   if (source != null) return source;
   if (prefersStaticPlaygroundData) {
     const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
@@ -1390,15 +1507,193 @@ function t262SetActive(filePath: string) {
   });
 }
 
-async function t262LoadAndShow(filePath: string) {
+function clearT262FailureAnnotations() {
+  activeT262FileResult = null;
+  pendingT262SourceDecorations = [];
+  pendingT262WatDecorations = [];
+  pendingT262WasmDecorations = [];
+  monaco.editor.setModelMarkers(inputFile.model, T262_MARKER_OWNER, []);
+  monaco.editor.setModelMarkers(watFile.model, T262_MARKER_OWNER, []);
+  monaco.editor.setModelMarkers(wasmHexFile.model, T262_MARKER_OWNER, []);
+  for (const slot of editorSlots) {
+    if (!slot.panelId) continue;
+    const existing = t262EditorDecorations.get(slot.editor);
+    if (existing) existing.clear();
+    t262EditorDecorations.delete(slot.editor);
+  }
+}
+
+function t262ParseErrorLocation(error?: string): { line: number; column: number } | null {
+  if (!error) return null;
+  const match = error.match(/\bL(\d+)(?::(\d+))?\b/);
+  if (!match) return null;
+  return {
+    line: Number(match[1]) || 1,
+    column: Number(match[2]) || 1,
+  };
+}
+
+function t262DecorationStyles(status: string): {
+  lineClass: string;
+  textClass: string;
+  severity: monaco.MarkerSeverity;
+} {
+  switch (status) {
+    case "fail":
+      return { lineClass: "t262-line-fail", textClass: "t262-inline-fail", severity: monaco.MarkerSeverity.Error };
+    case "compile_error":
+      return { lineClass: "t262-line-ce", textClass: "t262-inline-ce", severity: monaco.MarkerSeverity.Warning };
+    case "skip":
+      return { lineClass: "t262-line-skip", textClass: "t262-inline-skip", severity: monaco.MarkerSeverity.Hint };
+    default:
+      return { lineClass: "", textClass: "t262-inline-fail", severity: monaco.MarkerSeverity.Info };
+  }
+}
+
+function t262BuildLineDecoration(
+  model: monaco.editor.ITextModel,
+  lineNumber: number,
+  message: string,
+  status: string,
+): monaco.editor.IModelDeltaDecoration {
+  const clampedLine = Math.min(Math.max(lineNumber, 1), model.getLineCount());
+  const styles = t262DecorationStyles(status);
+  const maxColumn = model.getLineMaxColumn(clampedLine);
+  return {
+    range: new monaco.Range(clampedLine, maxColumn, clampedLine, maxColumn),
+    options: {
+      isWholeLine: true,
+      className: styles.lineClass,
+      hoverMessage: { value: message },
+      after: {
+        content: `  ${message}`,
+        inlineClassName: styles.textClass,
+      },
+    },
+  };
+}
+
+function t262SetModelLineMarker(
+  model: monaco.editor.ITextModel,
+  lineNumber: number,
+  message: string,
+  status: string,
+  column = 1,
+) {
+  const styles = t262DecorationStyles(status);
+  const clampedLine = Math.min(Math.max(lineNumber, 1), model.getLineCount());
+  const clampedColumn = Math.min(Math.max(column, 1), model.getLineMaxColumn(clampedLine));
+  monaco.editor.setModelMarkers(model, T262_MARKER_OWNER, [
+    {
+      severity: styles.severity,
+      message,
+      startLineNumber: clampedLine,
+      startColumn: clampedColumn,
+      endLineNumber: clampedLine,
+      endColumn: model.getLineMaxColumn(clampedLine),
+    },
+  ]);
+}
+
+function applyT262DecorationsToVisibleEditors() {
+  for (const slot of editorSlots) {
+    if (!slot.panelId) continue;
+    const existing = t262EditorDecorations.get(slot.editor);
+    if (existing) existing.clear();
+
+    const model = slot.editor.getModel();
+    const pending =
+      model === inputFile.model
+        ? pendingT262SourceDecorations
+        : model === watFile.model
+          ? pendingT262WatDecorations
+          : model === wasmHexModel
+            ? pendingT262WasmDecorations
+            : [];
+
+    if (pending.length > 0) {
+      t262EditorDecorations.set(slot.editor, slot.editor.createDecorationsCollection(pending));
+    } else {
+      t262EditorDecorations.delete(slot.editor);
+    }
+  }
+}
+
+function buildT262FailureAnnotation(result: T262FileResult): T262FailureAnnotation | null {
+  if (result.status === "pass") return null;
+  const location = t262ParseErrorLocation(result.error);
+  const sourceLine = Math.min(Math.max(location?.line ?? 1, 1), inputFile.model.getLineCount());
+  const sourceColumn = location?.column ?? 1;
+  const target = lastResult?.success ? resolveTsTarget(sourceLine) : null;
+  const watRange = target ? watLineForNode(target.name, target.treemapPath) : null;
+  const wasmRange = target ? hexRangeForNode(target.name, target.treemapPath) : null;
+  return {
+    status: result.status,
+    message: result.error ?? result.status,
+    sourceLine,
+    sourceColumn,
+    watLine: watRange?.start ?? (lastResult?.success && watFile.model.getLineCount() > 0 ? 1 : null),
+    wasmLine: wasmRange?.startLineNumber ?? (lastResult?.success && wasmHexFile.model.getLineCount() > 0 ? 1 : null),
+  };
+}
+
+function syncT262FailureAnnotations() {
+  pendingT262SourceDecorations = [];
+  pendingT262WatDecorations = [];
+  pendingT262WasmDecorations = [];
+  monaco.editor.setModelMarkers(inputFile.model, T262_MARKER_OWNER, []);
+  monaco.editor.setModelMarkers(watFile.model, T262_MARKER_OWNER, []);
+  monaco.editor.setModelMarkers(wasmHexFile.model, T262_MARKER_OWNER, []);
+
+  if (!activeT262FileResult || activeT262FileResult.status === "pass") {
+    applyT262DecorationsToVisibleEditors();
+    return;
+  }
+
+  const annotation = buildT262FailureAnnotation(activeT262FileResult);
+  if (!annotation) {
+    applyT262DecorationsToVisibleEditors();
+    return;
+  }
+
+  pendingT262SourceDecorations = [
+    t262BuildLineDecoration(inputFile.model, annotation.sourceLine, annotation.message, annotation.status),
+  ];
+  t262SetModelLineMarker(
+    inputFile.model,
+    annotation.sourceLine,
+    annotation.message,
+    annotation.status,
+    annotation.sourceColumn,
+  );
+
+  if (annotation.watLine != null && watFile.model.getLineCount() > 0 && watFile.model.getValueLength() > 0) {
+    pendingT262WatDecorations = [
+      t262BuildLineDecoration(watFile.model, annotation.watLine, annotation.message, annotation.status),
+    ];
+    t262SetModelLineMarker(watFile.model, annotation.watLine, annotation.message, annotation.status);
+  }
+
+  if (annotation.wasmLine != null && wasmHexFile.model.getLineCount() > 0 && wasmHexFile.model.getValueLength() > 0) {
+    pendingT262WasmDecorations = [
+      t262BuildLineDecoration(wasmHexFile.model, annotation.wasmLine, annotation.message, annotation.status),
+    ];
+    t262SetModelLineMarker(wasmHexFile.model, annotation.wasmLine, annotation.message, annotation.status);
+  }
+
+  applyT262DecorationsToVisibleEditors();
+}
+
+async function t262LoadAndShow(filePath: string, fileResult: T262FileResult | null = null) {
   const content = await t262LoadFile(filePath);
   t262Loading = true;
   sessionStorage.removeItem(STORAGE_KEY);
   setInputSourceModel(filePath, content);
   revealSourceTab();
   t262SetActive(filePath);
+  activeT262FileResult = fileResult;
   const fname = t262FileName(filePath);
-  updateTabLabel("ts-source", fname);
+  updateTabLabel("ts-source", fname, tabTooltips["ts-source"]);
   compileOnly();
   t262Loading = false;
 }
@@ -1690,7 +1985,7 @@ async function t262Render() {
       setInputSourceModel(ex.path, content);
       revealSourceTab();
       t262SetActive(ex.path);
-      updateTabLabel("ts-source", ex.name);
+      updateTabLabel("ts-source", ex.name, tabTooltips["ts-source"]);
       compileOnly();
       t262Loading = false;
     });
@@ -1706,7 +2001,7 @@ async function t262Render() {
     setInputSourceModel(bench.path, content);
     revealSourceTab();
     t262SetActive(bench.path);
-    updateTabLabel("ts-source", bench.name);
+    updateTabLabel("ts-source", bench.name, tabTooltips["ts-source"]);
     compileOnly();
     t262Loading = false;
   }
@@ -1833,23 +2128,48 @@ async function t262Render() {
     return false;
   }
 
+  const categoryStatsCache = new Map<string, { pass: number; fail: number; skip: number; compile_error: number }>();
+
+  async function getCategoryStats(
+    catPath: string,
+  ): Promise<{ pass: number; fail: number; skip: number; compile_error: number }> {
+    if (categoryStatsCache.has(catPath)) return categoryStatsCache.get(catPath)!;
+
+    const direct = t262GetCategoryStats(catPath);
+    if (direct) {
+      categoryStatsCache.set(catPath, direct);
+      return direct;
+    }
+
+    const lookup = await getFileResultLookup(catPath);
+    const stats = { pass: 0, fail: 0, skip: 0, compile_error: 0 };
+    for (const row of lookup.values()) {
+      if (row.status === "pass") stats.pass++;
+      else if (row.status === "fail") stats.fail++;
+      else if (row.status === "skip") stats.skip++;
+      else if (row.status === "compile_error") stats.compile_error++;
+    }
+    categoryStatsCache.set(catPath, stats);
+    return stats;
+  }
+
   // Aggregate stats for a tree node (sum across all categories in subtree)
-  function nodeStats(node: T262TreeNode): { pass: number; fail: number; skip: number; ce: number; total: number } {
+  async function nodeStats(
+    node: T262TreeNode,
+  ): Promise<{ pass: number; fail: number; skip: number; ce: number; total: number }> {
     let pass = 0,
       fail = 0,
       skip = 0,
       ce = 0;
     for (const cat of node.categories) {
-      const s = t262GetCategoryStats(cat.path);
-      if (s) {
-        pass += s.pass;
-        fail += s.fail;
-        skip += s.skip;
-        ce += s.compile_error;
-      }
+      const s = await getCategoryStats(cat.path);
+      pass += s.pass;
+      fail += s.fail;
+      skip += s.skip;
+      ce += s.compile_error;
     }
     for (const child of node.children.values()) {
-      const cs = nodeStats(child);
+      const cs = await nodeStats(child);
       pass += cs.pass;
       fail += cs.fail;
       skip += cs.skip;
@@ -1870,12 +2190,18 @@ async function t262Render() {
   const fileResultLookups = new Map<string, Map<string, T262FileResult>>();
   async function getFileResultLookup(catPath: string): Promise<Map<string, T262FileResult>> {
     if (fileResultLookups.has(catPath)) return fileResultLookups.get(catPath)!;
-    const results = await t262LoadFileResults(catPath);
+    let results = await t262LoadFileResults(catPath);
+    if (results.length === 0) {
+      const parts = catPath.split("/");
+      while (parts.length > 1 && results.length === 0) {
+        parts.pop();
+        results = await t262LoadFileResults(parts.join("/"));
+      }
+    }
     const lookup = new Map<string, T262FileResult>();
     for (const r of results) {
-      // The JSONL file field is like "test/built-ins/Math/abs/S15.8.2.1_A1.js"
-      // The tree file field is like "built-ins/Math/abs/S15.8.2.1_A1.js" (relative to testBase)
-      const key = r.file.startsWith("test/") ? r.file.slice(5) : r.file;
+      const key = normalizeT262ResultPath(r.file);
+      if (!key.startsWith(`${catPath}/`)) continue;
       lookup.set(key, r);
     }
     fileResultLookups.set(catPath, lookup);
@@ -1900,7 +2226,7 @@ async function t262Render() {
       headerEl.className = "t262-cat-header";
       headerEl.style.paddingLeft = 10 + depth * 12 + "px";
       const count = nodeFileCount(child);
-      const stats = nodeStats(child);
+      const stats = await nodeStats(child);
       const badge = statsBadge(stats);
       headerEl.innerHTML = `<span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${child.name}</span> <span class="t262-cat-count">(${count})</span>${badge}`;
 
@@ -1938,14 +2264,25 @@ async function t262Render() {
 
           for (const file of displayFiles) {
             const fileEl = document.createElement("div");
-            fileEl.className = "t262-file" + (file === t262ActivePath ? " active" : "");
             const fileResult = resultLookup?.get(file);
+            const statusClass = fileResult
+              ? fileResult.status === "pass"
+                ? " t262-file-pass"
+                : fileResult.status === "fail"
+                  ? " t262-file-fail"
+                  : fileResult.status === "compile_error"
+                    ? " t262-file-ce"
+                    : fileResult.status === "skip"
+                      ? " t262-file-skip"
+                      : ""
+              : "";
+            fileEl.className = "t262-file" + statusClass + (file === t262ActivePath ? " active" : "");
             const statusHtml = fileResult ? t262StatusIcon(fileResult.status) : "";
             fileEl.innerHTML = statusHtml + t262FileName(file);
             fileEl.title = fileResult ? `${file} (${fileResult.status})` : file;
             fileEl.dataset.path = file;
             fileEl.addEventListener("click", () => {
-              t262LoadAndShow(file);
+              t262LoadAndShow(file, fileResult ?? null);
             });
             filesEl.appendChild(fileEl);
           }
@@ -2024,7 +2361,7 @@ async function t262Render() {
             setInputSourceModel("input/example.ts", source);
             revealSourceTab();
             t262SetActive(path);
-            updateTabLabel("ts-source", t.name);
+            updateTabLabel("ts-source", t.name, tabTooltips["ts-source"]);
             compileOnly();
             t262Loading = false;
           });
@@ -2113,6 +2450,7 @@ let xPinned = false;
 let xDecos: monaco.editor.IEditorDecorationsCollection[] = [];
 let xHexSpanDeco: monaco.editor.IEditorDecorationsCollection | null = null;
 let xLastHoveredSpan: ByteSpan | null = null;
+let xHoverTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Hex editor state (declared early, used by layout callbacks and editor handlers)
 let lastWasmData: WasmData | null = null;
@@ -2152,10 +2490,10 @@ const layoutRoot = document.getElementById("layout-root")!;
 const layout = new LayoutManager(layoutRoot);
 
 // Register all tabs
-layout.registerTab({ id: "ts-source", title: "TypeScript (.ts)", kind: "editor", permanent: true });
-layout.registerTab({ id: "wat-output", title: "WebAssembly Text Format (.wat)", kind: "editor", permanent: true });
-layout.registerTab({ id: "wasm-hex", title: "WebAssembly Binary (.wasm)", kind: "editor" });
-layout.registerTab({ id: "modular-ts", title: "JavaScript (.js)", kind: "editor" });
+layout.registerTab({ id: "ts-source", title: inputFile.displayName, kind: "editor", permanent: true });
+layout.registerTab({ id: "wat-output", title: watFile.displayName, kind: "editor", permanent: true });
+layout.registerTab({ id: "wasm-hex", title: wasmHexFile.displayName, kind: "editor" });
+layout.registerTab({ id: "modular-ts", title: modularFile.displayName, kind: "editor" });
 layout.registerTab({ id: "errors", title: "Errors", kind: "dom" });
 layout.registerTab({ id: "preview", title: "Preview", kind: "dom" });
 layout.registerTab({ id: "console", title: "Console", kind: "dom" });
@@ -2185,6 +2523,7 @@ layout.onMount = (panelId: string, tabId: string, contentEl: HTMLElement) => {
     requestAnimationFrame(() => slot!.editor.layout());
     // Apply hex decorations if this is the wasm hex tab
     if (tabId === "wasm-hex") applyHexDecorations();
+    applyT262DecorationsToVisibleEditors();
     // Re-apply pinned cross-highlight
     if (xPinned && xTarget) {
       requestAnimationFrame(() => xReapplyPinned());
@@ -2240,7 +2579,7 @@ syncSidebarToggleButton();
 
 const fmtSize = (b: number) => (b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`);
 
-const tabBaseTitles: Record<string, string> = {
+const tabTooltips: Record<string, string> = {
   "ts-source": "TypeScript (.ts)",
   "wat-output": "WebAssembly Text Format (.wat)",
   "wasm-hex": "WebAssembly Binary (.wasm)",
@@ -2266,31 +2605,42 @@ function updateTabSizes() {
   for (const [tabId, filePath] of Object.entries(tabToFile)) {
     const file = fileMap.get(filePath);
     if (!file) continue;
-    const baseTitle = tabBaseTitles[tabId] ?? tabId;
+    const baseTitle = file.displayName || tabId;
 
-    const raw = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
-    if (raw === 0) {
-      updateTabLabel(tabId, baseTitle);
+    if (tabId === "wat-output") {
+      updateTabLabel(tabId, baseTitle, tabTooltips[tabId]);
       continue;
     }
 
-    updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)})`);
+    const raw = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
+    if (raw === 0) {
+      updateTabLabel(tabId, baseTitle, tabTooltips[tabId]);
+      continue;
+    }
+
+    updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)})`, tabTooltips[tabId]);
 
     // Compute gzip size async
     const gzInput = file.binaryData ?? new TextEncoder().encode(file.model.getValue());
     gzipSize(gzInput).then((gz) => {
-      updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)} / ${fmtSize(gz)} gz)`);
+      updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)} / ${fmtSize(gz)} gz)`, tabTooltips[tabId]);
     });
   }
 }
 
-function updateTabLabel(tabId: string, text: string) {
+function updateTabLabel(tabId: string, text: string, tooltip?: string) {
   const el = layout.getTabElement(tabId);
   if (el) {
     const label = el.querySelector(".panel-tab-label");
     if (label) label.textContent = text;
+    if (tooltip) {
+      el.title = tooltip;
+      if (label instanceof HTMLElement) label.title = tooltip;
+    }
   }
 }
+
+updateTabSizes();
 
 // Convenience functions replacing old tab management
 function openFileTab(path: string) {
@@ -2301,7 +2651,8 @@ function openFileTab(path: string) {
 }
 
 function revealSourceTab(): void {
-  openFileTab("input/example.ts");
+  const panelId = layout.findPanelForTab("ts-source");
+  if (panelId) layout.switchTab(panelId, "ts-source");
   requestAnimationFrame(() => {
     editorForTab("ts-source")?.focus();
   });
@@ -2389,7 +2740,6 @@ function xReapplyPinned() {
   treemap.highlightNode(xTarget.treemapPath);
 }
 
-let xHoverTimer: ReturnType<typeof setTimeout> | null = null;
 const X_HOVER_DELAY = 500; // ms before hover highlight kicks in
 
 function setHighlightTarget(target: HighlightTarget | null, source: HighlightSource) {
@@ -3181,6 +3531,7 @@ function compileOnly() {
   for (const f of files) {
     if (f.folder === "output") f.model.setValue("");
   }
+  syncT262FailureAnnotations();
 
   const t0 = performance.now();
   const result = buildCompileResultForEditorSource(source);
@@ -3239,13 +3590,14 @@ function compileOnly() {
   // Auto-open mod.wat tab on first successful compile
   if (result.success && !hasCompiledOnce) {
     hasCompiledOnce = true;
-    openFileTab("output/example.wat");
+    openFileTab(watFile.path);
   }
 
   showOutputPanel(result.success ? "preview" : "errors");
 
   // Update tab labels with file sizes
   updateTabSizes();
+  syncT262FailureAnnotations();
 }
 
 function buildEnv(
@@ -3481,7 +3833,7 @@ async function runBenchmark() {
     setInputSourceModel("examples/benchmarks.ts", normalizeBenchmarkHelperImport(content, "examples/benchmarks.ts"));
     revealSourceTab();
     t262SetActive("examples/benchmarks.ts");
-    updateTabLabel("ts-source", "benchmarks.ts");
+    updateTabLabel("ts-source", "benchmarks.ts", tabTooltips["ts-source"]);
 
     lastResult = null;
     t262Loading = false;
@@ -3507,10 +3859,15 @@ async function runBenchmark() {
   log("Optimizing WASM with Binaryen…");
   await yield_();
   const optResult = await optimizeBinaryAsync(lastResult.binary, { level: 4 });
+  const optimizationStatus = optResult.optimized
+    ? "Binaryen optimization applied."
+    : optResult.warning
+      ? `Binaryen optimization skipped. ${optResult.warning}`
+      : "Binaryen optimization skipped.";
   if (optResult.optimized) {
     log("Binaryen optimization applied.");
-  } else if (optResult.warning) {
-    log(`Binaryen unavailable: ${optResult.warning}`);
+  } else {
+    log("Binaryen optimization skipped.");
   }
 
   const { env: wasmEnv, setExports } = buildEnv(lastResult, () => {});
@@ -3673,6 +4030,9 @@ async function runBenchmark() {
   const nameW = Math.max(10, ...results.map((r) => r.name.length));
 
   const lines: string[] = [
+    optimizationStatus,
+    `wasm:js-string -> ${nativeBuiltins ? "native builtins" : "JS polyfill"}`,
+    "",
     "Benchmark" + " ".repeat(nameW - 9 + 2) + "  WASM          JS        Ratio     n",
     "\u2500".repeat(nameW + 52),
   ];
@@ -3705,10 +4065,10 @@ resetLayoutBtn.addEventListener("click", () => {
   sessionStorage.removeItem(STORAGE_KEY);
   t262ActivePath = null;
   t262Loading = true;
-  setInputSourceModel("input/example.ts", DEFAULT_SOURCE);
+  setInputSourceModel("examples/dom/calendar.ts", DEFAULT_SOURCE);
   revealSourceTab();
   t262Loading = false;
-  updateTabLabel("ts-source", "example.ts");
+  updateTabLabel("ts-source", "calendar.ts", tabTooltips["ts-source"]);
   layout.resetLayout();
   clearSavedLayout();
   compileOnly();

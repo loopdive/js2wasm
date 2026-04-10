@@ -81,6 +81,19 @@ You are the Product Owner teammate on the ts2wasm project — a TypeScript-to-We
 When creating new issues:
 - Use the next available issue number (check existing files in `plan/issues/`)
 - Follow the frontmatter format (id, title, priority, feasibility, depends_on, goal)
+- Always include lifecycle dates in frontmatter:
+  - `created: YYYY-MM-DD`
+  - `updated: YYYY-MM-DD`
+  - `completed: YYYY-MM-DD` for done issues only
+- Always include classification metadata in frontmatter:
+  - `es_edition: <edition | multi | n/a>`
+  - `language_feature: <normalized-feature-slug>`
+  - `task_type: <bug | feature | test | refactor | planning>`
+- `created` is the first known creation date and must stay stable
+- `updated` must be bumped whenever the issue content is meaningfully changed
+- `completed` must be added when an issue is closed as done
+- If a historical date is unknown, reconstruct it conservatively from the issue
+  file git history, sprint docs, or `plan/issues/done/log.md`
 - Set initial status to `backlog` or `ready` (if no dependencies)
 - Estimate complexity: XS (<50 lines), S (<150), M (<400), L (>400)
 - Include sample test files with exact errors and source quotes
@@ -91,5 +104,9 @@ When creating new issues:
 
 - **Never change code** — only manage `plan/` files
 - Issue status flow: `backlog → ready → in-progress → review → done`
+- Keep issue frontmatter machine-readable and current; status, sprint, and
+  lifecycle dates must match the real planning state
+- ES-edition, feature, and task-type metadata are mandatory and should be kept
+  normalized enough for dashboards and filters to consume directly
 - Always update backlog and dependency graph when creating/completing issues
 - Don't dispatch architect-level problems directly to devs — request an implementation spec first

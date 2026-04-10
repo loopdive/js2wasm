@@ -49,18 +49,9 @@
         margin-bottom: 0.25rem;
       }
       .brand {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.2rem;
-        margin-bottom: 0.25rem;
-        overflow: visible;
-      }
-      .brand-logo {
-        display: block;
-        height: 60px;
-        object-fit: contain;
-        max-width: 100%;
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
       }
       h2 {
         font-size: 1.25rem;
@@ -73,11 +64,6 @@
         font-weight: 600;
         margin: 1.5rem 0 0.5rem;
         color: var(--text-muted);
-      }
-      .subtitle {
-        color: var(--text-muted);
-        font-size: 0.875rem;
-        margin-bottom: 2rem;
       }
       .timestamp {
         color: var(--text-muted);
@@ -116,113 +102,19 @@
         font-size: 0.875rem;
         color: var(--text-muted);
       }
-      .gauge-card {
-        display: grid;
-        grid-template-columns: 1fr;
-        justify-items: center;
-        min-height: 220px;
-        overflow: visible;
-      }
-      @media (max-width: 900px) {
-        .gauge-card {
-          grid-template-columns: 1fr;
-        }
-      }
-      .gauge-orbit {
-        position: relative;
-        width: min(100%, 380px);
-        height: 340px;
-        margin: 0 auto;
-      }
-      .gauge-wrap {
-        position: relative;
-        display: grid;
-        place-items: center;
-        margin: 0 auto;
-        width: 250px;
-        aspect-ratio: 1 / 1;
-        border-radius: 50%;
-        background: conic-gradient(
-          var(--pass) 0deg var(--gauge-pass-end),
-          rgba(248, 81, 73, 0.18) var(--gauge-pass-end) var(--gauge-fail-end),
-          rgba(210, 153, 34, 0.18) var(--gauge-fail-end) var(--gauge-error-end),
-          rgba(139, 148, 158, 0.14) var(--gauge-error-end) 360deg
-        );
-      }
-      .gauge-wrap::before {
-        content: "";
-        position: absolute;
-        inset: 22px;
-        border-radius: 50%;
-        background: var(--bg);
-        border: 1px solid rgba(255, 255, 255, 0.04);
-      }
-      .gauge-center {
-        position: absolute;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        transform: translateY(8px);
-      }
-      .gauge-center .gauge-value {
-        font-size: 2.5rem;
-        font-weight: 800;
-        line-height: 1;
-      }
-      .gauge-center .gauge-caption {
-        margin-top: 0.35rem;
-        display: grid;
-        gap: 0.05rem;
-        justify-items: center;
-        color: var(--text-muted);
-      }
-      .gauge-center .gauge-caption-main {
-        font-size: 0.86rem;
-        letter-spacing: 0.08em;
-      }
-      .gauge-center .gauge-caption-sub {
-        font-size: 0.78rem;
-        letter-spacing: 0.08em;
-      }
-      .gauge-core {
-        position: absolute;
-        inset: 45px 0 0;
-        display: grid;
-        place-items: center;
-      }
-      .gauge-copy {
-        display: none;
-      }
-      .orbit-stat {
-        position: absolute;
-        display: grid;
-        gap: 0.15rem;
-        text-align: center;
-        font-variant-numeric: tabular-nums;
-        width: 120px;
-        transform: translate(-50%, -50%);
-      }
-      .orbit-connector {
-        position: absolute;
-        height: 1px;
-        background: rgba(255, 255, 255, 0.18);
-        transform-origin: left center;
-        pointer-events: none;
-      }
-      .orbit-stat .orbit-value {
-        font-size: 1rem;
-        font-weight: 700;
-      }
-      .orbit-stat .orbit-label {
-        font-size: 0.68rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-      }
+      /* Donut chart handled by <t262-donut> web component */
       .edition-timeline-section {
         margin: -0.35rem 0 2rem;
+      }
+      .edition-bar-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 1rem;
+        margin: 0 0 1.5rem;
+      }
+      .edition-bar-grid h3 {
+        margin-top: 0;
+        margin-bottom: 1rem;
       }
       .edition-track {
         position: relative;
@@ -415,56 +307,58 @@
         border-radius: 2px;
         flex-shrink: 0;
       }
-      .bench-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-        gap: 1rem;
+      .bench-section {
+        width: calc(100vw - 4rem);
+        margin-left: calc(50% - 50vw + 2rem);
+        margin-right: calc(50% - 50vw + 2rem);
       }
-      .bench-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        padding: 1rem;
+      .bench-snippet-grid {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+      .bench-snippet-card {
+        display: inline-block;
+        flex: 1 1 560px;
+        min-width: 320px;
+        max-width: 100%;
+        overflow: visible;
+      }
+      .bench-snippet-head {
+        padding: 0 0 0.75rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .bench-example-chart {
+        margin: 0 0 1rem;
+        min-width: 0;
+        max-width: calc(40ch + 76px);
+      }
+      .bench-snippet-card pre {
+        margin: 0;
+        overflow-x: auto;
+      }
+      .report-code-block {
+        display: inline-block;
+        min-width: 0;
+        width: max-content;
+        max-width: calc(40ch + 76px);
+        overflow-x: auto;
+        padding: 34px 38px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: #0c1220;
+        font-family: var(--mono);
+        font-size: 14px;
+        line-height: 1.8;
+        color: rgba(255, 255, 255, 0.72);
+        margin: 0;
       }
       .bench-name {
         font-weight: 600;
         font-size: 0.875rem;
         margin-bottom: 0.75rem;
-      }
-      .bench-row {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.375rem;
-        font-size: 0.75rem;
-      }
-      .bench-label {
-        width: 70px;
-        flex-shrink: 0;
-        color: var(--text-muted);
-        font-family: var(--mono);
-      }
-      .bench-bar-bg {
-        flex: 1;
-        height: 14px;
-        background: var(--bar-bg);
-        border-radius: 3px;
-        overflow: hidden;
-      }
-      .bench-bar {
-        height: 100%;
-        border-radius: 3px;
-        min-width: 2px;
-      }
-      .bench-time {
-        width: 80px;
-        text-align: right;
-        flex-shrink: 0;
-        font-family: var(--mono);
-        color: var(--text-muted);
-      }
-      .speedup {
-        font-size: 0.6875rem;
-        margin-left: 0.5rem;
       }
       .timestamp {
         font-size: 0.75rem;
@@ -656,29 +550,24 @@
     </style>
   </head>
   <body>
-    <site-nav base="../../"></site-nav>
-    <div class="brand">
-      <img class="brand-logo" id="brand-logo" alt="js2wasm logo" />
-      <h1>js2wasm</h1>
-    </div>
-    <div class="subtitle">ECMAScript conformance (test 262 test suite)</div>
+    <site-nav base="../"></site-nav>
+    <h1 class="brand">ECMAScript conformance</h1>
     <div id="app"><div class="no-data">Loading report data…</div></div>
 
     <script>
       const REPORT_JSON = "results/test262-report.json";
-      const BENCH_JSON = "results/latest.json";
-      const HISTORY_JSON = "results/history.json";
       const RESULTS_JSONL = "results/test262-results.jsonl";
+      const BENCH_SUITE_FILES = [
+        "benchmarks/suites/strings.ts",
+        "benchmarks/suites/arrays.ts",
+        "benchmarks/suites/dom.ts",
+        "benchmarks/suites/mixed.ts",
+      ];
       const BASE_PATH = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
 
       function assetPath(path) {
         if (!BASE_PATH) return `/${path}`;
         return `${BASE_PATH}/${path}`;
-      }
-
-      const brandLogo = document.getElementById("brand-logo");
-      if (brandLogo) {
-        brandLogo.src = assetPath("jswasmlogo.png");
       }
 
       // If the report.json is empty/corrupt, rebuild it from the JSONL on the fly
@@ -1001,6 +890,49 @@
         } catch {
           return null;
         }
+      }
+
+      let prettierBundlePromise = null;
+      async function formatBenchmarkSnippet(source) {
+        try {
+          prettierBundlePromise ||= Promise.all([
+            import("https://esm.sh/prettier@3.8.1/standalone"),
+            import("https://esm.sh/prettier@3.8.1/plugins/typescript"),
+            import("https://esm.sh/prettier@3.8.1/plugins/estree"),
+          ]);
+          const [{ format }, tsPlugin, estreePlugin] = await prettierBundlePromise;
+          return await format(source, {
+            parser: "typescript",
+            plugins: [tsPlugin.default ?? tsPlugin, estreePlugin.default ?? estreePlugin],
+            printWidth: 40,
+            semi: true,
+          });
+        } catch {
+          return source;
+        }
+      }
+
+      async function loadBenchmarkSnippets() {
+        const snippets = new Map();
+        await Promise.all(
+          BENCH_SUITE_FILES.map(async (path) => {
+            try {
+              const resp = await fetch(assetPath(path));
+              if (!resp.ok) return;
+              const source = await resp.text();
+              const pattern = /name:\s*"([^"]+)"[\s\S]*?source:\s*`([\s\S]*?)`,/g;
+              for (const match of source.matchAll(pattern)) {
+                const name = match[1];
+                const rawSnippet = match[2].replace(/^\n+|\n+$/g, "");
+                const snippet = await formatBenchmarkSnippet(rawSnippet);
+                if (name && snippet) snippets.set(name, snippet);
+              }
+            } catch {
+              // Keep the benchmark cards visible even if snippet files are unavailable.
+            }
+          }),
+        );
+        return snippets;
       }
 
       function shortName(cat) {
@@ -1344,106 +1276,7 @@
         return card;
       }
 
-      function makeGaugeCard(summary, percent, captionSubtext) {
-        const card = el("div", { className: "gauge-card" });
-        const pass = summary.pass || 0;
-        const failCount = summary.fail || 0;
-        const errorCount = summary.compile_error || 0;
-        const skipCount = summary.skip || 0;
-        const total = summary.total || pass + failCount + errorCount + skipCount + (summary.compile_timeout || 0);
-        const totalSafe = Math.max(total, 1);
-        const passDeg = (pass / totalSafe) * 360;
-        const failDeg = passDeg + (failCount / totalSafe) * 360;
-        const errorDeg = failDeg + (errorCount / totalSafe) * 360;
-        card.style.setProperty("--gauge-pass-end", `${passDeg}deg`);
-        card.style.setProperty("--gauge-fail-end", `${failDeg}deg`);
-        card.style.setProperty("--gauge-error-end", `${errorDeg}deg`);
-
-        const centerX = 190;
-        const centerY = 193;
-        const orbitPoint = (angleFromTop, radius) => {
-          const rad = ((angleFromTop - 90) * Math.PI) / 180;
-          return {
-            x: centerX + Math.cos(rad) * radius,
-            y: centerY + Math.sin(rad) * radius,
-            rad,
-          };
-        };
-        const makeOrbitStat = (className, value, label, color, angleFromTop, labelRadius) => {
-          const labelPoint = orbitPoint(angleFromTop, labelRadius);
-          const lineStart = orbitPoint(angleFromTop, 126);
-          const dx = labelPoint.x - lineStart.x;
-          const dy = labelPoint.y - lineStart.y;
-          const lineLength = Math.max(Math.sqrt(dx * dx + dy * dy) - 34, 0);
-          return [
-            el("div", {
-              className: "orbit-connector",
-              style: {
-                left: `${lineStart.x}px`,
-                top: `${lineStart.y}px`,
-                width: `${lineLength}px`,
-                transform: `rotate(${angleFromTop - 90}deg)`,
-              },
-            }),
-            el(
-              "div",
-              {
-                className: `orbit-stat ${className}`,
-                style: {
-                  left: `${labelPoint.x}px`,
-                  top: `${labelPoint.y}px`,
-                },
-              },
-              el("div", { className: "orbit-value", style: { color } }, value),
-              el("div", { className: "orbit-label" }, label),
-            ),
-          ];
-        };
-
-        const gauge = el(
-          "div",
-          { className: "gauge-orbit" },
-          ...makeOrbitStat("pass", pass.toLocaleString(), "Passed", "var(--pass)", passDeg / 2, 184),
-          ...makeOrbitStat("failed", failCount.toLocaleString(), "Failed", "var(--fail)", (passDeg + failDeg) / 2, 194),
-          ...makeOrbitStat(
-            "error",
-            errorCount.toLocaleString(),
-            "Compile Errors",
-            "var(--error)",
-            (failDeg + errorDeg) / 2,
-            180,
-          ),
-          ...makeOrbitStat(
-            "unsupported",
-            skipCount.toLocaleString(),
-            "Unsupported",
-            "var(--text-muted)",
-            (errorDeg + 360) / 2,
-            214,
-          ),
-          el(
-            "div",
-            { className: "gauge-core" },
-            el(
-              "div",
-              { className: "gauge-wrap" },
-              el(
-                "div",
-                { className: "gauge-center" },
-                el("div", { className: "gauge-value", style: { color: "var(--pass)" } }, percent.toFixed(1) + "%"),
-                el(
-                  "div",
-                  { className: "gauge-caption" },
-                  el("div", { className: "gauge-caption-main" }, "ECMAScript"),
-                  el("div", { className: "gauge-caption-sub" }, captionSubtext || "conformance"),
-                ),
-              ),
-            ),
-          ),
-        );
-        card.appendChild(gauge);
-        return card;
-      }
+      // Gauge card replaced by <t262-donut> web component
 
       function makeScopeSummary(...parts) {
         const summary = {
@@ -1560,19 +1393,15 @@
         }
 
         const summary = el("div", { className: "summary" });
-        const summaryCardHost = el("div");
+        const donutEl = document.createElement("t262-donut");
+        donutEl.id = "donut-chart";
+        donutEl.style.setProperty("--t262-bg", "#060a14");
         const controlsHost = el("div", { className: "filter-toggles", style: { marginTop: "1rem" } });
         const legacyToggle = el("label", { className: "filter-toggle" });
         const legacyCheckbox = el("input", { type: "checkbox", checked: "checked" });
         legacyToggle.appendChild(legacyCheckbox);
-        legacyToggle.appendChild(el("span", null, "legacy"));
+        legacyToggle.appendChild(el("span", null, "legacy (Annex B)"));
         controlsHost.appendChild(legacyToggle);
-
-        const proposalToggle = el("label", { className: "filter-toggle" });
-        const proposalCheckbox = el("input", { type: "checkbox" });
-        proposalToggle.appendChild(proposalCheckbox);
-        proposalToggle.appendChild(el("span", null, "proposals"));
-        controlsHost.appendChild(proposalToggle);
 
         // Strict mode toggle — checked by default, persisted in localStorage
         const strictToggle = el("label", { className: "filter-toggle" });
@@ -1586,11 +1415,9 @@
 
         function syncToggleStyles() {
           legacyToggle.classList.toggle("active", legacyCheckbox.checked);
-          proposalToggle.classList.toggle("active", proposalCheckbox.checked);
           strictToggle.classList.toggle("active", strictCheckbox.checked);
-          // Dim scope toggles when strict mode overrides them
-          legacyToggle.style.opacity = strictCheckbox.checked ? "0.4" : "";
-          proposalToggle.style.opacity = strictCheckbox.checked ? "0.4" : "";
+          // Hide legacy toggle in strict mode (strict_summary already includes Annex B strict tests)
+          legacyToggle.style.display = strictCheckbox.checked ? "none" : "";
         }
 
         function renderSummaryCard() {
@@ -1598,27 +1425,18 @@
           if (strictCheckbox.checked && data.strict_summary) {
             s = data.strict_summary;
           } else {
-            s = makeScopeSummary(
-              standardSummary,
-              scoreState.includeLegacy ? legacySummary : null,
-              scoreState.includeProposals ? proposalSummary : null,
-            );
+            s = makeScopeSummary(standardSummary, scoreState.includeLegacy ? legacySummary : null);
           }
-          const passRate = pct(s.pass, s.total);
-          const caption = strictCheckbox.checked
-            ? "strict mode"
-            : scopeLabel(scoreState.includeLegacy, scoreState.includeProposals);
-          summaryCardHost.textContent = "";
-          summaryCardHost.appendChild(makeGaugeCard(s, passRate, caption));
+          const ce = (s.compile_error || 0) + (s.compile_timeout || 0);
+          donutEl.setAttribute("pass", s.pass || 0);
+          donutEl.setAttribute("fail", s.fail || 0);
+          donutEl.setAttribute("ce", ce);
+          donutEl.setAttribute("skip", s.skip || 0);
+          donutEl.setAttribute("total", s.total || 0);
         }
 
         legacyCheckbox.addEventListener("change", () => {
           scoreState.includeLegacy = legacyCheckbox.checked;
-          syncToggleStyles();
-          renderSummaryCard();
-        });
-        proposalCheckbox.addEventListener("change", () => {
-          scoreState.includeProposals = proposalCheckbox.checked;
           syncToggleStyles();
           renderSummaryCard();
         });
@@ -1630,7 +1448,7 @@
 
         syncToggleStyles();
         renderSummaryCard();
-        summary.appendChild(summaryCardHost);
+        summary.appendChild(donutEl);
         summary.appendChild(controlsHost);
         if (summaryStamp) summary.appendChild(summaryStamp);
 
@@ -1646,6 +1464,23 @@
           staleCard.style.borderStyle = "dashed";
           summary.appendChild(staleCard);
         }
+
+        const editionBarsSection = el("div", {
+          className: "edition-bar-grid",
+        });
+        const editionTestsCard = el("div", null, el("h3", null, "Edition Coverage (tests)"));
+        const editionTestsBars = document.createElement("t262-edition-bars");
+        editionTestsBars.setAttribute("src", "results/test262-editions.json");
+        editionTestsBars.setAttribute("mode", "absolute");
+        editionTestsCard.appendChild(editionTestsBars);
+        editionBarsSection.appendChild(editionTestsCard);
+
+        const editionRateCard = el("div", null, el("h3", null, "Edition Coverage (pass rate)"));
+        const editionRateBars = document.createElement("t262-edition-bars");
+        editionRateBars.setAttribute("src", "results/test262-editions.json");
+        editionRateBars.setAttribute("mode", "percentage");
+        editionRateCard.appendChild(editionRateBars);
+        editionBarsSection.appendChild(editionRateCard);
 
         const editionSection = el("div", {
           className: "edition-timeline-section",
@@ -1678,6 +1513,7 @@
         }
 
         container.appendChild(summary);
+        container.appendChild(editionBarsSection);
         container.appendChild(editionSection);
 
         // --- Unsupported features (skip reasons) ---
@@ -2044,101 +1880,51 @@
         }
       }
 
-      function renderBenchmarks(data, container) {
-        container.appendChild(el("h2", null, "Performance Benchmarks"));
-        container.appendChild(
-          makeLegend([
-            ["JavaScript", "var(--text-muted)"],
-            ["Host-call (wasm)", "var(--accent)"],
-            ["GC-native (wasm)", "var(--pass)"],
-          ]),
-        );
-
-        const byName = new Map();
-        for (const b of data) {
-          if (!byName.has(b.name)) byName.set(b.name, {});
-          byName.get(b.name)[b.strategy] = b;
-        }
-
-        const benchGroups = new Map();
-        for (const [name, strats] of byName) {
-          const group = name.split("/")[0];
-          if (!benchGroups.has(group)) benchGroups.set(group, []);
-          benchGroups.get(group).push({ name, strats });
-        }
-
-        const stratColors = {
-          js: "var(--text-muted)",
-          "host-call": "var(--accent)",
-          "gc-native": "var(--pass)",
-        };
-
-        for (const [group, benchmarks] of benchGroups) {
-          container.appendChild(el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)));
-          const grid = el("div", { className: "bench-grid" });
-
-          for (const { name, strats } of benchmarks) {
-            const card = el("div", { className: "bench-card" });
-            const nameEl = el("div", { className: "bench-name" }, name.split("/")[1]);
-
-            // Speedup info
-            const js = strats["js"];
-            const hc = strats["host-call"];
-            const gc = strats["gc-native"];
-            if (js && hc) {
-              const ratio = js.medianMs / hc.medianMs;
-              if (ratio > 1) {
-                const sp = el(
-                  "span",
-                  { className: "speedup", style: { color: "var(--pass)" } },
-                  "host " + ratio.toFixed(1) + "\u00d7 faster",
-                );
-                nameEl.appendChild(sp);
-              } else if (ratio < 0.5) {
-                const sp = el(
-                  "span",
-                  { className: "speedup", style: { color: "var(--error)" } },
-                  "host " + (1 / ratio).toFixed(1) + "\u00d7 slower",
-                );
-                nameEl.appendChild(sp);
-              }
+      async function highlightReportCode() {
+        try {
+          const { codeToHtml } = await import("https://esm.sh/shiki@4.0.2/bundle/web");
+          const pres = document.querySelectorAll(".report-code-block");
+          for (const pre of pres) {
+            if (pre.dataset.highlighted === "true") continue;
+            const code = pre.textContent || "";
+            if (!code.trim()) continue;
+            const html = await codeToHtml(code.trim(), { lang: "typescript", theme: "material-theme-ocean" });
+            const match = html.match(/<code[^>]*>([\s\S]*)<\/code>/);
+            if (match) {
+              pre.innerHTML = match[1];
+              pre.dataset.highlighted = "true";
             }
-            card.appendChild(nameEl);
-
-            let localMax = 0;
-            for (const b of Object.values(strats)) if (b.medianMs > localMax) localMax = b.medianMs;
-            if (localMax === 0) localMax = 1;
-
-            for (const strategy of ["js", "host-call", "gc-native"]) {
-              const b = strats[strategy];
-              if (!b) continue;
-              const barW = Math.max(1, (b.medianMs / localMax) * 100);
-
-              const row = el("div", { className: "bench-row" });
-              row.appendChild(el("span", { className: "bench-label" }, strategy));
-
-              const barBg = el("div", { className: "bench-bar-bg" });
-              barBg.appendChild(
-                el("div", {
-                  className: "bench-bar",
-                  style: {
-                    width: barW + "%",
-                    background: stratColors[strategy],
-                  },
-                }),
-              );
-              row.appendChild(barBg);
-
-              row.appendChild(el("span", { className: "bench-time" }, fmt(b.medianMs)));
-              card.appendChild(row);
-            }
-
-            grid.appendChild(card);
           }
-          container.appendChild(grid);
+        } catch {
+          // Keep plain code blocks if the highlighter fails to load.
         }
       }
 
+      function renderBenchmarks(snippets, container) {
+        const section = el("div", { className: "bench-section" });
+        section.appendChild(el("h2", null, "Performance Benchmarks"));
+        const snippetEntries = [...snippets.entries()];
+        if (snippetEntries.length > 0) {
+          section.appendChild(el("h3", null, "Benchmark Code Examples"));
+          const snippetGrid = el("div", { className: "bench-snippet-grid" });
+          for (const [name, snippet] of snippetEntries) {
+            const card = el("div", { className: "bench-snippet-card" });
+            card.appendChild(el("div", { className: "bench-snippet-head" }, name.split("/")[1] || name));
+            const runtimeChart = document.createElement("perf-benchmark-chart");
+            runtimeChart.className = "bench-example-chart";
+            runtimeChart.setAttribute("src", assetPath("benchmarks/results/latest.json"));
+            runtimeChart.setAttribute("mode", "benchmark-runtime");
+            runtimeChart.setAttribute("benchmark", name);
+            runtimeChart.setAttribute("title", "Runtime Speed");
+            runtimeChart.setAttribute("legend", "Wasm runtime speed relative to JS (larger is better)");
+            card.appendChild(runtimeChart);
+            card.appendChild(el("pre", { className: "report-code-block" }, snippet));
+            snippetGrid.appendChild(card);
+          }
+          section.appendChild(snippetGrid);
+        }
+        container.appendChild(section);
+      }
       const STRAT_COLORS = {
         js: "#8b949e",
         "host-call": "#58a6ff",
@@ -2289,10 +2075,10 @@
       }
 
       async function main() {
-        const [conformance, benchmarks, history] = await Promise.all([
+        const [conformance, history, snippets] = await Promise.all([
           loadReportWithFallback(),
-          loadJSON(BENCH_JSON),
-          loadJSON(HISTORY_JSON),
+          loadJSON(assetPath("benchmarks/results/history.json")),
+          loadBenchmarkSnippets(),
         ]);
         const app = document.getElementById("app");
         app.textContent = "";
@@ -2305,9 +2091,8 @@
           );
         }
 
-        if (benchmarks) {
-          renderBenchmarks(benchmarks, app);
-        }
+        renderBenchmarks(snippets, app);
+        await highlightReportCode();
 
         if (history && history.length >= 2) {
           renderTrends(history, app);
@@ -2318,6 +2103,8 @@
 
       main();
     </script>
-    <script src="../../components/site-nav.js"></script>
+    <script type="module" src="../components/perf-benchmark-chart.js"></script>
+    <script src="../components/site-nav.js"></script>
+    <script src="../components/t262-charts.js"></script>
   </body>
 </html>

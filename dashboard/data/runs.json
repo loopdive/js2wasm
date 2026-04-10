@@ -738,6 +738,15 @@
     "total": 48088,
     "gitHash": "3ce41b5e"
   },
+  {
+    "timestamp": "2026-04-06T06:47:11.555Z",
+    "pass": 11,
+    "fail": 77,
+    "ce": 41633,
+    "skip": 6367,
+    "total": 48088,
+    "gitHash": "294bb1d7"
+  },
   { "timestamp": "20260331-192021", "pass": 15246, "fail": 24668, "ce": 1653, "skip": 6580, "total": 48174 },
   { "timestamp": "20260331-215747", "pass": 15155, "fail": 24723, "ce": 1689, "skip": 6580, "total": 48174 },
   { "timestamp": "20260401-003615", "pass": 15160, "fail": 24740, "ce": 1683, "skip": 6580, "total": 48174 },
@@ -791,6 +800,56 @@
     "skip": 1313,
     "total": 43120,
     "strict_pass": 17522,
+    "strict_total": 40611
+  },
+  {
+    "timestamp": "20260406-071404",
+    "pass": 18464,
+    "fail": 21596,
+    "ce": 1737,
+    "skip": 1313,
+    "total": 43120,
+    "strict_pass": 17578,
+    "strict_total": 40611
+  },
+  {
+    "timestamp": "20260406-080217",
+    "pass": 17682,
+    "fail": 20584,
+    "ce": 1668,
+    "skip": 1266,
+    "total": 41210,
+    "strict_pass": 16829,
+    "strict_total": 38797
+  },
+  {
+    "timestamp": "20260406-143927",
+    "pass": 18611,
+    "fail": 21447,
+    "ce": 1739,
+    "skip": 1313,
+    "total": 43120,
+    "strict_pass": 17724,
+    "strict_total": 40611
+  },
+  {
+    "timestamp": "20260407-005506",
+    "pass": 18611,
+    "fail": 21447,
+    "ce": 1739,
+    "skip": 1313,
+    "total": 43120,
+    "strict_pass": 17724,
+    "strict_total": 40611
+  },
+  {
+    "timestamp": "20260407-111308",
+    "pass": 18899,
+    "fail": 21164,
+    "ce": 1734,
+    "skip": 1313,
+    "total": 43120,
+    "strict_pass": 18012,
     "strict_total": 40611
   }
 ]

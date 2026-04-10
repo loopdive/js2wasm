@@ -69,4 +69,32 @@ describe("array rest destructuring", () => {
       [{ fn: "test", args: [] }],
     );
   });
+
+  it("rest with var reassignment (externref pre-alloc)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var x: number = 0;
+        var y: number[] = [];
+        [x, ...y] = [10, 20, 30];
+        return y[0] + y[1];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("rest with untyped var", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var arr = [10, 20, 30, 40];
+        var rest: number[];
+        [, ...rest] = arr;
+        return rest[0] + rest[1] + rest[2];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });

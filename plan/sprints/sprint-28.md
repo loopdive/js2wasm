@@ -27,3 +27,6 @@
 - Browser-compatible compiler fix + Map.forEach removed from HANGING_TESTS
 - Early error detection via second compile pass
 - Wasm function name + source line extraction for runtime traps
+
+---
+_Issues not completed in this sprint were returned to the backlog._

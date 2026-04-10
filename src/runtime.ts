@@ -48,6 +48,7 @@ const _SC_DEFINED = 8;
 const _SC_ACCESSOR = 16;
 
 function _getSidecarDescs(obj: object): Map<string | symbol, number> {
+  if (!_canBeWeakKey(obj)) return new Map();
   let m = _wasmPropDescs.get(obj);
   if (!m) {
     m = new Map();
@@ -144,7 +145,13 @@ function _isWasmStruct(obj: any): boolean {
   }
 }
 
+/** Check if a value can be used as a WeakMap/WeakSet key (must be object or function). */
+function _canBeWeakKey(obj: any): boolean {
+  return obj != null && (typeof obj === "object" || typeof obj === "function");
+}
+
 function _getSidecar(obj: object): Record<string | symbol, any> {
+  if (!_canBeWeakKey(obj)) return Object.create(null) as Record<string | symbol, any>;
   let sc = _wasmStructProps.get(obj);
   if (!sc) {
     sc = Object.create(null) as Record<string | symbol, any>;
@@ -154,15 +161,18 @@ function _getSidecar(obj: object): Record<string | symbol, any> {
 }
 
 function _sidecarGet(obj: any, key: any): any {
+  if (!_canBeWeakKey(obj)) return undefined;
   const sc = _wasmStructProps.get(obj);
   return sc?.[key];
 }
 
 function _sidecarSet(obj: any, key: any, val: any): void {
+  if (!_canBeWeakKey(obj)) return;
   _getSidecar(obj)[key] = val;
 }
 
 function _sidecarDelete(obj: any, key: any): boolean {
+  if (!_canBeWeakKey(obj)) return false;
   const sc = _wasmStructProps.get(obj);
   if (sc && key in sc) {
     delete sc[key];
@@ -638,6 +648,10 @@ function resolveImport(
           ReferenceError,
           AggregateError,
           Test262Error,
+          // TC39 Explicit Resource Management (stage 3 / Node.js 22+)
+          ...(typeof DisposableStack !== "undefined" ? { DisposableStack } : {}),
+          ...(typeof AsyncDisposableStack !== "undefined" ? { AsyncDisposableStack } : {}),
+          ...(typeof SuppressedError !== "undefined" ? { SuppressedError } : {}),
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor)
@@ -1508,12 +1522,19 @@ function resolveImport(
           buf.push(v);
         };
       if (name === "__create_generator")
-        return (buf: any[]) => {
+        return (buf: any[], pendingThrow: any) => {
           let index = 0;
           return {
             next() {
               if (index < buf.length) {
                 return { value: buf[index++], done: false };
+              }
+              // If the generator body threw before yielding all values,
+              // re-throw on the first next() call after buffer is exhausted.
+              if (pendingThrow !== null && pendingThrow !== undefined) {
+                const e = pendingThrow;
+                pendingThrow = null;
+                throw e;
               }
               return { value: undefined, done: true };
             },
@@ -2286,15 +2307,16 @@ export function buildImports(
  *  (Chrome 130+, Firefox 135+), falling back to the JS polyfill.
  *  Uses importedStringConstants to provide string literals as globals. */
 export async function instantiateWasm(
-  binary: BufferSource,
+  binary: ArrayBuffer | ArrayBufferView,
   env: Record<string, Function>,
   stringConstants?: Record<string, WebAssembly.Global>,
 ): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
   const sc = stringConstants ?? {};
+  const bytes = binary as BufferSource;
   if (JS_STRINGS_NATIVE_BUILTIN) {
     try {
       const { instance } = await (WebAssembly.instantiate as Function)(
-        binary,
+        bytes,
         { env, string_constants: sc },
         { builtins: ["js-string"], importedStringConstants: "string_constants" },
       );
@@ -2303,12 +2325,54 @@ export async function instantiateWasm(
       // Fall through to the JS polyfill path.
     }
   }
-  const { instance } = await WebAssembly.instantiate(binary, {
+  const { instance } = await WebAssembly.instantiate(bytes, {
     env,
     "wasm:js-string": jsString,
     string_constants: sc,
   } as WebAssembly.Imports);
   return { instance, nativeBuiltins: false };
+}
+
+/** Instantiate a precompiled Wasm module from a Response/URL using streaming compilation
+ *  when available, falling back to byte instantiation if needed.
+ *  Shared runtime helpers stay outside the module-specific payload. */
+export async function instantiateWasmStreaming(
+  source: Response | Promise<Response> | RequestInfo | URL,
+  env: Record<string, Function>,
+  stringConstants?: Record<string, WebAssembly.Global>,
+): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
+  const sc = stringConstants ?? {};
+  const response = source instanceof Response ? source : source instanceof Promise ? await source : await fetch(source);
+  const byteFallback = response.clone();
+
+  if (typeof WebAssembly.instantiateStreaming === "function") {
+    if (JS_STRINGS_NATIVE_BUILTIN) {
+      try {
+        const { instance } = await (WebAssembly.instantiateStreaming as Function)(
+          response,
+          { env, string_constants: sc },
+          { builtins: ["js-string"], importedStringConstants: "string_constants" },
+        );
+        return { instance, nativeBuiltins: true };
+      } catch {
+        // Fall back to clone and try non-streaming below.
+      }
+    } else {
+      try {
+        const { instance } = await WebAssembly.instantiateStreaming(response, {
+          env,
+          "wasm:js-string": jsString,
+          string_constants: sc,
+        } as WebAssembly.Imports);
+        return { instance, nativeBuiltins: false };
+      } catch {
+        // Fall back to byte instantiation below.
+      }
+    }
+  }
+
+  const bytes = new Uint8Array(await byteFallback.arrayBuffer());
+  return instantiateWasm(bytes, env, sc);
 }
 
 /** Compile TypeScript source and instantiate the Wasm module. */

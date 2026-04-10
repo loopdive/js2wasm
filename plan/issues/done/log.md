@@ -1,3 +1,8 @@
+---
+title: "Completion Log"
+status: done
+sprint: Session
+---
 # Completion Log
 
 
@@ -499,3 +504,9 @@
 | 849 | 2026-03-31 | Mapped arguments object sync with named parameters (200 FAIL restored) | Sprint-31  |
 
 | 920 | 2026-04-04 | RegExp regression recovery — disable compiler cache, pre-filter proposals (17,822 pass, 41.3%) | Sprint-36 |
+| 985 | 2026-04-06 | Follow-up to #931: source-anchored locations for compiler catch paths | Sprint-39 |
+| 989 | 2026-04-07 | Enrich invalid Wasm binary CEs with byte offset, WAT slice, and source-mapped location | Sprint-39 |
+| 873 | 2026-03-29 | Design and land the ff-only integrated-branch merge protocol | Sprint-30 |
+| 943 | 2026-04-04 | Test262 runner instability investigation resolved into deterministic compiler + narrower runner follow-ups | Sprint-37 |
+| 882 | 2026-04-09 | Test262 runner: sharded parallel execution with merged reports | Sprint-40 |
+| 884 | 2026-04-09 | CI: GitHub Actions test262 on every PR | Sprint-40 |

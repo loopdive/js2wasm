@@ -539,6 +539,18 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .t262-file.t262-file-pass {
+        color: #c8c8d0;
+      }
+      .t262-file.t262-file-fail {
+        color: #f44336;
+      }
+      .t262-file.t262-file-ce {
+        color: #ff9800;
+      }
+      .t262-file.t262-file-skip {
+        color: #666;
+      }
       .t262-file:hover {
         color: #ddd;
         background: #1a1a2e;
@@ -678,6 +690,7 @@
         vertical-align: middle;
       }
       .t262-cat-bar-fill {
+        display: block;
         height: 100%;
         border-radius: 2px;
       }
@@ -689,10 +702,11 @@
       }
       .t262-file-status {
         display: inline-block;
-        width: 12px;
-        margin-right: 4px;
+        width: 20px;
+        margin-right: 8px;
         text-align: center;
-        font-size: 10px;
+        font-size: 17px;
+        line-height: 1;
       }
       .t262-status-pass {
         color: #4caf50;
@@ -705,6 +719,30 @@
       }
       .t262-status-skip {
         color: #666;
+      }
+      .monaco-editor .t262-inline-fail {
+        color: #f44336;
+        font-style: italic;
+        opacity: 0.95;
+      }
+      .monaco-editor .t262-inline-ce {
+        color: #ff9800;
+        font-style: italic;
+        opacity: 0.95;
+      }
+      .monaco-editor .t262-inline-skip {
+        color: #888;
+        font-style: italic;
+        opacity: 0.9;
+      }
+      .monaco-editor .t262-line-fail {
+        background: rgba(244, 67, 54, 0.08);
+      }
+      .monaco-editor .t262-line-ce {
+        background: rgba(255, 152, 0, 0.08);
+      }
+      .monaco-editor .t262-line-skip {
+        background: rgba(136, 136, 136, 0.08);
       }
 
       /* ─── Hex viewer section decorations ──────────────── */

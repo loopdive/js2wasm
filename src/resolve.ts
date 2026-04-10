@@ -1,12 +1,16 @@
 import ts from "typescript";
 import * as path from "path";
+
+function isBrowserLikeRuntime(): boolean {
+  return typeof window !== "undefined" || typeof (globalThis as any).WorkerGlobalScope !== "undefined";
+}
 // Lazy-load fs for browser compatibility.
 // Dynamic import avoids bundlers resolving it at build time and avoids
 // eval("require") warnings. The top-level await resolves before any
 // sync getFs() call since module evaluation completes before exports are used.
 let _fs: typeof import("fs") | null = null;
 try {
-  _fs = await import("node:fs");
+  _fs = isBrowserLikeRuntime() ? null : await import("node:fs");
 } catch {
   _fs = null;
 }
