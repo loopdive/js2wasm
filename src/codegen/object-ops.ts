@@ -20,6 +20,7 @@ import type { InnerResult } from "./shared.js";
 import { compileNativeStringLiteral } from "./string-ops.js";
 import { emitThrowString, resolveStructName, ensureLateImport, flushLateImportShifts } from "./expressions.js";
 import { emitGuardedRefCast } from "./type-coercion.js";
+import { compileArrowAsCallback } from "./closures.js";
 
 // ── Compile-time primitive type check for Object methods ─────────────
 
@@ -1087,9 +1088,14 @@ function emitExternDefinePropertyNoValue(
     fctx.body.push({ op: "local.set", index: propLocal });
   }
 
-  // Compile descriptor for side effects
-  const descType = compileExpression(ctx, fctx, descArg);
-  if (descType) fctx.body.push({ op: "drop" });
+  // For accessor descriptors (get/set), skip compiling descArg for side effects —
+  // we'll compile getter/setter directly as JS-callable callbacks below.
+  const isAccessorDesc = !!(getNode || setNode);
+  if (!isAccessorDesc) {
+    // Compile descriptor for side effects (non-accessor path only)
+    const descType = compileExpression(ctx, fctx, descArg);
+    if (descType) fctx.body.push({ op: "drop" });
+  }
 
   // For externref objects (or non-struct GC types like arrays), call __defineProperty_value
   // with no value (flags without bit 7). This ensures runtime validation of property descriptors.
@@ -1108,7 +1114,7 @@ function emitExternDefinePropertyNoValue(
 
     // Compile-time tracking
     if (propName && ts.isObjectLiteralExpression(descArg)) {
-      const isAccessor = !!(getNode || setNode);
+      const isAccessor = isAccessorDesc;
       const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
       const varName = ts.isIdentifier(objArg) ? objArg.text : undefined;
       if (varName) {
@@ -1117,6 +1123,59 @@ function emitExternDefinePropertyNoValue(
       }
     }
 
+    if (isAccessorDesc) {
+      // Accessor path: compile getter/setter as JS-callable callbacks
+      const runtimeFlags = computeRuntimeFlags(undefined, descEnumerable, descConfigurable, false);
+
+      fctx.body.push({ op: "local.get", index: objLocal });
+      if (objType.kind === "ref" || objType.kind === "ref_null") {
+        fctx.body.push({ op: "extern.convert_any" } as Instr);
+      } else if (objType.kind !== "externref") {
+        coerceType(ctx, fctx, objType, { kind: "externref" });
+      }
+      fctx.body.push({ op: "local.get", index: propLocal });
+
+      // Compile getter as JS-callable callback (or null)
+      // needsThis=true: getter receives 'this' as the object the property is accessed on
+      if (getNode) {
+        if (ts.isFunctionExpression(getNode) || ts.isArrowFunction(getNode)) {
+          compileArrowAsCallback(ctx, fctx, getNode, { needsThis: true });
+        } else {
+          // MethodDeclaration / GetAccessorDeclaration — cast for TS; runtime props are compatible
+          compileArrowAsCallback(ctx, fctx, getNode as unknown as ts.FunctionExpression, { needsThis: true });
+        }
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+
+      // Compile setter as JS-callable callback (or null)
+      // needsThis=true: setter receives 'this' as the object the property is assigned on
+      if (setNode) {
+        if (ts.isFunctionExpression(setNode) || ts.isArrowFunction(setNode)) {
+          compileArrowAsCallback(ctx, fctx, setNode, { needsThis: true });
+        } else {
+          compileArrowAsCallback(ctx, fctx, setNode as unknown as ts.FunctionExpression, { needsThis: true });
+        }
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+
+      fctx.body.push({ op: "f64.const", value: runtimeFlags });
+
+      const accFuncIdx = ensureLateImport(
+        ctx,
+        "__defineProperty_accessor",
+        [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (accFuncIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: accFuncIdx });
+      }
+      return { kind: "externref" };
+    }
+
+    // Non-accessor path: flag-only descriptor
     const runtimeFlags = computeRuntimeFlags(descWritable, descEnumerable, descConfigurable, false);
 
     fctx.body.push({ op: "local.get", index: objLocal });

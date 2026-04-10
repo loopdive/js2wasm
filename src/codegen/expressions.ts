@@ -145,6 +145,52 @@ export function emitThrowString(ctx: CodegenContext, fctx: FunctionContext, mess
  * Use this instead of bare `isVoidType(retType)` at all call-return-type
  * resolution points to prevent emitting `drop` on an empty stack.
  */
+/**
+ * Returns true if the given node is inside a strict-mode context:
+ * - A source file with a top-level "use strict" directive
+ * - A class body (always strict)
+ * - A function with a "use strict" directive
+ * Returns false for sloppy-mode functions (no directive).
+ * Note: we do NOT treat TypeScript modules as implicitly strict here —
+ * test262 noStrict tests run as sloppy-mode scripts wrapped in functions.
+ */
+function isNodeInStrictModeContext(node: ts.Node): boolean {
+  let current: ts.Node | undefined = node.parent;
+  while (current) {
+    if (ts.isSourceFile(current)) {
+      for (const stmt of current.statements) {
+        if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression)) {
+          if (stmt.expression.text === "use strict") return true;
+        } else {
+          break; // directives must be at the top
+        }
+      }
+      return false;
+    }
+    if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+      return true; // class bodies are always strict
+    }
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current)
+    ) {
+      if (current.body && ts.isBlock(current.body)) {
+        for (const stmt of current.body.statements) {
+          if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression)) {
+            if (stmt.expression.text === "use strict") return true;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
 function isEffectivelyVoidReturn(ctx: CodegenContext, retType: ts.Type, funcName?: string): boolean {
   if (isVoidType(retType)) return true;
   // For async functions, unwrap Promise<T> and check if T is void
@@ -1063,8 +1109,23 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
       const localDef = fctx.locals[selfIdx - fctx.params.length];
       return localDef?.type ?? { kind: "externref" };
     }
-    // In module/global scope (strict mode), `this` is undefined.
-    emitUndefined(ctx, fctx);
+    // Module/global scope: sloppy mode → globalThis (for noStrict test262 tests),
+    // strict mode → undefined (ES modules, "use strict" functions).
+    if (!isNodeInStrictModeContext(expr)) {
+      // Sloppy mode: 'this' is the global object (globalThis)
+      let funcIdx = ctx.funcMap.get("__get_globalThis");
+      if (funcIdx === undefined) {
+        const importsBefore = ctx.numImportFuncs;
+        const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+        addImport(ctx, "env", "__get_globalThis", { kind: "func", typeIdx });
+        shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+        funcIdx = ctx.funcMap.get("__get_globalThis")!;
+      }
+      fctx.body.push({ op: "call", funcIdx });
+    } else {
+      // Strict mode: 'this' is undefined
+      emitUndefined(ctx, fctx);
+    }
     return { kind: "externref" };
   }
 
@@ -1108,6 +1169,16 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
     if (fctx.pendingCallbackWritebacks && fctx.pendingCallbackWritebacks.length > 0) {
       fctx.body.push(...fctx.pendingCallbackWritebacks);
       fctx.pendingCallbackWritebacks = undefined;
+    }
+    // Emit persistent writebacks (#929): for getter/setter callbacks whose mutable
+    // captures may be updated by a deferred callback invocation (e.g. a getter
+    // defined via Object.defineProperty and later called by Object.defineProperties).
+    // These are re-emitted after every call so the outer locals stay up-to-date.
+    if (fctx.persistentCallbackWritebacks && fctx.persistentCallbackWritebacks.length > 0) {
+      // Shallow-copy each instruction so dead-elimination doesn't multi-remap
+      // the same object when it appears multiple times in the function body.
+      fctx.body.push(...fctx.persistentCallbackWritebacks.map((instr) => ({ ...instr })));
+      // Do NOT clear — re-emit after every subsequent call
     }
     // Async function/method calls: wrap return value in Promise.resolve() (#919).
     // Our compiler executes async functions synchronously, so the raw return is
@@ -3517,6 +3588,69 @@ function emitArrayDestructureFromLocal(
   }
 }
 
+/**
+ * Fallback property assignment using __extern_set(obj, key, val).
+ * Used when the target property is not a compile-time struct field, e.g.:
+ * - array.constructor = {} (constructor is not a Vec struct field)
+ * - wasmStruct.newProp = val (dynamic property addition)
+ */
+function compilePropertyAssignmentExternSet(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  value: ts.Expression,
+  fieldName: string,
+): InnerResult {
+  // Compile object expression
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+
+  // Convert to externref so __extern_set can handle it
+  if (objResult.kind === "ref" || objResult.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" });
+  } else if (objResult.kind !== "externref") {
+    return null; // unsupported object type (e.g. f64)
+  }
+
+  // Save object to temp local
+  const objLocal = allocLocal(fctx, `__pset_obj_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Compile value (coerce to externref for __extern_set)
+  const valResult = compileExpression(ctx, fctx, value, { kind: "externref" });
+  if (!valResult) return null;
+  if (valResult.kind !== "externref") {
+    coerceType(ctx, fctx, valResult, { kind: "externref" });
+  }
+
+  // Save value (assignment expression evaluates to the RHS value)
+  const valLocal = allocLocal(fctx, `__pset_val_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.tee", index: valLocal });
+
+  // Push args: obj, key-as-string, val
+  fctx.body.push({ op: "local.get", index: objLocal });
+  addStringConstantGlobal(ctx, fieldName);
+  const strIdx = ctx.stringGlobalMap.get(fieldName)!;
+  fctx.body.push({ op: "global.get", index: strIdx });
+  fctx.body.push({ op: "local.get", index: valLocal });
+
+  // Call __extern_set — returns void
+  const setFuncIdx = ensureLateImport(
+    ctx,
+    "__extern_set",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (setFuncIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx: setFuncIdx });
+  }
+
+  // Assignment expression returns the RHS value
+  fctx.body.push({ op: "local.get", index: valLocal });
+  return { kind: "externref" };
+}
+
 function compilePropertyAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -3630,10 +3764,18 @@ function compilePropertyAssignment(
   if (!typeName && target.expression.kind === ts.SyntaxKind.ThisKeyword) {
     typeName = resolveThisStructName(ctx, fctx);
   }
-  if (!typeName) return null;
+
+  // Compute field name early so it's available for fallback paths below
+  const fieldName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
+
+  if (!typeName) {
+    // No struct type found — fall back to __extern_set for dynamic property assignment.
+    // This handles cases like `wasmArray.constructor = {}` where the array type is not
+    // mapped to a user-defined struct but still needs dynamic property storage.
+    return compilePropertyAssignmentExternSet(ctx, fctx, target, value, fieldName);
+  }
 
   // Check for setter accessor on user-defined classes
-  const fieldName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
   const accessorKey = `${typeName}_${fieldName}`;
   if (ctx.classAccessorSet.has(accessorKey)) {
     const setterName = `${typeName}_set_${fieldName}`;
@@ -3672,7 +3814,11 @@ function compilePropertyAssignment(
   if (structTypeIdx === undefined || !fields) return null;
 
   const fieldIdx = fields.findIndex((f) => f.name === fieldName);
-  if (fieldIdx === -1) return null;
+  if (fieldIdx === -1) {
+    // Field not in struct — fall back to __extern_set for dynamic property assignment
+    // (e.g. a WasmGC struct having a property set that isn't a compile-time field).
+    return compilePropertyAssignmentExternSet(ctx, fctx, target, value, fieldName);
+  }
 
   const structSelfType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
   const structObjResult = compileExpression(ctx, fctx, target.expression, structSelfType);
@@ -11226,20 +11372,29 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     }
 
     // Handle wrapper type method calls: new Number(x).valueOf(), etc.
-    // Since wrapper constructors now return primitives, valueOf() is a no-op identity.
+    // Wrapper constructors return JS objects; valueOf() unboxes to the primitive.
     {
       const wrapperMethodName = propAccess.name.text;
       const recvSymName = receiverType.getSymbol()?.name;
       if (recvSymName === "Number" && wrapperMethodName === "valueOf") {
+        // Number object → f64 via __unbox_number (+value)
         compileExpression(ctx, fctx, propAccess.expression, { kind: "f64" });
         return { kind: "f64" };
       }
       if (recvSymName === "String" && wrapperMethodName === "valueOf") {
+        // String object → string primitive via __unbox_string
         const strType = ctx.nativeStrings ? nativeStringType(ctx) : ({ kind: "externref" } as ValType);
-        compileExpression(ctx, fctx, propAccess.expression, strType);
+        compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+        const unboxIdx = ensureLateImport(ctx, "__unbox_string", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        const finalUnboxIdx = ctx.funcMap.get("__unbox_string") ?? unboxIdx;
+        if (finalUnboxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: finalUnboxIdx });
+        }
         return strType;
       }
       if (recvSymName === "Boolean" && wrapperMethodName === "valueOf") {
+        // Boolean object → i32 (0/1) via __unbox_number (+value → 0 or 1)
         compileExpression(ctx, fctx, propAccess.expression, { kind: "i32" });
         return { kind: "i32" };
       }
@@ -16027,31 +16182,31 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     return { kind: "externref" };
   }
 
-  // Handle `new Number(x)`, `new String(x)`, `new Boolean(x)` — wrapper constructors
-  // Return externref so typeof returns "object" (wrapper semantics).
-  // Number/Boolean: box to externref via __box_number. String: already externref.
+  // Handle `new Number(x)`, `new String(x)`, `new Boolean(x)` — wrapper constructors.
+  // Use host imports so that typeof returns "object" and instanceof / Object.defineProperty work.
   if (ts.isIdentifier(expr.expression)) {
     const ctorName = expr.expression.text;
     if (ctorName === "Number" || ctorName === "String" || ctorName === "Boolean") {
       const args = expr.arguments ?? [];
 
       if (ctorName === "Number") {
-        // new Number(x) → compile x as f64, box to externref
+        // new Number(x) → compile x as f64, call __new_Number → Number object
         if (args.length >= 1) {
           compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
         } else {
           fctx.body.push({ op: "f64.const", value: 0 });
         }
-        addUnionImports(ctx);
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        const newNumIdx = ensureLateImport(ctx, "__new_Number", [{ kind: "f64" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        const finalNumIdx = ctx.funcMap.get("__new_Number") ?? newNumIdx;
+        if (finalNumIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: finalNumIdx });
         }
         return { kind: "externref" };
       }
 
       if (ctorName === "String") {
-        // new String(x) → compile x as externref string, return as externref
+        // new String(x) → compile x as externref, call __new_String → String object
         if (args.length >= 1) {
           compileExpression(ctx, fctx, args[0]!, { kind: "externref" });
         } else {
@@ -16060,20 +16215,27 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
             fctx.body.push({ op: "ref.null.extern" });
           }
         }
+        const newStrIdx = ensureLateImport(ctx, "__new_String", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        const finalStrIdx = ctx.funcMap.get("__new_String") ?? newStrIdx;
+        if (finalStrIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: finalStrIdx });
+        }
         return { kind: "externref" };
       }
 
       if (ctorName === "Boolean") {
-        // new Boolean(x) → compile x as f64, box to externref
+        // new Boolean(x) → compile x as f64 (truthy), call __new_Boolean → Boolean object
         if (args.length >= 1) {
           compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
         } else {
           fctx.body.push({ op: "f64.const", value: 0 });
         }
-        addUnionImports(ctx);
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        const newBoolIdx = ensureLateImport(ctx, "__new_Boolean", [{ kind: "f64" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        const finalBoolIdx = ctx.funcMap.get("__new_Boolean") ?? newBoolIdx;
+        if (finalBoolIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: finalBoolIdx });
         }
         return { kind: "externref" };
       }

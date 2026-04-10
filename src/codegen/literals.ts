@@ -34,7 +34,12 @@ import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../i
 import { compileStatement, bodyUsesArguments, emitArgumentsObject } from "./statements.js";
 import { compileExpression, getLine, getCol, VOID_RESULT } from "./shared.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
-import { resolveStructName, patchStructNewForAddedField } from "./expressions.js";
+import {
+  resolveStructName,
+  patchStructNewForAddedField,
+  ensureLateImport,
+  flushLateImportShifts,
+} from "./expressions.js";
 import { pushDefaultValue } from "./type-coercion.js";
 
 /**
@@ -101,6 +106,20 @@ export function compileObjectLiteral(
     const widenedProps = ctx.widenedTypeProperties.get(expr.parent.name.text);
     if (widenedProps && widenedProps.length > 0) {
       return compileWidenedEmptyObject(ctx, fctx, expr, widenedProps);
+    }
+  }
+
+  // Empty `{}` in non-variable-declaration context (e.g. RHS of assignment like
+  // `a.constructor = {}`) should be a real JS plain object, not a WasmGC struct.
+  // WasmGC structs with zero fields can't hold arbitrary properties and cause issues
+  // when passed to host APIs like Object.defineProperty.
+  // Note: `var obj = {}` (VariableDeclaration) goes through the normal struct path below.
+  if (expr.properties.length === 0 && !ts.isVariableDeclaration(expr.parent)) {
+    const funcIdx = ensureLateImport(ctx, "__new_plain_object", [], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "externref" };
     }
   }
 
