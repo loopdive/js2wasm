@@ -284,4 +284,6 @@ window.__DASHBOARD_DATA__ = ${JSON.stringify({ issues, runs, sprints })};
 writeFileSync(join(import.meta.dirname, "data.js"), embedded);
 console.log("Wrote dashboard/data.js (embedded mode)");
 
+// Graph files live in public/ (served by Vite + included in pages-dist via build)
+
 console.log("Done. Open dashboard/index.html in a browser.");
