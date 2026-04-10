@@ -4,21 +4,15 @@
 import ts from "typescript";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { coerceType, compileExpression, valTypesMatch } from "../expressions.js";
+import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { reportError } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import {
-  addStringImports,
-  ensureAnyHelpers,
-  ensureI32Condition,
-  ensureNativeStringHelpers,
-  isAnyValue,
-  resolveWasmType,
-} from "../index.js";
+import { addStringImports, ensureI32Condition, ensureNativeStringHelpers, resolveWasmType } from "../index.js";
+import { isAnyValue, ensureAnyHelpers } from "../shared.js";
 import { collectInstrs, adjustRethrowDepth } from "./shared.js";
-import { compileStatement } from "../statements.js";
+import { compileStatement } from "../shared.js";
 
 function canTailCall(ctx: CodegenContext, fctx: FunctionContext, calleeIdx: number): boolean {
   let calleeTypeIdx: number | undefined;

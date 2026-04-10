@@ -17,24 +17,105 @@ import { resolveWasmType, addUnionImports } from "./index.js";
 import { isStringType, isExternalDeclaredClass, isIteratorResultType } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef } from "../ir/types.js";
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
-import { compileExpression, valTypesMatch, getLine, getCol, resolveThisStructName } from "./shared.js";
 import {
   coerceType,
+  compileExpression,
   compileStringLiteral,
   compileSuperPropertyAccess,
   compileSuperElementAccess,
-  emitLazyProtoGet,
-  resolveStructName,
-  isGeneratorIteratorResultLike,
-  getIteratorResultValueType,
-  findExternInfoForMember,
-  patchStructNewForAddedField,
   ensureLateImport,
   flushLateImportShifts,
+  getCol,
+  getLine,
   resolveComputedKeyExpression,
-  getWellKnownSymbolId,
-} from "./expressions.js";
+  resolveThisStructName,
+  valTypesMatch,
+} from "./shared.js";
+import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
+import { patchStructNewForAddedField } from "./expressions/late-imports.js";
+// Well-known Symbol IDs (inlined from literals.ts to avoid circular deps)
+const WELL_KNOWN_SYMBOLS: Record<string, number> = {
+  iterator: 1,
+  hasInstance: 2,
+  toPrimitive: 3,
+  toStringTag: 4,
+  species: 5,
+  isConcatSpreadable: 6,
+  match: 7,
+  replace: 8,
+  search: 9,
+  split: 10,
+  unscopables: 11,
+  asyncIterator: 12,
+};
+function getWellKnownSymbolId(name: string): number | undefined {
+  return WELL_KNOWN_SYMBOLS[name];
+}
 import { emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./array-methods.js";
+
+// ── Struct name resolution (moved from expressions/misc.ts) ──────────
+
+/**
+ * Resolve the struct name for a TypeScript type by consulting structMap,
+ * classExprNameMap, and anonTypeMap.
+ */
+export function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undefined {
+  const name = tsType.symbol?.name;
+  if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
+    return name;
+  }
+  // Check class expression name mapping (e.g. "__class" → "Point")
+  if (name) {
+    const mapped = ctx.classExprNameMap.get(name);
+    if (mapped && ctx.structMap.has(mapped)) {
+      return mapped;
+    }
+  }
+  return ctx.anonTypeMap.get(tsType);
+}
+
+/**
+ * Check if a type looks like an IteratorResult (has .value and .done properties)
+ * even if the type checker doesn't resolve it as IteratorResult directly.
+ * This handles cases where the type is a union (IteratorYieldResult | IteratorReturnResult).
+ */
+export function isGeneratorIteratorResultLike(ctx: CodegenContext, type: ts.Type, propName: string): boolean {
+  if (propName !== "value" && propName !== "done") return false;
+  // Check if the type has both .value and .done properties (IteratorResult shape)
+  const props = type.getProperties();
+  const hasValue = props.some((p) => p.name === "value");
+  const hasDone = props.some((p) => p.name === "done");
+  if (hasValue && hasDone) return true;
+  // Check union types (IteratorResult = IteratorYieldResult | IteratorReturnResult)
+  if (type.isUnion()) {
+    for (const t of type.types) {
+      if (isIteratorResultType(t)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get the value type T from IteratorResult<T>.
+ * Returns the ValType for the value, or null if not determinable.
+ */
+export function getIteratorResultValueType(ctx: CodegenContext, type: ts.Type): ValType | null {
+  // Try to get T from the type arguments
+  const typeArgs = ctx.checker.getTypeArguments(type as ts.TypeReference);
+  if (typeArgs.length > 0) {
+    return resolveWasmType(ctx, typeArgs[0]!);
+  }
+  // For unions, check each member
+  if (type.isUnion()) {
+    for (const t of type.types) {
+      const args = ctx.checker.getTypeArguments(t as ts.TypeReference);
+      if (args.length > 0) {
+        return resolveWasmType(ctx, args[0]!);
+      }
+    }
+  }
+  return null;
+}
 
 // ── Dummy struct helpers ────────────────────────────────────────────
 

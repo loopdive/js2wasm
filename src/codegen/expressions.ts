@@ -16,7 +16,7 @@ import type { Instr, ValType } from "../ir/types.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { getLocalType } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { ensureAnyHelpers, isAnyValue } from "./index.js";
+import { ensureAnyHelpers, isAnyValue } from "./shared.js";
 import type { InnerResult } from "./shared.js";
 import {
   getCol,

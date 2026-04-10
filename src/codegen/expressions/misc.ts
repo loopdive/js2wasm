@@ -24,8 +24,6 @@ import {
   getOrRegisterVecType,
   isAnyValue,
   localGlobalIdx,
-  nativeStringType,
-  resolveWasmType,
 } from "../index.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
 import { pushBody } from "../context/bodies.js";
@@ -44,7 +42,13 @@ import {
   emitNullGuardedStructGet,
   isProvablyNonNull,
   typeErrorThrowInstrs,
+  resolveStructName,
+  isGeneratorIteratorResultLike,
+  getIteratorResultValueType,
 } from "../property-access.js";
+
+// Re-export for backward compatibility — these helpers now live in property-access.ts.
+export { resolveStructName, isGeneratorIteratorResultLike, getIteratorResultValueType };
 
 function compileConditionalExpression(
   ctx: CodegenContext,
@@ -158,73 +162,14 @@ function compileConditionalExpression(
  * Optional property access: obj?.prop
  * Compiles obj, checks if null → returns null, else accesses property normally.
  */
-// ── Property access (extracted to ./property-access.ts) ──────────────
-
-export function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undefined {
-  const name = tsType.symbol?.name;
-  if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
-    return name;
-  }
-  // Check class expression name mapping (e.g. "__class" → "Point")
-  if (name) {
-    const mapped = ctx.classExprNameMap.get(name);
-    if (mapped && ctx.structMap.has(mapped)) {
-      return mapped;
-    }
-  }
-  return ctx.anonTypeMap.get(tsType);
-}
-
 // Object/array/tuple/symbol literal compilation has been extracted to ./literals.ts (#688 step 7).
 
 // Object.defineProperty flag helpers, compileObjectDefineProperty,
 // compileObjectKeysOrValues, and compilePropertyIntrospection have been
 // extracted to ./object-ops.ts (#688 step 6).
 
-// ── Generator helper functions ────────────────────────────────────────
-
-/**
- * Check if a type looks like an IteratorResult (has .value and .done properties)
- * even if the type checker doesn't resolve it as IteratorResult directly.
- * This handles cases where the type is a union (IteratorYieldResult | IteratorReturnResult).
- */
-export function isGeneratorIteratorResultLike(ctx: CodegenContext, type: ts.Type, propName: string): boolean {
-  if (propName !== "value" && propName !== "done") return false;
-  // Check if the type has both .value and .done properties (IteratorResult shape)
-  const props = type.getProperties();
-  const hasValue = props.some((p) => p.name === "value");
-  const hasDone = props.some((p) => p.name === "done");
-  if (hasValue && hasDone) return true;
-  // Check union types (IteratorResult = IteratorYieldResult | IteratorReturnResult)
-  if (type.isUnion()) {
-    for (const t of type.types) {
-      if (isIteratorResultType(t)) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Get the value type T from IteratorResult<T>.
- * Returns the ValType for the value, or null if not determinable.
- */
-export function getIteratorResultValueType(ctx: CodegenContext, type: ts.Type): ValType | null {
-  // Try to get T from the type arguments
-  const typeArgs = ctx.checker.getTypeArguments(type as ts.TypeReference);
-  if (typeArgs.length > 0) {
-    return resolveWasmType(ctx, typeArgs[0]!);
-  }
-  // For unions, check each member
-  if (type.isUnion()) {
-    for (const t of type.types) {
-      const args = ctx.checker.getTypeArguments(t as ts.TypeReference);
-      if (args.length > 0) {
-        return resolveWasmType(ctx, args[0]!);
-      }
-    }
-  }
-  return null;
-}
+// resolveStructName, isGeneratorIteratorResultLike, getIteratorResultValueType have been
+// moved to property-access.ts (re-exported above for backward compatibility).
 
 // ── Generator yield expression ────────────────────────────────────────
 

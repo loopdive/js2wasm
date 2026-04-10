@@ -53,7 +53,8 @@ import { reportError, reportErrorNoNode } from "../context/errors.js";
 import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "../context/types.js";
 import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
 import type { InnerResult } from "../shared.js";
-import { compileStatement, emitTdzCheck, hoistFunctionDeclarations } from "../statements.js";
+import { compileStatement, hoistFunctionDeclarations } from "../shared.js";
+import { emitTdzCheck } from "../statements/tdz.js";
 import {
   compileNativeStringMethodCall,
   compileStringLiteral,
@@ -96,7 +97,11 @@ import {
   emitThrowString,
 } from "./helpers.js";
 import { compileSpreadCallArgs, findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
-import { resolveEnclosingClassName as resolveEnclosingClassNameImpl } from "../shared.js";
+import {
+  registerResolveEnclosingClassName,
+  registerCompileSuperPropertyAccess,
+  registerCompileSuperElementAccess,
+} from "../shared.js";
 import { ensureDateStruct, ensureDateDaysFromCivilHelper } from "./builtins.js";
 
 function resolveEnclosingClassName(fctx: FunctionContext): string | undefined {
@@ -2604,3 +2609,9 @@ export {
   compileClassExpression,
   resolveEnclosingClassName,
 };
+
+// Register the resolveEnclosingClassName delegate so closures.ts (and others)
+// can call it via shared.ts without creating an import cycle.
+registerResolveEnclosingClassName(resolveEnclosingClassName);
+registerCompileSuperPropertyAccess(compileSuperPropertyAccess);
+registerCompileSuperElementAccess(compileSuperElementAccess);
