@@ -120,7 +120,7 @@ jobs:
           latest_md=$(find benchmarks/results -maxdepth 1 -type f -name '20??-??-??T*.md' | sort | tail -n 1)
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
+          git add -f \
             "$latest_json" \
             "$latest_md" \
             benchmarks/results/latest.json \
