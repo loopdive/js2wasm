@@ -113,27 +113,6 @@ jobs:
             playground/public/benchmarks/results/playground-benchmark-sidebar.json
           if-no-files-found: warn
 
-      - name: Commit refreshed benchmark baseline
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.actor != 'github-actions[bot]'
-        run: |
-          latest_json=$(find benchmarks/results -maxdepth 1 -type f -name '20??-??-??T*.json' | sort | tail -n 1)
-          latest_md=$(find benchmarks/results -maxdepth 1 -type f -name '20??-??-??T*.md' | sort | tail -n 1)
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f \
-            "$latest_json" \
-            "$latest_md" \
-            benchmarks/results/latest.json \
-            benchmarks/results/latest.md \
-            benchmarks/results/history.json \
-            benchmarks/results/playground-benchmark-sidebar.json \
-            benchmarks/results/size-benchmarks.json \
-            public/benchmarks/results/playground-benchmark-sidebar.json \
-            public/benchmarks/results/size-benchmarks.json \
-            playground/public/benchmarks/results/playground-benchmark-sidebar.json
-          if git diff --cached --quiet; then
-            echo "No benchmark changes to commit."
-            exit 0
-          fi
-          git commit -m "chore(benchmarks): refresh published performance baselines"
-          git push
+      # Benchmark results are NOT committed from CI — they're too noisy on shared
+      # runners. Landing page data comes from local runs only (via pre-push hook).
+      # CI only uses the numbers above for regression detection.
