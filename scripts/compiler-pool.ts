@@ -167,6 +167,7 @@ export class CompilerPool {
     opts: {
       isNegative?: boolean;
       isRuntimeNegative?: boolean;
+      expectedErrorType?: string;
       wasmPath?: string;
       metaPath?: string;
       label?: string;
@@ -179,6 +180,7 @@ export class CompilerPool {
         execute: true,
         isNegative: opts.isNegative || false,
         isRuntimeNegative: opts.isRuntimeNegative || false,
+        expectedErrorType: opts.expectedErrorType,
         wasmPath: opts.wasmPath,
         metaPath: opts.metaPath,
       },
