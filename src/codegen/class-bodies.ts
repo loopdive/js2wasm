@@ -303,6 +303,19 @@ export function collectClassDeclaration(
       for (const param of member.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
+        // For array destructuring params: widen to externref only for untyped/any[] params
+        // so that JS callers can pass arbitrary iterables (#1016).
+        // Typed params (e.g. number[]) keep their vec type for the fast struct path.
+        if (ts.isArrayBindingPattern(param.name)) {
+          const extVecIdx = ctx.vecTypeMap.get("externref");
+          const isExtVec =
+            (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
+            extVecIdx !== undefined &&
+            (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
+          if (wasmType.kind === "externref" || isExtVec || !param.type) {
+            wasmType = { kind: "externref" };
+          }
+        }
         // Widen ref to ref_null for params with defaults (caller passes ref.null as sentinel)
         if (param.initializer && wasmType.kind === "ref") {
           wasmType = { kind: "ref_null", typeIdx: (wasmType as any).typeIdx };
@@ -927,6 +940,19 @@ export function compileClassBodies(
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
+        // For array destructuring params: widen to externref only for untyped/any[] params
+        // so that JS callers can pass arbitrary iterables (#1016). Must match collection phase.
+        // Typed params (e.g. number[]) keep their vec type for the fast struct path.
+        if (ts.isArrayBindingPattern(param.name)) {
+          const extVecIdx = ctx.vecTypeMap.get("externref");
+          const isExtVec =
+            (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
+            extVecIdx !== undefined &&
+            (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
+          if (wasmType.kind === "externref" || isExtVec || !param.type) {
+            wasmType = { kind: "externref" };
+          }
+        }
         // Widen ref to ref_null for params with defaults or optional params
         // (caller passes ref.null as sentinel). Must match collection phase (#702)
         if ((param.initializer || param.questionToken) && wasmType.kind === "ref") {
