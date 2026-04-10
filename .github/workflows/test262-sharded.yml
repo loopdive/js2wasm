@@ -241,5 +241,10 @@ jobs:
           fi
           PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
           TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
+          # Sanity check: reject corrupt reports (e.g. double-appended JSONL producing 11 pass)
+          if [ "$PASS" -lt 1000 ] || [ "$TOTAL" -lt 40000 ]; then
+            echo "ABORT: report looks corrupt (pass=$PASS total=$TOTAL). Not committing."
+            exit 0
+          fi
           git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass"
           git push
