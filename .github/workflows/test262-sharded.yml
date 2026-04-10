@@ -226,17 +226,25 @@ jobs:
           cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-current.json
           cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-report.json
           cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
+          # Also update public/ so the landing page dev server picks up fresh data
+          mkdir -p public/benchmarks/results
+          cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
 
       - name: Commit refreshed baseline
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl
+          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json
           if git diff --cached --quiet; then
             echo "No baseline changes to commit."
             exit 0
           fi
           PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
           TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
+          # Sanity check: reject corrupt reports (e.g. double-appended JSONL producing 11 pass)
+          if [ "$PASS" -lt 1000 ] || [ "$TOTAL" -lt 40000 ]; then
+            echo "ABORT: report looks corrupt (pass=$PASS total=$TOTAL). Not committing."
+            exit 0
+          fi
           git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass"
           git push

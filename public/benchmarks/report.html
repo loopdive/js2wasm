@@ -308,13 +308,13 @@
         flex-shrink: 0;
       }
       .bench-section {
-        width: calc(100vw - 4rem);
-        margin-left: calc(50% - 50vw + 2rem);
-        margin-right: calc(50% - 50vw + 2rem);
+        max-width: 1200px;
+        margin: 0 auto;
       }
       .bench-snippet-grid {
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         align-items: flex-start;
         gap: 1rem;
         margin-top: 1rem;
@@ -1916,7 +1916,7 @@
             runtimeChart.setAttribute("mode", "benchmark-runtime");
             runtimeChart.setAttribute("benchmark", name);
             runtimeChart.setAttribute("title", "Runtime Speed");
-            runtimeChart.setAttribute("legend", "Wasm runtime speed relative to JS (larger is better)");
+            runtimeChart.setAttribute("legend", "Wasm runtime speed relative to JS (larger is better, whisker = ±1σ)");
             card.appendChild(runtimeChart);
             card.appendChild(el("pre", { className: "report-code-block" }, snippet));
             snippetGrid.appendChild(card);
