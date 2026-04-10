@@ -1049,10 +1049,11 @@ function compileForOfAssignDestructuring(
       const targetType = getLocalType(fctx, targetLocal);
       fctx.body.push({ op: "local.get", index: elemLocal });
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+      const effectiveStackType = targetType && !valTypesMatch(fieldType, targetType) ? targetType : fieldType;
       if (targetType && !valTypesMatch(fieldType, targetType)) {
         coerceType(ctx, fctx, fieldType, targetType);
       }
-      emitCoercedLocalSet(ctx, fctx, targetLocal, fieldType);
+      emitCoercedLocalSet(ctx, fctx, targetLocal, effectiveStackType);
       if (targetSyncGlobalIdx !== undefined) {
         fctx.body.push({ op: "local.get", index: targetLocal });
         fctx.body.push({ op: "global.set", index: targetSyncGlobalIdx });
