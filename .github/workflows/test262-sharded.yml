@@ -246,5 +246,6 @@ jobs:
             echo "ABORT: report looks corrupt (pass=$PASS total=$TOTAL). Not committing."
             exit 0
           fi
-          git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass"
+          git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]"
+          git pull --rebase origin main || true
           git push
