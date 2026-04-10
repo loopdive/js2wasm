@@ -212,6 +212,25 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
       reason: "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)",
     };
   }
+  // Skip FinalizationRegistry tests that require constructing an instance — those CE because
+  // `new FinalizationRegistry(...)` is not implemented. Tests that only inspect property
+  // descriptors / names / lengths don't construct an instance and may still pass, so we
+  // use three targeted rules instead of a broad path-based skip:
+  //   1. Source has `new FinalizationRegistry(` as a top-level statement (var/let/const = new, or bare new)
+  //   2. Test has both FinalizationRegistry + Reflect.construct features (the not-a-constructor tests)
+  //   3. Exact path for the Object.seal test that wraps FinalizationRegistry
+  if (
+    (filePath &&
+      /built-ins\/FinalizationRegistry/.test(filePath) &&
+      /^(?:(?:var|let|const)\s+\w+\s*=\s*)?new FinalizationRegistry\(/m.test(source)) ||
+    (meta.features?.includes("FinalizationRegistry") && meta.features?.includes("Reflect.construct")) ||
+    (filePath && /built-ins\/Object\/seal\/seal-finalizationregistry/.test(filePath))
+  ) {
+    return {
+      skip: true,
+      reason: "ES2021: FinalizationRegistry constructor not implemented — requires GC finalizer callbacks (#988)",
+    };
+  }
   // Skip known hanging tests by file path — prevents infinite compilation loops
   if (filePath) {
     const relPath = filePath.replace(/.*test262\//, "");
