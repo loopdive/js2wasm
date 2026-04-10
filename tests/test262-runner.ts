@@ -212,6 +212,15 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
       reason: "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)",
     };
   }
+  if (
+    (filePath && /built-ins\/FinalizationRegistry/.test(filePath)) ||
+    meta.features?.includes("FinalizationRegistry")
+  ) {
+    return {
+      skip: true,
+      reason: "ES2021: FinalizationRegistry requires GC finalizer callbacks, not implementable in Wasm (#988)",
+    };
+  }
   // Skip known hanging tests by file path — prevents infinite compilation loops
   if (filePath) {
     const relPath = filePath.replace(/.*test262\//, "");
