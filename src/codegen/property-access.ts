@@ -1114,7 +1114,8 @@ export function compilePropertyAccess(
             ? fctx.params[localIdx]!.type
             : fctx.locals[localIdx - fctx.params.length]?.type;
         if (localType?.kind === "externref") {
-          const funcIdx = ctx.funcMap.get("__extern_length");
+          const funcIdx = ensureLateImport(ctx, "__extern_length", [{ kind: "externref" }], [{ kind: "f64" }]);
+          flushLateImportShifts(ctx, fctx);
           if (funcIdx !== undefined) {
             fctx.body.push({ op: "local.get", index: localIdx });
             fctx.body.push({ op: "call", funcIdx });
@@ -1144,9 +1145,21 @@ export function compilePropertyAccess(
       const typeDef = ctx.mod.types[vecTypeIdx];
       if (typeDef?.kind === "struct" && typeDef.fields[1]?.name === "data") {
         const exprResult = compileExpression(ctx, fctx, expr.expression);
+        // If the compiled expression returned externref (e.g. `x as any[]`), the TS type
+        // annotation doesn't guarantee the runtime struct type. Use __extern_length which
+        // safely dispatches by doing ref.test checks, avoiding an unguarded ref.cast_null
+        // that the stack-balance pass would otherwise insert and that traps at runtime.
+        if (exprResult?.kind === "externref") {
+          const funcIdx = ensureLateImport(ctx, "__extern_length", [{ kind: "externref" }], [{ kind: "f64" }]);
+          flushLateImportShifts(ctx, fctx);
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx });
+            return { kind: "f64" };
+          }
+        }
         // Guard: the TS type might not match the runtime struct type.
         // If the compiled expression returned a different ref type, use ref.test
-        // to verify before struct.get, falling back to __extern_length or 0.
+        // to verify before struct.get, falling back to 0.
         if (
           exprResult &&
           (exprResult.kind === "ref" || exprResult.kind === "ref_null") &&
