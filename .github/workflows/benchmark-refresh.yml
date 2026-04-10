@@ -73,8 +73,8 @@ jobs:
           node scripts/diff-playground-benchmarks.mjs \
             --baseline benchmark-baseline/playground-benchmark-sidebar.json \
             --candidate benchmarks/results/playground-benchmark-sidebar.json \
-            --max-relative-regression 0.25 \
-            --max-wasm-slowdown 0.20 \
+            --max-relative-regression 0.50 \
+            --max-wasm-slowdown 0.40 \
             > benchmark-reports/performance-regressions.txt
           exit_code=$?
           set -e

@@ -81,19 +81,32 @@ async function measureBenchmark(entryPath, exportName) {
     throw new Error(`Missing JS export ${exportName} in ${entryPath}`);
   }
 
-  for (let i = 0; i < 50; i++) {
+  // Generous warmup — let JIT and caches settle
+  for (let i = 0; i < 200; i++) {
     wasmFn();
     jsFn();
   }
 
   const iters = calibrate(wasmFn);
-  const wasmMs = timeIt(wasmFn, iters);
-  const jsMs = timeIt(jsFn, iters);
+
+  // Multiple passes — take the median to reduce CI runner noise
+  const rounds = 7;
+  const wasmSamples = [];
+  const jsSamples = [];
+  for (let r = 0; r < rounds; r++) {
+    // Interleave wasm/js to spread thermal/load effects evenly
+    wasmSamples.push((timeIt(wasmFn, iters) / iters) * 1000);
+    jsSamples.push((timeIt(jsFn, iters) / iters) * 1000);
+  }
+  wasmSamples.sort((a, b) => a - b);
+  jsSamples.sort((a, b) => a - b);
+  const wasmUs = wasmSamples[Math.floor(rounds / 2)];
+  const jsUs = jsSamples[Math.floor(rounds / 2)];
 
   return {
     path: entryPath,
-    wasmUs: (wasmMs / iters) * 1000,
-    jsUs: (jsMs / iters) * 1000,
+    wasmUs,
+    jsUs,
   };
 }
 
