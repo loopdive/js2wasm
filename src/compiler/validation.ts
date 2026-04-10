@@ -444,6 +444,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       if (isInvalidAssignmentTarget(node.left, /* allowDestructuring */ true)) {
         addError(node, "Invalid left-hand side in assignment");
       }
+      // When LHS is an array or object literal, validate it as an AssignmentPattern
+      const lhs = node.left;
+      if (ts.isArrayLiteralExpression(lhs)) {
+        validateArrayAssignmentPattern(lhs, isStrictMode(node));
+      } else if (ts.isObjectLiteralExpression(lhs)) {
+        validateObjectAssignmentPattern(lhs, isStrictMode(node));
+      }
     }
 
     // Check compound assignment to arguments/eval in strict mode
@@ -484,8 +491,15 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
 
     // Check for-in/for-of with non-simple assignment target as LHS
     if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && !ts.isVariableDeclarationList(node.initializer)) {
-      if (isInvalidAssignmentTarget(node.initializer as ts.Expression, /* allowDestructuring */ true)) {
+      const lhs = node.initializer as ts.Expression;
+      if (isInvalidAssignmentTarget(lhs, /* allowDestructuring */ true)) {
         addError(node.initializer, "Invalid left-hand side in for-in/for-of");
+      }
+      // When LHS is an array or object literal, validate it as AssignmentPattern
+      if (ts.isArrayLiteralExpression(lhs)) {
+        validateArrayAssignmentPattern(lhs, isStrictMode(node));
+      } else if (ts.isObjectLiteralExpression(lhs)) {
+        validateObjectAssignmentPattern(lhs, isStrictMode(node));
       }
     }
 
@@ -498,6 +512,19 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     }
     if (ts.isArrowFunction(node) && node.parameters) {
       checkDuplicateParams(node.parameters, node);
+      // ── Arrow function ASI restriction ────────────────────────────
+      // ES spec: ArrowFunction : ArrowParameters [no LineTerminator here] => ConciseBody
+      // If there is a LineTerminator between parameters and =>, it is a SyntaxError.
+      // TypeScript's parser handles this but may still produce an ArrowFunction node.
+      // Check by looking at the source text between end of params and the => token.
+      if (node.equalsGreaterThanToken) {
+        const paramsEnd = node.parameters.end;
+        const arrowStart = node.equalsGreaterThanToken.getStart(sourceFile);
+        const textBetween = sourceFile.text.substring(paramsEnd, arrowStart);
+        if (/[\r\n\u2028\u2029]/.test(textBetween)) {
+          addError(node, "Arrow function parameters and '=>' must be on the same line");
+        }
+      }
     }
     if (ts.isMethodDeclaration(node) && node.parameters) {
       checkDuplicateParams(node.parameters, node);
@@ -654,18 +681,24 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       const init = node.initializer;
       if (ts.isVariableDeclarationList(init)) {
         const isLexical = (init.flags & ts.NodeFlags.Let) !== 0 || (init.flags & ts.NodeFlags.Const) !== 0;
-        for (const decl of init.declarations) {
-          if (decl.initializer) {
-            const hasDestructuring = !ts.isIdentifier(decl.name);
-            if (isLexical || isStrictMode(node) || hasDestructuring) {
-              addError(node, "for-in loop head declarations may not have initializers");
-              break;
+        // ES spec: 'using' declarations are not allowed in for-in (only for-of)
+        const isUsing = (init.flags & ts.NodeFlags.Using) !== 0;
+        if (isUsing) {
+          addError(node, "'using' declarations are not allowed in for-in loops");
+        } else {
+          for (const decl of init.declarations) {
+            if (decl.initializer) {
+              const hasDestructuring = !ts.isIdentifier(decl.name);
+              if (isLexical || isStrictMode(node) || hasDestructuring) {
+                addError(node, "for-in loop head declarations may not have initializers");
+                break;
+              }
             }
           }
-        }
-        // for-in/for-of with multiple lexical bindings is always a SyntaxError
-        if (isLexical && init.declarations.length > 1) {
-          addError(node, "Only a single declaration is allowed in a for-in statement");
+          // for-in/for-of with multiple lexical bindings is always a SyntaxError
+          if (isLexical && init.declarations.length > 1) {
+            addError(node, "Only a single declaration is allowed in a for-in statement");
+          }
         }
       }
     }
@@ -677,6 +710,7 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       const init = node.initializer;
       if (ts.isVariableDeclarationList(init)) {
         const isLexical = (init.flags & ts.NodeFlags.Let) !== 0 || (init.flags & ts.NodeFlags.Const) !== 0;
+        const isUsing = (init.flags & ts.NodeFlags.Using) !== 0;
         // Both var and lexical: no initializers allowed
         for (const decl of init.declarations) {
           if (decl.initializer) {
@@ -686,6 +720,39 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         }
         if (isLexical && init.declarations.length > 1) {
           addError(node, "Only a single declaration is allowed in a for-of statement");
+        }
+        // ES spec: BoundNames of ForDeclaration may not contain duplicates (for-of const)
+        if (isLexical) {
+          const seen = new Set<string>();
+          const dupes = new Set<string>();
+          for (const decl of init.declarations) {
+            collectBindingNamesWithDuplicateCheck(decl.name, seen, dupes);
+          }
+          for (const name of dupes) {
+            addError(node, `Duplicate binding '${name}' in for-of declaration`);
+          }
+        }
+        // ES spec: BoundNames of using ForDeclaration may not contain "let"
+        if (isUsing) {
+          for (const decl of init.declarations) {
+            if (ts.isIdentifier(decl.name) && decl.name.text === "let") {
+              addError(decl.name, "Using declarations may not bind 'let'");
+            }
+          }
+          // ES spec: BoundNames of using must not conflict with body var declarations
+          const boundNames = new Set<string>();
+          for (const decl of init.declarations) {
+            if (ts.isIdentifier(decl.name)) boundNames.add(decl.name.text);
+          }
+          if (boundNames.size > 0 && ts.isBlock(node.statement)) {
+            collectVarDeclaredNamesInBlock(node.statement, boundNames);
+          }
+        }
+      }
+      // ES spec: `for (async of ...)` - `async` as LHS before `of` is a SyntaxError
+      if (!ts.isVariableDeclarationList(node.initializer) && ts.isIdentifier(node.initializer)) {
+        if (node.initializer.text === "async") {
+          addError(node.initializer, "'async' is not allowed as a left-hand side identifier in for-of");
         }
       }
     }
@@ -1054,6 +1121,14 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       checkDuplicatePrivateNames(node);
     }
 
+    // ── Private name `#constructor` is always forbidden ───────────────
+    // ES spec: ClassElementName : PrivateName
+    //   It is a Syntax Error if StringValue of PrivateName is "#constructor".
+    // This applies to fields, methods, getters, setters regardless of static.
+    if (ts.isPrivateIdentifier(node) && node.text === "#constructor") {
+      addError(node, "Private field '#constructor' is not allowed");
+    }
+
     // ── Regex literal validation ────────────────────────────────────
     // Validate regex literals using the native RegExp constructor.
     // This catches invalid flags, duplicate flags, invalid Unicode property
@@ -1244,6 +1319,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       checkDuplicateLexicalDeclarations(node);
     }
 
+    // ── Duplicate labels in class static blocks ────────────────────
+    // ES spec: ClassStaticBlockBody — It is a Syntax Error if
+    // ContainsDuplicateLabels of ClassStaticBlockStatementList is true.
+    if (ts.isClassStaticBlockDeclaration(node)) {
+      checkDuplicateLabelsInBlock(node.body);
+    }
+
     // ── break/continue outside valid context ──────────────────────────
     // TS catches these as semantic errors (1104, 1105) but we skip semantic
     // diagnostics in the test262 worker, so detect them here.
@@ -1332,6 +1414,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         if (afterText.startsWith(":")) {
           addError(node, "'await' is not allowed as a label identifier in this context");
         }
+      }
+      // ES spec: AwaitExpression is only valid in async functions or module top-level.
+      // In module context, TypeScript may produce AwaitExpression for `await 1` inside
+      // a regular (non-async) function. That's a SyntaxError per ES spec because the
+      // function uses [~Await] formal parameters/body.
+      if (!isInsideAsyncFunction(node) && !isInsideClassStaticBlock(node) && isInsideAnyFunction(node)) {
+        addError(node, "'await' expressions are only allowed in async functions");
       }
     }
 
@@ -1692,6 +1781,17 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
             : "'using' declarations are not allowed at the top level of scripts",
         );
       }
+      // ── 'using' binding restrictions ──────────────────────────────
+      // ES spec: UsingDeclaration only allows BindingIdentifier, not patterns.
+      // `using {} = x` and `using [] = x` are SyntaxErrors.
+      // Each binding must also have an initializer (using is always IsConstantDeclaration).
+      for (const decl of node.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name)) {
+          addError(decl.name, "Using declarations require a binding identifier, not a destructuring pattern");
+        } else if (!decl.initializer) {
+          addError(decl, "Using declarations require an initializer");
+        }
+      }
     }
 
     // ── Fields named "constructor" in class ──────────────────────────
@@ -1746,6 +1846,29 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
 
   /** Check if a node is inside any function (for return statement validation). */
   function isInsideFunction(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /**
+   * Check if a node is inside any function (sync or async, including arrow, method, etc.)
+   * Used to detect AwaitExpression in non-async function (a SyntaxError in module context).
+   */
+  function isInsideAnyFunction(node: ts.Node): boolean {
     let current: ts.Node | undefined = node.parent;
     while (current) {
       if (
@@ -1889,7 +2012,7 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   function isInsideIteration(node: ts.Node, label?: string): boolean {
     let current: ts.Node | undefined = node.parent;
     while (current) {
-      // Function boundaries stop the search
+      // Function and class static block boundaries stop the search
       if (
         ts.isFunctionDeclaration(current) ||
         ts.isFunctionExpression(current) ||
@@ -1897,7 +2020,8 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         ts.isMethodDeclaration(current) ||
         ts.isConstructorDeclaration(current) ||
         ts.isGetAccessorDeclaration(current) ||
-        ts.isSetAccessorDeclaration(current)
+        ts.isSetAccessorDeclaration(current) ||
+        ts.isClassStaticBlockDeclaration(current)
       ) {
         return false;
       }
@@ -1919,7 +2043,7 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   function isInsideBreakable(node: ts.Node, label?: string): boolean {
     let current: ts.Node | undefined = node.parent;
     while (current) {
-      // Function boundaries stop the search
+      // Function and class static block boundaries stop the search
       if (
         ts.isFunctionDeclaration(current) ||
         ts.isFunctionExpression(current) ||
@@ -1927,7 +2051,8 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         ts.isMethodDeclaration(current) ||
         ts.isConstructorDeclaration(current) ||
         ts.isGetAccessorDeclaration(current) ||
-        ts.isSetAccessorDeclaration(current)
+        ts.isSetAccessorDeclaration(current) ||
+        ts.isClassStaticBlockDeclaration(current)
       ) {
         return false;
       }
@@ -1979,6 +2104,44 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         }
       }
     }
+  }
+
+  /**
+   * Check for duplicate label names in a block (for class static block bodies).
+   * ES spec: ContainsDuplicateLabels must be false.
+   * Does not cross function boundaries.
+   */
+  function checkDuplicateLabelsInBlock(block: ts.Block): void {
+    const labels = new Set<string>();
+    function walkForLabels(node: ts.Node): void {
+      // Don't cross function/class boundaries
+      if (
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isConstructorDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node) ||
+        ts.isClassDeclaration(node) ||
+        ts.isClassExpression(node)
+      ) {
+        return;
+      }
+      if (ts.isLabeledStatement(node)) {
+        const label = node.label.text;
+        if (labels.has(label)) {
+          addError(node.label, `Duplicate label '${label}' in class static block`);
+        } else {
+          labels.add(label);
+          walkForLabels(node.statement);
+          labels.delete(label);
+        }
+        return;
+      }
+      ts.forEachChild(node, walkForLabels);
+    }
+    ts.forEachChild(block, walkForLabels);
   }
 
   /** Check duplicate lexical declarations across switch case clauses. */
@@ -2375,6 +2538,137 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       if (ts.isObjectLiteralExpression(gp)) return isAssignmentPatternContext(gp);
     }
     return false;
+  }
+
+  /**
+   * Validate an ArrayLiteralExpression used as an assignment pattern (LHS of =, for-of, for-in).
+   * ES spec: ArrayAssignmentPattern restrictions:
+   * - Rest element (...x) must be last — no elements may follow
+   * - No trailing comma after rest (treated as elision after rest = error)
+   * - Rest element may not have an initializer (= default) — e.g. [...x = 1] = []
+   * - Each element must be a valid DestructuringAssignmentTarget
+   * - Comma expressions (x, y) are not valid element targets
+   * Strict mode: eval/arguments cannot appear as identifiers in assignment targets
+   */
+  function validateArrayAssignmentPattern(arr: ts.ArrayLiteralExpression, strict: boolean): void {
+    let foundRest = false;
+    let restNode: ts.Node | undefined;
+    for (let i = 0; i < arr.elements.length; i++) {
+      const elem = arr.elements[i];
+      // Elision (omitted element, e.g. [, x]) — valid unless after rest
+      if (elem.kind === ts.SyntaxKind.OmittedExpression) {
+        if (foundRest) {
+          addError(restNode ?? elem, "Rest element must be last in a destructuring pattern");
+        }
+        continue;
+      }
+      if (ts.isSpreadElement(elem)) {
+        if (foundRest) {
+          addError(elem, "Rest element must be last in a destructuring pattern");
+        }
+        foundRest = true;
+        restNode = elem;
+        // Rest element with initializer: [...x = 1] — not valid
+        const restExpr = elem.expression;
+        if (ts.isBinaryExpression(restExpr) && restExpr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          addError(elem, "Rest element may not have a default initializer");
+        }
+        // Validate the rest target itself
+        validateAssignmentTarget(restExpr, strict);
+      } else {
+        if (foundRest) {
+          addError(elem, "Rest element must be last in a destructuring pattern");
+        }
+        // Each element is an AssignmentElement: target (= default)?
+        // Extract target and initializer
+        let target: ts.Expression = elem;
+        if (ts.isBinaryExpression(elem) && elem.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          target = elem.left;
+          // Validate default value for yield/await issues if needed
+        }
+        validateAssignmentTarget(target, strict);
+      }
+    }
+    // If there's a trailing comma after a rest, it creates an elision — already caught above.
+    // But TS may also insert an OmittedExpression at the end for trailing commas.
+    // The check above handles it via "elision after rest".
+  }
+
+  /**
+   * Validate an ObjectLiteralExpression used as an assignment pattern.
+   * ES spec: ObjectAssignmentPattern restrictions:
+   * - Methods (shorthand methods, getters, setters) are not valid property values
+   * - Each property value must be a valid assignment target
+   * Strict mode: eval/arguments as shorthand names are errors
+   */
+  function validateObjectAssignmentPattern(obj: ts.ObjectLiteralExpression, strict: boolean): void {
+    for (const prop of obj.properties) {
+      if (ts.isSpreadAssignment(prop)) {
+        // Rest in object: { ...rest } = x — valid, but rest may not have computed
+        validateAssignmentTarget(prop.expression, strict);
+        continue;
+      }
+      if (ts.isShorthandPropertyAssignment(prop)) {
+        // { x } = obj or { x = default } = obj
+        if (strict) {
+          const name = prop.name.text;
+          if (name === "eval" || name === "arguments") {
+            addError(prop.name, `Binding '${name}' in strict mode is not allowed`);
+          }
+        }
+        continue;
+      }
+      if (ts.isPropertyAssignment(prop)) {
+        // { key: value } = obj
+        validateAssignmentTarget(prop.initializer, strict);
+        continue;
+      }
+      // Shorthand methods, getters, setters are always invalid in assignment patterns
+      if (ts.isMethodDeclaration(prop) || ts.isGetAccessorDeclaration(prop) || ts.isSetAccessorDeclaration(prop)) {
+        addError(prop, "Method definitions are not allowed in assignment patterns");
+      }
+    }
+  }
+
+  /**
+   * Validate a single assignment target in a destructuring position.
+   * Flags: comma expressions, getter/setter as targets, invalid simple targets.
+   */
+  function validateAssignmentTarget(expr: ts.Expression, strict: boolean): void {
+    // Unwrap parentheses
+    let target: ts.Node = expr;
+    while (ts.isParenthesizedExpression(target)) target = (target as ts.ParenthesizedExpression).expression;
+
+    // Comma expression is never a valid assignment target
+    if (ts.isBinaryExpression(target) && target.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+      addError(expr, "Invalid destructuring assignment target");
+      return;
+    }
+    // Nested array pattern
+    if (ts.isArrayLiteralExpression(target)) {
+      validateArrayAssignmentPattern(target, strict);
+      return;
+    }
+    // Nested object pattern
+    if (ts.isObjectLiteralExpression(target)) {
+      validateObjectAssignmentPattern(target, strict);
+      return;
+    }
+    // Binary assignment with default value: target = default
+    if (ts.isBinaryExpression(target) && target.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      validateAssignmentTarget(target.left, strict);
+      return;
+    }
+    // Simple targets: identifiers, property access, element access
+    if (ts.isIdentifier(target)) {
+      if (strict && (target.text === "eval" || target.text === "arguments")) {
+        addError(target, `Invalid assignment target '${target.text}' in strict mode`);
+      }
+      return;
+    }
+    if (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) {
+      return;
+    }
   }
 
   visit(sourceFile);
