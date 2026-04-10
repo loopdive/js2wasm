@@ -13,7 +13,7 @@
 
 class PerfBenchmarkChart extends HTMLElement {
   static get observedAttributes() {
-    return ["src", "title", "legend", "mode", "benchmark"];
+    return ["src", "title", "legend", "mode", "benchmark", "browser-runtime-src"];
   }
 
   static _measurementQueue = Promise.resolve();
@@ -130,6 +130,34 @@ class PerfBenchmarkChart extends HTMLElement {
           top: 0;
         }
 
+        .bench-errorbar {
+          position: absolute;
+          top: 50%;
+          height: 0;
+          border-top: 1px solid rgba(255,255,255,0.4);
+          transform: translateY(-50%);
+          z-index: 2;
+          opacity: 0;
+        }
+
+        .bench-errorbar::before,
+        .bench-errorbar::after {
+          content: "";
+          position: absolute;
+          top: -4px;
+          width: 0;
+          height: 8px;
+          border-left: 1px solid rgba(255,255,255,0.4);
+        }
+
+        .bench-errorbar::before {
+          left: 0;
+        }
+
+        .bench-errorbar::after {
+          right: 0;
+        }
+
         .bench-value {
           font-family: var(--mono, ui-monospace, monospace);
           font-size: 12px;
@@ -191,7 +219,11 @@ class PerfBenchmarkChart extends HTMLElement {
       samples.push(performance.now() - t0);
     }
     samples.sort((a, b) => a - b);
-    return samples[Math.floor(samples.length / 2)] ?? 0;
+    return {
+      samples,
+      median: samples[Math.floor(samples.length / 2)] ?? 0,
+      stddev: this._stddev(samples),
+    };
   }
 
   async _measureWasmLoad(entry, wasmUrl, instantiateWasmStreaming, buildImports, rounds = 3) {
@@ -210,7 +242,128 @@ class PerfBenchmarkChart extends HTMLElement {
       samples.push(performance.now() - t0);
     }
     samples.sort((a, b) => a - b);
-    return samples[Math.floor(samples.length / 2)] ?? 0;
+    return {
+      samples,
+      median: samples[Math.floor(samples.length / 2)] ?? 0,
+      stddev: this._stddev(samples),
+    };
+  }
+
+  _stddev(values) {
+    if (!Array.isArray(values) || values.length <= 1) return 0;
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+    return Math.sqrt(variance);
+  }
+
+  _median(values) {
+    if (!Array.isArray(values) || values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)] ?? 0;
+  }
+
+  _timeIt(fn, iterations) {
+    const t0 = performance.now();
+    for (let i = 0; i < iterations; i++) fn();
+    return performance.now() - t0;
+  }
+
+  _calibrate(fn) {
+    let iterations = 0;
+    const t0 = performance.now();
+    while (performance.now() - t0 < 100) {
+      fn();
+      iterations++;
+    }
+    return Math.max(10, Math.ceil((iterations / 100) * 300));
+  }
+
+  _snapshotBodyState() {
+    return {
+      innerHTML: document.body.innerHTML,
+      cssText: document.body.style.cssText,
+    };
+  }
+
+  _restoreBodyState(state) {
+    document.body.innerHTML = state.innerHTML;
+    document.body.style.cssText = state.cssText;
+  }
+
+  async _loadJsRuntimeFunction(jsUrl, exportName) {
+    const cacheBust = `${jsUrl}${jsUrl.includes("?") ? "&" : "?"}runtime=${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const response = await fetch(cacheBust, { cache: "no-store" });
+    const source = await response.text();
+    const blob = new Blob([source], { type: "text/javascript" });
+    const blobUrl = URL.createObjectURL(blob);
+    try {
+      const mod = await import(/* @vite-ignore */ blobUrl);
+      return mod?.[exportName];
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+  }
+
+  async _measureBrowserRuntime(entry, jsUrl, wasmUrl, runtimeHelpers) {
+    const exportName = entry?.exportName || `bench_${entry?.name || ""}`;
+    const jsFn = await this._loadJsRuntimeFunction(jsUrl, exportName);
+    if (typeof jsFn !== "function") {
+      throw new Error(`JS benchmark export ${exportName} not found`);
+    }
+
+    const imports = runtimeHelpers.buildImports(
+      entry.imports ?? [],
+      { document, window, performance, globalThis },
+      entry.stringPool ?? [],
+    );
+    const wasmBytes = new Uint8Array(await (await fetch(wasmUrl, { cache: "no-store" })).arrayBuffer());
+    const wasmResult = await runtimeHelpers.instantiateWasm(wasmBytes, imports.env, imports.string_constants);
+    if (imports.setExports) imports.setExports(wasmResult.instance.exports);
+    const wasmFn = wasmResult.instance.exports?.[exportName];
+    if (typeof wasmFn !== "function") {
+      throw new Error(`Wasm benchmark export ${exportName} not found`);
+    }
+
+    const bodyState = this._snapshotBodyState();
+    try {
+      for (let i = 0; i < 80; i++) {
+        wasmFn();
+        jsFn();
+      }
+
+      const iterations = this._calibrate(wasmFn);
+      const warmupRounds = 2;
+      const measuredRounds = 9;
+      for (let i = 0; i < warmupRounds; i++) {
+        this._timeIt(wasmFn, iterations);
+        this._timeIt(jsFn, iterations);
+      }
+
+      const wasmSamplesUs = [];
+      const jsSamplesUs = [];
+      const ratioSamples = [];
+      for (let i = 0; i < measuredRounds; i++) {
+        const wasmUs = (this._timeIt(wasmFn, iterations) / iterations) * 1000;
+        const jsUs = (this._timeIt(jsFn, iterations) / iterations) * 1000;
+        wasmSamplesUs.push(wasmUs);
+        jsSamplesUs.push(jsUs);
+        ratioSamples.push(jsUs / Math.max(wasmUs, 0.000001));
+      }
+
+      return {
+        path: entry.path,
+        name: entry.name,
+        wasmUs: this._median(wasmSamplesUs),
+        jsUs: this._median(jsSamplesUs),
+        wasmStdUs: this._stddev(wasmSamplesUs),
+        jsStdUs: this._stddev(jsSamplesUs),
+        ratioStd: this._stddev(ratioSamples),
+        warmupRounds,
+        measuredRounds,
+      };
+    } finally {
+      this._restoreBodyState(bodyState);
+    }
   }
 
   async _waitForStableLoadBenchmarkStart() {
@@ -324,11 +477,28 @@ class PerfBenchmarkChart extends HTMLElement {
             try {
               const jsUrl = new URL(bench.jsUrl, manifestUrl).href;
               const wasmUrl = new URL(bench.wasmUrl, manifestUrl).href;
-              const jsMs = await this._measureJsModuleLoad(jsUrl);
-              const wasmMs = await this._measureWasmLoad(bench, wasmUrl, instantiateWasmStreaming, buildImports);
-              if (jsMs <= 0 || wasmMs <= 0) continue;
-              const ratio = jsMs / wasmMs;
-              measured.push({ name: bench.name, ratio, label: ratio.toFixed(1) + "x" });
+              await this._measureJsModuleLoad(jsUrl, 1);
+              await this._measureWasmLoad(bench, wasmUrl, instantiateWasmStreaming, buildImports, 1);
+              const jsMetrics = await this._measureJsModuleLoad(jsUrl, 7);
+              const wasmMetrics = await this._measureWasmLoad(
+                bench,
+                wasmUrl,
+                instantiateWasmStreaming,
+                buildImports,
+                7,
+              );
+              if (jsMetrics.median <= 0 || wasmMetrics.median <= 0) continue;
+              const ratioSamples = jsMetrics.samples.map((jsSample, index) => {
+                const wasmSample = wasmMetrics.samples[index] ?? wasmMetrics.median;
+                return jsSample / Math.max(wasmSample, 0.0001);
+              });
+              const ratio = jsMetrics.median / wasmMetrics.median;
+              measured.push({
+                name: bench.name,
+                ratio,
+                ratioStd: this._stddev(ratioSamples),
+                label: ratio.toFixed(1) + "x",
+              });
               await new Promise((resolve) => setTimeout(resolve, 80));
             } catch (error) {
               console.warn("[perf-benchmark-chart] loadtime benchmark skipped", bench?.name, error);
@@ -356,7 +526,7 @@ class PerfBenchmarkChart extends HTMLElement {
           const wasmUs = Number(row?.wasmUs ?? 0);
           const jsUs = Number(row?.jsUs ?? 0);
           if (wasmUs <= 0 || jsUs <= 0) continue;
-          ratios.push({ ...row, ratio: jsUs / wasmUs });
+          ratios.push({ ...row, ratio: jsUs / wasmUs, ratioStd: Number(row?.ratioStd ?? 0) });
         }
       }
       if (!ratios || ratios.length === 0) {
@@ -398,6 +568,7 @@ class PerfBenchmarkChart extends HTMLElement {
           <div class="bench-track">
             <div class="bench-track-bg" style="width: ${jsPos}%"></div>
             <div class="bench-fill" style="left: ${jsPos}%; width: 0%; background: linear-gradient(${gradDir}, rgba(255,255,255,${baseOpacity}), rgba(255,255,255,0.1)); border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
+            <div class="bench-errorbar" style="left: ${jsPos}%; width: 0%"></div>
             <span class="bench-value" style="left: ${jsPos}%; padding-left: 6px; color: rgba(255,255,255,0)">0.0x</span>
           </div>
         `;
@@ -412,7 +583,9 @@ class PerfBenchmarkChart extends HTMLElement {
           baseOpacity,
           edgeOpacity,
           textOpacity,
+          ratioStd: Number(row.ratioStd ?? 0),
           fillEl: rowEl.querySelector(".bench-fill"),
+          errorEl: rowEl.querySelector(".bench-errorbar"),
           valueEl: rowEl.querySelector(".bench-value"),
         });
       }
@@ -443,6 +616,19 @@ class PerfBenchmarkChart extends HTMLElement {
           d.fillEl.style.left = curLeft + "%";
           d.fillEl.style.width = curWidth + "%";
           d.fillEl.style.background = `linear-gradient(${d.gradDir}, rgba(255,255,255,${d.baseOpacity}), rgba(255,255,255,${curEdgeOp}))`;
+
+          const stdRatio = Math.min(d.ratioStd || 0, Math.max(d.ratio - 0.01, 0), Math.max(scaleMax / 100 - d.ratio, 0));
+          if (stdRatio > 0) {
+            const stdLeft = ((Math.max(d.ratio - stdRatio, 0.01)) / (scaleMax / 100)) * 100;
+            const stdRight = ((Math.min(d.ratio + stdRatio, scaleMax / 100)) / (scaleMax / 100)) * 100;
+            const currentStdLeft = jsPos + t * (stdLeft - jsPos);
+            const currentStdRight = jsPos + t * (stdRight - jsPos);
+            d.errorEl.style.left = `${Math.min(currentStdLeft, currentStdRight)}%`;
+            d.errorEl.style.width = `${Math.abs(currentStdRight - currentStdLeft)}%`;
+            d.errorEl.style.opacity = `${0.25 + 0.55 * t}`;
+          } else {
+            d.errorEl.style.opacity = "0";
+          }
 
           const barEnd = d.ratio >= 1 ? curLeft + curWidth : curLeft;
           if (d.ratio >= 1) {

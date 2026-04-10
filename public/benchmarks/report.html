@@ -1916,7 +1916,7 @@
             runtimeChart.setAttribute("mode", "benchmark-runtime");
             runtimeChart.setAttribute("benchmark", name);
             runtimeChart.setAttribute("title", "Runtime Speed");
-            runtimeChart.setAttribute("legend", "Wasm runtime speed relative to JS (larger is better)");
+            runtimeChart.setAttribute("legend", "Wasm runtime speed relative to JS (larger is better, whisker = ±1σ)");
             card.appendChild(runtimeChart);
             card.appendChild(el("pre", { className: "report-code-block" }, snippet));
             snippetGrid.appendChild(card);
