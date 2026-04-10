@@ -193,6 +193,7 @@ const BENCHMARKS = [
   { name: "string", label: "string concat", path: "examples/benchmarks/string.ts" },
   { name: "array", label: "array fill+sum", path: "examples/benchmarks/array.ts" },
   { name: "dom", label: "DOM 100 els", path: "examples/benchmarks/dom.ts" },
+  { name: "style", label: "style churn", path: "examples/benchmarks/style.ts" },
   { name: "calendar", label: "default calendar", path: "examples/dom/calendar.ts" },
 ];
 
@@ -252,8 +253,11 @@ interface SizeEntry {
 interface LoadtimeEntry {
   name: string;
   label: string;
+  path: string;
+  exportName: string;
   jsUrl: string;
   wasmUrl: string;
+  runtimeEnvironment: "node" | "browser";
   imports: unknown[];
   stringPool: string[];
 }
@@ -372,7 +376,7 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
     : 0;
   const wasmTotalMs = wasmCompileMs + hostJsParseMs;
 
-  emitLoadtimeArtifacts(name, label, fullJsSrc, result.binary, result.imports, result.stringPool);
+  emitLoadtimeArtifacts(name, label, entryPath, fullJsSrc, result.binary, result.imports, result.stringPool);
 
   return {
     name,
@@ -391,7 +395,7 @@ function measureMultiSizes(name: string, label: string, entryPath: string): Size
 }
 
 function toBrowserModuleSource(source: string): string {
-  const stripped = source.replace(/^\s*import\s+[^;]+;\s*$/gm, "").replace(/^export\s+/gm, "");
+  const stripped = source.replace(/^\s*import\s+[^;]+;\s*$/gm, "");
   return ts.transpileModule(stripped, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,
@@ -403,6 +407,7 @@ function toBrowserModuleSource(source: string): string {
 function emitLoadtimeArtifacts(
   name: string,
   label: string,
+  entryPath: string,
   jsSource: string,
   wasmBinary: Uint8Array,
   imports: unknown[],
@@ -422,8 +427,11 @@ function emitLoadtimeArtifacts(
   loadtimeEntries.push({
     name,
     label,
+    path: entryPath,
+    exportName: `bench_${name}`,
     jsUrl: jsRel,
     wasmUrl: wasmRel,
+    runtimeEnvironment: name === "dom" || name === "style" ? "browser" : "node",
     imports,
     stringPool,
   });
