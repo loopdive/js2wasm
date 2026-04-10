@@ -1,11 +1,14 @@
 {
-  "timestamp": "2026-04-09T23:23:31.678Z",
+  "timestamp": "2026-04-10T19:26:14.771Z",
   "benchmarks": [
     {
       "name": "fib",
       "label": "fibonacci",
+      "path": "examples/benchmarks/fib.ts",
+      "exportName": "bench_fib",
       "jsUrl": "loadtime/fib.mjs",
       "wasmUrl": "loadtime/fib.wasm",
+      "runtimeEnvironment": "node",
       "imports": [
         {
           "module": "env",
@@ -239,8 +242,11 @@
     {
       "name": "loop",
       "label": "loop 1M",
+      "path": "examples/benchmarks/loop.ts",
+      "exportName": "bench_loop",
       "jsUrl": "loadtime/loop.mjs",
       "wasmUrl": "loadtime/loop.wasm",
+      "runtimeEnvironment": "node",
       "imports": [
         {
           "module": "env",
@@ -473,8 +479,11 @@
     {
       "name": "string",
       "label": "string concat",
+      "path": "examples/benchmarks/string.ts",
+      "exportName": "bench_string",
       "jsUrl": "loadtime/string.mjs",
       "wasmUrl": "loadtime/string.wasm",
+      "runtimeEnvironment": "node",
       "imports": [
         {
           "module": "env",
@@ -708,8 +717,11 @@
     {
       "name": "array",
       "label": "array fill+sum",
+      "path": "examples/benchmarks/array.ts",
+      "exportName": "bench_array",
       "jsUrl": "loadtime/array.mjs",
       "wasmUrl": "loadtime/array.wasm",
+      "runtimeEnvironment": "node",
       "imports": [
         {
           "module": "env",
@@ -942,8 +954,11 @@
     {
       "name": "dom",
       "label": "DOM 100 els",
+      "path": "examples/benchmarks/dom.ts",
+      "exportName": "bench_dom",
       "jsUrl": "loadtime/dom.mjs",
       "wasmUrl": "loadtime/dom.wasm",
+      "runtimeEnvironment": "browser",
       "imports": [
         {
           "module": "env",
@@ -1187,10 +1202,285 @@
       ]
     },
     {
+      "name": "style",
+      "label": "style churn",
+      "path": "examples/benchmarks/style.ts",
+      "exportName": "bench_style",
+      "jsUrl": "loadtime/style.mjs",
+      "wasmUrl": "loadtime/style.wasm",
+      "runtimeEnvironment": "browser",
+      "imports": [
+        {
+          "module": "env",
+          "name": "global_document",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "document"
+          }
+        },
+        {
+          "module": "env",
+          "name": "global_performance",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "performance"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_textContent",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "textContent"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_addEventListener",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "method",
+            "member": "addEventListener"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Performance_now",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Performance",
+            "action": "method",
+            "member": "now"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__extern_get",
+          "kind": "func",
+          "intent": {
+            "type": "extern_get"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_get_children",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "get",
+            "member": "children"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toFixed",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toFixed"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__make_callback",
+          "kind": "func",
+          "intent": {
+            "type": "callback_maker"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_get_body",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "get",
+            "member": "body"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_createElement",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "method",
+            "member": "createElement"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_cssText",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "cssText"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_get_style",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "get",
+            "member": "style"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_appendChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "appendChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_background",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "background"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_removeChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "removeChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_innerHTML",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "innerHTML"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toString",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toString"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__get_undefined",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__get_undefined"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_3",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_3"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__box_number",
+          "kind": "func",
+          "intent": {
+            "type": "box",
+            "targetType": "number"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_4",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_4"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_5",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_5"
+          }
+        }
+      ],
+      "stringPool": [
+        "el",
+        "bcrd",
+        "div",
+        "padding:0.75rem;background:#1a1a35;",
+        "border-radius:6px;border:1px solid #2a2a4a;",
+        "margin-bottom:0.5rem;cursor:pointer",
+        "font-size:0.8rem;color:#fff;font-weight:bold",
+        "font-size:0.7rem;color:#666;margin:2px 0 6px",
+        "font-size:0.75rem;color:#888",
+        "tap to run",
+        "addBenchCard",
+        "click",
+        " in ",
+        "ms",
+        "",
+        "./helpers.ts",
+        "bench_style",
+        "width:1px;height:1px;position:fixed;top:-9px",
+        "rgb(",
+        ",",
+        ",128)",
+        "main",
+        "margin:0;background:#111;color:#ddd;",
+        "font-family:system-ui,sans-serif;overflow-y:auto",
+        "padding:0.75rem",
+        "Style: 100 updates",
+        "Host boundary — style.background per iteration",
+        "TypeError: Cannot access property on null or undefined",
+        "TypeError: Cannot access property on null or undefined at 33:17",
+        "RangeError: toFixed() digits argument must be between 0 and 100"
+      ]
+    },
+    {
       "name": "calendar",
       "label": "default calendar",
+      "path": "examples/dom/calendar.ts",
+      "exportName": "bench_calendar",
       "jsUrl": "loadtime/calendar.mjs",
       "wasmUrl": "loadtime/calendar.wasm",
+      "runtimeEnvironment": "node",
       "imports": [
         {
           "module": "env",
