@@ -185,7 +185,7 @@ export function compileTryStatement(ctx: CodegenContext, fctx: FunctionContext, 
 
   /** Return a deep clone of the pre-compiled finally instructions. */
   function cloneFinally(): Instr[] {
-    return JSON.parse(JSON.stringify(finallyInstrs!));
+    return structuredClone(finallyInstrs!);
   }
 
   // Track finallyInstrs in savedBodies so late import shifts (addUnionImports /
@@ -352,7 +352,7 @@ export function compileTryStatement(ctx: CodegenContext, fctx: FunctionContext, 
 
     /** Deep-clone the catch body instructions for reuse in catch_all. */
     function cloneCatchBody(): Instr[] {
-      return JSON.parse(JSON.stringify(catchBodyInstrs));
+      return structuredClone(catchBodyInstrs);
     }
 
     // Build "catch $exn" body: receives the externref value on the stack
