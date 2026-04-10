@@ -194,8 +194,8 @@ ensureExists(PLAYGROUND_DIST);
 ensureExists(join(DASHBOARD_DIR, "index.html"));
 ensureExists(join(DASHBOARD_DIR, "data"));
 ensureExists(join(DASHBOARD_DIR, "data.js"));
-ensureExists(join(PLAN_DIR, "issues-graph.html"));
-ensureExists(join(PLAN_DIR, "graph-data.json"));
+// issues-graph.html and graph-data.json live in public/ — Vite copies them
+// into playground-dist automatically, so they're already in PAGES_DIST.
 
 rmSync(PAGES_DIST, { recursive: true, force: true });
 mkdirSync(PAGES_DIST, { recursive: true });
@@ -216,8 +216,7 @@ copyFileIfExists(PUBLIC_REPORT_SHORT, join(PAGES_DIST, "benchmarks", "report.htm
 copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "dashboard", "index.html"));
 copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "dashboard", "data"));
 copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"));
-copyFile(join(PLAN_DIR, "issues-graph.html"), join(PAGES_DIST, "issues-graph.html"));
-copyFile(join(PLAN_DIR, "graph-data.json"), join(PAGES_DIST, "graph-data.json"));
+// issues-graph.html + graph-data.json are in public/ → included via Vite build
 copyDirectory(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
 
 // Add the benchmark data files fetched by the public report pages.
@@ -300,7 +299,10 @@ copyFileIfExists(
 );
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-editions.json"), join(PUBLIC_BENCH, "test262-editions.json"));
 copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"), join(PUBLIC_BENCH, "size-benchmarks.json"));
-copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"), join(PUBLIC_BENCH, "loadtime-benchmarks.json"));
+copyFileIfExists(
+  join(BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"),
+  join(PUBLIC_BENCH, "loadtime-benchmarks.json"),
+);
 if (existsSync(join(BENCHMARKS_RESULTS_DIR, "loadtime"))) {
   copyDirectory(join(BENCHMARKS_RESULTS_DIR, "loadtime"), join(PUBLIC_BENCH, "loadtime"));
 }
