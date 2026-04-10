@@ -2462,21 +2462,19 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
     if (!fctx.finallyStack) fctx.finallyStack = [];
     fctx.finallyStack.push({
       cloneFinally: (): Instr[] =>
-        JSON.parse(
-          JSON.stringify([
-            { op: "local.get", index: capturedDoneFlag } as Instr,
-            { op: "i32.eqz" } as Instr,
-            {
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [
-                { op: "local.get", index: capturedIterLocal } as Instr,
-                { op: "call", funcIdx: capturedReturnIdx } as Instr,
-              ],
-              else: [],
-            } as unknown as Instr,
-          ]),
-        ),
+        structuredClone([
+          { op: "local.get", index: capturedDoneFlag } as Instr,
+          { op: "i32.eqz" } as Instr,
+          {
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "local.get", index: capturedIterLocal } as Instr,
+              { op: "call", funcIdx: capturedReturnIdx } as Instr,
+            ],
+            else: [],
+          } as unknown as Instr,
+        ]),
       breakStackLen: iterCloseBreakStackLen,
       continueStackLen: iterCloseContinueStackLen,
     });
