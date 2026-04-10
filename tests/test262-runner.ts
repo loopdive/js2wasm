@@ -1959,6 +1959,22 @@ export interface TestResult {
 /** Default per-test timeout in milliseconds (prevents infinite-loop hangs) */
 const TEST_TIMEOUT_MS = 8000;
 
+function isModuleGoal(category: string, meta: Test262Meta, source: string): boolean {
+  if (category === "language/module-code") return true;
+  if (category === "language/import") return true;
+  if (category === "language/export") return true;
+  if (meta.flags?.includes("module")) return true;
+  if (/\b(?:import|export)\b/.test(source)) return true;
+  return false;
+}
+
+export function buildNegativeCompileSource(source: string, meta: Test262Meta, category: string): string {
+  const strippedSource = source.replace(/\/\*---[\s\S]*?---\*\//, "");
+  const strictPrefix = meta.flags?.includes("onlyStrict") ? '"use strict";\n' : "";
+  const moduleSuffix = isModuleGoal(category, meta, strippedSource) ? "\nexport {};\n" : "\n";
+  return strictPrefix + strippedSource + moduleSuffix;
+}
+
 /**
  * Handle a negative test — one that is expected to fail at parse, early, or
  * runtime phase with a specific error type (SyntaxError, ReferenceError, etc.).
@@ -1987,9 +2003,7 @@ export async function handleNegativeTest(
     // We wrap minimally — just enough for the compiler to accept it as a module.
     // For onlyStrict tests, add a "use strict" directive so the compiler's
     // strict-mode checks (eval/arguments binding, octal literals, etc.) apply.
-    const strippedSource = source.replace(/\/\*---[\s\S]*?---\*\//, "");
-    const strictPrefix = meta.flags?.includes("onlyStrict") ? '"use strict";\n' : "";
-    const minimalWrapped = strictPrefix + strippedSource + "\nexport {};\n";
+    const minimalWrapped = buildNegativeCompileSource(source, meta, category);
 
     let compileMs = 0;
     const compileStart = performance.now();

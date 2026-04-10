@@ -1,0 +1,1538 @@
+{
+  "timestamp": "2026-04-09T23:23:31.678Z",
+  "benchmarks": [
+    {
+      "name": "fib",
+      "label": "fibonacci",
+      "jsUrl": "loadtime/fib.mjs",
+      "wasmUrl": "loadtime/fib.wasm",
+      "imports": [
+        {
+          "module": "env",
+          "name": "global_document",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "document"
+          }
+        },
+        {
+          "module": "env",
+          "name": "global_performance",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "performance"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_createElement",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "method",
+            "member": "createElement"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_textContent",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "textContent"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_addEventListener",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "method",
+            "member": "addEventListener"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Performance_now",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Performance",
+            "action": "method",
+            "member": "now"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__extern_get",
+          "kind": "func",
+          "intent": {
+            "type": "extern_get"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_get_children",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "get",
+            "member": "children"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toString",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toString"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toFixed",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toFixed"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__make_callback",
+          "kind": "func",
+          "intent": {
+            "type": "callback_maker"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_get_body",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "get",
+            "member": "body"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_innerHTML",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "innerHTML"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_cssText",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "cssText"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_get_style",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "get",
+            "member": "style"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_appendChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "appendChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__get_undefined",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__get_undefined"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_3",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_3"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__box_number",
+          "kind": "func",
+          "intent": {
+            "type": "box",
+            "targetType": "number"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_4",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_4"
+          }
+        }
+      ],
+      "stringPool": [
+        "el",
+        "bcrd",
+        "div",
+        "padding:0.75rem;background:#1a1a35;",
+        "border-radius:6px;border:1px solid #2a2a4a;",
+        "margin-bottom:0.5rem;cursor:pointer",
+        "font-size:0.8rem;color:#fff;font-weight:bold",
+        "font-size:0.7rem;color:#666;margin:2px 0 6px",
+        "font-size:0.75rem;color:#888",
+        "tap to run",
+        "addBenchCard",
+        "click",
+        " in ",
+        "ms",
+        "",
+        "./helpers.ts",
+        "fib",
+        "bench_fib",
+        "main",
+        "margin:0;background:#111;color:#ddd;",
+        "font-family:system-ui,sans-serif;overflow-y:auto",
+        "padding:0.75rem",
+        "fib(30)",
+        "Recursive — pure i32/f64 math, no host calls",
+        "TypeError: Cannot access property on null or undefined",
+        "TypeError: Cannot access property on null or undefined at 33:17",
+        "RangeError: toFixed() digits argument must be between 0 and 100"
+      ]
+    },
+    {
+      "name": "loop",
+      "label": "loop 1M",
+      "jsUrl": "loadtime/loop.mjs",
+      "wasmUrl": "loadtime/loop.wasm",
+      "imports": [
+        {
+          "module": "env",
+          "name": "global_document",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "document"
+          }
+        },
+        {
+          "module": "env",
+          "name": "global_performance",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "performance"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_createElement",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "method",
+            "member": "createElement"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_textContent",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "textContent"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_addEventListener",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "method",
+            "member": "addEventListener"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Performance_now",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Performance",
+            "action": "method",
+            "member": "now"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__extern_get",
+          "kind": "func",
+          "intent": {
+            "type": "extern_get"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_get_children",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "get",
+            "member": "children"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toString",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toString"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toFixed",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toFixed"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__make_callback",
+          "kind": "func",
+          "intent": {
+            "type": "callback_maker"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_get_body",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "get",
+            "member": "body"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_innerHTML",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "innerHTML"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_cssText",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "cssText"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_get_style",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "get",
+            "member": "style"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_appendChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "appendChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__get_undefined",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__get_undefined"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_3",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_3"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__box_number",
+          "kind": "func",
+          "intent": {
+            "type": "box",
+            "targetType": "number"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_4",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_4"
+          }
+        }
+      ],
+      "stringPool": [
+        "el",
+        "bcrd",
+        "div",
+        "padding:0.75rem;background:#1a1a35;",
+        "border-radius:6px;border:1px solid #2a2a4a;",
+        "margin-bottom:0.5rem;cursor:pointer",
+        "font-size:0.8rem;color:#fff;font-weight:bold",
+        "font-size:0.7rem;color:#666;margin:2px 0 6px",
+        "font-size:0.75rem;color:#888",
+        "tap to run",
+        "addBenchCard",
+        "click",
+        " in ",
+        "ms",
+        "",
+        "./helpers.ts",
+        "bench_loop",
+        "main",
+        "margin:0;background:#111;color:#ddd;",
+        "font-family:system-ui,sans-serif;overflow-y:auto",
+        "padding:0.75rem",
+        "Loop: sum 1..1M",
+        "Tight numeric loop, no allocations",
+        "TypeError: Cannot access property on null or undefined",
+        "TypeError: Cannot access property on null or undefined at 33:17",
+        "RangeError: toFixed() digits argument must be between 0 and 100"
+      ]
+    },
+    {
+      "name": "string",
+      "label": "string concat",
+      "jsUrl": "loadtime/string.mjs",
+      "wasmUrl": "loadtime/string.wasm",
+      "imports": [
+        {
+          "module": "env",
+          "name": "global_document",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "document"
+          }
+        },
+        {
+          "module": "env",
+          "name": "global_performance",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "performance"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_createElement",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "method",
+            "member": "createElement"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_textContent",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "textContent"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_addEventListener",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "method",
+            "member": "addEventListener"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Performance_now",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Performance",
+            "action": "method",
+            "member": "now"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__extern_get",
+          "kind": "func",
+          "intent": {
+            "type": "extern_get"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_get_children",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "get",
+            "member": "children"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toString",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toString"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toFixed",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toFixed"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__make_callback",
+          "kind": "func",
+          "intent": {
+            "type": "callback_maker"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_get_body",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "get",
+            "member": "body"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_innerHTML",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "innerHTML"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_cssText",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "cssText"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_get_style",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "get",
+            "member": "style"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_appendChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "appendChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__get_undefined",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__get_undefined"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_3",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_3"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__box_number",
+          "kind": "func",
+          "intent": {
+            "type": "box",
+            "targetType": "number"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_4",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_4"
+          }
+        }
+      ],
+      "stringPool": [
+        "el",
+        "bcrd",
+        "div",
+        "padding:0.75rem;background:#1a1a35;",
+        "border-radius:6px;border:1px solid #2a2a4a;",
+        "margin-bottom:0.5rem;cursor:pointer",
+        "font-size:0.8rem;color:#fff;font-weight:bold",
+        "font-size:0.7rem;color:#666;margin:2px 0 6px",
+        "font-size:0.75rem;color:#888",
+        "tap to run",
+        "addBenchCard",
+        "click",
+        " in ",
+        "ms",
+        "",
+        "./helpers.ts",
+        "bench_string",
+        "abcde",
+        "main",
+        "margin:0;background:#111;color:#ddd;",
+        "font-family:system-ui,sans-serif;overflow-y:auto",
+        "padding:0.75rem",
+        "String: concat 1k",
+        "wasm:js-string concat per iteration",
+        "TypeError: Cannot access property on null or undefined",
+        "TypeError: Cannot access property on null or undefined at 33:17",
+        "RangeError: toFixed() digits argument must be between 0 and 100"
+      ]
+    },
+    {
+      "name": "array",
+      "label": "array fill+sum",
+      "jsUrl": "loadtime/array.mjs",
+      "wasmUrl": "loadtime/array.wasm",
+      "imports": [
+        {
+          "module": "env",
+          "name": "global_document",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "document"
+          }
+        },
+        {
+          "module": "env",
+          "name": "global_performance",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "performance"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_createElement",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "method",
+            "member": "createElement"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_textContent",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "textContent"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_addEventListener",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "method",
+            "member": "addEventListener"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Performance_now",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Performance",
+            "action": "method",
+            "member": "now"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__extern_get",
+          "kind": "func",
+          "intent": {
+            "type": "extern_get"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_get_children",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "get",
+            "member": "children"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toString",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toString"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toFixed",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toFixed"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__make_callback",
+          "kind": "func",
+          "intent": {
+            "type": "callback_maker"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_get_body",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "get",
+            "member": "body"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_innerHTML",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "innerHTML"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_cssText",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "cssText"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_get_style",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "get",
+            "member": "style"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_appendChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "appendChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__get_undefined",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__get_undefined"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_3",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_3"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__box_number",
+          "kind": "func",
+          "intent": {
+            "type": "box",
+            "targetType": "number"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_4",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_4"
+          }
+        }
+      ],
+      "stringPool": [
+        "el",
+        "bcrd",
+        "div",
+        "padding:0.75rem;background:#1a1a35;",
+        "border-radius:6px;border:1px solid #2a2a4a;",
+        "margin-bottom:0.5rem;cursor:pointer",
+        "font-size:0.8rem;color:#fff;font-weight:bold",
+        "font-size:0.7rem;color:#666;margin:2px 0 6px",
+        "font-size:0.75rem;color:#888",
+        "tap to run",
+        "addBenchCard",
+        "click",
+        " in ",
+        "ms",
+        "",
+        "./helpers.ts",
+        "bench_array",
+        "main",
+        "margin:0;background:#111;color:#ddd;",
+        "font-family:system-ui,sans-serif;overflow-y:auto",
+        "padding:0.75rem",
+        "Array: fill+sum 10k",
+        "Wasm GC array — push / get loop",
+        "TypeError: Cannot access property on null or undefined",
+        "TypeError: Cannot access property on null or undefined at 33:17",
+        "RangeError: toFixed() digits argument must be between 0 and 100"
+      ]
+    },
+    {
+      "name": "dom",
+      "label": "DOM 100 els",
+      "jsUrl": "loadtime/dom.mjs",
+      "wasmUrl": "loadtime/dom.wasm",
+      "imports": [
+        {
+          "module": "env",
+          "name": "global_document",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "document"
+          }
+        },
+        {
+          "module": "env",
+          "name": "global_performance",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "performance"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_addEventListener",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "method",
+            "member": "addEventListener"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Performance_now",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Performance",
+            "action": "method",
+            "member": "now"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__extern_get",
+          "kind": "func",
+          "intent": {
+            "type": "extern_get"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_get_children",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "get",
+            "member": "children"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toFixed",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toFixed"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__make_callback",
+          "kind": "func",
+          "intent": {
+            "type": "callback_maker"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_get_body",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "get",
+            "member": "body"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_createElement",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "method",
+            "member": "createElement"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_cssText",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "cssText"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_get_style",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "get",
+            "member": "style"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_appendChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "appendChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_textContent",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "textContent"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_removeChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "removeChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_innerHTML",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "innerHTML"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toString",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toString"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__get_undefined",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__get_undefined"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_3",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_3"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__box_number",
+          "kind": "func",
+          "intent": {
+            "type": "box",
+            "targetType": "number"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_4",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_4"
+          }
+        }
+      ],
+      "stringPool": [
+        "el",
+        "bcrd",
+        "div",
+        "padding:0.75rem;background:#1a1a35;",
+        "border-radius:6px;border:1px solid #2a2a4a;",
+        "margin-bottom:0.5rem;cursor:pointer",
+        "font-size:0.8rem;color:#fff;font-weight:bold",
+        "font-size:0.7rem;color:#666;margin:2px 0 6px",
+        "font-size:0.75rem;color:#888",
+        "tap to run",
+        "addBenchCard",
+        "click",
+        " in ",
+        "ms",
+        "",
+        "./helpers.ts",
+        "bench_dom",
+        "display:none",
+        "span",
+        "main",
+        "margin:0;background:#111;color:#ddd;",
+        "font-family:system-ui,sans-serif;overflow-y:auto",
+        "padding:0.75rem",
+        "DOM: 100 elements",
+        "Host boundary — createElement + appendChild",
+        "TypeError: Cannot access property on null or undefined",
+        "TypeError: Cannot access property on null or undefined at 33:17",
+        "RangeError: toFixed() digits argument must be between 0 and 100"
+      ]
+    },
+    {
+      "name": "calendar",
+      "label": "default calendar",
+      "jsUrl": "loadtime/calendar.mjs",
+      "wasmUrl": "loadtime/calendar.wasm",
+      "imports": [
+        {
+          "module": "env",
+          "name": "global_document",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "document"
+          }
+        },
+        {
+          "module": "env",
+          "name": "global_performance",
+          "kind": "func",
+          "intent": {
+            "type": "declared_global",
+            "name": "performance"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Performance_now",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Performance",
+            "action": "method",
+            "member": "now"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__extern_get",
+          "kind": "func",
+          "intent": {
+            "type": "extern_get"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_get_children",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "get",
+            "member": "children"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toFixed",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toFixed"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_createElement",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "method",
+            "member": "createElement"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_cssText",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "cssText"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_get_style",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "get",
+            "member": "style"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_innerHTML",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "innerHTML"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Element_set_textContent",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Element",
+            "action": "set",
+            "member": "textContent"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Node_appendChild",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Node",
+            "action": "method",
+            "member": "appendChild"
+          }
+        },
+        {
+          "module": "env",
+          "name": "HTMLElement_addEventListener",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "HTMLElement",
+            "action": "method",
+            "member": "addEventListener"
+          }
+        },
+        {
+          "module": "env",
+          "name": "CSSStyleDeclaration_set_background",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "CSSStyleDeclaration",
+            "action": "set",
+            "member": "background"
+          }
+        },
+        {
+          "module": "env",
+          "name": "Document_get_body",
+          "kind": "func",
+          "intent": {
+            "type": "extern_class",
+            "className": "Document",
+            "action": "get",
+            "member": "body"
+          }
+        },
+        {
+          "module": "env",
+          "name": "console_log_string",
+          "kind": "func",
+          "intent": {
+            "type": "console_log",
+            "variant": "string"
+          }
+        },
+        {
+          "module": "env",
+          "name": "number_toString",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "number_toString"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__make_callback",
+          "kind": "func",
+          "intent": {
+            "type": "callback_maker"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__date_now",
+          "kind": "func",
+          "intent": {
+            "type": "date_now"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__get_undefined",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__get_undefined"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_3",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_3"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__box_number",
+          "kind": "func",
+          "intent": {
+            "type": "box",
+            "targetType": "number"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_4",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_4"
+          }
+        },
+        {
+          "module": "env",
+          "name": "__concat_10",
+          "kind": "func",
+          "intent": {
+            "type": "builtin",
+            "name": "__concat_10"
+          }
+        }
+      ],
+      "stringPool": [
+        "el",
+        "bcrd",
+        "div",
+        "padding:0.75rem;background:#1a1a35;",
+        "border-radius:6px;border:1px solid #2a2a4a;",
+        "margin-bottom:0.5rem;cursor:pointer",
+        "font-size:0.8rem;color:#fff;font-weight:bold",
+        "font-size:0.7rem;color:#666;margin:2px 0 6px",
+        "font-size:0.75rem;color:#888",
+        "tap to run",
+        "addBenchCard",
+        "click",
+        " in ",
+        "ms",
+        "",
+        "mname",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+        "dimOf",
+        "fdow",
+        "priceOf",
+        "renderCal",
+        "padding:8px 4px;text-align:center;font-size:0.8rem;",
+        "color:#555;font-style:italic",
+        "font-weight:bold",
+        "font-size:0.6rem;margin-top:2px",
+        " €",
+        "transparent",
+        "#ddd",
+        "2px solid transparent",
+        "#aaa",
+        "#333",
+        "#fff",
+        "#111",
+        "#666",
+        "#7c3aed",
+        "rgba(255,255,255,0.6)",
+        "2px solid #7c3aed",
+        "padding:6px 4px;text-align:center;font-size:0.8rem;",
+        "cursor:pointer;border-radius:4px;",
+        "background:",
+        ";color:",
+        ";",
+        "border:",
+        ";transition:background 0.1s",
+        "font-size:0.6rem;margin-top:2px;color:",
+        "mouseenter",
+        "#222",
+        "mouseleave",
+        "onDay",
+        "updFoot",
+        " nights",
+        "0 nights",
+        "main",
+        "margin:0;background:#111;color:#ddd;",
+        "font-family:system-ui,sans-serif;overflow:hidden",
+        "padding:1rem;max-width:420px;margin:0 auto",
+        "display:flex;justify-content:space-between;align-items:baseline;",
+        "margin-bottom:0.5rem",
+        "font-size:3.5rem;font-weight:bold;color:#fff;line-height:1",
+        "font-size:1.1rem;color:#888",
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT",
+        "SUN",
+        "display:grid;grid-template-columns:repeat(7,1fr);",
+        "text-align:center;font-size:0.6rem;color:#666;margin-bottom:4px",
+        "padding:2px",
+        "display:grid;grid-template-columns:repeat(7,1fr);gap:2px",
+        "text-align:center;font-size:0.6rem;color:#666;margin-top:4px",
+        "display:flex;justify-content:space-between;margin:0.75rem 0",
+        "cursor:pointer;font-size:1.2rem;color:#888;padding:4px 12px",
+        "←",
+        "→",
+        "display:flex;align-items:center;justify-content:space-between;",
+        "margin-top:0.75rem;font-size:0.85rem",
+        "span",
+        "color:#888;cursor:pointer;text-decoration:underline",
+        "Clear Dates",
+        "color:#aaa",
+        "margin-top:0.5rem",
+        "color:#fff;font-weight:bold;font-size:2rem",
+        "padding:8px 28px;background:#fff;color:#111;",
+        "border-radius:999px;cursor:pointer;font-size:0.9rem;font-weight:600",
+        "Save",
+        "saved ",
+        "-",
+        "TypeError: Cannot access property on null or undefined",
+        "TypeError: Cannot access property on null or undefined at 33:17",
+        "RangeError: toFixed() digits argument must be between 0 and 100"
+      ]
+    }
+  ]
+}

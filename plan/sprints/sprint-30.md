@@ -85,3 +85,6 @@ Note: #822 was merged and reverted twice during the sprint, causing temporary re
 ## Retrospective
 
 (To be filled by Scrum Master after sprint completion)
+
+---
+_Issues not completed in this sprint were returned to the backlog._

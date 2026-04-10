@@ -1,5 +1,9 @@
 # Sprint 37 — Architectural Foundations: Property Model & Stability
 
+> Historical sprint note: Sprint 37 is closed. Any issue from this document that
+> is still open has been returned to the backlog, except the contributor-readiness
+> refactoring track `#910`–`#913`, which is explicitly continued in Sprint 39.
+
 **Date**: 2026-04-04 (sprint 36 wrapping)
 **Goal**: Unlock the next major conformance jump by implementing property descriptors and fixing infrastructure stability
 **Baseline**: 17,822 pass / 43,120 total (41.3%) — post sprint 36, cache disabled, pre-filter proposals active
@@ -165,3 +169,6 @@ If #797 and #799 both land, conformance could reach 55-60%. The infrastructure f
 2. **Smaller issues for large features** — #852 would benefit from being split into sub-issues by error type (null_deref vs illegal_cast vs iterator creation) so progress is easier to measure.
 3. **Test262 gate on #948-style analysis issues** — WAT analysis issues don't change behavior, so equiv tests are sufficient. But for any issue that touches codegen, require at least a scoped test262 batch (e.g., the relevant test category) before merge.
 4. **Record test262 category deltas in issue files** — The dev who worked on #852 recorded `arrow-function/dstr: 6→40`. This should be standard for all compiler issues. Add it to the done-definition checklist.
+
+---
+_Issues not completed in this sprint were returned to the backlog. The repo-cleanup refactoring track (`#910`–`#913`) was later reassigned to Sprint 39 for completion._

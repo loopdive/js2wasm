@@ -32,14 +32,16 @@ Message only what the recipient needs to act on. Broadcasts wake every agent —
 ### On completion
 1. Commit all work on your branch
 2. Merge main into your branch: `git merge main`
-3. Signal tech lead: `"Branch <name> ready for test. Commit <hash>. Worktree: <path>."`
-4. **Do NOT run test262 yourself.** Tech lead spawns a dedicated tester agent for that.
-5. **Wait for tech lead to confirm merge.** Continue working on the NEXT task while waiting — pick from TaskList. But do NOT merge anything.
-6. Once tech lead confirms merge: mark previous task as `completed`.
+3. Push your branch to `origin`
+4. Open a PR against `main`
+5. Signal tech lead: `"PR ready: <url>. Branch <name>, commit <hash>."`
+6. **Do NOT run test262 yourself.** The GitHub `test262` workflow validates branch PRs and `main` commits.
+7. **Wait for PR merge confirmation.** Continue working on the NEXT task while waiting — pick from TaskList. But do NOT merge anything yourself.
+8. Once tech lead confirms merge: mark previous task as `completed`.
 
 **"Completed" means merged to main, not "code done".** Do not mark a task completed until the merge is confirmed.
 
-**Do NOT run test262 or switch /workspace branches.** The shared workspace causes test result corruption when multiple agents switch branches. Only the tech lead's tester agents run test262.
+**Do NOT run test262 or switch /workspace branches.** Conformance now runs in GitHub Actions on PRs and `main`, not in local developer worktrees.
 
 ### Available skills
 You can invoke these on-demand by reading the skill file and following its steps:
@@ -48,15 +50,16 @@ You can invoke these on-demand by reading the skill file and following its steps
 - `.claude/skills/create-issue.md` — create a new issue from a failure pattern you discover
 
 ### Integration and merge rules
-- **Before signaling completion**: merge main into your branch, re-test, then signal.
+- **Before signaling completion**: merge main into your branch, re-run your scoped local checks, push, open a PR, then signal.
   1. Commit all your work first
   2. `git merge main` — merges main into YOUR branch (not rebase)
   3. If conflicts: resolve them yourself. If merge goes badly: `git merge --abort` and retry or ask for help.
-  4. Re-run your scoped tests **after** merge (catches integration breakage)
-  5. Only signal completion after post-merge tests pass
+  4. Re-run your scoped local checks **after** merge (catches integration breakage)
+  5. `git push` your branch and open a PR to trigger CI
+  6. Only signal completion after the PR exists and your post-merge local checks pass
 - When tech lead broadcasts "Main updated" → `git merge main` into your branch before your next commit
-- **You merge to main yourself** using the `/test-and-merge` skill. The critical rule: **all tests run on YOUR INTEGRATED BRANCH, not on main.** Main never sees untested code.
-- The merge hook **blocks** merges to main without a test proof file. You cannot skip testing.
+- **You do not merge to main yourself.** Open a PR and let the branch CI run the `test262` workflow on your integrated branch.
+- Main is protected by CI, not by a local tester handoff.
 - **Never use `git merge` (without --ff-only) on main.** Only `git merge --ff-only` is allowed on main.
 - **ff-only with merge commits**: your branch will have merge commits from `git merge main` — that's normal. ff-only still works because your branch tip includes main's HEAD. If ff-only fails, it means main moved since your last `git merge main` — just merge main into your branch again and retry. **Never rebase** to fix ff-only.
 
@@ -99,7 +102,7 @@ You can invoke these on-demand by reading the skill file and following its steps
 - **Test lock**: before any test run (scoped or full), acquire `mkdir /tmp/ts2wasm-test-lock`. If it fails, another agent is testing — wait and retry. Release with `rmdir /tmp/ts2wasm-test-lock` when done.
 - **Before running ANY test**: check RAM with `free -m | awk '/Mem/{print $4}'`. If <2GB free, message team lead and wait.
 - **Scoped tests during development**: compile+run specific test files anytime (with lock).
-- **Full test sequence after rebase**: see `plan/pre-completion-checklist.md` — equivalence tests, issue-specific test262, then optionally full test262.
+- **Post-merge local checks**: see `plan/pre-completion-checklist.md` — do issue-specific compile/run checks and any narrow local tests you need, then push a PR for CI validation.
 - **Do NOT exit after completing a task** — send "Ready for next task" and wait.
 - **16GB RAM + 16GB swap** — 3 agents × 2GB + Cursor 2GB + system = ~10GB used. Only ~4GB headroom.
 
@@ -132,7 +135,8 @@ console.log('Result:', ret === 1 ? 'PASS' : 'FAIL (returned ' + ret + ')');
 ```
 7. **Record test results in the issue file**: add a `## Test Results` section showing how many of the issue's failing tests now pass. Run the sample tests from the issue description and report: `X/Y sample tests pass (was 0/Y before fix)`. If the issue lists a total count (e.g., "489 FAIL"), test a representative batch (10-20) and extrapolate.
 8. **STOP — Read `plan/pre-completion-checklist.md` now.** Follow every step before continuing.
-9. Message tech lead with completion + commit hash: `"Completed #N (commit <hash>). X/Y tests now pass. Ready for review."`
+9. Push your branch and open a PR to trigger CI.
+10. Message tech lead with completion + PR URL: `"Completed #N (commit <hash>). X/Y tests now pass locally. PR: <url>."`
 
 ## Key patterns
 - `VOID_RESULT` sentinel — `InnerResult = ValType | null | typeof VOID_RESULT`

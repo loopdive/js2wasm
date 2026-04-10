@@ -440,103 +440,43 @@
         color: var(--fg-faint);
         margin: 0 0 28px;
       }
-
-      /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
-
-      .benchmark-chart {
-        padding: 0;
-      }
-
-      .edition-chart {
-        grid-column: span 1;
-      }
-
-      .benchmark-bars {
+      .diagram-legend {
         display: flex;
-        flex-direction: column;
+        flex-wrap: wrap;
         gap: 16px;
-      }
-
-      .bench-row {
-        display: grid;
-        grid-template-columns: 100px 1fr;
-        align-items: center;
-        gap: 16px;
-      }
-
-      .bench-name {
-        font-family: var(--mono);
-        font-size: 13px;
-        color: var(--fg-soft);
-        text-align: right;
-      }
-
-      .bench-track {
-        height: 28px;
-        background: transparent;
-        border-radius: 4px;
-        overflow: visible;
-        position: relative;
-      }
-
-      .bench-track-bg {
-        position: absolute;
-        left: 0;
-        top: 0;
-        height: 100%;
-        background: var(--surface);
-        border-radius: 4px;
-      }
-
-      .bench-fill {
-        height: 100%;
-        border-radius: 4px;
-        position: absolute;
-        top: 0;
-      }
-
-      .bench-fill.faster {
-        background: #22c55e;
-      }
-      .bench-fill.near-parity {
-        background: #eab308;
-      }
-      .bench-fill.slower {
-        background: #ef4444;
-      }
-
-      .bench-parity {
-        position: absolute;
-        left: 50%;
-        top: -4px;
-        bottom: -4px;
-        width: 2px;
-        background: var(--fg-soft);
-        opacity: 0.7;
-        z-index: 1;
-      }
-
-      .bench-parity-label {
-        position: absolute;
-        left: 50%;
-        top: -18px;
-        transform: translateX(-50%);
+        margin-top: 14px;
         font-family: var(--mono);
         font-size: 10px;
         color: var(--fg-faint);
+        letter-spacing: 0.04em;
+      }
+      .diagram-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .diagram-legend-line {
+        width: 18px;
+        height: 0;
+        border-top: 2px solid rgba(255, 255, 255, 0.9);
+      }
+      .diagram-legend-line.total {
+        border-top-width: 1px;
+        border-top-color: rgba(141, 154, 184, 1);
+        border-top-style: dotted;
+      }
+      .diagram-legend-line.passed {
+        border-top-width: 1px;
+        border-top-color: rgba(255, 255, 255, 0.82);
       }
 
-      .bench-value {
-        font-family: var(--mono);
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--fg-soft);
-      }
+      /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
+      /* Benchmark performance chart is now in <perf-benchmark-chart> shadow DOM */
 
-      .benchmark-legend {
-        margin-top: 16px;
-        font-size: 12px;
-        color: var(--fg-faint);
+      /* Size/coldstart charts reuse <perf-benchmark-chart> with mode="size"|"coldstart" */
+
+      .edition-chart {
+        grid-column: span 1;
       }
 
       @media (max-width: 1120px) {
@@ -551,15 +491,6 @@
       @media (max-width: 720px) {
         .diagram-panel {
           padding: 0;
-        }
-
-        .benchmark-chart {
-          padding: 0;
-        }
-
-        .bench-row {
-          grid-template-columns: 70px 1fr;
-          gap: 8px;
         }
       }
 
@@ -587,36 +518,6 @@
         text-transform: uppercase;
         color: var(--fg-faint);
       }
-      .size-compare {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-top: 16px;
-        font-family: var(--mono);
-        font-size: 11px;
-      }
-      .size-bar {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .size-bar-label {
-        color: var(--fg-faint);
-        min-width: 40px;
-        text-align: right;
-      }
-      .size-bar-track {
-        height: 14px;
-        position: relative;
-      }
-      .size-bar-fill {
-        height: 100%;
-        background: linear-gradient(to right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2));
-      }
-      .size-bar-value {
-        color: var(--fg-faint);
-        white-space: nowrap;
-      }
       .how-arrow svg {
         display: block;
       }
@@ -636,11 +537,21 @@
         position: relative;
       }
       .how-step-title {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
         font-family: var(--mono);
         font-size: 12px;
         letter-spacing: 0.06em;
         color: var(--fg-soft);
         margin-bottom: 12px;
+      }
+      .how-step-size {
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        color: var(--fg-faint);
+        text-transform: none;
       }
       .how-sub {
         font-size: 14px;
@@ -939,6 +850,13 @@
       .feat-tables.strict-only .feat-section[data-sloppy] {
         display: none;
       }
+      .feat-tables.host-off .feat-row:has(.feat-host) {
+        opacity: 0.92;
+      }
+      .feat-tables.host-off .feat-row:has(.feat-host) .feat-name,
+      .feat-tables.host-off .feat-row:has(.feat-host) .feat-desc {
+        color: var(--fg-faint);
+      }
       .feat-tables {
         margin-top: 16px;
       }
@@ -988,9 +906,45 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.12);
         margin-bottom: 6px;
         text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
       }
       .feat-edition:first-of-type {
         padding-top: 0;
+      }
+      .feat-edition-label {
+        min-width: 0;
+      }
+      .feat-edition-passbar {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+        min-width: 160px;
+        justify-content: flex-end;
+      }
+      .feat-edition-passbar-track {
+        display: block;
+        width: 92px;
+        height: 7px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .feat-edition-passbar-fill {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, rgba(63, 185, 80, 0.82), rgba(63, 185, 80, 1));
+      }
+      .feat-edition-passbar-text {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.58);
+        min-width: 42px;
+        text-align: right;
       }
       .feat-row {
         display: grid;
@@ -1283,6 +1237,9 @@
             Which JS language features compile to WebAssembly today, and which are still on the roadmap. Status is
             derived from ECMAScript Test262 pass rates and known compiler limitations.
           </p>
+          <p style="margin-top: 1.25rem">
+            <a class="btn-outline" href="./benchmarks/report.html">Compatibility Test Report</a>
+          </p>
         </div>
         <!-- <div class="stats-grid">
           <div class="stat-item">
@@ -1313,51 +1270,37 @@
             ></t262-donut>
           </div>
           <div class="diagram-panel">
-            <div class="benchmark-chart" id="benchmark-chart">
-              <h3 class="diagram-title">Benchmark Performance (Wasm vs JS)</h3>
-              <div class="benchmark-bars-wrap" style="position: relative; padding-top: 24px">
-                <div
-                  id="bench-js-label"
-                  style="
-                    position: absolute;
-                    top: 4px;
-                    font-family: var(--mono);
-                    font-size: 11px;
-                    color: var(--fg-soft);
-                    letter-spacing: 0.05em;
-                  "
-                >
-                  JS
-                </div>
-                <div
-                  id="bench-js-line"
-                  style="
-                    position: absolute;
-                    top: 24px;
-                    bottom: 0;
-                    width: 2px;
-                    background: var(--fg-soft);
-                    opacity: 1;
-                    z-index: 1;
-                  "
-                ></div>
-                <div class="benchmark-bars" id="benchmark-bars"></div>
-              </div>
-              <p class="benchmark-legend">
-                JS line = native JS speed (1x). Right of JS = faster than JS.
-                <a href="./benchmarks/report.html" style="color: var(--fg-soft); text-decoration: underline">
-                  Full report
-                </a>
-              </p>
+            <h3 class="diagram-title">ECMAScript Conformance Pass Rate Over Time</h3>
+            <trend-chart id="conformance-history-chart" mode="step" height="260" x-key="time"></trend-chart>
+            <div class="diagram-legend">
+              <span class="diagram-legend-item">
+                <span class="diagram-legend-line"></span>
+                <span>Pass rate</span>
+              </span>
+              <span class="diagram-legend-item">
+                <span class="diagram-legend-line passed"></span>
+                <span>Tests passed</span>
+              </span>
+              <span class="diagram-legend-item">
+                <span class="diagram-legend-line total"></span>
+                <span>Total tests run</span>
+              </span>
             </div>
           </div>
-          <div class="diagram-panel edition-chart">
-            <h3 class="diagram-title">Edition Coverage (tests)</h3>
-            <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="absolute"></t262-edition-bars>
+          <div class="diagram-panel">
+            <perf-benchmark-chart
+              src="./benchmarks/results/playground-benchmark-sidebar.json"
+              title="Runtime Speed"
+              legend="Wasm runtime speed relative to JS (larger is better)"
+            ></perf-benchmark-chart>
           </div>
-          <div class="diagram-panel edition-chart">
-            <h3 class="diagram-title">Edition Coverage (pass rate)</h3>
-            <t262-edition-bars src="./benchmarks/results/test262-editions.json" mode="percentage"></t262-edition-bars>
+          <div class="diagram-panel">
+            <perf-benchmark-chart
+              src="./benchmarks/results/loadtime-benchmarks.json"
+              mode="loadtime"
+              title="Loading Speed"
+              legend="Wasm loading speed relative to JS (larger is better)"
+            ></perf-benchmark-chart>
           </div>
         </div>
 
@@ -1365,6 +1308,10 @@
           <label class="feat-toggle">
             <input type="checkbox" id="strict-only-toggle" checked />
             <span>Strict mode</span>
+          </label>
+          <label class="feat-toggle">
+            <input type="checkbox" id="host-support-toggle" checked />
+            <span>JS host</span>
           </label>
         </div>
 
@@ -2950,7 +2897,10 @@ match (value) {
 
         <div class="how-sidebyside">
           <div class="how-step">
-            <h3 class="how-step-title">JavaScript</h3>
+            <h3 class="how-step-title">
+              <span>JavaScript</span>
+              <span class="how-step-size" id="how-fib-js-size">(0.1 KB gzipped)</span>
+            </h3>
             <pre class="how-code js">
 function fibonacci(n) {
   if (n &lt;= 1) return n;
@@ -2971,7 +2921,10 @@ export function run() {
             <span class="how-arrow-label">compile</span>
           </div>
           <div class="how-step">
-            <h3 class="how-step-title">WebAssembly</h3>
+            <h3 class="how-step-title">
+              <span>WebAssembly</span>
+              <span class="how-step-size" id="how-fib-wasm-size">(0.2 KB gzipped)</span>
+            </h3>
             <pre class="how-code wat">
 (func $fibonacci (param f64) (result f64)
   local.get 0
@@ -2993,19 +2946,6 @@ export function run() {
             <span class="how-code-label">app.wat</span>
           </div>
         </div>
-        <div class="size-compare">
-          <div class="size-bar">
-            <span class="size-bar-label">.js</span>
-            <div class="size-bar-track" style="width: 109px"><div class="size-bar-fill" style="width: 100%"></div></div>
-            <span class="size-bar-value">109 B gzip</span>
-          </div>
-          <div class="size-bar">
-            <span class="size-bar-label">.wasm</span>
-            <div class="size-bar-track" style="width: 189px"><div class="size-bar-fill" style="width: 100%"></div></div>
-            <span class="size-bar-value">189 B gzip</span>
-          </div>
-        </div>
-
         <div class="how-step" style="margin-top: 48px">
           <h3 class="how-step-title">Using DOM and JS APIs</h3>
           <p class="how-sub">
@@ -3014,6 +2954,10 @@ export function run() {
           </p>
           <div class="how-sidebyside">
             <div class="how-step">
+              <h3 class="how-step-title">
+                <span>JavaScript</span>
+                <span class="how-step-size" id="how-dom-js-size">(0.1 KB gzipped)</span>
+              </h3>
               <pre class="how-code js">
 const el = document.createElement("div");
 el.textContent = "Hello from Wasm";
@@ -3029,6 +2973,10 @@ document.body.appendChild(el);</pre
               <span class="how-arrow-label">compile</span>
             </div>
             <div class="how-step">
+              <h3 class="how-step-title">
+                <span>WebAssembly</span>
+                <span class="how-step-size" id="how-dom-wasm-size">(0.3 KB gzipped)</span>
+              </h3>
               <pre class="how-code wat">
 (import "env" "global_document"
   (func $doc (result externref)))
@@ -3057,22 +3005,6 @@ document.body.appendChild(el);</pre
               <span class="how-code-label">dom.wat</span>
             </div>
           </div>
-          <div class="size-compare">
-            <div class="size-bar">
-              <span class="size-bar-label">.js</span>
-              <div class="size-bar-track" style="width: 129px">
-                <div class="size-bar-fill" style="width: 100%"></div>
-              </div>
-              <span class="size-bar-value">129 B gzip</span>
-            </div>
-            <div class="size-bar">
-              <span class="size-bar-label">.wasm</span>
-              <div class="size-bar-track" style="width: 291px">
-                <div class="size-bar-fill" style="width: 100%"></div>
-              </div>
-              <span class="size-bar-value">291 B gzip</span>
-            </div>
-          </div>
         </div>
 
         <div class="how-step" style="margin-top: 56px">
@@ -3094,27 +3026,6 @@ const dom = await js2.import("./dom.js", { document });
             instantiates the cached compiled module or compiles on demand if needed, builds host imports, instantiates,
             and returns typed exports. Pass browser globals as dependencies for DOM access.
           </p>
-        </div>
-      </section>
-
-      <hr class="divider" />
-        <div class="link-grid">
-          <a class="link-card" href="./playground/">
-            <strong>Playground</strong>
-            <span>Compile code, inspect WAT, run examples, and benchmark Wasm against JS.</span>
-          </a>
-          <a class="link-card" href="./benchmarks/report.html">
-            <strong>Report</strong>
-            <span>See current test262 pass rates, history, proposal coverage, and benchmark summaries.</span>
-          </a>
-          <a class="link-card" href="./issues-graph.html">
-            <strong>Issues Graph</strong>
-            <span>Explore planning dependencies between backlog items and implementation themes.</span>
-          </a>
-          <a class="link-card" href="./wasm-treemap.html">
-            <strong>Wasm Treemap</strong>
-            <span>Inspect binary size distribution across functions and sections in generated modules.</span>
-          </a>
         </div>
       </section>
 
@@ -3175,6 +3086,8 @@ const dom = await js2.import("./dom.js", { document });
 
     <script type="module" src="./components/site-nav.js"></script>
     <script type="module" src="./components/t262-charts.js"></script>
+    <script type="module" src="./components/perf-benchmark-chart.js"></script>
+    <script src="./components/trend-chart.js"></script>
 
     <script>
       (function mountPuzzleBackground() {
@@ -3389,15 +3302,47 @@ const dom = await js2.import("./dom.js", { document });
         }
       })();
 
-      // Strict mode toggle for feature table
+      // Feature table toggles
       (function () {
-        const toggle = document.getElementById("strict-only-toggle");
+        const strictToggle = document.getElementById("strict-only-toggle");
+        const hostToggle = document.getElementById("host-support-toggle");
         const tables = document.querySelector(".feat-tables");
-        if (toggle && tables) {
+        if (tables) {
           tables.classList.add("strict-only");
-          toggle.addEventListener("change", () => {
-            tables.classList.toggle("strict-only", toggle.checked);
+          const hostRows = Array.from(document.querySelectorAll(".feat-row")).filter((row) => row.querySelector(".feat-host"));
+          hostRows.forEach((row) => {
+            const badge = row.querySelector(".feat-badge");
+            if (!(badge instanceof HTMLElement)) return;
+            badge.dataset.origClass = Array.from(badge.classList)
+              .filter((name) => name !== "feat-badge")
+              .join(" ");
+            badge.dataset.origText = badge.textContent || "";
           });
+          const sync = () => {
+            if (strictToggle) tables.classList.toggle("strict-only", strictToggle.checked);
+            if (hostToggle) tables.classList.toggle("host-off", !hostToggle.checked);
+            const hostEnabled = hostToggle ? hostToggle.checked : true;
+            hostRows.forEach((row) => {
+              const badge = row.querySelector(".feat-badge");
+              if (!(badge instanceof HTMLElement)) return;
+              const origClass = badge.dataset.origClass || "";
+              const origText = badge.dataset.origText || "";
+              badge.className = "feat-badge";
+              if (hostEnabled) {
+                if (origClass) badge.classList.add(...origClass.split(/\s+/).filter(Boolean));
+                badge.textContent = origText;
+              } else {
+                badge.classList.add("none");
+                badge.textContent = "×";
+              }
+            });
+            if (typeof window.updateEditionPassBars === "function") {
+              window.updateEditionPassBars();
+            }
+          };
+          sync();
+          strictToggle?.addEventListener("change", sync);
+          hostToggle?.addEventListener("change", sync);
         }
       })();
 
@@ -3432,6 +3377,232 @@ const dom = await js2.import("./dom.js", { document });
 
       // Conformance diagrams are now rendered by <t262-donut> and <t262-edition-bars> web components.
 
+      (async function hydrateConformanceHistoryChart() {
+        const chart = document.getElementById("conformance-history-chart");
+        if (!chart) return;
+        try {
+          const projectStart = new Date("2026-02-27T00:00:00Z");
+          const parseRunTimestamp = (value) => {
+            const raw = String(value || "");
+            if (!raw) return null;
+            const isoDate = new Date(raw);
+            if (Number.isFinite(isoDate.getTime())) return isoDate;
+            const compact = raw.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/);
+            if (compact) {
+              const [, y, m, d, hh, mm, ss] = compact;
+              return new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}Z`);
+            }
+            return null;
+          };
+          const formatLabel = (date) =>
+            `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+          const resp = await fetch("./benchmarks/results/runs/index.json");
+          if (!resp.ok) return;
+          const runs = await resp.json();
+          if (!Array.isArray(runs)) return;
+
+          const rawPoints = runs
+            .filter((run) => Number(run?.total ?? 0) > 1 && Number(run?.pass ?? 0) >= 0)
+            .sort((a, b) => {
+              const ta = parseRunTimestamp(a.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+              const tb = parseRunTimestamp(b.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+              return ta - tb;
+            })
+            .map((run) => {
+              const total = Number(run.total || 0);
+              const pass = Number(run.pass || 0);
+              const ts = String(run.timestamp || "");
+              const date = parseRunTimestamp(ts);
+              return {
+                label: date ? formatLabel(date) : "",
+                timestamp: ts,
+                time: date?.getTime() ?? 0,
+                pass,
+                total,
+                rate: total > 0 ? (pass / total) * 100 : 0,
+              };
+            })
+            .filter((point) => point.total > 0 && point.rate >= 5);
+
+          const points = [];
+          for (const point of rawPoints) {
+            const prev = points.at(-1);
+            if (prev && point.total < prev.total * 0.75) continue;
+            points.push(point);
+          }
+
+          const firstPoint = points[0];
+          if (firstPoint?.timestamp) {
+            const firstDate = new Date(firstPoint.timestamp);
+            if (
+              Number.isFinite(firstDate.getTime()) &&
+              firstDate.getTime() - projectStart.getTime() > 12 * 60 * 60 * 1000
+            ) {
+              points.unshift({
+                label: formatLabel(projectStart),
+                timestamp: projectStart.toISOString(),
+                time: projectStart.getTime(),
+                pass: 0,
+                total: 0,
+                rate: 0,
+              });
+            }
+          }
+
+          const lastRun = runs
+            .filter((run) => Number(run?.total ?? 0) > 1 && Number(run?.pass ?? 0) >= 0)
+            .sort((a, b) => {
+              const ta = parseRunTimestamp(a.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+              const tb = parseRunTimestamp(b.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+              return ta - tb;
+            })
+            .at(-1);
+
+          if (lastRun) {
+            const ts = String(lastRun.timestamp || "");
+            const total = Number(lastRun.total || 0);
+            const pass = Number(lastRun.pass || 0);
+            const lastRate = total > 0 ? (pass / total) * 100 : 0;
+            const lastDate = ts ? new Date(ts) : null;
+            const now = new Date();
+            if (
+              Number.isFinite(lastRate) &&
+              lastRate >= 5 &&
+              lastDate instanceof Date &&
+              Number.isFinite(lastDate.getTime()) &&
+              now.getTime() - lastDate.getTime() > 12 * 60 * 60 * 1000
+            ) {
+              points.push({
+                label: formatLabel(now),
+                timestamp: now.toISOString(),
+                time: now.getTime(),
+                pass,
+                total,
+                rate: lastRate,
+              });
+            }
+          }
+
+          if (points.length === 0) {
+            const now = new Date();
+            points.push(
+              {
+                label: formatLabel(projectStart),
+                timestamp: projectStart.toISOString(),
+                time: projectStart.getTime(),
+                pass: 0,
+                total: 0,
+                rate: 0,
+              },
+              {
+                label: formatLabel(now),
+                timestamp: now.toISOString(),
+                time: now.getTime(),
+                pass: 0,
+                total: 0,
+                rate: 0,
+              },
+            );
+          }
+
+          if (points.length < 2) return;
+
+          chart.setAttribute("labels-key", "label");
+          chart.setAttribute(
+            "series",
+            JSON.stringify([
+              {
+                key: "rate",
+                color: "#ffffff",
+                fill: true,
+              },
+              {
+                key: "pass",
+                color: "rgba(255,255,255,0.82)",
+                axis: "right",
+                lineWidth: 1,
+                lineOpacity: 0.5,
+              },
+              {
+                key: "total",
+                color: "rgba(141, 154, 184, 1)",
+                axis: "right",
+                lineWidth: 1,
+                lineOpacity: 1,
+                dasharray: "1 3",
+              },
+            ]),
+          );
+          chart.data = points;
+        } catch {
+          // Leave the chart empty when the historical run index is unavailable.
+        }
+      })();
+
+      (function hydrateEditionPassBars() {
+        const strictToggle = document.getElementById("strict-only-toggle");
+        const hostToggle = document.getElementById("host-support-toggle");
+
+        const scoreRow = (row, hostEnabled) => {
+          const badge = row.querySelector(".feat-badge");
+          const usesHost = !!row.querySelector(".feat-host");
+          if (!badge) return 0;
+          if (usesHost && !hostEnabled) return 0;
+          if (badge.classList.contains("full")) return 1;
+          if (badge.classList.contains("partial")) return 0.5;
+          return 0;
+        };
+
+        const updateEditionPassBars = () => {
+          const strictOnly = strictToggle ? strictToggle.checked : true;
+          const hostEnabled = hostToggle ? hostToggle.checked : true;
+
+          document.querySelectorAll(".feat-section").forEach((section) => {
+            const el = section.querySelector(".feat-edition");
+            if (!el) return;
+
+            let labelSpan = el.querySelector(".feat-edition-label");
+            if (!labelSpan) {
+              const label = (el.textContent || "").trim();
+              labelSpan = document.createElement("span");
+              labelSpan.className = "feat-edition-label";
+              labelSpan.textContent = label;
+              el.textContent = "";
+              el.appendChild(labelSpan);
+            }
+
+            let bar = el.querySelector(".feat-edition-passbar");
+            if (!bar) {
+              bar = document.createElement("span");
+              bar.className = "feat-edition-passbar";
+              bar.innerHTML = `
+                <span class="feat-edition-passbar-track">
+                  <span class="feat-edition-passbar-fill"></span>
+                </span>
+                <span class="feat-edition-passbar-text"></span>
+              `;
+              el.appendChild(bar);
+            }
+
+            const rows = Array.from(section.querySelectorAll(".feat-row")).filter((row) => {
+              if (strictOnly && row.hasAttribute("data-sloppy")) return false;
+              return true;
+            });
+
+            const total = rows.length;
+            const score = rows.reduce((sum, row) => sum + scoreRow(row, hostEnabled), 0);
+            const pct = total > 0 ? Math.round((score / total) * 100) : 0;
+            const fill = bar.querySelector(".feat-edition-passbar-fill");
+            const text = bar.querySelector(".feat-edition-passbar-text");
+            if (fill) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+            if (text) text.textContent = `${pct}%`;
+          });
+        };
+
+        updateEditionPassBars();
+        window.updateEditionPassBars = updateEditionPassBars;
+      })();
+
       (async function hydrateFeatureCoverage() {
         const coverageEl = document.getElementById("feature-coverage");
         const labelEl = document.getElementById("feature-coverage-label");
@@ -3463,168 +3634,28 @@ const dom = await js2.import("./dom.js", { document });
         }
       })();
 
-      (async function renderBenchmarkChart() {
-        const container = document.getElementById("benchmark-bars");
-        if (!container) return;
+      (async function updateHowItWorksSizes() {
         try {
-          const resp = await fetch("./benchmarks/results/playground-benchmark-sidebar.json");
-          if (!resp.ok) {
-            document.getElementById("benchmark-chart")?.remove();
-            return;
+          const resp = await fetch("./benchmarks/results/size-benchmarks.json");
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const { fib, dom } = data.howItWorks ?? {};
+          const el = (id) => document.getElementById(id);
+          const formatKb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+          const setSize = (id, bytes) => {
+            const node = el(id);
+            if (!node || typeof bytes !== "number") return;
+            node.textContent = `(${formatKb(bytes)} gzipped)`;
+          };
+          if (fib) {
+            setSize("how-fib-js-size", fib.jsSizeGzip);
+            setSize("how-fib-wasm-size", fib.wasmSizeGzip);
           }
-          const rows = await resp.json();
-          if (!Array.isArray(rows) || rows.length === 0) {
-            document.getElementById("benchmark-chart")?.remove();
-            return;
+          if (dom) {
+            setSize("how-dom-js-size", dom.jsSizeGzip);
+            setSize("how-dom-wasm-size", dom.wasmSizeGzip);
           }
-
-          // 0% on left, max ratio on right. JS baseline (100%) at natural position.
-          // First pass: find max ratio to set the scale
-          const ratios = [];
-          for (const row of rows) {
-            const wasmUs = Number(row?.wasmUs ?? 0);
-            const jsUs = Number(row?.jsUs ?? 0);
-            if (wasmUs <= 0 || jsUs <= 0) continue;
-            ratios.push({ ...row, ratio: jsUs / wasmUs });
-          }
-          const maxRatio = Math.max(...ratios.map((r) => r.ratio), 1.5);
-          const maxPct = Math.ceil(maxRatio * 100); // e.g. 266 → 300
-          const scaleMax = Math.ceil(maxPct / 100) * 100; // round up to nearest 100%
-          const jsPos = (100 / scaleMax) * 100; // JS baseline position as % of track width
-
-          // Build bar rows — start at 0 width, animate later
-          const barData = [];
-          for (const row of ratios) {
-            const ratio = row.ratio;
-            const label = row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") ?? "unknown";
-
-            // Bar extends FROM the JS baseline (100%) TO the wasm ratio.
-            // Faster = bar extends right from baseline. Slower = bar extends left.
-            let targetLeft, targetWidth;
-            if (ratio >= 1) {
-              targetLeft = jsPos;
-              targetWidth = ((ratio - 1) / (scaleMax / 100 - 1)) * (100 - jsPos);
-            } else {
-              const wasmPos = (ratio / (scaleMax / 100)) * 100;
-              targetLeft = wasmPos;
-              targetWidth = jsPos - wasmPos;
-            }
-
-            // Gradient bar: opacity 0.1 at JS baseline, 1.0 at extremes (0% or max%)
-            const dist = Math.abs(ratio - 1) / Math.max(maxRatio - 1, 1); // 0..1
-            const edgeOpacity = (0.1 + dist * 0.9).toFixed(2); // 0.1..1.0
-            const baseOpacity = "0.1";
-            const gradDir = ratio >= 1 ? "to right" : "to left";
-            const textOpacity = (0.4 + dist * 0.6).toFixed(2);
-
-            const rowEl = document.createElement("div");
-            rowEl.className = "bench-row";
-            // Start with width 0 at the JS baseline position
-            rowEl.innerHTML = `
-              <span class="bench-name">${label}</span>
-              <div class="bench-track">
-                <div class="bench-track-bg" style="width: ${jsPos}%"></div>
-                <div class="bench-fill" style="left: ${jsPos}%; width: 0%; background: linear-gradient(${gradDir}, rgba(255,255,255,${baseOpacity}), rgba(255,255,255,0.1)); border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
-                <span class="bench-value" style="position: absolute; left: ${jsPos}%; padding-left: 6px; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,0); font-family: var(--mono); font-size: 12px; font-weight: 600; z-index: 2; white-space: nowrap">0.0x</span>
-              </div>
-            `;
-            container.appendChild(rowEl);
-
-            barData.push({
-              ratio,
-              targetLeft,
-              targetWidth,
-              gradDir,
-              baseOpacity,
-              edgeOpacity,
-              textOpacity,
-              fillEl: rowEl.querySelector(".bench-fill"),
-              valueEl: rowEl.querySelector(".bench-value"),
-            });
-          }
-
-          // Animate bars from 0 to target — same parameters as the donut chart
-          const duration = 3293;
-          const ease = (t) => 1 - (1 - t) * (1 - t); // ease-out quad
-
-          function animateBars(ts) {
-            if (!animateBars._start) animateBars._start = ts;
-            const elapsed = ts - animateBars._start;
-            const progress = Math.min(elapsed / duration, 1);
-            const t = ease(progress);
-
-            for (const d of barData) {
-              const curWidth = t * d.targetWidth;
-              // For slower bars (ratio < 1), left moves from jsPos toward targetLeft
-              const curLeft = d.ratio >= 1 ? d.targetLeft : jsPos - t * (jsPos - d.targetLeft);
-              const curRatio = t * d.ratio;
-              const scoreText = curRatio >= 10 ? `${Math.round(curRatio)}x` : `${curRatio.toFixed(1)}x`;
-
-              // Interpolate edge opacity from 0.1 to target
-              const curEdgeOp = (0.1 + t * (parseFloat(d.edgeOpacity) - 0.1)).toFixed(2);
-              const curTextOp = (t * parseFloat(d.textOpacity)).toFixed(2);
-
-              d.fillEl.style.left = curLeft + "%";
-              d.fillEl.style.width = curWidth + "%";
-              d.fillEl.style.background = `linear-gradient(${d.gradDir}, rgba(255,255,255,${d.baseOpacity}), rgba(255,255,255,${curEdgeOp}))`;
-
-              // Position label at the end of the bar
-              const barEnd = d.ratio >= 1 ? curLeft + curWidth : curLeft;
-              if (d.ratio >= 1) {
-                d.valueEl.style.left = barEnd + "%";
-                d.valueEl.style.right = "";
-                d.valueEl.style.paddingLeft = "6px";
-                d.valueEl.style.paddingRight = "";
-              } else {
-                d.valueEl.style.left = "";
-                d.valueEl.style.right = 100 - barEnd + "%";
-                d.valueEl.style.paddingLeft = "";
-                d.valueEl.style.paddingRight = "6px";
-              }
-              d.valueEl.style.color = `rgba(255,255,255,${curTextOp})`;
-              d.valueEl.textContent = scoreText;
-            }
-
-            if (progress < 1) {
-              requestAnimationFrame(animateBars);
-            }
-          }
-
-          // Start animation when chart enters viewport (same as donut: threshold 0.3)
-          const benchObserver = new IntersectionObserver(
-            (entries) => {
-              for (const entry of entries) {
-                if (entry.isIntersecting) {
-                  benchObserver.disconnect();
-                  requestAnimationFrame(animateBars);
-                }
-              }
-            },
-            { threshold: 0.3 },
-          );
-          const benchChart = document.getElementById("benchmark-chart");
-          if (benchChart) benchObserver.observe(benchChart);
-
-          // Position the JS parity line at the natural 100% position
-          function positionBaseline() {
-            const track = container.querySelector(".bench-track");
-            const wrap = document.querySelector(".benchmark-bars-wrap");
-            const label = document.getElementById("bench-js-label");
-            const line = document.getElementById("bench-js-line");
-            if (track && wrap && label && line) {
-              const wrapRect = wrap.getBoundingClientRect();
-              const trackRect = track.getBoundingClientRect();
-              const jsX = trackRect.left + (trackRect.width * jsPos) / 100 - wrapRect.left;
-              label.style.left = jsX + "px";
-              label.style.transform = "translateX(-50%)";
-              line.style.left = jsX + "px";
-            }
-          }
-          requestAnimationFrame(positionBaseline);
-          window.addEventListener("resize", positionBaseline);
-        } catch {
-          document.getElementById("benchmark-chart")?.remove();
-        }
+        } catch { /* keep static fallbacks */ }
       })();
 
       (function typeHeroTitle() {

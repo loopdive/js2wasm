@@ -1,6 +1,6 @@
 ---
 name: Team Setup
-description: Agent team configuration — PO, Developer, Tester roles with worktree isolation and sprint workflow
+description: Agent team configuration — PO and Developer roles with worktree isolation and PR-based CI workflow
 type: project
 ---
 
@@ -8,15 +8,14 @@ type: project
 
 ## Overview
 
-All agents run as **teammates** in a single team (not subagents). This enables direct messaging between developers, tester, and PO for coordination — especially file conflict avoidance and test requests.
+All agents run as **teammates** in a single team (not subagents). This enables direct messaging between developers and PO for coordination — especially file conflict avoidance and sprint handoff.
 
 ## Memory Budget
 
 - **Container**: `--memory=16g --memory-swap=32g` (16GB RAM + 16GB swap)
 - **NODE_OPTIONS**: `--max-old-space-size=3072`
-- **Test262**: default 2 workers during dev (~5.5GB). After dev batch completes, use 3 workers (`TEST262_WORKERS=3`) for faster measurement (~9GB, no devs running). Pool workers capped at 1GB each.
 - **Dev agents**: ~2.5GB each
-- **Max agents**: up to 8 devs when not running test262 (~500MB each). 0 devs during test262 run.
+- **Max agents**: up to 8 devs when not running heavy local validation (~500MB each)
 - **Stop dispatching** above 90% context/token usage — focus on merges only
 - Always check `free -h` before launching agents
 
@@ -32,10 +31,7 @@ Opus model, manages the main working copy. **Owns everything outside `plan/`**. 
 Opus model. **Only touches `plan/` directory.** Creates/updates issues, manages backlog, analyzes test results. Does NOT edit `src/`, `tests/`, `scripts/`. Reads results and code for analysis only.
 
 ### Developer (teammate, worktree)
-Opus model, worktree isolation. Implements fixes in `src/` and `tests/`. Communicates with other devs and tester via messages.
-
-### Tester (NO dedicated teammate)
-The **Tech Lead runs all tests directly** in background — no tester teammate. This prevents OOM from test262 workers + agent processes competing for memory. Test262 uses 3 workers (~9GB), so only 1 dev can run alongside it.
+Opus model, worktree isolation. Implements fixes in `src/` and `tests/`. Pushes a branch and opens a PR so GitHub Actions can run sharded test262 on the integrated branch.
 
 ## Team Spawn
 
@@ -45,10 +41,10 @@ Use `TeamCreate` to create the team, then spawn roles:
 TeamCreate: "js2wasm"
   - developer × 2 max (agent def: .claude/agents/developer.md, isolation: worktree)
   - product-owner on demand (agent def: .claude/agents/product-owner.md)
-  - NO tester — TTL runs tests directly
+  - NO tester — PR CI handles test262 validation
 ```
 
-All teammates can `SendMessage` to each other by name. Devs broadcast file claims and report completion to tech lead. TTL runs tests after merges.
+All teammates can `SendMessage` to each other by name. Devs broadcast file claims and report PR readiness to tech lead.
 
 ## Communication Protocol
 
@@ -62,8 +58,8 @@ When discovering a dependency: `"My fix for #512 requires coerceType change — 
 On completion: remove claim from `plan/file-locks.md`
 
 ### Developer → tech lead
-When done: `"Issue #512 complete, worktree branch: issue-512-call-expressions, commit: abc1234"`
-TTL runs tests after merge — devs do NOT run full test262.
+When done: `"Issue #512 complete, PR: <url>, branch: issue-512-call-expressions, commit: abc1234"`
+CI runs sharded test262 on PRs and on `main` after merge — devs do NOT run local full test262.
 
 ## Worktree Isolation (MANDATORY)
 
@@ -73,7 +69,7 @@ TTL runs tests after merge — devs do NOT run full test262.
 
 ## Developer Constraints
 
-- **Up to 8 devs when not running test262.** Each in an isolated git worktree (~500MB each). Shut down all devs before running test262.
+- **Up to 8 devs** in isolated git worktrees (~500MB each). Local dev work should avoid long-running full-suite validation.
 - **Same-file is OK if different functions.** Git 3-way merge handles separate hunks. Avoid parallel work on the *same function*.
 - **Merge to main (not cherry-pick).** TTL merges worktree branches.
 - **Batch diagnostic-only issues.** Issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer — do them in one commit.
@@ -86,17 +82,18 @@ TTL runs tests after merge — devs do NOT run full test262.
   node -e "const fs=require('fs'); const w=fs.readFileSync('test262/test/language/expressions/class/dstr/some-test.js.wasm'); const i=require('./test262/test/language/expressions/class/dstr/some-test.js.imports.js'); WebAssembly.instantiate(w,i).then(m=>{const r=m.instance.exports.test?.();console.log('result:',r)})"
   # result: 1 means pass. Test 3-5 files before committing.
   ```
-  When ready for full validation, message the TTL: "Ready for testing, please run tests".
-  The TTL runs `npm test` and `pnpm run test:262` after merging — devs never run these.
+  When ready for full validation, push the branch and open a PR.
+  GitHub Actions runs sharded `test262` on the PR and on `main` after merge — devs never run local full `test262`.
 - **Document findings.** Always write root cause analysis and implementation notes in the issue file before completion.
 
-## Cherry-Pick Workflow
+## Branch + PR Workflow
 
-1. Wait for all agents in a wave to complete (or a dev signals "ready")
-2. Tester validates the worktree
-3. Tech lead cherry-picks: `cd /workspace && git cherry-pick <commit>`
-4. Resolve plan/ conflicts: keep both sides
-5. Launch replacement dev on next ready issue
+1. Dev completes the change in a worktree branch
+2. Dev merges `main` into the branch and reruns scoped local checks
+3. Dev pushes the branch and opens a PR
+4. GitHub Actions runs sharded `test262` plus regression diffing on the PR
+5. Tech lead reviews and merges once PR checks are green or explicitly overridden
+6. The same workflow refreshes the baseline on `main`
 
 ## Issue Lifecycle
 
@@ -126,9 +123,9 @@ The `files` field is a **planned lock claim**. At runtime, active locks are trac
 
 ## Test262
 
-- **Always run in a worktree** — never on main working copy
-- Use `pnpm run test:262` (default 3 workers) or `scripts/run-test262-vitest.sh`
-- **Only one test262 run at a time.** Check `ps aux | grep test262` first.
+- **Default conformance path is CI**, not local developer runs
+- PRs run the sharded `test262` workflow and diff against the current `main` baseline
+- Pushes to `main` rerun the same pipeline and refresh the baseline/report artifacts
 - Every skip filter MUST have a corresponding issue
 - History tracked in `benchmarks/results/runs/index.json`
 - Never delete run data from `benchmarks/results/runs/`

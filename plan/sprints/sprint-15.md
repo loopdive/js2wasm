@@ -21,3 +21,6 @@
 - MCP channel server added for pushing events into Claude Code sessions
 - Backlog updated to 94 issues done, 15 open
 - 157 commits on this date
+
+---
+_Issues not completed in this sprint were returned to the backlog._

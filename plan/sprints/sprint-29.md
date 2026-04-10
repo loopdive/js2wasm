@@ -40,3 +40,6 @@
 - 100 commits on this date
 - Caller-side default param insertion refactored (#869)
 - Tagged templates (#836) + arguments sync (#849) + return_call safety (#839)
+
+---
+_Issues not completed in this sprint were returned to the backlog._
