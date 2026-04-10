@@ -3,7 +3,7 @@
  */
 import ts from "typescript";
 import type { Instr, ValType } from "../../ir/types.js";
-import { coerceType, compileExpression, ensureLateImport, flushLateImportShifts } from "../expressions.js";
+import { coerceType, compileExpression, ensureLateImport, flushLateImportShifts } from "../shared.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { reportError } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
@@ -12,7 +12,7 @@ import { addStringConstantGlobal, ensureExnTag } from "../registry/imports.js";
 import { addUnionImports } from "../index.js";
 import { adjustRethrowDepth, saveBlockScopedShadows, restoreBlockScopedShadows } from "./shared.js";
 import { ensureBindingLocals } from "./destructuring.js";
-import { compileStatement } from "../statements.js";
+import { compileStatement } from "../shared.js";
 
 function compileExternrefCatchDestructure(
   ctx: CodegenContext,
@@ -185,7 +185,7 @@ export function compileTryStatement(ctx: CodegenContext, fctx: FunctionContext, 
 
   /** Return a deep clone of the pre-compiled finally instructions. */
   function cloneFinally(): Instr[] {
-    return JSON.parse(JSON.stringify(finallyInstrs!));
+    return structuredClone(finallyInstrs!);
   }
 
   // Track finallyInstrs in savedBodies so late import shifts (addUnionImports /
@@ -352,7 +352,7 @@ export function compileTryStatement(ctx: CodegenContext, fctx: FunctionContext, 
 
     /** Deep-clone the catch body instructions for reuse in catch_all. */
     function cloneCatchBody(): Instr[] {
-      return JSON.parse(JSON.stringify(catchBodyInstrs));
+      return structuredClone(catchBodyInstrs);
     }
 
     // Build "catch $exn" body: receives the externref value on the stack

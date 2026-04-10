@@ -14,7 +14,7 @@
  *   - statements/shared.ts         — utilities shared across all sub-modules
  */
 import ts from "typescript";
-import { compileExpression } from "./expressions.js";
+import { compileExpression, registerCompileStatement } from "./shared.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
@@ -254,3 +254,7 @@ function compileStatementInner(ctx: CodegenContext, fctx: FunctionContext, stmt:
 
   reportError(ctx, stmt, `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`);
 }
+
+// Register compileStatement delegate in shared.ts so index.ts (and any other
+// module) can call compileStatement without importing statements.ts directly.
+registerCompileStatement(compileStatement);

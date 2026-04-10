@@ -1,0 +1,7 @@
+#!/bin/sh
+# Auto-format files changed by the merge so unformatted code from the
+# merged branch doesn't slip past lint-staged (which only checks staged files).
+changed=$(git diff-tree -r --name-only --no-commit-id HEAD | grep -E '\.(ts|js|mjs)$')
+if [ -n "$changed" ]; then
+  echo "$changed" | xargs npx prettier --write --log-level warn 2>/dev/null || true
+fi

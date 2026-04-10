@@ -115,9 +115,7 @@
       "title": "Full Component Model adapter (canonical ABI)",
       "priority": "critical",
       "status": "ready",
-      "depends_on": [
-        600
-      ],
+      "depends_on": [600],
       "files": [],
       "cluster": "Unclustered",
       "goal": "standalone-mode"
@@ -127,9 +125,7 @@
       "title": "WASI HTTP handler (unlocks serverless edge)",
       "priority": "high",
       "status": "ready",
-      "depends_on": [
-        578
-      ],
+      "depends_on": [578],
       "files": [],
       "cluster": "Unclustered",
       "goal": "standalone-mode"
@@ -139,10 +135,7 @@
       "title": "Shopify Functions template",
       "priority": "medium",
       "status": "ready",
-      "depends_on": [
-        578,
-        599
-      ],
+      "depends_on": [578, 599],
       "files": [],
       "cluster": "Unclustered",
       "goal": "standalone-mode"
@@ -152,9 +145,7 @@
       "title": "Deno/Cloudflare loader plugins",
       "priority": "low",
       "status": "ready",
-      "depends_on": [
-        599
-      ],
+      "depends_on": [599],
       "files": [],
       "cluster": "Unclustered",
       "goal": "standalone-mode"
@@ -229,9 +220,7 @@
       "title": "Dynamic prototype chain traversal",
       "priority": "high",
       "status": "ready",
-      "depends_on": [
-        631
-      ],
+      "depends_on": [631],
       "files": [],
       "test262_fail": 625,
       "cluster": "Unclustered",
@@ -252,9 +241,7 @@
       "title": "Pure Wasm iterator protocol (eliminate 5 host imports)",
       "priority": "high",
       "status": "ready",
-      "depends_on": [
-        680
-      ],
+      "depends_on": [680],
       "files": [],
       "cluster": "Unclustered",
       "goal": "standalone-mode"
@@ -333,9 +320,7 @@
       "title": "Safe compilation speed optimizations",
       "priority": "medium",
       "status": "ready",
-      "depends_on": [
-        691
-      ],
+      "depends_on": [691],
       "files": [],
       "cluster": "Unclustered",
       "goal": "performance"
@@ -366,9 +351,7 @@
       "title": "Shared compiler pool for vitest test262 runner",
       "priority": "high",
       "status": "ready",
-      "depends_on": [
-        694
-      ],
+      "depends_on": [694],
       "files": [],
       "cluster": "Unclustered",
       "goal": "platform"
@@ -378,9 +361,7 @@
       "title": "Reuse ts.CompilerHost across compilations (~25% speedup)",
       "priority": "high",
       "status": "ready",
-      "depends_on": [
-        699
-      ],
+      "depends_on": [699],
       "files": [],
       "cluster": "Unclustered",
       "goal": "performance"
@@ -431,10 +412,7 @@
       "title": "Async iteration correctness (329 tests)",
       "priority": "medium",
       "status": "ready",
-      "depends_on": [
-        680,
-        681
-      ],
+      "depends_on": [680, 681],
       "files": [],
       "test262_fail": 329,
       "cluster": "Unclustered",
@@ -488,9 +466,7 @@
       "title": "Extract and refactor compileCallExpression (3,350 lines)",
       "priority": "medium",
       "status": "ready",
-      "depends_on": [
-        688
-      ],
+      "depends_on": [688],
       "files": [],
       "cluster": "Unclustered",
       "goal": "platform"
@@ -510,9 +486,7 @@
       "title": "Function monomorphization for polymorphic call sites",
       "priority": "high",
       "status": "ready",
-      "depends_on": [
-        "743"
-      ],
+      "depends_on": ["743"],
       "files": [],
       "cluster": "Unclustered",
       "goal": "performance"
@@ -532,9 +506,7 @@
       "title": "Inline property tables: struct-based property access for inferred shapes",
       "priority": "medium",
       "status": "ready",
-      "depends_on": [
-        "743"
-      ],
+      "depends_on": ["743"],
       "files": [],
       "cluster": "Unclustered",
       "goal": "property-model"
@@ -544,10 +516,7 @@
       "title": "Escape analysis for stack allocation",
       "priority": "medium",
       "status": "ready",
-      "depends_on": [
-        "743",
-        "746"
-      ],
+      "depends_on": ["743", "746"],
       "files": [],
       "cluster": "Unclustered",
       "goal": "performance"
@@ -567,9 +536,7 @@
       "title": "Generator .next(value) arguments are silently ignored",
       "priority": "medium",
       "status": "ready",
-      "depends_on": [
-        680
-      ],
+      "depends_on": [680],
       "files": [],
       "cluster": "Unclustered",
       "goal": "generator-model"
@@ -755,49 +722,24 @@
       "title": "async-model",
       "status": "blocked",
       "target": "Async/await edge cases, Promise integration. Estimated +500 tests",
-      "depends_on": [
-        "generator-model"
-      ],
-      "issues": [
-        764,
-        735,
-        675
-      ]
+      "depends_on": ["generator-model"],
+      "issues": [764, 735, 675]
     },
     {
       "id": "builtin-methods",
       "title": "builtin-methods",
       "status": "blocked",
       "target": "Built-in method edge cases fixed. Estimated +1,000 tests",
-      "depends_on": [
-        "core-semantics",
-        "error-model"
-      ],
-      "issues": [
-        763,
-        731,
-        385,
-        421,
-        312,
-        767,
-        661
-      ]
+      "depends_on": ["core-semantics", "error-model"],
+      "issues": [763, 731, 385, 421, 312, 767, 661]
     },
     {
       "id": "class-system",
       "title": "class-system",
       "status": "blocked",
       "target": "Class feature codegen complete. Estimated +1,200 tests",
-      "depends_on": [
-        "core-semantics"
-      ],
-      "issues": [
-        729,
-        334,
-        377,
-        329,
-        678
-      ]
+      "depends_on": ["core-semantics"],
+      "issues": [729, 334, 377, 329, 678]
     },
     {
       "id": "compilable",
@@ -806,46 +748,8 @@
       "target": "CE 4,910 → < 500. Estimated +2,000 tests",
       "depends_on": [],
       "issues": [
-        854,
-        501,
-        461,
-        380,
-        85,
-        773,
-        409,
-        401,
-        765,
-        515,
-        761,
-        510,
-        698,
-        684,
-        685,
-        686,
-        405,
-        406,
-        287,
-        288,
-        430,
-        431,
-        446,
-        447,
-        448,
-        445,
-        420,
-        413,
-        404,
-        433,
-        754,
-        772,
-        511,
-        444,
-        411,
-        697,
-        720,
-        769,
-        776,
-        777
+        854, 501, 461, 380, 85, 773, 409, 401, 765, 515, 761, 510, 698, 684, 685, 686, 405, 406, 287, 288, 430, 431,
+        446, 447, 448, 445, 420, 413, 404, 433, 754, 772, 511, 444, 411, 697, 720, 769, 776, 777
       ]
     },
     {
@@ -853,73 +757,31 @@
       "title": "core-semantics",
       "status": "active",
       "target": "Fix ~3,400 wrong-value failures. Estimated +2,500 tests",
-      "depends_on": [
-        "compilable"
-      ],
-      "issues": [
-        513,
-        737,
-        139,
-        429,
-        435,
-        374,
-        146,
-        266,
-        380,
-        684,
-        771,
-        701
-      ]
+      "depends_on": ["compilable"],
+      "issues": [513, 737, 139, 429, 435, 374, 146, 266, 380, 684, 771, 701]
     },
     {
       "id": "crash-free",
       "title": "crash-free",
       "status": "active",
       "target": "Traps → 0. Convert ~2,600 traps/TypeError to proper exceptions. Estimated +1,500 tests",
-      "depends_on": [
-        "compilable"
-      ],
-      "issues": [
-        780,
-        781,
-        785,
-        775,
-        728,
-        512,
-        441,
-        315,
-        768
-      ]
+      "depends_on": ["compilable"],
+      "issues": [780, 781, 785, 775, 728, 512, 441, 315, 768]
     },
     {
       "id": "error-model",
       "title": "error-model",
       "status": "active",
       "target": "~2,600 negative tests pass. Estimated +2,000 tests",
-      "depends_on": [
-        "compilable"
-      ],
-      "issues": [
-        783,
-        784,
-        730,
-        736,
-        733,
-        723,
-        402,
-        443,
-        774,
-        721
-      ]
+      "depends_on": ["compilable"],
+      "issues": [783, 784, 730, 736, 733, 723, 402, 443, 774, 721]
     },
     {
       "id": "full-conformance",
       "title": "full-conformance",
       "status": "blocked",
       "target": "48,102 / 48,102 pass",
-      "depends_on": [
-        "spec-completeness"
-      ],
+      "depends_on": ["spec-completeness"],
       "issues": []
     },
     {
@@ -927,54 +789,24 @@
       "title": "generator-model",
       "status": "blocked",
       "target": "State-machine generators, yield delegation. Estimated +500 tests",
-      "depends_on": [
-        "iterator-protocol"
-      ],
-      "issues": [
-        680,
-        762,
-        287,
-        288
-      ]
+      "depends_on": ["iterator-protocol"],
+      "issues": [680, 762, 287, 288]
     },
     {
       "id": "iterator-protocol",
       "title": "iterator-protocol",
       "status": "blocked",
       "target": "Symbol.iterator protocol works for custom iterables. Estimated +800 tests",
-      "depends_on": [
-        "class-system"
-      ],
-      "issues": [
-        766,
-        481,
-        761,
-        353,
-        456,
-        495,
-        681
-      ]
+      "depends_on": ["class-system"],
+      "issues": [766, 481, 761, 353, 456, 495, 681]
     },
     {
       "id": "performance",
       "title": "performance",
       "status": "activatable",
       "target": "Competitive with JIT-compiled JavaScript for typed code",
-      "depends_on": [
-        "core-semantics"
-      ],
-      "issues": [
-        743,
-        760,
-        744,
-        685,
-        686,
-        638,
-        693,
-        700,
-        745,
-        747
-      ],
+      "depends_on": ["core-semantics"],
+      "issues": [743, 760, 744, 685, 686, 638, 693, 700, 745, 747],
       "track": "parallel"
     },
     {
@@ -982,23 +814,8 @@
       "title": "platform",
       "status": "blocked",
       "target": "Real deployments on at least 2 platforms",
-      "depends_on": [
-        "standalone-mode"
-      ],
-      "issues": [
-        639,
-        640,
-        641,
-        644,
-        642,
-        687,
-        688,
-        694,
-        699,
-        725,
-        741,
-        742
-      ],
+      "depends_on": ["standalone-mode"],
+      "issues": [639, 640, 641, 644, 642, 687, 688, 694, 699, 725, 741, 742],
       "track": "parallel"
     },
     {
@@ -1006,69 +823,24 @@
       "title": "property-model",
       "status": "blocked",
       "target": "Property descriptor semantics correct. Estimated +1,500 tests",
-      "depends_on": [
-        "core-semantics"
-      ],
-      "issues": [
-        739,
-        488,
-        359,
-        459,
-        460,
-        239,
-        274,
-        770,
-        678,
-        731,
-        746
-      ]
+      "depends_on": ["core-semantics"],
+      "issues": [739, 488, 359, 459, 460, 239, 274, 770, 678, 731, 746]
     },
     {
       "id": "spec-completeness",
       "title": "spec-completeness",
       "status": "blocked",
       "target": "90%+ pass rate. Fix remaining edge cases across all categories",
-      "depends_on": [
-        "async-model",
-        "symbol-protocol",
-        "builtin-methods",
-        "property-model"
-      ],
-      "issues": [
-        696,
-        727,
-        661,
-        674,
-        671,
-        498,
-        496,
-        497,
-        310,
-        491,
-        494,
-        500
-      ]
+      "depends_on": ["async-model", "symbol-protocol", "builtin-methods", "property-model"],
+      "issues": [696, 727, 661, 674, 671, 498, 496, 497, 310, 491, 494, 500]
     },
     {
       "id": "standalone-mode",
       "title": "standalone-mode",
       "status": "activatable",
       "target": "Full program execution under WASI",
-      "depends_on": [
-        "iterator-protocol",
-        "generator-model"
-      ],
-      "issues": [
-        680,
-        681,
-        682,
-        638,
-        639,
-        640,
-        641,
-        642,
-        652
-      ],
+      "depends_on": ["iterator-protocol", "generator-model"],
+      "issues": [680, 681, 682, 638, 639, 640, 641, 642, 652],
       "track": "parallel"
     },
     {
@@ -1076,17 +848,8 @@
       "title": "symbol-protocol",
       "status": "blocked",
       "target": "Well-known symbols implemented. Estimated +400 tests",
-      "depends_on": [
-        "iterator-protocol"
-      ],
-      "issues": [
-        482,
-        484,
-        485,
-        486,
-        487,
-        483
-      ]
+      "depends_on": ["iterator-protocol"],
+      "issues": [482, 484, 485, 486, 487, 483]
     }
   ],
   "goalIssueLinks": [

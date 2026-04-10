@@ -7,13 +7,14 @@ import ts from "typescript";
 import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import {
-  collectReferencedIdentifiers,
-  collectWrittenIdentifiers,
   compileExpression,
-  emitThrowString,
   ensureLateImport,
   flushLateImportShifts,
-} from "../expressions.js";
+  registerHoistFunctionDeclarations,
+  registerEmitArgumentsObject,
+} from "../shared.js";
+import { emitThrowString } from "../expressions/helpers.js";
+import { collectReferencedIdentifiers, collectWrittenIdentifiers } from "../closures.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { reportError } from "../context/errors.js";
 import { allocLocal } from "../context/locals.js";
@@ -35,7 +36,7 @@ import {
 } from "../index.js";
 import { promoteAccessorCapturesToGlobals } from "../closures.js";
 import { collectInstrs } from "./shared.js";
-import { compileStatement } from "../statements.js";
+import { compileStatement } from "../shared.js";
 
 export function compileNestedClassDeclaration(
   ctx: CodegenContext,
@@ -776,3 +777,8 @@ export function emitArgumentsObject(
   fctx.body.push({ op: "struct.new", typeIdx: vti });
   fctx.body.push({ op: "local.set", index: argsLocal });
 }
+
+// Register delegates in shared.ts so index.ts can call these without
+// importing statements/nested-declarations.ts directly (cycle prevention).
+registerHoistFunctionDeclarations(hoistFunctionDeclarations);
+registerEmitArgumentsObject(emitArgumentsObject);
