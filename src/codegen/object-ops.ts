@@ -9,7 +9,7 @@ import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
-import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType, getOrRegisterRefCellType } from "./registry/types.js";
 import { resolveWasmType, addUnionImports, getOrRegisterTupleType, cacheStringLiterals } from "./index.js";
 import { isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction } from "../ir/types.js";
@@ -20,7 +20,7 @@ import type { InnerResult } from "./shared.js";
 import { compileNativeStringLiteral } from "./string-ops.js";
 import { emitThrowString, resolveStructName, ensureLateImport, flushLateImportShifts } from "./expressions.js";
 import { emitGuardedRefCast } from "./type-coercion.js";
-import { compileArrowAsCallback } from "./closures.js";
+import { compileArrowAsCallback, collectReferencedIdentifiers, collectWrittenIdentifiers } from "./closures.js";
 
 // ── Compile-time primitive type check for Object methods ─────────────
 
@@ -482,7 +482,10 @@ export function compileObjectDefineProperty(
   // ── Getter/setter path ──────────────────────────────────────────────
   // Object.defineProperty(obj, "prop", { get() {...}, set(v) {...} })
   // Compile as struct accessor methods, analogous to object literal getters/setters.
-  if ((getNode || setNode) && !valueExpr && structName && structTypeIdx !== undefined && propName) {
+  // Only take the struct path when the property is a known field (fieldIdx >= 0).
+  // When fieldIdx === -1 (new property, not pre-declared), fall through to the
+  // extern path which handles closure captures properly (#929).
+  if ((getNode || setNode) && !valueExpr && structName && structTypeIdx !== undefined && propName && fieldIdx >= 0) {
     // Compile obj and save to local
     const objType = compileExpression(ctx, fctx, objArg);
     if (!objType) return null;
@@ -1124,6 +1127,43 @@ function emitExternDefinePropertyNoValue(
     }
 
     if (isAccessorDesc) {
+      // Pre-box shared mutable captures: variables referenced by BOTH getter and setter
+      // where at least one writes to them. Without this, each callback gets its own
+      // copy of the captured variable — a setter write would not be visible to the getter. (#929)
+      if (getNode && setNode) {
+        const getterRefs = new Set<string>();
+        const setterRefs = new Set<string>();
+        const getterWrites = new Set<string>();
+        const setterWrites = new Set<string>();
+        collectReferencedIdentifiers(getNode, getterRefs);
+        collectReferencedIdentifiers(setNode, setterRefs);
+        collectWrittenIdentifiers(getNode, getterWrites);
+        collectWrittenIdentifiers(setNode, setterWrites);
+
+        for (const varName of getterRefs) {
+          if (!setterRefs.has(varName)) continue;
+          if (!getterWrites.has(varName) && !setterWrites.has(varName)) continue;
+          const localIdx = fctx.localMap.get(varName);
+          if (localIdx === undefined) continue;
+          if (fctx.boxedCaptures?.has(varName)) continue; // already boxed
+          const type: ValType =
+            localIdx < fctx.params.length
+              ? fctx.params[localIdx]!.type
+              : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" as const });
+          const refCellTypeIdx = getOrRegisterRefCellType(ctx, type);
+          fctx.body.push({ op: "local.get", index: localIdx });
+          fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
+          const refCellLocalIdx = allocLocal(fctx, `__shared_rc_${varName}`, {
+            kind: "ref_null",
+            typeIdx: refCellTypeIdx,
+          });
+          fctx.body.push({ op: "local.set", index: refCellLocalIdx });
+          fctx.localMap.set(varName, refCellLocalIdx);
+          if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+          fctx.boxedCaptures.set(varName, { refCellTypeIdx, valType: type });
+        }
+      }
+
       // Accessor path: compile getter/setter as JS-callable callbacks
       const runtimeFlags = computeRuntimeFlags(undefined, descEnumerable, descConfigurable, false);
 
