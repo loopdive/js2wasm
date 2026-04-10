@@ -2848,7 +2848,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           if (recvType !== null) {
             fctx.body.push({ op: "drop" });
           }
-          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          // Re-resolve funcIdx after receiver compilation — emitUndefined (for `this` in static
+          // context) triggers addUnionImports which shifts all function indices (#998)
+          const resolvedStaticIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+          const paramTypes = getFuncParamTypes(ctx, resolvedStaticIdx);
           const paramCount = paramTypes ? paramTypes.length : expr.arguments.length;
           for (let i = 0; i < expr.arguments.length; i++) {
             if (i < paramCount) {
@@ -2865,7 +2868,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
-          const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+          const finalMethodIdx = ctx.funcMap.get(fullName) ?? resolvedStaticIdx;
           fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
