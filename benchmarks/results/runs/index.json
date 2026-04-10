@@ -504,75 +504,12 @@
     "gitHash": "9b6deaa6"
   },
   {
-    "timestamp": "2026-03-27T23:24:29.744Z",
-    "pass": 0,
-    "fail": 1,
-    "ce": 0,
-    "skip": 0,
-    "total": 1,
-    "gitHash": "9b6deaa6"
-  },
-  {
-    "timestamp": "2026-03-27T23:24:41.055Z",
-    "pass": 0,
-    "fail": 1,
-    "ce": 0,
-    "skip": 0,
-    "total": 1,
-    "gitHash": "9b6deaa6"
-  },
-  {
-    "timestamp": "2026-03-27T23:24:48.929Z",
-    "pass": 0,
-    "fail": 1,
-    "ce": 0,
-    "skip": 0,
-    "total": 1,
-    "gitHash": "9b6deaa6"
-  },
-  {
-    "timestamp": "2026-03-27T23:25:52.351Z",
-    "pass": 0,
-    "fail": 1,
-    "ce": 0,
-    "skip": 0,
-    "total": 1,
-    "gitHash": "9b6deaa6"
-  },
-  {
-    "timestamp": "2026-03-27T23:25:59.267Z",
-    "pass": 0,
-    "fail": 1,
-    "ce": 0,
-    "skip": 0,
-    "total": 1,
-    "gitHash": "9b6deaa6"
-  },
-  {
     "timestamp": "2026-03-28T00:03:38.255Z",
     "pass": 17388,
     "fail": 22284,
     "ce": 4145,
     "skip": 6065,
     "total": 49882,
-    "gitHash": "439c628d"
-  },
-  {
-    "timestamp": "2026-03-28T00:16:46.224Z",
-    "pass": 1,
-    "fail": 0,
-    "ce": 0,
-    "skip": 0,
-    "total": 1,
-    "gitHash": "439c628d"
-  },
-  {
-    "timestamp": "2026-03-28T00:16:56.799Z",
-    "pass": 1,
-    "fail": 2,
-    "ce": 0,
-    "skip": 0,
-    "total": 3,
     "gitHash": "439c628d"
   },
   {
@@ -600,24 +537,6 @@
     "ce": 2698,
     "skip": 5908,
     "total": 48086,
-    "gitHash": "b0929e92"
-  },
-  {
-    "timestamp": "2026-03-28T03:54:09.269Z",
-    "pass": 0,
-    "fail": 1,
-    "ce": 0,
-    "skip": 0,
-    "total": 1,
-    "gitHash": "b0929e92"
-  },
-  {
-    "timestamp": "2026-03-28T03:54:30.160Z",
-    "pass": 0,
-    "fail": 1,
-    "ce": 0,
-    "skip": 0,
-    "total": 1,
     "gitHash": "b0929e92"
   },
   {
@@ -792,33 +711,6 @@
     "gitHash": "7a588bd7"
   },
   {
-    "timestamp": "2026-03-29T15:48:12.290Z",
-    "pass": 11,
-    "fail": 76,
-    "ce": 1,
-    "skip": 6580,
-    "total": 6668,
-    "gitHash": "7ed3c456"
-  },
-  {
-    "timestamp": "2026-03-29T15:49:32.408Z",
-    "pass": 11,
-    "fail": 76,
-    "ce": 1,
-    "skip": 6580,
-    "total": 6668,
-    "gitHash": "7ed3c456"
-  },
-  {
-    "timestamp": "2026-03-29T15:50:16.856Z",
-    "pass": 11,
-    "fail": 76,
-    "ce": 1,
-    "skip": 6580,
-    "total": 6668,
-    "gitHash": "7ed3c456"
-  },
-  {
     "timestamp": "2026-03-29T16:22:59.375Z",
     "pass": 18284,
     "fail": 21116,
@@ -835,7 +727,7 @@
     "skip": 6580,
     "total": 48088,
     "gitHash": "08cc4778",
-    "note": "clean baseline \u2014 cache disabled, conformance count (not vitest count)"
+    "note": "clean baseline — cache disabled, conformance count (not vitest count)"
   },
   {
     "timestamp": "2026-03-31T01:24:13.763Z",
@@ -918,6 +810,46 @@
     "chunk": true
   },
   {
+    "timestamp": "2026-04-10T18:30:20+00:00",
+    "pass": 18919,
+    "fail": 24201,
+    "ce": 0,
+    "skip": 0,
+    "total": 43120,
+    "gitHash": "a6f02508",
+    "source": "ci-promote"
+  },
+  {
+    "timestamp": "2026-04-10T19:33:08+00:00",
+    "pass": 18983,
+    "fail": 24137,
+    "ce": 0,
+    "skip": 0,
+    "total": 43120,
+    "gitHash": "5711ed3f",
+    "source": "ci-promote"
+  },
+  {
+    "timestamp": "2026-04-10T20:16:40+00:00",
+    "pass": 19121,
+    "fail": 23999,
+    "ce": 0,
+    "skip": 0,
+    "total": 43120,
+    "gitHash": "cad7b535",
+    "source": "ci-promote"
+  },
+  {
+    "timestamp": "2026-04-10T20:48:08+00:00",
+    "pass": 19154,
+    "fail": 23966,
+    "ce": 0,
+    "skip": 0,
+    "total": 43120,
+    "gitHash": "45c02cb4",
+    "source": "ci-promote"
+  },
+  {
     "timestamp": "20260331-192021",
     "pass": 15246,
     "fail": 24668,
@@ -934,42 +866,6 @@
     "total": 48174
   },
   {
-    "timestamp": "2026-03-31T21:25:14.552Z",
-    "pass": 2,
-    "fail": 86,
-    "ce": 41420,
-    "skip": 6580,
-    "total": 48088,
-    "gitHash": "e8e59e74"
-  },
-  {
-    "timestamp": "2026-03-31T21:28:41.269Z",
-    "pass": 2,
-    "fail": 86,
-    "ce": 41420,
-    "skip": 6580,
-    "total": 48088,
-    "gitHash": "e8e59e74"
-  },
-  {
-    "timestamp": "2026-03-31T21:30:42.868Z",
-    "pass": 2,
-    "fail": 86,
-    "ce": 41420,
-    "skip": 6580,
-    "total": 48088,
-    "gitHash": "e8e59e74"
-  },
-  {
-    "timestamp": "2026-03-31T22:29:01.444Z",
-    "pass": 0,
-    "fail": 0,
-    "ce": 1,
-    "skip": 0,
-    "total": 1,
-    "gitHash": "e8e59e74"
-  },
-  {
     "timestamp": "20260401-003615",
     "pass": 15160,
     "fail": 24740,
@@ -982,6 +878,14 @@
     "pass": 15159,
     "fail": 24733,
     "ce": 1683,
+    "skip": 1348,
+    "total": 42934
+  },
+  {
+    "timestamp": "20260403-054305",
+    "pass": 15103,
+    "fail": 24773,
+    "ce": 1699,
     "skip": 1348,
     "total": 42934
   },
@@ -1006,14 +910,6 @@
     "pass": 15187,
     "fail": 24956,
     "ce": 1433,
-    "skip": 1348,
-    "total": 42934
-  },
-  {
-    "timestamp": "20260403-054305",
-    "pass": 15103,
-    "fail": 24773,
-    "ce": 1699,
     "skip": 1348,
     "total": 42934
   },
@@ -1056,15 +952,6 @@
     "ce": 2795,
     "skip": 1348,
     "total": 43120
-  },
-  {
-    "timestamp": "2026-04-03T18:18:33.886Z",
-    "pass": 10,
-    "fail": 77,
-    "ce": 41599,
-    "skip": 6402,
-    "total": 48088,
-    "gitHash": "3ce41b5e"
   },
   {
     "timestamp": "20260404-021526",
@@ -1211,15 +1098,6 @@
     "total": 41210,
     "strict_pass": 16829,
     "strict_total": 38797
-  },
-  {
-    "timestamp": "2026-04-06T06:47:11.555Z",
-    "pass": 11,
-    "fail": 77,
-    "ce": 41633,
-    "skip": 6367,
-    "total": 48088,
-    "gitHash": "294bb1d7"
   },
   {
     "timestamp": "20260406-143927",
