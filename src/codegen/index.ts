@@ -761,7 +761,8 @@ function emitClosureCallExport(ctx: CodegenContext): void {
   }
   if (baseWrapperIdx === undefined) return;
 
-  // Check if __box_number is available for boxing numeric results.
+  // Ensure __box_number is available for boxing numeric (f64/i32/i64) results.
+  addUnionImports(ctx);
   const boxNumberIdx = ctx.funcMap.get("__box_number");
 
   const exportFuncTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }], "$call_fn_0_type");
@@ -808,6 +809,15 @@ function emitClosureCallExport(ctx: CodegenContext): void {
       } else if (entry.returnType.kind === "i32") {
         if (boxNumberIdx !== undefined) {
           callBody.push({ op: "f64.convert_i32_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i64") {
+        // i64 (BigInt) — convert to f64 then box, or drop and return null
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i64_s" } as Instr);
           callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
         } else {
           callBody.push({ op: "drop" } as Instr);
@@ -972,6 +982,15 @@ function emitToPrimitiveMethodExports(ctx: CodegenContext): void {
         }
       } else if (resultType.kind === "i32") {
         instrs.push({ op: "f64.convert_i32_s" } as Instr);
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) instrs.push({ op: "call", funcIdx: boxIdx } as Instr);
+        else {
+          instrs.push({ op: "drop" } as Instr);
+          instrs.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (resultType.kind === "i64") {
+        // i64 (BigInt) — convert to f64 then box, or drop and return null
+        instrs.push({ op: "f64.convert_i64_s" } as Instr);
         const boxIdx = ctx.funcMap.get("__box_number");
         if (boxIdx !== undefined) instrs.push({ op: "call", funcIdx: boxIdx } as Instr);
         else {
