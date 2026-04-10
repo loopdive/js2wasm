@@ -1085,6 +1085,11 @@ function resolveImport(
                 } else {
                   if (desc.get) sc[`__get_${prop}`] = desc.get;
                   if (desc.set) sc[`__set_${prop}`] = desc.set;
+                  // Mark the property key as "own" for hasOwnProperty checks.
+                  // `prop in sc` must be true even though the value is undefined —
+                  // _sidecarGet returns undefined which causes _safeGet to fall
+                  // through to the getter check (correct). (#929)
+                  if (!(prop in sc)) sc[prop as string] = undefined;
                 }
               } else {
                 throw e;
@@ -1373,6 +1378,11 @@ function resolveImport(
           // WasmGC struct: check sidecar properties
           const sc = _wasmStructProps.get(obj);
           if (sc && key in sc) return 1;
+          // Check descriptor map (for accessor properties set via Object.defineProperty)
+          // __defineProperty_accessor stores flags in _wasmPropDescs so that
+          // hasOwnProperty returns true for accessor-only properties. (#929)
+          const descs = _wasmPropDescs.get(obj);
+          if (descs && descs.has(String(key))) return 1;
           // Check struct field names via exported helpers
           const exports = callbackState?.getExports();
           const fieldNames = _getStructFieldNames(obj, exports) ?? [];
@@ -1911,7 +1921,21 @@ function resolveImport(
           const r = Number.isNaN(radix) ? undefined : radix;
           return parseInt(String(s), r as any);
         };
-      if (name === "parseFloat") return (s: any) => parseFloat(String(s));
+      if (name === "parseFloat")
+        return (s: any) => {
+          // For Boolean/Number/String wrapper objects (new Boolean(true), etc.),
+          // use Number() coercion which calls valueOf() → 1/0/string.
+          // parseFloat(String(new Boolean(true))) = parseFloat("true") = NaN, which
+          // breaks arithmetic like `"1" / new Boolean(true)`. (#929)
+          if (s != null && typeof s === "object") {
+            try {
+              return Number(s);
+            } catch {
+              /* fall through */
+            }
+          }
+          return parseFloat(String(s));
+        };
       // URI encoding/decoding host imports
       if (name === "decodeURI") return (s: any) => decodeURI(String(s));
       if (name === "decodeURIComponent") return (s: any) => decodeURIComponent(String(s));

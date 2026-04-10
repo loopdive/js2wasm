@@ -115,17 +115,36 @@ export function compileObjectLiteral(
     }
   }
 
-  // Empty `{}` in non-variable-declaration context (e.g. RHS of assignment like
-  // `a.constructor = {}`) should be a real JS plain object, not a WasmGC struct.
-  // WasmGC structs with zero fields can't hold arbitrary properties and cause issues
-  // when passed to host APIs like Object.defineProperty.
-  // Note: `var obj = {}` (VariableDeclaration) goes through the normal struct path below.
-  if (expr.properties.length === 0 && !ts.isVariableDeclaration(expr.parent)) {
-    const funcIdx = ensureLateImport(ctx, "__new_plain_object", [], [{ kind: "externref" }]);
-    flushLateImportShifts(ctx, fctx);
-    if (funcIdx !== undefined) {
-      fctx.body.push({ op: "call", funcIdx });
-      return { kind: "externref" };
+  // Empty `{}` used as an externref plain object — only when the TypeScript type
+  // context is `any` or the object is explicitly typed without struct widening.
+  // Do NOT apply to: parameter defaults, binding element defaults, variable declarations,
+  // or any context where the struct system expects a concrete typed object.
+  // (Too-broad application caused 150+ dstr regressions: parameter defaults like
+  //  `function({ x } = {})` would call __new_plain_object instead of struct.new,
+  //  making the WasmGC ref.test for the struct type fail and null-deref.)
+  if (
+    expr.properties.length === 0 &&
+    !ts.isVariableDeclaration(expr.parent) &&
+    !ts.isParameter(expr.parent) &&
+    !ts.isBindingElement(expr.parent) &&
+    !ts.isPropertyAssignment(expr.parent) &&
+    !ts.isShorthandPropertyAssignment(expr.parent) &&
+    !ts.isReturnStatement(expr.parent) &&
+    !ts.isArrowFunction(expr.parent) &&
+    !ts.isArrayLiteralExpression(expr.parent) &&
+    !ts.isAsExpression(expr.parent)
+  ) {
+    // Check contextual type: only use plain object when context expects `any` or externref
+    const ctxType = ctx.checker.getContextualType(expr);
+    const isAnyContext =
+      !ctxType || (ctxType.flags & ts.TypeFlags.Any) !== 0 || (ctxType.flags & ts.TypeFlags.Unknown) !== 0;
+    if (isAnyContext) {
+      const funcIdx = ensureLateImport(ctx, "__new_plain_object", [], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
     }
   }
 
