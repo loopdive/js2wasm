@@ -1419,7 +1419,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       // In module context, TypeScript may produce AwaitExpression for `await 1` inside
       // a regular (non-async) function. That's a SyntaxError per ES spec because the
       // function uses [~Await] formal parameters/body.
-      if (!isInsideAsyncFunction(node) && !isInsideClassStaticBlock(node) && isInsideAnyFunction(node)) {
+      // NOTE: We use isInsideNestedFunction (not isInsideAnyFunction) to avoid false
+      // positives from the test262 runner, which wraps module code in
+      // `export function test() { ... }`. Code at "module top level" in tests thus
+      // appears inside test() (1 function deep). Real nested functions like
+      // `function fn() { await 0; }` inside the wrapper are 2+ levels deep.
+      // See the same trade-off comment at line ~1492 (import/export in invalid positions).
+      if (!isInsideAsyncFunction(node) && !isInsideClassStaticBlock(node) && isInsideNestedFunction(node)) {
         addError(node, "'await' expressions are only allowed in async functions");
       }
     }
@@ -1881,6 +1887,37 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         ts.isSetAccessorDeclaration(current)
       ) {
         return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /**
+   * Returns true if the node is inside a function that is itself inside another function
+   * (i.e., the function depth is >= 2 from SourceFile).
+   *
+   * Used instead of isInsideAnyFunction for the await-in-non-async-function check because
+   * the test262 runner wraps all module code in `export function test() { ... }`.
+   * Top-level-await tests have `await` directly inside test() (depth 1) — these should
+   * not be flagged. Negative tests like `function fn() { await 0; }` have `await` inside
+   * fn() inside test() (depth 2) — these should be flagged.
+   */
+  function isInsideNestedFunction(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    let depth = 0;
+    while (current) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        depth++;
+        if (depth >= 2) return true;
       }
       current = current.parent;
     }
