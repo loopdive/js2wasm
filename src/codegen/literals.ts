@@ -31,10 +31,19 @@ import {
 } from "./index.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
-import { compileStatement, bodyUsesArguments, emitArgumentsObject } from "./statements.js";
-import { compileExpression, getLine, getCol, VOID_RESULT } from "./shared.js";
+import {
+  compileExpression,
+  compileStatement,
+  emitArgumentsObject,
+  getLine,
+  getCol,
+  registerResolveComputedKeyExpression,
+  VOID_RESULT,
+} from "./shared.js";
+import { bodyUsesArguments } from "./statements/nested-declarations.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
-import { resolveStructName, patchStructNewForAddedField } from "./expressions.js";
+import { resolveStructName } from "./expressions/misc.js";
+import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { pushDefaultValue } from "./type-coercion.js";
 
 /**
@@ -1390,3 +1399,7 @@ export function compileArrayConstructorCall(
   fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
   return { kind: "ref_null", typeIdx: vecTypeIdx };
 }
+
+// Register delegate in shared.ts so index.ts can call resolveComputedKeyExpression
+// without importing literals.ts directly (which imports index.ts → cycle).
+registerResolveComputedKeyExpression(resolveComputedKeyExpression);

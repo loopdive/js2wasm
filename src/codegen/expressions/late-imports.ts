@@ -6,7 +6,8 @@
  * and emitting the JS `undefined` value.
  */
 import type { Instr, ValType } from "../../ir/types.js";
-import { addFuncType, addImport } from "../index.js";
+import { addFuncType } from "../registry/types.js";
+import { addImport } from "../registry/imports.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { walkInstructions } from "../walk-instructions.js";
 

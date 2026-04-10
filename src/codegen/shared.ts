@@ -1,7 +1,17 @@
 /**
  * Shared types, values, and late-bound function registrations for the codegen
  * modules.  This module exists solely to break circular dependencies between
- * expressions.ts and the feature-specific modules (closures.ts, etc.).
+ * the main codegen modules (index.ts, expressions.ts, statements.ts) and the
+ * feature-specific modules (closures.ts, etc.).
+ *
+ * Dependency direction:
+ *   shared.ts (no deps on main modules)
+ *     ↑
+ *   registry/*.ts, context/*.ts (low-level)
+ *     ↑
+ *   index.ts (compiler driver — imports from shared, registry, context)
+ *     ↑           ↑
+ *   expressions.ts  statements.ts (import from shared and index)
  *
  * Convention: the *real* implementation lives in the feature module and calls
  * `registerXxx(impl)` at module scope.  Consumers import the delegate wrapper
@@ -219,3 +229,272 @@ export function ensureLateImport(
 export function flushLateImportShifts(ctx: CodegenContext, fctx: FunctionContext): void {
   _flushLateImportShifts(ctx, fctx);
 }
+
+// ── isAnyValue ────────────────────────────────────────────────────────
+// Moved here from index.ts so expressions.ts and typeof-delete.ts can import
+// it without depending on index.ts (which depends on expressions.ts).
+
+/**
+ * Check if a ValType is the any-value boxed type used for TS `any`.
+ */
+export function isAnyValue(type: ValType, ctx: CodegenContext): boolean {
+  return (
+    (type.kind === "ref" || type.kind === "ref_null") &&
+    (type as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx &&
+    ctx.anyValueTypeIdx >= 0
+  );
+}
+
+// ── ensureAnyHelpers ──────────────────────────────────────────────────
+
+type EnsureAnyHelpersFn = (ctx: CodegenContext) => void;
+
+let _ensureAnyHelpers: EnsureAnyHelpersFn = () => {
+  throw new Error("ensureAnyHelpers not yet registered");
+};
+
+export function registerEnsureAnyHelpers(fn: EnsureAnyHelpersFn): void {
+  _ensureAnyHelpers = fn;
+}
+
+export function ensureAnyHelpers(ctx: CodegenContext): void {
+  _ensureAnyHelpers(ctx);
+}
+
+// ── resolveComputedKeyExpression ──────────────────────────────────────
+
+type ResolveComputedKeyExpressionFn = (ctx: CodegenContext, expr: ts.Expression) => string | undefined;
+
+let _resolveComputedKeyExpression: ResolveComputedKeyExpressionFn = () => {
+  throw new Error("resolveComputedKeyExpression not yet registered");
+};
+
+export function registerResolveComputedKeyExpression(fn: ResolveComputedKeyExpressionFn): void {
+  _resolveComputedKeyExpression = fn;
+}
+
+export function resolveComputedKeyExpression(ctx: CodegenContext, expr: ts.Expression): string | undefined {
+  return _resolveComputedKeyExpression(ctx, expr);
+}
+
+// ── compileStatement ──────────────────────────────────────────────────
+
+type CompileStatementFn = (ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement) => void;
+
+let _compileStatement: CompileStatementFn = () => {
+  throw new Error("compileStatement not yet registered");
+};
+
+export function registerCompileStatement(fn: CompileStatementFn): void {
+  _compileStatement = fn;
+}
+
+export function compileStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
+  _compileStatement(ctx, fctx, stmt);
+}
+
+// ── ensureBindingLocals ───────────────────────────────────────────────
+
+type EnsureBindingLocalsFn = (ctx: CodegenContext, fctx: FunctionContext, pattern: ts.BindingPattern) => void;
+
+let _ensureBindingLocals: EnsureBindingLocalsFn = () => {
+  throw new Error("ensureBindingLocals not yet registered");
+};
+
+export function registerEnsureBindingLocals(fn: EnsureBindingLocalsFn): void {
+  _ensureBindingLocals = fn;
+}
+
+export function ensureBindingLocals(ctx: CodegenContext, fctx: FunctionContext, pattern: ts.BindingPattern): void {
+  _ensureBindingLocals(ctx, fctx, pattern);
+}
+
+// ── hoistFunctionDeclarations ─────────────────────────────────────────
+
+type HoistFunctionDeclarationsFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmts: ts.NodeArray<ts.Statement> | ts.Statement[],
+) => void;
+
+let _hoistFunctionDeclarations: HoistFunctionDeclarationsFn = () => {
+  throw new Error("hoistFunctionDeclarations not yet registered");
+};
+
+export function registerHoistFunctionDeclarations(fn: HoistFunctionDeclarationsFn): void {
+  _hoistFunctionDeclarations = fn;
+}
+
+export function hoistFunctionDeclarations(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmts: ts.NodeArray<ts.Statement> | ts.Statement[],
+): void {
+  _hoistFunctionDeclarations(ctx, fctx, stmts);
+}
+
+// ── emitNestedBindingDefault ──────────────────────────────────────────
+
+type EmitNestedBindingDefaultFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  nestedLocal: number,
+  valueType: ValType,
+  initializer: ts.Expression,
+) => void;
+
+let _emitNestedBindingDefault: EmitNestedBindingDefaultFn = () => {
+  throw new Error("emitNestedBindingDefault not yet registered");
+};
+
+export function registerEmitNestedBindingDefault(fn: EmitNestedBindingDefaultFn): void {
+  _emitNestedBindingDefault = fn;
+}
+
+export function emitNestedBindingDefault(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  nestedLocal: number,
+  valueType: ValType,
+  initializer: ts.Expression,
+): void {
+  _emitNestedBindingDefault(ctx, fctx, nestedLocal, valueType, initializer);
+}
+
+// ── emitDefaultValueCheck ─────────────────────────────────────────────
+
+type EmitDefaultValueCheckFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  fieldType: ValType,
+  localIdx: number,
+  initializer: ts.Expression,
+  targetType?: ValType,
+) => void;
+
+let _emitDefaultValueCheck: EmitDefaultValueCheckFn = () => {
+  throw new Error("emitDefaultValueCheck not yet registered");
+};
+
+export function registerEmitDefaultValueCheck(fn: EmitDefaultValueCheckFn): void {
+  _emitDefaultValueCheck = fn;
+}
+
+export function emitDefaultValueCheck(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  fieldType: ValType,
+  localIdx: number,
+  initializer: ts.Expression,
+  targetType?: ValType,
+): void {
+  _emitDefaultValueCheck(ctx, fctx, fieldType, localIdx, initializer, targetType);
+}
+
+// ── emitArgumentsObject ───────────────────────────────────────────────
+
+type EmitArgumentsObjectFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramTypes: ValType[],
+  paramOffset: number,
+) => void;
+
+let _emitArgumentsObject: EmitArgumentsObjectFn = () => {
+  throw new Error("emitArgumentsObject not yet registered");
+};
+
+export function registerEmitArgumentsObject(fn: EmitArgumentsObjectFn): void {
+  _emitArgumentsObject = fn;
+}
+
+export function emitArgumentsObject(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramTypes: ValType[],
+  paramOffset: number,
+): void {
+  _emitArgumentsObject(ctx, fctx, paramTypes, paramOffset);
+}
+
+// ── compileStringLiteral ──────────────────────────────────────────────
+
+type CompileStringLiteralFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  value: string,
+  node?: ts.Node,
+) => ValType | null;
+
+let _compileStringLiteral: CompileStringLiteralFn = () => {
+  throw new Error("compileStringLiteral not yet registered");
+};
+
+export function registerCompileStringLiteral(fn: CompileStringLiteralFn): void {
+  _compileStringLiteral = fn;
+}
+
+export function compileStringLiteral(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  value: string,
+  node?: ts.Node,
+): ValType | null {
+  return _compileStringLiteral(ctx, fctx, value, node);
+}
+
+// ── compileSuperPropertyAccess ────────────────────────────────────────
+
+type CompileSuperPropertyAccessFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.PropertyAccessExpression,
+  propName: string,
+) => ValType | null;
+
+let _compileSuperPropertyAccess: CompileSuperPropertyAccessFn = () => {
+  throw new Error("compileSuperPropertyAccess not yet registered");
+};
+
+export function registerCompileSuperPropertyAccess(fn: CompileSuperPropertyAccessFn): void {
+  _compileSuperPropertyAccess = fn;
+}
+
+export function compileSuperPropertyAccess(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.PropertyAccessExpression,
+  propName: string,
+): ValType | null {
+  return _compileSuperPropertyAccess(ctx, fctx, expr, propName);
+}
+
+// ── compileSuperElementAccess ─────────────────────────────────────────
+
+type CompileSuperElementAccessFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ElementAccessExpression,
+) => ValType | null;
+
+let _compileSuperElementAccess: CompileSuperElementAccessFn = () => {
+  throw new Error("compileSuperElementAccess not yet registered");
+};
+
+export function registerCompileSuperElementAccess(fn: CompileSuperElementAccessFn): void {
+  _compileSuperElementAccess = fn;
+}
+
+export function compileSuperElementAccess(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ElementAccessExpression,
+): ValType | null {
+  return _compileSuperElementAccess(ctx, fctx, expr);
+}
+
+// ── emitBoundsCheckedArrayGet registration ────────────────────────────
+// (delegate stub already existed but was never registered — fixed here)
+
+// ── resolveEnclosingClassName registration ────────────────────────────
+// (delegate stub already existed but was never registered — fixed here)
