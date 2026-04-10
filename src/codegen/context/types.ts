@@ -163,6 +163,14 @@ export interface FunctionContext {
    */
   pendingCallbackWritebacks?: Instr[];
   /**
+   * Persistent writeback instructions for getter/setter callbacks (#929).
+   * Unlike pendingCallbackWritebacks (one-shot), these are re-emitted after
+   * every call expression so that mutations from deferred callback invocations
+   * (e.g. Object.defineProperty getter called later by Object.defineProperties)
+   * are reflected in the outer scope's local variables.
+   */
+  persistentCallbackWritebacks?: Instr[];
+  /**
    * Mapped arguments info for non-strict functions with simple parameters (#849).
    */
   mappedArgsInfo?: {

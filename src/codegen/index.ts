@@ -2839,6 +2839,8 @@ function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorSt
   if (state.callbackFound) {
     const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+    // __make_getter_callback: same signature — regular function wrapper so 'this' is bound (#929)
+    addImport(ctx, "env", "__make_getter_callback", { kind: "func", typeIdx });
   }
 
   // ── collectFunctionalArrayImports finalize ──
@@ -8302,6 +8304,8 @@ function collectCallbackImports(ctx: CodegenContext, sourceFile: ts.SourceFile):
     // __make_callback: (i32, externref) → externref
     const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+    // __make_getter_callback: same signature — regular function wrapper so 'this' is bound
+    addImport(ctx, "env", "__make_getter_callback", { kind: "func", typeIdx });
   }
 }
 

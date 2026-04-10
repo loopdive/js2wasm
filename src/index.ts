@@ -6,6 +6,7 @@ export type ImportIntent =
   | { type: "string_method"; method: string }
   | { type: "builtin"; name: string }
   | { type: "callback_maker" }
+  | { type: "getter_callback_maker" }
   | { type: "await" }
   | { type: "typeof_check"; targetType: string }
   | { type: "box"; targetType: string }

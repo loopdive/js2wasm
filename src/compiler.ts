@@ -2520,6 +2520,7 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
 
   // Callback maker
   if (name === "__make_callback") return { type: "callback_maker" };
+  if (name === "__make_getter_callback") return { type: "getter_callback_maker" };
 
   // Async/await
   if (name === "__await") return { type: "await" };
@@ -2547,12 +2548,18 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // globalThis
   if (name === "__get_globalThis") return { type: "declared_global", name: "globalThis" };
 
+  // defineProperty with accessor descriptor
+  if (name === "__defineProperty_accessor") return { type: "builtin", name: "__defineProperty_accessor" };
+
   // Extern get/set
   if (name === "__extern_get") return { type: "extern_get" };
   if (name === "__extern_set") return { type: "extern_set" };
 
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
+
+  // __new_plain_object is a builtin factory, not an extern class constructor
+  if (name === "__new_plain_object") return { type: "builtin", name: "__new_plain_object" };
 
   // Unknown constructor imports (__new_ClassName)
   if (name.startsWith("__new_")) {
@@ -3708,7 +3715,7 @@ function generateImportsHelper(mod: WasmModule): string {
   const hasDeps = mod.externClasses.length > 0;
   const hasStringPool = mod.stringPool.length > 0;
   const hasJsString = mod.imports.some((i) => i.module === "wasm:js-string");
-  const hasCallbacks = mod.imports.some((i) => i.name === "__make_callback");
+  const hasCallbacks = mod.imports.some((i) => i.name === "__make_callback" || i.name === "__make_getter_callback");
 
   // Late-binding variable for callback support
   if (hasCallbacks) {
@@ -3841,6 +3848,11 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   // __make_callback: late-binding wrapper
   if (name === "__make_callback") {
     return `${name}: (id, cap) => (...args) => wasmExports[\`__cb_\${id}\`](cap, ...args)`;
+  }
+
+  // __make_getter_callback: regular function wrapper so 'this' is bound to the receiver
+  if (name === "__make_getter_callback") {
+    return `${name}: (id, cap) => function() { return wasmExports[\`__cb_\${id}\`](cap, this); }`;
   }
 
   // Async/await support: __await is identity (host functions are sync from Wasm's perspective)
