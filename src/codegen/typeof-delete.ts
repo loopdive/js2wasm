@@ -8,13 +8,15 @@ import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.j
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { addImport } from "./registry/imports.js";
 import { addFuncType } from "./registry/types.js";
-import { resolveWasmType, addUnionImports, parseRegExpLiteral, isAnyValue, ensureAnyHelpers } from "./index.js";
+import { resolveWasmType, addUnionImports, parseRegExpLiteral } from "./index.js";
+import { isAnyValue, ensureAnyHelpers } from "./shared.js";
 import { isNumberType, isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
 import { compileStringLiteral } from "./string-ops.js";
-import { resolveStructName, shiftLateImportIndices } from "./expressions.js";
+import { resolveStructName } from "./expressions/misc.js";
+import { shiftLateImportIndices } from "./expressions/late-imports.js";
 
 // ── Delete expression ─────────────────────────────────────────────────
 

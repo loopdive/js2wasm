@@ -66,18 +66,16 @@ import {
   emitBoundsCheckedArrayGet,
   ensureLateImport,
   flushLateImportShifts,
-  shiftLateImportIndices,
-  emitUndefined,
-} from "./expressions.js";
-import { collectShapes } from "../shape-inference.js";
-import {
   compileStatement,
   ensureBindingLocals,
   hoistFunctionDeclarations,
   emitNestedBindingDefault,
   emitDefaultValueCheck,
   emitArgumentsObject,
-} from "./statements.js";
+  registerEnsureAnyHelpers,
+} from "./shared.js";
+import { shiftLateImportIndices, emitUndefined } from "./expressions/late-imports.js";
+import { collectShapes } from "../shape-inference.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
 import {
   fixupExternConvertAny,
@@ -4242,6 +4240,10 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     );
   }
 }
+
+// Register ensureAnyHelpers delegate so expressions.ts and typeof-delete.ts
+// can call it via shared.ts without importing index.ts (which depends on them).
+registerEnsureAnyHelpers(ensureAnyHelpers);
 
 /**
  * Get the ValType for a string reference (ref $AnyString).
@@ -14320,5 +14322,4 @@ export {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
-export { compileExpression } from "./expressions.js";
-export { compileStatement } from "./statements.js";
+export { compileExpression, compileStatement } from "./shared.js";

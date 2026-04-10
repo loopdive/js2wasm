@@ -14,7 +14,14 @@ import { getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.j
 import { resolveWasmType, addStringImports, addArrayIteratorImports } from "./index.js";
 import { isStringType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
-import { compileExpression, compileArrowAsClosure, VOID_RESULT, getLine, getCol } from "./shared.js";
+import {
+  compileExpression,
+  compileArrowAsClosure,
+  VOID_RESULT,
+  getLine,
+  getCol,
+  registerEmitBoundsCheckedArrayGet,
+} from "./shared.js";
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import { ensureTimsortHelper } from "./timsort.js";
 
@@ -3838,3 +3845,7 @@ function compileArrayLastIndexOf(
   }
   return { kind: "f64" };
 }
+
+// Register the emitBoundsCheckedArrayGet delegate so closures.ts (and any
+// other module) can call it via shared.ts without depending on array-methods.ts.
+registerEmitBoundsCheckedArrayGet(emitBoundsCheckedArrayGet);
