@@ -2214,8 +2214,7 @@ export async function instantiateWasmStreaming(
   stringConstants?: Record<string, WebAssembly.Global>,
 ): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
   const sc = stringConstants ?? {};
-  const response =
-    source instanceof Response ? source : source instanceof Promise ? await source : await fetch(source);
+  const response = source instanceof Response ? source : source instanceof Promise ? await source : await fetch(source);
   const byteFallback = response.clone();
 
   if (typeof WebAssembly.instantiateStreaming === "function") {
