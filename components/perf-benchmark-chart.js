@@ -134,10 +134,11 @@ class PerfBenchmarkChart extends HTMLElement {
           position: absolute;
           top: 50%;
           height: 0;
-          border-top: 1px solid rgba(255,255,255,0.4);
+          border-top: 1px solid rgba(255,255,255,0.5);
           transform: translateY(-50%);
           z-index: 2;
           opacity: 0;
+          filter: drop-shadow(0 0 1px rgba(0,0,0,0.9)) drop-shadow(0 0 0.5px rgba(0,0,0,1));
         }
 
         .bench-errorbar::before,
@@ -147,7 +148,7 @@ class PerfBenchmarkChart extends HTMLElement {
           top: -4px;
           width: 0;
           height: 8px;
-          border-left: 1px solid rgba(255,255,255,0.4);
+          border-left: 1px solid rgba(255,255,255,0.5);
         }
 
         .bench-errorbar::before {
@@ -166,7 +167,7 @@ class PerfBenchmarkChart extends HTMLElement {
           position: absolute;
           top: 50%;
           transform: translateY(-50%);
-          z-index: 2;
+          z-index: 4;
           white-space: nowrap;
           text-shadow:
             0 1px 1px rgba(6, 10, 20, 0.85),
@@ -229,15 +230,23 @@ class PerfBenchmarkChart extends HTMLElement {
   async _measureWasmLoad(entry, wasmUrl, instantiateWasmStreaming, buildImports, rounds = 3) {
     const samples = [];
     for (let i = 0; i < rounds; i++) {
-      const imports = buildImports(entry.imports ?? [], {
-        document,
-        window,
-        performance,
-        globalThis,
-      }, entry.stringPool ?? []);
+      const imports = buildImports(
+        entry.imports ?? [],
+        {
+          document,
+          window,
+          performance,
+          globalThis,
+        },
+        entry.stringPool ?? [],
+      );
       const cacheBust = `${wasmUrl}${wasmUrl.includes("?") ? "&" : "?"}load=${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
       const t0 = performance.now();
-      const result = await instantiateWasmStreaming(fetch(cacheBust, { cache: "no-store" }), imports.env, imports.string_constants);
+      const result = await instantiateWasmStreaming(
+        fetch(cacheBust, { cache: "no-store" }),
+        imports.env,
+        imports.string_constants,
+      );
       if (imports.setExports) imports.setExports(result.instance.exports);
       samples.push(performance.now() - t0);
     }
@@ -506,8 +515,8 @@ class PerfBenchmarkChart extends HTMLElement {
           }
           return measured;
         });
-        } else {
-          // Default perf mode: ratio = jsUs / wasmUs (higher = wasm faster)
+      } else {
+        // Default perf mode: ratio = jsUs / wasmUs (higher = wasm faster)
         let rows = Array.isArray(json) ? json : [];
         if (benchmarkFilter) {
           rows = rows.filter((row) => {
@@ -617,10 +626,14 @@ class PerfBenchmarkChart extends HTMLElement {
           d.fillEl.style.width = curWidth + "%";
           d.fillEl.style.background = `linear-gradient(${d.gradDir}, rgba(255,255,255,${d.baseOpacity}), rgba(255,255,255,${curEdgeOp}))`;
 
-          const stdRatio = Math.min(d.ratioStd || 0, Math.max(d.ratio - 0.01, 0), Math.max(scaleMax / 100 - d.ratio, 0));
+          const stdRatio = Math.min(
+            d.ratioStd || 0,
+            Math.max(d.ratio - 0.01, 0),
+            Math.max(scaleMax / 100 - d.ratio, 0),
+          );
           if (stdRatio > 0) {
-            const stdLeft = ((Math.max(d.ratio - stdRatio, 0.01)) / (scaleMax / 100)) * 100;
-            const stdRight = ((Math.min(d.ratio + stdRatio, scaleMax / 100)) / (scaleMax / 100)) * 100;
+            const stdLeft = (Math.max(d.ratio - stdRatio, 0.01) / (scaleMax / 100)) * 100;
+            const stdRight = (Math.min(d.ratio + stdRatio, scaleMax / 100) / (scaleMax / 100)) * 100;
             const currentStdLeft = jsPos + t * (stdLeft - jsPos);
             const currentStdRight = jsPos + t * (stdRight - jsPos);
             d.errorEl.style.left = `${Math.min(currentStdLeft, currentStdRight)}%`;
