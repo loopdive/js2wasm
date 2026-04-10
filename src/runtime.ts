@@ -1434,21 +1434,32 @@ function resolveImport(
       if (name === "__create_async_generator")
         return (buf: any[], pendingThrow: any) => {
           let index = 0;
+          // Returns a thenable with done/value properties so that:
+          // - g.next().then(cb) works (Promise chaining)
+          // - result = await g.next() with no-op await gives result.done/result.value directly
+          function mkResult(value: any, done: boolean) {
+            const plain = { value, done };
+            return {
+              value,
+              done,
+              then(res: any, rej: any) {
+                return Promise.resolve(plain).then(res, rej);
+              },
+            };
+          }
           return {
             next() {
-              if (index < buf.length) {
-                return Promise.resolve({ value: buf[index++], done: false });
-              }
+              if (index < buf.length) return mkResult(buf[index++], false);
               if (pendingThrow !== null && pendingThrow !== undefined) {
                 const e = pendingThrow;
                 pendingThrow = null;
                 return Promise.reject(e);
               }
-              return Promise.resolve({ value: undefined, done: true });
+              return mkResult(undefined, true);
             },
             return(v: any) {
               index = buf.length;
-              return Promise.resolve({ value: v, done: true });
+              return mkResult(v, true);
             },
             throw(e: any) {
               index = buf.length;

@@ -61018,7 +61018,7 @@ function generateEnvImportLine(name, mod) {
   if (name === "__create_generator")
     return `${name}: (buf) => { let i = 0; return { next() { if (i < buf.length) return { value: buf[i++], done: false }; return { value: undefined, done: true }; }, return(v) { i = buf.length; return { value: v, done: true }; }, throw(e) { i = buf.length; throw e; }, [Symbol.iterator]() { return this; } }; }`;
   if (name === "__create_async_generator")
-    return `${name}: (buf) => { let i = 0; return { next() { if (i < buf.length) return Promise.resolve({ value: buf[i++], done: false }); return Promise.resolve({ value: undefined, done: true }); }, return(v) { i = buf.length; return Promise.resolve({ value: v, done: true }); }, throw(e) { i = buf.length; return Promise.reject(e); }, [Symbol.asyncIterator]() { return this; } }; }`;
+    return `${name}: (buf) => { let i = 0; function mkR(v, d) { const p = { value: v, done: d }; return { value: v, done: d, then(res, rej) { return Promise.resolve(p).then(res, rej); } }; } return { next() { if (i < buf.length) return mkR(buf[i++], false); return mkR(undefined, true); }, return(v) { i = buf.length; return mkR(v, true); }, throw(e) { i = buf.length; return Promise.reject(e); }, [Symbol.asyncIterator]() { return this; } }; }`;
   if (name === "__gen_next") return `${name}: (gen) => gen.next()`;
   if (name === "__gen_result_value") return `${name}: (r) => r.value`;
   if (name === "__gen_result_value_f64") return `${name}: (r) => Number(r.value)`;
@@ -62037,16 +62037,24 @@ function resolveImport(intent, deps, callbackState) {
       if (name === "__create_async_generator")
         return (buf) => {
           let index = 0;
+          function mkResult(value, done) {
+            const plain = { value, done };
+            return {
+              value,
+              done,
+              then(res, rej) {
+                return Promise.resolve(plain).then(res, rej);
+              },
+            };
+          }
           return {
             next() {
-              if (index < buf.length) {
-                return Promise.resolve({ value: buf[index++], done: false });
-              }
-              return Promise.resolve({ value: void 0, done: true });
+              if (index < buf.length) return mkResult(buf[index++], false);
+              return mkResult(void 0, true);
             },
             return(value) {
               index = buf.length;
-              return Promise.resolve({ value, done: true });
+              return mkResult(value, true);
             },
             throw(e) {
               index = buf.length;
