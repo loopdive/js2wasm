@@ -438,6 +438,12 @@ function _safeGet(obj: any, key: any): any {
     // which would shadow user-assigned properties if we checked native first.
     const sc = _sidecarGet(obj, key);
     if (sc !== undefined) return sc;
+    // Check string accessor getter stored by Object.defineProperty (sidecar key: __get_<prop>)
+    if (typeof key === "string") {
+      const wasmSc = _wasmStructProps.get(obj);
+      const getter = wasmSc?.[`__get_${key}` as string];
+      if (typeof getter === "function") return (getter as Function).call(obj);
+    }
     // For JS Symbols, check the accessor map (for Symbol-keyed defineProperty accessors)
     if (typeof key === "symbol") {
       const accessor = _wasmStructAccessors.get(obj)?.get(key);
@@ -486,6 +492,15 @@ function _safeSet(obj: any, key: any, val: any): void {
   // (V8 ignores `struct.constructor = {}` without throwing in non-strict mode).
   // Always write to sidecar so that dynamic properties are accessible via _safeGet.
   if (_isWasmStruct(obj)) {
+    // Invoke sidecar setter if one was stored via Object.defineProperty (sidecar key: __set_<prop>)
+    if (typeof key === "string") {
+      const sc = _wasmStructProps.get(obj);
+      const setter = sc?.[`__set_${key}` as string];
+      if (typeof setter === "function") {
+        (setter as Function).call(obj, val);
+        return;
+      }
+    }
     // Respect sidecar descriptor flags (non-configurable / non-writable properties)
     const descs = _wasmPropDescs.get(obj);
     if (descs) {
@@ -1956,11 +1971,12 @@ function resolveImport(
         };
     case "getter_callback_maker":
       return (id: number, cap: any) =>
-        // Regular function (not arrow) so 'this' is bound to the receiver
+        // Regular function (not arrow) so 'this' is bound to the receiver;
+        // rest params forward setter arguments (value) to the Wasm callback.
         // eslint-disable-next-line func-names
-        function (this: any) {
+        function (this: any, ...args: any[]) {
           const exports = callbackState?.getExports();
-          return exports?.[`__cb_${id}`]?.(cap, this);
+          return exports?.[`__cb_${id}`]?.(cap, this, ...args);
         };
     case "await":
       return (v: any) => v;
