@@ -860,6 +860,18 @@ export function compileArrowAsClosure(
     collectReferencedIdentifiers(body, referencedNames);
   }
 
+  // Transitively add captures needed by called nested functions.
+  // E.g. if this closure calls g() and g has nestedFuncCaptures {first, second},
+  // this closure must also capture first and second so it can pass ref cells to g.
+  for (const name of [...referencedNames]) {
+    const transitiveCaptures = ctx.nestedFuncCaptures.get(name);
+    if (transitiveCaptures) {
+      for (const cap of transitiveCaptures) {
+        referencedNames.add(cap.name);
+      }
+    }
+  }
+
   // Detect which captured variables are written inside the closure body
   const writtenInClosure = new Set<string>();
   if (ts.isBlock(body)) {

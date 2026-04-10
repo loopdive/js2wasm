@@ -173,7 +173,7 @@ async function buildInvalidBinaryError(source, sourceMapUrl, result) {
 }
 
 process.on("message", async (msg) => {
-  const { id, source, execute, isNegative, isRuntimeNegative } = msg;
+  const { id, source, execute, isNegative, isRuntimeNegative, expectedErrorType } = msg;
   const compileStart = performance.now();
 
   let result;
@@ -286,7 +286,7 @@ process.on("message", async (msg) => {
       // Instantiation succeeded — this is a failure (expected parse/early error)
       process.send({
         id, status: "fail",
-        error: "expected parse/early error but compiled and instantiated successfully",
+        error: `expected parse/early ${expectedErrorType || "error"} but compiled and instantiated successfully`,
         compileMs,
       });
     } catch {
@@ -379,6 +379,16 @@ process.on("message", async (msg) => {
         }
       } else {
         errInfo = String(execErr);
+      }
+
+      // Annotate with source location via source map
+      const byteOffset = extractWasmByteOffset(execErr);
+      const mapped =
+        byteOffset !== undefined && result.sourceMap
+          ? lookupSourceMapOffset(result.sourceMap, byteOffset)
+          : undefined;
+      if (mapped) {
+        errInfo = `L${mapped.line}:${mapped.column} ${errInfo}`;
       }
 
       process.send({

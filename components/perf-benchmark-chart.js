@@ -134,10 +134,11 @@ class PerfBenchmarkChart extends HTMLElement {
           position: absolute;
           top: 50%;
           height: 0;
-          border-top: 1px solid rgba(255,255,255,0.4);
+          border-top: 1px solid rgba(255,255,255,0.5);
           transform: translateY(-50%);
           z-index: 2;
           opacity: 0;
+          filter: drop-shadow(0 0 1px rgba(0,0,0,0.9)) drop-shadow(0 0 0.5px rgba(0,0,0,1));
         }
 
         .bench-errorbar::before,
@@ -147,7 +148,7 @@ class PerfBenchmarkChart extends HTMLElement {
           top: -4px;
           width: 0;
           height: 8px;
-          border-left: 1px solid rgba(255,255,255,0.4);
+          border-left: 1px solid rgba(255,255,255,0.5);
         }
 
         .bench-errorbar::before {
@@ -166,7 +167,7 @@ class PerfBenchmarkChart extends HTMLElement {
           position: absolute;
           top: 50%;
           transform: translateY(-50%);
-          z-index: 2;
+          z-index: 4;
           white-space: nowrap;
           text-shadow:
             0 1px 1px rgba(6, 10, 20, 0.85),
