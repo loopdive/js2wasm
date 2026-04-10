@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-10T15:43:42+02:00",
+  "timestamp": "2026-04-10T14:19:53.755Z",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
@@ -231,6 +231,24 @@
       "total": 586
     },
     {
+      "name": "built-ins/decodeURI",
+      "pass": 40,
+      "fail": 15,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 55
+    },
+    {
+      "name": "built-ins/decodeURIComponent",
+      "pass": 41,
+      "fail": 15,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 56
+    },
+    {
       "name": "built-ins/DisposableStack",
       "pass": 27,
       "fail": 64,
@@ -240,6 +258,24 @@
       "total": 91
     },
     {
+      "name": "built-ins/encodeURI",
+      "pass": 21,
+      "fail": 10,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 31
+    },
+    {
+      "name": "built-ins/encodeURIComponent",
+      "pass": 21,
+      "fail": 10,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 31
+    },
+    {
       "name": "built-ins/Error",
       "pass": 20,
       "fail": 38,
@@ -247,6 +283,15 @@
       "compile_timeout": 0,
       "skip": 0,
       "total": 58
+    },
+    {
+      "name": "built-ins/eval",
+      "pass": 7,
+      "fail": 3,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 10
     },
     {
       "name": "built-ins/FinalizationRegistry",
@@ -285,6 +330,15 @@
       "total": 61
     },
     {
+      "name": "built-ins/global",
+      "pass": 18,
+      "fail": 11,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 29
+    },
+    {
       "name": "built-ins/Infinity",
       "pass": 6,
       "fail": 0,
@@ -292,6 +346,24 @@
       "compile_timeout": 0,
       "skip": 0,
       "total": 6
+    },
+    {
+      "name": "built-ins/isFinite",
+      "pass": 6,
+      "fail": 9,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 15
+    },
+    {
+      "name": "built-ins/isNaN",
+      "pass": 5,
+      "fail": 10,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 15
     },
     {
       "name": "built-ins/Iterator",
@@ -373,6 +445,24 @@
       "compile_timeout": 0,
       "skip": 1,
       "total": 3411
+    },
+    {
+      "name": "built-ins/parseFloat",
+      "pass": 51,
+      "fail": 3,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 54
+    },
+    {
+      "name": "built-ins/parseInt",
+      "pass": 52,
+      "fail": 3,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 55
     },
     {
       "name": "built-ins/Promise",
@@ -528,6 +618,15 @@
       "total": 68
     },
     {
+      "name": "built-ins/undefined",
+      "pass": 7,
+      "fail": 1,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 8
+    },
+    {
       "name": "built-ins/WeakMap",
       "pass": 74,
       "fail": 28,
@@ -553,105 +652,6 @@
       "compile_timeout": 0,
       "skip": 0,
       "total": 85
-    },
-    {
-      "name": "built-ins/decodeURI",
-      "pass": 40,
-      "fail": 15,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 55
-    },
-    {
-      "name": "built-ins/decodeURIComponent",
-      "pass": 41,
-      "fail": 15,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 56
-    },
-    {
-      "name": "built-ins/encodeURI",
-      "pass": 21,
-      "fail": 10,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 31
-    },
-    {
-      "name": "built-ins/encodeURIComponent",
-      "pass": 21,
-      "fail": 10,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 31
-    },
-    {
-      "name": "built-ins/eval",
-      "pass": 7,
-      "fail": 3,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 10
-    },
-    {
-      "name": "built-ins/global",
-      "pass": 18,
-      "fail": 11,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 29
-    },
-    {
-      "name": "built-ins/isFinite",
-      "pass": 6,
-      "fail": 9,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 15
-    },
-    {
-      "name": "built-ins/isNaN",
-      "pass": 5,
-      "fail": 10,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 15
-    },
-    {
-      "name": "built-ins/parseFloat",
-      "pass": 51,
-      "fail": 3,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 54
-    },
-    {
-      "name": "built-ins/parseInt",
-      "pass": 52,
-      "fail": 3,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 55
-    },
-    {
-      "name": "built-ins/undefined",
-      "pass": 7,
-      "fail": 1,
-      "compile_error": 0,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 8
     },
     {
       "name": "language/arguments-object",
@@ -907,25 +907,25 @@
     }
   ],
   "error_categories": {
-    "other": 1765,
-    "wasm_compile": 4239,
     "assertion_fail": 8643,
+    "illegal_cast": 425,
     "negative_test_fail": 341,
     "null_deref": 606,
-    "type_error": 6141,
-    "illegal_cast": 425,
-    "runtime_error": 621,
     "oob": 48,
-    "unreachable": 20,
+    "other": 1765,
     "promise_error": 30,
-    "range_error": 19
+    "range_error": 19,
+    "runtime_error": 621,
+    "type_error": 6141,
+    "unreachable": 20,
+    "wasm_compile": 4239
   },
   "skip_reasons": {
-    "ES5 legacy: with statement (strict mode disallowed)": 386,
+    "compiler hang (see HANGING_TESTS)": 2,
     "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)": 460,
-    "ES2020: dynamic import()": 429,
-    "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)": 8,
     "ES2020: BigInt typed arrays not implemented (#838)": 28,
-    "compiler hang (see HANGING_TESTS)": 2
+    "ES2020: dynamic import()": 429,
+    "ES5 legacy: with statement (strict mode disallowed)": 386,
+    "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)": 8
   }
 }
