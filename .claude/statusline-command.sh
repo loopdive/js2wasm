@@ -14,7 +14,9 @@ if [ -n "$precompiling" ]; then
   done=$(wc -l < "$compile_jsonl" 2>/dev/null || echo 0)
   printf ' \033[00;33m⟳compile:%s/48K\033[00m' "$done"
 elif [ -n "$vitesting" ]; then
-  jsonl="/workspace/benchmarks/results/test262-results.jsonl"
+  # Prefer the in-progress timestamped file (runner only updates symlink after completion)
+  jsonl=$(ls -t /workspace/benchmarks/results/test262-results-*.jsonl 2>/dev/null | head -1)
+  [ -z "$jsonl" ] && jsonl="/workspace/benchmarks/results/test262-results.jsonl"
   if [ -f "$jsonl" ]; then
     pass=$(grep -c '"pass"' "$jsonl" 2>/dev/null || echo 0)
     total=$(wc -l < "$jsonl" 2>/dev/null || echo 0)

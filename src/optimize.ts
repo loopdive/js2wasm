@@ -171,7 +171,11 @@ async function getBinaryenModule(): Promise<any | null> {
     // Vite playground bundle that global can still exist, which sends Binaryen
     // down its Node-only initialization path and makes optimization unavailable.
     if (browserLike && hadProcess) {
-      globalObject.process = undefined;
+      try {
+        globalObject.process = undefined;
+      } catch {
+        // Ignore — some environments have a non-configurable process global.
+      }
     }
 
     try {
@@ -181,12 +185,8 @@ async function getBinaryenModule(): Promise<any | null> {
       return null;
     } finally {
       if (browserLike) {
-        if (hadProcess) {
-          if (hadOwnProcess) {
-            globalObject.process = previousProcess;
-          } else {
-            globalObject.process = undefined;
-          }
+        if (hadProcess && hadOwnProcess) {
+          globalObject.process = previousProcess;
         } else {
           globalObject.process = undefined;
         }
