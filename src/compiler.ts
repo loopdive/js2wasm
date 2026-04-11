@@ -411,7 +411,9 @@ export function compileMultiSource(
   const errors: CompileError[] = [];
   const emitWatOutput = options.emitWat !== false;
 
-  const multiAst = analyzeMultiSource(files, entryFile);
+  const multiAst = analyzeMultiSource(files, entryFile, undefined, {
+    allowJs: options.allowJs,
+  });
 
   for (const diag of multiAst.diagnostics) {
     if (diag.category === 1) {
