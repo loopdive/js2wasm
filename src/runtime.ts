@@ -2556,15 +2556,6 @@ function resolveImport(
       return (v: any) => (v ? 1 : 0);
     case "extern_get":
       return (obj: any, key: any) => {
-        // #1057 — vec wrapper structs (results of String.prototype.split,
-        // Array.prototype.map, etc.) must report `.constructor === Array`.
-        // Vec wrappers are the only WasmGC struct kind with no registered
-        // field names; user classes always register via __struct_field_names.
-        if (key === "constructor" && obj != null && _isWasmStruct(obj)) {
-          const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(obj, exports);
-          if (fieldNames === null) return Array;
-        }
         const val = _safeGet(obj, key);
         if (val !== undefined) return val;
         if (typeof key === "string") {

@@ -38,4 +38,3 @@ Example entries:
 Note: same FILE with different FUNCTIONS is OK (Git 3-way merge handles separate hunks).
 Same function = conflict, must coordinate.
 -->
-- src/runtime.ts | _wrapForHost get trap (constructor for vec structs) | dev-1047 | #1057 | 2026-04-11
