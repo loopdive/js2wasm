@@ -692,7 +692,19 @@ function resolveImport(
     }
     case "string_method": {
       const method = intent.method;
-      return (s: any, ...a: any[]) => (String(s) as any)[method](...a);
+      return (s: any, ...a: any[]) => {
+        // Coerce wasmGC struct args via ToPrimitive before passing to JS host (#983)
+        const coerce = (v: any): any => {
+          if (v != null && typeof v === "object" && _isWasmStruct(v)) {
+            const prim = _toPrimitive(v, "string", callbackState);
+            return prim === undefined ? "[object Object]" : prim;
+          }
+          return v;
+        };
+        const recv = coerce(s);
+        const args = a.map(coerce);
+        return (String(recv) as any)[method](...args);
+      };
     }
     case "extern_class": {
       if (intent.className === "Document" && intent.action === "get" && intent.member === "body") {
@@ -772,7 +784,27 @@ function resolveImport(
       const name = intent.name;
       // Batched string concat: __concat_3, __concat_4, ... (#958)
       if (name.startsWith("__concat_")) {
-        return (...args: string[]) => args.join("");
+        return (...args: any[]) => {
+          // Coerce each arg; wasmGC structs route through _toPrimitive (#983)
+          let out = "";
+          for (const a of args) {
+            if (a == null) {
+              out += String(a);
+            } else if (typeof a === "string") {
+              out += a;
+            } else if (typeof a === "object" && _isWasmStruct(a)) {
+              const prim = _toPrimitive(a, "default", callbackState);
+              out += prim === undefined ? "[object Object]" : String(prim);
+            } else {
+              try {
+                out += String(a);
+              } catch {
+                out += "[object Object]";
+              }
+            }
+          }
+          return out;
+        };
       }
       if (name === "number_toString") return (v: number) => String(v);
       if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
@@ -806,6 +838,21 @@ function resolveImport(
       if (name === "__extern_length")
         return (obj: any) => {
           if (obj == null) return 0;
+          // Reading .length on an opaque wasmGC struct throws — check sidecar first (#983)
+          if (_isWasmStruct(obj)) {
+            const sc = _sidecarGet(obj, "length");
+            if (sc !== undefined) return sc;
+            const exports = callbackState?.getExports();
+            const getter = exports?.[`__sget_length`];
+            if (typeof getter === "function") {
+              try {
+                return getter(obj);
+              } catch {
+                /* not a field */
+              }
+            }
+            return 0;
+          }
           const len = obj.length;
           if (len !== undefined) return len;
           return _sidecarGet(obj, "length") ?? 0;
@@ -813,8 +860,15 @@ function resolveImport(
       if (name === "__extern_toString")
         return (v: any) => {
           if (v == null) return String(v);
+          // ToPrimitive for WasmGC structs must run BEFORE any .toString
+          // property read — reading .toString on an opaque struct throws
+          // "WebAssembly objects are opaque" (#850, #983)
+          if (typeof v === "object" && _isWasmStruct(v)) {
+            const prim = _toPrimitive(v, "string", callbackState);
+            if (prim !== undefined) return String(prim);
+            return "[object Object]";
+          }
           if (typeof v.toString === "function") return v.toString();
-          // ToPrimitive for WasmGC structs (#850)
           if (typeof v === "object") {
             const prim = _toPrimitive(v, "string", callbackState);
             if (prim !== undefined) return String(prim);
@@ -1383,10 +1437,42 @@ function resolveImport(
           }
         };
       if (name === "Object_propertyIsEnumerable")
-        return (obj: any, key: any) => (Object.prototype.propertyIsEnumerable.call(obj, key) ? 1 : 0);
-      if (name === "Object_toString") return (obj: any) => Object.prototype.toString.call(obj);
-      if (name === "Object_valueOf") return (obj: any) => Object.prototype.valueOf.call(obj);
-      if (name === "Object_toLocaleString") return (obj: any) => Object.prototype.toLocaleString.call(obj);
+        return (obj: any, key: any) => {
+          if (_isWasmStruct(obj)) {
+            const descs = _wasmPropDescs.get(obj);
+            if (descs) {
+              const flags = descs.get(String(key));
+              if (flags !== undefined) return flags & _SC_ENUMERABLE ? 1 : 0;
+            }
+            const sc = _wasmStructProps.get(obj);
+            if (sc && String(key) in sc) return 1;
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+            return fieldNames.includes(String(key)) ? 1 : 0;
+          }
+          return Object.prototype.propertyIsEnumerable.call(obj, key) ? 1 : 0;
+        };
+      if (name === "Object_toString")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) return "[object Object]";
+          return Object.prototype.toString.call(obj);
+        };
+      if (name === "Object_valueOf")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) {
+            const prim = _toPrimitive(obj, "default", callbackState);
+            return prim === undefined ? obj : prim;
+          }
+          return Object.prototype.valueOf.call(obj);
+        };
+      if (name === "Object_toLocaleString")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) {
+            const prim = _toPrimitive(obj, "string", callbackState);
+            return prim === undefined ? "[object Object]" : String(prim);
+          }
+          return Object.prototype.toLocaleString.call(obj);
+        };
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
       // hasOwnProperty runtime check for externref/any receivers
       if (name === "__hasOwnProperty")
