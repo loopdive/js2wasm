@@ -2788,6 +2788,48 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     }
   }
 
+  // ── Import/Export declaration position (ES static semantics) ────
+  // ImportDeclaration / ExportDeclaration / ExportAssignment (aka export
+  // default) are ModuleItems — they may only appear at the top level of
+  // a Module. TypeScript's parser reports diagnostic 1232 for nested
+  // imports, which we tolerate elsewhere, so re-assert the rule here.
+  // Rejects cases like `while (x) export default null;`, `try { } finally
+  // { import v from "./x"; }`, or `(class { method() { export default 1; } })`.
+  //
+  // Skip when the source was wrapped by tests/test262-runner wrapTest — that
+  // wrapper buries the original test body inside `export function test()`,
+  // and any legitimately top-level `import`/`export` in the original source
+  // ends up nested inside the wrapper. wrapTest is only used for positive
+  // tests; negative parse tests go through buildNegativeCompileSource which
+  // does not wrap.
+  const isWrapTestSource = sourceFile.statements.some(
+    (s) =>
+      ts.isFunctionDeclaration(s) &&
+      s.name?.text === "test" &&
+      ts.canHaveModifiers(s) &&
+      ts.getModifiers(s as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) &&
+      s.type &&
+      s.type.kind === ts.SyntaxKind.NumberKeyword,
+  );
+  if (!isWrapTestSource) {
+    const checkModuleItemPosition = (node: ts.Node): void => {
+      if (
+        ts.isImportDeclaration(node) ||
+        ts.isImportEqualsDeclaration(node) ||
+        ts.isExportDeclaration(node) ||
+        ts.isExportAssignment(node)
+      ) {
+        if (node.parent && !ts.isSourceFile(node.parent)) {
+          const kind = ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node) ? "import" : "export";
+          addError(node, `${kind} declarations may only appear at the top level of a module`);
+          return;
+        }
+      }
+      ts.forEachChild(node, checkModuleItemPosition);
+    };
+    checkModuleItemPosition(sourceFile);
+  }
+
   // ── HTML close comment (-->) in module code ──────────────────────
   // HTML-like comments are allowed in scripts but not in modules.
   // Check the raw source so we still catch cases TS tokenizes permissively.
