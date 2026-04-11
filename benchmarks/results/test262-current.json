@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-04-11T02:45:48.001Z",
+  "timestamp": "2026-04-11T03:12:37.576Z",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
     "total": 43164,
-    "pass": 20652,
-    "fail": 19877,
+    "pass": 20675,
+    "fail": 19854,
     "compile_error": 1286,
     "compile_timeout": 10,
     "skip": 1339,
@@ -16,8 +16,8 @@
   },
   "official_summary": {
     "total": 43164,
-    "pass": 20652,
-    "fail": 19877,
+    "pass": 20675,
+    "fail": 19854,
     "compile_error": 1286,
     "compile_timeout": 10,
     "skip": 1339,
@@ -26,8 +26,8 @@
   },
   "full_summary": {
     "total": 43164,
-    "pass": 20652,
-    "fail": 19877,
+    "pass": 20675,
+    "fail": 19854,
     "compile_error": 1286,
     "compile_timeout": 10,
     "skip": 1339,
@@ -36,8 +36,8 @@
   },
   "strict_summary": {
     "total": 40655,
-    "pass": 19726,
-    "fail": 18707,
+    "pass": 19749,
+    "fail": 18684,
     "compile_error": 1213,
     "compile_timeout": 10,
     "skip": 999,
@@ -67,8 +67,8 @@
     },
     "standard": {
       "total": 42078,
-      "pass": 20205,
-      "fail": 19279,
+      "pass": 20228,
+      "fail": 19256,
       "compile_error": 1245,
       "compile_timeout": 10,
       "skip": 1339,
@@ -439,8 +439,8 @@
     },
     {
       "name": "built-ins/Object",
-      "pass": 1294,
-      "fail": 2097,
+      "pass": 1302,
+      "fail": 2089,
       "compile_error": 18,
       "compile_timeout": 0,
       "skip": 2,
@@ -736,8 +736,8 @@
     },
     {
       "name": "language/expressions",
-      "pass": 5479,
-      "fail": 4354,
+      "pass": 5493,
+      "fail": 4340,
       "compile_error": 336,
       "compile_timeout": 0,
       "skip": 524,
@@ -880,8 +880,8 @@
     },
     {
       "name": "language/statements",
-      "pass": 4789,
-      "fail": 3987,
+      "pass": 4790,
+      "fail": 3986,
       "compile_error": 350,
       "compile_timeout": 4,
       "skip": 207,
@@ -907,16 +907,16 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 9355,
-    "illegal_cast": 427,
+    "assertion_fail": 9384,
+    "illegal_cast": 376,
     "negative_test_fail": 277,
-    "null_deref": 614,
+    "null_deref": 609,
     "oob": 48,
     "other": 1620,
     "promise_error": 20,
     "range_error": 19,
     "runtime_error": 630,
-    "type_error": 6052,
+    "type_error": 6056,
     "unreachable": 25,
     "wasm_compile": 2076
   },
