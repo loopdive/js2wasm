@@ -1,0 +1,14 @@
+{
+  "pr": 78,
+  "conclusion": "success",
+  "head_branch": "worktree-issue-990-early-errors",
+  "head_sha": "a52daa4208ef676d5217dd06bf55f8d33b600110",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24282815934",
+  "timestamp": "2026-04-11T12:55:08Z",
+  "pass": 21276,
+  "fail": 19212,
+  "compile_error": 1325,
+  "delta": 86,
+  "regressions": 0,
+  "improvements": 86
+}

@@ -320,7 +320,17 @@ function getReceiverLocalIdx(fctx: FunctionContext, expr: ts.Expression): number
  * - map/filter: `length: "Infinity"` → Infinity → 2B iterations → compile_timeout
  * - reduce/reduceRight: different callback signature (acc, elem, i, arr) — handled by __proto_method_call
  */
-const ARRAY_LIKE_METHOD_SET = new Set(["every", "some", "forEach", "find", "findIndex"]);
+const ARRAY_LIKE_METHOD_SET = new Set([
+  "every",
+  "some",
+  "forEach",
+  "find",
+  "findIndex",
+  "filter",
+  "map",
+  "reduce",
+  "reduceRight",
+]);
 
 /**
  * Compile Array.prototype.METHOD.call(anyReceiver, callback, ...args) for any-typed receivers.
