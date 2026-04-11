@@ -53,6 +53,27 @@ Each test stresses a distinct dimension of the compiler:
 
 Expected output: each stress test files 3-5 concrete follow-up issues. Those follow-ups feed into future Sprint 40 error-fix sprints.
 
+## Stress-test preconditions (filed 2026-04-11 by arch-npm-stress)
+
+Architecture gap analysis (`plan/architecture/npm-stress-compiler-gaps.md`) identified five compiler preconditions that must land before the stress tests can progress past Tier 1–2. Four are scoped to Sprint-41 as unblockers; one (async/await state machine) stays in Backlog as research-level.
+
+| #                                | Title                                                                                           | Unblocks                               | Category                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------- |
+| [#1041](../issues/ready/1041.md) | Multi-file module graph compilation (pre-bundled single-file workaround via esbuild)            | **#1031, #1032, #1033, #1034** (all)   | Compiler scaffold       |
+| [#1043](../issues/ready/1043.md) | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination                      | **#1033** (halves React surface area)  | Compiler easy win       |
+| [#1044](../issues/ready/1044.md) | Node builtin modules as host imports (`NODE_HOST_IMPORT_MODULES`, `node:` prefix normalization) | **#1032** axios Tier 4                 | Compiler scaffold       |
+| [#1045](../issues/ready/1045.md) | DOM globals as extern classes (`DOM_HOST_GLOBALS`, `queueMicrotask`, `requestAnimationFrame`)   | **#1033** react Tier 4                 | Compiler scaffold       |
+| [#1042](../issues/ready/1042.md) | `async`/`await` state-machine lowering (Backlog — research-level)                               | #1032 Tier 4 stretch goal (real GET)   | Research / deferred     |
+
+Dependency wiring applied to stress-test frontmatter:
+
+- **#1031** lodash: `depends_on: [1041]`
+- **#1032** axios: `depends_on: [1041, 1044]`
+- **#1033** react: `depends_on: [1041, 1043, 1045]`
+- **#1034** prettier: `depends_on: [1041]`
+
+Recommended precondition work order: **#1041 first** (unblocks all four), then **#1043** (easy, big surface-area reduction for React), then **#1044 and #1045 in parallel** (share the module-specifier / global-identifier recognition hook).
+
 ## WASI deliverable (new, filed 2026-04-11)
 
 | #                                | Title                                                                                                                                                        | Category              |
@@ -63,16 +84,25 @@ First concrete "TypeScript → native executable" story. Parallels the dual-mode
 
 ## Phased task queue
 
+### Phase 0: Stress-test preconditions (must land first)
+
+| Order | Issue          | Rationale                                                                                 |
+| ----- | -------------- | ----------------------------------------------------------------------------------------- |
+| 0a    | **#1041**      | Pre-bundle scaffold. Unblocks ALL four stress tests. Fastest path: esbuild harness.       |
+| 0b    | **#1043**      | `process.env.NODE_ENV` DCE. Easy. Halves React dev-build surface area. Pre-#1033 iter speed.|
+| 0c    | **#1044**      | Node-builtin host-import routing. Precondition for #1032 Tiers 3-4.                       |
+| 0d    | **#1045**      | DOM globals as extern classes. Precondition for #1033 Tier 4. Parallel to #1044.          |
+
 ### Phase 1: Real-world stress tests (high signal, broad coverage)
 
-Run the four stress tests in parallel or sequence — each produces its own error-bucket report and follow-up issues. Recommended order: **prettier first** (deterministic, no host-import design, strongest correctness signal), then **lodash** (cleanest compute surface), then **axios** (requires Node-builtin host-import work), then **react** (requires DOM host imports + solid closure model).
+Run the four stress tests in parallel or sequence — each produces its own error-bucket report and follow-up issues. Recommended order: **prettier first** (deterministic, no host-import design, strongest correctness signal), then **lodash** (cleanest compute surface), then **axios** (requires #1044 Node-builtin routing), then **react** (requires #1043 + #1045 DOM routing + solid closure model).
 
-| Order | Issue              | Rationale                                                                           |
-| ----- | ------------------ | ----------------------------------------------------------------------------------- |
-| 1     | **#1034** prettier | Pure compute, no boundary design, self-format diff = unambiguous correctness signal |
-| 2     | **#1031** lodash   | Pure compute, smaller surface, fast feedback                                        |
-| 3     | **#1032** axios    | Requires Node-builtin host-import scaffold (new compile-time feature)               |
-| 4     | **#1033** react    | Requires DOM-as-host-imports AND solid closure-captures-mutable-cell model          |
+| Order | Issue              | Depends on       | Rationale                                                                           |
+| ----- | ------------------ | ---------------- | ----------------------------------------------------------------------------------- |
+| 1     | **#1034** prettier | #1041            | Pure compute, no boundary design, self-format diff = unambiguous correctness signal |
+| 2     | **#1031** lodash   | #1041            | Pure compute, smaller surface, fast feedback                                        |
+| 3     | **#1032** axios    | #1041, #1044     | Requires Node-builtin host-import scaffold                                          |
+| 4     | **#1033** react    | #1041, #1043, #1045 | Requires DOM host imports + NODE_ENV DCE                                         |
 
 ### Phase 2: WASI feature deliverable
 
