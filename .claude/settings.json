@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mkdir -p ~/.claude && date +%s > ~/.claude/last-user-activity",
+            "command": "mkdir -p ~/.claude/pending-notify && date +%s > ~/.claude/last-user-activity && find ~/.claude/pending-notify -type f -delete 2>/dev/null || true",
             "timeout": 2
           }
         ]
