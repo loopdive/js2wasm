@@ -111,19 +111,6 @@ export function compileNestedFunctionDeclaration(
   for (const p of stmt.parameters) {
     const paramType = ctx.checker.getTypeAtLocation(p);
     let wasmType = resolveWasmType(ctx, paramType);
-    // For array destructuring params: widen to externref when the resolved type is
-    // externref, ref_null $vec_externref, or an unannotated param (#1016).
-    // Typed params (e.g. number[] → $vec_f64) keep their vec type for the fast struct path.
-    if (ts.isArrayBindingPattern(p.name)) {
-      const extVecIdx = ctx.vecTypeMap.get("externref");
-      const isExtVec =
-        (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
-        extVecIdx !== undefined &&
-        (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
-      if (wasmType.kind === "externref" || isExtVec || !p.type) {
-        wasmType = { kind: "externref" };
-      }
-    }
     // If the parameter has a default value and is a non-null ref type,
     // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
     if (p.initializer && wasmType.kind === "ref") {
