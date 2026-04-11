@@ -21,6 +21,7 @@ import {
   valTypesMatch,
 } from "./shared.js";
 import { shiftLateImportIndices } from "./expressions/late-imports.js";
+import { collectInstrs } from "./statements/shared.js";
 import { resolveWasmType, ensureStructForType, addUnionImports } from "./index.js";
 
 function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
@@ -393,6 +394,194 @@ export function destructureParamObject(
 }
 
 /**
+ * Destructure an array binding pattern parameter using the JS iterator protocol.
+ *
+ * Used as a fallback when the parameter value doesn't match any known WasmGC vec type
+ * (e.g. a custom iterable object, a generator, or any object with Symbol.iterator).
+ *
+ * Implements the spec iterator close protocol (§13.3.3.5):
+ * - Calls iterator.return() if the pattern doesn't exhaust the iterator.
+ * - Does NOT call iterator.return() if the iterator was exhausted (done === true).
+ */
+function destructureParamArrayViaIterator(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramIdx: number,
+  pattern: ts.ArrayBindingPattern,
+): void {
+  // Ensure iterator host imports
+  ensureLateImport(ctx, "__iterator", [{ kind: "externref" }], [{ kind: "externref" }]);
+  ensureLateImport(ctx, "__iterator_next", [{ kind: "externref" }], [{ kind: "externref" }]);
+  ensureLateImport(ctx, "__iterator_done", [{ kind: "externref" }], [{ kind: "i32" }]);
+  ensureLateImport(ctx, "__iterator_value", [{ kind: "externref" }], [{ kind: "externref" }]);
+  ensureLateImport(ctx, "__iterator_return", [{ kind: "externref" }], []);
+
+  const hasRest = pattern.elements.some(
+    (el): el is ts.BindingElement => ts.isBindingElement(el) && el.dotDotDotToken !== undefined,
+  );
+  if (hasRest) {
+    ensureLateImport(ctx, "__array_from", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+  }
+
+  flushLateImportShifts(ctx, fctx);
+
+  const iterIdx = ctx.funcMap.get("__iterator")!;
+  const nextIdx = ctx.funcMap.get("__iterator_next")!;
+  const doneIdx = ctx.funcMap.get("__iterator_done")!;
+  const valueIdx = ctx.funcMap.get("__iterator_value")!;
+  const returnIdx = ctx.funcMap.get("__iterator_return")!;
+  const arrayFromIdx = hasRest ? ctx.funcMap.get("__array_from") : undefined;
+
+  // iter = __iterator(param)
+  const iterLocal = allocLocal(fctx, `__iter_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.get", index: paramIdx });
+  fctx.body.push({ op: "call", funcIdx: iterIdx } as Instr);
+  fctx.body.push({ op: "local.set", index: iterLocal });
+
+  // iterDone = 0 (i32) — tracks whether iterator is exhausted
+  const iterDoneLocal = allocLocal(fctx, `__iterdone_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+  fctx.body.push({ op: "local.set", index: iterDoneLocal });
+
+  for (let i = 0; i < pattern.elements.length; i++) {
+    const element = pattern.elements[i]!;
+
+    // OmittedExpression (elision ","): advance iterator but discard value
+    if (ts.isOmittedExpression(element)) {
+      // Only advance if not already done
+      const advanceInstrs: Instr[] = [
+        { op: "local.get", index: iterLocal } as Instr,
+        { op: "call", funcIdx: nextIdx } as Instr,
+        { op: "call", funcIdx: doneIdx } as Instr,
+        { op: "local.set", index: iterDoneLocal } as Instr,
+      ];
+      fctx.body.push({ op: "local.get", index: iterDoneLocal } as Instr);
+      fctx.body.push({ op: "i32.eqz" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: advanceInstrs, else: [] } as Instr);
+      continue;
+    }
+
+    if (!ts.isBindingElement(element)) continue;
+
+    // Rest element (...name or ...pattern): collect all remaining elements into an array
+    if (element.dotDotDotToken) {
+      const restValLocal = allocLocal(fctx, `__rest_val_${fctx.locals.length}`, { kind: "externref" });
+      // __array_from(iter, null) collects all remaining iterator values into a JS array
+      fctx.body.push({ op: "local.get", index: iterLocal });
+      fctx.body.push({ op: "ref.null.extern" } as Instr); // mapFn = null (no transformation)
+      fctx.body.push({ op: "call", funcIdx: arrayFromIdx! } as Instr);
+      fctx.body.push({ op: "local.set", index: restValLocal });
+      // Array.from exhausts the iterator — mark as done so return() is NOT called
+      fctx.body.push({ op: "i32.const", value: 1 } as Instr);
+      fctx.body.push({ op: "local.set", index: iterDoneLocal });
+
+      if (ts.isIdentifier(element.name)) {
+        const restName = element.name.text;
+        if (!fctx.localMap.has(restName)) {
+          allocLocal(fctx, restName, { kind: "externref" });
+        }
+        const restLocalIdx = fctx.localMap.get(restName)!;
+        const restLocalType = getLocalType(fctx, restLocalIdx);
+        fctx.body.push({ op: "local.get", index: restValLocal });
+        if (restLocalType && !valTypesMatch({ kind: "externref" }, restLocalType)) {
+          coerceType(ctx, fctx, { kind: "externref" }, restLocalType);
+        }
+        fctx.body.push({ op: "local.set", index: restLocalIdx });
+      } else if (ts.isArrayBindingPattern(element.name)) {
+        destructureParamArray(ctx, fctx, restValLocal, element.name, { kind: "externref" });
+      } else if (ts.isObjectBindingPattern(element.name)) {
+        destructureParamObjectExternref(ctx, fctx, restValLocal, element.name);
+      }
+      break; // rest element is always last
+    }
+
+    // Regular element: get next value from iterator
+    const resultLocal = allocLocal(fctx, `__iter_res_${fctx.locals.length}`, { kind: "externref" });
+    const valueLocal = allocLocal(fctx, `__iter_val_${fctx.locals.length}`, { kind: "externref" });
+
+    // Only call next() if not already done
+    const callNextInstrs: Instr[] = [
+      { op: "local.get", index: iterLocal } as Instr,
+      { op: "call", funcIdx: nextIdx } as Instr,
+      { op: "local.set", index: resultLocal } as Instr,
+      { op: "local.get", index: resultLocal } as Instr,
+      { op: "call", funcIdx: doneIdx } as Instr,
+      { op: "local.set", index: iterDoneLocal } as Instr,
+    ];
+    fctx.body.push({ op: "local.get", index: iterDoneLocal } as Instr);
+    fctx.body.push({ op: "i32.eqz" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: callNextInstrs, else: [] } as Instr);
+
+    // value = iterDone ? null/undefined : __iterator_value(result)
+    const getValueInstrs: Instr[] = [
+      { op: "local.get", index: resultLocal } as Instr,
+      { op: "call", funcIdx: valueIdx } as Instr,
+      { op: "local.set", index: valueLocal } as Instr,
+    ];
+    const undefinedInstrs: Instr[] = [
+      { op: "ref.null.extern" } as Instr, // undefined sentinel (iterator exhausted)
+      { op: "local.set", index: valueLocal } as Instr,
+    ];
+    fctx.body.push({ op: "local.get", index: iterDoneLocal } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: undefinedInstrs,
+      else: getValueInstrs,
+    } as Instr);
+
+    // Bind valueLocal to the pattern element
+    if (ts.isIdentifier(element.name)) {
+      const localName = element.name.text;
+      if (!fctx.localMap.has(localName)) {
+        allocLocal(fctx, localName, { kind: "externref" });
+      }
+      const localIdx = fctx.localMap.get(localName)!;
+      if (element.initializer) {
+        emitNestedBindingDefault(ctx, fctx, valueLocal, { kind: "externref" }, element.initializer);
+      }
+      const localType = getLocalType(fctx, localIdx);
+      fctx.body.push({ op: "local.get", index: valueLocal });
+      if (localType && !valTypesMatch({ kind: "externref" }, localType)) {
+        coerceType(ctx, fctx, { kind: "externref" }, localType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
+    } else if (ts.isArrayBindingPattern(element.name)) {
+      const nestedLocal = allocLocal(fctx, `__iter_nested_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.get", index: valueLocal });
+      fctx.body.push({ op: "local.set", index: nestedLocal });
+      if (element.initializer) {
+        emitNestedBindingDefault(ctx, fctx, nestedLocal, { kind: "externref" }, element.initializer);
+      }
+      destructureParamArray(ctx, fctx, nestedLocal, element.name, { kind: "externref" });
+    } else if (ts.isObjectBindingPattern(element.name)) {
+      const nestedLocal = allocLocal(fctx, `__iter_nested_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.get", index: valueLocal });
+      fctx.body.push({ op: "local.set", index: nestedLocal });
+      if (element.initializer) {
+        emitNestedBindingDefault(ctx, fctx, nestedLocal, { kind: "externref" }, element.initializer);
+      }
+      destructureParamObjectExternref(ctx, fctx, nestedLocal, element.name);
+    }
+  }
+
+  // Iterator close protocol (§13.3.3.5):
+  // If the iterator is NOT exhausted (iterDone === 0), call iterator.return() to close it.
+  const closeInstrs: Instr[] = [
+    { op: "local.get", index: iterLocal } as Instr,
+    { op: "call", funcIdx: returnIdx } as Instr,
+  ];
+  fctx.body.push({ op: "local.get", index: iterDoneLocal } as Instr);
+  fctx.body.push({ op: "i32.eqz" } as Instr);
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: closeInstrs,
+    else: [],
+  } as Instr);
+}
+
+/**
  * Destructure a function parameter that is an ArrayBindingPattern.
  * The parameter value (a vec struct ref) is at param index `paramIdx`.
  * We extract each element into a new local.
@@ -515,6 +704,67 @@ export function destructureParamArray(
         convertInstrs.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs, else: [] } as Instr);
       }
 
+      // Also check for tuple structs (fields named _0, _1, ...).
+      // Array literals compiled by TypeScript's tuple type inference produce tuple structs,
+      // NOT $vec_f64. When such a struct is coerced to externref by the caller
+      // (e.g. `method([1, 2, 3])` where the method was originally tuple-typed),
+      // it would otherwise fall through to the iterator protocol and fail (#1016).
+      for (let tupleTypeIdx = 0; tupleTypeIdx < ctx.mod.types.length; tupleTypeIdx++) {
+        const tupleDef = ctx.mod.types[tupleTypeIdx];
+        if (!tupleDef || tupleDef.kind !== "struct") continue;
+        if (tupleDef.fields.length === 0) continue;
+        if (tupleDef.fields[0]?.name !== "_0") continue; // confirm it's a tuple struct
+
+        const numFields = tupleDef.fields.length;
+        const tupleTmp = allocLocal(fctx, `__dparam_tup_${tupleTypeIdx}_${fctx.locals.length}`, {
+          kind: "ref_null",
+          typeIdx: tupleTypeIdx,
+        });
+        const tupleDstArr = allocLocal(fctx, `__dparam_tupdarr_${tupleTypeIdx}_${fctx.locals.length}`, {
+          kind: "ref",
+          typeIdx: extArrTypeIdx,
+        });
+
+        // Copy each field from the tuple struct to the dst externref array
+        const fieldCopyInstrs: Instr[] = [];
+        for (let fi = 0; fi < numFields; fi++) {
+          const fieldType = tupleDef.fields[fi]!.type;
+          // Use fieldType.kind for boxToExternref: "externref" → no-op, "f64" → __box_number,
+          // "i32" → convert+box, "ref"/"ref_null" → extern.convert_any
+          fieldCopyInstrs.push(
+            { op: "local.get", index: tupleDstArr } as Instr,
+            { op: "i32.const", value: fi } as Instr,
+            { op: "local.get", index: tupleTmp } as Instr,
+            { op: "struct.get", typeIdx: tupleTypeIdx, fieldIdx: fi } as Instr,
+            ...boxToExternref(ctx, fieldType.kind),
+            { op: "array.set", typeIdx: extArrTypeIdx } as Instr,
+          );
+        }
+
+        const tupleThenInstrs: Instr[] = [
+          { op: "local.get", index: anyTmp } as Instr,
+          { op: "ref.cast", typeIdx: tupleTypeIdx },
+          { op: "local.set", index: tupleTmp } as Instr,
+          { op: "i32.const", value: numFields } as Instr,
+          { op: "array.new_default", typeIdx: extArrTypeIdx },
+          { op: "local.set", index: tupleDstArr } as Instr,
+          ...fieldCopyInstrs,
+          { op: "i32.const", value: numFields } as Instr,
+          { op: "local.get", index: tupleDstArr } as Instr,
+          { op: "struct.new", typeIdx: extVecIdx },
+          { op: "local.set", index: resultLocal } as Instr,
+        ];
+
+        convertInstrs.push({ op: "local.get", index: anyTmp } as Instr);
+        convertInstrs.push({ op: "ref.test", typeIdx: tupleTypeIdx });
+        convertInstrs.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: tupleThenInstrs,
+          else: [],
+        } as Instr);
+      }
+
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },
@@ -522,8 +772,26 @@ export function destructureParamArray(
         else: convertInstrs,
       });
 
-      // Now destructure from the converted vec_externref
-      destructureParamArray(ctx, fctx, resultLocal, pattern, convertedType);
+      // If conversion succeeded (resultLocal is non-null), use the vec path.
+      // Otherwise, the value is an arbitrary iterable — use the iterator protocol.
+      const iterInstrs = collectInstrs(fctx, () => {
+        destructureParamArrayViaIterator(ctx, fctx, paramIdx, pattern);
+      });
+      // Track iterInstrs in savedBodies so any late import shift triggered during vecInstrs
+      // collection (e.g. from addUnionImports) also updates call indices in iterInstrs.
+      fctx.savedBodies.push(iterInstrs);
+      const vecInstrs = collectInstrs(fctx, () => {
+        destructureParamArray(ctx, fctx, resultLocal, pattern, convertedType);
+      });
+      fctx.savedBodies.pop();
+      fctx.body.push({ op: "local.get", index: resultLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: iterInstrs, // null → arbitrary iterable, use iterator protocol
+        else: vecInstrs, // non-null → known vec type, use struct.get
+      } as Instr);
       return;
     }
     // Cannot destructure a non-ref type — register locals with defaults

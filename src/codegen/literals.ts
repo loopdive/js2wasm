@@ -888,6 +888,19 @@ export function compileObjectLiteralForStruct(
       for (const param of prop.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
+        // For array destructuring params: widen to externref when the resolved type is
+        // externref or ref_null $vec_externref (#1016). Explicitly typed params (e.g.
+        // number[] → $vec_f64) keep their vec type for the fast struct path.
+        if (ts.isArrayBindingPattern(param.name)) {
+          const extVecIdx = ctx.vecTypeMap.get("externref");
+          const isExtVec =
+            (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
+            extVecIdx !== undefined &&
+            (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
+          if (wasmType.kind === "externref" || isExtVec) {
+            wasmType = { kind: "externref" };
+          }
+        }
         // If the parameter has a default value and is a non-null ref type,
         // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
         if (param.initializer && wasmType.kind === "ref") {
@@ -949,6 +962,18 @@ export function compileObjectLiteralForStruct(
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
+        // For array destructuring params: widen to externref when the resolved type is
+        // externref or ref_null $vec_externref. Must match collection phase above (#1016).
+        if (ts.isArrayBindingPattern(param.name)) {
+          const extVecIdx = ctx.vecTypeMap.get("externref");
+          const isExtVec =
+            (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
+            extVecIdx !== undefined &&
+            (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
+          if (wasmType.kind === "externref" || isExtVec) {
+            wasmType = { kind: "externref" };
+          }
+        }
         // Widen ref to ref_null for params with defaults or optional params
         // to match the function signature (which uses ref_null so callers can pass ref.null)
         if ((param.initializer || param.questionToken) && wasmType.kind === "ref") {
