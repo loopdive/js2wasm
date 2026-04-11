@@ -48,6 +48,20 @@ const WELL_KNOWN_SYMBOLS: Record<string, number> = {
   unscopables: 11,
   asyncIterator: 12,
 };
+
+/**
+ * ES spec IsAnonymousFunctionDefinition: returns true when the expression is
+ * an anonymous FunctionExpression / ArrowFunction / ClassExpression (with
+ * optional parentheses around it). Used by NamedEvaluation to decide whether
+ * a binding name is assigned to the function's .name. (#1049)
+ */
+function isAnonymousFunctionDefinition(expr: ts.Expression): boolean {
+  while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
+  if (ts.isFunctionExpression(expr) && !expr.name) return true;
+  if (ts.isArrowFunction(expr)) return true;
+  if (ts.isClassExpression(expr) && !expr.name) return true;
+  return false;
+}
 function getWellKnownSymbolId(name: string): number | undefined {
   return WELL_KNOWN_SYMBOLS[name];
 }
@@ -1075,6 +1089,22 @@ export function compilePropertyAccess(
       if (funcName === "") {
         if (ts.isIdentifier(expr.expression)) {
           // Direct variable access: f.name => infer "f"
+          // BUT: per ES spec (NamedEvaluation / IsAnonymousFunctionDefinition),
+          // if the binding initializer is a "covered" form like `(0, function(){})`
+          // (comma expression, call, etc.), the function's .name is NOT set to
+          // the binding name. Only direct FunctionExpression/ArrowFunction/
+          // ClassExpression (optionally parenthesized) qualifies. (#1049)
+          const sym = ctx.checker.getSymbolAtLocation(expr.expression);
+          const decl = sym?.valueDeclaration;
+          let initExpr: ts.Expression | undefined;
+          if (decl && (ts.isBindingElement(decl) || ts.isVariableDeclaration(decl)) && decl.initializer) {
+            initExpr = decl.initializer;
+          }
+          if (initExpr !== undefined && !isAnonymousFunctionDefinition(initExpr)) {
+            // Covered form — .name is "" (or whatever the inner fn already has)
+            addStringConstantGlobal(ctx, "");
+            return compileStringLiteral(ctx, fctx, "");
+          }
           funcName = expr.expression.text;
         } else if (ts.isPropertyAccessExpression(expr.expression)) {
           // Property access: obj.method.name => infer "method"
