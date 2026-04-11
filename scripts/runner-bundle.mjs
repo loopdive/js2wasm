@@ -12284,7 +12284,8 @@ function compileArrowAsClosure2(ctx, fctx, arrow) {
       blockType: { kind: "empty" },
       body: bodyInstrs,
     });
-    const createGenIdx = ctx.funcMap.get("__create_generator");
+    const isAsyncGen = arrow.modifiers?.some((m) => m.kind === 134) ?? false;
+    const createGenIdx = ctx.funcMap.get(isAsyncGen ? "__create_async_generator" : "__create_generator");
     liftedFctx.body.push({ op: "local.get", index: bufferLocal });
     liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
     conciseBodyHasValue = true;
@@ -17925,7 +17926,8 @@ function compileNestedFunctionDeclaration(ctx, fctx, stmt) {
         blockType: { kind: "empty" },
         body: bodyInstrs,
       });
-      const createGenIdx = ctx.funcMap.get("__create_generator");
+      const isAsyncStmt = stmt.modifiers?.some((m) => m.kind === 134) ?? false;
+      const createGenIdx = ctx.funcMap.get(isAsyncStmt ? "__create_async_generator" : "__create_generator");
       liftedFctx.body.push({ op: "local.get", index: bufferLocal });
       liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
     } else {
@@ -18037,7 +18039,8 @@ function compileNestedFunctionDeclaration(ctx, fctx, stmt) {
         blockType: { kind: "empty" },
         body: bodyInstrs,
       });
-      const createGenIdx = ctx.funcMap.get("__create_generator");
+      const isAsyncStmt = stmt.modifiers?.some((m) => m.kind === 134) ?? false;
+      const createGenIdx = ctx.funcMap.get(isAsyncStmt ? "__create_async_generator" : "__create_generator");
       liftedFctx.body.push({ op: "local.get", index: bufferLocal });
       liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
     } else {
@@ -18979,7 +18982,8 @@ function compileObjectLiteralForStruct(ctx, fctx, expr, typeName) {
           blockType: { kind: "empty" },
           body: bodyInstrs,
         });
-        const createGenIdx = ctx.funcMap.get("__create_generator");
+        const isAsyncProp = prop.modifiers?.some((m) => m.kind === 134) ?? false;
+        const createGenIdx = ctx.funcMap.get(isAsyncProp ? "__create_async_generator" : "__create_generator");
         methodFctx.body.push({ op: "local.get", index: bufferLocal });
         methodFctx.body.push({ op: "call", funcIdx: createGenIdx });
       } else if (prop.body) {
@@ -40630,6 +40634,7 @@ function finalizeUnifiedCollector(ctx, state) {
     addImport(ctx, "env", "__gen_push_ref", { kind: "func", typeIdx: pushRefType });
     const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__create_generator", { kind: "func", typeIdx: genType });
+    addImport(ctx, "env", "__create_async_generator", { kind: "func", typeIdx: genType });
     addImport(ctx, "env", "__gen_next", { kind: "func", typeIdx: genType });
     const genReturnType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__gen_return", { kind: "func", typeIdx: genReturnType });
@@ -47925,7 +47930,8 @@ function compileClassBodies(ctx, decl, funcByName, syntheticName) {
           blockType: { kind: "empty" },
           body: bodyInstrs,
         });
-        const createGenIdx = ctx.funcMap.get("__create_generator");
+        const isAsyncMember = member.modifiers?.some((m) => m.kind === 134) ?? false;
+        const createGenIdx = ctx.funcMap.get(isAsyncMember ? "__create_async_generator" : "__create_generator");
         fctx.body.push({ op: "local.get", index: bufferLocal });
         fctx.body.push({ op: "call", funcIdx: createGenIdx });
       } else if (member.body) {
@@ -48736,7 +48742,7 @@ function compileFunctionBody(ctx, decl, func) {
       blockType: { kind: "empty" },
       body: bodyInstrs,
     });
-    const createGenIdx = ctx.funcMap.get("__create_generator");
+    const createGenIdx = ctx.funcMap.get(isAsync ? "__create_async_generator" : "__create_generator");
     fctx.body.push({ op: "local.get", index: bufferLocal });
     fctx.body.push({ op: "call", funcIdx: createGenIdx });
   } else {
@@ -61011,6 +61017,8 @@ function generateEnvImportLine(name, mod) {
   if (name === "__gen_push_ref") return `${name}: (buf, v) => { buf.push(v); }`;
   if (name === "__create_generator")
     return `${name}: (buf) => { let i = 0; return { next() { if (i < buf.length) return { value: buf[i++], done: false }; return { value: undefined, done: true }; }, return(v) { i = buf.length; return { value: v, done: true }; }, throw(e) { i = buf.length; throw e; }, [Symbol.iterator]() { return this; } }; }`;
+  if (name === "__create_async_generator")
+    return `${name}: (buf, pendingThrow) => { let i = 0; function mkR(v, d) { const p = { value: v, done: d }; return { value: v, done: d, then(res, rej) { return Promise.resolve(p).then(res, rej); } }; } function mkE(e) { return { done: true, value: undefined, then(res, rej) { return Promise.reject(e).then(res, rej); } }; } return { next() { if (i < buf.length) return mkR(buf[i++], false); if (pendingThrow !== null && pendingThrow !== undefined) { const e = pendingThrow; pendingThrow = null; return mkE(e); } return mkR(undefined, true); }, return(v) { i = buf.length; return mkR(v, true); }, throw(e) { i = buf.length; return mkE(e); }, [Symbol.asyncIterator]() { return this; } }; }`;
   if (name === "__gen_next") return `${name}: (gen) => gen.next()`;
   if (name === "__gen_result_value") return `${name}: (r) => r.value`;
   if (name === "__gen_result_value_f64") return `${name}: (r) => Number(r.value)`;
@@ -62022,6 +62030,51 @@ function resolveImport(intent, deps, callbackState) {
               throw e;
             },
             [Symbol.iterator]() {
+              return this;
+            },
+          };
+        };
+      if (name === "__create_async_generator")
+        return (buf, pendingThrow) => {
+          let index = 0;
+          function mkResult(value, done) {
+            const plain = { value, done };
+            return {
+              value,
+              done,
+              then(res, rej) {
+                return Promise.resolve(plain).then(res, rej);
+              },
+            };
+          }
+          function mkError(e) {
+            return {
+              done: true,
+              value: void 0,
+              then(res, rej) {
+                return Promise.reject(e).then(res, rej);
+              },
+            };
+          }
+          return {
+            next() {
+              if (index < buf.length) return mkResult(buf[index++], false);
+              if (pendingThrow !== null && pendingThrow !== undefined) {
+                const e = pendingThrow;
+                pendingThrow = null;
+                return mkError(e);
+              }
+              return mkResult(void 0, true);
+            },
+            return(value) {
+              index = buf.length;
+              return mkResult(value, true);
+            },
+            throw(e) {
+              index = buf.length;
+              return mkError(e);
+            },
+            [Symbol.asyncIterator]() {
               return this;
             },
           };

@@ -1431,6 +1431,57 @@ function resolveImport(
             },
           };
         };
+      if (name === "__create_async_generator")
+        return (buf: any[], pendingThrow: any) => {
+          let index = 0;
+          // Returns a thenable with done/value properties so that:
+          // - g.next().then(cb) works (Promise chaining)
+          // - result = await g.next() with no-op await gives result.done/result.value directly
+          function mkResult(value: any, done: boolean) {
+            const plain = { value, done };
+            return {
+              value,
+              done,
+              then(res: any, rej: any) {
+                return Promise.resolve(plain).then(res, rej);
+              },
+            };
+          }
+          // Returns a thenable that rejects with e, but also has done/value for no-op await:
+          // - g.throw(e).then(res, rej) works (rej called with e)
+          // - result = await g.throw(e) with no-op await gives result.done=true
+          function mkError(e: any) {
+            return {
+              done: true,
+              value: undefined as any,
+              then(res: any, rej: any) {
+                return Promise.reject(e).then(res, rej);
+              },
+            };
+          }
+          return {
+            next() {
+              if (index < buf.length) return mkResult(buf[index++], false);
+              if (pendingThrow !== null && pendingThrow !== undefined) {
+                const e = pendingThrow;
+                pendingThrow = null;
+                return mkError(e);
+              }
+              return mkResult(undefined, true);
+            },
+            return(v: any) {
+              index = buf.length;
+              return mkResult(v, true);
+            },
+            throw(e: any) {
+              index = buf.length;
+              return mkError(e);
+            },
+            [Symbol.asyncIterator]() {
+              return this;
+            },
+          };
+        };
       if (name === "__gen_next")
         return (gen: any) => {
           const next = gen.next ?? _sidecarGet(gen, "next");
