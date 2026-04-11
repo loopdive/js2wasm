@@ -1,0 +1,14 @@
+{
+  "pr": 77,
+  "conclusion": "failure",
+  "head_branch": "worktree-issue-1030-array-prototype-long-tail",
+  "head_sha": "d522d1b411a2cceb0bc093d282b57bfa41b95337",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24282730270",
+  "timestamp": "2026-04-11T12:48:08Z",
+  "pass": 21302,
+  "fail": 19109,
+  "compile_error": 1398,
+  "delta": 112,
+  "regressions": 17,
+  "improvements": 129
+}
