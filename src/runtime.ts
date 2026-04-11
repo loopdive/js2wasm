@@ -1805,6 +1805,24 @@ function resolveImport(
             },
           };
         };
+      // Fallback for arr.concat(anyArg) when arg is not a known WasmGC array.
+      // Converts the WasmGC receiver to a JS array via __vec_len/__vec_get exports,
+      // then calls Array.prototype.concat with all arguments.
+      if (name === "__array_concat_any")
+        return (arr: any, args: any[]) => {
+          const exports = callbackState?.getExports();
+          const vecLen = exports?.__vec_len;
+          const vecGet = exports?.__vec_get;
+          if (typeof vecLen !== "function" || typeof vecGet !== "function") {
+            return ([] as any[]).concat(...args);
+          }
+          const len = vecLen(arr) as number;
+          const jsArr: any[] = new Array(len);
+          for (let i = 0; i < len; i++) {
+            jsArr[i] = vecGet(arr, i);
+          }
+          return jsArr.concat(...args);
+        };
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
