@@ -676,10 +676,17 @@ function resolveImport(
         // Strip trailing null/undefined args — the compiler pads missing
         // optional args with ref.null.extern, but constructors like RegExp
         // reject explicit null (e.g. new RegExp("x", null) throws).
+        // EXCEPT for String/Number/Boolean: new String(undefined) must produce "undefined",
+        // not "" (which new String() with no args produces).
+        const isWrapperCtor =
+          intent.className === "String" || intent.className === "Number" || intent.className === "Boolean";
         return (...args: any[]) => {
-          let len = args.length;
-          while (len > 0 && args[len - 1] == null) len--;
-          return new Ctor(...args.slice(0, len));
+          if (!isWrapperCtor) {
+            let len = args.length;
+            while (len > 0 && args[len - 1] == null) len--;
+            args = args.slice(0, len);
+          }
+          return new Ctor(...args);
         };
       }
       if (intent.action === "get") {

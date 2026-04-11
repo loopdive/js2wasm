@@ -1160,8 +1160,23 @@ function emitExternDefinePropertyNoValue(
   // For accessor descriptors (get/set), skip compiling descArg for side effects —
   // we'll compile getter/setter directly as JS-callable callbacks below.
   const isAccessorDesc = !!(getNode || setNode || getExpr || setExpr);
-  if (!isAccessorDesc) {
-    // Compile descriptor for side effects (non-accessor path only)
+  // Early compute isKnownStructField to decide descriptor side effects.
+  // For struct fields, the accessor path below is skipped, so we must still
+  // compile the descriptor for side effects even when isAccessorDesc=true.
+  const _earlyObjTsType = ctx.checker.getTypeAtLocation(objArg);
+  const _earlyStructName =
+    resolveStructName(ctx, _earlyObjTsType) ||
+    (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+  const _earlyPropName = ts.isStringLiteral(propArg) ? propArg.text : undefined;
+  const _earlyStructTypeIdx = _earlyStructName ? ctx.structMap.get(_earlyStructName) : undefined;
+  const _earlyFields = _earlyStructName ? ctx.structFields.get(_earlyStructName) : undefined;
+  const _earlyFieldIdx = _earlyFields && _earlyPropName ? _earlyFields.findIndex((f) => f.name === _earlyPropName) : -1;
+  const _earlyIsKnownStructField =
+    _earlyStructTypeIdx !== undefined && _earlyFields !== undefined && _earlyFieldIdx >= 0;
+  if (!isAccessorDesc || _earlyIsKnownStructField) {
+    // Compile descriptor for side effects:
+    // - always for non-accessor descriptors
+    // - also for accessor descriptors on struct fields (accessor path is skipped for structs)
     const descType = compileExpression(ctx, fctx, descArg);
     if (descType) fctx.body.push({ op: "drop" });
   }
@@ -1245,16 +1260,19 @@ function emitExternDefinePropertyNoValue(
       // needsThis=true: getter receives 'this' as the object the property is accessed on
       if (getNode) {
         if (ts.isFunctionExpression(getNode) || ts.isArrowFunction(getNode)) {
-          compileArrowAsCallback(ctx, fctx, getNode, { needsThis: true });
+          if (!compileArrowAsCallback(ctx, fctx, getNode, { needsThis: true }))
+            fctx.body.push({ op: "ref.null.extern" });
         } else {
           // MethodDeclaration / GetAccessorDeclaration — cast for TS; runtime props are compatible
-          compileArrowAsCallback(ctx, fctx, getNode as unknown as ts.FunctionExpression, { needsThis: true });
+          if (!compileArrowAsCallback(ctx, fctx, getNode as unknown as ts.FunctionExpression, { needsThis: true }))
+            fctx.body.push({ op: "ref.null.extern" });
         }
       } else if (getExpr) {
         // get: identifierRef — resolve to function declaration and compile as callback
         const getFuncNode = resolveExprToFuncNode(ctx, getExpr);
         if (getFuncNode) {
-          compileArrowAsCallback(ctx, fctx, getFuncNode as unknown as ts.FunctionExpression, { needsThis: true });
+          if (!compileArrowAsCallback(ctx, fctx, getFuncNode as unknown as ts.FunctionExpression, { needsThis: true }))
+            fctx.body.push({ op: "ref.null.extern" });
         } else {
           fctx.body.push({ op: "ref.null.extern" });
         }
@@ -1266,15 +1284,18 @@ function emitExternDefinePropertyNoValue(
       // needsThis=true: setter receives 'this' as the object the property is assigned on
       if (setNode) {
         if (ts.isFunctionExpression(setNode) || ts.isArrowFunction(setNode)) {
-          compileArrowAsCallback(ctx, fctx, setNode, { needsThis: true });
+          if (!compileArrowAsCallback(ctx, fctx, setNode, { needsThis: true }))
+            fctx.body.push({ op: "ref.null.extern" });
         } else {
-          compileArrowAsCallback(ctx, fctx, setNode as unknown as ts.FunctionExpression, { needsThis: true });
+          if (!compileArrowAsCallback(ctx, fctx, setNode as unknown as ts.FunctionExpression, { needsThis: true }))
+            fctx.body.push({ op: "ref.null.extern" });
         }
       } else if (setExpr) {
         // set: identifierRef — resolve to function declaration and compile as callback
         const setFuncNode = resolveExprToFuncNode(ctx, setExpr);
         if (setFuncNode) {
-          compileArrowAsCallback(ctx, fctx, setFuncNode as unknown as ts.FunctionExpression, { needsThis: true });
+          if (!compileArrowAsCallback(ctx, fctx, setFuncNode as unknown as ts.FunctionExpression, { needsThis: true }))
+            fctx.body.push({ op: "ref.null.extern" });
         } else {
           fctx.body.push({ op: "ref.null.extern" });
         }
@@ -1791,11 +1812,13 @@ export function compileObjectDefineProperties(
 
         // Compile getter callback
         if (dpGetNode) {
-          compileArrowAsCallback(ctx, fctx, dpGetNode as unknown as ts.FunctionExpression, { needsThis: true });
+          if (!compileArrowAsCallback(ctx, fctx, dpGetNode as unknown as ts.FunctionExpression, { needsThis: true }))
+            fctx.body.push({ op: "ref.null.extern" });
         } else if (dpGetExpr) {
           const gFuncNode = resolveExprToFuncNode(ctx, dpGetExpr);
           if (gFuncNode) {
-            compileArrowAsCallback(ctx, fctx, gFuncNode as unknown as ts.FunctionExpression, { needsThis: true });
+            if (!compileArrowAsCallback(ctx, fctx, gFuncNode as unknown as ts.FunctionExpression, { needsThis: true }))
+              fctx.body.push({ op: "ref.null.extern" });
           } else {
             fctx.body.push({ op: "ref.null.extern" });
           }
@@ -1805,11 +1828,13 @@ export function compileObjectDefineProperties(
 
         // Compile setter callback
         if (dpSetNode) {
-          compileArrowAsCallback(ctx, fctx, dpSetNode as unknown as ts.FunctionExpression, { needsThis: true });
+          if (!compileArrowAsCallback(ctx, fctx, dpSetNode as unknown as ts.FunctionExpression, { needsThis: true }))
+            fctx.body.push({ op: "ref.null.extern" });
         } else if (dpSetExpr) {
           const sFuncNode = resolveExprToFuncNode(ctx, dpSetExpr);
           if (sFuncNode) {
-            compileArrowAsCallback(ctx, fctx, sFuncNode as unknown as ts.FunctionExpression, { needsThis: true });
+            if (!compileArrowAsCallback(ctx, fctx, sFuncNode as unknown as ts.FunctionExpression, { needsThis: true }))
+              fctx.body.push({ op: "ref.null.extern" });
           } else {
             fctx.body.push({ op: "ref.null.extern" });
           }
