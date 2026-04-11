@@ -1000,6 +1000,19 @@ function resolveImport(
             return "[object Object]";
           }
         };
+      if (name === "__extern_toLocaleString")
+        return (v: any) => {
+          if (v == null) return String(v);
+          if (typeof v === "object" && _isWasmStruct(v)) {
+            const exports = callbackState?.getExports();
+            const plain = _wasmToPlain(v, exports);
+            if (plain !== v && plain != null && typeof plain.toLocaleString === "function") {
+              return plain.toLocaleString();
+            }
+            return String(v);
+          }
+          return v.toLocaleString();
+        };
       if (name === "__extern_is_undefined") return (v: any) => (v === undefined ? 1 : 0);
       if (name === "__get_undefined") return () => undefined;
       // __box_symbol: convert i32 symbol ID → real JS Symbol (cached by ID)

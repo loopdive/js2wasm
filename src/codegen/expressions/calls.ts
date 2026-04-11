@@ -3535,6 +3535,34 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       return compileExpression(ctx, fctx, propAccess.expression);
     }
 
+    // Fallback .toLocaleString() — delegates to the JS host so that
+    // Array/TypedArray/wrapped-object instances return the real
+    // locale-formatted string and — critically for test262 — any abrupt
+    // completion from the element's patched toLocaleString/valueOf
+    // propagates as a real JS exception instead of being silently dropped.
+    // Without this path, sample.toLocaleString() on a TypedArray hits the
+    // graceful null-extern fallback and the test fails with "null/undefined
+    // access" instead of reaching the expected throw.
+    if (propAccess.name.text === "toLocaleString" && expr.arguments.length === 0) {
+      const toLSIdx = ensureLateImport(
+        ctx,
+        "__extern_toLocaleString",
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (toLSIdx !== undefined) {
+        const recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+        if (recvType === null || recvType === VOID_RESULT) {
+          fctx.body.push({ op: "ref.null.extern" });
+        } else if (recvType.kind !== "externref") {
+          fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+        }
+        fctx.body.push({ op: "call", funcIdx: toLSIdx });
+        return { kind: "externref" };
+      }
+    }
+
     // Fallback .toString() for any type not already handled above
     // Handles: function.toString(), object.toString(), array.toString(), class instance.toString()
     if (propAccess.name.text === "toString" && expr.arguments.length === 0) {
