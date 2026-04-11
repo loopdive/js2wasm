@@ -1,0 +1,14 @@
+{
+  "pr": 102,
+  "conclusion": "failure",
+  "head_branch": "issue-1006-eval-host-import",
+  "head_sha": "eca0c728bf434e39b2cec68749813283948ef8e3",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288724852",
+  "timestamp": "2026-04-11T18:31:13Z",
+  "pass": 22182,
+  "fail": 18311,
+  "compile_error": 1326,
+  "delta": 432,
+  "regressions": 212,
+  "improvements": 644
+}
