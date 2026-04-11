@@ -1541,7 +1541,25 @@ function compilePropertyAssignment(
   if (!typeName && target.expression.kind === ts.SyntaxKind.ThisKeyword) {
     typeName = resolveThisStructName(ctx, fctx);
   }
-  if (!typeName) return null;
+  if (!typeName) {
+    // No struct type resolved and not an external class. This happens when obj: any has only
+    // accessor properties defined via Object.defineProperty (those are excluded from struct
+    // widening so no struct is created). Fall back to __extern_set for any/unknown-typed objects.
+    const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
+    // NOTE: TypeFlags.Any check removed — TypeScript reports ANY type for `new foo()` instances
+    // (when lib.d.ts is not loaded), causing false positives for constructor instances like `f.bind = ...`.
+    // The TypeFlags.Object wrapper check below handles the needed cases (String/Number/Boolean/Object).
+    // Also handle JS built-in wrapper objects (e.g. String/Number/Boolean created via `new String(...)`)
+    // — these are externref in Wasm, so property assignment must use __extern_set.
+    // Only trigger for known wrapper types, not arbitrary user-defined class instances.
+    if ((objType.flags & ts.TypeFlags.Object) !== 0) {
+      const symName = objType.symbol?.name ?? "";
+      if (symName === "String" || symName === "Number" || symName === "Boolean" || symName === "Object") {
+        return compilePropertyAssignmentExternSet(ctx, fctx, target, value, propName);
+      }
+    }
+    return null;
+  }
 
   // Check for setter accessor on user-defined classes
   const fieldName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
@@ -1600,6 +1618,70 @@ function compilePropertyAssignment(
   fctx.body.push({ op: "local.get", index: tmpVal });
 
   return valType;
+}
+
+/**
+ * Fallback for property assignment when the struct field is not found.
+ * Used when Object.defineProperty with an accessor descriptor (get/set) was detected
+ * at compile time — the property is intentionally excluded from the widened struct so
+ * all accesses go through __extern_set, which calls _safeSet, which invokes the accessor.
+ */
+function compilePropertyAssignmentExternSet(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  value: ts.Expression,
+  propName: string,
+): InnerResult {
+  // Compile object expression and convert to externref
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  if (objResult.kind === "externref") {
+    // already externref
+  } else if (objResult.kind === "ref" || objResult.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" });
+  } else if (objResult.kind === "f64") {
+    addUnionImports(ctx);
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else {
+    return null;
+  }
+  const objLocal = allocLocal(fctx, `__paset_obj_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Compile value as externref and save
+  const valResult = compileExpression(ctx, fctx, value);
+  if (!valResult) return null;
+  if (valResult.kind !== "externref") {
+    coerceType(ctx, fctx, valResult, { kind: "externref" });
+  }
+  const valLocal = allocLocal(fctx, `__paset_val_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: valLocal });
+
+  // Emit __extern_set(obj, key_string, val)
+  fctx.body.push({ op: "local.get", index: objLocal });
+  addStringConstantGlobal(ctx, propName);
+  const keyResult = compileStringLiteral(ctx, fctx, propName);
+  if (keyResult && keyResult.kind !== "externref") {
+    coerceType(ctx, fctx, keyResult, { kind: "externref" });
+  }
+  fctx.body.push({ op: "local.get", index: valLocal });
+
+  const setIdx = ensureLateImport(
+    ctx,
+    "__extern_set",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (setIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx: setIdx });
+  }
+
+  // Return the assigned value
+  fctx.body.push({ op: "local.get", index: valLocal });
+  return { kind: "externref" };
 }
 
 function compileExternPropertySet(

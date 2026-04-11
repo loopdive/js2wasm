@@ -60,6 +60,7 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
 
   // Callback maker
   if (name === "__make_callback") return { type: "callback_maker" };
+  if (name === "__make_getter_callback") return { type: "getter_callback_maker" };
 
   // Async/await
   if (name === "__await") return { type: "await" };
@@ -87,12 +88,18 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // globalThis
   if (name === "__get_globalThis") return { type: "declared_global", name: "globalThis" };
 
+  // defineProperty with accessor descriptor
+  if (name === "__defineProperty_accessor") return { type: "builtin", name: "__defineProperty_accessor" };
+
   // Extern get/set
   if (name === "__extern_get") return { type: "extern_get" };
   if (name === "__extern_set") return { type: "extern_set" };
 
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
+
+  // __new_plain_object is a builtin factory, not an extern class constructor
+  if (name === "__new_plain_object") return { type: "builtin", name: "__new_plain_object" };
 
   // Unknown constructor imports (__new_ClassName)
   if (name.startsWith("__new_")) {
