@@ -915,13 +915,6 @@ export function compileObjectLiteralForStruct(
           ? [resolveWasmType(ctx, retType)]
           : [];
 
-      // Track object-literal methods that read `arguments` (#1053) so
-      // callers can populate the __extras_argv global with runtime args
-      // beyond the formal param count.
-      if (prop.body && bodyUsesArguments(prop.body)) {
-        ctx.funcUsesArguments.add(fullName);
-      }
-
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
 
       // Check if a placeholder function was already pre-registered (by ensureStructForType).

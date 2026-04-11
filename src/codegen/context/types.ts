@@ -272,20 +272,6 @@ export interface CodegenContext {
   genericResolved: Map<string, { params: ValType[]; results: ValType[] }>;
   /** Rest parameter info per function (functions with ...rest syntax) */
   funcRestParams: Map<string, RestParamInfo>;
-  /**
-   * Functions whose body reads `arguments`. Used by callers to decide
-   * whether to populate the `__extras_argv` module global with extra
-   * runtime args beyond the formal param count (#1053).
-   */
-  funcUsesArguments: Set<string>;
-  /**
-   * Module global index for the runtime extras argv vec (#1053).
-   * Lazily registered on first use; -1 if not yet created.
-   * Type: (mut (ref null $vec_externref))
-   */
-  extrasArgvGlobalIdx: number;
-  /** Vec struct type index for the extras argv global (matches externref vec type). */
-  extrasArgvVecTypeIdx: number;
   /** Map from struct name → set of closure type indices used for valueOf fields */
   valueOfClosureTypes: Map<string, number[]>;
   /** Tag index for the exception tag (-1 if not yet registered) */

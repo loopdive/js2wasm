@@ -125,6 +125,85 @@ After the second-wave merges and additional PRs (~12 total merges between the pr
 
 Decision pending from tech lead: **(A)** accept 20,544 baseline and revert/fix the identified culprits, or **(B)** revert all 12 merges back to `ef179253` and replay one at a time with forced baseline refresh between each.
 
+### 2026-04-11 21:00 — investigation outcome + rescue via PR #114
+
+**Three-way bisect isolated the window to 3 merges**: #96 (arguments.length
+argv-extras), #100 (vec-struct constructor short-circuit), #107 (DataView
+subview metadata). The baseline flipped at ddcc5770 (#96 merge, 19:07 UTC).
+dev-1053's artifact-diff analysis: **1,617 of the 1,621 regressed tests
+fail with `compile_error: Maximum call stack size exceeded`** at
+compile_ms=0 (instant throws on entry), clustering at
+**3266 ≈ 16 × RECREATE_INTERVAL=200**. Strong mechanistic fit for
+fork-worker state poisoning after a recursive AST walker hits the CI
+stack budget.
+
+**Revert probes ruled out individual PRs**:
+- **PR #112** (revert #96 alone): 20,569 pass — still broken
+- **PR #113** (revert #107 alone): 20,599 pass — still broken
+- **PR #114** (revert #96 + #100 + #107): **22,157 pass / 1,326 CE — PERFECT RECOVERY** (identical to pre-flip 4ce6f5d1 artifact)
+
+Only the combined revert recovers. Bug is a 2-of-3 or 3-of-3 interaction.
+
+**Forward-fix attempted and refuted**: dev-1031 drafted + shipped
+**PR #115** (iterative `walkInstructions` + `patchInstrs` rewrite) as
+the walker-recursion class-level fix. PR #115 CI result: pass=20,624
+(identical to broken baseline, zero test-outcome change). The walker-
+recursion hypothesis was empirically wrong.
+
+**Rescue path taken**: **PR #114 admin-merged at 20:56 UTC** (commit
+`65ea04b5`) as a plain revert rescue. Main's push-event CI at 65ea04b5
+confirmed 22,157 / 1,326. Baseline refresh commit `2ff6b0f8` then
+committed `22157/43171 pass` to main, unsticking the landing page.
+
+**Lost work from the revert** (code only; issue files and docs
+preserved):
+- #96 (#1053): 501 LOC across 9 source files — argv-extras-global +
+  pre-codegen `bodyUsesArguments` walker + call-site plumbing
+- #100 (#1057): 9 LOC `__extern_get` vec-struct constructor short-circuit
+- #107 (#1064): DataView subview metadata sidecar (5-file patch)
+
+Combined ~1,085 pass of genuine PR improvements temporarily out of main.
+
+**Reapply sequence in progress (2026-04-11 ~21:00 UTC)**: dev-1053
+opened **PR #116** reapplying #107 first as an empirical probe. Order:
+#107 → #100 → #96. Whichever reapply first flips CI identifies the
+single-PR or PR-pair culprit. Once isolated, a targeted forward-fix
+lands and all three PRs re-land on top.
+
+**Drafts preserved on origin / in worktrees** for the eventual forward-fix:
+- `origin/issue-1087-walk-instructions-iterative` — dev-1031's
+  walkInstructions + patchInstrs iterative rewrite (code + #1087 issue
+  file), PR #115 closed but branch retained
+- `.claude/worktrees/issue-1053-stack-depth-fix` — dev-1031's iterative
+  `bodyUsesArguments` rewrite (uncommitted) + #1086 draft
+- `.claude/worktrees/issue-1082-ci-feed-net-per-test` — dev-1047's
+  compileCount++ fork-worker fix (uncommitted) + #1084 draft
+- #1084 and #1086 issue file stubs pulled into main for durability
+
+**Rollup of baseline-drift session outputs**:
+- **Merged structural fixes**: #1082 (ci-status-feed `net_per_test` vs
+  `snapshot_delta`)
+- **Filed for follow-up**: #1076 split merge job, #1077 fresh baseline
+  fetch, #1078 emergency dispatch hardening, #1079 baseline age stamp,
+  #1080 umbrella, #1081 commit-hash-indexed test262 run cache
+  (strategic), #1083 latent double-compile from #96's extras plumbing,
+  #1084 fork-worker compileCount bypass, #1085 bodyUsesArguments
+  iterative (defensive), #1086 dedup+memoize bodyUsesArguments, #1087
+  walkInstructions iterative (superseded as recovery fix but still
+  worth shipping)
+- **Documentation**: `plan/investigations/2026-04-11-baseline-regression-bisect.md`,
+  `plan/retrospectives/2026-04-11-ci-baseline-drift-investigation.md`,
+  `.claude/skills/tech-lead-loop.md`,
+  `.claude/memory/feedback_baseline_drift_cross_check.md`
+
+**Baseline trajectory**:
+- 18:16 UTC (6523ab20, #93 merge): 22,079 pass — healthy pre-drift
+- 18:57 UTC (4ce6f5d1, #86 merge): 22,157 pass — healthy pre-flip
+- 19:07 UTC (ddcc5770, #96 merge): 20,599 pass — **flip**
+- 19:14 UTC (fc4b06c8, #107 merge): 20,599-20,624 range — sustained broken
+- 20:56 UTC (65ea04b5, PR #114 merge): **22,157 pass — rescued to pre-flip**
+- 21:10 UTC: baseline commit `2ff6b0f8` refreshed on main at 22,157
+
 | Milestone | pass | pct |
 |-----------|------|-----|
 | Sprint 40 start | 18,899 | 43.80% |
