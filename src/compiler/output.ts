@@ -260,7 +260,7 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "__box_number") return `${name}: (v) => v`;
   if (name === "__box_boolean") return `${name}: (v) => Boolean(v)`;
   if (name === "__box_symbol")
-    return `${name}: (() => { const c = new Map([[1,Symbol.iterator],[2,Symbol.hasInstance],[3,Symbol.toPrimitive],[4,Symbol.toStringTag],[5,Symbol.species],[6,Symbol.isConcatSpreadable],[7,Symbol.match],[8,Symbol.replace],[9,Symbol.search],[10,Symbol.split],[11,Symbol.unscopables],[12,Symbol.asyncIterator]]); return (id) => { let s = c.get(id); if (!s) { s = Symbol("wasm_"+id); c.set(id, s); } return s; }; })()`;
+    return `${name}: (() => { const d = Symbol.dispose ?? Symbol.for("Symbol.dispose"); const ad = Symbol.asyncDispose ?? Symbol.for("Symbol.asyncDispose"); const c = new Map([[1,Symbol.iterator],[2,Symbol.hasInstance],[3,Symbol.toPrimitive],[4,Symbol.toStringTag],[5,Symbol.species],[6,Symbol.isConcatSpreadable],[7,Symbol.match],[8,Symbol.replace],[9,Symbol.search],[10,Symbol.split],[11,Symbol.unscopables],[12,Symbol.asyncIterator],[13,d],[14,ad]]); return (id) => { let s = c.get(id); if (!s) { s = Symbol("wasm_"+id); c.set(id, s); } return s; }; })()`;
   if (name === "__is_truthy") return `${name}: (v) => v ? 1 : 0`;
   if (name === "__typeof") return `${name}: (v) => typeof v`;
 

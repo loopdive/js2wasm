@@ -28,6 +28,8 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/statements/destructuring.ts | all default value guards | dev-929 | #1021 | 2026-04-11 |
 | src/codegen/destructuring-params.ts | parameter destructuring defaults | dev-929 | #1021 | 2026-04-11 |
 | src/compiler/validation.ts | detectEarlyErrors — checkModuleItemPosition | dev-990 | #990 | 2026-04-11 |
+| src/codegen/expressions/new-super.ts | DataView constructor block | dev-1053 | #1064 | 2026-04-11 |
+| src/runtime.ts | __dv_register_view + DataView bridge subview | dev-1053 | #1064 | 2026-04-11 |
 
 <!--
 Example entries:
@@ -38,3 +40,4 @@ Example entries:
 Note: same FILE with different FUNCTIONS is OK (Git 3-way merge handles separate hunks).
 Same function = conflict, must coordinate.
 -->
+- src/runtime.ts | _wrapForHost get trap (constructor for vec structs) | dev-1047 | #1057 | 2026-04-11

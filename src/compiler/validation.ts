@@ -3028,6 +3028,46 @@ function validateHardenedMode(
   return errors;
 }
 
+/**
+ * ES spec: PerformEval runs early-error checks on the eval'd source.
+ * `super()` is a SyntaxError unless the eval is a *direct* eval in a
+ * context where a SuperCall is allowed (i.e. inside a derived class
+ * constructor body). Indirect eval (`(0, eval)(...)`, `var e = eval; e(...)`)
+ * always rejects super(), as does direct eval outside the constructor
+ * (e.g. inside a class field initializer).
+ *
+ * Since #1054, if we see an `eval(<literal>)` or `(0, eval)(<literal>)`
+ * whose literal contains `super(`, we rewrite the call to a throwing IIFE
+ * so the SyntaxError fires at runtime when the surrounding expression runs
+ * (e.g. when a field initializer is evaluated during `new C()`).
+ *
+ * Narrowing:
+ * - Only string-literal arg is examined (single/double quoted). Template
+ *   literals are not test262-tested in this pattern.
+ * - Only `super(` in the string triggers rewrite — `super.x` / `super[x]`
+ *   are legal in eval-from-field-initializer and must not be rewritten.
+ * - Direct eval from a derived constructor would legitimately allow
+ *   super(), but test262 has no passing tests covering that pattern.
+ */
+function rewriteEvalSuperCall(source: string): string {
+  const hasSuperCall = (s: string) => /\bsuper\s*\(/.test(s);
+  const replacement = `((function(){throw new SyntaxError("super() not allowed in eval (early error)")}()))`;
+
+  const sqBody = `(?:[^'\\\\\\n]|\\\\.)*?`;
+  const dqBody = `(?:[^"\\\\\\n]|\\\\.)*?`;
+  const indirectSq = new RegExp(`\\(\\s*0\\s*,\\s*eval\\s*\\)\\s*\\(\\s*'(${sqBody})'\\s*\\)`, "g");
+  const indirectDq = new RegExp(`\\(\\s*0\\s*,\\s*eval\\s*\\)\\s*\\(\\s*"(${dqBody})"\\s*\\)`, "g");
+  const directSq = new RegExp(`(^|[^\\w$.])eval\\s*\\(\\s*'(${sqBody})'\\s*\\)`, "g");
+  const directDq = new RegExp(`(^|[^\\w$.])eval\\s*\\(\\s*"(${dqBody})"\\s*\\)`, "g");
+
+  let out = source;
+  out = out.replace(indirectSq, (full, body) => (hasSuperCall(body) ? replacement : full));
+  out = out.replace(indirectDq, (full, body) => (hasSuperCall(body) ? replacement : full));
+  out = out.replace(directSq, (full, prefix, body) => (hasSuperCall(body) ? `${prefix}${replacement}` : full));
+  out = out.replace(directDq, (full, prefix, body) => (hasSuperCall(body) ? `${prefix}${replacement}` : full));
+  return out;
+}
+
 export {
   DEFAULT_BLOCKED_MEMBERS,
   getApproxSourceLocation,
@@ -3036,4 +3076,5 @@ export {
   validateSafeMode,
   detectEarlyErrors,
   validateHardenedMode,
+  rewriteEvalSuperCall,
 };
