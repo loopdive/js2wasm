@@ -47,6 +47,8 @@ const WELL_KNOWN_SYMBOLS: Record<string, number> = {
   split: 10,
   unscopables: 11,
   asyncIterator: 12,
+  dispose: 13,
+  asyncDispose: 14,
 };
 function getWellKnownSymbolId(name: string): number | undefined {
   return WELL_KNOWN_SYMBOLS[name];
