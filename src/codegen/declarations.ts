@@ -970,6 +970,9 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     // returns a Generator-like object that defers the throw to the first next() call.
     const createGenType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__create_generator", { kind: "func", typeIdx: createGenType });
+    // __create_async_generator: same Wasm signature as __create_generator, but .next()/.return()/.throw()
+    // return Promise-wrapped results as required by the ES spec for async generators.
+    addImport(ctx, "env", "__create_async_generator", { kind: "func", typeIdx: createGenType });
     const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__gen_next", { kind: "func", typeIdx: genType });
 
