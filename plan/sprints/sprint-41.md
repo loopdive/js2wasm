@@ -18,33 +18,34 @@ This sprint is intentionally less pass-rate-focused. The goal is to **broaden** 
 
 ## Sprint 40 carry-over (non-error work moved here)
 
-| # | Title | Category |
-|---|-------|----------|
-| [#824](../issues/ready/824.md) | Timeout umbrella doc cleanup — replace the stale 10s compile-timeout narrative with current 30s worker-timeout model | Process / docs |
-| [#1000](../issues/ready/1000.md) | Normalize issue frontmatter and repopulate historical sprint assignments | Planning-data |
-| [#1001](../issues/ready/1001.md) | Preallocate counted `number[]` push loops into dense WasmGC arrays | Perf |
-| [#1003](../issues/ready/1003.md) | Normalize issue metadata with ES edition, language feature, task type | Planning-data |
-| [#1004](../issues/ready/1004.md) | Optimize repeated string concatenation via compile-time folding | Perf |
-| [#1005](../issues/ready/1005.md) | Benchmark cold-start across Wasmtime, Wasm-in-Node, native Node | Benchmarks |
-| [#1007](../issues/ready/1007.md) | Re-run historical test262 checkpoints with current harness | Historical benchmarks |
-| [#1008](../issues/ready/1008.md) | Mobile-first layout for the playground | UI |
-| [#1009](../issues/ready/1009.md) | Investigate report-page benchmark outliers where Wasm loses to JS | Investigation |
-| [#1011](../issues/ready/1011.md) | Offline-first benchmarks with Playwright DOM measurement and Run Live button | Benchmarks |
-| [#1013](../issues/ready/1013.md) | Split `src/codegen/index.ts` (14,344 lines) into focused modules | Refactor |
-| [#1029](../issues/blocked/1029.md) | Migrate to TypeScript 7.x (typescript-go) — **blocked** on microsoft/typescript-go#516 API stability | Infra / blocked |
+| #                                  | Title                                                                                                                | Category              |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| [#824](../issues/ready/824.md)     | Timeout umbrella doc cleanup — replace the stale 10s compile-timeout narrative with current 30s worker-timeout model | Process / docs        |
+| [#1000](../issues/ready/1000.md)   | Normalize issue frontmatter and repopulate historical sprint assignments                                             | Planning-data         |
+| [#1001](../issues/ready/1001.md)   | Preallocate counted `number[]` push loops into dense WasmGC arrays                                                   | Perf                  |
+| [#1003](../issues/ready/1003.md)   | Normalize issue metadata with ES edition, language feature, task type                                                | Planning-data         |
+| [#1004](../issues/ready/1004.md)   | Optimize repeated string concatenation via compile-time folding                                                      | Perf                  |
+| [#1005](../issues/ready/1005.md)   | Benchmark cold-start across Wasmtime, Wasm-in-Node, native Node                                                      | Benchmarks            |
+| [#1007](../issues/ready/1007.md)   | Re-run historical test262 checkpoints with current harness                                                           | Historical benchmarks |
+| [#1008](../issues/ready/1008.md)   | Mobile-first layout for the playground                                                                               | UI                    |
+| [#1009](../issues/ready/1009.md)   | Investigate report-page benchmark outliers where Wasm loses to JS                                                    | Investigation         |
+| [#1011](../issues/ready/1011.md)   | Offline-first benchmarks with Playwright DOM measurement and Run Live button                                         | Benchmarks            |
+| [#1013](../issues/ready/1013.md)   | Split `src/codegen/index.ts` (14,344 lines) into focused modules                                                     | Refactor              |
+| [#1029](../issues/blocked/1029.md) | Migrate to TypeScript 7.x (typescript-go) — **blocked** on microsoft/typescript-go#516 API stability                 | Infra / blocked       |
 
 ## Real-world stress tests (new, filed 2026-04-11)
 
-The biggest thing added to Sprint 41: four **real-world-library stress tests** that compile production JavaScript libraries to Wasm and harvest error patterns for follow-up issues. These are *investigation* tasks — success criterion is a categorized error report and concrete follow-up issues, not full library compatibility.
+The biggest thing added to Sprint 41: four **real-world-library stress tests** that compile production JavaScript libraries to Wasm and harvest error patterns for follow-up issues. These are _investigation_ tasks — success criterion is a categorized error report and concrete follow-up issues, not full library compatibility.
 
-| # | Library | Stress dimension | Host imports | Killer acceptance test |
-|---|---------|-----------------|--------------|------------------------|
-| [#1031](../issues/ready/1031.md) | **lodash** | Pure compute, iteration, prototype chain, algorithms | None | Tier 1 modules unit-test clean |
-| [#1032](../issues/ready/1032.md) | **axios** | I/O, streams, Promise chains | Node builtins (http, stream, buffer, ...) | Real GET against httpbin.org from Wasm |
-| [#1033](../issues/ready/1033.md) | **react** | Closures, hooks, reconciler, Symbol.for | DOM (document, window, HTMLElement, ...) | Counter component renders & increments on click |
-| [#1034](../issues/ready/1034.md) | **prettier** | Parsers, string ops, recursive AST, large switches | None | Compiled-prettier output === native-prettier output byte-for-byte |
+| #                                | Library      | Stress dimension                                     | Host imports                              | Killer acceptance test                                            |
+| -------------------------------- | ------------ | ---------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| [#1031](../issues/ready/1031.md) | **lodash**   | Pure compute, iteration, prototype chain, algorithms | None                                      | Tier 1 modules unit-test clean                                    |
+| [#1032](../issues/ready/1032.md) | **axios**    | I/O, streams, Promise chains                         | Node builtins (http, stream, buffer, ...) | Real GET against httpbin.org from Wasm                            |
+| [#1033](../issues/ready/1033.md) | **react**    | Closures, hooks, reconciler, Symbol.for              | DOM (document, window, HTMLElement, ...)  | Counter component renders & increments on click                   |
+| [#1034](../issues/ready/1034.md) | **prettier** | Parsers, string ops, recursive AST, large switches   | None                                      | Compiled-prettier output === native-prettier output byte-for-byte |
 
 Each test stresses a distinct dimension of the compiler:
+
 - **lodash** surfaces compute-semantics gaps (iteration, algorithms)
 - **axios** surfaces the Node-builtins-as-host-imports boundary
 - **react** stresses closures + hooks (the canonical "closure captures ref cell, not value" torture test)
@@ -54,8 +55,8 @@ Expected output: each stress test files 3-5 concrete follow-up issues. Those fol
 
 ## WASI deliverable (new, filed 2026-04-11)
 
-| # | Title | Category |
-|---|-------|----------|
+| #                                | Title                                                                                                                                                        | Category              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
 | [#1035](../issues/ready/1035.md) | WASI hello-world — `console.log` + `node:fs.writeFileSync` compiled to a native executable, with `node:fs` calls translated to WASI syscalls at compile time | Feature / dual-target |
 
 First concrete "TypeScript → native executable" story. Parallels the dual-mode architecture principle (#679/#682 string and RegExp backends) applied to filesystem I/O. Nine follow-up issues (#1036–#1044) identified for the rest of the `node:fs` surface once the `writeFileSync` path lands.
@@ -66,21 +67,22 @@ First concrete "TypeScript → native executable" story. Parallels the dual-mode
 
 Run the four stress tests in parallel or sequence — each produces its own error-bucket report and follow-up issues. Recommended order: **prettier first** (deterministic, no host-import design, strongest correctness signal), then **lodash** (cleanest compute surface), then **axios** (requires Node-builtin host-import work), then **react** (requires DOM host imports + solid closure model).
 
-| Order | Issue | Rationale |
-|-------|-------|-----------|
-| 1 | **#1034** prettier | Pure compute, no boundary design, self-format diff = unambiguous correctness signal |
-| 2 | **#1031** lodash | Pure compute, smaller surface, fast feedback |
-| 3 | **#1032** axios | Requires Node-builtin host-import scaffold (new compile-time feature) |
-| 4 | **#1033** react | Requires DOM-as-host-imports AND solid closure-captures-mutable-cell model |
+| Order | Issue              | Rationale                                                                           |
+| ----- | ------------------ | ----------------------------------------------------------------------------------- |
+| 1     | **#1034** prettier | Pure compute, no boundary design, self-format diff = unambiguous correctness signal |
+| 2     | **#1031** lodash   | Pure compute, smaller surface, fast feedback                                        |
+| 3     | **#1032** axios    | Requires Node-builtin host-import scaffold (new compile-time feature)               |
+| 4     | **#1033** react    | Requires DOM-as-host-imports AND solid closure-captures-mutable-cell model          |
 
 ### Phase 2: WASI feature deliverable
 
-| Order | Issue | Rationale |
-|-------|-------|-----------|
-| 5 | **#1035** WASI hello-fs | First "TS → native executable" story. Unblocks the full `node:fs`→WASI line of follow-ups. |
+| Order | Issue                   | Rationale                                                                                  |
+| ----- | ----------------------- | ------------------------------------------------------------------------------------------ |
+| 5     | **#1035** WASI hello-fs | First "TS → native executable" story. Unblocks the full `node:fs`→WASI line of follow-ups. |
 
 ### Phase 3: Perf and benchmark infrastructure
 
+/
 | Order | Issue | Rationale |
 |-------|-------|-----------|
 | 6 | **#1001** counted push-loop | Recovers lost landing-page `array.ts` benchmark advantage |
@@ -91,14 +93,14 @@ Run the four stress tests in parallel or sequence — each produces its own erro
 
 ### Phase 4: Refactor and infra
 
-| Order | Issue | Rationale |
-|-------|-------|-----------|
-| 11 | **#1013** split codegen/index.ts | 14,344 lines, 124 exports — last remaining monolith |
-| 12 | **#1000** frontmatter normalization | Cleans up historical sprint assignments for dashboard |
-| 13 | **#1003** metadata fields | Adds ES edition, language feature, task type to issue frontmatter |
-| 14 | **#1007** historical checkpoint re-run | Rebuilds a comparable conformance history timeline |
-| 15 | **#1008** mobile playground | Replaces desktop-only panel layout |
-| 16 | **#824** timeout umbrella doc | Stale narrative cleanup |
+| Order | Issue                                  | Rationale                                                         |
+| ----- | -------------------------------------- | ----------------------------------------------------------------- |
+| 11    | **#1013** split codegen/index.ts       | 14,344 lines, 124 exports — last remaining monolith               |
+| 12    | **#1000** frontmatter normalization    | Cleans up historical sprint assignments for dashboard             |
+| 13    | **#1003** metadata fields              | Adds ES edition, language feature, task type to issue frontmatter |
+| 14    | **#1007** historical checkpoint re-run | Rebuilds a comparable conformance history timeline                |
+| 15    | **#1008** mobile playground            | Replaces desktop-only panel layout                                |
+| 16    | **#824** timeout umbrella doc          | Stale narrative cleanup                                           |
 
 ## Acceptance criteria
 
