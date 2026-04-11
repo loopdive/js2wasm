@@ -4,7 +4,16 @@ description: After a dev's PR merges, they claim the next unowned task from Task
 type: feedback
 originSessionId: 0ffbd21c-b73d-429a-a76d-4fb742ea9794
 ---
-When a dev's PR merges to main, they should **immediately claim the next unowned task from TaskList** without waiting for the tech lead to assign it. The tech lead's job is to keep the TaskList populated and prioritized; the dev's job is to keep shipping.
+**Dev protocol: "pushed = done, claim next NOW — do not wait for merge."**
+
+As soon as a dev has pushed their branch and opened a PR, they should **immediately** mark their current task `completed` in TaskList and claim the next unowned task. They do NOT wait for:
+
+- CI to pass
+- Tech lead to review
+- Tech lead to merge
+- Tech lead to send a "merged, do next" message
+
+The merge happens asynchronously in the background. If CI fails or the PR needs revision, the tech lead will ping the dev to context-switch back — that is a **rare, exceptional** event. The default flow is "push and move on." Never block on merge confirmation.
 
 **Why:** Waiting for tech lead orders after every merge wastes context and idle time. Dev agents are expensive — idle devs are burning RAM for nothing. Auto-claim keeps the pipeline moving continuously and lets the tech lead focus on merge decisions, PR review, and filing new issues instead of routine dispatch.
 
