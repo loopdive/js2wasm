@@ -583,6 +583,33 @@ export function compileTypeofExpression(
     }
   }
 
+  // typeof UndeclaredIdentifier -> "undefined" (per ES spec: typeof on an
+  // unresolvable Reference returns "undefined" instead of throwing). Without
+  // this, accessing an undeclared identifier would emit a ref.cast or host
+  // call that throws at runtime. (#1050)
+  //
+  // We detect "undeclared" as: bare Identifier whose symbol at location has
+  // no value declaration AND whose parent in source is not a let/const TDZ
+  // binding. We conservatively unwrap `as`/parenthesized casts used in tests.
+  {
+    let ident: ts.Expression = operand;
+    while (
+      ts.isParenthesizedExpression(ident) ||
+      ts.isAsExpression(ident) ||
+      ts.isTypeAssertionExpression(ident) ||
+      ts.isNonNullExpression(ident)
+    ) {
+      ident = (ident as ts.ParenthesizedExpression | ts.AsExpression).expression;
+    }
+    if (ts.isIdentifier(ident)) {
+      const sym = ctx.checker.getSymbolAtLocation(ident);
+      const hasValueDecl = !!sym?.valueDeclaration;
+      if (!hasValueDecl) {
+        return compileStringLiteral(ctx, fctx, "undefined");
+      }
+    }
+  }
+
   const tsType = ctx.checker.getTypeAtLocation(operand);
 
   // Try static resolution first via the shared helper
@@ -659,6 +686,29 @@ export function compileTypeofComparison(
   // Static resolution: if the typeof result is known at compile time,
   // emit a constant comparison result without any runtime call.
   const operand = typeofExpr.expression;
+
+  // typeof UndeclaredIdentifier -> "undefined" (#1050)
+  {
+    let ident: ts.Expression = operand;
+    while (
+      ts.isParenthesizedExpression(ident) ||
+      ts.isAsExpression(ident) ||
+      ts.isTypeAssertionExpression(ident) ||
+      ts.isNonNullExpression(ident)
+    ) {
+      ident = (ident as ts.ParenthesizedExpression | ts.AsExpression).expression;
+    }
+    if (ts.isIdentifier(ident)) {
+      const sym = ctx.checker.getSymbolAtLocation(ident);
+      if (!sym?.valueDeclaration) {
+        const matches = "undefined" === stringLiteral;
+        const result = isEq ? (matches ? 1 : 0) : matches ? 0 : 1;
+        fctx.body.push({ op: "i32.const", value: result });
+        return { kind: "i32" };
+      }
+    }
+  }
+
   const tsType = ctx.checker.getTypeAtLocation(operand);
   let staticTypeof: string | null = null;
   // Math.<constant> -> "number", Math.<method> -> "function"
