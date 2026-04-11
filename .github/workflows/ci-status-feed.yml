@@ -77,7 +77,8 @@ jobs:
           pass=null
           fail=null
           ce=null
-          delta=null
+          snapshot_delta=null
+          net_per_test=null
           regressions=null
           improvements=null
           if [ -f /tmp/merged-report/test262-report-merged.json ]; then
@@ -86,16 +87,27 @@ jobs:
             ce=$(jq '.summary.compile_error' /tmp/merged-report/test262-report-merged.json)
           fi
 
-          # Delta against current main baseline
+          # snapshot_delta: absolute pass count vs the committed baseline on main.
+          # This is NOT a per-test regression count — it conflates the PR's real
+          # effect with any drift between the baseline file and actual main state.
+          # Kept for dashboards/history only. Do NOT use as a merge gate.
           if [ "$pass" != "null" ] && [ -f benchmarks/results/test262-current.json ]; then
             baseline=$(jq '.summary.pass' benchmarks/results/test262-current.json)
-            delta=$((pass - baseline))
+            snapshot_delta=$((pass - baseline))
           fi
 
           # Regression / improvement counts from the regressions txt if present
           if [ -f /tmp/merged-report/test262-regressions.txt ]; then
             regressions=$(grep -oE 'Regressions \(pass → other\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
             improvements=$(grep -oE 'Improvements \(other → pass\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+          fi
+
+          # net_per_test: improvements − regressions (per-test, from diff-test262.ts).
+          # This IS the merge gate — it measures what the PR actually did to the
+          # baseline it was tested against, not an absolute snapshot difference.
+          # See #1082 for why the distinction matters.
+          if [ "$improvements" != "null" ] && [ "$regressions" != "null" ]; then
+            net_per_test=$((improvements - regressions))
           fi
 
           # Write JSON using jq so nothing is broken by shell quoting
@@ -109,7 +121,8 @@ jobs:
             --argjson pass "${pass:-null}" \
             --argjson fail "${fail:-null}" \
             --argjson ce "${ce:-null}" \
-            --argjson delta "${delta:-null}" \
+            --argjson snapshot_delta "${snapshot_delta:-null}" \
+            --argjson net_per_test "${net_per_test:-null}" \
             --argjson regressions "${regressions:-null}" \
             --argjson improvements "${improvements:-null}" \
             '{
@@ -122,7 +135,8 @@ jobs:
               pass: $pass,
               fail: $fail,
               compile_error: $ce,
-              delta: $delta,
+              snapshot_delta: $snapshot_delta,
+              net_per_test: $net_per_test,
               regressions: $regressions,
               improvements: $improvements
             }' > "$out"
