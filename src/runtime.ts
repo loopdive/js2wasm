@@ -1447,13 +1447,25 @@ function resolveImport(
               },
             };
           }
+          // Returns a thenable that rejects with e, but also has done/value for no-op await:
+          // - g.throw(e).then(res, rej) works (rej called with e)
+          // - result = await g.throw(e) with no-op await gives result.done=true
+          function mkError(e: any) {
+            return {
+              done: true,
+              value: undefined as any,
+              then(res: any, rej: any) {
+                return Promise.reject(e).then(res, rej);
+              },
+            };
+          }
           return {
             next() {
               if (index < buf.length) return mkResult(buf[index++], false);
               if (pendingThrow !== null && pendingThrow !== undefined) {
                 const e = pendingThrow;
                 pendingThrow = null;
-                return Promise.reject(e);
+                return mkError(e);
               }
               return mkResult(undefined, true);
             },
@@ -1463,7 +1475,7 @@ function resolveImport(
             },
             throw(e: any) {
               index = buf.length;
-              return Promise.reject(e);
+              return mkError(e);
             },
             [Symbol.asyncIterator]() {
               return this;
