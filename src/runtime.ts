@@ -214,32 +214,35 @@ function _toPrimitive(
       return undefined;
     }
     // Wasm-exported struct field getter (__sget_valueOf, __sget_toString)
+    // Only Wasm RuntimeError (type-mismatch trap) is swallowed; user-thrown
+    // errors from the invoked closure body must propagate (#983).
     if (exports) {
       const sget = exports[`__sget_${name}`];
       if (typeof sget === "function") {
+        let field: any;
         try {
-          const field = sget(obj);
-          if (typeof field === "function") {
-            const prim = field.call(obj);
-            if (prim == null || typeof prim !== "object") return prim;
-          } else if (field != null && typeof field !== "object") {
-            return field;
-          }
-          // field is an object — possibly a WasmGC closure struct.
-          // Try __call_<name> export which dispatches via ref.test/call (#866).
-          if (field != null && typeof field === "object") {
-            const callFn = exports[`__call_${name}`];
-            if (typeof callFn === "function") {
-              try {
-                const prim = callFn(obj);
-                if (prim == null || typeof prim !== "object") return prim;
-              } catch {
-                /* call dispatch failed */
-              }
+          field = sget(obj);
+        } catch (e: any) {
+          if (e instanceof WebAssembly.RuntimeError) return undefined;
+          throw e;
+        }
+        if (typeof field === "function") {
+          const prim = field.call(obj);
+          if (prim == null || typeof prim !== "object") return prim;
+        } else if (field != null && typeof field !== "object") {
+          return field;
+        }
+        if (field != null && typeof field === "object") {
+          const callFn = exports[`__call_${name}`];
+          if (typeof callFn === "function") {
+            try {
+              const prim = callFn(obj);
+              if (prim == null || typeof prim !== "object") return prim;
+            } catch (e: any) {
+              if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+              /* ref.test/call dispatch failed — try next method */
             }
           }
-        } catch {
-          /* struct field access failed */
         }
       }
     }
@@ -565,7 +568,24 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
 
   const handler: ProxyHandler<any> = {
     get(_t, key) {
-      return safeGetField(key);
+      const val = safeGetField(key);
+      // If val is a wasmGC closure struct (method stored as a field), wrap
+      // it in a JS function that dispatches via the compiled __call_<name>
+      // export so JS callers (including native ToPrimitive / Array built-ins)
+      // can invoke it. Without this, JS sees `typeof val === "object"` and
+      // ToPrimitive fails with "Cannot convert object to primitive value".
+      if (val != null && typeof val === "object" && typeof key === "string" && _isWasmStruct(val) && exports) {
+        const callFn = exports[`__call_${key}`];
+        if (typeof callFn === "function") {
+          return function closureBridge(this: any) {
+            // __call_<name>(parent) dispatches to the closure bound to `obj`.
+            // The args the JS caller passes are dropped — our closures for
+            // valueOf/toString/@@toPrimitive are nullary in practice.
+            return callFn(obj);
+          };
+        }
+      }
+      return val;
     },
     set(_t, key, val) {
       _safeSet(obj, key, val);
@@ -1345,16 +1365,16 @@ function resolveImport(
       if (name === "__extern_method_call")
         return (obj: any, method: string, args: any[]) => {
           if (obj == null) throw new TypeError("Cannot read properties of null (reading '" + method + "')");
-          // #983: wrap only the wasmGC receiver in a live-mirror Proxy so
-          // the host method's property reads/writes flow through the sidecar.
-          // Args are passed through untouched — wrapping them breaks poisoned
-          // toString/valueOf tests (errors must propagate) and closure-field
-          // method fields (e.g. fromIndex.valueOf wrapped as opaque struct).
+          // #983: wrap wasmGC receiver + arg structs in live-mirror Proxies.
+          // The proxy's `get` trap now exposes closure-field methods as
+          // callable JS functions, so JS ToPrimitive / Array built-ins can
+          // invoke poisoned valueOf/toString and let errors propagate.
           const exports = callbackState?.getExports();
           const wrappedObj = _isWasmStruct(obj) ? _wrapForHost(obj, exports) : obj;
+          const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
           const fn = wrappedObj[method];
           if (typeof fn !== "function") throw new TypeError(method + " is not a function");
-          const ret = fn.apply(wrappedObj, args ?? []);
+          const ret = fn.apply(wrappedObj, wrappedArgs);
           return ret === wrappedObj ? obj : _unwrapForHost(ret);
         };
       // Type.prototype.method.call(receiver, ...args) dispatch for built-in types.
@@ -1366,13 +1386,13 @@ function resolveImport(
           if (!Type || !Type.prototype) throw new TypeError(typeName + " is not a constructor");
           const method = Type.prototype[methodName];
           if (typeof method !== "function") throw new TypeError(methodName + " is not a function");
-          // #983: wrap only the wasmGC receiver in a live-mirror Proxy so
-          // Type.prototype.<method> sees a JS-observable object. Args are
-          // passed through untouched — wrapping them eats user-thrown errors
-          // from poisoned toString/valueOf and breaks closure-field methods.
+          // #983: wrap wasmGC receiver + arg structs in live-mirror Proxies.
+          // Proxy get trap exposes closure-field methods as callable JS fns,
+          // so native ToPrimitive on a wasmGC arg with closure valueOf works.
           const exports = callbackState?.getExports();
           const wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
-          const ret = method.call(wrappedReceiver, ...(args ?? []));
+          const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
+          const ret = method.call(wrappedReceiver, ...wrappedArgs);
           return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
         };
       // Get actual JS built-in object by name (#965) — fixes WI3 null receiver for built-in classes
