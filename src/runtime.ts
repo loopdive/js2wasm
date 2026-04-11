@@ -1236,9 +1236,13 @@ function resolveImport(
           const exports = callbackState?.getExports();
           const fieldNames: string[] = _getStructFieldNames(obj, exports) ?? [];
           // Also include sidecar property names (string keys only)
+          // Filter out internal accessor keys (__get_<prop>, __set_<prop>) stored by
+          // __defineProperty_accessor — these are implementation artifacts, not own property names.
+          // The real property name (without prefix) is stored separately when the sidecar is set. (#929)
           const sc = _wasmStructProps.get(obj);
           if (sc) {
             for (const k of Object.getOwnPropertyNames(sc)) {
+              if (k.startsWith("__get_") || k.startsWith("__set_")) continue;
               if (!fieldNames.includes(k)) fieldNames.push(k);
             }
           }

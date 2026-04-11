@@ -1546,8 +1546,17 @@ function compilePropertyAssignment(
     // accessor properties defined via Object.defineProperty (those are excluded from struct
     // widening so no struct is created). Fall back to __extern_set for any/unknown-typed objects.
     const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
-    if ((objType.flags & ts.TypeFlags.Any) !== 0) {
-      return compilePropertyAssignmentExternSet(ctx, fctx, target, value, propName);
+    // NOTE: TypeFlags.Any check removed — TypeScript reports ANY type for `new foo()` instances
+    // (when lib.d.ts is not loaded), causing false positives for constructor instances like `f.bind = ...`.
+    // The TypeFlags.Object wrapper check below handles the needed cases (String/Number/Boolean/Object).
+    // Also handle JS built-in wrapper objects (e.g. String/Number/Boolean created via `new String(...)`)
+    // — these are externref in Wasm, so property assignment must use __extern_set.
+    // Only trigger for known wrapper types, not arbitrary user-defined class instances.
+    if ((objType.flags & ts.TypeFlags.Object) !== 0) {
+      const symName = objType.symbol?.name ?? "";
+      if (symName === "String" || symName === "Number" || symName === "Boolean" || symName === "Object") {
+        return compilePropertyAssignmentExternSet(ctx, fctx, target, value, propName);
+      }
     }
     return null;
   }
@@ -1592,13 +1601,7 @@ function compilePropertyAssignment(
   if (structTypeIdx === undefined || !fields) return null;
 
   const fieldIdx = fields.findIndex((f) => f.name === fieldName);
-  if (fieldIdx === -1) {
-    // Property not in widened struct — this happens when Object.defineProperty was used
-    // with an accessor descriptor (get/set) for this property; the scan marks it as "seen"
-    // so it doesn't become a struct field, and all accesses must use __extern_set so the
-    // runtime's _safeSet can invoke the accessor setter (#929).
-    return compilePropertyAssignmentExternSet(ctx, fctx, target, value, fieldName);
-  }
+  if (fieldIdx === -1) return null;
 
   const structSelfType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
   const structObjResult = compileExpression(ctx, fctx, target.expression, structSelfType);

@@ -366,6 +366,9 @@ export function compileObjectDefineProperty(
   let valueExpr: ts.Expression | undefined;
   let getNode: ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
   let setNode: ts.MethodDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
+  // For `get: identifierRef` / `set: identifierRef` — not inline function nodes but expression refs
+  let getExpr: ts.Expression | undefined;
+  let setExpr: ts.Expression | undefined;
   if (ts.isObjectLiteralExpression(descArg)) {
     for (const prop of descArg.properties) {
       if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") {
@@ -396,6 +399,39 @@ export function compileObjectDefineProperty(
       // set(v) { ... } (method shorthand)
       if (ts.isMethodDeclaration(prop) && prop.name && ts.isIdentifier(prop.name) && prop.name.text === "set") {
         setNode = prop;
+      }
+      // get: someIdentifier (function reference, not inline)
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "get" &&
+        !ts.isFunctionExpression(prop.initializer) &&
+        !ts.isArrowFunction(prop.initializer)
+      ) {
+        const init = prop.initializer;
+        // Only treat as accessor if it's not `undefined` or `null`
+        if (
+          !(ts.isIdentifier(init) && (init.text === "undefined" || init.text === "null")) &&
+          !(init.kind === ts.SyntaxKind.NullKeyword)
+        ) {
+          getExpr = init;
+        }
+      }
+      // set: someIdentifier (function reference, not inline)
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "set" &&
+        !ts.isFunctionExpression(prop.initializer) &&
+        !ts.isArrowFunction(prop.initializer)
+      ) {
+        const init = prop.initializer;
+        if (
+          !(ts.isIdentifier(init) && (init.text === "undefined" || init.text === "null")) &&
+          !(init.kind === ts.SyntaxKind.NullKeyword)
+        ) {
+          setExpr = init;
+        }
       }
     }
   }
@@ -484,10 +520,10 @@ export function compileObjectDefineProperty(
   // ── Getter/setter path ──────────────────────────────────────────────
   // Object.defineProperty(obj, "prop", { get() {...}, set(v) {...} })
   // Compile as struct accessor methods, analogous to object literal getters/setters.
-  // Only take the struct path when the property is a known field (fieldIdx >= 0).
-  // When fieldIdx === -1 (new property, not pre-declared), fall through to the
-  // extern path which handles closure captures properly (#929).
-  if ((getNode || setNode) && !valueExpr && structName && structTypeIdx !== undefined && propName && fieldIdx >= 0) {
+  // Take the struct path whenever a struct is known — accessor properties don't need fieldIdx >= 0
+  // because they compile as Wasm functions (not struct fields). Property assignment uses the
+  // classAccessorSet to route o.foo = v to the compiled setter Wasm function.
+  if ((getNode || setNode) && !valueExpr && structName && structTypeIdx !== undefined && propName) {
     // Compile obj and save to local
     const objType = compileExpression(ctx, fctx, objArg);
     if (!objType) return null;
@@ -923,6 +959,8 @@ export function compileObjectDefineProperty(
       descConfigurable,
       getNode,
       setNode,
+      getExpr,
+      setExpr,
     );
   }
 }
@@ -1055,6 +1093,30 @@ function emitExternDefinePropertyValue(
 }
 
 /**
+ * Resolve an expression to its underlying function AST node for use with compileArrowAsCallback.
+ * For `get: identifierRef` / `set: identifierRef`, looks up the TS symbol and returns the
+ * function declaration or function expression at the declaration site.
+ * Returns undefined if the expression does not resolve to a compilable function node.
+ */
+function resolveExprToFuncNode(
+  ctx: CodegenContext,
+  expr: ts.Expression,
+): ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined {
+  const sym = ctx.checker.getSymbolAtLocation(expr);
+  if (!sym) return undefined;
+  const decl = sym.valueDeclaration;
+  if (!decl) return undefined;
+  // Direct function declaration: function getFunc() { ... }
+  if (ts.isFunctionDeclaration(decl)) return decl;
+  // Variable: var setFunc = function(v) { ... } or var setFunc = (v) => ...
+  if (ts.isVariableDeclaration(decl) && decl.initializer) {
+    const init = decl.initializer;
+    if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) return init;
+  }
+  return undefined;
+}
+
+/**
  * Emit __defineProperty_value(obj, prop, null, flags) for descriptors without a value property.
  * For externref objects, this delegates to the JS host which can handle flag-only descriptors.
  * For struct-typed objects, this is a no-op (struct fields are always writable).
@@ -1070,6 +1132,8 @@ function emitExternDefinePropertyNoValue(
   descConfigurable: boolean | undefined,
   getNode: ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined,
   setNode: ts.MethodDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined,
+  getExpr?: ts.Expression,
+  setExpr?: ts.Expression,
 ): ValType | null {
   // Compile obj
   const objType = compileExpression(ctx, fctx, objArg);
@@ -1095,7 +1159,7 @@ function emitExternDefinePropertyNoValue(
 
   // For accessor descriptors (get/set), skip compiling descArg for side effects —
   // we'll compile getter/setter directly as JS-callable callbacks below.
-  const isAccessorDesc = !!(getNode || setNode);
+  const isAccessorDesc = !!(getNode || setNode || getExpr || setExpr);
   if (!isAccessorDesc) {
     // Compile descriptor for side effects (non-accessor path only)
     const descType = compileExpression(ctx, fctx, descArg);
@@ -1186,6 +1250,14 @@ function emitExternDefinePropertyNoValue(
           // MethodDeclaration / GetAccessorDeclaration — cast for TS; runtime props are compatible
           compileArrowAsCallback(ctx, fctx, getNode as unknown as ts.FunctionExpression, { needsThis: true });
         }
+      } else if (getExpr) {
+        // get: identifierRef — resolve to function declaration and compile as callback
+        const getFuncNode = resolveExprToFuncNode(ctx, getExpr);
+        if (getFuncNode) {
+          compileArrowAsCallback(ctx, fctx, getFuncNode as unknown as ts.FunctionExpression, { needsThis: true });
+        } else {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
       } else {
         fctx.body.push({ op: "ref.null.extern" });
       }
@@ -1197,6 +1269,14 @@ function emitExternDefinePropertyNoValue(
           compileArrowAsCallback(ctx, fctx, setNode, { needsThis: true });
         } else {
           compileArrowAsCallback(ctx, fctx, setNode as unknown as ts.FunctionExpression, { needsThis: true });
+        }
+      } else if (setExpr) {
+        // set: identifierRef — resolve to function declaration and compile as callback
+        const setFuncNode = resolveExprToFuncNode(ctx, setExpr);
+        if (setFuncNode) {
+          compileArrowAsCallback(ctx, fctx, setFuncNode as unknown as ts.FunctionExpression, { needsThis: true });
+        } else {
+          fctx.body.push({ op: "ref.null.extern" });
         }
       } else {
         fctx.body.push({ op: "ref.null.extern" });
@@ -1362,6 +1442,10 @@ export function compileObjectDefineProperties(
       let descWritable: boolean | undefined;
       let descEnumerable: boolean | undefined;
       let descConfigurable: boolean | undefined;
+      let dpGetNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
+      let dpSetNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
+      let dpGetExpr: ts.Expression | undefined;
+      let dpSetExpr: ts.Expression | undefined;
 
       if (ts.isObjectLiteralExpression(descExpr)) {
         for (const dp of descExpr.properties) {
@@ -1379,6 +1463,37 @@ export function compileObjectDefineProperties(
               if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descConfigurable = true;
               else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descConfigurable = false;
             }
+            // Accessor: get/set with inline function
+            if (dp.name.text === "get") {
+              if (ts.isFunctionExpression(dp.initializer) || ts.isArrowFunction(dp.initializer)) {
+                dpGetNode = dp.initializer;
+              } else if (
+                !(
+                  ts.isIdentifier(dp.initializer) &&
+                  (dp.initializer.text === "undefined" || dp.initializer.text === "null")
+                ) &&
+                dp.initializer.kind !== ts.SyntaxKind.NullKeyword
+              ) {
+                dpGetExpr = dp.initializer;
+              }
+            }
+            if (dp.name.text === "set") {
+              if (ts.isFunctionExpression(dp.initializer) || ts.isArrowFunction(dp.initializer)) {
+                dpSetNode = dp.initializer;
+              } else if (
+                !(
+                  ts.isIdentifier(dp.initializer) &&
+                  (dp.initializer.text === "undefined" || dp.initializer.text === "null")
+                ) &&
+                dp.initializer.kind !== ts.SyntaxKind.NullKeyword
+              ) {
+                dpSetExpr = dp.initializer;
+              }
+            }
+          }
+          if (ts.isMethodDeclaration(dp) && dp.name && ts.isIdentifier(dp.name)) {
+            if (dp.name.text === "get") dpGetNode = dp;
+            if (dp.name.text === "set") dpSetNode = dp;
           }
         }
       }
@@ -1656,7 +1771,8 @@ export function compileObjectDefineProperties(
         continue; // Next property
       }
 
-      // Externref fallback: call __defineProperty_value for this property
+      // Externref fallback
+      const dpIsAccessor = !!(dpGetNode || dpSetNode || dpGetExpr || dpSetExpr);
       if (objType.kind !== "externref") {
         // Coerce obj to externref for the host call
         fctx.body.push({ op: "local.get", index: objLocal });
@@ -1667,44 +1783,100 @@ export function compileObjectDefineProperties(
       const objExtLocal = allocLocal(fctx, `__defprops_ext_${fctx.locals.length}`, { kind: "externref" });
       fctx.body.push({ op: "local.set", index: objExtLocal });
 
-      // Push prop name as string
-      fctx.body.push({ op: "local.get", index: objExtLocal });
-      compileExpression(ctx, fctx, ts.factory.createStringLiteral(propName), { kind: "externref" });
+      if (dpIsAccessor) {
+        // Accessor descriptor: emit __defineProperty_accessor
+        const dpRuntimeFlags = computeRuntimeFlags(undefined, descEnumerable, descConfigurable, false);
+        fctx.body.push({ op: "local.get", index: objExtLocal });
+        compileExpression(ctx, fctx, ts.factory.createStringLiteral(propName), { kind: "externref" });
 
-      // Compile value or push null
-      if (valueExpr) {
-        const vt = compileExpression(ctx, fctx, valueExpr, { kind: "externref" });
-        if (vt && vt.kind !== "externref") {
-          coerceType(ctx, fctx, vt, { kind: "externref" });
-        } else if (!vt) {
+        // Compile getter callback
+        if (dpGetNode) {
+          compileArrowAsCallback(ctx, fctx, dpGetNode as unknown as ts.FunctionExpression, { needsThis: true });
+        } else if (dpGetExpr) {
+          const gFuncNode = resolveExprToFuncNode(ctx, dpGetExpr);
+          if (gFuncNode) {
+            compileArrowAsCallback(ctx, fctx, gFuncNode as unknown as ts.FunctionExpression, { needsThis: true });
+          } else {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+        } else {
           fctx.body.push({ op: "ref.null.extern" });
         }
+
+        // Compile setter callback
+        if (dpSetNode) {
+          compileArrowAsCallback(ctx, fctx, dpSetNode as unknown as ts.FunctionExpression, { needsThis: true });
+        } else if (dpSetExpr) {
+          const sFuncNode = resolveExprToFuncNode(ctx, dpSetExpr);
+          if (sFuncNode) {
+            compileArrowAsCallback(ctx, fctx, sFuncNode as unknown as ts.FunctionExpression, { needsThis: true });
+          } else {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+        } else {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+
+        fctx.body.push({ op: "f64.const", value: dpRuntimeFlags });
+        const accIdx = ensureLateImport(
+          ctx,
+          "__defineProperty_accessor",
+          [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
+          [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (accIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: accIdx });
+          fctx.body.push({ op: "drop" });
+        }
+
+        if (ts.isIdentifier(objArg)) {
+          const isAccessor = true;
+          const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+          const key = `${objArg.text}:${propName}`;
+          ctx.definedPropertyFlags.set(key, newFlags);
+        }
       } else {
-        fctx.body.push({ op: "ref.null.extern" });
-      }
+        // Value/flags descriptor: emit __defineProperty_value
+        // Push prop name as string
+        fctx.body.push({ op: "local.get", index: objExtLocal });
+        compileExpression(ctx, fctx, ts.factory.createStringLiteral(propName), { kind: "externref" });
 
-      // Runtime flags
-      const runtimeFlags = computeRuntimeFlags(descWritable, descEnumerable, descConfigurable, !!valueExpr);
-      fctx.body.push({ op: "f64.const", value: runtimeFlags });
+        // Compile value or push null
+        if (valueExpr) {
+          const vt = compileExpression(ctx, fctx, valueExpr, { kind: "externref" });
+          if (vt && vt.kind !== "externref") {
+            coerceType(ctx, fctx, vt, { kind: "externref" });
+          } else if (!vt) {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+        } else {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
 
-      const funcIdx = ensureLateImport(
-        ctx,
-        "__defineProperty_value",
-        [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
-        [{ kind: "externref" }],
-      );
-      flushLateImportShifts(ctx, fctx);
-      if (funcIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx });
-        fctx.body.push({ op: "drop" }); // drop returned obj (we use our local)
-      }
+        // Runtime flags
+        const runtimeFlags = computeRuntimeFlags(descWritable, descEnumerable, descConfigurable, !!valueExpr);
+        fctx.body.push({ op: "f64.const", value: runtimeFlags });
 
-      // Update compile-time flags for externref path
-      if (ts.isIdentifier(objArg)) {
-        const isAccessor = false;
-        const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
-        const key = `${objArg.text}:${propName}`;
-        ctx.definedPropertyFlags.set(key, newFlags);
+        const funcIdx = ensureLateImport(
+          ctx,
+          "__defineProperty_value",
+          [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
+          [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          fctx.body.push({ op: "drop" }); // drop returned obj (we use our local)
+        }
+
+        // Update compile-time flags for externref path
+        if (ts.isIdentifier(objArg)) {
+          const isAccessor = false;
+          const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+          const key = `${objArg.text}:${propName}`;
+          ctx.definedPropertyFlags.set(key, newFlags);
+        }
       }
     }
 
