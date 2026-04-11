@@ -107,6 +107,8 @@ export function createCodegenContext(
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
     protoGlobals: new Map(),
+    classMethodNames: new Map(),
+    classMethodsCsvGlobal: new Map(),
     wasi: options?.wasi ?? false,
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,
