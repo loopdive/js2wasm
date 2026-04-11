@@ -53,26 +53,28 @@ Each test stresses a distinct dimension of the compiler:
 
 Expected output: each stress test files 3-5 concrete follow-up issues. Those follow-ups feed into future Sprint 40 error-fix sprints.
 
-## Stress-test preconditions (filed 2026-04-11 by arch-npm-stress)
+## Stress-test preconditions (filed 2026-04-11 by arch-npm-stress; corrected same day)
 
-Architecture gap analysis (`plan/architecture/npm-stress-compiler-gaps.md`) identified five compiler preconditions that must land before the stress tests can progress past Tier 1–2. Four are scoped to Sprint-41 as unblockers; one (async/await state machine) stays in Backlog as research-level.
+Architecture gap analysis (`plan/architecture/npm-stress-compiler-gaps.md`) initially identified five preconditions, but one (#1041 "multi-file module graph") was based on a framing error: `compileProject` (`src/index.ts:216`) already walks the transitive import closure via `ModuleResolver` + `resolveAllImports` and runs one shared `ts.Program` through `compileMultiSource`. The `preprocessImports` `declare const X: any` rewrite is only the single-file `compile()` fallback, not on the multi-file path.
+
+**#1041 closed** and moved to `plan/issues/wont-fix/1041.md`. The real research issue (per-module separate compilation with consumer-driven type specialization) is filed as **#1046** in Backlog — not a sprint-41 precondition.
 
 | #                                | Title                                                                                           | Unblocks                               | Category                |
 | -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------- |
-| [#1041](../issues/ready/1041.md) | Multi-file module graph compilation (pre-bundled single-file workaround via esbuild)            | **#1031, #1032, #1033, #1034** (all)   | Compiler scaffold       |
 | [#1043](../issues/ready/1043.md) | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination                      | **#1033** (halves React surface area)  | Compiler easy win       |
 | [#1044](../issues/ready/1044.md) | Node builtin modules as host imports (`NODE_HOST_IMPORT_MODULES`, `node:` prefix normalization) | **#1032** axios Tier 4                 | Compiler scaffold       |
 | [#1045](../issues/ready/1045.md) | DOM globals as extern classes (`DOM_HOST_GLOBALS`, `queueMicrotask`, `requestAnimationFrame`)   | **#1033** react Tier 4                 | Compiler scaffold       |
 | [#1042](../issues/ready/1042.md) | `async`/`await` state-machine lowering (Backlog — research-level)                               | #1032 Tier 4 stretch goal (real GET)   | Research / deferred     |
+| [#1046](../issues/backlog/1046.md) | Separate ES-module compilation + consumer-driven type specialization (Backlog — research)    | future distribution of compiled libs   | Research / deferred     |
 
 Dependency wiring applied to stress-test frontmatter:
 
-- **#1031** lodash: `depends_on: [1041]`
-- **#1032** axios: `depends_on: [1041, 1044]`
-- **#1033** react: `depends_on: [1041, 1043, 1045]`
-- **#1034** prettier: `depends_on: [1041]`
+- **#1031** lodash: `depends_on: []` — runnable today via `compileProject`
+- **#1032** axios: `depends_on: [1044]`
+- **#1033** react: `depends_on: [1043, 1045]`
+- **#1034** prettier: `depends_on: []` — runnable today via `compileProject`
 
-Recommended precondition work order: **#1041 first** (unblocks all four), then **#1043** (easy, big surface-area reduction for React), then **#1044 and #1045 in parallel** (share the module-specifier / global-identifier recognition hook).
+Recommended precondition work order: **#1043 first** (easy, big surface-area reduction for React), then **#1044 and #1045 in parallel** (share the module-specifier / global-identifier recognition hook). #1031 and #1034 can start immediately in parallel with the preconditions.
 
 ## WASI deliverable (new, filed 2026-04-11)
 
@@ -84,14 +86,15 @@ First concrete "TypeScript → native executable" story. Parallels the dual-mode
 
 ## Phased task queue
 
-### Phase 0: Stress-test preconditions (must land first)
+### Phase 0: Stress-test preconditions (needed only for #1032/#1033)
 
 | Order | Issue          | Rationale                                                                                 |
 | ----- | -------------- | ----------------------------------------------------------------------------------------- |
-| 0a    | **#1041**      | Pre-bundle scaffold. Unblocks ALL four stress tests. Fastest path: esbuild harness.       |
-| 0b    | **#1043**      | `process.env.NODE_ENV` DCE. Easy. Halves React dev-build surface area. Pre-#1033 iter speed.|
-| 0c    | **#1044**      | Node-builtin host-import routing. Precondition for #1032 Tiers 3-4.                       |
-| 0d    | **#1045**      | DOM globals as extern classes. Precondition for #1033 Tier 4. Parallel to #1044.          |
+| 0a    | **#1043**      | `process.env.NODE_ENV` DCE. Easy. Halves React dev-build surface area. Pre-#1033 iter speed.|
+| 0b    | **#1044**      | Node-builtin host-import routing. Precondition for #1032 Tiers 3-4.                       |
+| 0c    | **#1045**      | DOM globals as extern classes. Precondition for #1033 Tier 4. Parallel to #1044.          |
+
+**#1031 (lodash)** and **#1034 (prettier)** do NOT need Phase 0 — they run directly through `compileProject` against their package entry file. Start them in parallel with Phase 0.
 
 ### Phase 1: Real-world stress tests (high signal, broad coverage)
 
@@ -99,10 +102,10 @@ Run the four stress tests in parallel or sequence — each produces its own erro
 
 | Order | Issue              | Depends on       | Rationale                                                                           |
 | ----- | ------------------ | ---------------- | ----------------------------------------------------------------------------------- |
-| 1     | **#1034** prettier | #1041            | Pure compute, no boundary design, self-format diff = unambiguous correctness signal |
-| 2     | **#1031** lodash   | #1041            | Pure compute, smaller surface, fast feedback                                        |
-| 3     | **#1032** axios    | #1041, #1044     | Requires Node-builtin host-import scaffold                                          |
-| 4     | **#1033** react    | #1041, #1043, #1045 | Requires DOM host imports + NODE_ENV DCE                                         |
+| 1     | **#1034** prettier | —                | Pure compute, no boundary design, self-format diff = unambiguous correctness signal. Runnable via `compileProject` today. |
+| 2     | **#1031** lodash   | —                | Pure compute, smaller surface, fast feedback. Runnable via `compileProject` today.  |
+| 3     | **#1032** axios    | #1044            | Requires Node-builtin host-import scaffold                                          |
+| 4     | **#1033** react    | #1043, #1045     | Requires DOM host imports + NODE_ENV DCE                                            |
 
 ### Phase 2: WASI feature deliverable
 
