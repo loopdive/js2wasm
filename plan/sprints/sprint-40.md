@@ -89,10 +89,95 @@ that remains after the Sprint 39 cleanup pass.
 - [ ] Produce an outlier analysis for the report-page benchmark cases where Wasm is much slower than JS and split real follow-up work from measurement artifacts for `#1009`
 - [ ] Keep Sprint 40 scoped to genuine carry-over only; newly discovered work starts in Sprint 41
 
-## Results
+## Results (interim — 2026-04-11, sprint still active)
 
-(Fill after sprint completion)
+**Baseline progress:** 18,899 → **21,190** pass / 43,164 total = **49.09%** (+2,291 pass, +5.1 percentage points)
+Sprint goal (50%) not yet met. **392 tests shy.**
 
-## Retrospective
+### Merged (error fixes)
+- **#929** Object.defineProperty on wrapper objects (PR #43, +258 pass)
+- **#1022** Array.prototype method dispatch for any-typed receivers (PR #68, +106 pass) — 372 remain in the long tail, filed as #1030
+- **#1023** `__unbox_number(null)` ToNumber(null) = +0 (PR #71, +56 pass)
+- **#983** Live-mirror Proxy + ToPrimitive for WasmGC opaque leak (PR #64, +34 pass) — partial fix
+- **#984** Verified already fixed by prior work, closed (doc-only PR #73)
+- **#1014** Promise `.then()` on non-Promise values (async generator path, ~+1,489 pass earlier in sprint)
+- **#1017** P1+P2 null deref patterns (earlier in sprint, partial)
+- **#1018** Object.getOwnPropertyDescriptor on built-in globals (PR #66)
+- **#1021** Destructuring defaults: `__extern_is_undefined` instead of `ref.is_null` (PR #67, +58 initial, unlocked broader wins)
 
-(To be filled after sprint completion)
+### Merged (infra / CI)
+- **#882, #884** Test262 sharded CI + PR validation (landed earlier)
+- **PR #70** CI: dispatch Pages deploy after sharded baseline refresh (auto-update landing page)
+
+### Closed without merging
+- **#1026 first attempt** (PR #72) — catastrophic −18,504 regression, over-broad __get_builtin rewrite. Issue reopened with narrower scope.
+- **#1025 first attempt** (PR #75) — net −114, blanket `ref.is_null` → `__extern_is_undefined` replaced genuine struct-ref null guards. Issue reopened.
+- **#1017 Pattern 3** (PR #65) — marginal +2 yield* delegation, orphaned during dev-1017 scale-down.
+
+### New issues filed during sprint
+- **#1023, #1024, #1025, #1026, #1027, #1028** — Sprint-41 follow-ups to #1021 now all reassigned to Sprint 40 as error fixes (except #1023 already merged)
+- **#1029** — Migrate to typescript-go (TS7). Blocked on upstream API stability (microsoft/typescript-go#516).
+- **#1030** — Array.prototype long tail (372 "object is not a function"). Highest-impact unclaimed issue, filed 2026-04-11.
+
+### Outstanding in-flight
+- **PR #74** #1024 destructuring rest/holes — dev-1016 resolving conflicts
+- **PR #59** #1016 iterator protocol — dev-1016 refreshing against new baseline
+
+### Acceptance criteria — interim status
+- [x] Substantially reduce #983 bucket (partial via PR #64)
+- [ ] Close / reduce #990 early-error residuals (263 FAIL, dev-929 assigned)
+- [x] Land or scope `#1006` eval — deferred, no regression
+- [ ] Remove 10 compile_timeout cases — untouched this sprint
+- [ ] Land `#997`/`#998`/`#999` invalid-Wasm follow-ups — untouched
+- [ ] Validate `#832` TypeScript 6 upgrade path — reclassified as error fix, queued
+- [ ] #1001 / #1004 perf — moved to Sprint 41 (non-error work)
+- [ ] #1005 cold-start benchmark — moved to Sprint 41
+- [ ] #1000 / #1003 planning-data normalization — moved to Sprint 41
+- [x] **Scope change:** mid-sprint, Sprint 40 was re-scoped to "error fixes / pass-rate push only". Non-error work moved to Sprint 41. This is a deliberate narrowing of the acceptance criteria.
+
+## Retrospective (interim — 2026-04-11)
+
+### What went well
+- **Big merge wave:** 6 PRs landed cleanly in one session, net +479 pass, crossing 49% for the first time.
+- **False-positive discipline:** dev-929 identified the String.prototype coincidental-pass pattern in PR #43 regressions and filed #1026 before they could block the merge. Saved a revert cycle.
+- **CI autopilot:** dev-1021's PR #70 closed the last gap in the deploy pipeline — baseline refreshes now auto-update the landing page without manual intervention.
+- **Self-serve TaskList protocol:** broadcast mid-sprint, devs started claiming next tasks without re-dispatch. Cut tech-lead coordination overhead.
+- **Scratch cleanup:** `.tmp/` convention + gitignore patterns eliminated ~50 lines of `git status` noise per tool call. Permanent fix.
+
+### What went badly
+- **Two catastrophic PRs:** #72 (−18,504) and #75 (−114) both from attempted fixes that were too broad. Both landed through CI and only got caught at the merge-triage step.
+- **OOM mid-session:** ~30 accumulated tmux panes + 13 concurrent vitest runs + a stray `/tmp/probe-998.mts` from dev-998 stuck at 93% CPU killed the tech lead process. Recovery took ~20 min.
+- **Token budget burn:** single session hit ~43% of weekly budget. Long continuous context across triage + merge + planning + UI + infra phases compounded tool-call cost. New discipline rules saved to memory but we were already past the damage.
+- **Stale issue noise:** #984 turned out to be already fixed; dev-1018 spent a dispatch cycle verifying it. Sampling issues before dispatch is in the rules but wasn't enforced this session.
+- **PR #74 conflicts:** dev-1016's destructuring rest/holes PR went stale during the merge wave; couldn't land in this session.
+
+### Process improvements proposed
+- **Narrower PRs for `ref.is_null` / identifier-path changes** — blanket replacements across codegen are almost always wrong. Require per-site annotation of "undefined check" vs "genuine null ref" before replacing.
+- **Regression sampling before blocking** — when a PR's delta is >100 pass, sample 3-5 regressions manually. Most are false positives from the fix exposing previously-coincidental passes.
+- **`/compact` at sprint boundaries** — saved to `feedback_compact_before_sprint.md`. Will be applied at Sprint 40 → 41 transition.
+- **Session splitting: planning vs execution** — saved to `feedback_context_discipline.md`. Planning sessions persist decisions in issues/TaskList; execution sessions read them and work.
+- **Diary + sprint-doc updates BEFORE `/compact`** — saved to `feedback_diary_and_sprints_before_compact.md`. This retrospective entry is itself an example.
+- **Dev status via TaskUpdate, shutdown handoffs via `plan/agent-context/{name}.md`** — saved to `feedback_team_comm_channels.md`. Verbose SendMessage reports from devs cost the tech lead real tokens.
+- **One vitest run per dev at a time** — broadcast during OOM recovery. 13 concurrent vitest processes + 1 stray probe = 4GB+ wasted.
+
+### Key numbers
+| Metric | Value |
+|--------|-------|
+| Sprint start pass | 18,899 / 43,120 (43.8%) |
+| Session start pass | 20,711 / 43,164 (47.98%) |
+| Sprint end-of-day pass | 21,190 / 43,164 (49.09%) |
+| Gap to 50% goal | 392 tests |
+| Net session delta | +479 pass |
+| PRs merged (session) | 6 |
+| PRs closed (session) | 3 |
+| New issues filed (session) | 6 (#1023–#1028, #1030 at end) |
+| Token budget used (est) | ~43% weekly |
+
+### Sprint-close criteria (not yet met)
+Sprint 40 is **NOT yet closed** as of 2026-04-11 end-of-day. Remaining to close:
+1. Cross 50% conformance (need +392 — #1030 alone could deliver +200 to +350)
+2. Either merge or close PR #74 and PR #59
+3. Finish the dev-1017 / dev-1018 shutdown scale-down
+4. Final retrospective pass + tag `sprint/40`
+
+Next session's first action: file-issue validation on #990 / #998 / #997 status and dispatch #1030.
