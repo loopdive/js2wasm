@@ -1271,7 +1271,7 @@ function assert_throws(fn: () => void): void {
   if (needsAssertThrowsAsync) {
     p += `
 
-function assert_throwsAsync(fn: any): void {
+function assert_throwsAsync(fn: () => any): void {
   __assert_count = __assert_count + 1;
   try {
     const res = fn();
