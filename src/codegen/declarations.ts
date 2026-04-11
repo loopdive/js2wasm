@@ -1711,7 +1711,9 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
           if (param.initializer && wasmType.kind === "ref") {
             wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
           }
-          // Infer untyped any params from call sites (same as non-generator path)
+          // Infer untyped any params from call sites (same as non-generator path).
+          // Track if inference actually refined the type — if so, don't override with externref.
+          let callSiteRefined = false;
           if (
             !param.type &&
             paramType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown) &&
@@ -1723,6 +1725,22 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
             if (inferred) {
               wasmType = inferred;
+              callSiteRefined = true;
+            }
+          }
+          // For array destructuring params: widen to externref so JS callers can pass
+          // arbitrary iterables (custom iterators, generators, etc.) (#1016).
+          // Widen only when type already resolved to externref or $vec_externref (any/any[]).
+          // When call-site inference resolved to a specific typed vec ($vec_f64 etc.),
+          // keep that type — externref widening would break callers passing typed arrays.
+          if (ts.isArrayBindingPattern(param.name)) {
+            const extVecIdx = ctx.vecTypeMap.get("externref");
+            const isExtVec =
+              (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
+              extVecIdx !== undefined &&
+              (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
+            if (wasmType.kind === "externref" || isExtVec) {
+              wasmType = { kind: "externref" };
             }
           }
           params.push(wasmType);
@@ -1764,6 +1782,8 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             }
             // If the parameter has no explicit type annotation and resolved to
             // externref (from `any`), try to infer a concrete type from call sites.
+            // Track if inference actually refined the type to avoid overriding with externref below.
+            let callSiteRefined = false;
             if (
               !param.type &&
               paramType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown) &&
@@ -1775,6 +1795,22 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
               const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
               if (inferred) {
                 wasmType = inferred;
+                callSiteRefined = true;
+              }
+            }
+            // For array destructuring params: widen to externref so JS callers can pass
+            // arbitrary iterables (custom iterators, generators, etc.) (#1016).
+            // Widen only when type already resolved to externref or $vec_externref.
+            // When call-site inference resolved to a specific typed vec ($vec_f64 etc.),
+            // keep that type — externref widening would break callers passing typed arrays.
+            if (ts.isArrayBindingPattern(param.name)) {
+              const extVecIdx = ctx.vecTypeMap.get("externref");
+              const isExtVec =
+                (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
+                extVecIdx !== undefined &&
+                (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
+              if (wasmType.kind === "externref" || isExtVec) {
+                wasmType = { kind: "externref" };
               }
             }
             params.push(wasmType);
