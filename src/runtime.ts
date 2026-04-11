@@ -191,14 +191,13 @@ function _toPrimitive(
   callbackState?: { getExports: () => Record<string, Function> | undefined },
 ): any {
   // 1. Check Symbol.toPrimitive (sidecar only)
+  // Note: user-thrown errors from sidecar methods must propagate per spec
+  // (#983) — tests rely on `assert.throws` seeing the original throw.
   const scToPrim = _sidecarGet(obj, Symbol.toPrimitive);
   if (typeof scToPrim === "function") {
-    try {
-      const prim = scToPrim.call(obj, hint);
-      if (prim == null || typeof prim !== "object") return prim;
-    } catch {
-      /* ignore */
-    }
+    const prim = scToPrim.call(obj, hint);
+    if (prim == null || typeof prim !== "object") return prim;
+    throw new TypeError("Cannot convert object to primitive value");
   }
 
   const exports = callbackState?.getExports();
@@ -206,14 +205,13 @@ function _toPrimitive(
   // Helper: try valueOf or toString from sidecar then Wasm exports
   const tryMethod = (name: string): any => {
     // Sidecar property (set via __extern_set)
+    // User-thrown errors propagate — spec requires assert.throws to observe them.
     const scFn = _sidecarGet(obj, name);
     if (typeof scFn === "function") {
-      try {
-        const prim = scFn.call(obj);
-        if (prim == null || typeof prim !== "object") return prim;
-      } catch {
-        /* ignore */
-      }
+      const prim = scFn.call(obj);
+      if (prim == null || typeof prim !== "object") return prim;
+      // Returned an object — not a valid primitive, try next method
+      return undefined;
     }
     // Wasm-exported struct field getter (__sget_valueOf, __sget_toString)
     if (exports) {
@@ -785,7 +783,8 @@ function resolveImport(
       // Batched string concat: __concat_3, __concat_4, ... (#958)
       if (name.startsWith("__concat_")) {
         return (...args: any[]) => {
-          // Coerce each arg; wasmGC structs route through _toPrimitive (#983)
+          // Coerce each arg; wasmGC structs route through _toPrimitive (#983).
+          // User-thrown errors from valueOf/toString propagate.
           let out = "";
           for (const a of args) {
             if (a == null) {
@@ -796,11 +795,7 @@ function resolveImport(
               const prim = _toPrimitive(a, "default", callbackState);
               out += prim === undefined ? "[object Object]" : String(prim);
             } else {
-              try {
-                out += String(a);
-              } catch {
-                out += "[object Object]";
-              }
+              out += String(a);
             }
           }
           return out;
@@ -1350,16 +1345,16 @@ function resolveImport(
       if (name === "__extern_method_call")
         return (obj: any, method: string, args: any[]) => {
           if (obj == null) throw new TypeError("Cannot read properties of null (reading '" + method + "')");
-          // #983: wrap wasmGC receiver + arg structs in live-mirror Proxies so
+          // #983: wrap only the wasmGC receiver in a live-mirror Proxy so
           // the host method's property reads/writes flow through the sidecar.
+          // Args are passed through untouched — wrapping them breaks poisoned
+          // toString/valueOf tests (errors must propagate) and closure-field
+          // method fields (e.g. fromIndex.valueOf wrapped as opaque struct).
           const exports = callbackState?.getExports();
-          const wrappedObj = _wrapForHost(obj, exports);
-          const wrappedArgs = (args ?? []).map((a) => _wrapForHost(a, exports));
+          const wrappedObj = _isWasmStruct(obj) ? _wrapForHost(obj, exports) : obj;
           const fn = wrappedObj[method];
           if (typeof fn !== "function") throw new TypeError(method + " is not a function");
-          const ret = fn.apply(wrappedObj, wrappedArgs);
-          // If the method returned the receiver (e.g. Array.prototype.sort),
-          // unwrap so caller-side identity checks against the original still hold.
+          const ret = fn.apply(wrappedObj, args ?? []);
           return ret === wrappedObj ? obj : _unwrapForHost(ret);
         };
       // Type.prototype.method.call(receiver, ...args) dispatch for built-in types.
@@ -1371,14 +1366,13 @@ function resolveImport(
           if (!Type || !Type.prototype) throw new TypeError(typeName + " is not a constructor");
           const method = Type.prototype[methodName];
           if (typeof method !== "function") throw new TypeError(methodName + " is not a function");
-          // #983: wrap wasmGC receiver + arg structs in live-mirror Proxies so
-          // Type.prototype.<method> sees a JS-observable object whose
-          // reads/writes propagate back to the wasmGC struct via the sidecar.
+          // #983: wrap only the wasmGC receiver in a live-mirror Proxy so
+          // Type.prototype.<method> sees a JS-observable object. Args are
+          // passed through untouched — wrapping them eats user-thrown errors
+          // from poisoned toString/valueOf and breaks closure-field methods.
           const exports = callbackState?.getExports();
-          const wrappedReceiver = _wrapForHost(receiver, exports);
-          const wrappedArgs = (args ?? []).map((a) => _wrapForHost(a, exports));
-          const ret = method.call(wrappedReceiver, ...wrappedArgs);
-          // Sort-like methods return the receiver — preserve identity.
+          const wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
+          const ret = method.call(wrappedReceiver, ...(args ?? []));
           return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
         };
       // Get actual JS built-in object by name (#965) — fixes WI3 null receiver for built-in classes
@@ -1393,15 +1387,21 @@ function resolveImport(
       if (name === "__object_assign")
         return (target: any, sources: any[]): any => {
           // #983: if target is a wasmGC struct, assign through a live-mirror
-          // Proxy so every source property Set writes back via the sidecar.
-          // Sources are wrapped too so their property enumeration works.
+          // Proxy so every source property Set writes back via the sidecar,
+          // and return the original struct reference for caller identity.
           const exports = callbackState?.getExports();
-          const wrappedTarget = _wrapForHost(target, exports);
-          const wrappedSources = (sources ?? []).map((s) => _wrapForHost(s, exports));
-          Object.assign(wrappedTarget, ...wrappedSources);
-          // Preserve caller identity: return the original target reference,
-          // not the proxy.
-          return target;
+          const targetIsStruct = _isWasmStruct(target);
+          if (targetIsStruct) {
+            const wrappedTarget = _wrapForHost(target, exports);
+            const wrappedSources = (sources ?? []).map((s) => (_isWasmStruct(s) ? _wrapForHost(s, exports) : s));
+            Object.assign(wrappedTarget, ...wrappedSources);
+            return target;
+          }
+          // Non-struct target: wrap only wasmGC sources so their property
+          // enumeration works, and return Object.assign's normal result
+          // (which wraps primitives in a boxed object per spec).
+          const wrappedSources = (sources ?? []).map((s) => (_isWasmStruct(s) ? _wrapForHost(s, exports) : s));
+          return Object.assign(target as object, ...wrappedSources);
         };
       // Object.fromEntries(iterable) — create object from entries (#965)
       if (name === "__object_fromEntries") return (iterable: any): any => Object.fromEntries(iterable);
