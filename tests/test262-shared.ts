@@ -30,7 +30,7 @@ import {
 // Prevent unhandled Promise rejections from crashing the vitest fork.
 process.on("unhandledRejection", () => {});
 
-// Lazy-load compileMulti only when needed (FIXTURE tests)
+// Lazy-load compileMulti and buildImports only when needed (FIXTURE tests)
 let _compileMulti: typeof import("../src/index.js").compileMulti | null = null;
 async function getCompileMulti() {
   if (!_compileMulti) {
@@ -38,6 +38,15 @@ async function getCompileMulti() {
     _compileMulti = mod.compileMulti;
   }
   return _compileMulti;
+}
+
+let _buildImports: typeof import("../src/runtime.js").buildImports | null = null;
+async function getBuildImports() {
+  if (!_buildImports) {
+    const mod = await import("../src/runtime.js");
+    _buildImports = mod.buildImports;
+  }
+  return _buildImports;
 }
 
 /**
@@ -360,16 +369,43 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
                   }
                   return;
                 }
-                // For fixture tests, we'd need to execute in-process too.
-                // This is rare enough that we accept it.
-                recordResult(
-                  relPath,
-                  category,
-                  "compile_error",
-                  "fixture tests not supported in unified mode",
-                  undefined,
-                  scopeInfo,
-                );
+                // Execute the compiled binary in-process (fixture tests are rare,
+                // in-process execution is acceptable for 172 tests).
+                const buildImports = await getBuildImports();
+                try {
+                  const importObj = buildImports(result.imports, undefined, result.stringPool);
+                  const { instance } = await WebAssembly.instantiate(result.binary, importObj as any);
+                  if (typeof (importObj as any).setExports === "function") {
+                    (importObj as any).setExports(instance.exports);
+                  }
+                  const testFn = (instance.exports as any).test;
+                  if (typeof testFn !== "function") {
+                    recordResult(relPath, category, "compile_error", "no test export", undefined, scopeInfo);
+                    return;
+                  }
+                  const ret = testFn();
+                  if (isRuntimeNegative) {
+                    // Execution completed without error — expected runtime throw didn't happen
+                    recordResult(
+                      relPath,
+                      category,
+                      "fail",
+                      `expected runtime ${meta.negative!.type} but execution succeeded`,
+                      undefined,
+                      scopeInfo,
+                    );
+                  } else if (ret === 1 || ret === 1.0) {
+                    recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
+                  } else {
+                    recordResult(relPath, category, "fail", `returned ${ret}`, undefined, scopeInfo);
+                  }
+                } catch (execErr: any) {
+                  if (isRuntimeNegative) {
+                    recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
+                  } else {
+                    recordResult(relPath, category, "fail", String(execErr), undefined, scopeInfo);
+                  }
+                }
               } catch (e: any) {
                 recordResult(relPath, category, "compile_error", e.message ?? String(e), undefined, scopeInfo);
               }
