@@ -21,6 +21,7 @@ import {
   detectEarlyErrors,
   validateHardenedMode,
   pushSourceAnchoredDiagnostic,
+  rewriteEvalSuperCall,
 } from "./compiler/validation.js";
 import {
   DOWNGRADE_DIAG_CODES,
@@ -51,7 +52,9 @@ export function compileSource(
   const emitWatOutput = options.emitWat !== false;
 
   // Step 0: Pre-process imports (replace import * as X with declare namespace)
-  const processedSource = preprocessImports(source);
+  // #1054: rewrite eval("...super()...") to a throwing IIFE so early-error
+  // rules for PerformEval fire at runtime.
+  const processedSource = preprocessImports(rewriteEvalSuperCall(source));
 
   // Step 1: Parse and type-check
   let isJsMode = options.allowJs === true || (options.fileName?.endsWith(".js") ?? false);
