@@ -8,7 +8,6 @@ import type { FieldDef, Instr, ValType } from "../../ir/types.js";
 import {
   addFuncType,
   addImport,
-  addStringConstantGlobal,
   addUnionImports,
   ensureExnTag,
   getArrTypeIdxFromVec,
@@ -23,7 +22,7 @@ import { compileExpression, coerceType, valTypesMatch, VOID_RESULT } from "../sh
 import type { InnerResult } from "../shared.js";
 import { pushDefaultValue, defaultValueInstrs } from "../type-coercion.js";
 import { emitBoundsCheckedArrayGet } from "../array-methods.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
+import { addStringConstantGlobal } from "../registry/imports.js";
 import { getFuncParamTypes } from "./helpers.js";
 
 export function findExternInfoForMember(
@@ -123,12 +122,28 @@ function compileExternMethodCall(
  * This gives reference identity for ClassName.prototype === Object.getPrototypeOf(instance).
  */
 export function emitLazyProtoGet(ctx: CodegenContext, fctx: FunctionContext, className: string): boolean {
-  const protoGlobalIdx = ctx.protoGlobals?.get(className);
-  if (protoGlobalIdx === undefined) return false;
+  if (ctx.protoGlobals?.get(className) === undefined) return false;
 
   const structTypeIdx = ctx.structMap.get(className);
   const fields = ctx.structFields.get(className);
   if (structTypeIdx === undefined || !fields) return false;
+
+  // #1047 — look up the pre-registered __register_prototype host import (added
+  // in generateModule when any class declaration is present). The CSV string
+  // global is registered lazily here so classes whose prototype is never
+  // materialized don't force a `string_constants` namespace import.
+  const registerProtoFuncIdx = ctx.funcMap.get("__register_prototype");
+  let csvGlobalIdx = ctx.classMethodsCsvGlobal.get(className);
+  if (registerProtoFuncIdx !== undefined && csvGlobalIdx === undefined) {
+    const methodNames = ctx.classMethodNames.get(className) ?? [];
+    const methodsCsv = methodNames.join(",");
+    addStringConstantGlobal(ctx, methodsCsv);
+    csvGlobalIdx = ctx.stringGlobalMap.get(methodsCsv);
+    if (csvGlobalIdx !== undefined) {
+      ctx.classMethodsCsvGlobal.set(className, csvGlobalIdx);
+    }
+  }
+  const protoGlobalIdx = ctx.protoGlobals.get(className)!;
 
   // Build the init body: push default values for all fields, struct.new, extern.convert_any, global.set
   const initBody: Instr[] = [];
@@ -166,6 +181,16 @@ export function emitLazyProtoGet(ctx: CodegenContext, fctx: FunctionContext, cla
   initBody.push({ op: "struct.new", typeIdx: structTypeIdx });
   initBody.push({ op: "extern.convert_any" });
   initBody.push({ op: "global.set", index: protoGlobalIdx });
+
+  // #1047 — after the proto is stashed, call `__register_prototype(proto, csv)`
+  // so the host-side Proxy wrapper can present a method-only own-key set and
+  // hide leaking instance fields. Emitted inside `initBody` so it fires once
+  // per class (on first access), not on every prototype read.
+  if (registerProtoFuncIdx !== undefined && csvGlobalIdx !== undefined) {
+    initBody.push({ op: "global.get", index: protoGlobalIdx });
+    initBody.push({ op: "global.get", index: csvGlobalIdx });
+    initBody.push({ op: "call", funcIdx: registerProtoFuncIdx });
+  }
 
   // Emit: if global is null, init it; then get it
   fctx.body.push({ op: "global.get", index: protoGlobalIdx });
