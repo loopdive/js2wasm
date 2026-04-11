@@ -124,11 +124,17 @@ export function destructureParamObjectExternref(
           getIdx = ctx.funcMap.get("__extern_get");
         }
 
-        fctx.body.push({ op: "ref.is_null" } as Instr);
+        // Per JS spec, destructuring defaults apply ONLY when the value is `undefined`,
+        // not when it is `null`. JS null maps to ref.null.extern (ref.is_null=1) and JS
+        // undefined maps to a non-null externref wrapping undefined. We must use
+        // __extern_is_undefined exclusively; using ref.is_null would wrongly trigger
+        // defaults for null values (#1021).
         if (undefIdx !== undefined) {
-          fctx.body.push({ op: "local.get", index: tmpElem });
           fctx.body.push({ op: "call", funcIdx: undefIdx });
-          fctx.body.push({ op: "i32.or" } as Instr);
+        } else {
+          // Fallback: if the import couldn't be registered, use ref.is_null (imprecise —
+          // treats null as undefined). Previously this was the default behavior.
+          fctx.body.push({ op: "ref.is_null" } as Instr);
         }
 
         const savedBody = fctx.body;
