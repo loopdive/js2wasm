@@ -1,0 +1,14 @@
+{
+  "pr": 103,
+  "conclusion": "failure",
+  "head_branch": "issue-1052-array-dstr-iter",
+  "head_sha": "3b857954c3fa8f1983b2c6388f943ea196ee5f86",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288829234",
+  "timestamp": "2026-04-11T18:34:18Z",
+  "pass": 22079,
+  "fail": 18415,
+  "compile_error": 1325,
+  "delta": 329,
+  "regressions": 22,
+  "improvements": 351
+}
