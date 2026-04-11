@@ -2486,6 +2486,10 @@ function resolveImport(
       };
     case "extern_set":
       return _safeSet;
+    case "host_eq":
+      // #1065 — strict equality for two externref operands that the GC path
+      // could not compare via ref.eq (e.g. host functions like `Array === Array`).
+      return (a: any, b: any) => (a === b ? 1 : 0);
     case "date_new":
       return () => new Date();
     case "date_now":
@@ -2498,6 +2502,11 @@ function resolveImport(
       const val = deps?.[intent.name];
       if (val !== undefined) return () => val;
       if (intent.name === "globalThis") return () => globalThis;
+      // Fall back to the host's ambient global (e.g. `Array`, `Object`) when
+      // deps does not override it. This makes `x.constructor === Array`
+      // compare against the real host Array constructor. (#1065)
+      const ambient = (globalThis as any)[intent.name];
+      if (ambient !== undefined) return () => ambient;
       return () => {};
     }
     case "proxy_create":
@@ -2525,7 +2534,12 @@ function resolveImport(
  * Each string pool entry becomes a WebAssembly.Global keyed by the literal text.
  */
 export function buildStringConstants(stringPool: string[] = []): Record<string, WebAssembly.Global> {
-  const constants: Record<string, WebAssembly.Global> = {};
+  // #1065 — null-prototype object so string keys like "constructor",
+  // "toString", "hasOwnProperty", etc. don't collide with Object.prototype
+  // methods during Wasm import resolution. Plain `{}` would make
+  // `constants.constructor` resolve to the host `Object` function whenever
+  // "constructor" is absent from the pool, corrupting property-access keys.
+  const constants = Object.create(null) as Record<string, WebAssembly.Global>;
   for (const s of stringPool) {
     if (!(s in constants)) {
       constants[s] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
