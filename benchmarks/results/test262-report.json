@@ -1,47 +1,47 @@
 {
-  "timestamp": "2026-04-11T02:09:53.927Z",
+  "timestamp": "2026-04-11T02:30:07.001Z",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
-    "total": 43120,
-    "pass": 20643,
-    "fail": 19778,
-    "compile_error": 1350,
+    "total": 43164,
+    "pass": 20652,
+    "fail": 19877,
+    "compile_error": 1286,
     "compile_timeout": 10,
     "skip": 1339,
-    "compilable": 40421,
+    "compilable": 40529,
     "stale": 0
   },
   "official_summary": {
-    "total": 43120,
-    "pass": 20643,
-    "fail": 19778,
-    "compile_error": 1350,
+    "total": 43164,
+    "pass": 20652,
+    "fail": 19877,
+    "compile_error": 1286,
     "compile_timeout": 10,
     "skip": 1339,
-    "compilable": 40421,
+    "compilable": 40529,
     "stale": 0
   },
   "full_summary": {
-    "total": 43120,
-    "pass": 20643,
-    "fail": 19778,
-    "compile_error": 1350,
+    "total": 43164,
+    "pass": 20652,
+    "fail": 19877,
+    "compile_error": 1286,
     "compile_timeout": 10,
     "skip": 1339,
-    "compilable": 40421,
+    "compilable": 40529,
     "stale": 0
   },
   "strict_summary": {
-    "total": 40611,
-    "pass": 19717,
-    "fail": 18608,
-    "compile_error": 1277,
+    "total": 40655,
+    "pass": 19726,
+    "fail": 18707,
+    "compile_error": 1213,
     "compile_timeout": 10,
     "skip": 999,
-    "compilable": 38325,
+    "compilable": 38433,
     "stale": 0
   },
   "scope_summaries": {
@@ -66,13 +66,13 @@
       "stale": 0
     },
     "standard": {
-      "total": 42034,
-      "pass": 20196,
-      "fail": 19180,
-      "compile_error": 1309,
+      "total": 42078,
+      "pass": 20205,
+      "fail": 19279,
+      "compile_error": 1245,
       "compile_timeout": 10,
       "skip": 1339,
-      "compilable": 39376,
+      "compilable": 39484,
       "stale": 0
     }
   },
@@ -737,11 +737,11 @@
     {
       "name": "language/expressions",
       "pass": 5479,
-      "fail": 4352,
-      "compile_error": 337,
+      "fail": 4354,
+      "compile_error": 336,
       "compile_timeout": 0,
       "skip": 524,
-      "total": 10692
+      "total": 10693
     },
     {
       "name": "language/function-code",
@@ -791,8 +791,8 @@
     {
       "name": "language/import",
       "pass": 2,
-      "fail": 17,
-      "compile_error": 2,
+      "fail": 18,
+      "compile_error": 1,
       "compile_timeout": 0,
       "skip": 1,
       "total": 22
@@ -826,12 +826,12 @@
     },
     {
       "name": "language/module-code",
-      "pass": 259,
-      "fail": 206,
-      "compile_error": 201,
+      "pass": 268,
+      "fail": 302,
+      "compile_error": 139,
       "compile_timeout": 0,
       "skip": 9,
-      "total": 675
+      "total": 718
     },
     {
       "name": "language/punctuators",
@@ -907,18 +907,18 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 9333,
+    "assertion_fail": 9355,
     "illegal_cast": 427,
     "negative_test_fail": 277,
     "null_deref": 614,
     "oob": 48,
-    "other": 1702,
+    "other": 1620,
     "promise_error": 20,
     "range_error": 19,
-    "runtime_error": 629,
-    "type_error": 6051,
+    "runtime_error": 630,
+    "type_error": 6052,
     "unreachable": 25,
-    "wasm_compile": 1983
+    "wasm_compile": 2076
   },
   "skip_reasons": {
     "compiler hang (see HANGING_TESTS)": 2,
