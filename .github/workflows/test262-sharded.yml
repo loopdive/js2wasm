@@ -195,7 +195,7 @@ jobs:
           if-no-files-found: warn
 
   promote-baseline:
-    if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && needs.merge.result == 'success'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'github-actions[bot]' && needs.merge.result == 'success'
     name: promote merged report to main baseline
     needs: merge
     runs-on: ubuntu-latest

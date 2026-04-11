@@ -300,8 +300,9 @@ export function compileNestedFunctionDeclaration(
         catchAll: catchAllBody.length > 0 ? catchAllBody : undefined,
       } as unknown as Instr);
 
-      // Return __create_generator(__gen_buffer, __gen_pending_throw)
-      const createGenIdx = ctx.funcMap.get("__create_generator")!;
+      // Return __create_generator or __create_async_generator depending on async flag
+      const createGenName = isAsync ? "__create_async_generator" : "__create_generator";
+      const createGenIdx = ctx.funcMap.get(createGenName)!;
       liftedFctx.body.push({ op: "local.get", index: bufferLocal });
       liftedFctx.body.push({ op: "local.get", index: pendingThrowLocal });
       liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
@@ -458,8 +459,9 @@ export function compileNestedFunctionDeclaration(
         catchAll: catchAllBody.length > 0 ? catchAllBody : undefined,
       } as unknown as Instr);
 
-      // Return __create_generator(__gen_buffer, __gen_pending_throw)
-      const createGenIdx = ctx.funcMap.get("__create_generator")!;
+      // Return __create_generator or __create_async_generator depending on async flag
+      const createGenName = isAsync ? "__create_async_generator" : "__create_generator";
+      const createGenIdx = ctx.funcMap.get(createGenName)!;
       liftedFctx.body.push({ op: "local.get", index: bufferLocal });
       liftedFctx.body.push({ op: "local.get", index: pendingThrowLocal });
       liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
