@@ -912,6 +912,15 @@ function resolveImport(
           return JSON.stringify(plain, rep as any, sp);
         };
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
+      if (name === "__extern_eval")
+        return (src: any) => {
+          // Spec: if input is not a string, return it unchanged.
+          if (typeof src !== "string") return src;
+          // Indirect eval — runs in global scope. Direct-eval scope access
+          // is unreachable through a host import boundary; #1006 scopes this
+          // explicitly to JS-host mode, standalone mode traps on instantiation.
+          return (0, eval)(src);
+        };
       if (name === "__extern_get")
         return (obj: any, key: any) => {
           const val = _safeGet(obj, key);

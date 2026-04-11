@@ -231,6 +231,23 @@ function compileOptionalDirectCall(ctx: CodegenContext, fctx: FunctionContext, e
   return resultType;
 }
 
+function isEvalCallExpression(expr: ts.CallExpression): boolean {
+  if (expr.questionDotToken) return false;
+  let callee: ts.Expression = expr.expression;
+  while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
+  if (ts.isIdentifier(callee) && callee.text === "eval") return true;
+  // Indirect form: (0, eval)(src) — a comma expression whose right side is `eval`.
+  if (
+    ts.isBinaryExpression(callee) &&
+    callee.operatorToken.kind === ts.SyntaxKind.CommaToken &&
+    ts.isIdentifier(callee.right) &&
+    callee.right.text === "eval"
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult {
   // Optional chaining on calls: obj?.method()
   if (expr.questionDotToken && ts.isPropertyAccessExpression(expr.expression)) {
@@ -268,6 +285,40 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // Optional chaining on direct call: fn?.()
   if (expr.questionDotToken && ts.isIdentifier(expr.expression)) {
     return compileOptionalDirectCall(ctx, fctx, expr);
+  }
+
+  // eval(...) — route to __extern_eval JS-host import (#1006).
+  // Covers direct `eval(src)` and indirect `(0, eval)(src)` / `(0,eval)(src)`.
+  // In standalone/WASI mode the host import is unavailable and will trap at
+  // instantiation time — callers that need eval must use a JS host.
+  if (isEvalCallExpression(expr)) {
+    let evalIdx = ctx.funcMap.get("__extern_eval");
+    if (evalIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const evalType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__extern_eval", { kind: "func", typeIdx: evalType });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      evalIdx = ctx.funcMap.get("__extern_eval");
+    }
+    if (evalIdx === undefined) {
+      fctx.body.push({ op: "unreachable" });
+      return null;
+    }
+    if (expr.arguments.length === 0) {
+      fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+      return { kind: "externref" };
+    }
+    const srcArg = expr.arguments[0]!;
+    const srcType = compileExpression(ctx, fctx, srcArg);
+    if (srcType && srcType.kind !== "externref") {
+      coerceType(ctx, fctx, srcType, { kind: "externref" });
+    }
+    for (let ai = 1; ai < expr.arguments.length; ai++) {
+      const extraType = compileExpression(ctx, fctx, expr.arguments[ai]!);
+      if (extraType) fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "call", funcIdx: evalIdx });
+    return { kind: "externref" };
   }
 
   // Dynamic import() — delegate to __dynamic_import host import.
