@@ -102,6 +102,29 @@ After today's Sprint 41 merge wave landed +479 net pass, the 80 post-merge regre
 **Baseline progress:** 18,899 → **21,862** pass / 43,164 total = **~50.65% (projected, sharded refresh pending)** (+2,963 pass, +6.85 percentage points)
 **🎉 Sprint 40 goal (past 50%) REACHED** after the second merge wave on 2026-04-11 afternoon.
 
+### 2026-04-11 19:00 — CI baseline drift discovery
+
+After the second-wave merges and additional PRs (~12 total merges between the previous 21,750 baseline and the manual dispatch-refresh), the true baseline is **20,544 / 43,171 pass = 47.59%** — a net regression of ~1,200 tests from the last good baseline.
+
+**How it happened** (per investigation in-session):
+- PR CI compares against `benchmarks/results/test262-current.jsonl` as committed on main at PR-branch-point time, not the live main tip.
+- Push-to-main runs have the same fail-on-any-regression gate as PR runs. When main has regressions, the gate fails, `promote-baseline` is skipped, and the committed baseline stays frozen.
+- Every PR thereafter compares against the frozen reference. Regressions introduced by earlier merges appear as "already in baseline" = "not my fault" in every subsequent PR CI.
+- Individual PR CIs reported cumulative Δ ≈ **+2,778** across the 12-merge window; reality is **−1,206**. The gap (~4,000 tests) is the accumulated double-counting and drift noise.
+- At ~19:08 a manual `workflow_dispatch -f allow_regressions=true` was triggered to unstick the landing page. It bypassed the gate, `promote-baseline` ran, and committed the honest state at 20,544.
+
+**Pipeline PAUSED 2026-04-11 19:20.** No merges, no new PRs until the structural CI fixes land and the regression is bisected to identifiable culprits.
+
+**Filed for CI hardening:** #1076 / #1077 / #1078 / #1079 with #1080 as umbrella (dev-1031 drafting). Core fixes:
+1. Split the `merge` job into `merge-report` (always uploads artifact) + `regression-gate` (only gates PRs). `promote-baseline` depends on the report, not the gate — main becomes self-correcting.
+2. PR CI fetches main's CURRENT committed baseline at run time, not the branch-point frozen one.
+3. `workflow_dispatch -f allow_regressions=true` emergency path made discoverable and documented.
+4. Baseline age stamp + SHA surfaced on the landing page for drift visibility.
+
+**PR-bisect in progress:** dev-1053 is diffing the merged-report artifacts from each of the 12 PRs in the window against each other (non-destructive, artifact-only) to identify which specific PR(s) contributed the bulk of the net regression. Results pending.
+
+Decision pending from tech lead: **(A)** accept 20,544 baseline and revert/fix the identified culprits, or **(B)** revert all 12 merges back to `ef179253` and replay one at a time with forced baseline refresh between each.
+
 | Milestone | pass | pct |
 |-----------|------|-----|
 | Sprint 40 start | 18,899 | 43.80% |
