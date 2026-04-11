@@ -315,18 +315,12 @@ function getReceiverLocalIdx(fctx: FunctionContext, expr: ts.Expression): number
   return null;
 }
 
-/** Methods supported by the array-like (externref receiver) path. */
-const ARRAY_LIKE_METHOD_SET = new Set([
-  "every",
-  "some",
-  "forEach",
-  "find",
-  "findIndex",
-  "filter",
-  "map",
-  "reduce",
-  "reduceRight",
-]);
+/** Methods supported by the array-like (externref receiver) path.
+ * NOTE: map/filter/reduce/reduceRight are excluded because:
+ * - map/filter: `length: "Infinity"` → Infinity → 2B iterations → compile_timeout
+ * - reduce/reduceRight: different callback signature (acc, elem, i, arr) — handled by __proto_method_call
+ */
+const ARRAY_LIKE_METHOD_SET = new Set(["every", "some", "forEach", "find", "findIndex"]);
 
 /**
  * Compile Array.prototype.METHOD.call(anyReceiver, callback, ...args) for any-typed receivers.
@@ -343,8 +337,15 @@ export function compileArrayLikePrototypeCall(
 ): ValType | null | typeof VOID_RESULT | undefined {
   if (!ARRAY_LIKE_METHOD_SET.has(methodName)) return undefined;
 
-  // reduce/reduceRight: callback is args[1], initial value is args[2]
-  // every/some/filter/map/forEach/find/findIndex: callback is args[1]
+  // For null/undefined receivers, let __proto_method_call throw TypeError (spec-correct behavior).
+  // We cannot detect this at runtime in the Wasm loop, so bail out early.
+  const isNullReceiver =
+    receiverArg.kind === ts.SyntaxKind.NullKeyword ||
+    receiverArg.kind === ts.SyntaxKind.UndefinedKeyword ||
+    (ts.isIdentifier(receiverArg) && receiverArg.text === "undefined");
+  if (isNullReceiver) return undefined;
+
+  // every/some/forEach/find/findIndex: callback is args[1]
   if (callExpr.arguments.length < 2) return undefined;
   const cbArg = callExpr.arguments[1]!;
 
@@ -417,11 +418,16 @@ export function compileArrayLikePrototypeCall(
     { op: "local.set", index: elemTmp } as Instr,
   ];
 
-  /** Callback invocation: closure(elem, i?, receiver?) */
+  /** Callback invocation: closure(elem?, i?, receiver?) */
   const callClosure: Instr[] = [
     { op: "local.get", index: closureTmp } as Instr,
-    { op: "local.get", index: elemTmp } as Instr,
-    ...coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[0] ?? { kind: "externref" }, fctx),
+    // Only push elem if callback expects at least 1 param (0-param callback causes Wasm validation error)
+    ...(numParams >= 1
+      ? [
+          { op: "local.get", index: elemTmp } as Instr,
+          ...coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[0] ?? { kind: "externref" }, fctx),
+        ]
+      : []),
     ...(numParams >= 2
       ? [
           { op: "local.get", index: iTmp } as Instr,
@@ -443,15 +449,20 @@ export function compileArrayLikePrototypeCall(
 
   /** Convert callback result to i32 truthy flag */
   const toTruthy: Instr[] =
-    closureInfo.returnType?.kind === "f64"
-      ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
-      : closureInfo.returnType?.kind === "i32"
-        ? []
-        : closureInfo.returnType?.kind === "externref" ||
-            closureInfo.returnType?.kind === "ref" ||
-            closureInfo.returnType?.kind === "ref_null"
-          ? [{ op: "ref.is_null" } as Instr, { op: "i32.eqz" } as Instr]
-          : [{ op: "drop" } as Instr, { op: "i32.const", value: 1 } as Instr];
+    closureInfo.returnType === null
+      ? // void callback: call_ref leaves nothing on stack — just push truthy (1).
+        // The callback never returns a meaningful value; void → always truthy so
+        // every/find/some behave as if all elements match (correct for empty loops).
+        [{ op: "i32.const", value: 1 } as Instr]
+      : closureInfo.returnType.kind === "f64"
+        ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
+        : closureInfo.returnType.kind === "i32"
+          ? []
+          : closureInfo.returnType.kind === "externref" ||
+              closureInfo.returnType.kind === "ref" ||
+              closureInfo.returnType.kind === "ref_null"
+            ? [{ op: "ref.is_null" } as Instr, { op: "i32.eqz" } as Instr]
+            : [{ op: "drop" } as Instr, { op: "i32.const", value: 1 } as Instr];
 
   /** Increment i */
   const incrI: Instr[] = [
