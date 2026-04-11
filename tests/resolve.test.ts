@@ -82,6 +82,43 @@ describe("ModuleResolver", () => {
     expect(resolved).toBeNull();
   });
 
+  // ── @types/.d.ts ↔ real .js pairing (issue #1060) ───────────────────
+  //
+  // When a package has both `@types/<pkg>` declarations and a real `<pkg>`
+  // implementation in node_modules, `ts.resolveModuleName` prefers the
+  // `.d.ts`. The multi-file compile path needs the implementation body,
+  // so `ModuleResolver.resolve` re-points to the real .js/.mjs/.ts file.
+
+  it("pairs @types/<pkg> declaration with real .js body (bare specifier)", () => {
+    const resolver = new ModuleResolver(FIXTURES);
+    const entryFile = path.join(FIXTURES, "entry.ts");
+    const resolved = resolver.resolve("pair-pkg", entryFile);
+
+    expect(resolved).toBeTruthy();
+    expect(resolved).not.toMatch(/@types[/\\]pair-pkg/);
+    expect(resolved).toMatch(/node_modules[/\\]pair-pkg[/\\]index\.js$/);
+  });
+
+  it("pairs @types/<pkg>/<sub>.d.ts with real /<sub>.js body (subpath, no extension)", () => {
+    const resolver = new ModuleResolver(FIXTURES);
+    const entryFile = path.join(FIXTURES, "entry.ts");
+    const resolved = resolver.resolve("pair-pkg/sub", entryFile);
+
+    expect(resolved).toBeTruthy();
+    expect(resolved).not.toMatch(/@types[/\\]pair-pkg/);
+    expect(resolved).toMatch(/node_modules[/\\]pair-pkg[/\\]sub\.js$/);
+  });
+
+  it("pairs @types/<pkg>/<sub>.d.ts with real /<sub>.js body (subpath with .js extension)", () => {
+    const resolver = new ModuleResolver(FIXTURES);
+    const entryFile = path.join(FIXTURES, "entry.ts");
+    const resolved = resolver.resolve("pair-pkg/sub.js", entryFile);
+
+    expect(resolved).toBeTruthy();
+    expect(resolved).not.toMatch(/@types[/\\]pair-pkg/);
+    expect(resolved).toMatch(/node_modules[/\\]pair-pkg[/\\]sub\.js$/);
+  });
+
   it("isExternal correctly identifies external packages", () => {
     const resolver = new ModuleResolver(FIXTURES, {
       externals: ["lodash", "@scope/external"],
