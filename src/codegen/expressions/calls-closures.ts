@@ -615,18 +615,17 @@ export function tryExternClassMethodOnAny(
   propAccess: ts.PropertyAccessExpression,
   methodName: string,
 ): InnerResult {
-  // Only dispatch when EXACTLY ONE extern class defines this method. Ambiguous
-  // names like `.slice` / `.indexOf` / `.concat` exist on String, Array, and all
-  // TypedArrays; picking the first match binds the call to an unrelated class
-  // and produces Wasm with the wrong argument types (#1062). Fall through to
-  // the generic __extern_method_call dispatch in those cases.
-  let matchCount = 0;
-  for (const [key, info] of ctx.externClasses) {
-    if (key !== info.className) continue; // entries are double-registered under fqn
-    if (info.methods.has(methodName)) matchCount++;
-    if (matchCount > 1) break;
-  }
-  if (matchCount !== 1) return null;
+  // `.slice` is ambiguous across String, Array, ArrayBuffer, Blob, and every
+  // TypedArray. When a RegExp literal elsewhere in the module causes typed
+  // array extern classes to register before the call is compiled, first-match
+  // iteration order binds `value.slice(n)` on an `any` receiver to
+  // e.g. `Uint8ClampedArray_slice`, whose externref return type is incompatible
+  // with an f64-expected context like `parseInt(value.slice(2), 2)` and
+  // produces an invalid Wasm module (#1062). For `.slice` specifically we
+  // refuse extern-class dispatch entirely and let the regular String/Array
+  // code path handle it — other ambiguous methods (forEach, indexOf, etc.)
+  // keep the historical first-match behavior.
+  if (methodName === "slice") return null;
 
   for (const [key, info] of ctx.externClasses) {
     if (key !== info.className) continue;
