@@ -480,19 +480,29 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
     }
   }
   // ── getterCallbackFound: Object.defineProperty / Reflect.defineProperty with accessor descriptor (#929) ──
+  // Also covers Object.defineProperties(obj, { p1: desc1, p2: desc2, ... }) (#1027)
   if (!state.getterCallbackFound && ts.isCallExpression(node)) {
     if (
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.name) &&
-      node.expression.name.text === "defineProperty" &&
-      node.arguments.length >= 3 &&
-      ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
       (node.expression.expression.text === "Object" || node.expression.expression.text === "Reflect")
     ) {
-      const descArg = node.arguments[2]!;
-      if (isAccessorDescriptor(descArg)) {
-        state.getterCallbackFound = true;
+      const methodName = node.expression.name.text;
+      if (methodName === "defineProperty" && node.arguments.length >= 3) {
+        if (isAccessorDescriptor(node.arguments[2]!)) {
+          state.getterCallbackFound = true;
+        }
+      } else if (methodName === "defineProperties" && node.arguments.length >= 2) {
+        const propsArg = node.arguments[1]!;
+        if (ts.isObjectLiteralExpression(propsArg)) {
+          for (const prop of propsArg.properties) {
+            if (ts.isPropertyAssignment(prop) && isAccessorDescriptor(prop.initializer)) {
+              state.getterCallbackFound = true;
+              break;
+            }
+          }
+        }
       }
     }
   }
