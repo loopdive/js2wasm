@@ -163,18 +163,6 @@ const HANGING_TESTS = new Set([
   "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
 ]);
 
-// #1020: await-using TDZ tests that crash with null_deref in assert_throwsAsync.
-// These were false positives — passing because assert_throws(fn: () => void) accidentally
-// caught a Wasm exception from broken await-using compilation. With fn: () => any (needed
-// for #1014 async generator thenable detection), the same bug produces an uncatchable trap.
-// Skip until await-using is implemented (#990).
-const AWAIT_USING_ASYNC_NULL_DEREF_TESTS = new Set([
-  "test/language/statements/await-using/block-local-use-before-initialization-in-prior-statement.js",
-  "test/language/statements/await-using/function-local-use-before-initialization-in-prior-statement.js",
-  "test/language/statements/await-using/global-use-before-initialization-in-prior-statement.js",
-  "test/language/statements/await-using/syntax/await-using-invalid-assignment-statement-body-for-of.js",
-]);
-
 export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
   const scope = classifyTestScope(source, meta, filePath);
 
@@ -248,12 +236,6 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     const relPath = filePath.replace(/.*test262\//, "");
     if (HANGING_TESTS.has(relPath)) {
       return { skip: true, reason: "compiler hang (see HANGING_TESTS)" };
-    }
-    if (AWAIT_USING_ASYNC_NULL_DEREF_TESTS.has(relPath)) {
-      return {
-        skip: true,
-        reason: "await-using TDZ tests: null_deref in assert_throwsAsync — pre-existing false positives (#1020)",
-      };
     }
   }
 
