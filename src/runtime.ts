@@ -376,6 +376,10 @@ function _wasmToPlain(val: any, exports: Record<string, Function> | undefined): 
   return val;
 }
 
+/** Symbol.dispose / Symbol.asyncDispose may not exist in older runtimes (ES2026). */
+const _disposeSym: symbol = (Symbol as any).dispose ?? Symbol.for("Symbol.dispose");
+const _asyncDisposeSym: symbol = (Symbol as any).asyncDispose ?? Symbol.for("Symbol.asyncDispose");
+
 /** Map from JS well-known Symbols to Wasm "@@name" keys (and vice-versa). */
 const _symbolToWasm: Map<symbol, string> = new Map([
   [Symbol.iterator, "@@iterator"],
@@ -390,6 +394,8 @@ const _symbolToWasm: Map<symbol, string> = new Map([
   [Symbol.split, "@@split"],
   [Symbol.unscopables, "@@unscopables"],
   [Symbol.asyncIterator, "@@asyncIterator"],
+  [_disposeSym, "@@dispose"],
+  [_asyncDisposeSym, "@@asyncDispose"],
 ]);
 
 /**
@@ -412,6 +418,8 @@ const _symbolIdToKeys: Map<number, { wasm: string; sym: symbol }> = new Map([
   [10, { wasm: "@@split", sym: Symbol.split }],
   [11, { wasm: "@@unscopables", sym: Symbol.unscopables }],
   [12, { wasm: "@@asyncIterator", sym: Symbol.asyncIterator }],
+  [13, { wasm: "@@dispose", sym: _disposeSym }],
+  [14, { wasm: "@@asyncDispose", sym: _asyncDisposeSym }],
 ]);
 
 /** Safe property get: works on both JS objects and WasmGC structs. */
@@ -420,7 +428,7 @@ function _safeGet(obj: any, key: any): any {
   // Well-known symbol ID (i32 from compiler): only apply to WasmGC structs.
   // For regular JS objects/arrays, numeric keys 1-12 are actual indices, not symbol IDs
   // (e.g. getOwnPropertyNames conversion loop uses __extern_get with integer indices).
-  if (_isWasmStruct(obj) && typeof key === "number" && key >= 1 && key <= 12) {
+  if (_isWasmStruct(obj) && typeof key === "number" && key >= 1 && key <= 14) {
     const symKeys = _symbolIdToKeys.get(key);
     if (symKeys) {
       const v = obj[symKeys.sym];
@@ -476,7 +484,7 @@ function _safeGet(obj: any, key: any): any {
 function _safeSet(obj: any, key: any, val: any): void {
   if (obj == null) return;
   // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name"
-  if (typeof key === "number" && key >= 1 && key <= 12) {
+  if (typeof key === "number" && key >= 1 && key <= 14) {
     const symKeys = _symbolIdToKeys.get(key);
     if (symKeys) {
       try {
@@ -1066,6 +1074,8 @@ function resolveImport(
           [10, Symbol.split],
           [11, Symbol.unscopables],
           [12, Symbol.asyncIterator],
+          [13, _disposeSym],
+          [14, _asyncDisposeSym],
         ]);
         return (id: number) => {
           let sym = symbolCache.get(id);
@@ -2546,6 +2556,15 @@ function resolveImport(
       return (v: any) => (v ? 1 : 0);
     case "extern_get":
       return (obj: any, key: any) => {
+        // #1057 — vec wrapper structs (results of String.prototype.split,
+        // Array.prototype.map, etc.) must report `.constructor === Array`.
+        // Vec wrappers are the only WasmGC struct kind with no registered
+        // field names; user classes always register via __struct_field_names.
+        if (key === "constructor" && obj != null && _isWasmStruct(obj)) {
+          const exports = callbackState?.getExports();
+          const fieldNames = _getStructFieldNames(obj, exports);
+          if (fieldNames === null) return Array;
+        }
         const val = _safeGet(obj, key);
         if (val !== undefined) return val;
         if (typeof key === "string") {
