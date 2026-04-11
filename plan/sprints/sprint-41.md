@@ -135,6 +135,41 @@ Run the four stress tests in parallel or sequence — each produces its own erro
 | 15    | **#1008** mobile playground            | Replaces desktop-only panel layout                                |
 | 16    | **#824** timeout umbrella doc          | Stale narrative cleanup                                           |
 
+## #1034 prettier stress results (2026-04-11, dev-1056)
+
+First stress-test run landed. Targets: prettier 3.8.1 pre-bundled ESM — `doc.mjs` (1480 lines, doc printer — Tier 2) and `index.mjs` (18793 lines, core + language-js — Tier 1+3+4). Harness: `scripts/prettier-stress.ts` (calls `compile({ allowJs: true, skipSemanticDiagnostics: true })` per entry, buckets diagnostics, attempts `WebAssembly.instantiate`).
+
+| Entry | Tier | Compile | Instantiate | Diagnostics | Binary |
+|---|---|---|---|---|---|
+| `prettier/doc.mjs` | Tier 2 (doc printer) | OK | FAIL | 15 | 107,858 B |
+| `prettier/index.mjs` | Tier 1+3+4 (core + language-js) | FAIL | — | 4 | 0 B |
+
+**Bucket breakdown (doc.mjs, 15 diagnostics):**
+- 11 × codegen: object literal → struct inference
+- 2 × codegen: new Intl/builtin class (`Intl.ListFormat`)
+- 2 × codegen: for-of non-array iterable
+
+**Bucket breakdown (index.mjs, 4 diagnostics):**
+- 4 × parser: 'await' as label identifier
+
+**Instantiate failure (doc.mjs):** `trimNewlinesEnd` fails Wasm validation — `call[0] expected type externref, found call of type f64 @+40428` (return-value coercion gap when an `any`-typed call result flows into an externref consumer).
+
+**Headline result:** prettier 3.8.1 bundled doc printer compiles to a 107KB Wasm binary in 1.2s with only 15 diagnostics across 1,480 lines — a **far better** starting point than the architect's projected "expect 10-30 small correctness bugs." The full bundled core (`index.mjs`, 19K lines) is held back by a single TypeScript parser rule (#1066) — once relaxed, it should reach the same stage as `doc.mjs`.
+
+**Follow-up issues filed** (all parent #1034):
+- **#1066** parser: 'await' as label identifier — unblocks `index.mjs` compile
+- **#1067** codegen: object literal → struct inference (11 sites in doc.mjs; the largest bucket)
+- **#1068** codegen: `new Intl.ListFormat` (dual-backend host fast path / standalone reject)
+- **#1069** codegen: for-of non-array iterable (Map/Set/generator iteration — broad-impact fix)
+- **#1070** codegen: return-type coercion f64 → externref missing in call sites (the `trimNewlinesEnd` runtime failure)
+
+**Report:** `plan/issues/ready/1034-report.md`
+**Harness:** `scripts/prettier-stress.ts` (re-runnable after fixes)
+
+**Deferred from #1034 acceptance criteria** (not reached this PR, tracked for follow-up):
+- Self-format smoke test (compiled-prettier vs native-prettier byte-for-byte) — blocked on #1070 minimum (need an instantiating binary first)
+- Perf benchmark (compiled vs native ratio) — same blocker
+
 ## Acceptance criteria
 
 - [ ] **Stress test outputs:** four error-bucket reports committed, ≥ 12 follow-up issues filed across #1031-#1034
