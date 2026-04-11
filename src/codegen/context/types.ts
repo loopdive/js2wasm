@@ -365,6 +365,10 @@ export interface CodegenContext {
   pendingLateImportShift: { importsBefore: number } | null;
   /** Map from class name → global index of the prototype externref singleton */
   protoGlobals: Map<string, number>;
+  /** Map from class name → own method names (instance methods, for prototype allowlist; see #1047) */
+  classMethodNames: Map<string, string[]>;
+  /** Map from class name → global idx of the method-name CSV string constant (see #1047) */
+  classMethodsCsvGlobal: Map<string, number>;
   /** Whether targeting WASI */
   wasi: boolean;
   /** WASI import indices */

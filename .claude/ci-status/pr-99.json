@@ -1,0 +1,14 @@
+{
+  "pr": 99,
+  "conclusion": "failure",
+  "head_branch": "issue-1054-eval-supercall-early-error",
+  "head_sha": "8e3e5d320fdb2f09f1c6d722def9856b567f734c",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288477993",
+  "timestamp": "2026-04-11T18:18:51Z",
+  "pass": 22060,
+  "fail": 18434,
+  "compile_error": 1325,
+  "delta": 310,
+  "regressions": 5,
+  "improvements": 315
+}
