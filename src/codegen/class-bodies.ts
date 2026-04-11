@@ -489,6 +489,31 @@ export function collectClassDeclaration(
     }
   }
 
+  // #1047 — collect own (non-static) method + accessor names so `_wrapForHost`
+  // can present `C.prototype` with a method-only own-key set. Instance fields
+  // (ownFields) are intentionally excluded — they must NOT appear as own
+  // properties of the prototype.
+  {
+    const protoMethodNames: string[] = [];
+    const seen = new Set<string>();
+    for (const member of decl.members) {
+      if (hasStaticModifier(member)) continue;
+      if (
+        ts.isMethodDeclaration(member) ||
+        ts.isGetAccessorDeclaration(member) ||
+        ts.isSetAccessorDeclaration(member)
+      ) {
+        if (!member.name) continue;
+        const n = resolveClassMemberName(ctx, member.name);
+        if (n === undefined) continue;
+        if (seen.has(n)) continue;
+        seen.add(n);
+        protoMethodNames.push(n);
+      }
+    }
+    ctx.classMethodNames.set(className, protoMethodNames);
+  }
+
   // Register static properties as module globals
   for (const member of decl.members) {
     if (ts.isPropertyDeclaration(member) && member.name && hasStaticModifier(member)) {
