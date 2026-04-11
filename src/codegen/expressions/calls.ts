@@ -3553,7 +3553,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       flushLateImportShifts(ctx, fctx);
       if (toLSIdx !== undefined) {
         const recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
-        if (recvType === null || recvType === VOID_RESULT) {
+        if (recvType === null) {
           fctx.body.push({ op: "ref.null.extern" });
         } else if (recvType.kind !== "externref") {
           fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
