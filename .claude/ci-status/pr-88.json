@@ -1,0 +1,14 @@
+{
+  "pr": 88,
+  "conclusion": "failure",
+  "head_branch": "issue-1050-annexb-extension-suppress",
+  "head_sha": "5017bc7b9ffa73a309fa1f995784dcf5bd680e81",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24286210795",
+  "timestamp": "2026-04-11T16:07:13Z",
+  "pass": 21682,
+  "fail": 18812,
+  "compile_error": 1325,
+  "delta": 102,
+  "regressions": 3,
+  "improvements": 105
+}

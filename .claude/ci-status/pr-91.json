@@ -1,0 +1,14 @@
+{
+  "pr": 91,
+  "conclusion": "failure",
+  "head_branch": "issue-1054-derived-eval-super",
+  "head_sha": "f2f54edd44eccfcc7b81a41c42bafbded9d51029",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24287035538",
+  "timestamp": "2026-04-11T16:53:12Z",
+  "pass": 21970,
+  "fail": 18524,
+  "compile_error": 1325,
+  "delta": 220,
+  "regressions": 3,
+  "improvements": 223
+}
