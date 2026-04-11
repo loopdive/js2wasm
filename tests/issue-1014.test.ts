@@ -100,11 +100,30 @@ describe("#1014 — async generator .next() returns Promise", () => {
         if (typeof r1.then !== 'function') return 0;
         if (r1.done !== false) return 0;
         if (r1.value !== 42) return 0;
-        const t = (g as any).throw(new Error("x")); // marks generator done
+        const t = (g as any).throw(new Error("x")); // marks generator done — returns thenable
         if (t && typeof t.then === "function") t.then(null, () => {}); // suppress unhandled rejection
         const r2 = g.next() as any;
         if (typeof r2.then !== 'function') return 0;
         if (r2.done !== true) return 0;
+        return 1;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it("async generator .throw() returns thenable with done=true (no-op await pattern)", async () => {
+    const ret = await run(`
+      async function* gen() { yield 1; yield 2; }
+      export function test(): number {
+        const g = gen();
+        g.next(); // advance to first yield
+        const t = (g as any).throw(new Error("oops")) as any;
+        // .throw() result must be thenable (for .then(res, rej) chaining)
+        if (typeof t.then !== 'function') return 0;
+        // AND must have done=true for no-op await: result = await g.throw(e); result.done
+        if (t.done !== true) return 0;
+        // Suppress unhandled rejection
+        t.then(null, () => {});
         return 1;
       }
     `);
