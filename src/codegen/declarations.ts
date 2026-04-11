@@ -30,7 +30,7 @@ import { collectShapes } from "../shape-inference.js";
 import { ensureNativeStringHelpers } from "./native-strings.js";
 import { ensureWrapperTypes } from "./any-helpers.js";
 import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
-import { compileFunctionBody, registerInlinableFunction, bodyUsesArguments } from "./function-body.js";
+import { compileFunctionBody, registerInlinableFunction } from "./function-body.js";
 import {
   resolveWasmType,
   ensureStructForType,
@@ -1815,13 +1815,6 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
 
       if (optionalParams.length > 0) {
         ctx.funcOptionalParams.set(name, optionalParams);
-      }
-
-      // Track functions that read `arguments` (#1053) so callers can
-      // populate the __extras_argv global with runtime args beyond the
-      // formal param count.
-      if (stmt.body && bodyUsesArguments(stmt.body)) {
-        ctx.funcUsesArguments.add(name);
       }
 
       const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
