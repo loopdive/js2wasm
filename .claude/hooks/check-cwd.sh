@@ -77,6 +77,11 @@ if echo "$CMD" | grep -qE 'git branch( |$|-D|-d)'; then
   exit 0
 fi
 
+# ALLOW: git revert (tech lead revert of a bad merge, commit message gets CHECKLIST-FOXTROT on the follow-up)
+if echo "$CMD" | grep -qE '(^|[;&|])[[:space:]]*git revert'; then
+  exit 0
+fi
+
 # BLOCK everything else in /workspace
 echo "BLOCKED: Do not run git commands in /workspace directly." >&2
 echo "Work in your worktree instead. Only ff-only merges and tech lead commits are allowed in /workspace." >&2
