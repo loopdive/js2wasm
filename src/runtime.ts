@@ -601,6 +601,16 @@ function _safeSet(obj: any, key: any, val: any): void {
 const _hostProxyCache = new WeakMap<object, any>();
 const _hostProxyReverse = new WeakMap<object, any>();
 
+/**
+ * #1047 — registered prototype refs → method-only own-key list. Populated by
+ * the compiler-emitted `__register_prototype` host import inside the lazy
+ * prototype initializer (`emitLazyProtoGet`). When `_wrapForHost` wraps a
+ * registered prototype, its Proxy enumerates only this list instead of the
+ * underlying struct fields — hiding instance-field leakage from tests like
+ * `hasOwnProperty.call(C.prototype, "instanceField")`.
+ */
+const _prototypeMethodNames = new WeakMap<object, string[]>();
+
 function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): any {
   if (obj == null || typeof obj !== "object") return obj;
   if (!_isWasmStruct(obj)) return obj;
@@ -636,9 +646,18 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
     return undefined;
   };
 
+  // #1047 — if `obj` was registered as a class prototype, surface only the
+  // method names in the allowlist. Otherwise fall back to the struct-field
+  // enumeration used for regular instances.
+  const fieldNamesForHost = (): string[] => {
+    const protoMethods = _prototypeMethodNames.get(obj);
+    if (protoMethods !== undefined) return protoMethods;
+    return _getStructFieldNames(obj, exports) ?? [];
+  };
+
   const collectKeys = (): (string | symbol)[] => {
     const keys = new Set<string | symbol>();
-    const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+    const fieldNames = fieldNamesForHost();
     for (const k of fieldNames) keys.add(k);
     const sc = _wasmStructProps.get(obj);
     if (sc) {
@@ -674,10 +693,19 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
       return true;
     },
     has(_t, key) {
+      // #1047 — for registered class prototypes, the allowlist is
+      // authoritative: an instance field with a default value of 0/null
+      // would otherwise appear truthy via safeGetField.
+      const protoMethods = _prototypeMethodNames.get(obj);
+      if (protoMethods !== undefined) {
+        if (typeof key === "string" && protoMethods.includes(key)) return true;
+        const sc = _wasmStructProps.get(obj);
+        return !!sc && key in sc;
+      }
       if (safeGetField(key) !== undefined) return true;
       const sc = _wasmStructProps.get(obj);
       if (sc && key in sc) return true;
-      const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+      const fieldNames = fieldNamesForHost();
       return typeof key === "string" && fieldNames.includes(key);
     },
     deleteProperty(_t, key) {
@@ -698,12 +726,19 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
       // descriptor back onto target so ownKeys invariants are satisfied when
       // the host enumerates via Object.keys/getOwnPropertyNames (some
       // engines cross-check).
-      const val = safeGetField(key);
       const sc = _wasmStructProps.get(obj);
       const hasInSidecar = !!sc && key in sc;
-      const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+      const fieldNames = fieldNamesForHost();
       const hasInFields = typeof key === "string" && fieldNames.includes(key);
-      if (val === undefined && !hasInSidecar && !hasInFields) return undefined;
+      // #1047 — for registered class prototypes, only consult the allowlist
+      // and the sidecar. Do NOT call safeGetField (which would read default
+      // struct field values for leaking instance fields like `a = 0`).
+      const protoMethods = _prototypeMethodNames.get(obj);
+      if (protoMethods !== undefined) {
+        if (!hasInFields && !hasInSidecar) return undefined;
+      }
+      const val = safeGetField(key);
+      if (protoMethods === undefined && val === undefined && !hasInSidecar && !hasInFields) return undefined;
       const desc: PropertyDescriptor = {
         value: val,
         writable: true,
@@ -1060,6 +1095,14 @@ function resolveImport(
       }
       if (name === "__object_create") return (proto: any) => Object.create(proto);
       if (name === "__new_plain_object") return (): any => ({});
+      if (name === "__register_prototype")
+        return (proto: any, csv: any): void => {
+          // #1047 — populate the prototype method-name allowlist consulted by
+          // `_wrapForHost` so `C.prototype` enumerates methods only.
+          if (proto == null || typeof proto !== "object") return;
+          const names = typeof csv === "string" && csv.length > 0 ? csv.split(",") : [];
+          _prototypeMethodNames.set(proto, names);
+        };
       if (name === "__unbox_string")
         return (s: any): any => {
           if (typeof s === "string") return s; // already a string primitive
@@ -1508,6 +1551,19 @@ function resolveImport(
           if (obj == null) return [];
           if (!_isWasmStruct(obj)) return Object.getOwnPropertyNames(obj);
           const exports = callbackState?.getExports();
+          // #1047 — registered class prototype: return only the allowlist
+          const protoMethods = _prototypeMethodNames.get(obj);
+          if (protoMethods !== undefined) {
+            const names = protoMethods.slice();
+            const sc = _wasmStructProps.get(obj);
+            if (sc) {
+              for (const k of Object.getOwnPropertyNames(sc)) {
+                if (k.startsWith("__get_") || k.startsWith("__set_")) continue;
+                if (!names.includes(k)) names.push(k);
+              }
+            }
+            return names;
+          }
           const fieldNames: string[] = _getStructFieldNames(obj, exports) ?? [];
           // Also include sidecar property names (string keys only)
           // Filter out internal accessor keys (__get_<prop>, __set_<prop>) stored by
@@ -1734,6 +1790,11 @@ function resolveImport(
             }
             const sc = _wasmStructProps.get(obj);
             if (sc && String(key) in sc) return 1;
+            // #1047 — registered class prototype: only allowlisted methods
+            const protoMethods = _prototypeMethodNames.get(obj);
+            if (protoMethods !== undefined) {
+              return protoMethods.includes(String(key)) ? 1 : 0;
+            }
             const exports = callbackState?.getExports();
             const fieldNames = _getStructFieldNames(obj, exports) ?? [];
             return fieldNames.includes(String(key)) ? 1 : 0;
@@ -1781,6 +1842,11 @@ function resolveImport(
           // hasOwnProperty returns true for accessor-only properties. (#929)
           const descs = _wasmPropDescs.get(obj);
           if (descs && descs.has(String(key))) return 1;
+          // #1047 — registered class prototype: only allowlisted methods qualify
+          const protoMethods = _prototypeMethodNames.get(obj);
+          if (protoMethods !== undefined) {
+            return protoMethods.includes(String(key)) ? 1 : 0;
+          }
           // Check struct field names via exported helpers
           const exports = callbackState?.getExports();
           const fieldNames = _getStructFieldNames(obj, exports) ?? [];
@@ -1806,6 +1872,11 @@ function resolveImport(
           // Sidecar props without explicit descriptor are enumerable
           const sc = _wasmStructProps.get(obj);
           if (sc && String(key) in sc) return 1;
+          // #1047 — registered class prototype: only allowlisted methods
+          const protoMethods = _prototypeMethodNames.get(obj);
+          if (protoMethods !== undefined) {
+            return protoMethods.includes(String(key)) ? 1 : 0;
+          }
           // Check struct field names (always enumerable)
           const exports = callbackState?.getExports();
           const fieldNames = _getStructFieldNames(obj, exports) ?? [];
@@ -2565,7 +2636,10 @@ function resolveImport(
  * Each string pool entry becomes a WebAssembly.Global keyed by the literal text.
  */
 export function buildStringConstants(stringPool: string[] = []): Record<string, WebAssembly.Global> {
-  const constants: Record<string, WebAssembly.Global> = {};
+  // Use a null-prototype object so inherited names like "hasOwnProperty" /
+  // "toString" / "constructor" from Object.prototype don't shadow real pool
+  // entries via the `s in constants` duplicate check.
+  const constants: Record<string, WebAssembly.Global> = Object.create(null);
   for (const s of stringPool) {
     if (!(s in constants)) {
       constants[s] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
