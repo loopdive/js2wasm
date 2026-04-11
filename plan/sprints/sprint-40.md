@@ -58,19 +58,27 @@ that remains after the Sprint 39 cleanup pass.
 | 20 | **#995** | localeCompare singleton timeout | **1 CT** | Low | sonnet | string built-in compile-path outlier |
 | 21 | **#996** | toSorted comparefn singleton timeout | **1 CT** | Low | sonnet | array sorting/helper compile-path outlier |
 
-### Phase 3: Benchmark and planning follow-ups
+### Phase 3: Moved to Sprint 41 (non-error work)
 
-| Order | Issue | Title | Impact | Effort | Model | Notes |
-|-------|-------|-------|--------|--------|-------|-------|
-| 22 | **#832** | Upgrade to TypeScript 6.x for Unicode 16.0.0 support | 82 skips / parser currency | Medium | sonnet | Brings current Unicode identifier support into scope |
-| 23 | **#1001** | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark regression | Medium | sonnet | Specialize counted append loops instead of generic growable vec-wrapper lowering |
-| 24 | **#1004** | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark regression | Medium | sonnet | Reduce repeated concat work on the default optimized path, not only via `fast: true` |
-| 25 | **#1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Server/runtime startup benchmarking | Medium | sonnet | Add a reproducible fresh-process cold-start benchmark distinct from browser incremental loading |
-| 26 | **#1000** | Normalize issue frontmatter and repopulate historical sprint issue assignments | Process / dashboard correctness | Medium | sonnet | Planning-data cleanup for issue frontmatter, done log, and historical sprint Kanban reconstruction |
-| 27 | **#1003** | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Medium | sonnet | Extends #1000 with richer machine-readable issue metadata |
-| 28 | **#1007** | Re-run historical test262 checkpoints with the current harness for comparable conformance history | Historical benchmark normalization | Medium | sonnet | Rebuild daily history with separate official, proposal, and legacy counts so the timeline becomes comparable |
-| 29 | **#1008** | Add mobile-first layout support to the playground | Playground mobile UX | Medium | sonnet | Replace desktop-only panel assumptions with a mobile layout and folded sidebar navigation |
-| 30 | **#1009** | Investigate report-page benchmark outliers where Wasm is much slower than JS | Report benchmark analysis | Medium | sonnet | Classify the worst report-page slowdowns into host-boundary cost, missing specialization, measurement artifact, or real optimization work |
+Mid-sprint (2026-04-11), the backlog was re-scoped: Sprint 40 now holds **only** error-fix / pass-rate work. Non-error items (perf, benchmarks, refactoring, infra, planning-data) moved to Sprint 41:
+
+- #824 (Timeout umbrella cleanup), #1000/#1003 (issue metadata normalization), #1001 (counted push-loop perf), #1004 (string concat perf), #1005 (cold-start benchmark), #1007 (historical checkpoint re-runs), #1008 (mobile playground), #1009 (report-page benchmark outliers), #1011 (Playwright benchmarks), #1013 (codegen/index.ts refactor)
+
+- #832 (TypeScript 6.x upgrade) was briefly moved to Sprint 41 then **returned to Sprint 40** — the Unicode 16 identifier bump unblocks 82 test262 parse-fails, so it's an error fix.
+
+### Phase 4: Sprint 41 pass-rate follow-ups (added mid-sprint)
+
+After today's Sprint 41 merge wave landed +479 net pass, the 80 post-merge regressions were triaged into concentrated buckets. Each bucket became a narrow follow-up issue and was moved INTO Sprint 40:
+
+| Order | Issue | Title | Impact | Status |
+|-------|-------|-------|--------|--------|
+| 31 | **#1025** | BindingElement array-pattern `ref.is_null` audit | ~135 FAIL | ready (PR #75 first attempt closed, reopened narrower) |
+| 32 | **#1026** | String/Number/Boolean.prototype globals access | ~20 FP + follow-on | ready (PR #72 first attempt closed catastrophically; reopened narrower) |
+| 33 | **#1027** | Missing `__make_getter_callback` late-import in PR #43 path | 9 CE | ready |
+| 34 | **#1028** | TypedArray.prototype.toLocaleString element null path | 9 FAIL | ready |
+| 35 | **#1030** | Array.prototype long tail (372 "object is not a function") | **+200 to +350** | ready — **highest-impact unclaimed** |
+
+#1030 is the single highest-value move: its parent #1022 (PR #68) fixed the first 106 of this bucket; 372 remain concentrated in the same `Array.prototype` subtree. Likely one more dispatch path needs the same treatment. Dispatching this first pushes us past 50% in a single merge.
 
 ## Acceptance Criteria
 
