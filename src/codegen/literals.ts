@@ -1197,6 +1197,18 @@ export function compileArrayLiteral(
   } else {
     const firstElemType = ctx.checker.getTypeAtLocation(firstElem);
     elemWasm = resolveWasmType(ctx, firstElemType);
+    // If the literal mixes a `null` literal with another kind (e.g. `[1, null]`),
+    // fall back to externref so the null survives. Without this, null gets coerced
+    // to f64 0 and destructuring defaults misbehave (#1021). We gate on `null`
+    // specifically rather than any heterogeneity, because promoting on other
+    // mismatches (`[7, undefined]`, `[0, "last"]`) causes downstream regressions
+    // in paths that rely on the first-element heuristic.
+    if (elemWasm.kind !== "externref") {
+      const hasNullLiteral = expr.elements.some((e) => e.kind === ts.SyntaxKind.NullKeyword);
+      if (hasNullLiteral) {
+        elemWasm = { kind: "externref" };
+      }
+    }
   }
   elemKind = elemWasm.kind === "ref" || elemWasm.kind === "ref_null" ? `ref_${elemWasm.typeIdx}` : elemWasm.kind;
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
