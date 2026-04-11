@@ -142,6 +142,20 @@ export {
  * Returns the constant default info if the initializer is a numeric/boolean literal,
  * undefined/null, or a unary minus on a numeric literal. Returns undefined otherwise.
  */
+function sourceContainsClass(sourceFile: ts.SourceFile): boolean {
+  let found = false;
+  function walk(node: ts.Node): void {
+    if (found) return;
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, walk);
+  }
+  walk(sourceFile);
+  return found;
+}
+
 export function extractConstantDefault(
   initializer: ts.Expression,
   paramType: ValType,
@@ -267,6 +281,14 @@ export function generateModule(
     // wrapper constructors, unknown constructor imports.
     collectAllSourceImports(ctx, ast.sourceFile);
 
+    // #1047 — register __register_prototype host import before any local function
+    // is created so `emitLazyProtoGet` can look it up from funcMap without
+    // triggering late-import index shifts mid-expression compilation.
+    if (sourceContainsClass(ast.sourceFile)) {
+      const regProtoTypeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
+      addImport(ctx, "env", "__register_prototype", { kind: "func", typeIdx: regProtoTypeIdx });
+    }
+
     // Emit inline Wasm implementations for Math methods (after all imports are registered)
     if (ctx.pendingMathMethods.size > 0) {
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
@@ -325,6 +347,10 @@ export function generateModule(
 
     // Emit __vec_get / __vec_len exports for runtime iterator fallback on WasmGC arrays
     emitVecAccessExports(ctx);
+
+    // Emit __dv_byte_{len,get,set} exports so the runtime can implement
+    // DataView.prototype.{get,set}{Uint,Int,Float}* on i32_byte vec structs (#1056)
+    emitDataViewByteExports(ctx);
 
     // Emit __call_@@iterator export for runtime Symbol.iterator dispatch on WasmGC structs
     emitIteratorMethodExport(ctx);
@@ -1307,6 +1333,139 @@ function _emitVecAccessExportsInner(ctx: CodegenContext): void {
       name: "__vec_get",
       desc: { kind: "func", index: getFuncIdx },
     });
+  }
+}
+
+/**
+ * Emit DataView byte-access exports for i32_byte vec structs (#1056).
+ *
+ * Adds three exports that operate on ArrayBuffer/DataView backing stores:
+ *   __dv_byte_len(externref) -> i32          — vec length, or -1 if not i32_byte
+ *   __dv_byte_get(externref, i32) -> i32     — unsigned byte at index
+ *   __dv_byte_set(externref, i32, i32) -> () — write byte at index
+ *
+ * The JS runtime uses these in __extern_method_call to implement
+ * DataView.prototype.{get,set}{Uint,Int,Float}{8,16,32,64} and friends
+ * by materializing a real DataView over a live byte array, invoking the
+ * native method, and writing bytes back for setters.
+ */
+function emitDataViewByteExports(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+  const byteVecTypeIdx = ctx.vecTypeMap.get("i32_byte");
+  if (byteVecTypeIdx === undefined) return;
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, byteVecTypeIdx);
+  if (arrTypeIdx < 0) return;
+
+  // __dv_byte_len(externref) -> i32
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }], "$__dv_byte_len_type");
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "any.convert_extern" } as unknown as Instr,
+      { op: "local.set", index: 1 },
+      { op: "local.get", index: 1 },
+      { op: "ref.test", typeIdx: byteVecTypeIdx } as unknown as Instr,
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 1 } as Instr,
+          { op: "ref.cast", typeIdx: byteVecTypeIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: byteVecTypeIdx, fieldIdx: 0 } as unknown as Instr,
+          { op: "return" } as Instr,
+        ],
+        else: [],
+      } as unknown as Instr,
+      { op: "i32.const", value: -1 } as Instr,
+    ];
+    mod.functions.push({
+      name: "__dv_byte_len",
+      typeIdx,
+      locals: [{ name: "__any", type: { kind: "anyref" } }],
+      body,
+      exported: true,
+    } as any);
+    mod.exports.push({ name: "__dv_byte_len", desc: { kind: "func", index: funcIdx } });
+  }
+
+  // __dv_byte_get(externref, i32) -> i32
+  {
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "i32" }],
+      [{ kind: "i32" }],
+      "$__dv_byte_get_type",
+    );
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "any.convert_extern" } as unknown as Instr,
+      { op: "local.set", index: 2 },
+      { op: "local.get", index: 2 },
+      { op: "ref.test", typeIdx: byteVecTypeIdx } as unknown as Instr,
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 2 } as Instr,
+          { op: "ref.cast", typeIdx: byteVecTypeIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: byteVecTypeIdx, fieldIdx: 1 } as unknown as Instr,
+          { op: "local.get", index: 1 } as Instr,
+          { op: "array.get", typeIdx: arrTypeIdx } as unknown as Instr,
+          { op: "return" } as Instr,
+        ],
+        else: [],
+      } as unknown as Instr,
+      { op: "i32.const", value: 0 } as Instr,
+    ];
+    mod.functions.push({
+      name: "__dv_byte_get",
+      typeIdx,
+      locals: [{ name: "__any", type: { kind: "anyref" } }],
+      body,
+      exported: true,
+    } as any);
+    mod.exports.push({ name: "__dv_byte_get", desc: { kind: "func", index: funcIdx } });
+  }
+
+  // __dv_byte_set(externref, i32, i32) -> ()
+  {
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "i32" }, { kind: "i32" }],
+      [],
+      "$__dv_byte_set_type",
+    );
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "any.convert_extern" } as unknown as Instr,
+      { op: "local.set", index: 3 },
+      { op: "local.get", index: 3 },
+      { op: "ref.test", typeIdx: byteVecTypeIdx } as unknown as Instr,
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 3 } as Instr,
+          { op: "ref.cast", typeIdx: byteVecTypeIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: byteVecTypeIdx, fieldIdx: 1 } as unknown as Instr,
+          { op: "local.get", index: 1 } as Instr,
+          { op: "local.get", index: 2 } as Instr,
+          { op: "array.set", typeIdx: arrTypeIdx } as unknown as Instr,
+        ],
+        else: [],
+      } as unknown as Instr,
+    ];
+    mod.functions.push({
+      name: "__dv_byte_set",
+      typeIdx,
+      locals: [{ name: "__any", type: { kind: "anyref" } }],
+      body,
+      exported: true,
+    } as any);
+    mod.exports.push({ name: "__dv_byte_set", desc: { kind: "func", index: funcIdx } });
   }
 }
 
@@ -4655,6 +4814,16 @@ function collectUsedExternImports(ctx: CodegenContext, sourceFile: ts.SourceFile
 
     // RegExp literal (/pattern/flags) → needs RegExp_new import
     if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+      const info = ctx.externClasses.get("RegExp");
+      if (info) {
+        register(`${info.importPrefix}_new`, info.constructorParams, [{ kind: "externref" }]);
+      }
+    }
+
+    // RegExp(pattern, flags) call without `new` — compileCallExpression
+    // emits the RegExp_new host call directly. Register it here so the
+    // import exists by the time codegen runs. (#1055)
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "RegExp") {
       const info = ctx.externClasses.get("RegExp");
       if (info) {
         register(`${info.importPrefix}_new`, info.constructorParams, [{ kind: "externref" }]);
