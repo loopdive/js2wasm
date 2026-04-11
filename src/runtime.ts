@@ -671,7 +671,38 @@ function resolveImport(
           if (obj == null) return 0;
           const len = obj.length;
           if (len !== undefined) return len;
-          return _sidecarGet(obj, "length") ?? 0;
+          const sc = _sidecarGet(obj, "length");
+          if (sc !== undefined) return sc;
+          // Try struct getter export for WasmGC structs with a 'length' field
+          const exports = callbackState?.getExports();
+          const getter = exports?.__sget_length;
+          if (typeof getter === "function") return getter(obj) ?? 0;
+          return 0;
+        };
+      // __extern_get_idx: numeric index access bypassing the well-known symbol ID
+      // check in _safeGet. Needed for array-like loops where i can be 1-12 and
+      // _safeGet would otherwise interpret the number as a Symbol ID.
+      // Also uses __sget_N struct getter exports to access WasmGC struct fields.
+      if (name === "__extern_get_idx")
+        return (obj: any, idx: number): any => {
+          if (obj == null) return undefined;
+          // Direct numeric index (works for real JS arrays and array-likes)
+          const v = obj[idx];
+          if (v !== undefined) return v;
+          // Check sidecar with numeric key
+          const sv = _sidecarGet(obj, idx);
+          if (sv !== undefined) return sv;
+          // Also try string key
+          const strKey = String(idx);
+          const vs = obj[strKey];
+          if (vs !== undefined) return vs;
+          const svs = _sidecarGet(obj, strKey);
+          if (svs !== undefined) return svs;
+          // Try struct getter export __sget_N (for WasmGC struct fields like "0", "1", etc.)
+          const exports = callbackState?.getExports();
+          const getter = exports?.[`__sget_${strKey}`];
+          if (typeof getter === "function") return getter(obj);
+          return undefined;
         };
       if (name === "__extern_toString")
         return (v: any) => {
