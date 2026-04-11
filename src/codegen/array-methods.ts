@@ -21,6 +21,8 @@ import {
   getLine,
   getCol,
   registerEmitBoundsCheckedArrayGet,
+  ensureLateImport,
+  flushLateImportShifts,
 } from "./shared.js";
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import { ensureTimsortHelper } from "./timsort.js";
@@ -2093,6 +2095,17 @@ function compileArrayConcat(
     return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
+  // Check if argument B is a known WasmGC array type. If not (e.g. `any`, `object`,
+  // array-like with Symbol.isConcatSpreadable), struct.get would cause an illegal cast at runtime.
+  // Fall back to __extern_method_call("concat") for non-array arguments.
+  const argNode = callExpr.arguments[0]!;
+  const argTsType = ctx.checker.getTypeAtLocation(argNode);
+  const argArrayInfo = resolveArrayInfo(ctx, argTsType);
+
+  if (!argArrayInfo) {
+    return compileArrayConcatExtern(ctx, fctx, propAccess, callExpr);
+  }
+
   const vecA = allocLocal(fctx, `__arr_cat_va_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
   const vecB = allocLocal(fctx, `__arr_cat_vb_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
   const dataA = allocLocal(fctx, `__arr_cat_da_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
@@ -2112,7 +2125,7 @@ function compileArrayConcat(
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.set", index: dataA });
 
-  // Compile argument B -> vec ref
+  // Compile argument B -> vec ref (safe — argArrayInfo confirmed it's a WasmGC array)
   compileExpression(ctx, fctx, callExpr.arguments[0]!);
   fctx.body.push({ op: "local.tee", index: vecB });
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
@@ -2144,6 +2157,68 @@ function compileArrayConcat(
   fctx.body.push({ op: "ref.as_non_null" });
   fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
   return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+/**
+ * Fallback for arr.concat(arg...) when any arg is not a known WasmGC array type
+ * (e.g. `any`, array-like with Symbol.isConcatSpreadable, or plain objects).
+ *
+ * Uses __array_concat_any(receiver_ext, args_js_array) host import, which:
+ * 1. Converts the WasmGC receiver to a real JS array via __vec_len/__vec_get exports
+ * 2. Calls Array.prototype.concat with all arguments (supports isConcatSpreadable)
+ * 3. Returns the result as externref (a new JS Array)
+ */
+function compileArrayConcatExtern(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+): ValType | null {
+  const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+  const arrPushIdx = ensureLateImport(ctx, "__js_array_push", [{ kind: "externref" }, { kind: "externref" }], []);
+  // __array_concat_any(receiver: externref, args: externref) -> externref
+  // Converts WasmGC receiver to JS array, then calls .concat(...args)
+  const concatAnyIdx = ensureLateImport(
+    ctx,
+    "__array_concat_any",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+
+  if (arrNewIdx === undefined || arrPushIdx === undefined || concatAnyIdx === undefined) {
+    return null;
+  }
+
+  // Compile receiver as externref (WasmGC vec struct → extern ref), save to local
+  const recvLocal = allocLocal(fctx, `__cat_ext_recv_${fctx.locals.length}`, { kind: "externref" });
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+  fctx.body.push({ op: "local.set", index: recvLocal });
+
+  // Build JS args array from all concat arguments
+  fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+  const argsLocal = allocLocal(fctx, `__cat_ext_args_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: argsLocal });
+
+  for (const arg of callExpr.arguments) {
+    fctx.body.push({ op: "local.get", index: argsLocal });
+    const argType = compileExpression(ctx, fctx, arg, { kind: "externref" });
+    if (argType === null) {
+      fctx.body.push({ op: "ref.null.extern" });
+    } else if (argType.kind !== "externref") {
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+    }
+    fctx.body.push({ op: "call", funcIdx: arrPushIdx });
+  }
+
+  // Call __array_concat_any(receiver_ext, args_array) -> externref JS array
+  fctx.body.push({ op: "local.get", index: recvLocal });
+  fctx.body.push({ op: "local.get", index: argsLocal });
+  fctx.body.push({ op: "call", funcIdx: concatAnyIdx });
+  return { kind: "externref" };
 }
 
 /**
