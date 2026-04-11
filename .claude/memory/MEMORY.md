@@ -38,6 +38,7 @@
 - [feedback_context_discipline.md](feedback_context_discipline.md) — Don't re-check state; split planning/execution sessions; write handoffs to plan/agent-context/tech-lead.md
 - [feedback_team_comm_channels.md](feedback_team_comm_channels.md) — Dev status via TaskUpdate not verbose SendMessage; shutdown handoffs via agent-context files
 - [feedback_token_budget_guardrails.md](feedback_token_budget_guardrails.md) — Warn at 25% weekly budget, force break at 40%, hard stop at 50%
+- [feedback_diary_and_sprints_before_compact.md](feedback_diary_and_sprints_before_compact.md) — Update plan/diary.md and plan/sprints/sprint-N.md (+ retrospective) BEFORE /compact — never discard learnings with the conversation
 
 ### Issue management
 - [feedback_issue_completion.md](feedback_issue_completion.md) — Completion procedure: move, frontmatter, summary, log, unblock
