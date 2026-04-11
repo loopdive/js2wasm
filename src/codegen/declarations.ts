@@ -89,6 +89,7 @@ interface UnifiedCollectorState {
   jsonNeedParse: boolean;
   // -- collectCallbackImports --
   callbackFound: boolean;
+  getterCallbackFound: boolean; // Object.defineProperty accessor descriptors (#929)
   // -- collectFunctionalArrayImports --
   funcArrayNeed1: boolean;
   funcArrayNeed2: boolean;
@@ -140,6 +141,7 @@ export function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedC
     jsonNeedStringify: false,
     jsonNeedParse: false,
     callbackFound: false,
+    getterCallbackFound: false,
     funcArrayNeed1: false,
     funcArrayNeed2: false,
     unionFound: false,
@@ -475,6 +477,23 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
   if (!state.callbackFound) {
     if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
       state.callbackFound = true;
+    }
+  }
+  // ── getterCallbackFound: Object.defineProperty / Reflect.defineProperty with accessor descriptor (#929) ──
+  if (!state.getterCallbackFound && ts.isCallExpression(node)) {
+    if (
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.name) &&
+      node.expression.name.text === "defineProperty" &&
+      node.arguments.length >= 3 &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      (node.expression.expression.text === "Object" || node.expression.expression.text === "Reflect")
+    ) {
+      const descArg = node.arguments[2]!;
+      if (isAccessorDescriptor(descArg)) {
+        state.getterCallbackFound = true;
+      }
     }
   }
 
@@ -921,9 +940,16 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   }
 
   // ── collectCallbackImports finalize ──
-  if (state.callbackFound) {
+  if (state.callbackFound || state.getterCallbackFound) {
     const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+    if (state.callbackFound) {
+      addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+    }
+    if (state.getterCallbackFound) {
+      // __make_getter_callback: same signature — wraps a function so 'this' is bound (#929)
+      // Used for Object.defineProperty accessor descriptors (getter/setter callbacks).
+      addImport(ctx, "env", "__make_getter_callback", { kind: "func", typeIdx });
+    }
   }
 
   // ── collectFunctionalArrayImports finalize ──
@@ -1238,6 +1264,32 @@ export function collectEmptyObjectWidening(
   }
 
   scanStatements(sourceFile.statements);
+}
+
+/** Returns true if an Object.defineProperty descriptor ObjectLiteral is an accessor descriptor
+ * with an ACTUAL function getter or setter that needs the sidecar/extern path.
+ * Descriptors with `get: undefined` or `set: undefined` are NOT treated as accessor descriptors —
+ * they are widened like data descriptors so the property appears in for-in and hasOwnProperty
+ * (matching baseline behavior where all Object.defineProperty targets are widened). (#929) */
+function isAccessorDescriptor(descArg: ts.Expression): boolean {
+  if (!ts.isObjectLiteralExpression(descArg)) return false;
+  for (const prop of descArg.properties) {
+    // Method shorthand: get() {...} or set(v) {...} — always a real accessor
+    if (ts.isMethodDeclaration(prop) && prop.name && ts.isIdentifier(prop.name)) {
+      if (prop.name.text === "get" || prop.name.text === "set") return true;
+    }
+    // Property assignment: get: <expr> or set: <expr>
+    // Only treat as accessor if the value is an actual function (not `undefined` or other non-callable)
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+      if (prop.name.text === "get" || prop.name.text === "set") {
+        const init = prop.initializer;
+        if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) return true;
+        // Named identifier that is NOT `undefined` or `null` — may be a function variable
+        if (ts.isIdentifier(init) && init.text !== "undefined" && init.text !== "null") return true;
+      }
+    }
+  }
+  return false;
 }
 
 export function collectPropsFromStatements(

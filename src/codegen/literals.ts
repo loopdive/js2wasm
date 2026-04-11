@@ -39,6 +39,8 @@ import {
   getCol,
   registerResolveComputedKeyExpression,
   VOID_RESULT,
+  ensureLateImport,
+  flushLateImportShifts,
 } from "./shared.js";
 import { bodyUsesArguments } from "./statements/nested-declarations.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
@@ -110,6 +112,34 @@ export function compileObjectLiteral(
     const widenedProps = ctx.widenedTypeProperties.get(expr.parent.name.text);
     if (widenedProps && widenedProps.length > 0) {
       return compileWidenedEmptyObject(ctx, fctx, expr, widenedProps);
+    }
+  }
+
+  // Empty `{}` used as an externref plain object — only when the TypeScript type
+  // context is `any`, `unknown`, or `object` (non-primitive), meaning no specific struct
+  // shape is expected.
+  // Do NOT apply to: parameter defaults or binding element defaults where the struct system
+  // expects a concrete typed object for destructuring.
+  // (Too-broad application caused 150+ dstr regressions: parameter defaults like
+  //  `function({ x } = {})` would call __new_plain_object instead of struct.new,
+  //  making the WasmGC ref.test for the struct type fail and null-deref.)
+  if (expr.properties.length === 0 && !ts.isParameter(expr.parent) && !ts.isBindingElement(expr.parent)) {
+    // Check contextual type: only use plain object when context is untyped or the `object` type
+    // (TypeScript's `object` = NonPrimitive, used e.g. for Object.defineProperty's first arg).
+    // Variable declarations without annotation have no contextual type → isAnyContext = true.
+    const ctxType = ctx.checker.getContextualType(expr);
+    const isAnyContext =
+      !ctxType ||
+      (ctxType.flags & ts.TypeFlags.Any) !== 0 ||
+      (ctxType.flags & ts.TypeFlags.Unknown) !== 0 ||
+      (ctxType.flags & ts.TypeFlags.NonPrimitive) !== 0; // TypeScript `object` keyword type
+    if (isAnyContext) {
+      const funcIdx = ensureLateImport(ctx, "__new_plain_object", [], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
     }
   }
 

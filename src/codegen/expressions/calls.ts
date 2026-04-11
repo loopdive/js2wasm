@@ -2737,9 +2737,15 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         return { kind: "f64" };
       }
       if (recvSymName === "String" && wrapperMethodName === "valueOf") {
-        const strType = ctx.nativeStrings ? nativeStringType(ctx) : ({ kind: "externref" } as ValType);
-        compileExpression(ctx, fctx, propAccess.expression, strType);
-        return strType;
+        // new String("x") now returns a real String wrapper object (externref).
+        // valueOf() must extract the primitive string via __unbox_string (#929).
+        compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+        const unboxIdx = ensureLateImport(ctx, "__unbox_string", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (unboxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: unboxIdx });
+        }
+        return { kind: "externref" };
       }
       if (recvSymName === "Boolean" && wrapperMethodName === "valueOf") {
         compileExpression(ctx, fctx, propAccess.expression, { kind: "i32" });

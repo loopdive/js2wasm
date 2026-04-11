@@ -27,6 +27,13 @@ const _wasmStructProps = new WeakMap<object, Record<string | symbol, any>>();
  */
 const _wasmPropDescs = new WeakMap<object, Map<string | symbol, number>>();
 
+/**
+ * Sidecar accessor storage for WasmGC structs.
+ * Stores get/set functions for accessor properties (including Symbol-keyed ones).
+ * Separate from _wasmStructProps because template literals can't stringify Symbols.
+ */
+const _wasmStructAccessors = new WeakMap<object, Map<string | symbol, { get?: Function; set?: Function }>>();
+
 /** Tracks WasmGC struct objects that have been frozen via Object.freeze. */
 const _wasmFrozenObjs = new WeakSet<object>();
 /** Tracks WasmGC struct objects that have been sealed via Object.seal. */
@@ -409,8 +416,10 @@ const _symbolIdToKeys: Map<number, { wasm: string; sym: symbol }> = new Map([
 /** Safe property get: works on both JS objects and WasmGC structs. */
 function _safeGet(obj: any, key: any): any {
   if (obj == null) return undefined;
-  // Well-known symbol ID (i32 from compiler): resolve to "@@name" and real Symbol
-  if (typeof key === "number" && key >= 1 && key <= 12) {
+  // Well-known symbol ID (i32 from compiler): only apply to WasmGC structs.
+  // For regular JS objects/arrays, numeric keys 1-12 are actual indices, not symbol IDs
+  // (e.g. getOwnPropertyNames conversion loop uses __extern_get with integer indices).
+  if (_isWasmStruct(obj) && typeof key === "number" && key >= 1 && key <= 12) {
     const symKeys = _symbolIdToKeys.get(key);
     if (symKeys) {
       const v = obj[symKeys.sym];
@@ -422,9 +431,36 @@ function _safeGet(obj: any, key: any): any {
       return undefined;
     }
   }
-  const direct = obj[key]; // safe — returns undefined for WasmGC structs
+  if (_isWasmStruct(obj)) {
+    // For WasmGC structs, user-assigned properties live in the sidecar.
+    // Check sidecar FIRST — native JS property access on WasmGC structs can return
+    // built-in artifacts (e.g. `obj.constructor` returns the Wasm struct constructor),
+    // which would shadow user-assigned properties if we checked native first.
+    const sc = _sidecarGet(obj, key);
+    if (sc !== undefined) return sc;
+    // Check string accessor getter stored by Object.defineProperty (sidecar key: __get_<prop>)
+    if (typeof key === "string") {
+      const wasmSc = _wasmStructProps.get(obj);
+      const getter = wasmSc?.[`__get_${key}` as string];
+      if (typeof getter === "function") return (getter as Function).call(obj);
+    }
+    // For JS Symbols, check the accessor map (for Symbol-keyed defineProperty accessors)
+    if (typeof key === "symbol") {
+      const accessor = _wasmStructAccessors.get(obj)?.get(key);
+      if (accessor?.get) return accessor.get.call(obj);
+      // Also check the Wasm "@@name" equivalent
+      const wasmKey = _symbolToWasm.get(key);
+      if (wasmKey) {
+        const sc2 = _sidecarGet(obj, wasmKey);
+        if (sc2 !== undefined) return sc2;
+      }
+    }
+    // Fall back to native access (e.g. Symbol.iterator set directly on the struct)
+    return obj[key];
+  }
+  const direct = obj[key];
   if (direct !== undefined) return direct;
-  // Check sidecar for WasmGC struct properties
+  // Check sidecar for properties set via __extern_set on non-WasmGC objects
   const sc = _sidecarGet(obj, key);
   if (sc !== undefined) return sc;
   // For JS Symbols, also check the Wasm "@@name" equivalent
@@ -452,33 +488,62 @@ function _safeSet(obj: any, key: any, val: any): void {
       return;
     }
   }
-  try {
-    obj[key] = val;
-  } catch (e) {
-    if (_isWasmStruct(obj)) {
-      // WasmGC struct: check sidecar descriptor flags before allowing write
-      const descs = _wasmPropDescs.get(obj);
-      if (descs) {
-        const propKey = typeof key === "symbol" ? key : String(key);
-        const flags = descs.get(propKey);
-        if (flags !== undefined && !(flags & _SC_WRITABLE)) {
-          return; // silent fail: read-only property (non-strict mode semantics)
-        }
+  // WasmGC structs: native property assignment silently fails for non-struct fields
+  // (V8 ignores `struct.constructor = {}` without throwing in non-strict mode).
+  // Always write to sidecar so that dynamic properties are accessible via _safeGet.
+  if (_isWasmStruct(obj)) {
+    // Invoke sidecar setter if one was stored via Object.defineProperty (sidecar key: __set_<prop>)
+    if (typeof key === "string") {
+      const sc = _wasmStructProps.get(obj);
+      const setter = sc?.[`__set_${key}` as string];
+      if (typeof setter === "function") {
+        (setter as Function).call(obj, val);
+        return;
       }
-      // Check non-extensible: new properties cannot be added.
-      // Silently return (non-strict mode semantics — Wasm has no strict/non-strict distinction).
-      // Strict mode TypeError is handled at the defineProperty level.
-      if (_wasmNonExtensibleObjs.has(obj)) {
-        const sc = _wasmStructProps.get(obj);
-        const propKey = typeof key === "symbol" ? key : String(key);
-        const hasInSidecar = sc && key in sc;
-        const hasInDescs = descs?.has(propKey);
-        if (!hasInSidecar && !hasInDescs) {
-          return; // silent fail: non-extensible, new property not added
+    }
+    // Respect sidecar descriptor flags (non-configurable / non-writable properties)
+    const descs = _wasmPropDescs.get(obj);
+    if (descs) {
+      const propKey = typeof key === "symbol" ? key : String(key);
+      const flags = descs.get(propKey);
+      if (flags !== undefined && !(flags & _SC_WRITABLE)) {
+        return; // silent fail: read-only property
+      }
+    }
+    // Respect non-extensible (no new properties, but existing sidecar props can be updated)
+    if (_wasmNonExtensibleObjs.has(obj)) {
+      const sc = _wasmStructProps.get(obj);
+      const propKey = typeof key === "symbol" ? key : String(key);
+      const hasInSidecar = sc && key in sc;
+      const hasInDescs = descs?.has(propKey);
+      if (!hasInSidecar && !hasInDescs) {
+        return; // silent fail: non-extensible, new property not added
+      }
+    }
+    try {
+      obj[key] = val;
+    } catch {
+      /* struct fields may reject unknown keys */
+    }
+    _sidecarSet(obj, key, val);
+    if (typeof key === "symbol") {
+      const wasmKey = _symbolToWasm.get(key);
+      if (wasmKey) _sidecarSet(obj, wasmKey, val);
+    }
+    if (typeof key === "string" && key.startsWith("@@")) {
+      for (const [sym, wk] of _symbolToWasm) {
+        if (wk === key) {
+          _sidecarSet(obj, sym, val);
+          break;
         }
       }
     }
-    // For both WasmGC structs and non-WasmGC objects (frozen/sealed JS objects),
+    return;
+  }
+  try {
+    obj[key] = val;
+  } catch (e) {
+    // For non-WasmGC objects (frozen/sealed JS objects),
     // fall through to sidecar set — preserves original behavior for non-strict callers.
     _sidecarSet(obj, key, val);
     // Also store under the "@@name" alias for well-known symbols
@@ -578,6 +643,9 @@ function resolveImport(
           }
         }
         const builtinCtors: Record<string, Function> = {
+          Number,
+          Boolean,
+          String,
           Map,
           Set,
           WeakMap,
@@ -608,10 +676,17 @@ function resolveImport(
         // Strip trailing null/undefined args — the compiler pads missing
         // optional args with ref.null.extern, but constructors like RegExp
         // reject explicit null (e.g. new RegExp("x", null) throws).
+        // EXCEPT for String/Number/Boolean: new String(undefined) must produce "undefined",
+        // not "" (which new String() with no args produces).
+        const isWrapperCtor =
+          intent.className === "String" || intent.className === "Number" || intent.className === "Boolean";
         return (...args: any[]) => {
-          let len = args.length;
-          while (len > 0 && args[len - 1] == null) len--;
-          return new Ctor(...args.slice(0, len));
+          if (!isWrapperCtor) {
+            let len = args.length;
+            while (len > 0 && args[len - 1] == null) len--;
+            args = args.slice(0, len);
+          }
+          return new Ctor(...args);
         };
       }
       if (intent.action === "get") {
@@ -717,6 +792,12 @@ function resolveImport(
         };
       }
       if (name === "__object_create") return (proto: any) => Object.create(proto);
+      if (name === "__new_plain_object") return (): any => ({});
+      if (name === "__unbox_string")
+        return (s: any): any => {
+          if (typeof s === "string") return s; // already a string primitive
+          return String(s); // extract primitive from String wrapper object
+        };
       if (name === "__object_freeze")
         return (obj: any) => {
           if (obj == null) return obj;
@@ -976,6 +1057,54 @@ function resolveImport(
           }
           return obj;
         };
+      if (name === "__defineProperty_accessor")
+        return (obj: any, prop: any, getter: any, setter: any, flags: number) => {
+          if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
+            throw new TypeError("Object.defineProperty called on non-object");
+          }
+          const desc: PropertyDescriptor = {};
+          if (getter != null) desc.get = getter;
+          if (setter != null) desc.set = setter;
+          if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
+          if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
+          try {
+            Object.defineProperty(obj, prop, desc);
+          } catch (e) {
+            if (e instanceof TypeError) {
+              const msg = (e as Error).message || "";
+              if (msg.includes("opaque") || msg.includes("WebAssembly")) {
+                // WasmGC struct — store accessor in sidecar
+                const sDescs = _getSidecarDescs(obj);
+                const newFlags = _validatePropertyDescriptor(sDescs, prop, desc, undefined);
+                sDescs.set(prop, newFlags);
+                const sc = _wasmStructProps.get(obj) ?? {};
+                _wasmStructProps.set(obj, sc);
+                if (typeof prop === "symbol") {
+                  // Symbol keys can't be used in template literals — use separate accessor map
+                  let accMap = _wasmStructAccessors.get(obj);
+                  if (!accMap) {
+                    accMap = new Map();
+                    _wasmStructAccessors.set(obj, accMap);
+                  }
+                  accMap.set(prop, { get: desc.get, set: desc.set });
+                  // Also mark in sidecar so property enumeration knows it exists
+                  _sidecarSet(obj, prop, undefined);
+                } else {
+                  if (desc.get) sc[`__get_${prop}`] = desc.get;
+                  if (desc.set) sc[`__set_${prop}`] = desc.set;
+                  // Mark the property key as "own" for hasOwnProperty checks.
+                  // `prop in sc` must be true even though the value is undefined —
+                  // _sidecarGet returns undefined which causes _safeGet to fall
+                  // through to the getter check (correct). (#929)
+                  if (!(prop in sc)) sc[prop as string] = undefined;
+                }
+              } else {
+                throw e;
+              }
+            }
+          }
+          return obj;
+        };
       if (name === "__defineProperties")
         return (obj: any, descsObj: any) => {
           if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
@@ -1066,6 +1195,15 @@ function resolveImport(
             const descs = _wasmPropDescs.get(obj);
             const flags = descs?.get(prop) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
             if (flags & _SC_ACCESSOR) {
+              if (typeof prop === "symbol") {
+                const accessor = _wasmStructAccessors.get(obj)?.get(prop);
+                return {
+                  get: accessor?.get,
+                  set: accessor?.set,
+                  enumerable: !!(flags & _SC_ENUMERABLE),
+                  configurable: !!(flags & _SC_CONFIGURABLE),
+                };
+              }
               return {
                 get: sc[`__get_${prop}`],
                 set: sc[`__set_${prop}`],
@@ -1105,11 +1243,24 @@ function resolveImport(
           const exports = callbackState?.getExports();
           const fieldNames: string[] = _getStructFieldNames(obj, exports) ?? [];
           // Also include sidecar property names (string keys only)
+          // Filter out internal accessor keys (__get_<prop>, __set_<prop>) stored by
+          // __defineProperty_accessor — these are implementation artifacts, not own property names.
+          // The real property name (without prefix) is stored separately when the sidecar is set. (#929)
           const sc = _wasmStructProps.get(obj);
           if (sc) {
             for (const k of Object.getOwnPropertyNames(sc)) {
+              if (k.startsWith("__get_") || k.startsWith("__set_")) continue;
               if (!fieldNames.includes(k)) fieldNames.push(k);
             }
+          }
+          // Also include any native JS properties added directly to the WasmGC object
+          // (V8 allows Object.defineProperty on WasmGC structs as JS objects)
+          try {
+            for (const k of Object.getOwnPropertyNames(obj)) {
+              if (!fieldNames.includes(k)) fieldNames.push(k);
+            }
+          } catch {
+            // ignore if not enumerable on this object
           }
           return fieldNames;
         };
@@ -1238,6 +1389,11 @@ function resolveImport(
           // WasmGC struct: check sidecar properties
           const sc = _wasmStructProps.get(obj);
           if (sc && key in sc) return 1;
+          // Check descriptor map (for accessor properties set via Object.defineProperty)
+          // __defineProperty_accessor stores flags in _wasmPropDescs so that
+          // hasOwnProperty returns true for accessor-only properties. (#929)
+          const descs = _wasmPropDescs.get(obj);
+          if (descs && descs.has(String(key))) return 1;
           // Check struct field names via exported helpers
           const exports = callbackState?.getExports();
           const fieldNames = _getStructFieldNames(obj, exports) ?? [];
@@ -1845,7 +2001,21 @@ function resolveImport(
           const r = Number.isNaN(radix) ? undefined : radix;
           return parseInt(String(s), r as any);
         };
-      if (name === "parseFloat") return (s: any) => parseFloat(String(s));
+      if (name === "parseFloat")
+        return (s: any) => {
+          // For Boolean/Number/String wrapper objects (new Boolean(true), etc.),
+          // use Number() coercion which calls valueOf() → 1/0/string.
+          // parseFloat(String(new Boolean(true))) = parseFloat("true") = NaN, which
+          // breaks arithmetic like `"1" / new Boolean(true)`. (#929)
+          if (s != null && typeof s === "object") {
+            try {
+              return Number(s);
+            } catch {
+              /* fall through */
+            }
+          }
+          return parseFloat(String(s));
+        };
       // URI encoding/decoding host imports
       if (name === "decodeURI") return (s: any) => decodeURI(String(s));
       if (name === "decodeURIComponent") return (s: any) => decodeURIComponent(String(s));
@@ -1902,6 +2072,15 @@ function resolveImport(
         (...args: any[]) => {
           const exports = callbackState?.getExports();
           return exports?.[`__cb_${id}`]?.(cap, ...args);
+        };
+    case "getter_callback_maker":
+      return (id: number, cap: any) =>
+        // Regular function (not arrow) so 'this' is bound to the receiver;
+        // rest params forward setter arguments (value) to the Wasm callback.
+        // eslint-disable-next-line func-names
+        function (this: any, ...args: any[]) {
+          const exports = callbackState?.getExports();
+          return exports?.[`__cb_${id}`]?.(cap, this, ...args);
         };
     case "await":
       return (v: any) => v;
@@ -2221,7 +2400,7 @@ export function buildImports(
     }
 
     env[imp.name] = fn;
-    if (imp.intent.type === "callback_maker") hasCallbacks = true;
+    if (imp.intent.type === "callback_maker" || imp.intent.type === "getter_callback_maker") hasCallbacks = true;
     // Native string marshal helpers need late-bound exports (for memory access)
     if (imp.name === "__str_from_mem" || imp.name === "__str_to_mem") hasCallbacks = true;
   }

@@ -739,6 +739,16 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
       fctx.body.push(...fctx.pendingCallbackWritebacks);
       fctx.pendingCallbackWritebacks = undefined;
     }
+    // Emit persistent writebacks (#929): for getter/setter callbacks whose mutable
+    // captures may be updated by a deferred callback invocation (e.g. a getter
+    // defined via Object.defineProperty and later called by Object.defineProperties).
+    // These are re-emitted after every call so the outer locals stay up-to-date.
+    if (fctx.persistentCallbackWritebacks && fctx.persistentCallbackWritebacks.length > 0) {
+      // Shallow-copy each instruction so dead-elimination doesn't multi-remap
+      // the same object when it appears multiple times in the function body.
+      fctx.body.push(...fctx.persistentCallbackWritebacks.map((instr) => ({ ...instr })));
+      // Do NOT clear — re-emit after every subsequent call
+    }
     if (isAsyncCallExpression(ctx, expr)) {
       return wrapAsyncReturn(ctx, fctx, callResult);
     }
