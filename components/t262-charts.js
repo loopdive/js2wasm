@@ -75,33 +75,64 @@ class T262Donut extends HTMLElement {
     const ceDeg = failDeg + (ce / totalSafe) * 360;
 
     // Orbit stats — positioned around the donut
+    // Container is 380x320, .gauge-core has inset: 45px 0 0 (height 275px from y=45)
+    // gauge-wrap is 250x250 centered in gauge-core, so donut center y = 45 + (275-250)/2 + 125 = 182.5
     const centerX = 190;
-    const centerY = 193;
+    const centerY = 182;
     const orbitPoint = (angle, radius) => {
       const rad = ((angle - 90) * Math.PI) / 180;
       return { x: centerX + Math.cos(rad) * radius, y: centerY + Math.sin(rad) * radius };
     };
 
-    const makeOrbitStat = (value, label, color, angle, labelRadius, id) => {
-      const lp = orbitPoint(angle, labelRadius);
+    // Compute label positions, pushing out if they collide with previous labels
+    const minLabelDist = 55; // minimum pixel distance between label centers
+    const stats = [
+      { value: pass, label: "Passed", color: "rgba(255,255,255,0.9)", angle: passDeg / 2, radius: 164, id: "pass" },
+      { value: fail, label: "Failed", color: "rgba(255,255,255,0.7)", angle: (passDeg + failDeg) / 2, radius: 170 },
+      { value: ce, label: "Compile Errors", color: "rgba(255,255,255,0.7)", angle: (failDeg + ceDeg) / 2, radius: 164 },
+      { value: skip, label: "Skipped", color: "rgba(255,255,255,0.7)", angle: (ceDeg + 360) / 2, radius: 178 },
+    ];
+    // Compute positions and resolve collisions by extending radius
+    const placed = [];
+    for (const s of stats) {
+      let radius = s.radius;
+      let lp;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        lp = orbitPoint(s.angle, radius);
+        const collides = placed.some((p) => {
+          const dx = p.lp.x - lp.x;
+          const dy = p.lp.y - lp.y;
+          return Math.sqrt(dx * dx + dy * dy) < minLabelDist;
+        });
+        if (!collides) break;
+        radius += 18;
+      }
+      placed.push({ ...s, radius, lp });
+    }
+
+    // Label positions are expressed as deltas from the orbit's actual center
+    // (left:50%) so they track the donut when the orbit container is narrower
+    // than its 380px design width (i.e. on mobile, min(100%, 380px)).
+    const makeOrbitStat = (stat) => {
+      const { value, label, color, angle, radius, id, lp } = stat;
       const ls = orbitPoint(angle, 126);
       const dx = lp.x - ls.x;
       const dy = lp.y - ls.y;
       const lineLen = Math.max(Math.sqrt(dx * dx + dy * dy) - 34, 0);
       const dataAttr = id ? ` data-stat="${id}"` : "";
+      const labelDx = lp.x - centerX;
+      const labelDy = lp.y - centerY;
+      const lineDx = ls.x - centerX;
+      const lineDy = ls.y - centerY;
       return `
-        <div class="orbit-connector" style="left:${ls.x}px;top:${ls.y}px;width:${lineLen}px;transform:rotate(${angle - 90}deg)"></div>
-        <div class="orbit-stat" style="left:${lp.x}px;top:${lp.y}px">
+        <div class="orbit-connector" style="left:50%;top:50%;width:${lineLen}px;transform:translate(${lineDx}px,${lineDy}px) rotate(${angle - 90}deg)"></div>
+        <div class="orbit-stat" style="left:50%;top:50%;transform:translate(calc(-50% + ${labelDx}px), calc(-50% + ${labelDy}px))">
           <div class="orbit-value"${dataAttr} style="color:${color}">${id === "pass" ? "0" : Number(value).toLocaleString()}</div>
           <div class="orbit-label">${label}</div>
         </div>`;
     };
 
-    const orbitHTML =
-      makeOrbitStat(pass, "Passed", "rgba(255,255,255,0.9)", passDeg / 2, 164, "pass") +
-      makeOrbitStat(fail, "Failed", "rgba(255,255,255,0.7)", (passDeg + failDeg) / 2, 170) +
-      makeOrbitStat(ce, "Compile Errors", "rgba(255,255,255,0.7)", (failDeg + ceDeg) / 2, 164) +
-      makeOrbitStat(skip, "Skipped", "rgba(255,255,255,0.7)", (ceDeg + 360) / 2, 178);
+    const orbitHTML = placed.map(makeOrbitStat).join("");
 
     // Build legend
     const legendHTML = segments
@@ -119,6 +150,8 @@ class T262Donut extends HTMLElement {
       <style>
         :host {
           display: block;
+          max-width: 100%;
+          overflow-x: clip;
           --_pass: var(--t262-pass, #3fb950);
           --_fail: var(--t262-fail, #f85149);
           --_ce: var(--t262-ce, #d29922);
@@ -134,7 +167,7 @@ class T262Donut extends HTMLElement {
           width: min(100%, 380px);
           height: 320px;
           margin: 0 auto;
-          overflow: hidden;
+          overflow: visible;
         }
         .gauge-wrap {
           position: relative;
@@ -256,6 +289,17 @@ class T262Donut extends HTMLElement {
           grid-template-columns: 1fr 1fr;
           gap: 8px 16px;
           margin-top: 24px;
+        }
+        /* Narrow viewports: orbit labels don't fit; rely on the legend below.
+           The donut itself is 250px and fits comfortably in ~360px viewports. */
+        @media (max-width: 440px) {
+          .gauge-orbit {
+            height: 280px;
+          }
+          .orbit-connector,
+          .orbit-stat {
+            display: none;
+          }
         }
         .legend-item {
           display: flex;

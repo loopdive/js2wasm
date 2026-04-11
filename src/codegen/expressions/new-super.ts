@@ -1400,22 +1400,23 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
       const args = expr.arguments ?? [];
 
       if (ctorName === "Number") {
-        // new Number(x) → compile x as f64, box to externref
+        // new Number(x) → create real JS Number wrapper object via __new_Number host import
+        // (typeof new Number(0) === "object", not "number")
         if (args.length >= 1) {
           compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
         } else {
           fctx.body.push({ op: "f64.const", value: 0 });
         }
-        addUnionImports(ctx);
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-        }
+        const newNumIdx = ensureLateImport(ctx, "__new_Number", [{ kind: "f64" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        const finalNumIdx = ctx.funcMap.get("__new_Number") ?? newNumIdx;
+        if (finalNumIdx !== undefined) fctx.body.push({ op: "call", funcIdx: finalNumIdx });
         return { kind: "externref" };
       }
 
       if (ctorName === "String") {
-        // new String(x) → compile x as externref string, return as externref
+        // new String(x) → create real JS String wrapper object via __new_String host import
+        // (typeof new String("") === "object", not "string")
         if (args.length >= 1) {
           compileExpression(ctx, fctx, args[0]!, { kind: "externref" });
         } else {
@@ -1424,21 +1425,25 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
             fctx.body.push({ op: "ref.null.extern" });
           }
         }
+        const newStrIdx = ensureLateImport(ctx, "__new_String", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        const finalStrIdx = ctx.funcMap.get("__new_String") ?? newStrIdx;
+        if (finalStrIdx !== undefined) fctx.body.push({ op: "call", funcIdx: finalStrIdx });
         return { kind: "externref" };
       }
 
       if (ctorName === "Boolean") {
-        // new Boolean(x) → compile x as f64, box to externref
+        // new Boolean(x) → create real JS Boolean wrapper object via __new_Boolean host import
+        // (typeof new Boolean(false) === "object", not "boolean")
         if (args.length >= 1) {
           compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
         } else {
           fctx.body.push({ op: "f64.const", value: 0 });
         }
-        addUnionImports(ctx);
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-        }
+        const newBoolIdx = ensureLateImport(ctx, "__new_Boolean", [{ kind: "f64" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        const finalBoolIdx = ctx.funcMap.get("__new_Boolean") ?? newBoolIdx;
+        if (finalBoolIdx !== undefined) fctx.body.push({ op: "call", funcIdx: finalBoolIdx });
         return { kind: "externref" };
       }
     }

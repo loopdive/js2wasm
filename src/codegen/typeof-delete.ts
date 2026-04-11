@@ -489,6 +489,13 @@ function staticTypeofForType(ctx: CodegenContext, tsType: ts.Type): string | nul
   if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) return "undefined";
   if (tsType.flags & ts.TypeFlags.BigInt || tsType.flags & ts.TypeFlags.BigIntLiteral) return "bigint";
 
+  // Wrapper objects (new String/Number/Boolean) are "object" not their primitive type (#929)
+  if (tsType.flags & ts.TypeFlags.Object) {
+    const sym = tsType.getSymbol?.();
+    if (sym && (sym.name === "String" || sym.name === "Number" || sym.name === "Boolean")) {
+      return "object";
+    }
+  }
   // Check string before wasm type mapping (native strings map to ref)
   if (isStringType(tsType)) return "string";
 

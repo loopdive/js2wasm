@@ -20,10 +20,13 @@ Active file/function claims by agents. **Check before editing. Update when start
 | scripts/build-pages.js | component copy list | dev-980 | #982 | 2026-04-06 |
 | dashboard/index.html | nav insertion | dev-976 | #976 | 2026-04-06 |
 | components/site-nav.js | new file | dev-976 | #976 | 2026-04-06 |
-| src/codegen/property-access.ts | compileElementAccess, compilePropertyAccess | dev-848 | #848 | 2026-04-06 |
-| src/codegen/expressions.ts | compileElementAssignment | dev-848 | #848 | 2026-04-06 |
+| src/codegen/property-access.ts | compilePropertyAccess — String/Number/Boolean.prototype | dev-1018 | #1026 | 2026-04-11 |
 | src/codegen/statements/exceptions.ts | cloneFinally, cloneCatchBody | dev-986 | #986 | 2026-04-10 |
 | src/codegen/statements/loops.ts | compileForOfIterator (cloneFinally closure) | dev-986 | #986 | 2026-04-10 |
+| src/codegen/array-methods.ts | compileArrayLikePrototypeCall, compileArrayPrototypeCall | dev-1022 | #1022 | 2026-04-11 |
+| src/runtime.ts | __unbox_number handler | senior-dev | #1023 | 2026-04-11 |
+| src/codegen/statements/destructuring.ts | all default value guards | dev-929 | #1021 | 2026-04-11 |
+| src/codegen/destructuring-params.ts | parameter destructuring defaults | dev-929 | #1021 | 2026-04-11 |
 
 <!--
 Example entries:

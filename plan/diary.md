@@ -143,3 +143,61 @@ Continuous log of learnings, progress, and incidents. Append new entries at the 
 - **Smoke-test issues before dispatch** — too many stale assignments waste agent time.
 - **Tester is the bottleneck** — consider 2 testers or faster equiv tests when queue > 3.
 - **Dashboard needs correct field names** — `ce` not `compile_error`, `skip` required.
+
+## 2026-04-11 09:00–13:00 — Sprint 40/41 merge wave + context-discipline reset
+
+### Pass rate
+- Start: 20,711/43,164 (47.98%)
+- End: 21,190/43,164 (49.09%) — **+479 in one session**, 392 from the 50% goal
+
+### Merges (in order)
+- PR #43 #929 Object.defineProperty on wrapper objects (+258)
+- PR #68 #1022 Array.prototype method dispatch (+106)
+- PR #71 #1023 __unbox_number(null) ToNumber semantics (+56)
+- PR #64 #983 WasmGC opaque / live-mirror Proxy (+34)
+- PR #70 CI: dispatch Pages deploy after sharded baseline refresh
+- PR #73 close stale #984
+
+### Closed (did not merge)
+- PR #72 #1026 first attempt — catastrophic −18,504, over-broad __get_builtin rewrite broke the compiler
+- PR #75 #1025 first attempt — net −114, blanket `ref.is_null` → `__extern_is_undefined` replaced some genuine struct-ref null guards
+- PR #65 #1017 P3 yield* — marginal +2, orphaned by dev-1017 scale-down
+
+### New issues filed this session
+- #1025 BindingElement array-pattern audit — reopened after PR #75 close, scoped narrower
+- #1026 String/Number/Boolean.prototype globals access — priority raised, scope documents exact failing tests
+- #1027 Missing `__make_getter_callback` late-import in PR #43 path
+- #1028 TypedArray.prototype.toLocaleString element null path
+- #1029 Migrate to typescript-go (TS 7.x) — blocked on upstream API stability (microsoft/typescript-go#516)
+- **Not yet filed: #1030 Array.prototype "object is not a function" long tail (372 tests)** — highest-impact unclaimed work for next session
+
+### Sprint reassignments
+- Moved error fixes to Sprint 40 (#1025, #1026, #1027, #1028, #832)
+- Moved non-error work to Sprint 41 (#824, #1000, #1001, #1003, #1004, #1005, #1008, #1009, #1011, #1013)
+- #832 almost moved to Sprint 41 as "infra" but user caught it — TS 6 upgrade unblocks 82 test262 parse-fails, it's an error fix
+
+### Incidents
+- **OOM kill mid-session** at ~10:44 — 30+ claude processes from accumulated tmux panes + 13 concurrent vitest runs + a stray `/tmp/probe-998.mts` from dev-998 stuck at 93% CPU for 10 min. Recovered 1.3GB by killing the stray + duplicate vitest runs. New rule broadcast: one vitest per dev at a time, no stray probes.
+- **Team channel lost after kill** — tried resuming wrong session ID (dev-1022's jsonl) before identifying correct tech-lead session via `team-lead` string count (0ffbd21c, 721 matches).
+- **Stale landing page** — PR #67 merged but sharded baseline refresh committed with `[skip ci]`, blocking Pages deploy. Manually triggered redeploy + filed PR #70 for permanent fix.
+- **False-positive regressions** — PR #43's 12 "regressions" were `String.prototype.writable = true` tests that coincidentally "passed" on main because we compiled them to harmless `drop`. Tracked by #1026. Dev-929 caught this pattern.
+
+### Context / budget
+- Session burned ~43% of weekly token budget in one sitting. Primary drivers: long continuous context across triage + merge + planning + UI + infra phases; repeated full-file reads; leaked dev scratch (~50 untracked files) polluting every `git status`.
+- **Mitigations applied this session:**
+  - Moved all leaked scratch to `.tmp/` (gitignored, `b09a8d74`)
+  - Added root-level scratch patterns to `.gitignore` as safety net
+  - Documented convention in CLAUDE.md
+- **Rules saved to memory:**
+  - `feedback_compact_before_sprint.md` — /compact at sprint boundaries
+  - `feedback_context_discipline.md` — stop re-checking state, split planning/execution, write handoffs to `plan/agent-context/tech-lead.md` instead of --resume
+  - `feedback_team_comm_channels.md` — devs use TaskUpdate not verbose SendMessage; shutdown handoffs via agent-context files
+  - `feedback_token_budget_guardrails.md` — warn at 25%, force break at 40%, hard stop at 50%
+  - `feedback_dev_self_serve_tasklist.md` (earlier today) — devs claim next task from TaskList after merge, no re-dispatch
+
+### Key learnings
+- **Blanket `ref.is_null` → `__extern_is_undefined` replacements are dangerous** — some ref.is_null calls guard genuine WasmGC struct nulls, not JS undefined. PR #75 learned this the hard way (−114).
+- **File-pattern issue fixes need path-conditional logic** — PR #72 (#1026) globally intercepted any builtin identifier path, breaking the compiler. Narrow patches with clear is-this-really-the-thing-I-want guards are mandatory.
+- **"Regressions" on big-delta PRs are usually false positives** — when a PR flips 300+ tests pass, 20-30 new fails are almost always previously-coincidental passes being honestly exposed. Sample before blocking.
+- **Dev scratch at repo root costs real tokens** — every `git status` dumps the noise into context, compounding over the session. `.tmp/` convention fixed this permanently.
+- **Session resume is not free** — a `--resume` that brings back a compaction summary costs multi-thousand tokens every tool call forever. Write handoffs to disk instead.

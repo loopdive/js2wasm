@@ -195,7 +195,7 @@ jobs:
           if-no-files-found: warn
 
   promote-baseline:
-    if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && needs.merge.result == 'success'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'github-actions[bot]' && needs.merge.result == 'success'
     name: promote merged report to main baseline
     needs: merge
     runs-on: ubuntu-latest
@@ -278,3 +278,14 @@ jobs:
           git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]"
           git pull --rebase origin main || true
           git push
+
+      - name: Trigger Pages deploy after baseline refresh
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The baseline commit uses [skip ci] (to prevent this workflow from
+          # re-triggering itself), which also suppresses deploy-pages.yml. Without
+          # an explicit dispatch, the landing page stays on pre-refresh numbers.
+          # Idempotent and safe to run unconditionally.
+          gh workflow run deploy-pages.yml --ref main || true
