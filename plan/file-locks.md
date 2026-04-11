@@ -27,6 +27,7 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/runtime.ts | __unbox_number handler | senior-dev | #1023 | 2026-04-11 |
 | src/codegen/statements/destructuring.ts | all default value guards | dev-929 | #1021 | 2026-04-11 |
 | src/codegen/destructuring-params.ts | parameter destructuring defaults | dev-929 | #1021 | 2026-04-11 |
+| src/compiler/validation.ts | detectEarlyErrors — checkModuleItemPosition | dev-990 | #990 | 2026-04-11 |
 
 <!--
 Example entries:
