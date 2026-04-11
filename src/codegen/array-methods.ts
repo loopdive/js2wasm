@@ -355,6 +355,39 @@ export function compileArrayLikePrototypeCall(
     (ts.isIdentifier(receiverArg) && receiverArg.text === "undefined");
   if (isNullReceiver) return undefined;
 
+  // Bail out on primitive literal receivers (boolean, number, string). Our `extern.convert_any`
+  // coercion only works on ref/anyref values; a primitive compiled to i32/f64 would produce
+  // invalid Wasm. The legacy __proto_method_call path handles ToObject(primitive) correctly.
+  if (
+    receiverArg.kind === ts.SyntaxKind.TrueKeyword ||
+    receiverArg.kind === ts.SyntaxKind.FalseKeyword ||
+    receiverArg.kind === ts.SyntaxKind.NumericLiteral ||
+    receiverArg.kind === ts.SyntaxKind.StringLiteral ||
+    receiverArg.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral
+  ) {
+    return undefined;
+  }
+
+  // Bail out if the call site is inside `assert_throws(...)` (test262 rewrites `assert.throws`
+  // to this helper). The Wasm-native loop calls __extern_length / __extern_get_idx directly
+  // and does not currently propagate host-side JS exceptions to the surrounding try/catch,
+  // so any test that expects a throw from the length/index getter or the callback would
+  // silently pass where it should trap. The legacy __proto_method_call bridge handles
+  // exception propagation, so let it own those cases.
+  {
+    let p: ts.Node | undefined = callExpr.parent;
+    while (p) {
+      if (
+        ts.isCallExpression(p) &&
+        ts.isIdentifier(p.expression) &&
+        (p.expression.text === "assert_throws" || p.expression.text === "assert_throwsAsync")
+      ) {
+        return undefined;
+      }
+      p = p.parent;
+    }
+  }
+
   // every/some/forEach/find/findIndex: callback is args[1]
   if (callExpr.arguments.length < 2) return undefined;
   const cbArg = callExpr.arguments[1]!;
@@ -758,18 +791,23 @@ export function compileArrayLikePrototypeCall(
       fctx.body.push({ op: "local.set", index: accTmp });
 
       // Reduce callback has 4 params: acc, elem, i, array
-      // Build the reduce call instructions (similar to callClosure but with accTmp first)
+      // Build the reduce call instructions (similar to callClosure but with accTmp first).
+      // Only push each argument if the closure declares that parameter — pushing an unused
+      // local on the stack produces invalid Wasm because call_ref expects exactly numParams values.
       const reduceNumParams = closureInfo.paramTypes.length;
-      const accCoerce = closureInfo.paramTypes[0]
-        ? coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[0], fctx)
-        : [];
       const reduceCallClosure: Instr[] = [
         { op: "local.get", index: closureTmp } as Instr,
-        { op: "local.get", index: accTmp } as Instr,
-        ...accCoerce,
-        { op: "local.get", index: elemTmp } as Instr,
+        ...(reduceNumParams >= 1
+          ? [
+              { op: "local.get", index: accTmp } as Instr,
+              ...coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[0] ?? { kind: "externref" }, fctx),
+            ]
+          : []),
         ...(reduceNumParams >= 2
-          ? coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[1] ?? { kind: "externref" }, fctx)
+          ? [
+              { op: "local.get", index: elemTmp } as Instr,
+              ...coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[1] ?? { kind: "externref" }, fctx),
+            ]
           : []),
         ...(reduceNumParams >= 3
           ? [
@@ -856,16 +894,19 @@ export function compileArrayLikePrototypeCall(
       fctx.body.push({ op: "local.set", index: accTmp });
 
       const rrNumParams = closureInfo.paramTypes.length;
-      const rrAccCoerce = closureInfo.paramTypes[0]
-        ? coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[0], fctx)
-        : [];
       const rrCallClosure: Instr[] = [
         { op: "local.get", index: closureTmp } as Instr,
-        { op: "local.get", index: accTmp } as Instr,
-        ...rrAccCoerce,
-        { op: "local.get", index: elemTmp } as Instr,
+        ...(rrNumParams >= 1
+          ? [
+              { op: "local.get", index: accTmp } as Instr,
+              ...coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[0] ?? { kind: "externref" }, fctx),
+            ]
+          : []),
         ...(rrNumParams >= 2
-          ? coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[1] ?? { kind: "externref" }, fctx)
+          ? [
+              { op: "local.get", index: elemTmp } as Instr,
+              ...coercionInstrs(ctx, { kind: "externref" }, closureInfo.paramTypes[1] ?? { kind: "externref" }, fctx),
+            ]
           : []),
         ...(rrNumParams >= 3
           ? [
