@@ -1,0 +1,14 @@
+{
+  "pr": 83,
+  "conclusion": "failure",
+  "head_branch": "issue-1026-proto-globals-v2",
+  "head_sha": "19ffe17b3c27183d0a6c4688719a847c53d80fcc",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24284654282",
+  "timestamp": "2026-04-11T14:42:00Z",
+  "pass": 21565,
+  "fail": 18397,
+  "compile_error": 1850,
+  "delta": 375,
+  "regressions": 274,
+  "improvements": 649
+}
