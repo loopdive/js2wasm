@@ -1715,14 +1715,88 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
 
       // Fallback: dynamic case — delegate to __getOwnPropertyDescriptor host import
-      const objType = compileExpression(ctx, fctx, arg0, { kind: "externref" });
-      if (!objType) {
-        fctx.body.push({ op: "ref.null.extern" });
-        return { kind: "externref" };
+      // If arg0 is a known built-in global identifier (Math, Object, Array, etc.),
+      // use __get_builtin to get the real JS object instead of the ref.null.extern
+      // produced by compileIdentifier's graceful fallback. This mirrors the same
+      // pattern used for __extern_method_call receivers (see BUILTIN_CLASS_NAMES below).
+      const arg0IsBuiltin =
+        ts.isIdentifier(arg0) &&
+        new Set([
+          "Object",
+          "Array",
+          "Function",
+          "Symbol",
+          "Proxy",
+          "Reflect",
+          "Math",
+          "BigInt",
+          "JSON",
+          "Date",
+          "RegExp",
+          "ArrayBuffer",
+          "SharedArrayBuffer",
+          "DataView",
+          "Promise",
+          "WeakMap",
+          "WeakSet",
+          "WeakRef",
+          "FinalizationRegistry",
+          "Atomics",
+          "Iterator",
+          "Map",
+          "Set",
+          "Error",
+          "TypeError",
+          "RangeError",
+          "SyntaxError",
+          "URIError",
+          "EvalError",
+          "ReferenceError",
+          "String",
+          "Number",
+          "Boolean",
+          "Int8Array",
+          "Uint8Array",
+          "Uint8ClampedArray",
+          "Int16Array",
+          "Uint16Array",
+          "Int32Array",
+          "Uint32Array",
+          "Float32Array",
+          "Float64Array",
+          "BigInt64Array",
+          "BigUint64Array",
+        ]).has((arg0 as ts.Identifier).text);
+
+      let getBuiltinFuncIdx: number | undefined;
+      if (arg0IsBuiltin) {
+        getBuiltinFuncIdx = ensureLateImport(ctx, "__get_builtin", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
       }
-      if (objType.kind !== "externref") {
-        coerceType(ctx, fctx, objType, { kind: "externref" });
+
+      let objType: ReturnType<typeof compileExpression>;
+      if (arg0IsBuiltin && getBuiltinFuncIdx !== undefined) {
+        const builtinName = (arg0 as ts.Identifier).text;
+        addStringConstantGlobal(ctx, builtinName);
+        const strIdx = ctx.stringGlobalMap.get(builtinName);
+        if (strIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+        } else {
+          compileStringLiteral(ctx, fctx, builtinName);
+        }
+        fctx.body.push({ op: "call", funcIdx: getBuiltinFuncIdx });
+        objType = { kind: "externref" };
+      } else {
+        objType = compileExpression(ctx, fctx, arg0, { kind: "externref" });
+        if (!objType) {
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
+        if (objType.kind !== "externref") {
+          coerceType(ctx, fctx, objType, { kind: "externref" });
+        }
       }
+
       const propType = compileExpression(ctx, fctx, arg1, { kind: "externref" });
       if (!propType) {
         fctx.body.push({ op: "drop" });
@@ -2663,9 +2737,15 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         return { kind: "f64" };
       }
       if (recvSymName === "String" && wrapperMethodName === "valueOf") {
-        const strType = ctx.nativeStrings ? nativeStringType(ctx) : ({ kind: "externref" } as ValType);
-        compileExpression(ctx, fctx, propAccess.expression, strType);
-        return strType;
+        // new String("x") now returns a real String wrapper object (externref).
+        // valueOf() must extract the primitive string via __unbox_string (#929).
+        compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+        const unboxIdx = ensureLateImport(ctx, "__unbox_string", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (unboxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: unboxIdx });
+        }
+        return { kind: "externref" };
       }
       if (recvSymName === "Boolean" && wrapperMethodName === "valueOf") {
         compileExpression(ctx, fctx, propAccess.expression, { kind: "i32" });
@@ -3776,7 +3856,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         return { kind: "f64" };
       }
       if (argType?.kind === "externref") {
-        // String → number: use parseFloat
+        // Number(x) uses ToNumber semantics — __unbox_number calls Number(v) in JS.
+        // parseFloat is wrong here: Number(null)=0 but parseFloat(null)=NaN,
+        // Number("")=0 but parseFloat("")=NaN, Number("0x1F")=31 but parseFloat gives 0.
+        addUnionImports(ctx);
+        const unboxIdx = ctx.funcMap.get("__unbox_number");
+        if (unboxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          return { kind: "f64" };
+        }
+        // Fallback to parseFloat if __unbox_number not registered yet
         const pfIdx = ctx.funcMap.get("parseFloat");
         if (pfIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: pfIdx });

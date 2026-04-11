@@ -58,19 +58,27 @@ that remains after the Sprint 39 cleanup pass.
 | 20 | **#995** | localeCompare singleton timeout | **1 CT** | Low | sonnet | string built-in compile-path outlier |
 | 21 | **#996** | toSorted comparefn singleton timeout | **1 CT** | Low | sonnet | array sorting/helper compile-path outlier |
 
-### Phase 3: Benchmark and planning follow-ups
+### Phase 3: Moved to Sprint 41 (non-error work)
 
-| Order | Issue | Title | Impact | Effort | Model | Notes |
-|-------|-------|-------|--------|--------|-------|-------|
-| 22 | **#832** | Upgrade to TypeScript 6.x for Unicode 16.0.0 support | 82 skips / parser currency | Medium | sonnet | Brings current Unicode identifier support into scope |
-| 23 | **#1001** | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark regression | Medium | sonnet | Specialize counted append loops instead of generic growable vec-wrapper lowering |
-| 24 | **#1004** | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark regression | Medium | sonnet | Reduce repeated concat work on the default optimized path, not only via `fast: true` |
-| 25 | **#1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Server/runtime startup benchmarking | Medium | sonnet | Add a reproducible fresh-process cold-start benchmark distinct from browser incremental loading |
-| 26 | **#1000** | Normalize issue frontmatter and repopulate historical sprint issue assignments | Process / dashboard correctness | Medium | sonnet | Planning-data cleanup for issue frontmatter, done log, and historical sprint Kanban reconstruction |
-| 27 | **#1003** | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Medium | sonnet | Extends #1000 with richer machine-readable issue metadata |
-| 28 | **#1007** | Re-run historical test262 checkpoints with the current harness for comparable conformance history | Historical benchmark normalization | Medium | sonnet | Rebuild daily history with separate official, proposal, and legacy counts so the timeline becomes comparable |
-| 29 | **#1008** | Add mobile-first layout support to the playground | Playground mobile UX | Medium | sonnet | Replace desktop-only panel assumptions with a mobile layout and folded sidebar navigation |
-| 30 | **#1009** | Investigate report-page benchmark outliers where Wasm is much slower than JS | Report benchmark analysis | Medium | sonnet | Classify the worst report-page slowdowns into host-boundary cost, missing specialization, measurement artifact, or real optimization work |
+Mid-sprint (2026-04-11), the backlog was re-scoped: Sprint 40 now holds **only** error-fix / pass-rate work. Non-error items (perf, benchmarks, refactoring, infra, planning-data) moved to Sprint 41:
+
+- #824 (Timeout umbrella cleanup), #1000/#1003 (issue metadata normalization), #1001 (counted push-loop perf), #1004 (string concat perf), #1005 (cold-start benchmark), #1007 (historical checkpoint re-runs), #1008 (mobile playground), #1009 (report-page benchmark outliers), #1011 (Playwright benchmarks), #1013 (codegen/index.ts refactor)
+
+- #832 (TypeScript 6.x upgrade) was briefly moved to Sprint 41 then **returned to Sprint 40** — the Unicode 16 identifier bump unblocks 82 test262 parse-fails, so it's an error fix.
+
+### Phase 4: Sprint 41 pass-rate follow-ups (added mid-sprint)
+
+After today's Sprint 41 merge wave landed +479 net pass, the 80 post-merge regressions were triaged into concentrated buckets. Each bucket became a narrow follow-up issue and was moved INTO Sprint 40:
+
+| Order | Issue | Title | Impact | Status |
+|-------|-------|-------|--------|--------|
+| 31 | **#1025** | BindingElement array-pattern `ref.is_null` audit | ~135 FAIL | ready (PR #75 first attempt closed, reopened narrower) |
+| 32 | **#1026** | String/Number/Boolean.prototype globals access | ~20 FP + follow-on | ready (PR #72 first attempt closed catastrophically; reopened narrower) |
+| 33 | **#1027** | Missing `__make_getter_callback` late-import in PR #43 path | 9 CE | ready |
+| 34 | **#1028** | TypedArray.prototype.toLocaleString element null path | 9 FAIL | ready |
+| 35 | **#1030** | Array.prototype long tail (372 "object is not a function") | **+200 to +350** | ready — **highest-impact unclaimed** |
+
+#1030 is the single highest-value move: its parent #1022 (PR #68) fixed the first 106 of this bucket; 372 remain concentrated in the same `Array.prototype` subtree. Likely one more dispatch path needs the same treatment. Dispatching this first pushes us past 50% in a single merge.
 
 ## Acceptance Criteria
 
@@ -89,10 +97,95 @@ that remains after the Sprint 39 cleanup pass.
 - [ ] Produce an outlier analysis for the report-page benchmark cases where Wasm is much slower than JS and split real follow-up work from measurement artifacts for `#1009`
 - [ ] Keep Sprint 40 scoped to genuine carry-over only; newly discovered work starts in Sprint 41
 
-## Results
+## Results (interim — 2026-04-11, sprint still active)
 
-(Fill after sprint completion)
+**Baseline progress:** 18,899 → **21,190** pass / 43,164 total = **49.09%** (+2,291 pass, +5.1 percentage points)
+Sprint goal (50%) not yet met. **392 tests shy.**
 
-## Retrospective
+### Merged (error fixes)
+- **#929** Object.defineProperty on wrapper objects (PR #43, +258 pass)
+- **#1022** Array.prototype method dispatch for any-typed receivers (PR #68, +106 pass) — 372 remain in the long tail, filed as #1030
+- **#1023** `__unbox_number(null)` ToNumber(null) = +0 (PR #71, +56 pass)
+- **#983** Live-mirror Proxy + ToPrimitive for WasmGC opaque leak (PR #64, +34 pass) — partial fix
+- **#984** Verified already fixed by prior work, closed (doc-only PR #73)
+- **#1014** Promise `.then()` on non-Promise values (async generator path, ~+1,489 pass earlier in sprint)
+- **#1017** P1+P2 null deref patterns (earlier in sprint, partial)
+- **#1018** Object.getOwnPropertyDescriptor on built-in globals (PR #66)
+- **#1021** Destructuring defaults: `__extern_is_undefined` instead of `ref.is_null` (PR #67, +58 initial, unlocked broader wins)
 
-(To be filled after sprint completion)
+### Merged (infra / CI)
+- **#882, #884** Test262 sharded CI + PR validation (landed earlier)
+- **PR #70** CI: dispatch Pages deploy after sharded baseline refresh (auto-update landing page)
+
+### Closed without merging
+- **#1026 first attempt** (PR #72) — catastrophic −18,504 regression, over-broad __get_builtin rewrite. Issue reopened with narrower scope.
+- **#1025 first attempt** (PR #75) — net −114, blanket `ref.is_null` → `__extern_is_undefined` replaced genuine struct-ref null guards. Issue reopened.
+- **#1017 Pattern 3** (PR #65) — marginal +2 yield* delegation, orphaned during dev-1017 scale-down.
+
+### New issues filed during sprint
+- **#1023, #1024, #1025, #1026, #1027, #1028** — Sprint-41 follow-ups to #1021 now all reassigned to Sprint 40 as error fixes (except #1023 already merged)
+- **#1029** — Migrate to typescript-go (TS7). Blocked on upstream API stability (microsoft/typescript-go#516).
+- **#1030** — Array.prototype long tail (372 "object is not a function"). Highest-impact unclaimed issue, filed 2026-04-11.
+
+### Outstanding in-flight
+- **PR #74** #1024 destructuring rest/holes — dev-1016 resolving conflicts
+- **PR #59** #1016 iterator protocol — dev-1016 refreshing against new baseline
+
+### Acceptance criteria — interim status
+- [x] Substantially reduce #983 bucket (partial via PR #64)
+- [ ] Close / reduce #990 early-error residuals (263 FAIL, dev-929 assigned)
+- [x] Land or scope `#1006` eval — deferred, no regression
+- [ ] Remove 10 compile_timeout cases — untouched this sprint
+- [ ] Land `#997`/`#998`/`#999` invalid-Wasm follow-ups — untouched
+- [ ] Validate `#832` TypeScript 6 upgrade path — reclassified as error fix, queued
+- [ ] #1001 / #1004 perf — moved to Sprint 41 (non-error work)
+- [ ] #1005 cold-start benchmark — moved to Sprint 41
+- [ ] #1000 / #1003 planning-data normalization — moved to Sprint 41
+- [x] **Scope change:** mid-sprint, Sprint 40 was re-scoped to "error fixes / pass-rate push only". Non-error work moved to Sprint 41. This is a deliberate narrowing of the acceptance criteria.
+
+## Retrospective (interim — 2026-04-11)
+
+### What went well
+- **Big merge wave:** 6 PRs landed cleanly in one session, net +479 pass, crossing 49% for the first time.
+- **False-positive discipline:** dev-929 identified the String.prototype coincidental-pass pattern in PR #43 regressions and filed #1026 before they could block the merge. Saved a revert cycle.
+- **CI autopilot:** dev-1021's PR #70 closed the last gap in the deploy pipeline — baseline refreshes now auto-update the landing page without manual intervention.
+- **Self-serve TaskList protocol:** broadcast mid-sprint, devs started claiming next tasks without re-dispatch. Cut tech-lead coordination overhead.
+- **Scratch cleanup:** `.tmp/` convention + gitignore patterns eliminated ~50 lines of `git status` noise per tool call. Permanent fix.
+
+### What went badly
+- **Two catastrophic PRs:** #72 (−18,504) and #75 (−114) both from attempted fixes that were too broad. Both landed through CI and only got caught at the merge-triage step.
+- **OOM mid-session:** ~30 accumulated tmux panes + 13 concurrent vitest runs + a stray `/tmp/probe-998.mts` from dev-998 stuck at 93% CPU killed the tech lead process. Recovery took ~20 min.
+- **Token budget burn:** single session hit ~43% of weekly budget. Long continuous context across triage + merge + planning + UI + infra phases compounded tool-call cost. New discipline rules saved to memory but we were already past the damage.
+- **Stale issue noise:** #984 turned out to be already fixed; dev-1018 spent a dispatch cycle verifying it. Sampling issues before dispatch is in the rules but wasn't enforced this session.
+- **PR #74 conflicts:** dev-1016's destructuring rest/holes PR went stale during the merge wave; couldn't land in this session.
+
+### Process improvements proposed
+- **Narrower PRs for `ref.is_null` / identifier-path changes** — blanket replacements across codegen are almost always wrong. Require per-site annotation of "undefined check" vs "genuine null ref" before replacing.
+- **Regression sampling before blocking** — when a PR's delta is >100 pass, sample 3-5 regressions manually. Most are false positives from the fix exposing previously-coincidental passes.
+- **`/compact` at sprint boundaries** — saved to `feedback_compact_before_sprint.md`. Will be applied at Sprint 40 → 41 transition.
+- **Session splitting: planning vs execution** — saved to `feedback_context_discipline.md`. Planning sessions persist decisions in issues/TaskList; execution sessions read them and work.
+- **Diary + sprint-doc updates BEFORE `/compact`** — saved to `feedback_diary_and_sprints_before_compact.md`. This retrospective entry is itself an example.
+- **Dev status via TaskUpdate, shutdown handoffs via `plan/agent-context/{name}.md`** — saved to `feedback_team_comm_channels.md`. Verbose SendMessage reports from devs cost the tech lead real tokens.
+- **One vitest run per dev at a time** — broadcast during OOM recovery. 13 concurrent vitest processes + 1 stray probe = 4GB+ wasted.
+
+### Key numbers
+| Metric | Value |
+|--------|-------|
+| Sprint start pass | 18,899 / 43,120 (43.8%) |
+| Session start pass | 20,711 / 43,164 (47.98%) |
+| Sprint end-of-day pass | 21,190 / 43,164 (49.09%) |
+| Gap to 50% goal | 392 tests |
+| Net session delta | +479 pass |
+| PRs merged (session) | 6 |
+| PRs closed (session) | 3 |
+| New issues filed (session) | 6 (#1023–#1028, #1030 at end) |
+| Token budget used (est) | ~43% weekly |
+
+### Sprint-close criteria (not yet met)
+Sprint 40 is **NOT yet closed** as of 2026-04-11 end-of-day. Remaining to close:
+1. Cross 50% conformance (need +392 — #1030 alone could deliver +200 to +350)
+2. Either merge or close PR #74 and PR #59
+3. Finish the dev-1017 / dev-1018 shutdown scale-down
+4. Final retrospective pass + tag `sprint/40`
+
+Next session's first action: file-issue validation on #990 / #998 / #997 status and dispatch #1030.

@@ -1001,6 +1001,22 @@ export function compileStringBinaryOp(
     // Struct ref → externref for concat (e.g. object toString → "[object Object]")
     fctx.body.push({ op: "extern.convert_any" });
   }
+  // For equality/inequality ops: String wrapper objects (new String("x")) are externrefs
+  // but NOT wasm:js-string strings — the `equals` builtin would throw a WebAssembly trap.
+  // Unwrap to primitive string via __unbox_string before comparison.
+  const isEqOrNeq =
+    op === ts.SyntaxKind.EqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+  const isLeftStringWrapper =
+    (leftTsType.flags & ts.TypeFlags.Object) !== 0 && leftTsType.getSymbol()?.name === "String";
+  if (isEqOrNeq && isLeftStringWrapper && leftType?.kind === "externref") {
+    const unboxIdx = ensureLateImport(ctx, "__unbox_string", [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    const finalUnboxIdx = ctx.funcMap.get("__unbox_string") ?? unboxIdx;
+    if (finalUnboxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: finalUnboxIdx });
+  }
   const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
   const rightType = compileExpression(ctx, fctx, expr.right);
   if (op === ts.SyntaxKind.PlusToken && !rightType) {
@@ -1041,6 +1057,15 @@ export function compileStringBinaryOp(
   ) {
     // Struct ref → externref for concat
     fctx.body.push({ op: "extern.convert_any" });
+  }
+  // Unwrap right-side String wrapper for equality/inequality (same as left above)
+  const isRightStringWrapper =
+    (rightTsType.flags & ts.TypeFlags.Object) !== 0 && rightTsType.getSymbol()?.name === "String";
+  if (isEqOrNeq && isRightStringWrapper && rightType?.kind === "externref") {
+    const unboxIdx2 = ensureLateImport(ctx, "__unbox_string", [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    const finalUnboxIdx2 = ctx.funcMap.get("__unbox_string") ?? unboxIdx2;
+    if (finalUnboxIdx2 !== undefined) fctx.body.push({ op: "call", funcIdx: finalUnboxIdx2 });
   }
 
   switch (op) {

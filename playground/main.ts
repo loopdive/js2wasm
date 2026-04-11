@@ -25,10 +25,13 @@ const rawExampleModules = import.meta.glob("./examples/**/*.ts", {
   query: "?raw",
   import: "default",
 });
-const rawEquivTestModules = import.meta.glob(["../tests/equivalence/**/*.test.ts", "../tests/ts-wasm-equivalence.test.ts"], {
-  query: "?raw",
-  import: "default",
-});
+const rawEquivTestModules = import.meta.glob(
+  ["../tests/equivalence/**/*.test.ts", "../tests/ts-wasm-equivalence.test.ts"],
+  {
+    query: "?raw",
+    import: "default",
+  },
+);
 
 function isPagesPlaygroundPath(): boolean {
   return /\/playground\/?$/.test(window.location.pathname);
@@ -1530,7 +1533,11 @@ function t262ParseErrorLocation(error?: string): { line: number; column: number 
   };
 }
 
-function t262DecorationStyles(status: string): { lineClass: string; textClass: string; severity: monaco.MarkerSeverity } {
+function t262DecorationStyles(status: string): {
+  lineClass: string;
+  textClass: string;
+  severity: monaco.MarkerSeverity;
+} {
   switch (status) {
     case "fail":
       return { lineClass: "t262-line-fail", textClass: "t262-inline-fail", severity: monaco.MarkerSeverity.Error };
@@ -1661,7 +1668,9 @@ function syncT262FailureAnnotations() {
   );
 
   if (annotation.watLine != null && watFile.model.getLineCount() > 0 && watFile.model.getValueLength() > 0) {
-    pendingT262WatDecorations = [t262BuildLineDecoration(watFile.model, annotation.watLine, annotation.message, annotation.status)];
+    pendingT262WatDecorations = [
+      t262BuildLineDecoration(watFile.model, annotation.watLine, annotation.message, annotation.status),
+    ];
     t262SetModelLineMarker(watFile.model, annotation.watLine, annotation.message, annotation.status);
   }
 
@@ -2121,7 +2130,9 @@ async function t262Render() {
 
   const categoryStatsCache = new Map<string, { pass: number; fail: number; skip: number; compile_error: number }>();
 
-  async function getCategoryStats(catPath: string): Promise<{ pass: number; fail: number; skip: number; compile_error: number }> {
+  async function getCategoryStats(
+    catPath: string,
+  ): Promise<{ pass: number; fail: number; skip: number; compile_error: number }> {
     if (categoryStatsCache.has(catPath)) return categoryStatsCache.get(catPath)!;
 
     const direct = t262GetCategoryStats(catPath);
@@ -2143,7 +2154,9 @@ async function t262Render() {
   }
 
   // Aggregate stats for a tree node (sum across all categories in subtree)
-  async function nodeStats(node: T262TreeNode): Promise<{ pass: number; fail: number; skip: number; ce: number; total: number }> {
+  async function nodeStats(
+    node: T262TreeNode,
+  ): Promise<{ pass: number; fail: number; skip: number; ce: number; total: number }> {
     let pass = 0,
       fail = 0,
       skip = 0,
