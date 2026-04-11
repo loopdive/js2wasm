@@ -771,9 +771,13 @@ export function destructureParamArray(
       const iterInstrs = collectInstrs(fctx, () => {
         destructureParamArrayViaIterator(ctx, fctx, paramIdx, pattern);
       });
+      // Track iterInstrs in savedBodies so any late import shift triggered during vecInstrs
+      // collection (e.g. from addUnionImports) also updates call indices in iterInstrs.
+      fctx.savedBodies.push(iterInstrs);
       const vecInstrs = collectInstrs(fctx, () => {
         destructureParamArray(ctx, fctx, resultLocal, pattern, convertedType);
       });
+      fctx.savedBodies.pop();
       fctx.body.push({ op: "local.get", index: resultLocal });
       fctx.body.push({ op: "ref.is_null" } as Instr);
       fctx.body.push({

@@ -304,18 +304,16 @@ export function collectClassDeclaration(
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
         // For array destructuring params: widen to externref when the resolved type is
-        // externref, ref_null $vec_externref, or an unannotated param (TypeScript may
-        // infer [any] tuple for patterns with no annotation). This allows JS callers to
-        // pass arbitrary iterables (#1016). Class methods have no call-site inference so
-        // unannotated params are always effectively untyped and should accept any iterable.
-        // Explicitly typed params (e.g. number[] → $vec_f64) keep their vec type.
+        // externref or ref_null $vec_externref (any/any[] param). This allows JS callers
+        // to pass arbitrary iterables (#1016). Explicitly typed params (e.g. number[] →
+        // $vec_f64) keep their vec type and use the fast struct path.
         if (ts.isArrayBindingPattern(param.name)) {
           const extVecIdx = ctx.vecTypeMap.get("externref");
           const isExtVec =
             (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
             extVecIdx !== undefined &&
             (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
-          if (wasmType.kind === "externref" || isExtVec || !param.type) {
+          if (wasmType.kind === "externref" || isExtVec) {
             wasmType = { kind: "externref" };
           }
         }
@@ -944,15 +942,15 @@ export function compileClassBodies(
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
         // For array destructuring params: widen to externref when the resolved type is
-        // externref, ref_null $vec_externref, or an unannotated param. Must match
-        // the collection phase logic above (#1016).
+        // externref or ref_null $vec_externref. Must match the collection phase logic
+        // above (#1016).
         if (ts.isArrayBindingPattern(param.name)) {
           const extVecIdx = ctx.vecTypeMap.get("externref");
           const isExtVec =
             (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
             extVecIdx !== undefined &&
             (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
-          if (wasmType.kind === "externref" || isExtVec || !param.type) {
+          if (wasmType.kind === "externref" || isExtVec) {
             wasmType = { kind: "externref" };
           }
         }
@@ -965,6 +963,7 @@ export function compileClassBodies(
       }
 
       const isGeneratorMethod = member.asteriskToken !== undefined;
+      const isAsyncMethod = member.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
 
       const fctx: FunctionContext = {
         name: fullName,
@@ -1134,8 +1133,9 @@ export function compileClassBodies(
           catchAll: catchAllBody.length > 0 ? catchAllBody : undefined,
         } as unknown as Instr);
 
-        // Return __create_generator(__gen_buffer, __gen_pending_throw)
-        const createGenIdx = ctx.funcMap.get("__create_generator")!;
+        // Return __create_generator or __create_async_generator depending on async flag
+        const createGenName = isAsyncMethod ? "__create_async_generator" : "__create_generator";
+        const createGenIdx = ctx.funcMap.get(createGenName)!;
         fctx.body.push({ op: "local.get", index: bufferLocal });
         fctx.body.push({ op: "local.get", index: pendingThrowLocal });
         fctx.body.push({ op: "call", funcIdx: createGenIdx });

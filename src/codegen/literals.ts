@@ -859,15 +859,15 @@ export function compileObjectLiteralForStruct(
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
         // For array destructuring params: widen to externref when the resolved type is
-        // externref, ref_null $vec_externref, or an unannotated param (#1016).
-        // Typed params (e.g. number[] → $vec_f64) keep their vec type for the fast struct path.
+        // externref or ref_null $vec_externref (#1016). Explicitly typed params (e.g.
+        // number[] → $vec_f64) keep their vec type for the fast struct path.
         if (ts.isArrayBindingPattern(param.name)) {
           const extVecIdx = ctx.vecTypeMap.get("externref");
           const isExtVec =
             (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
             extVecIdx !== undefined &&
             (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
-          if (wasmType.kind === "externref" || isExtVec || !param.type) {
+          if (wasmType.kind === "externref" || isExtVec) {
             wasmType = { kind: "externref" };
           }
         }
@@ -933,15 +933,14 @@ export function compileObjectLiteralForStruct(
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
         // For array destructuring params: widen to externref when the resolved type is
-        // externref, ref_null $vec_externref, or an unannotated param. Must match
-        // collection phase above (#1016).
+        // externref or ref_null $vec_externref. Must match collection phase above (#1016).
         if (ts.isArrayBindingPattern(param.name)) {
           const extVecIdx = ctx.vecTypeMap.get("externref");
           const isExtVec =
             (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
             extVecIdx !== undefined &&
             (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
-          if (wasmType.kind === "externref" || isExtVec || !param.type) {
+          if (wasmType.kind === "externref" || isExtVec) {
             wasmType = { kind: "externref" };
           }
         }
@@ -1049,8 +1048,9 @@ export function compileObjectLiteralForStruct(
           catchAll: catchAllBody.length > 0 ? catchAllBody : undefined,
         } as unknown as Instr);
 
-        // Return __create_generator(__gen_buffer, __gen_pending_throw)
-        const createGenIdx = ctx.funcMap.get("__create_generator")!;
+        // Return __create_generator or __create_async_generator depending on async flag
+        const createGenName = isAsyncMethod ? "__create_async_generator" : "__create_generator";
+        const createGenIdx = ctx.funcMap.get(createGenName)!;
         methodFctx.body.push({ op: "local.get", index: bufferLocal });
         methodFctx.body.push({ op: "local.get", index: pendingThrowLocal });
         methodFctx.body.push({ op: "call", funcIdx: createGenIdx });
