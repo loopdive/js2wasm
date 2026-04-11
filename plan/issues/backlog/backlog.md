@@ -168,6 +168,26 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 
 ---
 
+## Harvest 2026-04-11 (post Sprint 40) — newly filed
+
+Filed by `harvester-post-sprint-40-merge` from post-Sprint-40 test262 baseline (21,190 pass / 19,298 fail). See [harvest summary](../../architecture/harvest-2026-04-11-post-sprint-40.md).
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [1047](../ready/1047.md) | High | Private class elements leak onto prototype (hasOwnProperty) | **246 FAIL** | Ready |
+| [1049](../ready/1049.md) | Medium | Destructuring default init fn-name-cover: wrong `.name` | **176 FAIL** | Ready |
+| [1053](../ready/1053.md) | Medium | `arguments.length` wrong for trailing-comma class method calls | **133 FAIL** | Ready |
+| [1054](../ready/1054.md) | Medium | Derived class indirect-eval supercall does not throw SyntaxError | **122 FAIL** | Ready |
+| [1050](../ready/1050.md) | Medium | annexB: Extension not observed when binding would early-error | **110 FAIL** | Ready |
+| [1056](../ready/1056.md) | Low | DataView `set*` instance methods missing | **89 FAIL** | Ready |
+| [1051](../ready/1051.md) | Low | Private static class methods return wrong value | **88 FAIL** | Ready |
+| [1052](../ready/1052.md) | Low | Array dstr ignores overridden `Array.prototype[Symbol.iterator]` | **80 FAIL** | Ready |
+| [1055](../ready/1055.md) | Low | RegExp pattern modifiers: SyntaxError not thrown | **77 FAIL** | Ready |
+| [1048](../ready/1048.md) | Low | async-generator dstr: illegal cast in `__closure_N` | **75 FAIL** | Ready |
+| [1057](../ready/1057.md) | Low | `String.prototype.split` result `constructor !== Array` | **68 FAIL** | Ready |
+
+---
+
 ## Completed (760+ total)
 
 See `plan/issues/done/log.md` for the full completion log.
