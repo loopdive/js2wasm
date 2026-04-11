@@ -142,6 +142,20 @@ export {
  * Returns the constant default info if the initializer is a numeric/boolean literal,
  * undefined/null, or a unary minus on a numeric literal. Returns undefined otherwise.
  */
+function sourceContainsClass(sourceFile: ts.SourceFile): boolean {
+  let found = false;
+  function walk(node: ts.Node): void {
+    if (found) return;
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, walk);
+  }
+  walk(sourceFile);
+  return found;
+}
+
 export function extractConstantDefault(
   initializer: ts.Expression,
   paramType: ValType,
@@ -266,6 +280,14 @@ export function generateModule(
     // union types, generators, iterators, for-in/in-expr/Object.keys string literals,
     // wrapper constructors, unknown constructor imports.
     collectAllSourceImports(ctx, ast.sourceFile);
+
+    // #1047 — register __register_prototype host import before any local function
+    // is created so `emitLazyProtoGet` can look it up from funcMap without
+    // triggering late-import index shifts mid-expression compilation.
+    if (sourceContainsClass(ast.sourceFile)) {
+      const regProtoTypeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
+      addImport(ctx, "env", "__register_prototype", { kind: "func", typeIdx: regProtoTypeIdx });
+    }
 
     // Emit inline Wasm implementations for Math methods (after all imports are registered)
     if (ctx.pendingMathMethods.size > 0) {
