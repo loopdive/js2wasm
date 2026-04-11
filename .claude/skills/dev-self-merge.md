@@ -103,19 +103,37 @@ After merge:
 2. Immediately `TaskList` → claim the next unowned task
 3. Start the next issue
 
-### Step 5 — escalation
+### Step 5 — if criteria failed, YOU investigate (not the tech lead)
 
-If any criterion failed, do NOT merge. Instead send a concise SendMessage to team-lead:
+Do NOT ping the tech lead for routine regression triage. **You** wrote the fix, **you** have the intent and context, **you** know which test cases the change was meant to cover — investigation is your job. Tech lead is a fallback for genuinely blocked cases, not a triage service.
 
-```
-PR #<N> CI feedback: delta=+<delta>, imp=<imp>, reg=<reg>. Failed criterion: <which one>. Top regression buckets: <top 3 buckets with counts>. Need triage — merge / narrow / close.
-```
+Sample the failing cases and decide the right outcome yourself:
 
-Then:
-1. Leave the PR open
-2. Keep your TaskList entry as `in_progress` (don't mark complete)
-3. Claim the next task from TaskList anyway (pushed = done, claim next — but note in your head that you owe a follow-up on this PR)
-4. When tech lead responds, context-switch back as needed
+1. **Sample 3-5 regression tests manually.** For each, read the test source in `test262/<path>.js` and the error message from the jsonl. Categorize:
+   - **False positive** (test was coincidentally passing before, your fix exposes real state — see `feedback_regression_analysis.md` for patterns) → counts as a win, narrow your merge rationale
+   - **Inherited from main baseline** (regressions are in a code area you didn't touch, caused by another PR's work already on main) → not your problem, proceed with merge and mention in the body
+   - **Real breakage from your fix** (your change made a test that was correctly passing now fail) → this is a bug you introduced
+
+2. **If ≤ 5 real regressions**: file a narrow follow-up issue with the specific failing test files + root cause hypothesis. Merge your PR anyway if the criteria are otherwise met; the follow-up becomes a Sprint-42 task. Don't block your own merge on a 5-test tail.
+
+3. **If 5–30 real regressions, concentrated in one pattern**: your fix is *too broad*. Narrow it. Go back to your worktree, look at what specifically triggers the regression, add a more conservative guard (e.g. "only apply when X is specifically a String literal" instead of "apply to any identifier"), push again. CI will re-run and the feed will fire again.
+
+4. **If >30 real regressions, or scattered across unrelated paths**: you likely broke something downstream your fix wasn't supposed to touch. Close the PR, investigate the root cause (grep for what your change affects, read the relevant codegen path end-to-end), and open a fresh PR with a narrower approach.
+
+5. **If you cannot figure out the root cause after sampling**: THEN ping tech lead with a specific question — "I sampled 5 tests in bucket X, they all fail with error Y, but my fix only touched Z; I don't see the connection." A focused question is a reasonable escalation. A blanket "here's the delta, you figure it out" is not.
+
+Throughout this process, keep your TaskList entry as `in_progress` (don't mark complete until the PR is merged). Do NOT claim a new task — finish this one first. The "pushed = done, claim next" protocol applies to CLEAN pushes; if your PR is in a regression-investigation state, you own it until it either merges or closes.
+
+### When to actually ping tech lead
+
+Narrow cases where escalation is the right call:
+
+- **Cross-area judgment**: your fix is clean but it touches shared infrastructure (core codegen, type-coercion, runtime externref boundary) and you want a second opinion before admin-merging. Tech lead reviews, says yes or no, you act.
+- **Blocked compiling locally**: you can't even reproduce the CI failure on your machine (environment, tooling, test262 dataset version). Tech lead helps you get set up.
+- **Strategic decision**: the regression investigation reveals that your whole approach is wrong and you're not sure whether to pivot, narrow, or close. Tech lead makes the call.
+- **Conflict with another dev's PR**: your fix and someone else's both target the same code path and merging both would leave main in an inconsistent state. Tech lead coordinates.
+
+These are all "I'm stuck, I need judgment" cases. Routine regression triage is not on this list.
 
 ## Why admin-merge
 
