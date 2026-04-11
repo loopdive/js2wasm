@@ -108,6 +108,18 @@
           }
         ]
       }
+    ],
+    "FileChanged": [
+      {
+        "matcher": ".claude/ci-status/",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/ci-status-watcher.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
