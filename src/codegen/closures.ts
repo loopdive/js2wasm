@@ -41,6 +41,7 @@ import {
   collectInstrs,
 } from "./statements.js";
 import { defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
+import { ensureExternIsUndefinedImport } from "./expressions/late-imports.js";
 import {
   compileExpression,
   registerCompileArrowAsClosure,
@@ -568,14 +569,22 @@ export function emitArrowParamDestructuring(
  * Emit the sentinel check + conditional default assignment for a parameter.
  */
 function emitParamDefaultCheckInline(
+  ctx: CodegenContext,
   fctx: FunctionContext,
   paramIdx: number,
   paramType: ValType,
   thenInstrs: Instr[],
 ): void {
   if (paramType.kind === "externref") {
+    // JS spec: defaults apply when arg is `undefined`, not when it's `null`.
+    // externref params wrap JS values; use __extern_is_undefined to distinguish.
+    const isUndefIdx = ensureExternIsUndefinedImport(ctx);
     fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "ref.is_null" });
+    if (isUndefIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+    } else {
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+    }
     fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
   } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
     fctx.body.push({ op: "local.get", index: paramIdx });
@@ -640,7 +649,7 @@ export function emitArrowParamDefaults(
     fctx.body = savedBody;
 
     // Emit the null/zero check + conditional assignment
-    emitParamDefaultCheckInline(fctx, paramIdx, paramType, thenInstrs);
+    emitParamDefaultCheckInline(ctx, fctx, paramIdx, paramType, thenInstrs);
     // Mark param as initialized after the if
     if (tdzFlags) {
       fctx.body.push({ op: "i32.const", value: 1 });
@@ -707,7 +716,7 @@ export function emitMethodParamDefaults(
     const thenInstrs = fctx.body;
     fctx.body = savedBody;
 
-    emitParamDefaultCheckInline(fctx, paramIdx, paramType, thenInstrs);
+    emitParamDefaultCheckInline(ctx, fctx, paramIdx, paramType, thenInstrs);
     if (tdzFlags) {
       fctx.body.push({ op: "i32.const", value: 1 });
       fctx.body.push({ op: "local.set", index: tdzFlags[i]! });

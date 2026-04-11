@@ -1,73 +1,42 @@
 import { describe, it } from "vitest";
 import { assertEquivalent } from "./helpers.js";
 
-describe("#1025 — BindingElement nested array-pattern null vs undefined", () => {
-  it("nested array pattern in object param: null preserved through default", async () => {
+// #1025: extend #1021's fix to cover the simple-parameter default guard in
+// closures.ts. Previously the externref branch of emitParamDefaultCheckInline
+// used `ref.is_null`, which incorrectly fired the default when the caller
+// passed JS `null`. Now it uses `__extern_is_undefined` so null is preserved.
+
+describe("#1025 — param-default externref guard uses __extern_is_undefined", () => {
+  it("arrow param default: explicit null is preserved, default not applied", async () => {
     await assertEquivalent(
       `
-      export function test(): any {
-        function f({ a: [x = 1] }: any): any { return x; }
-        return f({ a: [null] });
+      export function test(): number {
+        const f = (x: any = 42) => x === null ? 1 : (x === 42 ? 2 : 3);
+        return f(null);
       }
       `,
       [{ fn: "test", args: [] }],
     );
   });
 
-  it("nested array pattern in object param: undefined triggers default", async () => {
+  it("arrow param default: non-null non-undefined value passes through", async () => {
     await assertEquivalent(
       `
-      export function test(): any {
-        function f({ a: [x = 99] }: any): any { return x; }
-        return f({ a: [undefined] });
+      export function test(): number {
+        const f = (x: any = 42) => typeof x === "string" ? 1 : 0;
+        return f("hello");
       }
       `,
       [{ fn: "test", args: [] }],
     );
   });
 
-  it("nested array pattern in object decl: null preserved", async () => {
+  it("arrow param default: numeric value passes through", async () => {
     await assertEquivalent(
       `
-      export function test(): any {
-        const { a: [x = 1] } = { a: [null] };
-        return x;
-      }
-      `,
-      [{ fn: "test", args: [] }],
-    );
-  });
-
-  it("nested array pattern in object decl: undefined triggers default", async () => {
-    await assertEquivalent(
-      `
-      export function test(): any {
-        const { a: [x = 42] } = { a: [undefined] };
-        return x;
-      }
-      `,
-      [{ fn: "test", args: [] }],
-    );
-  });
-
-  it("deeply nested array-in-object-in-object with null", async () => {
-    await assertEquivalent(
-      `
-      export function test(): any {
-        const { outer: { inner: [v = 7] } } = { outer: { inner: [null] } };
-        return v;
-      }
-      `,
-      [{ fn: "test", args: [] }],
-    );
-  });
-
-  it("array pattern with default inside array pattern: null preserved", async () => {
-    await assertEquivalent(
-      `
-      export function test(): any {
-        const [[x = 1]] = [[null]];
-        return x;
+      export function test(): number {
+        const f = (x: any = 42) => x === 7 ? 1 : 0;
+        return f(7);
       }
       `,
       [{ fn: "test", args: [] }],

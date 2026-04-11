@@ -24,6 +24,9 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/expressions.ts | compileElementAssignment | dev-848 | #848 | 2026-04-06 |
 | src/codegen/statements/exceptions.ts | cloneFinally, cloneCatchBody | dev-986 | #986 | 2026-04-10 |
 | src/codegen/statements/loops.ts | compileForOfIterator (cloneFinally closure) | dev-986 | #986 | 2026-04-10 |
+| src/codegen/closures.ts | emitParamDefaultCheckInline + arrow/method param-default externref branches | dev-1021 | #1025 | 2026-04-11 |
+| src/codegen/class-bodies.ts | method/setter param-default externref ref.is_null branches (lines ~759, ~999, ~1308) | dev-1021 | #1025 | 2026-04-11 |
+| src/codegen/literals.ts | setter param-default externref branch (line ~804) | dev-1021 | #1025 | 2026-04-11 |
 
 <!--
 Example entries:
