@@ -53,6 +53,29 @@ describe("createMathOperation closure ref (#1063)", () => {
     expect(await run(src)).toBe(13);
   });
 
+  it("untyped (`any`) createMathOperation factory dispatches through externref callee", async () => {
+    // Part B: operator is `any`-typed (as JS-parsed lodash sees it), so the
+    // captured callback ends up as an externref closure-struct field. Before
+    // the fix, the inner closure body emitted `ref.null extern` instead of
+    // calling `operator(value, other)`.
+    const src = `
+      function createMathOperation(operator: any, defaultValue: any): any {
+        return function (value: any, other: any): any {
+          if (value === undefined && other === undefined) return defaultValue;
+          if (value === undefined) return other;
+          if (other === undefined) return value;
+          return operator(value, other);
+        };
+      }
+      function addOp(a: number, b: number): number { return a + b; }
+      const add = createMathOperation(addOp, 0);
+      export function test(): number {
+        return add(6, 7);
+      }
+    `;
+    expect(await run(src)).toBe(13);
+  });
+
   it("two separate inlined closures in module-init don't collide", async () => {
     const src = `
       type Op = (v: number) => number;
