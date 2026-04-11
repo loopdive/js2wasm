@@ -1568,7 +1568,40 @@ function resolveImport(
           const wrappedObj = _isWasmStruct(obj) ? _wrapForHost(obj, exports) : obj;
           const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
           const fn = wrappedObj[method];
-          if (typeof fn !== "function") throw new TypeError(method + " is not a function");
+          if (typeof fn !== "function") {
+            // DataView method fallback (#1056): the compiler emits DataView as an
+            // i32_byte vec struct, so DataView.prototype methods aren't directly
+            // callable on the wasmGC receiver. Detect the method pattern and
+            // dispatch via a live Uint8Array view onto the struct's byte backing
+            // store (__dv_byte_{len,get,set} exports).
+            const dvMatch =
+              typeof method === "string" &&
+              /^(get|set)(Uint8|Int8|Uint16|Int16|Uint32|Int32|Float16|Float32|Float64|BigInt64|BigUint64)$/.exec(
+                method,
+              );
+            if (dvMatch && _isWasmStruct(obj) && exports) {
+              const dvLen = exports.__dv_byte_len as ((v: any) => number) | undefined;
+              const dvGet = exports.__dv_byte_get as ((v: any, i: number) => number) | undefined;
+              const dvSet = exports.__dv_byte_set as ((v: any, i: number, b: number) => void) | undefined;
+              if (typeof dvLen === "function" && typeof dvGet === "function") {
+                const len = dvLen(obj);
+                if (len >= 0) {
+                  const bytes = new Uint8Array(len);
+                  for (let i = 0; i < len; i++) bytes[i] = dvGet(obj, i) & 0xff;
+                  const realDv = new DataView(bytes.buffer);
+                  const nativeFn = (realDv as any)[method];
+                  if (typeof nativeFn === "function") {
+                    const result = nativeFn.apply(realDv, args ?? []);
+                    if (dvMatch[1] === "set" && typeof dvSet === "function") {
+                      for (let i = 0; i < len; i++) dvSet(obj, i, bytes[i]!);
+                    }
+                    return result;
+                  }
+                }
+              }
+            }
+            throw new TypeError(method + " is not a function");
+          }
           const ret = fn.apply(wrappedObj, wrappedArgs);
           return ret === wrappedObj ? obj : _unwrapForHost(ret);
         };
