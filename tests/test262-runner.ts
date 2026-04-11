@@ -1271,10 +1271,10 @@ function assert_throws(fn: () => void): void {
   if (needsAssertThrowsAsync) {
     p += `
 
-function assert_throwsAsync(fn: () => void): void {
+function assert_throwsAsync(fn: any): void {
   __assert_count = __assert_count + 1;
   try {
-    const res = fn() as any;
+    const res = fn();
     // Accept thenable returns (Promise rejections from async generators .throw())
     if (res !== null && res !== undefined && typeof res === 'object' && typeof res.then === 'function') {
       return;
