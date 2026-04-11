@@ -464,7 +464,7 @@ function replaceOtherThrows(code: string): string {
  *
  * Uses paren-counting to handle nested parens in the function argument.
  */
-function transformAssertThrows(code: string): string {
+function transformAssertThrows(code: string, outputFnName: string = "assert_throws"): string {
   const pattern = "assert.throws(";
   let result = "";
   let i = 0;
@@ -523,7 +523,7 @@ function transformAssertThrows(code: string): string {
 
     // args[0] = ErrorType, args[1] = fn, args[2] = optional message
     if (args.length >= 2 && args[1]) {
-      result += `assert_throws(${args[1]});`;
+      result += `${outputFnName}(${args[1]});`;
     }
     // If we couldn't parse args properly, just strip the call (fallback)
     i = endPos;
@@ -1215,6 +1215,7 @@ function buildPreamble(
   needsAsyncTest: boolean,
   needsDoneForAsyncTest: boolean,
   needsTestTypedArray: boolean,
+  needsAssertThrowsAsync: boolean,
 ): string {
   let p = `let __fail: number = 0;
 let __assert_count: number = 1;
@@ -1260,6 +1261,24 @@ function assert_throws(fn: () => void): void {
   __assert_count = __assert_count + 1;
   try {
     fn();
+  } catch (e) {
+    return;
+  }
+  if (!__fail) __fail = __assert_count;
+}`;
+  }
+
+  if (needsAssertThrowsAsync) {
+    p += `
+
+function assert_throwsAsync(fn: () => any): void {
+  __assert_count = __assert_count + 1;
+  try {
+    const res = fn();
+    // Accept thenable returns (Promise rejections from async generators .throw())
+    if (res !== null && res !== undefined && typeof res === 'object' && typeof res.then === 'function') {
+      return;
+    }
   } catch (e) {
     return;
   }
@@ -1475,10 +1494,11 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Transform assert.throws(ErrorType, fn) → assert_throws(fn)
   body = transformAssertThrows(body);
 
-  // Transform assert.throwsAsync(ErrorType, fn) → assert_throws(fn)
-  // Since we compile async synchronously, throwsAsync is equivalent to throws.
+  // Transform assert.throwsAsync(ErrorType, fn) → assert_throwsAsync(fn)
+  // assert_throwsAsync accepts both synchronous throws AND thenable returns (Promise rejections),
+  // since async generators return Promise.reject(e) from .throw() instead of throwing.
   body = body.replace(/\bassert\.throwsAsync\s*\(/g, "assert.throws(");
-  body = transformAssertThrows(body);
+  body = transformAssertThrows(body, "assert_throwsAsync");
 
   // Strip undefined-related patterns that can't work in wasm
   // assert.sameValue(expr, undefined) / assert.sameValue(expr, void 0, msg) → comment out
@@ -1628,6 +1648,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   const needsCompareArray = /\bcompareArray\b/.test(body);
   const needsAssertCompareArray = /\bassert_compareArray\b/.test(body);
   const needsAssertThrows = /\bassert_throws\b/.test(body);
+  const needsAssertThrowsAsync = /\bassert_throwsAsync\b/.test(body);
 
   // ── Harness include shims ───────────────────────────────────────────
   // These are stubs for test262 harness helpers. They are conditionally
@@ -1689,6 +1710,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     needsAsyncTest,
     needsDoneForAsyncTest,
     needsTestTypedArray,
+    needsAssertThrowsAsync,
   ]
     .map((b) => (b ? "1" : "0"))
     .join("");
@@ -1713,6 +1735,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
       needsAsyncTest,
       needsDoneForAsyncTest,
       needsTestTypedArray,
+      needsAssertThrowsAsync,
     );
     preambleCache.set(cacheKey, preamble);
   }
