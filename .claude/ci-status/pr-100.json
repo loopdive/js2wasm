@@ -1,0 +1,14 @@
+{
+  "pr": 100,
+  "conclusion": "failure",
+  "head_branch": "issue-1057-vec-struct-constructor",
+  "head_sha": "e7fefa9fa1325a1307121d408349e5bb76b0217b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288550546",
+  "timestamp": "2026-04-11T18:28:21Z",
+  "pass": 22046,
+  "fail": 18448,
+  "compile_error": 1325,
+  "delta": 296,
+  "regressions": 21,
+  "improvements": 317
+}
