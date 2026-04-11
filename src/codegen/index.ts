@@ -3053,6 +3053,11 @@ function collectGeneratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile)
       kind: "func",
       typeIdx: createGenType,
     });
+    // __create_async_generator: same Wasm signature, but .next()/.return()/.throw() return Promises.
+    addImport(ctx, "env", "__create_async_generator", {
+      kind: "func",
+      typeIdx: createGenType,
+    });
 
     const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     // __gen_next: (generator: externref) → externref (calls gen.next(), returns IteratorResult)
