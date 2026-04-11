@@ -193,6 +193,7 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 ### Agent work dispatch
 - PO creates the task queue at sprint start (tech lead dispatches to devs)
 - **Dev protocol: "pushed = done, claim next NOW — do NOT wait for merge."** As soon as a dev pushes their branch + opens a PR via `gh pr create`, they immediately mark their current task `completed` in TaskList and claim the next unowned task. They do NOT wait for CI to pass, tech lead review, tech lead merge, or a "merged, do next" message. The merge happens asynchronously; if CI fails the tech lead will ping to context-switch back — that is a rare exceptional event. Never block on merge confirmation.
+- **Dev self-merge: devs merge their OWN clean PRs without waiting for tech lead.** When the Option B CI Status Feed (`.claude/ci-status/pr-<N>.json`) reports the dev's PR with `delta > 0`, `regressions/improvements < 10%`, no single error-bucket >50 regressions, and a narrow ≤5-file scope — the dev runs `/dev-self-merge` and admin-merges their own PR directly. Escalate to tech lead only when criteria fail. See `.claude/skills/dev-self-merge.md` for the full checklist.
 - Dev agents self-serve: after pushing a task's PR, they check `TaskList` and claim the next unowned task
 - Dev agents do NOT exit after completing a task — they always check TaskList first
 - Dev agents do NOT run full test262 locally; they run scoped local checks, push their branch, and open a PR to trigger GitHub Actions
