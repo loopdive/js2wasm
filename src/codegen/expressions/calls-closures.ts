@@ -615,7 +615,21 @@ export function tryExternClassMethodOnAny(
   propAccess: ts.PropertyAccessExpression,
   methodName: string,
 ): InnerResult {
-  for (const [, info] of ctx.externClasses) {
+  // Only dispatch when EXACTLY ONE extern class defines this method. Ambiguous
+  // names like `.slice` / `.indexOf` / `.concat` exist on String, Array, and all
+  // TypedArrays; picking the first match binds the call to an unrelated class
+  // and produces Wasm with the wrong argument types (#1062). Fall through to
+  // the generic __extern_method_call dispatch in those cases.
+  let matchCount = 0;
+  for (const [key, info] of ctx.externClasses) {
+    if (key !== info.className) continue; // entries are double-registered under fqn
+    if (info.methods.has(methodName)) matchCount++;
+    if (matchCount > 1) break;
+  }
+  if (matchCount !== 1) return null;
+
+  for (const [key, info] of ctx.externClasses) {
+    if (key !== info.className) continue;
     const sig = info.methods.get(methodName);
     if (!sig) continue;
 
