@@ -75,15 +75,43 @@ class T262Donut extends HTMLElement {
     const ceDeg = failDeg + (ce / totalSafe) * 360;
 
     // Orbit stats — positioned around the donut
+    // Container is 380x320, .gauge-core has inset: 45px 0 0 (height 275px from y=45)
+    // gauge-wrap is 250x250 centered in gauge-core, so donut center y = 45 + (275-250)/2 + 125 = 182.5
     const centerX = 190;
-    const centerY = 193;
+    const centerY = 182;
     const orbitPoint = (angle, radius) => {
       const rad = ((angle - 90) * Math.PI) / 180;
       return { x: centerX + Math.cos(rad) * radius, y: centerY + Math.sin(rad) * radius };
     };
 
-    const makeOrbitStat = (value, label, color, angle, labelRadius, id) => {
-      const lp = orbitPoint(angle, labelRadius);
+    // Compute label positions, pushing out if they collide with previous labels
+    const minLabelDist = 55; // minimum pixel distance between label centers
+    const stats = [
+      { value: pass, label: "Passed", color: "rgba(255,255,255,0.9)", angle: passDeg / 2, radius: 164, id: "pass" },
+      { value: fail, label: "Failed", color: "rgba(255,255,255,0.7)", angle: (passDeg + failDeg) / 2, radius: 170 },
+      { value: ce, label: "Compile Errors", color: "rgba(255,255,255,0.7)", angle: (failDeg + ceDeg) / 2, radius: 164 },
+      { value: skip, label: "Skipped", color: "rgba(255,255,255,0.7)", angle: (ceDeg + 360) / 2, radius: 178 },
+    ];
+    // Compute positions and resolve collisions by extending radius
+    const placed = [];
+    for (const s of stats) {
+      let radius = s.radius;
+      let lp;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        lp = orbitPoint(s.angle, radius);
+        const collides = placed.some((p) => {
+          const dx = p.lp.x - lp.x;
+          const dy = p.lp.y - lp.y;
+          return Math.sqrt(dx * dx + dy * dy) < minLabelDist;
+        });
+        if (!collides) break;
+        radius += 18;
+      }
+      placed.push({ ...s, radius, lp });
+    }
+
+    const makeOrbitStat = (stat) => {
+      const { value, label, color, angle, radius, id, lp } = stat;
       const ls = orbitPoint(angle, 126);
       const dx = lp.x - ls.x;
       const dy = lp.y - ls.y;
@@ -97,11 +125,7 @@ class T262Donut extends HTMLElement {
         </div>`;
     };
 
-    const orbitHTML =
-      makeOrbitStat(pass, "Passed", "rgba(255,255,255,0.9)", passDeg / 2, 164, "pass") +
-      makeOrbitStat(fail, "Failed", "rgba(255,255,255,0.7)", (passDeg + failDeg) / 2, 170) +
-      makeOrbitStat(ce, "Compile Errors", "rgba(255,255,255,0.7)", (failDeg + ceDeg) / 2, 164) +
-      makeOrbitStat(skip, "Skipped", "rgba(255,255,255,0.7)", (ceDeg + 360) / 2, 178);
+    const orbitHTML = placed.map(makeOrbitStat).join("");
 
     // Build legend
     const legendHTML = segments
@@ -134,7 +158,7 @@ class T262Donut extends HTMLElement {
           width: min(100%, 380px);
           height: 320px;
           margin: 0 auto;
-          overflow: hidden;
+          overflow: visible;
         }
         .gauge-wrap {
           position: relative;
