@@ -1,0 +1,14 @@
+{
+  "pr": 90,
+  "conclusion": "failure",
+  "head_branch": "issue-1056-dataview-setters",
+  "head_sha": "1aeb763af7d6550e66183dc5710fa35aaba3bb8b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24286878184",
+  "timestamp": "2026-04-11T16:44:28Z",
+  "pass": 21810,
+  "fail": 18659,
+  "compile_error": 1344,
+  "delta": 60,
+  "regressions": 16,
+  "improvements": 76
+}
