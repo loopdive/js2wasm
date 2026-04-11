@@ -198,3 +198,25 @@ Sprint 40 is **NOT yet closed** as of 2026-04-11 end-of-day. Remaining to close:
 4. Final retrospective pass + tag `sprint/40`
 
 Next session's first action: file-issue validation on #990 / #998 / #997 status and dispatch #1030.
+
+## lodash stress results (#1031, dev-1031, 2026-04-11)
+
+**Outcome:** worst-case branch of the dispatch — `compileProject` does NOT compile lodash end-to-end today. Test harness ships as `tests/stress/lodash-tier1.test.ts` encoding the current broken behavior as passing assertions so future fixes can flip them.
+
+Total modules attempted: 6 (identity, noop, add, clamp, sum, constant — both CJS `lodash/` and ESM `lodash-es/` variants).
+
+| Path | Success | Usable? |
+|---|---|---|
+| CJS `lodash/*.js` via compileProject | compiles, empty binary | No — CJS not supported |
+| ESM `lodash-es/identity.js` via compileProject | compiles, empty binary | No — `export default` dropped |
+| ESM `lodash-es/clamp.js` via compileProject | compiles, invalid Wasm | No — codegen type mismatch |
+| ESM `lodash-es/add.js` via compileProject | compiles, invalid Wasm | No — undeclared fn ref |
+| Shim `.ts` that imports `lodash-es/*.js` | compiles, `run` exported | No — resolver returns `@types/.d.ts` not real `.js` |
+
+Top error buckets:
+- 1 × ModuleResolver `@types/*` priority overrides implementation → **#1060**
+- 1 × `analyzeMultiSource` drops `allowJs` + forces `.js → .ts` → **#1061**
+- 1 × `toNumber` if-branch type coercion (externref vs i32) → **#1062**
+- 1 × `createMathOperation` closure function-slot indexing → **#1063**
+
+Follow-up issues filed: **#1060, #1061, #1062, #1063** (all ready, all reference `parent: 1031`). The Tier 1 acceptance criterion ("`lodash/clamp(5,0,10) === 5`") is **not yet met** and deferred to #1060-#1063. No compiler source was modified in this PR — it's pure investigation per the dispatch scope rule.

@@ -1,0 +1,14 @@
+{
+  "pr": 104,
+  "conclusion": "failure",
+  "head_branch": "issue-1052-array-dstr-symbol-iterator",
+  "head_sha": "5923f8afffc33dfaf5ffddcf8f67779d08e81184",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288859745",
+  "timestamp": "2026-04-11T18:36:14Z",
+  "pass": 22083,
+  "fail": 18411,
+  "compile_error": 1325,
+  "delta": 333,
+  "regressions": 79,
+  "improvements": 412
+}
