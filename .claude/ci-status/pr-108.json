@@ -1,0 +1,14 @@
+{
+  "pr": 108,
+  "conclusion": "failure",
+  "head_branch": "issue-1065-array-declared-global",
+  "head_sha": "9d4dd8331bcf751fec1c467b7b6df5814b961101",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24289276372",
+  "timestamp": "2026-04-11T18:59:37Z",
+  "pass": 2260,
+  "fail": 1886,
+  "compile_error": 37684,
+  "delta": -19490,
+  "regressions": 19528,
+  "improvements": 38
+}
