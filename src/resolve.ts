@@ -148,10 +148,161 @@ export class ModuleResolver {
       resolved = result.resolvedModule.resolvedFileName;
       // Normalize the path
       resolved = path.resolve(resolved);
+
+      // TypeScript's standard resolver prefers `.d.ts` declarations from
+      // `@types/<pkg>` over the real implementation at `<pkg>/...`. For
+      // js2wasm's multi-file compile path we need the implementation body,
+      // not just the type signatures — otherwise the import site compiles
+      // to a stub that never calls the real function. When we detect an
+      // `@types` resolution, try to locate the matching `.js` / `.mjs` /
+      // `.cjs` / `.ts` body in a sibling `node_modules/<pkg>/<subpath>` and
+      // return that instead. See issue #1060.
+      if (pkgName && /[/\\]@types[/\\]/.test(resolved)) {
+        const implPath = this.findImplementationBody(pkgName, specifier, containingFile);
+        if (implPath) {
+          resolved = implPath;
+        }
+      }
     }
 
     this.resolveCache.set(cacheKey, resolved);
     return resolved;
+  }
+
+  /**
+   * When `ts.resolveModuleName` returned a file under `@types/<pkg>/`,
+   * attempt to find the matching real implementation body in a sibling
+   * `node_modules/<pkg>/` directory and return its absolute path, or null
+   * if no implementation file can be located.
+   *
+   * Handles both standard npm layouts (`node_modules/<pkg>/...`) and pnpm
+   * layouts (where `@types/<pkg>` lives under `.pnpm/` but the real package
+   * is still hoisted to the top-level `node_modules/<pkg>`). The search
+   * walks up from `containingFile` through parent directories looking for
+   * each candidate — this matches Node's own module resolution walk.
+   */
+  private findImplementationBody(pkgName: string, specifier: string, containingFile: string): string | null {
+    const fs = getFs();
+    if (!fs) return null;
+
+    // Extract the subpath within the package. For "lodash-es/identity.js",
+    // pkgName="lodash-es" and subpath="identity.js". For scoped packages
+    // like "@scope/pkg/sub", pkgName="@scope/pkg" and subpath="sub".
+    const afterPkg = specifier.slice(pkgName.length).replace(/^\//, "");
+
+    // Candidate extensions to probe when the specifier has no extension,
+    // or when the specifier's .js needs to be mapped to a real file on
+    // disk (some packages ship source as .ts/.mjs alongside .d.ts stubs).
+    const probeExtensions = ["", ".js", ".mjs", ".cjs", ".ts"];
+
+    // Walk up from the containing file's directory looking for a
+    // `node_modules/<pkgName>/<subpath>` match. This mirrors Node's module
+    // resolution and correctly handles pnpm / workspace layouts where
+    // `@types/<pkg>` and `<pkg>` may be hoisted to different levels.
+    let dir = path.dirname(containingFile);
+    const root = path.parse(dir).root;
+    const seenDirs = new Set<string>();
+    while (!seenDirs.has(dir)) {
+      seenDirs.add(dir);
+      const pkgRoot = path.join(dir, "node_modules", pkgName);
+      if (this.tryStatDir(pkgRoot)) {
+        const found = this.probeImplementationPath(pkgRoot, afterPkg, probeExtensions);
+        if (found) return found;
+      }
+      if (dir === root) break;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+
+    // Fall back to rootDir/node_modules/<pkg> in case the containing file
+    // lives outside the normal project tree (e.g. synthetic test inputs).
+    const rootPkg = path.join(this.rootDir, "node_modules", pkgName);
+    if (this.tryStatDir(rootPkg)) {
+      const found = this.probeImplementationPath(rootPkg, afterPkg, probeExtensions);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  private tryStatDir(p: string): boolean {
+    const fs = getFs();
+    if (!fs) return false;
+    try {
+      return fs.statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  }
+
+  private tryStatFile(p: string): boolean {
+    const fs = getFs();
+    if (!fs) return false;
+    try {
+      return fs.statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Given a package root (e.g. `.../node_modules/lodash-es`) and a subpath
+   * from a specifier (e.g. `identity.js` or `identity` or ``), attempt to
+   * locate the implementation file on disk using the probe extensions.
+   */
+  private probeImplementationPath(pkgRoot: string, afterPkg: string, exts: readonly string[]): string | null {
+    // Bare specifier (no subpath): read package.json `main` / `module`.
+    if (afterPkg === "") {
+      const pkgJsonPath = path.join(pkgRoot, "package.json");
+      if (this.tryStatFile(pkgJsonPath)) {
+        try {
+          const pkg = JSON.parse(getFs()!.readFileSync(pkgJsonPath, "utf-8"));
+          const mainField: string | undefined = pkg.module ?? pkg.main;
+          if (typeof mainField === "string" && mainField.length > 0) {
+            const mainPath = path.resolve(pkgRoot, mainField);
+            if (this.tryStatFile(mainPath)) return mainPath;
+            for (const ext of exts) {
+              if (ext === "") continue;
+              const withExt = mainPath + ext;
+              if (this.tryStatFile(withExt)) return withExt;
+            }
+          }
+        } catch {
+          // Malformed package.json — fall through to index probes
+        }
+      }
+      // Fall back to index.{js,mjs,cjs,ts}
+      for (const ext of exts) {
+        if (ext === "") continue;
+        const indexPath = path.join(pkgRoot, "index" + ext);
+        if (this.tryStatFile(indexPath)) return indexPath;
+      }
+      return null;
+    }
+
+    // Subpath specifier: try the exact path first, then strip `.d.ts` or
+    // probe additional extensions.
+    const direct = path.join(pkgRoot, afterPkg);
+    if (this.tryStatFile(direct)) return direct;
+
+    // If the specifier ended in `.js` but only a `.ts` body exists on disk,
+    // swap the extension.
+    if (afterPkg.endsWith(".js")) {
+      const asTs = path.join(pkgRoot, afterPkg.slice(0, -3) + ".ts");
+      if (this.tryStatFile(asTs)) return asTs;
+      const asMjs = path.join(pkgRoot, afterPkg.slice(0, -3) + ".mjs");
+      if (this.tryStatFile(asMjs)) return asMjs;
+    }
+
+    // No extension on the specifier: probe each candidate.
+    if (!/\.[a-zA-Z0-9]+$/.test(afterPkg)) {
+      for (const ext of exts) {
+        if (ext === "") continue;
+        const withExt = path.join(pkgRoot, afterPkg + ext);
+        if (this.tryStatFile(withExt)) return withExt;
+      }
+    }
+    return null;
   }
 
   /**

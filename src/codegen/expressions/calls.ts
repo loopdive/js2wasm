@@ -4418,17 +4418,20 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           fctx.body.push({ op: "drop" });
         }
       }
-      // Emit the inlined body, remapping local.get indices to the temp locals
+      // Emit the inlined body, remapping local.get indices to the temp locals.
+      // Shallow-clone each instr so later remap passes (dead-elim, late-import
+      // shift) do not mutate indices through shared references between the
+      // original function body and the inlined copy (#1063).
       for (const instr of inlineInfo.body) {
         if (instr.op === "local.get") {
           const mapped = argLocals[(instr as any).index];
           if (mapped !== undefined) {
             fctx.body.push({ op: "local.get", index: mapped });
           } else {
-            fctx.body.push(instr); // should not happen for valid inline candidates
+            fctx.body.push({ ...instr });
           }
         } else {
-          fctx.body.push(instr);
+          fctx.body.push({ ...instr });
         }
       }
       return inlineInfo.returnType ?? VOID_RESULT;
