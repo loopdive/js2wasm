@@ -370,6 +370,8 @@ const WELL_KNOWN_SYMBOLS: Record<string, number> = {
   split: 10,
   unscopables: 11,
   asyncIterator: 12,
+  dispose: 13,
+  asyncDispose: 14,
 };
 
 /**
@@ -912,6 +914,13 @@ export function compileObjectLiteralForStruct(
         : retType && !isVoidType(retType)
           ? [resolveWasmType(ctx, retType)]
           : [];
+
+      // Track object-literal methods that read `arguments` (#1053) so
+      // callers can populate the __extras_argv global with runtime args
+      // beyond the formal param count.
+      if (prop.body && bodyUsesArguments(prop.body)) {
+        ctx.funcUsesArguments.add(fullName);
+      }
 
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
 

@@ -40,7 +40,23 @@ export function compileClosureCall(
   if (localIdx !== undefined) {
     const localType =
       localIdx < fctx.params.length ? fctx.params[localIdx]?.type : fctx.locals[localIdx - fctx.params.length]?.type;
-    if (localType?.kind === "externref") {
+    // Boxed capture: the local is a ref cell wrapping the real value. Unwrap
+    // it first, then coerce the underlying externref to the closure struct type
+    // (#1048).
+    const boxed = fctx.boxedCaptures?.get(varName);
+    if (boxed) {
+      const castType: ValType = { kind: "ref_null", typeIdx: info.structTypeIdx };
+      const castLocal = allocLocal(fctx, `__closure_cast_${fctx.locals.length}`, castType);
+      fctx.body.push({ op: "local.get", index: localIdx });
+      // struct.get $refCell $value — unwrap to underlying externref/ref
+      fctx.body.push({ op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
+      if (boxed.valType.kind === "externref") {
+        fctx.body.push({ op: "any.convert_extern" });
+      }
+      emitGuardedRefCast(fctx, info.structTypeIdx);
+      fctx.body.push({ op: "local.set", index: castLocal });
+      effectiveLocalIdx = castLocal;
+    } else if (localType?.kind === "externref") {
       // Convert externref → anyref → ref $closure_struct, store in a new local
       const castType: ValType = { kind: "ref_null", typeIdx: info.structTypeIdx };
       const castLocal = allocLocal(fctx, `__closure_cast_${fctx.locals.length}`, castType);
