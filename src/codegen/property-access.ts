@@ -1113,15 +1113,12 @@ export function compilePropertyAccess(
           localIdx < fctx.params.length
             ? fctx.params[localIdx]!.type
             : fctx.locals[localIdx - fctx.params.length]?.type;
-        if (localType?.kind === "externref") {
-          const funcIdx = ctx.funcMap.get("__extern_length");
-          if (funcIdx !== undefined) {
-            fctx.body.push({ op: "local.get", index: localIdx });
-            fctx.body.push({ op: "call", funcIdx });
-            return { kind: "f64" };
-          }
-        }
         // Vec struct ref local (e.g. `arguments` object) — struct.get field 0 (length)
+        // Note: for externref locals (e.g. `obj: any` in filter callbacks), we fall through
+        // to the generic externref path below (line ~1731) which uses multi-struct dispatch
+        // (ref.test → ref.cast → struct.get) to read the WasmGC struct field directly.
+        // Calling __extern_length on an externref-wrapped WasmGC struct returns 0 because
+        // obj.length is undefined on opaque externref objects in V8.
         if ((localType?.kind === "ref" || localType?.kind === "ref_null") && localType.typeIdx !== undefined) {
           const vecTypeIdx = (localType as { typeIdx: number }).typeIdx;
           const typeDef = ctx.mod.types[vecTypeIdx];
@@ -1144,9 +1141,56 @@ export function compilePropertyAccess(
       const typeDef = ctx.mod.types[vecTypeIdx];
       if (typeDef?.kind === "struct" && typeDef.fields[1]?.name === "data") {
         const exprResult = compileExpression(ctx, fctx, expr.expression);
+        // If the compiled expression returned externref (e.g. `x as any[]`), the TS type
+        // annotation doesn't guarantee the runtime struct type. Use multi-struct dispatch:
+        // try ref.test for the expected vec type first (struct.get field 0 gives the length),
+        // falling back to __extern_length for genuine host objects (real JS arrays).
+        // This avoids: (1) unguarded struct.get on externref (Wasm validation error), and
+        // (2) __extern_length returning 0 for WasmGC structs (obj.length is undefined on
+        // externref-wrapped WasmGC objects in V8).
+        if (exprResult?.kind === "externref") {
+          const extTmpIdx = allocLocal(fctx, `__len_ext_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: extTmpIdx });
+          const anyTmpIdx = allocLocal(fctx, `__len_any_${fctx.locals.length}`, { kind: "anyref" });
+          fctx.body.push({ op: "local.get", index: extTmpIdx });
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+          fctx.body.push({ op: "local.set", index: anyTmpIdx });
+          const lenType = ctx.fast ? { kind: "i32" as const } : { kind: "f64" as const };
+          const lenTmp2 = allocLocal(fctx, `__len_val_${fctx.locals.length}`, lenType);
+          const lengthFuncIdx = ensureLateImport(ctx, "__extern_length", [{ kind: "externref" }], [{ kind: "f64" }]);
+          flushLateImportShifts(ctx, fctx);
+          const fallbackInstrs2: Instr[] =
+            lengthFuncIdx !== undefined
+              ? [
+                  { op: "local.get", index: extTmpIdx } as Instr,
+                  { op: "call", funcIdx: lengthFuncIdx } as Instr,
+                  ...(ctx.fast ? [{ op: "i32.trunc_sat_f64_s" } as unknown as Instr] : []),
+                  { op: "local.set", index: lenTmp2 } as Instr,
+                ]
+              : [
+                  { op: ctx.fast ? "i32.const" : "f64.const", value: 0 } as Instr,
+                  { op: "local.set", index: lenTmp2 } as Instr,
+                ];
+          fctx.body.push({ op: "local.get", index: anyTmpIdx });
+          fctx.body.push({ op: "ref.test", typeIdx: vecTypeIdx });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "local.get", index: anyTmpIdx } as Instr,
+              { op: "ref.cast", typeIdx: vecTypeIdx } as Instr,
+              { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 } as Instr,
+              ...(ctx.fast ? [] : [{ op: "f64.convert_i32_s" } as Instr]),
+              { op: "local.set", index: lenTmp2 } as Instr,
+            ],
+            else: fallbackInstrs2,
+          });
+          fctx.body.push({ op: "local.get", index: lenTmp2 });
+          return lenType;
+        }
         // Guard: the TS type might not match the runtime struct type.
         // If the compiled expression returned a different ref type, use ref.test
-        // to verify before struct.get, falling back to __extern_length or 0.
+        // to verify before struct.get, falling back to 0.
         if (
           exprResult &&
           (exprResult.kind === "ref" || exprResult.kind === "ref_null") &&
