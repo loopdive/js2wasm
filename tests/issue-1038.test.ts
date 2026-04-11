@@ -7,6 +7,10 @@
  * arguments — but it eliminates the "bind is not a function" runtime error and
  * unblocks the large class of test262 tests that only need bind's result to
  * behave as a function value.
+ *
+ * The intercept is narrowed to receivers whose TS type has at least one call
+ * signature, which preserves the legacy "throws on non-function receiver"
+ * behavior that some test262 assertions implicitly rely on.
  */
 
 import { describe, it, expect } from "vitest";
@@ -26,7 +30,7 @@ describe("issue-1038: Function.prototype.bind", () => {
     const r = await runTest(`
       function foo(): number { return 42; }
       export function test(): i32 {
-        const bound = (foo as any).bind({});
+        const bound = foo.bind({});
         return bound == null ? 0 : 1;
       }
     `);
@@ -35,9 +39,9 @@ describe("issue-1038: Function.prototype.bind", () => {
 
   it("bind with partial arguments does not crash", async () => {
     const r = await runTest(`
-      function foo(): number { return 7; }
+      function foo(a: number, b: number, c: number): number { return a + b + c; }
       export function test(): i32 {
-        const bound = (foo as any).bind(null, 1, 2, 3);
+        const bound = foo.bind(null, 1, 2, 3);
         return bound == null ? 0 : 1;
       }
     `);
@@ -47,10 +51,10 @@ describe("issue-1038: Function.prototype.bind", () => {
   it("bind evaluates arguments for side effects", async () => {
     const r = await runTest(`
       let counter: i32 = 0;
-      function foo(): number { return 1; }
-      function inc(): i32 { counter = counter + 1; return 0; }
+      function foo(a: number, b: number, c: number): number { return 1; }
+      function inc(): number { counter = counter + 1; return 0; }
       export function test(): i32 {
-        (foo as any).bind(inc(), inc(), inc());
+        foo.bind(inc(), inc(), inc());
         return counter;
       }
     `);
@@ -61,7 +65,7 @@ describe("issue-1038: Function.prototype.bind", () => {
     const r = await runTest(`
       function foo(): number { return 99; }
       export function test(): i32 {
-        const a = (foo as any).bind({});
+        const a = foo.bind({});
         const b = a;
         return b == null ? 0 : 1;
       }

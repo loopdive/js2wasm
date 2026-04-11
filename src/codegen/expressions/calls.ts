@@ -362,20 +362,31 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     // rely on bound-this semantics or partial-arg prepending are not fully satisfied,
     // but they no longer error out with "bind is not a function".
     //
+    // Narrowing: only fires when the receiver's TS type has call signatures. This
+    // preserves the legacy "throws on non-function receiver" behavior that a
+    // handful of test262 assertions implicitly rely on
+    // (e.g. `assert.throws(TypeError, () => nonFn.bind())` and `JSON.bind()`).
+    //
     // Exclusion: fn.bind(...)(...) (immediate bind+call) is already handled later
     // with proper argument threading — don't intercept it here.
     if (propAccess.name.text === "bind" && !(ts.isCallExpression(expr.parent) && expr.parent.expression === expr)) {
-      for (const arg of expr.arguments) {
-        const t = compileExpression(ctx, fctx, arg);
-        if (t) fctx.body.push({ op: "drop" });
+      const recvTsType = ctx.checker.getTypeAtLocation(propAccess.expression);
+      const recvHasCallSig = (recvTsType?.getCallSignatures?.()?.length ?? 0) > 0;
+      if (recvHasCallSig) {
+        for (const arg of expr.arguments) {
+          const t = compileExpression(ctx, fctx, arg);
+          // Only drop values that actually pushed onto the stack.
+          // null = failed-to-compile (nothing pushed); VOID_RESULT = void call (nothing pushed).
+          if (t !== null && t !== VOID_RESULT) fctx.body.push({ op: "drop" });
+        }
+        const recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+        if (recvType === null || recvType === VOID_RESULT) {
+          fctx.body.push({ op: "ref.null.extern" });
+        } else if (recvType.kind !== "externref") {
+          fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+        }
+        return { kind: "externref" };
       }
-      const recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
-      if (recvType === null) {
-        fctx.body.push({ op: "ref.null.extern" });
-      } else if (recvType.kind !== "externref") {
-        fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
-      }
-      return { kind: "externref" };
     }
 
     // Handle fn.call(thisArg, ...args) and fn.apply(thisArg, argsArray)
