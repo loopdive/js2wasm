@@ -1675,19 +1675,16 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
           }
           // For array destructuring params: widen to externref so JS callers can pass
           // arbitrary iterables (custom iterators, generators, etc.) (#1016).
-          // Widen when:
-          //   - type already resolved to externref or $vec_externref (any/any[] param), OR
-          //   - param has no annotation AND call-site inference didn't give a specific type
-          //     (i.e. TS inferred a tuple type like [any] that doesn't map to $vec_externref)
-          // Don't widen if call-site inference resolved to a specific typed vec ($vec_f64 etc.)
-          // — that would break callers passing properly-typed arrays.
+          // Widen only when type already resolved to externref or $vec_externref (any/any[]).
+          // When call-site inference resolved to a specific typed vec ($vec_f64 etc.),
+          // keep that type — externref widening would break callers passing typed arrays.
           if (ts.isArrayBindingPattern(param.name)) {
             const extVecIdx = ctx.vecTypeMap.get("externref");
             const isExtVec =
               (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
               extVecIdx !== undefined &&
               (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
-            if (wasmType.kind === "externref" || isExtVec || (!param.type && !callSiteRefined)) {
+            if (wasmType.kind === "externref" || isExtVec) {
               wasmType = { kind: "externref" };
             }
           }
@@ -1748,18 +1745,16 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             }
             // For array destructuring params: widen to externref so JS callers can pass
             // arbitrary iterables (custom iterators, generators, etc.) (#1016).
-            // Widen when:
-            //   - type already resolved to externref or $vec_externref (any/any[] param), OR
-            //   - param has no annotation AND call-site inference didn't give a specific type
-            //     (i.e. TS inferred a tuple type like [any] that doesn't map to $vec_externref)
-            // Don't widen if call-site inference resolved to a specific typed vec ($vec_f64 etc.)
+            // Widen only when type already resolved to externref or $vec_externref.
+            // When call-site inference resolved to a specific typed vec ($vec_f64 etc.),
+            // keep that type — externref widening would break callers passing typed arrays.
             if (ts.isArrayBindingPattern(param.name)) {
               const extVecIdx = ctx.vecTypeMap.get("externref");
               const isExtVec =
                 (wasmType.kind === "ref_null" || wasmType.kind === "ref") &&
                 extVecIdx !== undefined &&
                 (wasmType as { typeIdx: number }).typeIdx === extVecIdx;
-              if (wasmType.kind === "externref" || isExtVec || (!param.type && !callSiteRefined)) {
+              if (wasmType.kind === "externref" || isExtVec) {
                 wasmType = { kind: "externref" };
               }
             }
