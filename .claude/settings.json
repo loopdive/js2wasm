@@ -13,7 +13,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.message' | head -c 140 | xargs -0 -I{} curl -H 'Title: ts2wasm' -d '{}' http://host.docker.internal:8090/loopdive-claude"
+            "command": ".claude/hooks/notify-gate.sh",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p ~/.claude && date +%s > ~/.claude/last-user-activity",
+            "timeout": 2
           }
         ]
       }
