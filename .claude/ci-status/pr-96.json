@@ -2,13 +2,13 @@
   "pr": 96,
   "conclusion": "failure",
   "head_branch": "issue-1053-arguments-length-trailing-comma",
-  "head_sha": "a1ba0f23a4f3611c9700246217a5b67d4d7ed2b6",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24287284171",
-  "timestamp": "2026-04-11T17:07:18Z",
-  "pass": 21937,
-  "fail": 18515,
-  "compile_error": 1367,
-  "delta": 187,
-  "regressions": 8,
-  "improvements": 195
+  "head_sha": "acdf90a8694de5d3ee261a2aa000439efa9acf6b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288538235",
+  "timestamp": "2026-04-11T18:22:40Z",
+  "pass": 22101,
+  "fail": 18359,
+  "compile_error": 1359,
+  "delta": 351,
+  "regressions": 22,
+  "improvements": 373
 }
