@@ -1213,7 +1213,10 @@ export function coerceType(
     fctx.body.push({ op: "extern.convert_any" });
     // Vec structs (arrays) need Symbol.iterator to be iterable by JS APIs (#854).
     // After extern.convert_any, call __make_iterable to attach Symbol.iterator via sidecar.
-    if (getArrTypeIdxFromVec(ctx, typeIdx) >= 0) {
+    // Skip i32_byte vec structs (ArrayBuffer/DataView backing) — neither is
+    // iterable in JS and converting them to a JS array loses the wasmGC
+    // struct identity that DataView method dispatch depends on (#1056).
+    if (getArrTypeIdxFromVec(ctx, typeIdx) >= 0 && ctx.vecTypeMap.get("i32_byte") !== typeIdx) {
       const makeIterIdx = ensureLateImport(ctx, "__make_iterable", [{ kind: "externref" }], [{ kind: "externref" }]);
       if (makeIterIdx !== undefined) {
         flushLateImportShifts(ctx, fctx);
