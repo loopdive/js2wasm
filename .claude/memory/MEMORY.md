@@ -39,6 +39,7 @@
 - [feedback_team_comm_channels.md](feedback_team_comm_channels.md) — Dev status via TaskUpdate not verbose SendMessage; shutdown handoffs via agent-context files
 - [feedback_token_budget_guardrails.md](feedback_token_budget_guardrails.md) — Warn at 25% weekly budget, force break at 40%, hard stop at 50%
 - [feedback_diary_and_sprints_before_compact.md](feedback_diary_and_sprints_before_compact.md) — Update plan/diary.md and plan/sprints/sprint-N.md (+ retrospective) BEFORE /compact — never discard learnings with the conversation
+- [feedback_tasklist_sync_unreliable.md](feedback_tasklist_sync_unreliable.md) — TaskList sync per-agent is unreliable; when devs report mismatched task IDs, fall back to SendMessage as authoritative dispatch
 
 ### Issue management
 - [feedback_issue_completion.md](feedback_issue_completion.md) — Completion procedure: move, frontmatter, summary, log, unblock
@@ -52,6 +53,7 @@
 - [feedback_test262_skip_issues.md](feedback_test262_skip_issues.md) — Every skip filter must have an issue
 - [feedback_never_delete_test_data.md](feedback_never_delete_test_data.md) — Never delete test data/cache/runs without asking
 - [feedback_ask_before_killing_tests.md](feedback_ask_before_killing_tests.md) — Never kill running tests without asking
+- [feedback_baseline_drift_cross_check.md](feedback_baseline_drift_cross_check.md) — Cross-check CI regressions against other open PRs; sample locally — identical clusters across unrelated PRs are drift
 - [reference_error_analysis.md](reference_error_analysis.md) — Test262 error analysis procedure
 
 ### General behavior
