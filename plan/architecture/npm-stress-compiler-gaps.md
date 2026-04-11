@@ -69,7 +69,7 @@ None of the four libraries need hand-written signatures for the compiler:
 
 **Implication**: the compiler does not need a new type-extraction layer for the stress tests. What each stress test should verify is whether the current `allowJs` + `checkJs` + `ModuleResolver` combination *actually* surfaces declaration-sourced signatures on the multi-file path. If `compileProject` drops them (e.g., the BFS walker in `resolveAllImports` only queues `.ts`/`.tsx`/`.d.ts` and not `.js`, see `src/resolve.ts:39`), file that as a concrete precondition issue — this is the most likely real gap and is trivially fixable.
 
-**Proposed follow-up (likely needed)**: small compiler PR to ensure that when `ts.resolveModuleName` resolves a bare specifier to a bundled or sidecar `.d.ts`, `resolveAllImports` ALSO queues the corresponding `.js` implementation file (discovered via the `packageId` or by replacing the extension). Otherwise the `.d.ts` gives us types but the `.js` bodies never enter the `ts.Program`. File as **#1047** once confirmed by a stress-test run.
+**Proposed follow-up (likely needed)**: small compiler PR to ensure that when `ts.resolveModuleName` resolves a bare specifier to a bundled or sidecar `.d.ts`, `resolveAllImports` ALSO queues the corresponding `.js` implementation file (discovered via the `packageId` or by replacing the extension). Otherwise the `.d.ts` gives us types but the `.js` bodies never enter the `ts.Program`. File this as a new issue (TBD number — **#1047 is taken by the harvester's private-class-elements issue**, do not reuse) once a stress-test run confirms the gap.
 
 ## Recommendation: attempt prettier first
 
