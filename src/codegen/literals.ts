@@ -116,28 +116,23 @@ export function compileObjectLiteral(
   }
 
   // Empty `{}` used as an externref plain object — only when the TypeScript type
-  // context is `any` or the object is explicitly typed without struct widening.
-  // Do NOT apply to: parameter defaults, binding element defaults, variable declarations,
-  // or any context where the struct system expects a concrete typed object.
+  // context is `any`, `unknown`, or `object` (non-primitive), meaning no specific struct
+  // shape is expected.
+  // Do NOT apply to: parameter defaults or binding element defaults where the struct system
+  // expects a concrete typed object for destructuring.
   // (Too-broad application caused 150+ dstr regressions: parameter defaults like
   //  `function({ x } = {})` would call __new_plain_object instead of struct.new,
   //  making the WasmGC ref.test for the struct type fail and null-deref.)
-  if (
-    expr.properties.length === 0 &&
-    !ts.isVariableDeclaration(expr.parent) &&
-    !ts.isParameter(expr.parent) &&
-    !ts.isBindingElement(expr.parent) &&
-    !ts.isPropertyAssignment(expr.parent) &&
-    !ts.isShorthandPropertyAssignment(expr.parent) &&
-    !ts.isReturnStatement(expr.parent) &&
-    !ts.isArrowFunction(expr.parent) &&
-    !ts.isArrayLiteralExpression(expr.parent) &&
-    !ts.isAsExpression(expr.parent)
-  ) {
-    // Check contextual type: only use plain object when context expects `any` or externref
+  if (expr.properties.length === 0 && !ts.isParameter(expr.parent) && !ts.isBindingElement(expr.parent)) {
+    // Check contextual type: only use plain object when context is untyped or the `object` type
+    // (TypeScript's `object` = NonPrimitive, used e.g. for Object.defineProperty's first arg).
+    // Variable declarations without annotation have no contextual type → isAnyContext = true.
     const ctxType = ctx.checker.getContextualType(expr);
     const isAnyContext =
-      !ctxType || (ctxType.flags & ts.TypeFlags.Any) !== 0 || (ctxType.flags & ts.TypeFlags.Unknown) !== 0;
+      !ctxType ||
+      (ctxType.flags & ts.TypeFlags.Any) !== 0 ||
+      (ctxType.flags & ts.TypeFlags.Unknown) !== 0 ||
+      (ctxType.flags & ts.TypeFlags.NonPrimitive) !== 0; // TypeScript `object` keyword type
     if (isAnyContext) {
       const funcIdx = ensureLateImport(ctx, "__new_plain_object", [], [{ kind: "externref" }]);
       flushLateImportShifts(ctx, fctx);

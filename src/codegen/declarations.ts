@@ -1263,17 +1263,27 @@ export function collectEmptyObjectWidening(
   scanStatements(sourceFile.statements);
 }
 
-/** Returns true if an Object.defineProperty descriptor ObjectLiteral is an accessor descriptor.
- * Accessor descriptors have `get` or `set` properties and should NOT be widened as struct fields
- * because the accessor semantics need the extern/JS path (#929). */
+/** Returns true if an Object.defineProperty descriptor ObjectLiteral is an accessor descriptor
+ * with an ACTUAL function getter or setter that needs the sidecar/extern path.
+ * Descriptors with `get: undefined` or `set: undefined` are NOT treated as accessor descriptors —
+ * they are widened like data descriptors so the property appears in for-in and hasOwnProperty
+ * (matching baseline behavior where all Object.defineProperty targets are widened). (#929) */
 function isAccessorDescriptor(descArg: ts.Expression): boolean {
   if (!ts.isObjectLiteralExpression(descArg)) return false;
   for (const prop of descArg.properties) {
-    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-      if (prop.name.text === "get" || prop.name.text === "set") return true;
-    }
+    // Method shorthand: get() {...} or set(v) {...} — always a real accessor
     if (ts.isMethodDeclaration(prop) && prop.name && ts.isIdentifier(prop.name)) {
       if (prop.name.text === "get" || prop.name.text === "set") return true;
+    }
+    // Property assignment: get: <expr> or set: <expr>
+    // Only treat as accessor if the value is an actual function (not `undefined` or other non-callable)
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+      if (prop.name.text === "get" || prop.name.text === "set") {
+        const init = prop.initializer;
+        if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) return true;
+        // Named identifier that is NOT `undefined` or `null` — may be a function variable
+        if (ts.isIdentifier(init) && init.text !== "undefined" && init.text !== "null") return true;
+      }
     }
   }
   return false;
@@ -1324,27 +1334,19 @@ export function collectPropsFromStatements(
         if (ts.isIdentifier(objArg) && objArg.text === varName && ts.isStringLiteral(propArg)) {
           const propName = propArg.text;
           if (!seenProps.has(propName)) {
-            // Accessor descriptors (get/set) go through the extern path and must NOT be
-            // widened as struct fields — the closure-based getter/setter needs JS host (#929).
-            // Mark as seen so that later `obj.val = 42` (setter invocation) doesn't create a
-            // struct field either; all accesses should stay on the extern/JS path.
-            if (isAccessorDescriptor(descArg)) {
-              seenProps.add(propName);
-            } else {
-              seenProps.add(propName);
-              // Try to get value type from descriptor.value
-              let wasmType: ValType = { kind: "externref" };
-              if (ts.isObjectLiteralExpression(descArg)) {
-                for (const prop of descArg.properties) {
-                  if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") {
-                    const rhsType = checker.getTypeAtLocation(prop.initializer);
-                    wasmType = resolveWasmType(ctx, rhsType);
-                    break;
-                  }
+            seenProps.add(propName);
+            // Try to get value type from descriptor.value
+            let wasmType: ValType = { kind: "externref" };
+            if (ts.isObjectLiteralExpression(descArg)) {
+              for (const prop of descArg.properties) {
+                if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") {
+                  const rhsType = checker.getTypeAtLocation(prop.initializer);
+                  wasmType = resolveWasmType(ctx, rhsType);
+                  break;
                 }
               }
-              extraProps.push({ name: propName, type: wasmType });
             }
+            extraProps.push({ name: propName, type: wasmType });
           }
         }
       }
@@ -1368,23 +1370,18 @@ export function collectPropsFromStatements(
             if (ts.isIdentifier(objArg) && objArg.text === varName && ts.isStringLiteral(propArg)) {
               const propName = propArg.text;
               if (!seenProps.has(propName)) {
-                // Accessor descriptors must NOT be widened as struct fields (#929)
-                if (isAccessorDescriptor(descArg)) {
-                  seenProps.add(propName);
-                } else {
-                  seenProps.add(propName);
-                  let wasmType: ValType = { kind: "externref" };
-                  if (ts.isObjectLiteralExpression(descArg)) {
-                    for (const prop of descArg.properties) {
-                      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") {
-                        const rhsType = checker.getTypeAtLocation(prop.initializer);
-                        wasmType = resolveWasmType(ctx, rhsType);
-                        break;
-                      }
+                seenProps.add(propName);
+                let wasmType: ValType = { kind: "externref" };
+                if (ts.isObjectLiteralExpression(descArg)) {
+                  for (const prop of descArg.properties) {
+                    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") {
+                      const rhsType = checker.getTypeAtLocation(prop.initializer);
+                      wasmType = resolveWasmType(ctx, rhsType);
+                      break;
                     }
                   }
-                  extraProps.push({ name: propName, type: wasmType });
                 }
+                extraProps.push({ name: propName, type: wasmType });
               }
             }
           }
