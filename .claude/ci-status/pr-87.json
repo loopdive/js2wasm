@@ -1,0 +1,14 @@
+{
+  "pr": 87,
+  "conclusion": "success",
+  "head_branch": "issue-1049-dstr-fn-name-cover",
+  "head_sha": "4ed410f49cbfa6186d1b4eebb40429e7878ebb36",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24286036718",
+  "timestamp": "2026-04-11T15:56:49Z",
+  "pass": 21750,
+  "fail": 18719,
+  "compile_error": 1344,
+  "delta": 170,
+  "regressions": 0,
+  "improvements": 170
+}
