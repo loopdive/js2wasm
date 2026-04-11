@@ -195,6 +195,8 @@ function getLibSource(name: string): string | undefined {
       "lib.es2024.collection.d.ts",
       // ESNext — Set methods (union, intersection, difference, etc.)
       "lib.esnext.collection.d.ts",
+      // ESNext — DisposableStack / AsyncDisposableStack (#1036)
+      "lib.esnext.disposable.d.ts",
       // DOM (decorators loaded via /// <reference> in lib.es5.d.ts)
       "lib.dom.d.ts",
     ];
