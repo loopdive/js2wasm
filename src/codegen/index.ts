@@ -4154,6 +4154,59 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
     });
   }
 
+  // DisposableStack / AsyncDisposableStack — TC39 Explicit Resource Management (#830)
+  if (!ctx.externClasses.has("DisposableStack")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("dispose", externMethod(0, false)); // dispose() → void
+    methods.set("use", externMethod(1)); // use(value) → value
+    methods.set("adopt", externMethod(2)); // adopt(value, onDispose) → value
+    methods.set("defer", externMethod(1, false)); // defer(onDispose) → void
+    methods.set("move", externMethod(0)); // move() → DisposableStack
+
+    ctx.externClasses.set("DisposableStack", {
+      importPrefix: "DisposableStack",
+      namespacePath: [],
+      className: "DisposableStack",
+      constructorParams: [], // new DisposableStack()
+      methods,
+      properties: new Map([["disposed", { type: { kind: "externref" }, readonly: true }]]),
+    });
+  }
+
+  if (!ctx.externClasses.has("AsyncDisposableStack")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("disposeAsync", externMethod(0)); // disposeAsync() → Promise
+    methods.set("use", externMethod(1));
+    methods.set("adopt", externMethod(2));
+    methods.set("defer", externMethod(1, false));
+    methods.set("move", externMethod(0));
+
+    ctx.externClasses.set("AsyncDisposableStack", {
+      importPrefix: "AsyncDisposableStack",
+      namespacePath: [],
+      className: "AsyncDisposableStack",
+      constructorParams: [],
+      methods,
+      properties: new Map([["disposed", { type: { kind: "externref" }, readonly: true }]]),
+    });
+  }
+
+  if (!ctx.externClasses.has("SuppressedError")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    ctx.externClasses.set("SuppressedError", {
+      importPrefix: "SuppressedError",
+      namespacePath: [],
+      className: "SuppressedError",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+      methods,
+      properties: new Map([
+        ["error", { type: { kind: "externref" }, readonly: false }],
+        ["suppressed", { type: { kind: "externref" }, readonly: false }],
+        ["message", { type: { kind: "externref" }, readonly: false }],
+      ]),
+    });
+  }
+
   // Register Object as base extern class with prototype methods (#799 WI2).
   // All extern classes that lack a parent inherit from Object, so
   // findExternInfoForMember will resolve hasOwnProperty, toString, etc.
