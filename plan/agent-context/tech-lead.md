@@ -2,6 +2,59 @@
 agent: tech-lead
 session_end: 2026-04-11
 next_session_entry_point: read this file, skim plan/sprints/sprint-40.md and plan/sprints/sprint-41.md, check `gh pr list` and `git log --oneline origin/main -10`, then dispatch remaining unassigned work
+last_handoff_reason: "second comm-channel loss of the day — my session lost the team-lead channel to sprint-40 after the OOM restart earlier. Devs are still alive in their tmux panes and still members of team `sprint-40`. The fix is to restart this pane with CLAUDE_CODE_TEAM_NAME=sprint-40 to rejoin the existing team."
+---
+
+## IMMEDIATE STATE FOR FRESH SESSION (added 2026-04-11 second handoff)
+
+### Team comms
+- Existing team: **`sprint-40`** (config at `~/.claude/teams/sprint-40/config.json`)
+- 6+ dev members still alive in tmux panes claude:1.2 through claude:1.9
+- The previous tech-lead process (this session) could not reach them — messages reported "success" but no dev replies or pushes happened for 3+ hours
+- Fresh session started with `CLAUDE_CODE_TEAM_NAME=sprint-40 claude` should rejoin and regain the channel
+- First action after rejoining: ping dev-1022 and dev-929 to confirm channel is live
+
+### Open work state (same as earlier in this file, but with updates)
+
+**PR queue (as of ~15 min before this handoff):**
+- **PR #74 (#1024 destructuring rest/holes)** — refreshed by tech-lead directly in /workspace/.claude/worktrees/issue-1024-destr-rest-holes-null (resolved _safeGet conflict by taking origin's _isWasmStruct-gated version). Commit `b31d3ee1` pushed. **CI running — check for fresh delta when it reports.**
+- **PR #59 (#1016 iterator protocol)** — refreshed by tech-lead directly, clean merge. Commit `8d03c877` pushed. **CI running — check for fresh delta.**
+- PR #76 (#1017 P3 yield*) — closed as stale
+- Other open PRs: #38 (MCP channel server) — unrelated
+
+**Unassigned high-value work:**
+- **#1030** Array.prototype long tail — 372 `object is not a function` failures, parent of the fixed #1022, same code area, +200 to +350 expected. Was dispatched to dev-1022 but no confirmation received due to comms loss. **Re-dispatch after rejoining the team.**
+- **#990** early-error residuals (~263 FAIL) — was dispatched to dev-929, same situation.
+- **#1025, #1026, #1027, #1028, #832** — smaller Sprint 40 error fixes, unassigned
+- **#830** DisposableStack (39 FAIL) — unassigned
+
+**Devs and their likely state:**
+- dev-1022 — intended owner of #1030, unknown actual status
+- dev-1016 — PR #74 and #59 now refreshed by tech-lead; awaiting CI
+- dev-929 — intended owner of #990, unknown
+- dev-1014, dev-1021, dev-983 — idle between tasks
+- dev-1017, dev-1018 — shutdown_requests sent earlier but never confirmed approved; may still be alive or may have exited
+
+### Things already persisted (do NOT redo)
+- Sprint 40 interim retro + diary entry
+- Sprint 41 rewrite (non-error work + 4 stress tests + WASI hello-fs)
+- Issues #1031 (lodash), #1032 (axios), #1033 (react), #1034 (prettier), #1035 (WASI) all filed
+- Issue #1030 Array long tail filed
+- .tmp/ scratch cleanup convention in CLAUDE.md
+- notify-gate.sh with 5/5 idle+delay + UserPromptSubmit clear
+- check-cwd.sh hook regex fixed (won't match `git merge` inside quoted comment bodies)
+- .claude/memory/feedback_*.md files for all today's rules
+
+### First commands in fresh session
+```
+pwd && git branch --show-current
+git log --oneline origin/main -8
+gh pr list --limit 10 --json number,title,mergeable,mergeStateStatus
+gh run list --limit 6 --json status,workflowName,headBranch
+```
+
+Then send a ping to dev-1022 and dev-929 to confirm the channel works.
+
 ---
 
 # Tech Lead Context Summary — 2026-04-11 end-of-day
