@@ -143,6 +143,8 @@ class T262Donut extends HTMLElement {
       <style>
         :host {
           display: block;
+          max-width: 100%;
+          overflow-x: clip;
           --_pass: var(--t262-pass, #3fb950);
           --_fail: var(--t262-fail, #f85149);
           --_ce: var(--t262-ce, #d29922);
