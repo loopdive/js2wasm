@@ -1,0 +1,14 @@
+{
+  "pr": 82,
+  "conclusion": "failure",
+  "head_branch": "issue-1027-getter-callback-import",
+  "head_sha": "11738a5e3d1b5832cffcdb52cd22956c643ff954",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24284273731",
+  "timestamp": "2026-04-11T14:18:53Z",
+  "pass": 21550,
+  "fail": 18847,
+  "compile_error": 1416,
+  "delta": 360,
+  "regressions": 32,
+  "improvements": 392
+}
