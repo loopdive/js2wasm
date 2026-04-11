@@ -33,7 +33,20 @@ import {
 } from "./index.js";
 
 export function bodyUsesArguments(node: ts.Node): boolean {
-  if (ts.isIdentifier(node) && node.text === "arguments") return true;
+  if (ts.isIdentifier(node) && node.text === "arguments") {
+    // Skip binding-name positions: `let arguments`, `function f(arguments)`,
+    // `{ arguments } = obj`, etc. Only treat read references as uses.
+    const parent = node.parent as ts.Node | undefined;
+    if (parent) {
+      if (
+        (ts.isVariableDeclaration(parent) || ts.isParameter(parent) || ts.isBindingElement(parent)) &&
+        parent.name === node
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
   // Don't recurse into nested functions/function expressions — they have their own `arguments`
   if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
