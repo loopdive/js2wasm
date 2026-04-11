@@ -303,9 +303,12 @@ export function collectClassDeclaration(
       for (const param of member.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
-        // For array destructuring params: widen to externref only for untyped/any[] params
-        // so that JS callers can pass arbitrary iterables (#1016).
-        // Typed params (e.g. number[]) keep their vec type for the fast struct path.
+        // For array destructuring params: widen to externref when the resolved type is
+        // externref, ref_null $vec_externref, or an unannotated param (TypeScript may
+        // infer [any] tuple for patterns with no annotation). This allows JS callers to
+        // pass arbitrary iterables (#1016). Class methods have no call-site inference so
+        // unannotated params are always effectively untyped and should accept any iterable.
+        // Explicitly typed params (e.g. number[] → $vec_f64) keep their vec type.
         if (ts.isArrayBindingPattern(param.name)) {
           const extVecIdx = ctx.vecTypeMap.get("externref");
           const isExtVec =
@@ -940,9 +943,9 @@ export function compileClassBodies(
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
-        // For array destructuring params: widen to externref only for untyped/any[] params
-        // so that JS callers can pass arbitrary iterables (#1016). Must match collection phase.
-        // Typed params (e.g. number[]) keep their vec type for the fast struct path.
+        // For array destructuring params: widen to externref when the resolved type is
+        // externref, ref_null $vec_externref, or an unannotated param. Must match
+        // the collection phase logic above (#1016).
         if (ts.isArrayBindingPattern(param.name)) {
           const extVecIdx = ctx.vecTypeMap.get("externref");
           const isExtVec =

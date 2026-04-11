@@ -858,9 +858,9 @@ export function compileObjectLiteralForStruct(
       for (const param of prop.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
-        // For array destructuring params: widen to externref only for untyped/any[] params
-        // so that JS callers can pass arbitrary iterables (#1016).
-        // Typed params (e.g. number[]) keep their vec type for the fast struct path.
+        // For array destructuring params: widen to externref when the resolved type is
+        // externref, ref_null $vec_externref, or an unannotated param (#1016).
+        // Typed params (e.g. number[] → $vec_f64) keep their vec type for the fast struct path.
         if (ts.isArrayBindingPattern(param.name)) {
           const extVecIdx = ctx.vecTypeMap.get("externref");
           const isExtVec =
@@ -932,9 +932,9 @@ export function compileObjectLiteralForStruct(
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
         let wasmType = resolveWasmType(ctx, paramType);
-        // For array destructuring params: widen to externref only for untyped/any[] params
-        // so that JS callers can pass arbitrary iterables (#1016). Must match collection phase.
-        // Typed params (e.g. number[]) keep their vec type for the fast struct path.
+        // For array destructuring params: widen to externref when the resolved type is
+        // externref, ref_null $vec_externref, or an unannotated param. Must match
+        // collection phase above (#1016).
         if (ts.isArrayBindingPattern(param.name)) {
           const extVecIdx = ctx.vecTypeMap.get("externref");
           const isExtVec =
