@@ -1,0 +1,14 @@
+{
+  "pr": 98,
+  "conclusion": "failure",
+  "head_branch": "issue-1061-multisource-allowjs",
+  "head_sha": "ac17673a1e8f93f782694be58606b4e674dda0ad",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288421435",
+  "timestamp": "2026-04-11T18:12:31Z",
+  "pass": 21896,
+  "fail": 18599,
+  "compile_error": 1325,
+  "delta": 146,
+  "regressions": 4,
+  "improvements": 150
+}
