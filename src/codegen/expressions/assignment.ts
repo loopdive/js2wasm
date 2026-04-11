@@ -1450,7 +1450,8 @@ function compilePropertyAssignment(
   // Handle static property assignment: ClassName.staticProp = value
   if (ts.isIdentifier(target.expression) && ctx.classSet.has(target.expression.text)) {
     const clsName = target.expression.text;
-    const fullName = `${clsName}_${target.name.text}`;
+    const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
+    const fullName = `${clsName}_${propName}`;
     const globalIdx = ctx.staticProps.get(fullName);
     if (globalIdx !== undefined) {
       const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];

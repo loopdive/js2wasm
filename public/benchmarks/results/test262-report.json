@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-04-11T15:26:10.843Z",
+  "timestamp": "2026-04-11T16:46:00.397Z",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
     "total": 43164,
-    "pass": 21580,
-    "fail": 18889,
+    "pass": 21750,
+    "fail": 18719,
     "compile_error": 1344,
     "compile_timeout": 12,
     "skip": 1339,
@@ -16,8 +16,8 @@
   },
   "official_summary": {
     "total": 43164,
-    "pass": 21580,
-    "fail": 18889,
+    "pass": 21750,
+    "fail": 18719,
     "compile_error": 1344,
     "compile_timeout": 12,
     "skip": 1339,
@@ -26,8 +26,8 @@
   },
   "full_summary": {
     "total": 43164,
-    "pass": 21580,
-    "fail": 18889,
+    "pass": 21750,
+    "fail": 18719,
     "compile_error": 1344,
     "compile_timeout": 12,
     "skip": 1339,
@@ -36,8 +36,8 @@
   },
   "strict_summary": {
     "total": 40655,
-    "pass": 20653,
-    "fail": 17720,
+    "pass": 20823,
+    "fail": 17550,
     "compile_error": 1271,
     "compile_timeout": 12,
     "skip": 999,
@@ -67,8 +67,8 @@
     },
     "standard": {
       "total": 42078,
-      "pass": 21127,
-      "fail": 18297,
+      "pass": 21297,
+      "fail": 18127,
       "compile_error": 1303,
       "compile_timeout": 12,
       "skip": 1339,
@@ -475,8 +475,8 @@
     },
     {
       "name": "built-ins/Proxy",
-      "pass": 54,
-      "fail": 247,
+      "pass": 55,
+      "fail": 246,
       "compile_error": 1,
       "compile_timeout": 0,
       "skip": 9,
@@ -736,8 +736,8 @@
     },
     {
       "name": "language/expressions",
-      "pass": 5559,
-      "fail": 4274,
+      "pass": 5634,
+      "fail": 4199,
       "compile_error": 336,
       "compile_timeout": 0,
       "skip": 524,
@@ -880,8 +880,8 @@
     },
     {
       "name": "language/statements",
-      "pass": 4860,
-      "fail": 3916,
+      "pass": 4954,
+      "fail": 3822,
       "compile_error": 350,
       "compile_timeout": 4,
       "skip": 207,
@@ -907,7 +907,7 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 9266,
+    "assertion_fail": 9096,
     "illegal_cast": 359,
     "negative_test_fail": 108,
     "null_deref": 606,
