@@ -48,3 +48,57 @@ describe("issue #990 — module item position early errors", () => {
     expect(hit).toBe(false);
   });
 });
+
+describe("issue #990 — yield / await as reserved identifier", () => {
+  function hasReservedIdentError(source: string): boolean {
+    const r = compile(source);
+    return !!r.errors?.some((e) => /reserved word and may not be used as an identifier/.test(e.message));
+  }
+
+  it("rejects `var yield` in explicit strict mode", () => {
+    expect(hasReservedIdentError(`"use strict";\nvar yield = 1;\n`)).toBe(true);
+  });
+
+  it("rejects `yield` as arrow parameter default in strict mode", () => {
+    expect(hasReservedIdentError(`"use strict";\n(x = yield) => {};\n`)).toBe(true);
+  });
+
+  it("rejects `{ yield }` shorthand in strict-mode function", () => {
+    expect(hasReservedIdentError(`var yield = 1;\n(function() { "use strict"; ({ yield }); });\n`)).toBe(true);
+  });
+
+  it("rejects `var yield` inside a generator body", () => {
+    expect(hasReservedIdentError(`function* gen() { var yield = 1; }\n`)).toBe(true);
+  });
+
+  it("rejects `var await` in module goal (top-level)", () => {
+    expect(hasReservedIdentError(`var await;\nexport {};\n`)).toBe(true);
+  });
+
+  it("rejects `var await` inside an async function", () => {
+    expect(hasReservedIdentError(`async function f() { var await = 1; }\n`)).toBe(true);
+  });
+
+  it("allows `yield` as property name", () => {
+    expect(hasReservedIdentError(`"use strict";\nvar o = { yield: 1 };\no.yield;\n`)).toBe(false);
+  });
+
+  it("allows `await` as property name in module code", () => {
+    expect(hasReservedIdentError(`var o = { await: 1 }; o.await;\nexport {};\n`)).toBe(false);
+  });
+
+  it("allows `yield` as identifier in sloppy-mode script", () => {
+    // No "use strict", no module, not a generator — yield is a valid identifier.
+    expect(hasReservedIdentError(`var yield = 1; yield;\n`)).toBe(false);
+  });
+
+  it("does not flag inside wrapTest sentinel", () => {
+    const wrapped = `
+      export function test(): number {
+        var yield = 1;
+        return 1;
+      }
+    `;
+    expect(hasReservedIdentError(wrapped)).toBe(false);
+  });
+});
