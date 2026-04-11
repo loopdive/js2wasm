@@ -1,0 +1,14 @@
+{
+  "pr": 81,
+  "conclusion": "failure",
+  "head_branch": "issue-1040-narrow-long-tail",
+  "head_sha": "e2fa5277add1fae76ba8197a0cd42ca1b30a9e37",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24283311884",
+  "timestamp": "2026-04-11T13:23:27Z",
+  "pass": 21320,
+  "fail": 19107,
+  "compile_error": 1386,
+  "delta": 130,
+  "regressions": 1,
+  "improvements": 131
+}
