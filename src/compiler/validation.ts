@@ -2830,6 +2830,95 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     checkModuleItemPosition(sourceFile);
   }
 
+  // ── Reserved words: `yield` / `await` as identifier ─────────────
+  // ES static semantics: `yield` is reserved in strict-mode code and
+  // inside generator bodies; `await` is reserved in module code and
+  // inside async function bodies. When these appear as IdentifierName
+  // or BindingIdentifier in those contexts it is an early SyntaxError.
+  //
+  // TypeScript's parser accepts the raw identifiers without diagnostic,
+  // so we catch them here. As with the module-item check, skip when
+  // the wrapTest sentinel is present — wrapTest renames bare `yield` to
+  // `_yield` outside generators, so wrapped positive tests will never
+  // see these identifiers in the AST.
+  if (!isWrapTestSource) {
+    const sourceFileIsModule = ts.isExternalModule(sourceFile);
+    const checkReservedIdentifiers = (node: ts.Node): void => {
+      if (ts.isIdentifier(node) && (node.text === "yield" || node.text === "await")) {
+        // Skip cases where the identifier is a member / property name or
+        // import / export name — those are IdentifierName positions and are
+        // always allowed.
+        const parent = node.parent;
+        if (parent) {
+          if (
+            (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+            (ts.isQualifiedName(parent) && parent.right === node) ||
+            (ts.isPropertyAssignment(parent) && parent.name === node) ||
+            (ts.isMethodDeclaration(parent) && parent.name === node) ||
+            (ts.isGetAccessorDeclaration(parent) && parent.name === node) ||
+            (ts.isSetAccessorDeclaration(parent) && parent.name === node) ||
+            (ts.isPropertyDeclaration(parent) && parent.name === node) ||
+            (ts.isImportSpecifier(parent) && parent.propertyName === node) ||
+            (ts.isExportSpecifier(parent) && parent.propertyName === node) ||
+            (ts.isExportSpecifier(parent) && parent.name === node) ||
+            (ts.isImportSpecifier(parent) && parent.name === node)
+          ) {
+            return; // property / import / export name position — allowed
+          }
+        }
+
+        const name = node.text;
+        if (name === "yield") {
+          // Reserved in strict mode or inside any enclosing generator.
+          let reserved = isStrictMode(node) || sourceFileIsModule;
+          if (!reserved) {
+            let c: ts.Node | undefined = node.parent;
+            while (c) {
+              if (
+                (ts.isFunctionDeclaration(c) || ts.isFunctionExpression(c) || ts.isMethodDeclaration(c)) &&
+                c.asteriskToken
+              ) {
+                reserved = true;
+                break;
+              }
+              c = c.parent;
+            }
+          }
+          if (reserved) {
+            addError(node, "'yield' is a reserved word and may not be used as an identifier in strict mode");
+          }
+        } else if (name === "await") {
+          // Reserved in module code and inside any enclosing async function.
+          let reserved = sourceFileIsModule;
+          if (!reserved) {
+            let c: ts.Node | undefined = node.parent;
+            while (c) {
+              if (
+                (ts.isFunctionDeclaration(c) ||
+                  ts.isFunctionExpression(c) ||
+                  ts.isArrowFunction(c) ||
+                  ts.isMethodDeclaration(c)) &&
+                c.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
+              ) {
+                reserved = true;
+                break;
+              }
+              c = c.parent;
+            }
+          }
+          if (reserved) {
+            addError(
+              node,
+              "'await' is a reserved word and may not be used as an identifier in module code or async functions",
+            );
+          }
+        }
+      }
+      ts.forEachChild(node, checkReservedIdentifiers);
+    };
+    checkReservedIdentifiers(sourceFile);
+  }
+
   // ── HTML close comment (-->) in module code ──────────────────────
   // HTML-like comments are allowed in scripts but not in modules.
   // Check the raw source so we still catch cases TS tokenizes permissively.
