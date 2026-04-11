@@ -235,6 +235,9 @@ All independent -- low priority, can be picked up opportunistically.
 | 837 | Map/WeakMap upsert (getOrInsert/getOrInsertComputed) | ~110 skip | **Ready** |
 | 838 | BigInt64Array / BigUint64Array typed arrays | 19 skip | **Ready** |
 | 830 | DisposableStack extern class missing | **38 CE** | **Ready** |
+| 1036 | DisposableStack/AsyncDisposableStack property-chain → Wasm null trap | **94 FAIL** | **Ready** |
+| 1037 | Symbol.dispose / Symbol.asyncDispose not accessible | **30 FAIL** | **Ready** |
+| 1038 | Function.prototype.bind not implemented | **70 FAIL** | **Ready** |
 | 675 | Dynamic import() | 471 tests | **Ready** |
 
 ---

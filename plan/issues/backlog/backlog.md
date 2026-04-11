@@ -106,6 +106,9 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 | [838](../ready/838.md) | Low | BigInt64Array / BigUint64Array typed arrays | 19 skip + 25 CE | Ready |
 | [988](../ready/988.md) | Low | FinalizationRegistry constructor unsupported in official-scope tests | **23 CE** | Ready |
 | [830](../ready/830.md) | Low | DisposableStack extern class missing | **39 FAIL** | Ready |
+| [1036](../ready/1036.md) | Medium | DisposableStack/AsyncDisposableStack property-chain access → Wasm null trap | **94 FAIL** | Ready |
+| [1037](../ready/1037.md) | Medium | Symbol.dispose / Symbol.asyncDispose not accessible | **30 FAIL** | Ready |
+| [1038](../ready/1038.md) | High | Function.prototype.bind not implemented | **70 FAIL** | Ready |
 | [671](../backlog/671.md) | Low | with statement support | 272 tests | Backlog |
 
 ## 9. Architecture / Refactoring
