@@ -23,6 +23,7 @@ import {
   valTypesMatch,
 } from "./shared.js";
 import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import { emitArgumentsVecBody } from "./statements/nested-declarations.js";
 import {
   hoistVarDeclarations,
   hoistLetConstWithTdz,
@@ -313,40 +314,15 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
       };
     }
 
-    // Create backing array from parameters: push each param coerced to externref
-    for (let i = 0; i < params.length; i++) {
-      const paramType = params[i]!.type;
-      fctx.body.push({ op: "local.get", index: i });
-      if (paramType.kind === "f64") {
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-        } else {
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-      } else if (paramType.kind === "i32") {
-        fctx.body.push({ op: "f64.convert_i32_s" });
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-        } else {
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-      } else if (paramType.kind === "ref" || paramType.kind === "ref_null") {
-        fctx.body.push({ op: "extern.convert_any" });
-      }
-      // externref params are already externref — no conversion needed
-    }
-    // array.new_fixed creates the backing array
-    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: params.length });
-    fctx.body.push({ op: "local.set", index: arrTmp });
-    // Create vec struct: { length: i32, data: ref $arr }
-    fctx.body.push({ op: "i32.const", value: params.length });
-    fctx.body.push({ op: "local.get", index: arrTmp });
-    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
-    fctx.body.push({ op: "local.set", index: argsLocal });
+    // Build the arguments vec by concatenating formal params with
+    // extras delivered via the __extras_argv global (#1053).
+    emitArgumentsVecBody(
+      ctx,
+      fctx,
+      params.map((p) => p.type),
+      0,
+      { vecTypeIdx, arrTypeIdx, argsLocalIdx: argsLocal, arrTmpIdx: arrTmp },
+    );
   }
 
   if (isGenerator) {
