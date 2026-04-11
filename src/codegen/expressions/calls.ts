@@ -3856,7 +3856,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         return { kind: "f64" };
       }
       if (argType?.kind === "externref") {
-        // String → number: use parseFloat
+        // Number(x) uses ToNumber semantics — __unbox_number calls Number(v) in JS.
+        // parseFloat is wrong here: Number(null)=0 but parseFloat(null)=NaN,
+        // Number("")=0 but parseFloat("")=NaN, Number("0x1F")=31 but parseFloat gives 0.
+        addUnionImports(ctx);
+        const unboxIdx = ctx.funcMap.get("__unbox_number");
+        if (unboxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          return { kind: "f64" };
+        }
+        // Fallback to parseFloat if __unbox_number not registered yet
         const pfIdx = ctx.funcMap.get("parseFloat");
         if (pfIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: pfIdx });
