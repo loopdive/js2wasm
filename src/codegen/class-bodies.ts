@@ -332,6 +332,13 @@ export function collectClassDeclaration(
         }
       }
 
+      // Track methods that read `arguments` (#1053) so callers can
+      // populate the __extras_argv global with runtime args beyond the
+      // formal param count.
+      if (member.body && bodyUsesArguments(member.body)) {
+        ctx.funcUsesArguments.add(fullName);
+      }
+
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
       const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
       ctx.funcMap.set(fullName, methodFuncIdx);

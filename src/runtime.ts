@@ -41,6 +41,23 @@ const _wasmSealedObjs = new WeakSet<object>();
 /** Tracks WasmGC struct objects that are non-extensible (freeze/seal/preventExtensions). */
 const _wasmNonExtensibleObjs = new WeakSet<object>();
 
+/**
+ * DataView subview metadata (#1064).
+ *
+ * The compiler emits `new DataView(buffer, byteOffset, byteLength)` as the raw
+ * i32_byte vec struct — it never stores the user-specified view window. The
+ * runtime bridge in `__extern_method_call` rebuilds a real JS DataView from
+ * the struct's bytes, so without this sidecar it only ever sees the full
+ * buffer and `sample.getUint16(1)` on a 2-byte subview silently reads 2 bytes
+ * from the 12-byte buffer instead of throwing RangeError.
+ *
+ * Keyed on the vec struct. Written by `__dv_register_view` at DataView
+ * construction. Read by the `__extern_method_call` DataView fallback below.
+ * Sharing one buffer across multiple interleaved DataViews is a known
+ * limitation — the latest registration wins.
+ */
+const _dvViewMeta = new WeakMap<object, { offset: number; length: number }>();
+
 const _SC_WRITABLE = 1;
 const _SC_ENUMERABLE = 2;
 const _SC_CONFIGURABLE = 4;
@@ -1622,6 +1639,19 @@ function resolveImport(
             return 0;
           }
         };
+      // #1064: record DataView subview metadata (byteOffset, byteLength) on
+      // the backing vec struct so the __extern_method_call DataView fallback
+      // can build a correctly-windowed native DataView. A NaN `length` means
+      // "use bufferByteLength - offset at dispatch time" (set by codegen when
+      // the buffer arg is externref-typed and its length isn't known statically).
+      if (name === "__dv_register_view")
+        return (buf: any, offset: number, length: number) => {
+          if (buf != null && typeof buf === "object") {
+            const off = Number.isFinite(offset) ? (offset as number) | 0 : 0;
+            const len = Number.isFinite(length) ? (length as number) | 0 : -1;
+            _dvViewMeta.set(buf, { offset: off, length: len });
+          }
+        };
       // Generic method call on externref receiver (#799 WI3)
       if (name === "__extern_method_call")
         return (obj: any, method: string, args: any[]) => {
@@ -1650,16 +1680,26 @@ function resolveImport(
               const dvGet = exports.__dv_byte_get as ((v: any, i: number) => number) | undefined;
               const dvSet = exports.__dv_byte_set as ((v: any, i: number, b: number) => void) | undefined;
               if (typeof dvLen === "function" && typeof dvGet === "function") {
-                const len = dvLen(obj);
-                if (len >= 0) {
-                  const bytes = new Uint8Array(len);
-                  for (let i = 0; i < len; i++) bytes[i] = dvGet(obj, i) & 0xff;
-                  const realDv = new DataView(bytes.buffer);
+                const bufLen = dvLen(obj);
+                if (bufLen >= 0) {
+                  // #1064: honor the view window recorded by __dv_register_view
+                  // at construction. Without this, getXxx/setXxx operate on the
+                  // full backing buffer and out-of-range errors don't fire.
+                  const meta = _dvViewMeta.get(obj);
+                  const viewOffset = meta ? meta.offset : 0;
+                  const viewLength = meta && meta.length >= 0 ? meta.length : bufLen - viewOffset;
+                  const bytes = new Uint8Array(bufLen);
+                  for (let i = 0; i < bufLen; i++) bytes[i] = dvGet(obj, i) & 0xff;
+                  // `new DataView(buf, offset, length)` validates bounds; if
+                  // meta is stale/inconsistent this may throw TypeError which
+                  // the Wasm caller can catch via the standard exn bridge.
+                  const realDv = new DataView(bytes.buffer, viewOffset, viewLength);
                   const nativeFn = (realDv as any)[method];
                   if (typeof nativeFn === "function") {
                     const result = nativeFn.apply(realDv, args ?? []);
                     if (dvMatch[1] === "set" && typeof dvSet === "function") {
-                      for (let i = 0; i < len; i++) dvSet(obj, i, bytes[i]!);
+                      const endByte = viewOffset + viewLength;
+                      for (let i = viewOffset; i < endByte; i++) dvSet(obj, i, bytes[i]!);
                     }
                     return result;
                   }

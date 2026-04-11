@@ -2,13 +2,13 @@
   "pr": 105,
   "conclusion": "failure",
   "head_branch": "issue-1062-toNumber-if-mismatch",
-  "head_sha": "6751d35f77a76eb372433ab90876255a4f01f57b",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24289023688",
-  "timestamp": "2026-04-11T18:45:06Z",
-  "pass": 22075,
-  "fail": 18421,
-  "compile_error": 1323,
-  "delta": 325,
-  "regressions": 31,
-  "improvements": 356
+  "head_sha": "73cf7480b386197a58ec11216df19ee1dd6c8e80",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24289619548",
+  "timestamp": "2026-04-11T19:21:00Z",
+  "pass": 20624,
+  "fail": 16636,
+  "compile_error": 4561,
+  "delta": 80,
+  "regressions": 1,
+  "improvements": 81
 }
