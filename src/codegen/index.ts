@@ -4661,6 +4661,16 @@ function collectUsedExternImports(ctx: CodegenContext, sourceFile: ts.SourceFile
       }
     }
 
+    // RegExp(pattern, flags) call without `new` — compileCallExpression
+    // emits the RegExp_new host call directly. Register it here so the
+    // import exists by the time codegen runs. (#1055)
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "RegExp") {
+      const info = ctx.externClasses.get("RegExp");
+      if (info) {
+        register(`${info.importPrefix}_new`, info.constructorParams, [{ kind: "externref" }]);
+      }
+    }
+
     // obj.prop or obj.method(...)
     if (ts.isPropertyAccessExpression(node)) {
       // Skip if this is the target of an assignment (setter handled below)
