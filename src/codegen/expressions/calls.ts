@@ -376,11 +376,11 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         for (const arg of expr.arguments) {
           const t = compileExpression(ctx, fctx, arg);
           // Only drop values that actually pushed onto the stack.
-          // null = failed-to-compile (nothing pushed); VOID_RESULT = void call (nothing pushed).
-          if (t !== null && t !== VOID_RESULT) fctx.body.push({ op: "drop" });
+          // null = failed-to-compile or normalized-void (nothing pushed).
+          if (t !== null) fctx.body.push({ op: "drop" });
         }
         const recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
-        if (recvType === null || recvType === VOID_RESULT) {
+        if (recvType === null) {
           fctx.body.push({ op: "ref.null.extern" });
         } else if (recvType.kind !== "externref") {
           fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
