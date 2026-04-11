@@ -237,6 +237,34 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     return compileOptionalCallExpression(ctx, fctx, expr);
   }
 
+  // RegExp(pattern, flags) called without `new` — per spec, equivalent to
+  // `new RegExp(pattern, flags)` (unless pattern is already a RegExp with
+  // flags undefined, an edge case we accept). Emit the RegExp_new host call
+  // directly so the host constructor runs and validates modifier syntax,
+  // throwing SyntaxError on invalid patterns. (#1055)
+  if (
+    !expr.questionDotToken &&
+    ts.isIdentifier(expr.expression) &&
+    expr.expression.text === "RegExp" &&
+    ctx.externClasses.has("RegExp")
+  ) {
+    const externInfo = ctx.externClasses.get("RegExp")!;
+    const importName = `${externInfo.importPrefix}_new`;
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx !== undefined) {
+      const args = expr.arguments ?? [];
+      for (let i = 0; i < args.length; i++) {
+        compileExpression(ctx, fctx, args[i]!, externInfo.constructorParams[i]);
+      }
+      for (let i = args.length; i < externInfo.constructorParams.length; i++) {
+        pushDefaultValue(fctx, externInfo.constructorParams[i]!, ctx);
+      }
+      const finalIdx = ctx.funcMap.get(importName) ?? funcIdx;
+      fctx.body.push({ op: "call", funcIdx: finalIdx });
+      return { kind: "externref" };
+    }
+  }
+
   // Optional chaining on direct call: fn?.()
   if (expr.questionDotToken && ts.isIdentifier(expr.expression)) {
     return compileOptionalDirectCall(ctx, fctx, expr);
