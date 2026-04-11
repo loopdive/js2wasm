@@ -498,6 +498,143 @@ function _safeSet(obj: any, key: any, val: any): void {
   }
 }
 
+/**
+ * Live-mirror Proxy over a WasmGC struct (#983).
+ *
+ * Host-side APIs like Array.prototype.X.call(arrayLike, …) and Object.assign
+ * read/write `.length`, numeric indices and named fields on caller-supplied
+ * objects. WasmGC structs are opaque to JS and those accesses throw
+ * "WebAssembly objects are opaque". _wrapForHost returns a JS Proxy that
+ * routes every trap through the existing sidecar infrastructure
+ * (_sidecarGet/_sidecarSet) and the compiled-module __sget_* exports. This
+ * lets host methods both read and WRITE through to the same WasmGC struct
+ * that the test body observes via compiled __extern_get.
+ *
+ * Identity caveat: the proxy is a different JS object than the wasmGC
+ * handle. Callers that care about identity (e.g. Object.assign returning
+ * target) must use _unwrapForHost on the return value before handing it
+ * back to the caller.
+ */
+const _hostProxyCache = new WeakMap<object, any>();
+const _hostProxyReverse = new WeakMap<object, any>();
+
+function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): any {
+  if (obj == null || typeof obj !== "object") return obj;
+  if (!_isWasmStruct(obj)) return obj;
+
+  const cached = _hostProxyCache.get(obj);
+  if (cached) return cached;
+
+  const target: Record<string | symbol, any> = Object.create(null);
+
+  const safeGetField = (key: any): any => {
+    // Sidecar first (handles both string and symbol keys)
+    const sc = _sidecarGet(obj, key);
+    if (sc !== undefined) return sc;
+    // Wasm struct field getter
+    if (exports && (typeof key === "string" || typeof key === "number")) {
+      const getter = exports[`__sget_${String(key)}`];
+      if (typeof getter === "function") {
+        try {
+          return getter(obj);
+        } catch {
+          /* not a field of this struct type */
+        }
+      }
+    }
+    // Well-known symbol → @@name sidecar fallback
+    if (typeof key === "symbol") {
+      const wasmKey = _symbolToWasm.get(key);
+      if (wasmKey !== undefined) {
+        const v = _sidecarGet(obj, wasmKey);
+        if (v !== undefined) return v;
+      }
+    }
+    return undefined;
+  };
+
+  const collectKeys = (): (string | symbol)[] => {
+    const keys = new Set<string | symbol>();
+    const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+    for (const k of fieldNames) keys.add(k);
+    const sc = _wasmStructProps.get(obj);
+    if (sc) {
+      for (const k of Object.getOwnPropertyNames(sc)) keys.add(k);
+      for (const k of Object.getOwnPropertySymbols(sc)) keys.add(k);
+    }
+    return Array.from(keys);
+  };
+
+  const handler: ProxyHandler<any> = {
+    get(_t, key) {
+      return safeGetField(key);
+    },
+    set(_t, key, val) {
+      _safeSet(obj, key, val);
+      return true;
+    },
+    has(_t, key) {
+      if (safeGetField(key) !== undefined) return true;
+      const sc = _wasmStructProps.get(obj);
+      if (sc && key in sc) return true;
+      const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+      return typeof key === "string" && fieldNames.includes(key);
+    },
+    deleteProperty(_t, key) {
+      // Always report success — Array.prototype.pop etc. call
+      // `delete O[len-1]` on sparse arrayLikes where the index may not be
+      // present in the sidecar. Returning false here throws a Proxy
+      // invariant TypeError. Sidecar delete is best-effort.
+      _sidecarDelete(obj, key);
+      return true;
+    },
+    ownKeys(_t) {
+      return collectKeys();
+    },
+    getOwnPropertyDescriptor(_t, key) {
+      // For Proxy invariants, getOwnPropertyDescriptor must match target's
+      // non-configurable keys. Our target is an empty extensible object, so
+      // we can return any descriptor we like. We must also reflect the
+      // descriptor back onto target so ownKeys invariants are satisfied when
+      // the host enumerates via Object.keys/getOwnPropertyNames (some
+      // engines cross-check).
+      const val = safeGetField(key);
+      const sc = _wasmStructProps.get(obj);
+      const hasInSidecar = !!sc && key in sc;
+      const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+      const hasInFields = typeof key === "string" && fieldNames.includes(key);
+      if (val === undefined && !hasInSidecar && !hasInFields) return undefined;
+      const desc: PropertyDescriptor = {
+        value: val,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      };
+      // Mirror onto target so V8's Proxy invariant checker is happy
+      try {
+        Object.defineProperty(target, key, desc);
+      } catch {
+        /* already defined with different flags — ignore */
+      }
+      return desc;
+    },
+    getPrototypeOf() {
+      return Object.prototype;
+    },
+  };
+
+  const proxy = new Proxy(target, handler);
+  _hostProxyCache.set(obj, proxy);
+  _hostProxyReverse.set(proxy, obj);
+  return proxy;
+}
+
+function _unwrapForHost(v: any): any {
+  if (v == null || typeof v !== "object") return v;
+  const orig = _hostProxyReverse.get(v);
+  return orig ?? v;
+}
+
 /** wasm:js-string polyfill for engines without native support (https://developer.mozilla.org/de/docs/WebAssembly/Guides/JavaScript_builtins) */
 export const jsString = {
   concat: (a: string, b: string): string => {
@@ -1159,9 +1296,17 @@ function resolveImport(
       if (name === "__extern_method_call")
         return (obj: any, method: string, args: any[]) => {
           if (obj == null) throw new TypeError("Cannot read properties of null (reading '" + method + "')");
-          const fn = obj[method];
+          // #983: wrap wasmGC receiver + arg structs in live-mirror Proxies so
+          // the host method's property reads/writes flow through the sidecar.
+          const exports = callbackState?.getExports();
+          const wrappedObj = _wrapForHost(obj, exports);
+          const wrappedArgs = (args ?? []).map((a) => _wrapForHost(a, exports));
+          const fn = wrappedObj[method];
           if (typeof fn !== "function") throw new TypeError(method + " is not a function");
-          return fn.apply(obj, args ?? []);
+          const ret = fn.apply(wrappedObj, wrappedArgs);
+          // If the method returned the receiver (e.g. Array.prototype.sort),
+          // unwrap so caller-side identity checks against the original still hold.
+          return ret === wrappedObj ? obj : _unwrapForHost(ret);
         };
       // Type.prototype.method.call(receiver, ...args) dispatch for built-in types.
       // Used when e.g. Array.prototype.every.call(functionObj, fn) — the receiver
@@ -1172,7 +1317,15 @@ function resolveImport(
           if (!Type || !Type.prototype) throw new TypeError(typeName + " is not a constructor");
           const method = Type.prototype[methodName];
           if (typeof method !== "function") throw new TypeError(methodName + " is not a function");
-          return method.call(receiver, ...(args ?? []));
+          // #983: wrap wasmGC receiver + arg structs in live-mirror Proxies so
+          // Type.prototype.<method> sees a JS-observable object whose
+          // reads/writes propagate back to the wasmGC struct via the sidecar.
+          const exports = callbackState?.getExports();
+          const wrappedReceiver = _wrapForHost(receiver, exports);
+          const wrappedArgs = (args ?? []).map((a) => _wrapForHost(a, exports));
+          const ret = method.call(wrappedReceiver, ...wrappedArgs);
+          // Sort-like methods return the receiver — preserve identity.
+          return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
         };
       // Get actual JS built-in object by name (#965) — fixes WI3 null receiver for built-in classes
       if (name === "__get_builtin") return (n: string) => (globalThis as any)[n];
@@ -1184,7 +1337,18 @@ function resolveImport(
       if (name === "__object_is") return (x: any, y: any): number => (Object.is(x, y) ? 1 : 0);
       // Object.assign(target, ...sources) — shallow copy (#965)
       if (name === "__object_assign")
-        return (target: any, sources: any[]): any => Object.assign(target, ...(sources ?? []));
+        return (target: any, sources: any[]): any => {
+          // #983: if target is a wasmGC struct, assign through a live-mirror
+          // Proxy so every source property Set writes back via the sidecar.
+          // Sources are wrapped too so their property enumeration works.
+          const exports = callbackState?.getExports();
+          const wrappedTarget = _wrapForHost(target, exports);
+          const wrappedSources = (sources ?? []).map((s) => _wrapForHost(s, exports));
+          Object.assign(wrappedTarget, ...wrappedSources);
+          // Preserve caller identity: return the original target reference,
+          // not the proxy.
+          return target;
+        };
       // Object.fromEntries(iterable) — create object from entries (#965)
       if (name === "__object_fromEntries") return (iterable: any): any => Object.fromEntries(iterable);
       // Object.getOwnPropertyDescriptors(obj) — all own descriptors (#965)
