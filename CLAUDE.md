@@ -8,6 +8,11 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Run equivalence tests only: `npm test -- tests/equivalence.test.ts`
 - Test262: `pnpm run test:262` — vitest-based runner, creates its own worktree, writes to `benchmarks/results/`. Default 3 workers.
 
+## Dev scratch
+- **All ad-hoc probe / debug / repro files go in `.tmp/`** — gitignored, not picked up by vitest, doesn't pollute `git status`.
+- If you spin up a quick `check-foo.ts`, `debug-bar.mts`, or `probe-*.test.ts` to investigate a bug, write it inside `.tmp/`, not at repo root or under `tests/`.
+- Root-level patterns like `check-*.ts`, `debug-*.ts`, `run-*.ts`, `test-*-debug.ts`, `tests/probe-*.test.ts`, `tests/*-debug*.test.ts` are also gitignored as a safety net, but the convention is `.tmp/`.
+
 ## Architecture Principles
 - **Dual-mode: JS host optional** — the compiler supports two modes: JS host mode (uses host imports for performance/completeness) and standalone mode (pure Wasm, no JS runtime). New features should have Wasm-native implementations for standalone mode; JS host imports are acceptable as a fast path when a JS runtime is available. Don't add new host imports without a standalone fallback.
 - This follows the pattern of #679 (dual string backend) and #682 (dual RegExp backend).
