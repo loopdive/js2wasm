@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-04-11T21:33:48.525Z",
+  "timestamp": "2026-04-12T07:00:53.458Z",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
     "total": 43171,
-    "pass": 22157,
-    "fail": 18337,
+    "pass": 22185,
+    "fail": 18309,
     "compile_error": 1326,
     "compile_timeout": 12,
     "skip": 1339,
@@ -16,8 +16,8 @@
   },
   "official_summary": {
     "total": 43171,
-    "pass": 22157,
-    "fail": 18337,
+    "pass": 22185,
+    "fail": 18309,
     "compile_error": 1326,
     "compile_timeout": 12,
     "skip": 1339,
@@ -26,8 +26,8 @@
   },
   "full_summary": {
     "total": 43171,
-    "pass": 22157,
-    "fail": 18337,
+    "pass": 22185,
+    "fail": 18309,
     "compile_error": 1326,
     "compile_timeout": 12,
     "skip": 1339,
@@ -36,8 +36,8 @@
   },
   "strict_summary": {
     "total": 40662,
-    "pass": 21150,
-    "fail": 17226,
+    "pass": 21178,
+    "fail": 17198,
     "compile_error": 1275,
     "compile_timeout": 12,
     "skip": 999,
@@ -67,8 +67,8 @@
     },
     "standard": {
       "total": 42085,
-      "pass": 21624,
-      "fail": 17803,
+      "pass": 21652,
+      "fail": 17775,
       "compile_error": 1307,
       "compile_timeout": 12,
       "skip": 1339,
@@ -214,8 +214,8 @@
     },
     {
       "name": "built-ins/DataView",
-      "pass": 272,
-      "fail": 247,
+      "pass": 300,
+      "fail": 219,
       "compile_error": 3,
       "compile_timeout": 0,
       "skip": 39,
@@ -907,7 +907,7 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 9066,
+    "assertion_fail": 9038,
     "illegal_cast": 263,
     "negative_test_fail": 108,
     "null_deref": 618,
