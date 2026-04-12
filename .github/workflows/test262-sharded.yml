@@ -281,17 +281,15 @@ jobs:
           if ! git pull --rebase origin main; then
             git rebase --abort 2>/dev/null || true
             git fetch origin main
-            # Hard-reset to origin/main so the working tree and index match main
-            # exactly. This avoids the bug where --soft left plan/ deletions staged.
-            git reset --hard origin/main
-            # Re-copy our fresh baseline files on top of main's working tree
+            git reset --soft origin/main
+            git checkout HEAD -- benchmarks/results/ public/benchmarks/results/
+            # Re-stage our fresh baseline files over whatever origin has
             cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
             cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-current.json
             cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-report.json
             cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
             cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
-            # Stage ONLY the benchmark files — nothing else
-            git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json benchmarks/results/runs/index.json
+            git add -f benchmarks/results/ public/benchmarks/results/
             git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
           fi
           git push
