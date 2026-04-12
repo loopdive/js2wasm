@@ -1,197 +1,182 @@
 ---
-title: "Sprint 41 — Non-error work: perf, infra, refactor, real-world stress tests"
+title: "Sprint 41 — Pass-rate push: 51.4% → 55%"
 status: planning
 sprint: Sprint-41
 ---
 
-# Sprint 41 — Non-error work and real-world stress tests
+# Sprint 41 — Pass-rate push: 51.4% → 55%
 
-**Planned start**: after Sprint 40 closes (target: past 50% conformance)
-**Starting baseline (projected)**: ~21,500+ pass / 43,164 total (>50%)
-**Duration**: TBD — kickoff deferred until Sprint 40 wraps
+**Planned start**: 2026-04-12
+**Starting baseline**: 22,185 / 43,171 pass = **51.40%**
+**Target**: 23,700+ / 43,171 = **~55%** (+1,500 tests)
+**Duration**: 1 sprint (~3 dev-days of capacity with 3 devs)
 
-## Scope
+## Scope change from original plan
 
-Sprint 41 is the **non-error** counterpart to Sprint 40. Mid-Sprint-40 (2026-04-11), the backlog was re-scoped so Sprint 40 holds only pass-rate / error-fix work. Everything else — perf, benchmarks, refactoring, infra, planning-data, and real-world stress-test investigations — moved here.
+The original Sprint 41 was scoped as "non-error work" (stress tests, perf, infra). That scope is **deferred to Sprint 42**. Sprint 41 is now a **pass-rate push sprint** — every issue must directly flip tests from fail to pass.
 
-This sprint is intentionally less pass-rate-focused. The goal is to **broaden** coverage (stress tests that reveal new bugs) and **strengthen** the foundation (perf regressions, refactors, benchmark infrastructure) that were starved of attention during the Sprint 40 merge wave.
+Rationale: at 51.4%, there's a massive concentration of medium-effort issues in the 70-180 FAIL range that can each be shipped independently. Shipping 10-12 of these in one sprint is the fastest path to 55%.
 
-## Sprint 40 carry-over (non-error work moved here)
+## Sprint 40 carry-over (promoted into Sprint 41)
 
-| #                                  | Title                                                                                                                | Category              |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| [#824](../issues/ready/824.md)     | Timeout umbrella doc cleanup — replace the stale 10s compile-timeout narrative with current 30s worker-timeout model | Process / docs        |
-| [#1000](../issues/ready/1000.md)   | Normalize issue frontmatter and repopulate historical sprint assignments                                             | Planning-data         |
-| [#1001](../issues/ready/1001.md)   | Preallocate counted `number[]` push loops into dense WasmGC arrays                                                   | Perf                  |
-| [#1003](../issues/ready/1003.md)   | Normalize issue metadata with ES edition, language feature, task type                                                | Planning-data         |
-| [#1004](../issues/ready/1004.md)   | Optimize repeated string concatenation via compile-time folding                                                      | Perf                  |
-| [#1005](../issues/ready/1005.md)   | Benchmark cold-start across Wasmtime, Wasm-in-Node, native Node                                                      | Benchmarks            |
-| [#1007](../issues/ready/1007.md)   | Re-run historical test262 checkpoints with current harness                                                           | Historical benchmarks |
-| [#1008](../issues/ready/1008.md)   | Mobile-first layout for the playground                                                                               | UI                    |
-| [#1009](../issues/ready/1009.md)   | Investigate report-page benchmark outliers where Wasm loses to JS                                                    | Investigation         |
-| [#1011](../issues/ready/1011.md)   | Offline-first benchmarks with Playwright DOM measurement and Run Live button                                         | Benchmarks            |
-| [#1013](../issues/ready/1013.md)   | Split `src/codegen/index.ts` (14,344 lines) into focused modules                                                     | Refactor              |
-| [#1029](../issues/blocked/1029.md) | Migrate to TypeScript 7.x (typescript-go) — **blocked** on microsoft/typescript-go#516 API stability                 | Infra / blocked       |
+These were Sprint 40 issues that didn't get worked but have direct pass-rate impact:
 
-## Real-world stress tests (new, filed 2026-04-11)
+| # | Title | Impact | Effort |
+|---|-------|--------|--------|
+| **#997** | BigInt ToPrimitive i64→externref wrapper | 55 CE | M |
+| **#990** | Early-error gaps (reserved words, module grammar, using) | 327 FAIL | H |
+| **#983** | WasmGC opaque object leak | 1,087 FAIL | H — deferred, needs architect |
 
-The biggest thing added to Sprint 41: four **real-world-library stress tests** that compile production JavaScript libraries to Wasm and harvest error patterns for follow-up issues. These are _investigation_ tasks — success criterion is a categorized error report and concrete follow-up issues, not full library compatibility.
+## Phase 1: Quick wins (ship first — 1 dev-day)
 
-| #                                | Library      | Stress dimension                                     | Host imports                              | Killer acceptance test                                            |
-| -------------------------------- | ------------ | ---------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| [#1031](../issues/ready/1031.md) | **lodash**   | Pure compute, iteration, prototype chain, algorithms | None                                      | Tier 1 modules unit-test clean                                    |
-| [#1032](../issues/ready/1032.md) | **axios**    | I/O, streams, Promise chains                         | Node builtins (http, stream, buffer, ...) | Real GET against httpbin.org from Wasm                            |
-| [#1033](../issues/ready/1033.md) | **react**    | Closures, hooks, reconciler, Symbol.for              | DOM (document, window, HTMLElement, ...)  | Counter component renders & increments on click                   |
-| [#1034](../issues/ready/1034.md) | **prettier** | Parsers, string ops, recursive AST, large switches   | None                                      | Compiled-prettier output === native-prettier output byte-for-byte |
+Issues that are small, self-contained, and flip meaningful test counts.
 
-Each test stresses a distinct dimension of the compiler:
+| Order | Issue | Title | Impact | Effort | Notes |
+|-------|-------|-------|--------|--------|-------|
+| 1 | **#1056** | DataView set methods missing | **89 FAIL** | Easy | Just wire up set* methods mirroring existing get* — fast, mechanical |
+| 2 | **#997** | BigInt ToPrimitive i64→externref CE | **55 CE** | M | Carry-over from Sprint 40, well-scoped |
+| 3 | **#1057** | String.prototype.split constructor !== Array | **68 FAIL** | S | Reverted in PR #114 — 9-LOC `__extern_get` short-circuit reapply. Must verify no interaction with #1053/#1064 first |
 
-- **lodash** surfaces compute-semantics gaps (iteration, algorithms)
-- **axios** surfaces the Node-builtins-as-host-imports boundary
-- **react** stresses closures + hooks (the canonical "closure captures ref cell, not value" torture test)
-- **prettier** is deterministic and self-hosting — **byte-for-byte diff is a killer correctness signal**
+**Phase 1 estimated impact: +150-200 tests**
 
-Expected output: each stress test files 3-5 concrete follow-up issues. Those follow-ups feed into future Sprint 40 error-fix sprints.
+## Phase 2: Medium-effort core (3-4 dev-days, main body of sprint)
 
-## Stress-test preconditions (filed 2026-04-11 by arch-npm-stress; corrected same day)
+These are the M-effort issues that form the bulk of the pass-rate push. Ordered by impact descending.
 
-Architecture gap analysis (`plan/architecture/npm-stress-compiler-gaps.md`) initially identified five preconditions, but one (#1041 "multi-file module graph") was based on a framing error: `compileProject` (`src/index.ts:216`) already walks the transitive import closure via `ModuleResolver` + `resolveAllImports` and runs one shared `ts.Program` through `compileMultiSource`. The `preprocessImports` `declare const X: any` rewrite is only the single-file `compile()` fallback, not on the multi-file path.
+| Order | Issue | Title | Impact | Effort | Notes |
+|-------|-------|-------|--------|--------|-------|
+| 4 | **#1049** | Destructuring fn-name-cover: IsAnonymousFunctionDefinition guard | **176 FAIL** | M | Missing cover-call guard in NamedEvaluation. Well-isolated |
+| 5 | **#1090** | ToPrimitive "Cannot convert object to primitive value" | **161 FAIL** | M | Full ToPrimitive algorithm per §7.1.1 — valueOf/toString fallback chain |
+| 6 | **#1018** | Object.getOwnPropertyDescriptor returns null | **160 FAIL** | M | Host import returns descriptor as externref; accessor/missing case broken |
+| 7 | **#1053** | arguments.length wrong (class methods, trailing-comma) | **133 FAIL** | M | Reverted — needs #1085 fix first (bodyUsesArguments iterative) then clean reapply |
+| 8 | **#1054** | Derived class eval supercall SyntaxError | **122 FAIL** | M | Early-error propagation through eval for `super` references |
+| 9 | **#1091** | Early error detection gap (strict mode, labels, etc.) | **94 FAIL** | M | 5-8 distinct early-error rules, each 5-15 LOC |
+| 10 | **#1056** already in Phase 1 | — | — | — | — |
+| 10 | **#1051** | Private static class methods wrong return value | **88 FAIL** | M | Private-name slot dispatch to wrong table |
+| 11 | **#1052** | Array destructuring ignores overridden Symbol.iterator | **80 FAIL** | M | Fast-path dstr bypasses GetIterator — needs spec-correct path |
+| 12 | **#1055** | RegExp pattern modifiers SyntaxError missing | **77 FAIL** | M | Validate modifier segment per spec error conditions |
+| 13 | **#1092** | Wrong error type (Test262Error instead of TypeError) | **69 FAIL** | M | Missing runtime type checks: non-callable, frozen obj writes, new-callable |
+| 14 | **#1024** | Destructuring rest/holes null vs undefined | **~60 FAIL** | M | ref.is_null conflating null and missing — audit rest + elision paths |
 
-**#1041 closed** and moved to `plan/issues/wont-fix/1041.md`. The real research issue (per-module separate compilation with consumer-driven type specialization) is filed as **#1046** in Backlog — not a sprint-41 precondition.
+**Phase 2 estimated impact: +700-1,000 tests** (not all 176+161+... since some tests share root causes and some fixes won't reach 100% of their bucket)
 
-| #                                  | Title                                                                                           | Unblocks                              | Category            |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------- |
-| [#1043](../issues/ready/1043.md)   | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination                      | **#1033** (halves React surface area) | Compiler easy win   |
-| [#1044](../issues/ready/1044.md)   | Node builtin modules as host imports (`NODE_HOST_IMPORT_MODULES`, `node:` prefix normalization) | **#1032** axios Tier 4                | Compiler scaffold   |
-| [#1045](../issues/ready/1045.md)   | DOM globals as extern classes (`DOM_HOST_GLOBALS`, `queueMicrotask`, `requestAnimationFrame`)   | **#1033** react Tier 4                | Compiler scaffold   |
-| [#1042](../issues/ready/1042.md)   | `async`/`await` state-machine lowering (Backlog — research-level)                               | #1032 Tier 4 stretch goal (real GET)  | Research / deferred |
-| [#1046](../issues/backlog/1046.md) | Separate ES-module compilation + consumer-driven type specialization (Backlog — research)       | future distribution of compiled libs  | Research / deferred |
+## Phase 3: High-impact hard issues (stretch — only if Phase 1-2 ship cleanly)
 
-Dependency wiring applied to stress-test frontmatter:
+These have the biggest absolute impact but are Hard/risky. Only attempt if Phase 2 is landing well.
 
-- **#1031** lodash: `depends_on: []` — runnable today via `compileProject`
-- **#1032** axios: `depends_on: [1044]`
-- **#1033** react: `depends_on: [1043, 1045]`
-- **#1034** prettier: `depends_on: []` — runnable today via `compileProject`
+| Order | Issue | Title | Impact | Effort | Notes |
+|-------|-------|-------|--------|--------|-------|
+| 15 | **#1016** | Iterator protocol null access | **500+ FAIL** | H | Reverted PR #59 — must split into #1016a (class dstr, +60) and #1016b (function param dstr). Do NOT attempt monolithic fix again |
+| 16 | **#1006** + **#1073** | Eval host import + scope injection | **107+ pass** from #1073 alone | M+H | #1006 is prerequisite, already partially shipped. #1073 needs JS-side harness shim |
+| 17 | **#990** | Early-error residuals (reserved words, module grammar) | **327 FAIL** | H | Overlaps with #1091 — do #1091 first, then attack remaining gaps |
 
-Recommended precondition work order: **#1043 first** (easy, big surface-area reduction for React), then **#1044 and #1045 in parallel** (share the module-specifier / global-identifier recognition hook). #1031 and #1034 can start immediately in parallel with the preconditions.
+**Phase 3 estimated impact: +300-500 tests** (only if 1-2 of these land)
 
-## WASI deliverable (new, filed 2026-04-11)
+## Dependency ordering
 
-| #                                | Title                                                                                                                                                        | Category              |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
-| [#1035](../issues/ready/1035.md) | WASI hello-world — `console.log` + `node:fs.writeFileSync` compiled to a native executable, with `node:fs` calls translated to WASI syscalls at compile time | Feature / dual-target |
+```
+#1085 (bodyUsesArguments iterative) ──→ #1053 (arguments.length reapply)
+#1006 (eval host import) ──→ #1073 (eval scope injection)
+#1091 (early errors) ──→ #990 (remaining early-error gaps — reduces residual)
+#1057 reapply ──→ verify no interaction with #1053/#1064 first
+```
 
-First concrete "TypeScript → native executable" story. Parallels the dual-mode architecture principle (#679/#682 string and RegExp backends) applied to filesystem I/O. Nine follow-up issues (#1036–#1044) identified for the rest of the `node:fs` surface once the `writeFileSync` path lands.
+All other issues are independent and can run in parallel.
 
-## Phased task queue
+## Prerequisite: CI interaction bisect resolution
 
-### Phase 0: Stress-test preconditions (needed only for #1032/#1033)
+Before reapplying #1053 and #1057, the Sprint 40 revert interaction (#96 + #100 + #107) must be resolved. PR #116 (reapplying #107 alone) is the first probe. If #107 reapplies cleanly:
+1. Reapply #1057 (#100) next — 9 LOC, low risk
+2. Then #1053 (#96) — 501 LOC, needs #1085 fix first
 
-| Order | Issue     | Rationale                                                                                    |
-| ----- | --------- | -------------------------------------------------------------------------------------------- |
-| 0a    | **#1043** | `process.env.NODE_ENV` DCE. Easy. Halves React dev-build surface area. Pre-#1033 iter speed. |
-| 0b    | **#1044** | Node-builtin host-import routing. Precondition for #1032 Tiers 3-4.                          |
-| 0c    | **#1045** | DOM globals as extern classes. Precondition for #1033 Tier 4. Parallel to #1044.             |
+If the interaction bisect isn't resolved by sprint start, skip #1053/#1057 reapply and focus on the independent issues.
 
-**#1031 (lodash)** and **#1034 (prettier)** do NOT need Phase 0 — they run directly through `compileProject` against their package entry file. Start them in parallel with Phase 0.
+## Deferred to Sprint 42 (non-pass-rate work)
 
-### Phase 1: Real-world stress tests (high signal, broad coverage)
+All original Sprint 41 non-error work moves to Sprint 42:
 
-Run the four stress tests in parallel or sequence — each produces its own error-bucket report and follow-up issues. Recommended order: **prettier first** (deterministic, no host-import design, strongest correctness signal), then **lodash** (cleanest compute surface), then **axios** (requires #1044 Node-builtin routing), then **react** (requires #1043 + #1045 DOM routing + solid closure model).
+### Stress tests & preconditions
+- #1031 lodash, #1032 axios, #1033 react, #1034 prettier follow-ups
+- #1043 process.env.NODE_ENV DCE, #1044 Node builtin imports, #1045 DOM globals
+- #1058 TypeScript self-hosting stress test
+- #1060-#1063, #1074, #1075 lodash follow-up chain
 
-| Order | Issue              | Depends on   | Rationale                                                                                                                 |
-| ----- | ------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| 1     | **#1034** prettier | —            | Pure compute, no boundary design, self-format diff = unambiguous correctness signal. Runnable via `compileProject` today. |
-| 2     | **#1031** lodash   | —            | Pure compute, smaller surface, fast feedback. Runnable via `compileProject` today.                                        |
-| 3     | **#1032** axios    | #1044        | Requires Node-builtin host-import scaffold                                                                                |
-| 4     | **#1033** react    | #1043, #1045 | Requires DOM host imports + NODE_ENV DCE                                                                                  |
+### Performance & benchmarks
+- #1001 counted push-loop, #1004 string concat, #1005 cold-start benchmark
+- #1009 report-page outliers, #1011 offline-first benchmarks
 
-### Phase 2: WASI feature deliverable
+### Infrastructure & refactor
+- #1013 codegen/index.ts split (14K line monolith)
+- #1000, #1003 issue metadata normalization
+- #1007 historical checkpoint re-run
+- #1008 mobile playground
+- #824 timeout umbrella doc cleanup
+- #1035 WASI hello-fs
 
-| Order | Issue                   | Rationale                                                                                  |
-| ----- | ----------------------- | ------------------------------------------------------------------------------------------ |
-| 5     | **#1035** WASI hello-fs | First "TS → native executable" story. Unblocks the full `node:fs`→WASI line of follow-ups. |
+### CI hardening (keep 1, defer rest)
+- **KEEP #1085** — bodyUsesArguments iterative rewrite (blocks #1053 reapply, critical for CI stability)
+- DEFER: #1076, #1077, #1078, #1079, #1080, #1081, #1082, #1083, #1084, #1086, #1087
 
-### Phase 3: Perf and benchmark infrastructure
+### Investigation
+- #1093 Systematic ECMAScript spec conformance audit — valuable but produces issues, not fixes. Run in Sprint 42 to seed Sprint 43.
+- #1088 Assertion location diagnostic — improves triage UX, doesn't flip tests
 
-/
-| Order | Issue | Rationale |
-|-------|-------|-----------|
-| 6 | **#1001** counted push-loop | Recovers lost landing-page `array.ts` benchmark advantage |
-| 7 | **#1004** string concat | Addresses `string.ts` benchmark slowdown (11.9µs Wasm vs 5.2µs JS) |
-| 8 | **#1005** cold-start benchmark | Adds a reproducible server-side startup measurement |
-| 9 | **#1009** report-page outliers | Classifies benchmark slowdowns into real vs measurement artifact |
-| 10 | **#1011** offline-first benchmarks | Stabilizes benchmark numbers and enables user-side live comparison |
+### Blocked / needs architect
+- #983 WasmGC opaque objects (1,087 FAIL) — Hard, needs architect spec for the Proxy/wrapping redesign
+- #821 BindingElement null guard (537 FAIL) — investigation showed root cause is iterator protocol (#1016), not null guard. Subsumes into #1016.
+- #1047 Instance fields leak onto prototype (246 FAIL) — Hard, needs `_wrapForHost` prototype distinction redesign
 
-### Phase 4: Refactor and infra
+## Dev assignment strategy
 
-| Order | Issue                               | Rationale                                                         |
-| ----- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------- |
-| 11    | **#1013** split codegen/index.ts    | 14,344 lines, 124 exports — last remaining monolith               |
-| 12    | **#1000** frontmatter normalization | Cleans up historical sprint assignments for dashboard             |
-| 13    | **#1003** metadata fields           | Adds ES edition, language feature, task type to issue frontmatter |
-| z     | 14                                  | **#1007** historical checkpoint re-run                            | Rebuilds a comparable conformance history timeline |
-| 15    | **#1008** mobile playground         | Replaces desktop-only panel layout                                |
-| 16    | **#824** timeout umbrella doc       | Stale narrative cleanup                                           |
+With 3 devs and ~12 shippable issues:
 
-## #1034 prettier stress results (2026-04-11, dev-1056)
+**Dev A** (quick wins + easy M): #1056 → #1057 reapply → #1055 → #1092
+**Dev B** (medium core): #1049 → #1090 → #1018 → #1052
+**Dev C** (medium + hard prep): #1091 → #1054 → #1085 → #1053 reapply
 
-First stress-test run landed. Targets: prettier 3.8.1 pre-bundled ESM — `doc.mjs` (1480 lines, doc printer — Tier 2) and `index.mjs` (18793 lines, core + language-js — Tier 1+3+4). Harness: `scripts/prettier-stress.ts` (calls `compile({ allowJs: true, skipSemanticDiagnostics: true })` per entry, buckets diagnostics, attempts `WebAssembly.instantiate`).
+If any dev finishes early, pick from: #1051, #1024, #997, #1016a (class dstr slice only).
 
-| Entry | Tier | Compile | Instantiate | Diagnostics | Binary |
-|---|---|---|---|---|---|
-| `prettier/doc.mjs` | Tier 2 (doc printer) | OK | FAIL | 15 | 107,858 B |
-| `prettier/index.mjs` | Tier 1+3+4 (core + language-js) | FAIL | — | 4 | 0 B |
+## Pass-rate projection
 
-**Bucket breakdown (doc.mjs, 15 diagnostics):**
-- 11 × codegen: object literal → struct inference
-- 2 × codegen: new Intl/builtin class (`Intl.ListFormat`)
-- 2 × codegen: for-of non-array iterable
-
-**Bucket breakdown (index.mjs, 4 diagnostics):**
-- 4 × parser: 'await' as label identifier
-
-**Instantiate failure (doc.mjs):** `trimNewlinesEnd` fails Wasm validation — `call[0] expected type externref, found call of type f64 @+40428` (return-value coercion gap when an `any`-typed call result flows into an externref consumer).
-
-**Headline result:** prettier 3.8.1 bundled doc printer compiles to a 107KB Wasm binary in 1.2s with only 15 diagnostics across 1,480 lines — a **far better** starting point than the architect's projected "expect 10-30 small correctness bugs." The full bundled core (`index.mjs`, 19K lines) is held back by a single TypeScript parser rule (#1068) — once relaxed, it should reach the same stage as `doc.mjs`.
-
-**Follow-up issues filed** (all parent #1034):
-- **#1068** parser: 'await' as label identifier — unblocks `index.mjs` compile
-- **#1069** codegen: object literal → struct inference (11 sites in doc.mjs; the largest bucket)
-- **#1070** codegen: `new Intl.ListFormat` (dual-backend host fast path / standalone reject)
-- **#1071** codegen: for-of non-array iterable (Map/Set/generator iteration — broad-impact fix)
-- **#1072** codegen: return-type coercion f64 → externref missing in call sites (the `trimNewlinesEnd` runtime failure)
-
-**Report:** `plan/issues/ready/1034-report.md`
-**Harness:** `scripts/prettier-stress.ts` (re-runnable after fixes)
-
-**Deferred from #1034 acceptance criteria** (not reached this PR, tracked for follow-up):
-- Self-format smoke test (compiled-prettier vs native-prettier byte-for-byte) — blocked on #1072 minimum (need an instantiating binary first)
-- Perf benchmark (compiled vs native ratio) — same blocker
+| Scenario | Tests gained | New total | Percentage |
+|----------|-------------|-----------|------------|
+| **Conservative** (Phase 1 + 50% of Phase 2) | +550 | 22,735 | 52.7% |
+| **Realistic** (Phase 1 + Phase 2) | +1,000 | 23,185 | 53.7% |
+| **Optimistic** (Phase 1 + 2 + partial Phase 3) | +1,400 | 23,585 | 54.6% |
+| **Stretch** (everything lands) | +1,700 | 23,885 | 55.3% |
 
 ## Acceptance criteria
 
-- [ ] **Stress test outputs:** four error-bucket reports committed, ≥ 12 follow-up issues filed across #1031-#1034
-- [ ] **Prettier self-format diff:** at least 3 real prettier source files produce byte-for-byte identical output under compiled-prettier vs native-prettier
-- [ ] **WASI hello-fs:** #1035 compiles, produces `hello.txt` under wasmtime, wrapped to a native executable
-- [ ] **Counter smoke test (stretch):** #1033 Counter component renders and increments on click end-to-end
-- [ ] **Real HTTP GET (stretch):** #1032 completes a real GET against httpbin.org from compiled Wasm
-- [ ] **Perf wins:** at least one of #1001/#1004 lands with a measurable improvement on the landing-page benchmarks
-- [ ] **Codegen/index.ts split:** #1013 completes — no remaining file over 8k lines in `src/codegen/`
-- [ ] **Planning-data normalized:** #1000 and #1003 complete; dashboard shows clean historical sprint assignments
+- [ ] **Baseline at sprint close**: ≥23,000 pass (53.3%) — MUST
+- [ ] **Phase 1 shipped**: #1056, #997, and #1057 all merged with positive delta
+- [ ] **Phase 2 shipped**: ≥6 of the 10 Phase 2 issues merged
+- [ ] **No net regressions**: each merged PR has delta ≥ 0 on sharded CI
+- [ ] **Reverted work resolved**: interaction bisect complete; at least #1057 reapplied
+- [ ] **#1085 landed**: bodyUsesArguments iterative rewrite merged (unblocks #1053)
 
 ## Non-goals
 
-- Additional pass-rate work beyond what naturally falls out of stress-test follow-ups — Sprint 41 is NOT the pass-rate push
-- Full library compatibility for any stress-test target — each is investigation, not completion
-- Concurrent React, axios proxy support, lodash Symbol.iterator support, prettier CSS/HTML plugins — all deferred
-- Anything currently blocked on upstream dependencies (e.g. #1029 typescript-go migration)
+- Stress tests, perf work, infra, refactoring — all Sprint 42
+- Full iterator protocol rewrite — only attempt the class-dstr slice (#1016a) as stretch
+- Architect-level redesigns (#983, #1047) — Sprint 42+ after spec
+- CI hardening beyond #1085 — Sprint 42
 
-## Notes for the tech lead starting Sprint 41
+## Risks
 
-- **Compact first.** Sprint 40 burned ~43% weekly token budget in one session. Start Sprint 41 in a fresh conversation, read `plan/agent-context/tech-lead.md`, do not `--resume` the Sprint 40 session.
-- **Stress-test outputs are the planning fuel for next sprint's pass-rate push.** The follow-up issues each stress test files become Sprint 42's work queue.
-- **Dispatch prettier first.** Deterministic self-format diff surfaces the most bugs per CPU-minute.
-- **#1013 (codegen/index.ts split) is the largest refactor and should run last** — doing it during stress tests would conflict with every stress-test dev.
-- **Don't let Sprint 41 become Sprint 40.** If pass-rate gaps surface during stress tests, file them as follow-up issues for the next sprint — resist the urge to fix them inline here.
+1. **Revert interaction unresolved**: if #107/#100/#96 interaction isn't identified, #1053 and #1057 stay blocked. Mitigation: focus on the 10 independent issues instead.
+2. **Hard issues don't land**: #1016 and #990 have reverted/stalled history. Mitigation: they're Phase 3 stretch — sprint succeeds without them.
+3. **Regression cascades**: multiple codegen changes in one sprint could interact. Mitigation: ship one PR at a time, run sharded CI between each merge.
+4. **Dev capacity**: some M-effort issues may turn out to be harder than estimated. Mitigation: devs skip to next issue if blocked >2 hours; file a sub-issue for the hard part.
+
+## Planning discussion (2026-04-12)
+
+**Decision**: repurpose Sprint 41 from non-error work to pass-rate push. Rationale: 21,014 tests still failing, with a dense cluster of M-effort issues in the 70-180 FAIL range. Each one is independently shippable. The original stress test / perf / infra work doesn't move the pass rate — it can wait one more sprint.
+
+**Issue validation**: all candidate issues checked against current main baseline (22,185 pass). Key findings:
+- #821 (537 FAIL) is actually an iterator protocol problem, not a null guard problem — subsumes into #1016
+- #1088 (273 tests) only improves diagnostics, not pass rate — deferred
+- #1093 (investigation) produces issues, not fixes — deferred to seed Sprint 43
+- #983 (1,087 FAIL) needs architect-level Proxy/wrapping redesign — deferred
+- Sprint 40 carry-over items #990, #997 still valid and promoted
+
+**Prioritization**: ranked by (test_count × feasibility). M-effort issues dominating because they're most likely to actually land. Hard issues in stretch only.
