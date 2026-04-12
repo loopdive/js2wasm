@@ -1,0 +1,15 @@
+{
+  "pr": 130,
+  "conclusion": "success",
+  "head_branch": "issue-1057-split-constructor",
+  "head_sha": "5e20299d0040ae4478fe79e6fd0a16ecc45e1c4a",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24309353283",
+  "timestamp": "2026-04-12T15:38:12Z",
+  "pass": 22413,
+  "fail": 15392,
+  "compile_error": 3998,
+  "snapshot_delta": 1,
+  "net_per_test": 1,
+  "regressions": 0,
+  "improvements": 1
+}
