@@ -59,13 +59,13 @@ Architecture gap analysis (`plan/architecture/npm-stress-compiler-gaps.md`) init
 
 **#1041 closed** and moved to `plan/issues/wont-fix/1041.md`. The real research issue (per-module separate compilation with consumer-driven type specialization) is filed as **#1046** in Backlog — not a sprint-41 precondition.
 
-| #                                | Title                                                                                           | Unblocks                               | Category                |
-| -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------- |
-| [#1043](../issues/ready/1043.md) | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination                      | **#1033** (halves React surface area)  | Compiler easy win       |
-| [#1044](../issues/ready/1044.md) | Node builtin modules as host imports (`NODE_HOST_IMPORT_MODULES`, `node:` prefix normalization) | **#1032** axios Tier 4                 | Compiler scaffold       |
-| [#1045](../issues/ready/1045.md) | DOM globals as extern classes (`DOM_HOST_GLOBALS`, `queueMicrotask`, `requestAnimationFrame`)   | **#1033** react Tier 4                 | Compiler scaffold       |
-| [#1042](../issues/ready/1042.md) | `async`/`await` state-machine lowering (Backlog — research-level)                               | #1032 Tier 4 stretch goal (real GET)   | Research / deferred     |
-| [#1046](../issues/backlog/1046.md) | Separate ES-module compilation + consumer-driven type specialization (Backlog — research)    | future distribution of compiled libs   | Research / deferred     |
+| #                                  | Title                                                                                           | Unblocks                              | Category            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------- |
+| [#1043](../issues/ready/1043.md)   | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination                      | **#1033** (halves React surface area) | Compiler easy win   |
+| [#1044](../issues/ready/1044.md)   | Node builtin modules as host imports (`NODE_HOST_IMPORT_MODULES`, `node:` prefix normalization) | **#1032** axios Tier 4                | Compiler scaffold   |
+| [#1045](../issues/ready/1045.md)   | DOM globals as extern classes (`DOM_HOST_GLOBALS`, `queueMicrotask`, `requestAnimationFrame`)   | **#1033** react Tier 4                | Compiler scaffold   |
+| [#1042](../issues/ready/1042.md)   | `async`/`await` state-machine lowering (Backlog — research-level)                               | #1032 Tier 4 stretch goal (real GET)  | Research / deferred |
+| [#1046](../issues/backlog/1046.md) | Separate ES-module compilation + consumer-driven type specialization (Backlog — research)       | future distribution of compiled libs  | Research / deferred |
 
 Dependency wiring applied to stress-test frontmatter:
 
@@ -88,11 +88,11 @@ First concrete "TypeScript → native executable" story. Parallels the dual-mode
 
 ### Phase 0: Stress-test preconditions (needed only for #1032/#1033)
 
-| Order | Issue          | Rationale                                                                                 |
-| ----- | -------------- | ----------------------------------------------------------------------------------------- |
-| 0a    | **#1043**      | `process.env.NODE_ENV` DCE. Easy. Halves React dev-build surface area. Pre-#1033 iter speed.|
-| 0b    | **#1044**      | Node-builtin host-import routing. Precondition for #1032 Tiers 3-4.                       |
-| 0c    | **#1045**      | DOM globals as extern classes. Precondition for #1033 Tier 4. Parallel to #1044.          |
+| Order | Issue     | Rationale                                                                                    |
+| ----- | --------- | -------------------------------------------------------------------------------------------- |
+| 0a    | **#1043** | `process.env.NODE_ENV` DCE. Easy. Halves React dev-build surface area. Pre-#1033 iter speed. |
+| 0b    | **#1044** | Node-builtin host-import routing. Precondition for #1032 Tiers 3-4.                          |
+| 0c    | **#1045** | DOM globals as extern classes. Precondition for #1033 Tier 4. Parallel to #1044.             |
 
 **#1031 (lodash)** and **#1034 (prettier)** do NOT need Phase 0 — they run directly through `compileProject` against their package entry file. Start them in parallel with Phase 0.
 
@@ -100,12 +100,12 @@ First concrete "TypeScript → native executable" story. Parallels the dual-mode
 
 Run the four stress tests in parallel or sequence — each produces its own error-bucket report and follow-up issues. Recommended order: **prettier first** (deterministic, no host-import design, strongest correctness signal), then **lodash** (cleanest compute surface), then **axios** (requires #1044 Node-builtin routing), then **react** (requires #1043 + #1045 DOM routing + solid closure model).
 
-| Order | Issue              | Depends on       | Rationale                                                                           |
-| ----- | ------------------ | ---------------- | ----------------------------------------------------------------------------------- |
-| 1     | **#1034** prettier | —                | Pure compute, no boundary design, self-format diff = unambiguous correctness signal. Runnable via `compileProject` today. |
-| 2     | **#1031** lodash   | —                | Pure compute, smaller surface, fast feedback. Runnable via `compileProject` today.  |
-| 3     | **#1032** axios    | #1044            | Requires Node-builtin host-import scaffold                                          |
-| 4     | **#1033** react    | #1043, #1045     | Requires DOM host imports + NODE_ENV DCE                                            |
+| Order | Issue              | Depends on   | Rationale                                                                                                                 |
+| ----- | ------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| 1     | **#1034** prettier | —            | Pure compute, no boundary design, self-format diff = unambiguous correctness signal. Runnable via `compileProject` today. |
+| 2     | **#1031** lodash   | —            | Pure compute, smaller surface, fast feedback. Runnable via `compileProject` today.                                        |
+| 3     | **#1032** axios    | #1044        | Requires Node-builtin host-import scaffold                                                                                |
+| 4     | **#1033** react    | #1043, #1045 | Requires DOM host imports + NODE_ENV DCE                                                                                  |
 
 ### Phase 2: WASI feature deliverable
 
@@ -126,14 +126,14 @@ Run the four stress tests in parallel or sequence — each produces its own erro
 
 ### Phase 4: Refactor and infra
 
-| Order | Issue                                  | Rationale                                                         |
-| ----- | -------------------------------------- | ----------------------------------------------------------------- |
-| 11    | **#1013** split codegen/index.ts       | 14,344 lines, 124 exports — last remaining monolith               |
-| 12    | **#1000** frontmatter normalization    | Cleans up historical sprint assignments for dashboard             |
-| 13    | **#1003** metadata fields              | Adds ES edition, language feature, task type to issue frontmatter |
-| 14    | **#1007** historical checkpoint re-run | Rebuilds a comparable conformance history timeline                |
-| 15    | **#1008** mobile playground            | Replaces desktop-only panel layout                                |
-| 16    | **#824** timeout umbrella doc          | Stale narrative cleanup                                           |
+| Order | Issue                               | Rationale                                                         |
+| ----- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------- |
+| 11    | **#1013** split codegen/index.ts    | 14,344 lines, 124 exports — last remaining monolith               |
+| 12    | **#1000** frontmatter normalization | Cleans up historical sprint assignments for dashboard             |
+| 13    | **#1003** metadata fields           | Adds ES edition, language feature, task type to issue frontmatter |
+| z     | 14                                  | **#1007** historical checkpoint re-run                            | Rebuilds a comparable conformance history timeline |
+| 15    | **#1008** mobile playground         | Replaces desktop-only panel layout                                |
+| 16    | **#824** timeout umbrella doc       | Stale narrative cleanup                                           |
 
 ## #1034 prettier stress results (2026-04-11, dev-1056)
 

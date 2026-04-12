@@ -1,0 +1,15 @@
+{
+  "pr": 111,
+  "conclusion": "failure",
+  "head_branch": "issue-1082-ci-feed-net-per-test",
+  "head_sha": "db8919ff89941d9f3bbb46bc3babc8cff0b68586",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24290145909",
+  "timestamp": "2026-04-11T19:48:18Z",
+  "pass": 20624,
+  "fail": 16636,
+  "compile_error": 4561,
+  "snapshot_delta": 0,
+  "net_per_test": 80,
+  "regressions": 1,
+  "improvements": 81
+}
