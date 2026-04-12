@@ -4944,6 +4944,40 @@ function collectDeclaredGlobals(ctx: CodegenContext, libFile: ts.SourceFile, use
       }
     }
   }
+
+  // #1065 — Register ambient builtin constructors (Array, Object, Function, ...)
+  // as declared globals when referenced in source. These are filtered out of
+  // isExternalDeclaredClass because they have Wasm-native fast paths (vec
+  // structs, tuples, etc.), but they ALSO need to resolve to the real host
+  // constructor when used in identity-compare positions (`x.constructor === Array`).
+  // The fast paths at call sites (`new Array(n)`, `Array.of`, `Array.prototype`,
+  // `Array.isArray`) intercept BEFORE identifier resolution, so adding the
+  // global only affects bare-identifier uses.
+  const AMBIENT_BUILTIN_CTORS = [
+    "Array",
+    "Object",
+    "Function",
+    "Number",
+    "String",
+    "Boolean",
+    "Symbol",
+    "Error",
+    "TypeError",
+    "RangeError",
+    "SyntaxError",
+    "ReferenceError",
+  ];
+  for (const name of AMBIENT_BUILTIN_CTORS) {
+    if (!referencedNames.has(name)) continue;
+    if (ctx.declaredGlobals.has(name)) continue;
+    const importName = `global_${name}`;
+    const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+    addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx !== undefined) {
+      ctx.declaredGlobals.set(name, { type: { kind: "externref" }, funcIdx });
+    }
+  }
 }
 
 /** Check if source code references DOM globals (document, window) */
@@ -4962,6 +4996,20 @@ const LIB_GLOBALS = new Set([
   "Element",
   "Node",
   "Event",
+  // #1065 — ambient builtin constructors that need host-global resolution
+  // for bare-identifier uses (e.g. `x.constructor === Array`). Call-site
+  // fast paths intercept before identifier resolution runs.
+  "Array",
+  "Object",
+  "Function",
+  "Number",
+  "String",
+  "Boolean",
+  "Symbol",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
 ]);
 
 function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {

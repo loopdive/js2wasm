@@ -2607,6 +2607,10 @@ function resolveImport(
       };
     case "extern_set":
       return _safeSet;
+    case "host_eq":
+      // #1065 — strict equality for two externref operands that the GC path
+      // could not compare via ref.eq (e.g. host functions like `Array === Array`).
+      return (a: any, b: any) => (a === b ? 1 : 0);
     case "date_new":
       return () => new Date();
     case "date_now":
@@ -2619,6 +2623,11 @@ function resolveImport(
       const val = deps?.[intent.name];
       if (val !== undefined) return () => val;
       if (intent.name === "globalThis") return () => globalThis;
+      // Fall back to the host's ambient global (e.g. `Array`, `Object`) when
+      // deps does not override it. This makes `x.constructor === Array`
+      // compare against the real host Array constructor. (#1065)
+      const ambient = (globalThis as any)[intent.name];
+      if (ambient !== undefined) return () => ambient;
       return () => {};
     }
     case "proxy_create":
