@@ -2104,6 +2104,28 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       ctx.moduleInitStatements.push(stmt);
     }
   }
+
+  // Export default for module globals (#1108): `export default <variable>` where
+  // the variable is a module-level global (e.g. `var add = createMathOperation(fn, 0)`)
+  // This runs AFTER module globals are registered (Fourth pass above).
+  if (isEntryFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExportAssignment(stmt) || stmt.isExportEquals) continue;
+      if (!ts.isIdentifier(stmt.expression)) continue;
+      const varName = stmt.expression.text;
+      // Skip if already handled as a function export
+      if (ctx.funcMap.has(varName)) continue;
+      if (ctx.moduleGlobals.has(varName)) {
+        // Defer the actual export — global indices are not final yet because
+        // later collectDeclarations calls may add string-constant import globals
+        // which shift all defined-global indices.  Record the variable name
+        // and resolve the correct absolute index in a fixup pass.
+        if (!ctx.deferredDefaultGlobalExport) {
+          ctx.deferredDefaultGlobalExport = varName;
+        }
+      }
+    }
+  }
 }
 
 export function collectInterface(ctx: CodegenContext, decl: ts.InterfaceDeclaration): void {

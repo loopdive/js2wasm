@@ -209,7 +209,7 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
             break; // Directives must be at the top
           }
         }
-        // Don't assume module = strict. We add `export {}` synthetically for TS,
+        // Don't assume module = strict. We add export {} synthetically for TS,
         // but the source may be a sloppy-mode script (test262 noStrict tests).
         return false;
       }
@@ -637,10 +637,10 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
-    // Check var redeclaration conflicts with lexical declarations in block scope
+    // Check var redeclaration conflicts with lexical declarations in block/module scope
     // ES spec: It is a Syntax Error if any element of VarDeclaredNames also occurs
     // in LexicallyDeclaredNames of the StatementList.
-    if (ts.isBlock(node)) {
+    if (ts.isBlock(node) || ts.isSourceFile(node)) {
       checkVarLexicalConflicts(node);
     }
 
@@ -1199,6 +1199,14 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
             addError(member, "Class constructor may not be a setter");
           }
         }
+        // TS parses `async constructor()` as a ConstructorDeclaration with
+        // AsyncKeyword modifier (not as a MethodDeclaration named "constructor").
+        // Catch this case separately.
+        if (ts.isConstructorDeclaration(member)) {
+          if (member.modifiers?.some((m: any) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+            addError(member, "Class constructor may not be an async method");
+          }
+        }
       }
     }
 
@@ -1577,6 +1585,31 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
+    // ── Escaped reserved/contextual keywords in export/import ──────
+    // ES spec: It is a SyntaxError if the source text of an IdentifierName
+    // in keyword position contains a UnicodeEscapeSequence.
+    // Covers: `export { x \u0061s y }`, `export { x as \u0064efault }`,
+    //         `export {} \u0066rom "./x"`, etc.
+    if (ts.isExportDeclaration(node) || ts.isImportDeclaration(node)) {
+      const nodeStart = node.getStart(sourceFile);
+      const nodeText = sourceFile.text.substring(nodeStart, node.end);
+      if (nodeText.includes("\\u")) {
+        addError(node, "Keyword must not contain escaped characters");
+      }
+    }
+    if (ts.isExportSpecifier(node)) {
+      // Check the exported name and the local name for escaped keywords
+      const checkEscape = (n: ts.Identifier | ts.StringLiteral) => {
+        const s = n.getStart(sourceFile);
+        const raw = sourceFile.text.substring(s, s + n.text.length + 10);
+        if (raw.includes("\\u")) {
+          addError(n, "Keyword must not contain escaped characters");
+        }
+      };
+      checkEscape(node.name);
+      if (node.propertyName) checkEscape(node.propertyName);
+    }
+
     // ── import/export in invalid positions ──────────────────────────
     // NOTE: These checks are intentionally REMOVED (#952).
     // Our test262 runner wraps module tests inside `export function test() { try { ... } }`,
@@ -1691,10 +1724,14 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     // any duplicate entries.
     // This is checked at the source file level.
 
-    // ── import() with spread argument ──────────────────────────────
-    // ES spec: ImportCall takes exactly one AssignmentExpression, not ArgumentList.
-    // import(...['x']) is a SyntaxError.
+    // ── import() argument validation ──────────────────────────────
+    // ES spec: ImportCall takes exactly one AssignmentExpression (plus an
+    // optional second options argument per the import-attributes proposal).
+    // import() with 0 args, spread args, or 3+ args is a SyntaxError.
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      if (node.arguments.length === 0) {
+        addError(node, "import() requires at least one argument");
+      }
       for (const arg of node.arguments) {
         if (ts.isSpreadElement(arg)) {
           addError(arg, "import() does not allow spread arguments");
@@ -2528,8 +2565,8 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     return false;
   }
 
-  /** Check for var/lexical declaration conflicts in a block. */
-  function checkVarLexicalConflicts(block: ts.Block): void {
+  /** Check for var/lexical declaration conflicts in a block or source file. */
+  function checkVarLexicalConflicts(block: ts.Block | ts.SourceFile): void {
     // Collect lexically-declared names (let, const, function, class)
     const lexicalNames = new Set<string>();
     for (const stmt of block.statements) {
@@ -2873,6 +2910,57 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
   }
 
   visit(sourceFile);
+
+  // ── export default const/var/let — always SyntaxError ────────────
+  // ES spec: ExportDeclaration : export default HoistableDeclaration |
+  //          export default ClassDeclaration | export default [LAE] AssignmentExpression ;
+  // VariableStatement and LexicalDeclaration are not valid after export default.
+  for (const stmt of sourceFile.statements) {
+    if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
+      // TS models `export default expr` as ExportAssignment.
+      // But `export default const x = 1` is parsed differently — TS may parse it
+      // as ExportAssignment with the expression being an error node.
+      // Check the raw source for the pattern.
+      const start = stmt.getStart(sourceFile);
+      const rawText = sourceFile.text.substring(start, start + 30);
+      if (/^export\s+default\s+(?:const|let|var)\b/.test(rawText)) {
+        addError(stmt, "A default export may not be a variable/lexical declaration");
+      }
+    }
+  }
+
+  // ── Duplicate labels — always SyntaxError ──────────────────────────
+  // ES spec: ContainsDuplicateLabels of StatementList must be false.
+  // A label is duplicated if the same label name is nested (not sibling).
+  function checkDuplicateLabels(node: ts.Node, activeLabels: Set<string>): void {
+    // Don't cross function/class boundaries
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isClassExpression(node)
+    ) {
+      return;
+    }
+    if (ts.isLabeledStatement(node)) {
+      const label = node.label.text;
+      if (activeLabels.has(label)) {
+        addError(node.label, `Duplicate label '${label}'`);
+      } else {
+        activeLabels.add(label);
+        checkDuplicateLabels(node.statement, activeLabels);
+        activeLabels.delete(label);
+      }
+      return;
+    }
+    ts.forEachChild(node, (child) => checkDuplicateLabels(child, activeLabels));
+  }
+  checkDuplicateLabels(sourceFile, new Set());
 
   // ── Duplicate export names (source-file level check) ──────────────
   // ES spec: It is a Syntax Error if ExportedNames contains any duplicate entries.
