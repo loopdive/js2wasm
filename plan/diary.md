@@ -201,3 +201,38 @@ Continuous log of learnings, progress, and incidents. Append new entries at the 
 - **"Regressions" on big-delta PRs are usually false positives** — when a PR flips 300+ tests pass, 20-30 new fails are almost always previously-coincidental passes being honestly exposed. Sample before blocking.
 - **Dev scratch at repo root costs real tokens** — every `git status` dumps the noise into context, compounding over the session. `.tmp/` convention fixed this permanently.
 - **Session resume is not free** — a `--resume` that brings back a compaction summary costs multi-thousand tokens every tool call forever. Write handoffs to disk instead.
+
+---
+
+## 2026-04-11/12 — Sprint 40 final session + CI crisis
+
+### Timeline
+- **16:00-18:57 UTC**: Sprint 40 merge wave — 13 PRs landed (#86-#106), baseline reached 22,157 (51.3%)
+- **19:07 UTC**: Baseline silently flipped to 20,599 after PR #96 merge
+- **19:20 UTC**: Pipeline PAUSED, investigation started
+- **19:30-20:30 UTC**: Artifact-diff bisect (dev-1053), source audits (dev-1031), fork-worker analysis (dev-1047)
+- **20:56 UTC**: PR #114 (3-PR revert) admin-merged as rescue — baseline restored to 22,157
+- **21:00-22:00 UTC**: Reapply sequence — #107 clean (PR #116), #100+#96 catastrophic (PR #119 at 37k CE)
+- **22:00+ UTC**: Sprint wrap-up, Sprint 41+42 planning by PO, spec references added to 72 issues
+
+### Numbers
+- Sprint 40 start: 18,899 pass (43.80%)
+- Sprint 40 end: 22,185 pass (51.40%)
+- Net: **+3,286 pass (+7.6 percentage points)**
+- PRs merged this session: 24
+- New issues filed: 28 (#1066-#1093)
+
+### CI baseline-drift incident
+- Root cause: stale-baseline gate prevents main from refreshing → PRs compare against frozen reference → regressions attributed to "drift" → compound silently
+- Contributing factor: fork-worker compileCount++ bypassed on error path → RECREATE never fires under error-heavy chunks
+- Contributing factor: ci-status-feed `delta` was absolute snapshot not per-test net → devs self-merged on misleading signal
+- Fixes: #1082 (net_per_test, merged), #1084 (fork-worker fix, merged as PR #118), #1076-#1081 filed for structural hardening
+- Reusable playbook: `plan/retrospectives/2026-04-11-ci-baseline-drift-investigation.md`
+
+### Key learnings
+- **Stale-baseline drift inflates PR deltas ~5x** — individual CI feeds claimed +2,778 combined, reality was +407
+- **Walker-recursion hypotheses need empirical revert probes** — dev-1031's bodyUsesArguments and walkInstructions theories were mechanistically sound but empirically refuted (PR #115 had zero effect)
+- **Cherry-pick ≠ reland** — #96's cherry-pick onto post-#108/#110 main caused 37k CE catastrophe from semantic conflicts that text-level merge didn't catch
+- **Fork-worker RECREATE_INTERVAL matters** — lowering 200→100 via PR #118 was the actual CI recovery mechanism
+- **Always fetch the spec** — new memory rule: fetch tc39.es/ecma262 before fixing test failures, cite spec section in commits
+- **72 open issues now have spec references** — systematic batch by spec-linker agent
