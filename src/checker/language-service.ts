@@ -6,11 +6,15 @@ import { getLibSourceFile, isKnownLibName } from "./index.js";
  * Incremental compiler that reuses parsed lib SourceFiles across compilations.
  *
  * Uses the module-level LIB_SOURCE_FILES cache from checker/index.ts to return
- * the SAME SourceFile objects for lib files. Combined with oldProgram, this
- * enables TS to achieve full structure reuse — skipping re-parsing, re-binding,
- * and re-resolving for unchanged lib files.
+ * the SAME SourceFile objects for lib files. Each compilation creates a fresh
+ * Program and checker — no type state leaks between compilations. (#973)
  *
- * Each compilation creates a FRESH checker (no state leakage between tests).
+ * Performance: lib SourceFile caching avoids re-parsing ~10MB of .d.ts files
+ * per compilation, which is the dominant cost. We intentionally do NOT pass
+ * oldProgram to ts.createProgram — TypeScript's structure reuse carries forward
+ * internal symbol tables and type caches that leak stale type info between
+ * unrelated test compilations, causing ~400 false compile errors in the fork
+ * worker pool.
  */
 export class IncrementalLanguageService {
   private currentSource = "";
@@ -18,7 +22,6 @@ export class IncrementalLanguageService {
   private fileName: string;
   private compilerOptions: ts.CompilerOptions;
   private host: ts.CompilerHost;
-  private oldProgram: ts.Program | undefined;
 
   constructor(fileName = "input.ts") {
     this.fileName = fileName;
@@ -32,7 +35,7 @@ export class IncrementalLanguageService {
     };
 
     // Custom host that returns CACHED SourceFile objects for lib files.
-    // Same object identity across calls enables oldProgram structure reuse.
+    // Same object identity across calls is fine — lib files never change.
     this.host = {
       getSourceFile: (name: string, languageVersion: ts.ScriptTarget) => {
         if (name === this.fileName) return this.currentSourceFile;
@@ -76,8 +79,8 @@ export class IncrementalLanguageService {
       options.checkJs = true;
     }
 
-    const program = ts.createProgram([this.fileName], options, this.host, this.oldProgram);
-    this.oldProgram = program;
+    // Fresh program each time — no oldProgram reuse. (#973)
+    const program = ts.createProgram([this.fileName], options, this.host);
 
     const checker = program.getTypeChecker();
     const syntacticDiagnostics = program.getSyntacticDiagnostics();
@@ -96,6 +99,7 @@ export class IncrementalLanguageService {
   }
 
   dispose(): void {
-    this.oldProgram = undefined;
+    // No-op — no accumulated state to clear.
+    // Lib SourceFile cache is module-level and shared across all instances.
   }
 }
