@@ -15,7 +15,7 @@
  * (pointer + length pairs).
  */
 
-import type { FuncTypeDef, Instr, ValType, WasmExport, WasmFunction, WasmModule } from "../ir/types.js";
+import type { FuncTypeDef, Instr, ValType, WasmModule } from "../ir/types.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 

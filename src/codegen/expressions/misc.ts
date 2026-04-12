@@ -3,52 +3,19 @@
  * struct name resolution, and static analysis helpers.
  */
 import ts from "typescript";
-import {
-  isGeneratorType,
-  isIteratorResultType,
-  isNumberType,
-  isStringType,
-  isBooleanType,
-  isVoidType,
-  mapTsTypeToWasm,
-} from "../../checker/type-mapper.js";
+import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import {
-  addFuncType,
-  addImport,
-  addStringConstantGlobal,
-  addUnionImports,
-  ensureExnTag,
-  ensureI32Condition,
-  getArrTypeIdxFromVec,
-  getOrRegisterVecType,
-  isAnyValue,
-  localGlobalIdx,
-} from "../index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
 import { pushBody } from "../context/bodies.js";
 import { reportError } from "../context/errors.js";
+import { allocLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { compileExpression, coerceType, valTypesMatch, VOID_RESULT } from "../shared.js";
+import { ensureI32Condition, isAnyValue } from "../index.js";
+import { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
-import { coerceType as coerceTypeImpl, defaultValueInstrs, pushDefaultValue } from "../type-coercion.js";
-import { ensureLateImport, flushLateImportShifts, emitUndefined } from "./late-imports.js";
-import { emitThrowString, isEffectivelyVoidReturn } from "./helpers.js";
-import {
-  compileElementAccess,
-  compilePropertyAccess,
-  emitBoundsGuardedArraySet,
-  emitNullCheckThrow,
-  emitNullGuardedStructGet,
-  isProvablyNonNull,
-  typeErrorThrowInstrs,
-  resolveStructName,
-  isGeneratorIteratorResultLike,
-  getIteratorResultValueType,
-} from "../property-access.js";
+import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 
 // Re-export for backward compatibility — these helpers now live in property-access.ts.
-export { resolveStructName, isGeneratorIteratorResultLike, getIteratorResultValueType };
+export { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName };
 
 function compileConditionalExpression(
   ctx: CodegenContext,

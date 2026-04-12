@@ -6,8 +6,8 @@
  */
 import ts from "typescript";
 import type { WasmModule } from "../../ir/types.js";
-import type { CodegenContext, CodegenOptions } from "./types.js";
 import { getOrRegisterVecType, registerNativeStringTypes } from "../registry/types.js";
+import type { CodegenContext, CodegenOptions } from "./types.js";
 
 export function createCodegenContext(
   mod: WasmModule,

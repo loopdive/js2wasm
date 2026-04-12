@@ -1,6 +1,6 @@
 import ts from "typescript";
-import type { CompileError, ImportDescriptor, ImportIntent } from "../index.js";
 import type { TypedAST } from "../checker/index.js";
+import type { CompileError, ImportDescriptor, ImportIntent } from "../index.js";
 import type { WasmModule } from "../ir/types.js";
 import { hasExportModifier } from "./validation.js";
 
@@ -349,4 +349,4 @@ const DOWNGRADE_DIAG_CODES = new Set([
   1121, // "Octal literals are not allowed in strict mode" — valid sloppy-mode JS
 ]);
 
-export { DOWNGRADE_DIAG_CODES, looksLikeTsSyntaxOnJs, checkJsTypeCoverage, classifyImport, buildImportManifest };
+export { buildImportManifest, checkJsTypeCoverage, classifyImport, DOWNGRADE_DIAG_CODES, looksLikeTsSyntaxOnJs };

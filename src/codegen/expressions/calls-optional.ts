@@ -5,13 +5,13 @@
 import ts from "typescript";
 import { isExternalDeclaredClass, isStringType, isVoidType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { resolveWasmType } from "../index.js";
-import { allocLocal } from "../context/locals.js";
 import { popBody, pushBody } from "../context/bodies.js";
+import { allocLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { compileNativeStringMethodCall } from "../string-ops.js";
-import { compileExpression, VOID_RESULT } from "../shared.js";
+import { resolveWasmType } from "../index.js";
 import type { InnerResult } from "../shared.js";
+import { compileExpression, VOID_RESULT } from "../shared.js";
+import { compileNativeStringMethodCall } from "../string-ops.js";
 import { defaultValueInstrs, pushDefaultValue } from "../type-coercion.js";
 import { getFuncParamTypes } from "./helpers.js";
 import { resolveStructName } from "./misc.js";

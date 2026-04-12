@@ -11,9 +11,9 @@
 import ts from "typescript";
 import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { addStringConstantGlobal, ensureExnTag } from "../registry/imports.js";
-import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { getLocalType } from "../context/locals.js";
+import type { CodegenContext, FunctionContext } from "../context/types.js";
+import { addStringConstantGlobal, ensureExnTag } from "../registry/imports.js";
 import { coerceType, valTypesMatch } from "../shared.js";
 
 /**
