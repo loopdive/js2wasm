@@ -107,7 +107,7 @@ export function compileTemplateExpression(
   // Ensure string imports (concat, etc.) are available — template literals need concat
   addStringImports(ctx);
 
-  const concatIdx = ctx.funcMap.get("concat");
+  const concatIdx = ctx.jsStringImports.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) return null;
 
@@ -743,7 +743,7 @@ function compileBatchedConcat(ctx: CodegenContext, fctx: FunctionContext, operan
     fctx.body.push({ op: "call", funcIdx });
   } else {
     // Fallback: pairwise concat (shouldn't happen in js-string mode)
-    const concatIdx = ctx.funcMap.get("concat");
+    const concatIdx = ctx.jsStringImports.get("concat");
     if (concatIdx !== undefined) {
       for (let i = 1; i < arity; i++) {
         fctx.body.push({ op: "call", funcIdx: concatIdx });
@@ -1062,7 +1062,7 @@ export function compileStringBinaryOp(
   switch (op) {
     case ts.SyntaxKind.PlusToken: {
       // String concatenation
-      const funcIdx = ctx.funcMap.get("concat");
+      const funcIdx = ctx.jsStringImports.get("concat");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "externref" };
@@ -1071,7 +1071,7 @@ export function compileStringBinaryOp(
     }
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
     case ts.SyntaxKind.EqualsEqualsToken: {
-      const funcIdx = ctx.funcMap.get("equals");
+      const funcIdx = ctx.jsStringImports.get("equals");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "i32" };
@@ -1080,7 +1080,7 @@ export function compileStringBinaryOp(
     }
     case ts.SyntaxKind.ExclamationEqualsEqualsToken:
     case ts.SyntaxKind.ExclamationEqualsToken: {
-      const funcIdx = ctx.funcMap.get("equals");
+      const funcIdx = ctx.jsStringImports.get("equals");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         fctx.body.push({ op: "i32.eqz" }); // negate

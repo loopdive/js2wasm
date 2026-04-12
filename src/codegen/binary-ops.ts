@@ -1126,7 +1126,7 @@ export function compileBinaryExpression(
         releaseTempLocal(fctx, tmpR);
       }
       addStringImports(ctx);
-      const equalsIdx = ctx.funcMap.get("equals");
+      const equalsIdx = ctx.jsStringImports.get("equals");
       if (equalsIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: equalsIdx });
         if (isNeqOp) fctx.body.push({ op: "i32.eqz" });

@@ -3627,8 +3627,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
 
       // charCodeAt: uses wasm:js-string charCodeAt import (not string_charCodeAt)
+      // Use jsStringImports to avoid shadowing by user-defined functions (#1072).
       if (method === "charCodeAt") {
-        const charCodeAtIdx = ctx.funcMap.get("charCodeAt");
+        const charCodeAtIdx = ctx.jsStringImports.get("charCodeAt");
         if (charCodeAtIdx !== undefined) {
           compileExpression(ctx, fctx, propAccess.expression);
           if (expr.arguments.length > 0) {
@@ -4317,7 +4318,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const argTsType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
         if (isStringType(argTsType)) {
           addStringImports(ctx);
-          const lenIdx = ctx.funcMap.get("length");
+          const lenIdx = ctx.jsStringImports.get("length");
           if (lenIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: lenIdx });
             fctx.body.push({ op: "i32.const", value: 0 });
