@@ -1,0 +1,15 @@
+{
+  "pr": 137,
+  "conclusion": "success",
+  "head_branch": "issue-1071-for-of-iterables",
+  "head_sha": "a66fd4cd5621c87fc61069b224027c15855de905",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24309202333",
+  "timestamp": "2026-04-12T15:10:02Z",
+  "pass": 22412,
+  "fail": 15393,
+  "compile_error": 3998,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
+  "regressions": 0,
+  "improvements": 0
+}
