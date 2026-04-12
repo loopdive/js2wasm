@@ -1,47 +1,47 @@
 {
-  "timestamp": "2026-04-12T09:51:19.557Z",
+  "timestamp": "2026-04-12T10:14:33.158Z",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
-    "total": 43171,
-    "pass": 12973,
-    "fail": 9080,
-    "compile_error": 19757,
-    "compile_timeout": 22,
+    "total": 43172,
+    "pass": 12981,
+    "fail": 8892,
+    "compile_error": 19937,
+    "compile_timeout": 23,
     "skip": 1339,
-    "compilable": 22053,
+    "compilable": 21873,
     "stale": 0
   },
   "official_summary": {
-    "total": 43171,
-    "pass": 12973,
-    "fail": 9080,
-    "compile_error": 19757,
-    "compile_timeout": 22,
+    "total": 43172,
+    "pass": 12981,
+    "fail": 8892,
+    "compile_error": 19937,
+    "compile_timeout": 23,
     "skip": 1339,
-    "compilable": 22053,
+    "compilable": 21873,
     "stale": 0
   },
   "full_summary": {
-    "total": 43171,
-    "pass": 12973,
-    "fail": 9080,
-    "compile_error": 19757,
-    "compile_timeout": 22,
+    "total": 43172,
+    "pass": 12981,
+    "fail": 8892,
+    "compile_error": 19937,
+    "compile_timeout": 23,
     "skip": 1339,
-    "compilable": 22053,
+    "compilable": 21873,
     "stale": 0
   },
   "strict_summary": {
-    "total": 40662,
-    "pass": 12345,
-    "fail": 8456,
-    "compile_error": 18840,
-    "compile_timeout": 22,
+    "total": 40663,
+    "pass": 12353,
+    "fail": 8291,
+    "compile_error": 18997,
+    "compile_timeout": 23,
     "skip": 999,
-    "compilable": 20801,
+    "compilable": 20644,
     "stale": 0
   },
   "scope_summaries": {
@@ -66,13 +66,13 @@
       "stale": 0
     },
     "standard": {
-      "total": 42085,
-      "pass": 12894,
-      "fail": 9015,
-      "compile_error": 18815,
-      "compile_timeout": 22,
+      "total": 42086,
+      "pass": 12902,
+      "fail": 8827,
+      "compile_error": 18995,
+      "compile_timeout": 23,
       "skip": 1339,
-      "compilable": 21909,
+      "compilable": 21729,
       "stale": 0
     }
   },
@@ -106,8 +106,8 @@
     },
     {
       "name": "built-ins/Array",
-      "pass": 478,
-      "fail": 568,
+      "pass": 485,
+      "fail": 561,
       "compile_error": 1999,
       "compile_timeout": 17,
       "skip": 19,
@@ -115,9 +115,9 @@
     },
     {
       "name": "built-ins/ArrayBuffer",
-      "pass": 6,
-      "fail": 10,
-      "compile_error": 171,
+      "pass": 0,
+      "fail": 0,
+      "compile_error": 187,
       "compile_timeout": 0,
       "skip": 9,
       "total": 196
@@ -214,9 +214,9 @@
     },
     {
       "name": "built-ins/DataView",
-      "pass": 2,
-      "fail": 2,
-      "compile_error": 518,
+      "pass": 0,
+      "fail": 0,
+      "compile_error": 522,
       "compile_timeout": 0,
       "skip": 39,
       "total": 561
@@ -358,9 +358,9 @@
     },
     {
       "name": "built-ins/isNaN",
-      "pass": 1,
+      "pass": 0,
       "fail": 1,
-      "compile_error": 13,
+      "compile_error": 14,
       "compile_timeout": 0,
       "skip": 0,
       "total": 15
@@ -376,9 +376,9 @@
     },
     {
       "name": "built-ins/JSON",
-      "pass": 7,
-      "fail": 2,
-      "compile_error": 156,
+      "pass": 1,
+      "fail": 0,
+      "compile_error": 164,
       "compile_timeout": 0,
       "skip": 0,
       "total": 165
@@ -403,9 +403,9 @@
     },
     {
       "name": "built-ins/Math",
-      "pass": 38,
-      "fail": 9,
-      "compile_error": 280,
+      "pass": 9,
+      "fail": 0,
+      "compile_error": 318,
       "compile_timeout": 0,
       "skip": 0,
       "total": 327
@@ -466,9 +466,9 @@
     },
     {
       "name": "built-ins/Promise",
-      "pass": 6,
-      "fail": 4,
-      "compile_error": 627,
+      "pass": 3,
+      "fail": 0,
+      "compile_error": 634,
       "compile_timeout": 0,
       "skip": 15,
       "total": 652
@@ -484,9 +484,9 @@
     },
     {
       "name": "built-ins/Reflect",
-      "pass": 6,
-      "fail": 7,
-      "compile_error": 140,
+      "pass": 2,
+      "fail": 0,
+      "compile_error": 151,
       "compile_timeout": 0,
       "skip": 0,
       "total": 153
@@ -592,18 +592,18 @@
     },
     {
       "name": "built-ins/TypedArray",
-      "pass": 28,
-      "fail": 32,
-      "compile_error": 1351,
+      "pass": 27,
+      "fail": 27,
+      "compile_error": 1357,
       "compile_timeout": 0,
       "skip": 27,
       "total": 1438
     },
     {
       "name": "built-ins/TypedArrayConstructors",
-      "pass": 24,
-      "fail": 11,
-      "compile_error": 619,
+      "pass": 17,
+      "fail": 0,
+      "compile_error": 637,
       "compile_timeout": 0,
       "skip": 82,
       "total": 736
@@ -611,8 +611,8 @@
     {
       "name": "built-ins/Uint8Array",
       "pass": 0,
-      "fail": 5,
-      "compile_error": 63,
+      "fail": 0,
+      "compile_error": 68,
       "compile_timeout": 0,
       "skip": 0,
       "total": 68
@@ -656,35 +656,35 @@
     {
       "name": "language/arguments-object",
       "pass": 26,
-      "fail": 206,
-      "compile_error": 31,
+      "fail": 193,
+      "compile_error": 44,
       "compile_timeout": 0,
       "skip": 0,
       "total": 263
     },
     {
       "name": "language/asi",
-      "pass": 97,
+      "pass": 90,
       "fail": 5,
-      "compile_error": 0,
+      "compile_error": 7,
       "compile_timeout": 0,
       "skip": 0,
       "total": 102
     },
     {
       "name": "language/block-scope",
-      "pass": 141,
+      "pass": 132,
       "fail": 2,
-      "compile_error": 2,
+      "compile_error": 11,
       "compile_timeout": 0,
       "skip": 0,
       "total": 145
     },
     {
       "name": "language/comments",
-      "pass": 42,
+      "pass": 40,
       "fail": 4,
-      "compile_error": 5,
+      "compile_error": 7,
       "compile_timeout": 0,
       "skip": 1,
       "total": 52
@@ -692,35 +692,35 @@
     {
       "name": "language/computed-property-names",
       "pass": 17,
-      "fail": 28,
-      "compile_error": 3,
+      "fail": 26,
+      "compile_error": 5,
       "compile_timeout": 0,
       "skip": 0,
       "total": 48
     },
     {
       "name": "language/destructuring",
-      "pass": 16,
+      "pass": 15,
       "fail": 1,
-      "compile_error": 1,
+      "compile_error": 2,
       "compile_timeout": 0,
       "skip": 1,
       "total": 19
     },
     {
       "name": "language/directive-prologue",
-      "pass": 33,
-      "fail": 29,
-      "compile_error": 0,
+      "pass": 32,
+      "fail": 26,
+      "compile_error": 4,
       "compile_timeout": 0,
       "skip": 0,
       "total": 62
     },
     {
       "name": "language/eval-code",
-      "pass": 122,
-      "fail": 222,
-      "compile_error": 0,
+      "pass": 115,
+      "fail": 208,
+      "compile_error": 21,
       "compile_timeout": 0,
       "skip": 3,
       "total": 347
@@ -736,17 +736,17 @@
     },
     {
       "name": "language/expressions",
-      "pass": 5376,
-      "fail": 3845,
-      "compile_error": 945,
-      "compile_timeout": 1,
+      "pass": 5410,
+      "fail": 3803,
+      "compile_error": 952,
+      "compile_timeout": 2,
       "skip": 524,
       "total": 10691
     },
     {
       "name": "language/function-code",
-      "pass": 138,
-      "fail": 64,
+      "pass": 134,
+      "fail": 68,
       "compile_error": 15,
       "compile_timeout": 0,
       "skip": 0,
@@ -827,11 +827,11 @@
     {
       "name": "language/module-code",
       "pass": 328,
-      "fail": 217,
+      "fail": 218,
       "compile_error": 173,
       "compile_timeout": 0,
       "skip": 9,
-      "total": 727
+      "total": 728
     },
     {
       "name": "language/punctuators",
@@ -880,8 +880,8 @@
     },
     {
       "name": "language/statements",
-      "pass": 4725,
-      "fail": 3503,
+      "pass": 4783,
+      "fail": 3445,
       "compile_error": 898,
       "compile_timeout": 4,
       "skip": 207,
@@ -889,8 +889,8 @@
     },
     {
       "name": "language/types",
-      "pass": 68,
-      "fail": 38,
+      "pass": 67,
+      "fail": 39,
       "compile_error": 7,
       "compile_timeout": 0,
       "skip": 0,
@@ -907,18 +907,18 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 5370,
-    "illegal_cast": 194,
-    "negative_test_fail": 100,
-    "null_deref": 490,
+    "assertion_fail": 5061,
+    "illegal_cast": 191,
+    "negative_test_fail": 84,
+    "null_deref": 477,
     "oob": 33,
-    "other": 1101,
-    "promise_error": 8,
+    "other": 1092,
+    "promise_error": 7,
     "range_error": 12,
-    "runtime_error": 18579,
-    "type_error": 1864,
+    "runtime_error": 19252,
+    "type_error": 1797,
     "unreachable": 6,
-    "wasm_compile": 1080
+    "wasm_compile": 817
   },
   "skip_reasons": {
     "compiler hang (see HANGING_TESTS)": 2,
