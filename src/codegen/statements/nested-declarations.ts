@@ -25,7 +25,7 @@ import {
   getOrRegisterRefCellType,
   getOrRegisterVecType,
 } from "../registry/types.js";
-import { ensureExnTag } from "../registry/imports.js";
+import { ensureExnTag, nextModuleGlobalIdx } from "../registry/imports.js";
 import {
   collectClassDeclaration,
   compileClassBodies,
@@ -198,6 +198,13 @@ export function compileNestedFunctionDeclaration(
   }
   if (optionalParams.length > 0) {
     ctx.funcOptionalParams.set(funcName, optionalParams);
+  }
+
+  // Track nested functions that read `arguments` (#1053) so callers can
+  // populate the __extras_argv global with runtime args beyond the
+  // formal param count.
+  if (stmt.body && bodyUsesArguments(stmt.body)) {
+    ctx.funcUsesArguments.add(funcName);
   }
 
   if (captures.length === 0) {
@@ -703,6 +710,200 @@ export function bodyUsesArguments(node: ts.Node): boolean {
 }
 
 /**
+ * Register (on first use) a module-level mutable global that carries
+ * "extra" runtime arguments from a call site to a callee whose body reads
+ * `arguments`. The global is consumed (read + reset to null) in the
+ * callee's prologue (#1053).
+ *
+ * Type: `(mut (ref null $vec_externref))` — a WasmGC vec of externref.
+ */
+export function ensureExtrasArgvGlobal(ctx: CodegenContext): { globalIdx: number; vecTypeIdx: number } {
+  if (ctx.extrasArgvGlobalIdx >= 0) {
+    return { globalIdx: ctx.extrasArgvGlobalIdx, vecTypeIdx: ctx.extrasArgvVecTypeIdx };
+  }
+  const elemType: ValType = { kind: "externref" };
+  const vti = getOrRegisterVecType(ctx, "externref", elemType);
+  const globalIdx = nextModuleGlobalIdx(ctx);
+  ctx.mod.globals.push({
+    name: "__extras_argv",
+    type: { kind: "ref_null", typeIdx: vti },
+    mutable: true,
+    init: [{ op: "ref.null", typeIdx: vti } as Instr],
+  });
+  ctx.extrasArgvGlobalIdx = globalIdx;
+  ctx.extrasArgvVecTypeIdx = vti;
+  return { globalIdx, vecTypeIdx: vti };
+}
+
+/**
+ * Emit code to build a vec struct from `args[startIdx..]` and
+ * store it in the `__extras_argv` module global. Used at call sites when
+ * the callee reads `arguments` and the caller passes more runtime args
+ * than the callee's formal param count (#1053).
+ */
+export function emitSetExtrasArgv(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  args: ts.Expression[],
+  startIdx: number,
+): void {
+  const { globalIdx, vecTypeIdx } = ensureExtrasArgvGlobal(ctx);
+  const ati = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  const extrasCount = args.length - startIdx;
+
+  // Build element array: compile each extra arg, coerce to externref, push.
+  for (let i = startIdx; i < args.length; i++) {
+    const t = compileExpression(ctx, fctx, args[i]!, { kind: "externref" });
+    if (t === null) {
+      fctx.body.push({ op: "ref.null.extern" });
+      continue;
+    }
+    if (t.kind === "f64") {
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+    } else if (t.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+    } else if (t.kind === "ref" || t.kind === "ref_null") {
+      fctx.body.push({ op: "extern.convert_any" } as Instr);
+    }
+  }
+  fctx.body.push({ op: "array.new_fixed", typeIdx: ati, length: extrasCount });
+  const arrTmp = allocLocal(fctx, `__extras_arr_tmp_${fctx.locals.length}`, { kind: "ref", typeIdx: ati });
+  fctx.body.push({ op: "local.set", index: arrTmp });
+  fctx.body.push({ op: "i32.const", value: extrasCount });
+  fctx.body.push({ op: "local.get", index: arrTmp });
+  fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+  fctx.body.push({ op: "global.set", index: globalIdx } as Instr);
+}
+
+/**
+ * Shared arguments-vec construction: compiles formal params, concatenates
+ * extras from the `__extras_argv` global (#1053), and stores the final vec
+ * struct in `argsLocalIdx`. Used by both emitArgumentsObject and the
+ * function-body.ts inline path.
+ */
+export function emitArgumentsVecBody(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramTypes: ValType[],
+  paramOffset: number,
+  locals: {
+    vecTypeIdx: number;
+    arrTypeIdx: number;
+    argsLocalIdx: number;
+    arrTmpIdx: number;
+  },
+): void {
+  const numArgs = paramTypes.length;
+  const { vecTypeIdx: vti, arrTypeIdx: ati, argsLocalIdx: argsLocal, arrTmpIdx: arrTmp } = locals;
+
+  const { globalIdx: extrasGlobalIdx } = ensureExtrasArgvGlobal(ctx);
+  const extrasVecType: ValType = { kind: "ref_null", typeIdx: vti };
+  const extrasLocal = allocLocal(fctx, "__extras_argv_local", extrasVecType);
+  const extrasLenLocal = allocLocal(fctx, "__extras_len", { kind: "i32" });
+  const totalLenLocal = allocLocal(fctx, "__args_total_len", { kind: "i32" });
+
+  // Consume the global: read it and immediately clear so nested calls
+  // don't see stale data.
+  fctx.body.push({ op: "global.get", index: extrasGlobalIdx } as Instr);
+  fctx.body.push({ op: "local.set", index: extrasLocal });
+  fctx.body.push({ op: "ref.null", typeIdx: vti } as Instr);
+  fctx.body.push({ op: "global.set", index: extrasGlobalIdx } as Instr);
+
+  // extrasLen = extrasLocal != null ? extrasLocal.length : 0
+  fctx.body.push({ op: "local.get", index: extrasLocal });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val" as const, type: { kind: "i32" } },
+    then: [{ op: "i32.const", value: 0 } as Instr],
+    else: [
+      { op: "local.get", index: extrasLocal } as Instr,
+      { op: "ref.as_non_null" } as Instr,
+      { op: "struct.get", typeIdx: vti, fieldIdx: 0 } as Instr,
+    ],
+  } as Instr);
+  fctx.body.push({ op: "local.set", index: extrasLenLocal });
+
+  // totalLen = numArgs + extrasLen
+  fctx.body.push({ op: "i32.const", value: numArgs });
+  fctx.body.push({ op: "local.get", index: extrasLenLocal });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.set", index: totalLenLocal });
+
+  // arr = array.new_default(totalLen)
+  fctx.body.push({ op: "local.get", index: totalLenLocal });
+  fctx.body.push({ op: "array.new_default", typeIdx: ati } as Instr);
+  fctx.body.push({ op: "local.set", index: arrTmp });
+
+  // Fill formals: arr[i] = box(param[i + paramOffset])
+  for (let i = 0; i < numArgs; i++) {
+    fctx.body.push({ op: "local.get", index: arrTmp });
+    fctx.body.push({ op: "i32.const", value: i });
+    fctx.body.push({ op: "local.get", index: i + paramOffset });
+    const pt = paramTypes[i]!;
+    if (pt.kind === "f64") {
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+    } else if (pt.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+    } else if (pt.kind === "ref" || pt.kind === "ref_null") {
+      fctx.body.push({ op: "extern.convert_any" } as Instr);
+    }
+    fctx.body.push({ op: "array.set", typeIdx: ati } as Instr);
+  }
+
+  // If extras is non-null, copy extras into arr starting at offset numArgs.
+  fctx.body.push({ op: "local.get", index: extrasLocal });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [],
+    else: [
+      { op: "local.get", index: arrTmp } as Instr,
+      { op: "i32.const", value: numArgs } as Instr,
+      { op: "local.get", index: extrasLocal } as Instr,
+      { op: "ref.as_non_null" } as Instr,
+      { op: "struct.get", typeIdx: vti, fieldIdx: 1 } as Instr,
+      { op: "i32.const", value: 0 } as Instr,
+      { op: "local.get", index: extrasLenLocal } as Instr,
+      { op: "array.copy", dstTypeIdx: ati, srcTypeIdx: ati } as Instr,
+    ],
+  } as Instr);
+
+  // vec = { length: totalLen, data: arr }
+  fctx.body.push({ op: "local.get", index: totalLenLocal });
+  fctx.body.push({ op: "local.get", index: arrTmp });
+  fctx.body.push({ op: "struct.new", typeIdx: vti });
+  fctx.body.push({ op: "local.set", index: argsLocal });
+}
+
+/**
  * Emit code to create an `arguments` vec struct from function parameters.
  * paramOffset is the number of leading params to skip (e.g. captures).
  *
@@ -742,42 +943,14 @@ export function emitArgumentsObject(
     paramTypes: paramTypes.slice(),
   };
 
-  // Push each param coerced to externref
-  for (let i = 0; i < numArgs; i++) {
-    fctx.body.push({ op: "local.get", index: i + paramOffset });
-    const pt = paramTypes[i]!;
-    if (pt.kind === "f64") {
-      // Box f64 → externref via __box_number
-      const boxIdx = ctx.funcMap.get("__box_number");
-      if (boxIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx: boxIdx });
-      } else {
-        // Fallback: drop and push null
-        fctx.body.push({ op: "drop" });
-        fctx.body.push({ op: "ref.null.extern" });
-      }
-    } else if (pt.kind === "i32") {
-      // i32 → f64 → externref via __box_number
-      fctx.body.push({ op: "f64.convert_i32_s" });
-      const boxIdx = ctx.funcMap.get("__box_number");
-      if (boxIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx: boxIdx });
-      } else {
-        fctx.body.push({ op: "drop" });
-        fctx.body.push({ op: "ref.null.extern" });
-      }
-    } else if (pt.kind === "ref" || pt.kind === "ref_null") {
-      // GC ref → externref via extern.convert_any
-      fctx.body.push({ op: "extern.convert_any" });
-    }
-    // externref params are already externref — no conversion needed
-  }
-  fctx.body.push({ op: "array.new_fixed", typeIdx: ati, length: numArgs });
-  fctx.body.push({ op: "local.set", index: arrTmp });
-  fctx.body.push({ op: "i32.const", value: numArgs });
-  fctx.body.push({ op: "local.get", index: arrTmp });
-  fctx.body.push({ op: "struct.new", typeIdx: vti });
-  fctx.body.push({ op: "local.set", index: argsLocal });
+  // Build the arguments vec by concatenating formal params with
+  // extras delivered via the __extras_argv global (#1053).
+  emitArgumentsVecBody(ctx, fctx, paramTypes, paramOffset, {
+    vecTypeIdx: vti,
+    arrTypeIdx: ati,
+    argsLocalIdx: argsLocal,
+    arrTmpIdx: arrTmp,
+  });
 }
 
 // Register delegates in shared.ts so index.ts can call these without

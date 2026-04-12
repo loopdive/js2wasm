@@ -62,6 +62,7 @@ import {
 import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
 import type { InnerResult } from "../shared.js";
 import { compileStatement, emitTdzCheck, hoistFunctionDeclarations } from "../statements.js";
+import { emitSetExtrasArgv } from "../statements/nested-declarations.js";
 import {
   compileNativeStringMethodCall,
   compileStringLiteral,
@@ -2792,13 +2793,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // No self parameter for static methods
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           const staticParamCount = paramTypes ? paramTypes.length : expr.arguments.length;
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < staticParamCount) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          const calleeReadsArgsEarly = ctx.funcUsesArguments.has(fullName);
+          for (let i = 0; i < Math.min(expr.arguments.length, staticParamCount); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          }
+          if (expr.arguments.length > staticParamCount) {
+            if (calleeReadsArgsEarly) {
+              emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], staticParamCount);
             } else {
-              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null) {
-                fctx.body.push({ op: "drop" });
+              for (let i = staticParamCount; i < expr.arguments.length; i++) {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null) {
+                  fctx.body.push({ op: "drop" });
+                }
               }
             }
           }
@@ -3155,13 +3162,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           const resolvedStaticIdx = ctx.funcMap.get(fullName) ?? funcIdx;
           const paramTypes = getFuncParamTypes(ctx, resolvedStaticIdx);
           const paramCount = paramTypes ? paramTypes.length : expr.arguments.length;
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < paramCount) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          const calleeReadsArgsStatic = ctx.funcUsesArguments.has(fullName);
+          for (let i = 0; i < Math.min(expr.arguments.length, paramCount); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          }
+          if (expr.arguments.length > paramCount) {
+            if (calleeReadsArgsStatic) {
+              emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], paramCount);
             } else {
-              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null) {
-                fctx.body.push({ op: "drop" });
+              for (let i = paramCount; i < expr.arguments.length; i++) {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null) {
+                  fctx.body.push({ op: "drop" });
+                }
               }
             }
           }
@@ -3228,15 +3241,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
           // User-visible param count excludes self (param 0)
           const ngParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < ngParamCount) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          const calleeReadsArgsNg = ctx.funcUsesArguments.has(fullName);
+          for (let i = 0; i < Math.min(expr.arguments.length, ngParamCount); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          }
+          if (expr.arguments.length > ngParamCount) {
+            if (calleeReadsArgsNg) {
+              emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], ngParamCount);
             } else {
-              // Extra argument beyond method's parameter count — evaluate for
-              // side effects (JS semantics) and discard the result
-              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null) {
-                fctx.body.push({ op: "drop" });
+              for (let i = ngParamCount; i < expr.arguments.length; i++) {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null) {
+                  fctx.body.push({ op: "drop" });
+                }
               }
             }
           }
@@ -3278,15 +3295,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         // User-visible param count excludes self (param 0)
         const methodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
-        for (let i = 0; i < expr.arguments.length; i++) {
-          if (i < methodParamCount) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+        const calleeReadsArgsNn = ctx.funcUsesArguments.has(fullName);
+        for (let i = 0; i < Math.min(expr.arguments.length, methodParamCount); i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+        }
+        if (expr.arguments.length > methodParamCount) {
+          if (calleeReadsArgsNn) {
+            emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], methodParamCount);
           } else {
-            // Extra argument beyond method's parameter count — evaluate for
-            // side effects (JS semantics) and discard the result
-            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-            if (extraType !== null) {
-              fctx.body.push({ op: "drop" });
+            for (let i = methodParamCount; i < expr.arguments.length; i++) {
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null) {
+                fctx.body.push({ op: "drop" });
+              }
             }
           }
         }
@@ -3356,13 +3377,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               }
             }
             const smMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
-            for (let i = 0; i < expr.arguments.length; i++) {
-              if (i < smMethodParamCount) {
-                compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            const calleeReadsArgsSm = ctx.funcUsesArguments.has(fullName);
+            for (let i = 0; i < Math.min(expr.arguments.length, smMethodParamCount); i++) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            }
+            if (expr.arguments.length > smMethodParamCount) {
+              if (calleeReadsArgsSm) {
+                emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], smMethodParamCount);
               } else {
-                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-                if (extraType !== null) {
-                  fctx.body.push({ op: "drop" });
+                for (let i = smMethodParamCount; i < expr.arguments.length; i++) {
+                  const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                  if (extraType !== null) {
+                    fctx.body.push({ op: "drop" });
+                  }
                 }
               }
             }
@@ -3406,13 +3433,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           const nnMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < nnMethodParamCount) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          const calleeReadsArgsNns = ctx.funcUsesArguments.has(fullName);
+          for (let i = 0; i < Math.min(expr.arguments.length, nnMethodParamCount); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          }
+          if (expr.arguments.length > nnMethodParamCount) {
+            if (calleeReadsArgsNns) {
+              emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], nnMethodParamCount);
             } else {
-              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null) {
-                fctx.body.push({ op: "drop" });
+              for (let i = nnMethodParamCount; i < expr.arguments.length; i++) {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null) {
+                  fctx.body.push({ op: "drop" });
+                }
               }
             }
           }
@@ -4660,16 +4693,20 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       const captureCount = nestedCaptures ? nestedCaptures.length : 0;
       // User-visible param count excludes capture params (which are prepended internally)
       const paramCount = paramTypes ? paramTypes.length - captureCount : expr.arguments.length;
-      for (let i = 0; i < expr.arguments.length; i++) {
-        if (i < paramCount) {
-          // Offset into paramTypes by captureCount since captures are the leading params
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
+      const calleeReadsArgsDirect = ctx.funcUsesArguments.has(funcName);
+      for (let i = 0; i < Math.min(expr.arguments.length, paramCount); i++) {
+        // Offset into paramTypes by captureCount since captures are the leading params
+        compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
+      }
+      if (expr.arguments.length > paramCount) {
+        if (calleeReadsArgsDirect) {
+          emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], paramCount);
         } else {
-          // Extra argument beyond function's parameter count — evaluate for
-          // side effects (JS semantics) and discard the result
-          const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-          if (extraType !== null) {
-            fctx.body.push({ op: "drop" });
+          for (let i = paramCount; i < expr.arguments.length; i++) {
+            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+            if (extraType !== null) {
+              fctx.body.push({ op: "drop" });
+            }
           }
         }
       }
