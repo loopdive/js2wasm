@@ -693,13 +693,21 @@ function getCol(node: ts.Node): number {
  * because arrows inherit the enclosing function's `arguments`.
  */
 export function bodyUsesArguments(node: ts.Node): boolean {
-  if (ts.isIdentifier(node) && node.text === "arguments") return true;
-  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
-    return false;
+  // Iterative DFS to avoid stack overflow on deeply nested ASTs (CI cgroup limits)
+  const stack: ts.Node[] = [node];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (ts.isIdentifier(current) && current.text === "arguments") return true;
+    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) {
+      continue;
+    }
+    // Arrow functions do NOT have their own `arguments` — they inherit
+    // the enclosing function's, so we must traverse into them.
+    current.forEachChild((child) => {
+      stack.push(child);
+    });
   }
-  // Arrow functions do NOT have their own `arguments` — they inherit
-  // the enclosing function's, so we must traverse into them.
-  return ts.forEachChild(node, bodyUsesArguments) ?? false;
+  return false;
 }
 
 /**
