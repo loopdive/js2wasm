@@ -275,7 +275,23 @@ jobs:
             exit 0
           fi
           git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]"
-          git pull --rebase origin main || true
+          # Pull latest main. If rebase conflicts (common when baseline files
+          # were updated by a concurrent run), abort and force-push our fresh
+          # results — the just-computed baseline is always authoritative.
+          if ! git pull --rebase origin main; then
+            git rebase --abort 2>/dev/null || true
+            git fetch origin main
+            git reset --soft origin/main
+            git checkout HEAD -- benchmarks/results/ public/benchmarks/results/
+            # Re-stage our fresh baseline files over whatever origin has
+            cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+            cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-current.json
+            cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-report.json
+            cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
+            cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
+            git add -f benchmarks/results/ public/benchmarks/results/
+            git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
+          fi
           git push
 
       - name: Trigger Pages deploy after baseline refresh
