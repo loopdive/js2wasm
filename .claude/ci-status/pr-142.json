@@ -1,0 +1,15 @@
+{
+  "pr": 142,
+  "conclusion": "success",
+  "head_branch": "issue-1097-remove-import-helper",
+  "head_sha": "46f6be97a4270a41cdd1f13e56b2d12b7355dbcc",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24309805289",
+  "timestamp": "2026-04-12T16:04:01Z",
+  "pass": 22412,
+  "fail": 15393,
+  "compile_error": 3998,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
+  "regressions": 0,
+  "improvements": 0
+}
