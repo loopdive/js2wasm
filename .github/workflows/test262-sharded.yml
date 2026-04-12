@@ -75,10 +75,9 @@ jobs:
           path: |
             .test262-cache
             benchmarks/results/test262-cache.json
-          key: test262-cache-${{ hashFiles('src/**/*.ts') }}-chunk-${{ matrix.chunk }}
+          key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-chunk-${{ matrix.chunk }}
           restore-keys: |
-            test262-cache-${{ hashFiles('src/**/*.ts') }}-
-            test262-cache-
+            test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-
 
       - name: Build compiler bundles
         run: |
