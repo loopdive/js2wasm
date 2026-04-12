@@ -1,0 +1,15 @@
+{
+  "pr": 112,
+  "conclusion": "failure",
+  "head_branch": "test/revert-96-probe",
+  "head_sha": "593244366bcd7083c5bbf5c1bee453e1c71383cc",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24290440385",
+  "timestamp": "2026-04-11T20:05:54Z",
+  "pass": 20569,
+  "fail": 16721,
+  "compile_error": 4531,
+  "snapshot_delta": -55,
+  "net_per_test": -55,
+  "regressions": 56,
+  "improvements": 1
+}
