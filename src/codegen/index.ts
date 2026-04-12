@@ -358,6 +358,9 @@ export function generateModule(
     // Emit __call_fn_0 export for calling zero-arg closures from JS (#851)
     emitClosureCallExport(ctx);
 
+    // Emit __call_fn_1 export for calling one-arg closures from JS (#1090)
+    emitClosureCallExport1(ctx);
+
     // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
     emitToPrimitiveMethodExports(ctx);
 
@@ -947,6 +950,200 @@ function emitClosureCallExport(ctx: CodegenContext): void {
 
   mod.exports.push({
     name: "__call_fn_0",
+    desc: { kind: "func", index: funcIdx },
+  });
+}
+
+/**
+ * Emit __call_fn_1 export (#1090): call a one-arg WasmGC closure from JS.
+ * Takes (externref closure, externref arg) and returns externref.
+ * Needed for Symbol.toPrimitive closures which take a hint argument.
+ * Same dispatch strategy as __call_fn_0 but for arity 1.
+ */
+function emitClosureCallExport1(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+
+  let baseWrapperIdx: number | undefined;
+  const seenFuncTypeIdx = new Set<number>();
+  const entries: { funcTypeIdx: number; returnType: ValType | null; selfTypeIdx: number }[] = [];
+
+  for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+    if (info.paramTypes.length !== 1) continue;
+
+    const typeDef = mod.types[typeIdx];
+    if (!typeDef || typeDef.kind !== "struct") continue;
+
+    if (typeDef.superTypeIdx === -1 && baseWrapperIdx === undefined) {
+      baseWrapperIdx = typeIdx;
+    }
+
+    if (!seenFuncTypeIdx.has(info.funcTypeIdx)) {
+      seenFuncTypeIdx.add(info.funcTypeIdx);
+      const funcTypeDef = mod.types[info.funcTypeIdx];
+      const selfParam = funcTypeDef?.kind === "func" ? funcTypeDef.params[0] : undefined;
+      const selfTypeIdx =
+        selfParam && (selfParam.kind === "ref" || selfParam.kind === "ref_null")
+          ? (selfParam as { typeIdx: number }).typeIdx
+          : typeIdx;
+      entries.push({ funcTypeIdx: info.funcTypeIdx, returnType: info.returnType, selfTypeIdx });
+    }
+  }
+
+  if (entries.length === 0) return;
+
+  // If no base wrapper found, try any 0-arg base wrapper (V8 canonicalizes
+  // all single-funcref base wrappers to the same type regardless of arity)
+  if (baseWrapperIdx === undefined) {
+    for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+      const typeDef = mod.types[typeIdx];
+      if (typeDef && typeDef.kind === "struct" && typeDef.superTypeIdx === -1) {
+        baseWrapperIdx = typeIdx;
+        break;
+      }
+    }
+  }
+  if (baseWrapperIdx === undefined) {
+    for (const [typeIdx] of ctx.closureInfoByTypeIdx) {
+      if (ctx.closureInfoByTypeIdx.get(typeIdx)!.paramTypes.length === 1) {
+        baseWrapperIdx = typeIdx;
+        break;
+      }
+    }
+  }
+  if (baseWrapperIdx === undefined) return;
+
+  addUnionImports(ctx);
+  const boxNumberIdx = ctx.funcMap.get("__box_number");
+
+  // __call_fn_1(closure: externref, arg: externref) → externref
+  const exportFuncTypeIdx = addFuncType(
+    ctx,
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+    "$call_fn_1_type",
+  );
+  const funcIdx = ctx.numImportFuncs + mod.functions.length;
+  const bwIdx = baseWrapperIdx;
+
+  // Locals: 0=closure externref, 1=arg externref, 2=anyref, 3=struct ref, 4=funcref
+  const body: Instr[] = [];
+  body.push({ op: "local.get", index: 0 });
+  body.push({ op: "any.convert_extern" } as Instr);
+  body.push({ op: "local.set", index: 2 } as Instr);
+
+  let funcrefDispatch: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+  for (const entry of entries) {
+    // The funcref type for 1-arg closures is: (ref $self, param_type) → return_type
+    // We need to convert the externref arg to the expected param type.
+    // Most commonly it's externref (for hint strings), f64, or i32.
+    const funcTypeDef = mod.types[entry.funcTypeIdx];
+    const paramType =
+      funcTypeDef?.kind === "func" && funcTypeDef.params.length >= 2 ? funcTypeDef.params[1] : undefined;
+
+    const argConversion: Instr[] = [{ op: "local.get", index: 1 } as Instr];
+    if (paramType) {
+      if (paramType.kind === "f64") {
+        // externref → f64: unbox
+        const unboxIdx = ctx.funcMap.get("__unbox_number");
+        if (unboxIdx !== undefined) {
+          argConversion.push({ op: "call", funcIdx: unboxIdx } as Instr);
+        }
+      } else if (paramType.kind === "i32") {
+        const unboxIdx = ctx.funcMap.get("__unbox_number");
+        if (unboxIdx !== undefined) {
+          argConversion.push({ op: "call", funcIdx: unboxIdx } as Instr);
+          argConversion.push({ op: "i32.trunc_f64_s" } as unknown as Instr);
+        }
+      }
+      // externref → externref: no conversion
+    }
+
+    const callBody: Instr[] = [
+      { op: "local.get", index: 2 } as Instr,
+      { op: "ref.cast", typeIdx: entry.selfTypeIdx } as Instr,
+      ...argConversion,
+      { op: "local.get", index: 4 } as Instr,
+      { op: "ref.cast", typeIdx: entry.funcTypeIdx } as Instr,
+      { op: "call_ref", typeIdx: entry.funcTypeIdx } as Instr,
+    ];
+
+    // Coerce result to externref
+    if (entry.returnType) {
+      if (entry.returnType.kind === "ref" || entry.returnType.kind === "ref_null") {
+        callBody.push({ op: "extern.convert_any" } as Instr);
+      } else if (entry.returnType.kind === "f64") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i32") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i32_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i64") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i64_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      }
+    } else {
+      callBody.push({ op: "ref.null.extern" } as Instr);
+    }
+
+    funcrefDispatch = [
+      { op: "local.get", index: 4 } as Instr,
+      { op: "ref.test", typeIdx: entry.funcTypeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "externref" } },
+        then: callBody,
+        else: funcrefDispatch,
+      } as Instr,
+    ];
+  }
+
+  const structExtractAndDispatch: Instr[] = [
+    { op: "local.get", index: 2 } as Instr,
+    { op: "ref.cast", typeIdx: bwIdx } as Instr,
+    { op: "local.tee", index: 3 } as Instr,
+    { op: "struct.get", typeIdx: bwIdx, fieldIdx: 0 } as Instr,
+    { op: "local.set", index: 4 } as Instr,
+    ...funcrefDispatch,
+  ];
+
+  body.push({ op: "local.get", index: 2 } as Instr);
+  body.push({ op: "ref.test", typeIdx: bwIdx } as Instr);
+  body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "externref" } },
+    then: structExtractAndDispatch,
+    else: [{ op: "ref.null.extern" } as Instr],
+  } as Instr);
+
+  mod.functions.push({
+    name: "__call_fn_1",
+    typeIdx: exportFuncTypeIdx,
+    locals: [
+      { name: "__any", type: { kind: "anyref" } },
+      { name: "__struct", type: { kind: "ref_null", typeIdx: bwIdx } },
+      { name: "__funcref", type: { kind: "funcref" } },
+    ],
+    body,
+    exported: true,
+  } as WasmFunction);
+
+  mod.exports.push({
+    name: "__call_fn_1",
     desc: { kind: "func", index: funcIdx },
   });
 }
@@ -4966,6 +5163,29 @@ function collectDeclaredGlobals(ctx: CodegenContext, libFile: ts.SourceFile, use
     "RangeError",
     "SyntaxError",
     "ReferenceError",
+    "Date",
+    "RegExp",
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "Promise",
+    "Math",
+    "JSON",
+    "Reflect",
+    "ArrayBuffer",
+    "DataView",
+    "Int8Array",
+    "Uint8Array",
+    "Uint8ClampedArray",
+    "Int16Array",
+    "Uint16Array",
+    "Int32Array",
+    "Uint32Array",
+    "Float32Array",
+    "Float64Array",
+    "BigInt64Array",
+    "BigUint64Array",
   ];
   for (const name of AMBIENT_BUILTIN_CTORS) {
     if (!referencedNames.has(name)) continue;
@@ -5010,6 +5230,24 @@ const LIB_GLOBALS = new Set([
   "RangeError",
   "SyntaxError",
   "ReferenceError",
+  // #1018 — additional builtins whose .prototype access needs host resolution
+  "Promise",
+  "Math",
+  "JSON",
+  "Reflect",
+  "ArrayBuffer",
+  "DataView",
+  "Int8Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float32Array",
+  "Float64Array",
+  "BigInt64Array",
+  "BigUint64Array",
 ]);
 
 function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {

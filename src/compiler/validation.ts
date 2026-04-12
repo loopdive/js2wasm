@@ -429,6 +429,16 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       if (isCallExpressionTarget(node.operand) && isStrictMode(node)) {
         addError(node, "Invalid left-hand side in postfix operation");
       }
+      // ES spec: no LineTerminator between LeftHandSideExpression and ++/--.
+      // U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) between
+      // operand and operator are SyntaxErrors. Regular \n and \r are handled
+      // by the TS parser's ASI, but these Unicode separators are not.
+      const operandEnd = node.operand.end;
+      const opStart = node.operand.end; // operator immediately follows operand in AST
+      const textBetween = sourceFile.text.substring(operandEnd, node.end - 2);
+      if (/[\u2028\u2029]/.test(textBetween)) {
+        addError(node, "No line terminator allowed before postfix operator");
+      }
     }
 
     // Check assignment to arguments/eval in strict mode
@@ -528,6 +538,22 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     }
     if (ts.isMethodDeclaration(node) && node.parameters) {
       checkDuplicateParams(node.parameters, node);
+    }
+
+    // ── YieldExpression in generator default parameters ──────────────
+    // ES spec: It is a SyntaxError if FormalParameters of a generator
+    // function Contains YieldExpression. Default parameter values are
+    // evaluated before the generator body, so yield is not valid there.
+    // Same applies to async generators (AwaitExpression in params).
+    if (ts.isYieldExpression(node)) {
+      if (isInsideGeneratorParams(node)) {
+        addError(node, "Yield expression is not allowed in generator function parameters");
+      }
+    }
+    if (ts.isAwaitExpression(node)) {
+      if (isInsideAsyncParams(node)) {
+        addError(node, "Await expression is not allowed in async function parameters");
+      }
     }
 
     // Check yield used as identifier in generator functions/methods
@@ -1193,6 +1219,36 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       if (!isInsideMethod(node)) {
         addError(node, "'super' keyword unexpected here");
       }
+      // ES spec: SuperProperty only allows IdentifierName and [Expression],
+      // NOT PrivateName. super.#x is always a SyntaxError.
+      if (ts.isPropertyAccessExpression(node) && ts.isPrivateIdentifier(node.name)) {
+        addError(node, "Private fields cannot be accessed via super");
+      }
+    }
+
+    // ── Strict mode reserved words as assignment targets ─────────────
+    // ES spec: It is a SyntaxError if the LeftHandSideExpression of a simple
+    // assignment is a strict mode reserved word (public, private, protected, etc.)
+    // and the code is in strict mode.
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && isStrictMode(node)) {
+      let lhs: ts.Node = node.left;
+      while (ts.isParenthesizedExpression(lhs)) lhs = lhs.expression;
+      if (ts.isIdentifier(lhs)) {
+        const strictReservedAssign = new Set([
+          "implements",
+          "interface",
+          "let",
+          "package",
+          "private",
+          "protected",
+          "public",
+          "static",
+          "yield",
+        ]);
+        if (strictReservedAssign.has(lhs.text)) {
+          addError(lhs, `Assignment to reserved word '${lhs.text}' in strict mode`);
+        }
+      }
     }
 
     // ── Duplicate __proto__ in object literal ────────────────────────
@@ -1395,6 +1451,15 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
+    // ── `arguments` in class static blocks ──────────────────────────
+    // ES spec: ClassStaticBlockBody — It is a Syntax Error if
+    // ContainsArguments of ClassStaticBlockStatementList is true.
+    if (ts.isClassStaticBlockDeclaration(node)) {
+      if (containsArguments(node.body)) {
+        addError(node, "'arguments' is not allowed in class static initialization blocks");
+      }
+    }
+
     // ── await with empty operand in async functions ───────────────
     // When TS parses `void await`, `await:`, or just `await` (as identifier ref)
     // inside an async function, it creates AwaitExpression with empty Identifier
@@ -1414,6 +1479,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         if (afterText.startsWith(":")) {
           addError(node, "'await' is not allowed as a label identifier in this context");
         }
+      }
+      // ES spec: ClassStaticBlockBody: "It is a Syntax Error if ContainsAwait
+      // of ClassStaticBlockStatementList is true." This means a real AwaitExpression
+      // (not just the identifier 'await') inside a static block is always invalid,
+      // even if the static block is nested inside an async function.
+      if (isInsideClassStaticBlock(node)) {
+        addError(node, "'await' is not allowed in class static initialization blocks");
       }
       // ES spec: AwaitExpression is only valid in async functions or module top-level.
       // In module context, TypeScript may produce AwaitExpression for `await 1` inside
@@ -1437,6 +1509,18 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       const operand = node.expression;
       if (operand && ts.isIdentifier(operand) && operand.text === "") {
         addError(node, "'yield' is not allowed as an identifier in a generator function");
+      }
+    }
+
+    // ── yield * with newline before * ──────────────────────────────
+    // ES spec: YieldExpression : yield [no LineTerminator here] * AssignmentExpression
+    // A newline before the `*` makes it a distinct statement — SyntaxError.
+    if (ts.isYieldExpression(node) && node.asteriskToken && isInsideGeneratorFunction(node)) {
+      const yieldEnd = node.getStart(sourceFile) + 5; // length of "yield"
+      const starStart = node.asteriskToken.getStart(sourceFile);
+      const textBetween = sourceFile.text.substring(yieldEnd, starStart);
+      if (/[\r\n\u2028\u2029]/.test(textBetween)) {
+        addError(node, "A newline may not precede the '*' token in a yield expression");
       }
     }
 
@@ -1551,9 +1635,15 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
 
     // ── return outside function ──────────────────────────────────
     // ES spec: A ReturnStatement can only appear in a FunctionBody.
+    // ES spec: ClassStaticBlockStatementList uses [~Return], meaning
+    // 'return' is not valid directly inside a static block even if the
+    // block is nested inside a function. Only returns inside functions
+    // WITHIN the static block are valid.
     if (ts.isReturnStatement(node)) {
       if (!isInsideFunction(node)) {
         addError(node, "A 'return' statement can only be used within a function body");
+      } else if (isInsideClassStaticBlock(node)) {
+        addError(node, "A 'return' statement is not allowed in a class static initialization block");
       }
     }
 
@@ -1801,15 +1891,15 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
     }
 
     // ── Fields named "constructor" in class ──────────────────────────
-    // ES spec: It is a Syntax Error if PropName of a ClassElement is "constructor"
-    // and the element is a field definition (not a method).
+    // ES spec: ClassElement: FieldDefinition ;
+    //   It is a Syntax Error if PropName of FieldDefinition is "constructor".
+    // ES spec: ClassElement: static FieldDefinition ;
+    //   It is a Syntax Error if PropName of FieldDefinition is "prototype" or "constructor".
+    // So "constructor" is always forbidden as a field name (static or not).
     if (ts.isPropertyDeclaration(node)) {
       const name = ts.isIdentifier(node.name) ? node.name.text : ts.isStringLiteral(node.name) ? node.name.text : null;
       if (name === "constructor") {
-        const isStatic = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword);
-        if (!isStatic) {
-          addError(node, "Classes may not have a non-static field named 'constructor'");
-        }
+        addError(node, "Classes may not have a field named 'constructor'");
       }
     }
 
@@ -2246,10 +2336,13 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
 
   /** Check for duplicate private names in a class body. */
   function checkDuplicatePrivateNames(classNode: ts.ClassDeclaration | ts.ClassExpression): void {
-    const privateNames = new Map<string, { kinds: Set<string> }>();
+    const privateNames = new Map<string, { kinds: Set<string>; isStatic: boolean }>();
     for (const member of classNode.members) {
       if (member.name && ts.isPrivateIdentifier(member.name)) {
         const name = member.name.text;
+        const memberIsStatic = ts.canHaveModifiers(member)
+          ? (ts.getModifiers(member as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ?? false)
+          : false;
         let kind: string;
         if (ts.isGetAccessorDeclaration(member)) {
           kind = "get";
@@ -2265,12 +2358,17 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
 
         const existing = privateNames.get(name);
         if (!existing) {
-          privateNames.set(name, { kinds: new Set([kind]) });
+          privateNames.set(name, { kinds: new Set([kind]), isStatic: memberIsStatic });
         } else {
-          // get+set pair is allowed; anything else is a duplicate
+          // get+set pair is allowed ONLY if both have the same staticness
           const combined = new Set([...existing.kinds, kind]);
-          if (combined.size === 2 && combined.has("get") && combined.has("set")) {
-            // This is fine — getter+setter pair
+          if (
+            combined.size === 2 &&
+            combined.has("get") &&
+            combined.has("set") &&
+            existing.isStatic === memberIsStatic
+          ) {
+            // This is fine — getter+setter pair with same staticness
             existing.kinds.add(kind);
           } else {
             addError(member.name, `Duplicate private name '${name}'`);
@@ -2278,6 +2376,72 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
         }
       }
     }
+  }
+
+  /**
+   * Check if a node is inside the formal parameters of a generator function.
+   * ES spec: FormalParameters of generators use [+Yield] but YieldExpression
+   * is forbidden — "It is a Syntax Error if FormalParameters Contains YieldExpression".
+   */
+  function isInsideGeneratorParams(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isParameter(current)) {
+        const func = current.parent;
+        if ((ts.isFunctionDeclaration(func) || ts.isFunctionExpression(func)) && func.asteriskToken) {
+          return true;
+        }
+        if (ts.isMethodDeclaration(func) && func.asteriskToken) {
+          return true;
+        }
+        return false;
+      }
+      // Stop at function boundaries
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current)
+      ) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /**
+   * Check if a node is inside the formal parameters of an async function.
+   * ES spec: "It is a Syntax Error if FormalParameters Contains AwaitExpression".
+   */
+  function isInsideAsyncParams(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isParameter(current)) {
+        const func = current.parent;
+        if (
+          (ts.isFunctionDeclaration(func) ||
+            ts.isFunctionExpression(func) ||
+            ts.isArrowFunction(func) ||
+            ts.isMethodDeclaration(func)) &&
+          func.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
+        ) {
+          return true;
+        }
+        return false;
+      }
+      // Stop at function boundaries
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current)
+      ) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return false;
   }
 
   /** Check if a node is inside an async function (including async generators). */

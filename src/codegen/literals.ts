@@ -42,11 +42,26 @@ import {
   ensureLateImport,
   flushLateImportShifts,
 } from "./shared.js";
-import { bodyUsesArguments } from "./statements/nested-declarations.js";
+import { bodyUsesArguments } from "./function-body.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
 import { resolveStructName } from "./expressions/misc.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { pushDefaultValue } from "./type-coercion.js";
+
+/**
+ * Check if a TS expression is "undefined-like" — OmittedExpression (array hole),
+ * undefined keyword, identifier `undefined`, or void expression.
+ * Used to emit sNaN sentinels in tuple/array contexts so destructuring
+ * default checks trigger correctly (#1024).
+ */
+function _isUndefinedLike(node: ts.Node): boolean {
+  return (
+    ts.isOmittedExpression(node) ||
+    node.kind === ts.SyntaxKind.UndefinedKeyword ||
+    (ts.isIdentifier(node) && node.text === "undefined") ||
+    ts.isVoidExpression(node)
+  );
+}
 
 /**
  * Ensure that a struct registered for an object literal includes fields for
@@ -915,6 +930,13 @@ export function compileObjectLiteralForStruct(
           ? [resolveWasmType(ctx, retType)]
           : [];
 
+      // Track object-literal methods that read `arguments` (#1053) so
+      // callers can populate the __extras_argv global with runtime args
+      // beyond the formal param count.
+      if (prop.body && bodyUsesArguments(prop.body)) {
+        ctx.funcUsesArguments.add(fullName);
+      }
+
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
 
       // Check if a placeholder function was already pre-registered (by ensureStructForType).
@@ -1113,7 +1135,17 @@ export function compileTupleLiteral(
   for (let i = 0; i < elemTypes.length; i++) {
     const expectedType = elemTypes[i] ?? { kind: "externref" as const };
     if (i < expr.elements.length) {
-      compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
+      const el = expr.elements[i]!;
+      // For holes (OmittedExpression) and explicit `undefined` in f64 context,
+      // emit the sNaN sentinel so destructuring default checks trigger correctly.
+      // compileExpression emits regular NaN for undefined, which doesn't match
+      // the sNaN sentinel that emitDefaultValueCheck looks for (#1024).
+      if (expectedType.kind === "f64" && _isUndefinedLike(el)) {
+        fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
+        fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
+      } else {
+        compileExpression(ctx, fctx, el, expectedType);
+      }
     } else {
       // Missing element — push sentinel value that destructuring recognizes as
       // "absent": sNaN sentinel for f64, ref.null for refs/externref, 0 for i32 (#852, #866).
@@ -1168,7 +1200,18 @@ export function compileArrayLiteral(
             const actualHeterogeneous =
               actualElemTypes.length > 1 && !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
             if (actualHeterogeneous) {
-              tupleType = actualType;
+              // Don't switch to the actual type if the heterogeneity is only
+              // from undefined/void holes (i32) mixed with f64. The contextual
+              // type's f64 is better because it supports the sNaN sentinel for
+              // destructuring default checks. Switching to [i32, i32, f64] would
+              // lose default-value detection on the hole positions (#1024).
+              const onlyUndefinedHeterogeneity =
+                actualElemTypes.every((t) => t.kind === "f64" || t.kind === "i32") &&
+                actualElemTypes.some((t) => t.kind === "i32") &&
+                actualElemTypes.some((t) => t.kind === "f64");
+              if (!onlyUndefinedHeterogeneity) {
+                tupleType = actualType;
+              }
             }
           }
         }
@@ -1253,7 +1296,14 @@ export function compileArrayLiteral(
   if (!hasSpread) {
     // No spread — use the fast array.new_fixed path, then wrap in vec struct
     for (const el of expr.elements) {
-      compileExpression(ctx, fctx, el, elemWasm);
+      // For holes and explicit undefined in f64 context, emit sNaN sentinel
+      // so destructuring default checks trigger correctly (#1024).
+      if (elemWasm.kind === "f64" && _isUndefinedLike(el)) {
+        fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
+        fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
+      } else {
+        compileExpression(ctx, fctx, el, elemWasm);
+      }
     }
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: expr.elements.length });
     // Store data array in temp local, then build vec struct
