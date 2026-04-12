@@ -64,6 +64,13 @@ const _SC_CONFIGURABLE = 4;
 const _SC_DEFINED = 8;
 const _SC_ACCESSOR = 16;
 
+/** Normalize property key for descriptor Map lookups — JS treats numeric keys
+ * like 0 and "0" as the same property, but Map uses ===. (#1092) */
+function _normalizeDescKey(key: any): string | symbol {
+  if (typeof key === "symbol") return key;
+  return String(key);
+}
+
 function _getSidecarDescs(obj: object): Map<string | symbol, number> {
   if (!_canBeWeakKey(obj)) return new Map();
   let m = _wasmPropDescs.get(obj);
@@ -86,7 +93,7 @@ function _validatePropertyDescriptor(
   desc: PropertyDescriptor,
   existingValue?: any,
 ): number {
-  const existing = descs.get(prop);
+  const existing = descs.get(_normalizeDescKey(prop));
   // Compute new flags — for Object.defineProperty, unspecified attributes default to false
   let newFlags = _SC_DEFINED;
   if (desc.writable) newFlags |= _SC_WRITABLE;
@@ -764,6 +771,38 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
     getPrototypeOf() {
       return Object.prototype;
     },
+    defineProperty(_t, key, descriptor) {
+      // Route through sidecar descriptor validation so non-configurable/non-writable
+      // constraints are enforced when native Object.defineProperty/defineProperties
+      // is called on the proxy (#1092).
+      const nKey = _normalizeDescKey(key);
+      const sDescs = _getSidecarDescs(obj);
+      const existingVal = _sidecarGet(obj, key);
+      const newFlags = _validatePropertyDescriptor(sDescs, nKey, descriptor, existingVal);
+      sDescs.set(nKey, newFlags);
+      if (descriptor.value !== undefined) _sidecarSet(obj, key, descriptor.value);
+      if (descriptor.get !== undefined || descriptor.set !== undefined) {
+        if (typeof key === "symbol") {
+          let accMap = _wasmStructAccessors.get(obj);
+          if (!accMap) {
+            accMap = new Map();
+            _wasmStructAccessors.set(obj, accMap);
+          }
+          accMap.set(key, { get: descriptor.get, set: descriptor.set });
+        } else {
+          const sc = _getSidecar(obj);
+          if (descriptor.get) sc[`__get_${String(key)}`] = descriptor.get;
+          if (descriptor.set) sc[`__set_${String(key)}`] = descriptor.set;
+        }
+      }
+      // Mirror onto target for Proxy invariants
+      try {
+        Object.defineProperty(_t, key, descriptor);
+      } catch {
+        /* */
+      }
+      return true;
+    },
   };
 
   const proxy = new Proxy(target, handler);
@@ -1362,9 +1401,10 @@ function resolveImport(
                 // WasmGC struct — validate against sidecar descriptors, then store.
                 // Pass existing sidecar value for SameValue check on non-writable props.
                 const sDescs = _getSidecarDescs(obj);
+                const nProp = _normalizeDescKey(prop);
                 const existingVal = _sidecarGet(obj, prop);
-                const newFlags = _validatePropertyDescriptor(sDescs, prop, desc, existingVal);
-                sDescs.set(prop, newFlags);
+                const newFlags = _validatePropertyDescriptor(sDescs, nProp, desc, existingVal);
+                sDescs.set(nProp, newFlags);
                 if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
               } else {
                 // Spec-mandated TypeError (non-configurable redefinition on real JS objects)
@@ -1395,8 +1435,9 @@ function resolveImport(
               if (msg.includes("opaque") || msg.includes("WebAssembly")) {
                 // WasmGC struct — store accessor in sidecar
                 const sDescs = _getSidecarDescs(obj);
-                const newFlags = _validatePropertyDescriptor(sDescs, prop, desc, undefined);
-                sDescs.set(prop, newFlags);
+                const nProp = _normalizeDescKey(prop);
+                const newFlags = _validatePropertyDescriptor(sDescs, nProp, desc, undefined);
+                sDescs.set(nProp, newFlags);
                 const sc = _wasmStructProps.get(obj) ?? {};
                 _wasmStructProps.set(obj, sc);
                 if (typeof prop === "symbol") {
@@ -1478,9 +1519,10 @@ function resolveImport(
                     if (getFn !== undefined) desc.get = getFn;
                     const setFn = getField(rawDesc, "set");
                     if (setFn !== undefined) desc.set = setFn;
+                    const nKey = _normalizeDescKey(key);
                     const existingVal2 = _sidecarGet(obj, key);
-                    const newFlags = _validatePropertyDescriptor(sDescs, key, desc, existingVal2);
-                    sDescs.set(key, newFlags);
+                    const newFlags = _validatePropertyDescriptor(sDescs, nKey, desc, existingVal2);
+                    sDescs.set(nKey, newFlags);
                     if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
                   }
                 }
@@ -1513,7 +1555,8 @@ function resolveImport(
           const sc = _wasmStructProps.get(obj);
           if (sc && prop in sc) {
             const descs = _wasmPropDescs.get(obj);
-            const flags = descs?.get(prop) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
+            const flags =
+              descs?.get(_normalizeDescKey(prop)) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
             if (flags & _SC_ACCESSOR) {
               if (typeof prop === "symbol") {
                 const accessor = _wasmStructAccessors.get(obj)?.get(prop);

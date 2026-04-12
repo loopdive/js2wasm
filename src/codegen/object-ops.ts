@@ -1794,12 +1794,13 @@ export function compileObjectDefineProperties(
 
       // Externref fallback
       const dpIsAccessor = !!(dpGetNode || dpSetNode || dpGetExpr || dpSetExpr);
-      if (objType.kind !== "externref") {
-        // Coerce obj to externref for the host call
-        fctx.body.push({ op: "local.get", index: objLocal });
+      // Use extern.convert_any directly (not coerceType) to avoid __make_iterable
+      // for vec structs, which would create a new JS array with different identity (#856/#1092).
+      fctx.body.push({ op: "local.get", index: objLocal });
+      if (objType.kind === "ref" || objType.kind === "ref_null") {
+        fctx.body.push({ op: "extern.convert_any" } as Instr);
+      } else if (objType.kind !== "externref") {
         coerceType(ctx, fctx, objType, { kind: "externref" });
-      } else {
-        fctx.body.push({ op: "local.get", index: objLocal });
       }
       const objExtLocal = allocLocal(fctx, `__defprops_ext_${fctx.locals.length}`, { kind: "externref" });
       fctx.body.push({ op: "local.set", index: objExtLocal });
@@ -1911,9 +1912,13 @@ export function compileObjectDefineProperties(
   }
 
   // Dynamic fallback: delegate to __defineProperties host import
-  const objType = compileExpression(ctx, fctx, objArg, { kind: "externref" });
+  const objType = compileExpression(ctx, fctx, objArg);
   if (!objType) return null;
-  if (objType.kind !== "externref") {
+  // Use extern.convert_any directly (not coerceType) to avoid __make_iterable
+  // for vec structs, which would create a new JS array with different identity (#856/#1092).
+  if (objType.kind === "ref" || objType.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" } as Instr);
+  } else if (objType.kind !== "externref") {
     coerceType(ctx, fctx, objType, { kind: "externref" });
   }
   const descsType = compileExpression(ctx, fctx, descsArg, { kind: "externref" });
