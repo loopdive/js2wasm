@@ -214,13 +214,59 @@ function _toPrimitive(
   hint: "number" | "string" | "default",
   callbackState?: { getExports: () => Record<string, Function> | undefined },
 ): any {
-  // 1. Check Symbol.toPrimitive (sidecar only)
+  // Unwrap host proxy to raw WasmGC struct for sidecar lookups (#1090).
+  // Proxies are created by _wrapForHost and _hostProxyReverse maps them back.
+  const raw = _hostProxyReverse.get(obj) ?? obj;
+  // 1. Check Symbol.toPrimitive (sidecar and real symbol)
   // Note: user-thrown errors from sidecar methods must propagate per spec
   // (#983) — tests rely on `assert.throws` seeing the original throw.
-  const scToPrim = _sidecarGet(obj, Symbol.toPrimitive);
-  if (typeof scToPrim === "function") {
-    const prim = scToPrim.call(obj, hint);
-    if (prim == null || typeof prim !== "object") return prim;
+  const scToPrim = _sidecarGet(raw, Symbol.toPrimitive);
+  if (scToPrim !== undefined && scToPrim !== null) {
+    if (typeof scToPrim === "function") {
+      const prim = scToPrim.call(raw, hint);
+      if (prim == null || typeof prim !== "object") return prim;
+      throw new TypeError("Cannot convert object to primitive value");
+    }
+    // WasmGC closure struct — dispatch via __call_fn_1 (Symbol.toPrimitive takes hint arg) (#1090)
+    if (typeof scToPrim === "object" && _isWasmStruct(scToPrim)) {
+      const exps = callbackState?.getExports();
+      // Try 1-arg caller first (toPrimitive(hint))
+      const callFn1 = exps?.["__call_fn_1"];
+      if (typeof callFn1 === "function") {
+        try {
+          const prim = callFn1(scToPrim, hint);
+          if (prim == null || typeof prim !== "object") return prim;
+          throw new TypeError("Cannot convert object to primitive value");
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
+      // Try 0-arg caller (closure might ignore hint)
+      const callFn0 = exps?.["__call_fn_0"];
+      if (typeof callFn0 === "function") {
+        try {
+          const prim = callFn0(scToPrim);
+          if (prim == null || typeof prim !== "object") return prim;
+          throw new TypeError("Cannot convert object to primitive value");
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
+      // Try __call_@@toPrimitive (struct method dispatch)
+      const callTP = exps?.["__call_@@toPrimitive"];
+      if (typeof callTP === "function") {
+        try {
+          const prim = callTP(raw);
+          if (prim == null || typeof prim !== "object") return prim;
+          throw new TypeError("Cannot convert object to primitive value");
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
+      // Closure is a WasmGC struct but not dispatchable — treated as callable
+      // (it was compiled from a function expression). Fall through to valueOf/toString.
+    }
+    // §7.1.1 step 2d: non-callable @@toPrimitive → TypeError (#1090)
     throw new TypeError("Cannot convert object to primitive value");
   }
 
@@ -230,12 +276,37 @@ function _toPrimitive(
   const tryMethod = (name: string): any => {
     // Sidecar property (set via __extern_set)
     // User-thrown errors propagate — spec requires assert.throws to observe them.
-    const scFn = _sidecarGet(obj, name);
+    const scFn = _sidecarGet(raw, name);
     if (typeof scFn === "function") {
-      const prim = scFn.call(obj);
+      const prim = scFn.call(raw);
       if (prim == null || typeof prim !== "object") return prim;
       // Returned an object — not a valid primitive, try next method
       return undefined;
+    }
+    // Sidecar value is a WasmGC closure struct — dispatch via generic callers (#1090)
+    if (scFn != null && typeof scFn === "object" && _isWasmStruct(scFn) && exports) {
+      // Try zero-arg caller (valueOf/toString are typically zero-arg)
+      const callFn0 = exports["__call_fn_0"];
+      if (typeof callFn0 === "function") {
+        try {
+          const prim = callFn0(scFn);
+          if (prim == null || typeof prim !== "object") return prim;
+          return undefined; // returned an object — not valid
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
+      // Fall back to struct method dispatch
+      const callFn = exports[`__call_${name}`];
+      if (typeof callFn === "function") {
+        try {
+          const prim = callFn(raw);
+          if (prim == null || typeof prim !== "object") return prim;
+          return undefined;
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
     }
     // Wasm-exported struct field getter (__sget_valueOf, __sget_toString)
     // Only Wasm RuntimeError (type-mismatch trap) is swallowed; user-thrown
@@ -245,26 +316,37 @@ function _toPrimitive(
       if (typeof sget === "function") {
         let field: any;
         try {
-          field = sget(obj);
+          field = sget(raw);
         } catch (e: any) {
           if (e instanceof WebAssembly.RuntimeError) return undefined;
           throw e;
         }
         if (typeof field === "function") {
-          const prim = field.call(obj);
+          const prim = field.call(raw);
           if (prim == null || typeof prim !== "object") return prim;
         } else if (field != null && typeof field !== "object") {
           return field;
         }
-        if (field != null && typeof field === "object") {
+        if (field != null && typeof field === "object" && _isWasmStruct(field)) {
+          // Try named caller first (e.g. __call_valueOf)
           const callFn = exports[`__call_${name}`];
           if (typeof callFn === "function") {
             try {
-              const prim = callFn(obj);
+              const prim = callFn(raw);
               if (prim == null || typeof prim !== "object") return prim;
             } catch (e: any) {
               if (!(e instanceof WebAssembly.RuntimeError)) throw e;
-              /* ref.test/call dispatch failed — try next method */
+              /* ref.test/call dispatch failed — try generic caller */
+            }
+          }
+          // Generic closure caller fallback (#1090) — handles any WasmGC closure struct
+          const callFn0 = exports["__call_fn_0"];
+          if (typeof callFn0 === "function") {
+            try {
+              const prim = callFn0(field);
+              if (prim == null || typeof prim !== "object") return prim;
+            } catch (e: any) {
+              if (!(e instanceof WebAssembly.RuntimeError)) throw e;
             }
           }
         }
@@ -296,6 +378,155 @@ function _toPrimitive(
 function _toPrimitiveSync(v: any, hint: "number" | "string" | "default"): any {
   if (v == null || typeof v !== "object") return v;
   return _toPrimitive(v, hint) ?? "[object Object]";
+}
+
+/**
+ * Full ToPrimitive for proxied WasmGC structs and plain JS objects (#1090).
+ * Unlike _toPrimitive (which only checks sidecar + Wasm exports), this function
+ * also checks real JS properties on the object/proxy. This handles the case where
+ * Symbol.toPrimitive/valueOf/toString are WasmGC closures that the proxy wraps
+ * as callable JS functions, or where V8's native property access finds them.
+ *
+ * Throws TypeError if no conversion is possible (per ECMA-262 §7.1.1).
+ */
+function _hostToPrimitive(
+  obj: any,
+  hint: "number" | "string" | "default",
+  callbackState?: { getExports: () => Record<string, Function> | undefined },
+): any {
+  if (obj == null || typeof obj !== "object") return obj;
+
+  // Check Symbol.toPrimitive via real JS property access (goes through proxy if applicable)
+  const raw = _hostProxyReverse.get(obj) ?? obj;
+  const exotic = obj[Symbol.toPrimitive];
+  if (exotic !== undefined && exotic !== null) {
+    if (typeof exotic === "function") {
+      const result = exotic.call(obj, hint);
+      if (result == null || typeof result !== "object") return result;
+      throw new TypeError("Cannot convert object to primitive value");
+    }
+    // WasmGC closure struct — dispatch via __call_fn_1 (#1090)
+    if (typeof exotic === "object" && _isWasmStruct(exotic) && callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn1 = exports["__call_fn_1"];
+        if (typeof callFn1 === "function") {
+          const result = callFn1(exotic, hint);
+          if (result == null || typeof result !== "object") return result;
+          throw new TypeError("Cannot convert object to primitive value");
+        }
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          const result = callFn0(exotic);
+          if (result == null || typeof result !== "object") return result;
+          throw new TypeError("Cannot convert object to primitive value");
+        }
+      }
+    }
+    throw new TypeError("Cannot convert object to primitive value");
+  }
+
+  // Also check sidecar (for unwrapped WasmGC structs not behind a proxy)
+  const scExotic = _sidecarGet(raw, Symbol.toPrimitive);
+  if (scExotic !== undefined && scExotic !== null) {
+    if (typeof scExotic === "function") {
+      const result = scExotic.call(raw, hint);
+      if (result == null || typeof result !== "object") return result;
+      throw new TypeError("Cannot convert object to primitive value");
+    }
+    // WasmGC closure struct — dispatch via __call_fn_1 (#1090)
+    if (typeof scExotic === "object" && _isWasmStruct(scExotic) && callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn1 = exports["__call_fn_1"];
+        if (typeof callFn1 === "function") {
+          const result = callFn1(scExotic, hint);
+          if (result == null || typeof result !== "object") return result;
+          throw new TypeError("Cannot convert object to primitive value");
+        }
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          const result = callFn0(scExotic);
+          if (result == null || typeof result !== "object") return result;
+          throw new TypeError("Cannot convert object to primitive value");
+        }
+      }
+    }
+    // Non-callable Symbol.toPrimitive
+    throw new TypeError("Cannot convert object to primitive value");
+  }
+
+  // OrdinaryToPrimitive §7.1.1.1
+  const methodNames = hint === "string" ? ["toString", "valueOf"] : ["valueOf", "toString"];
+  for (const mName of methodNames) {
+    // Check real JS property first (goes through proxy which may wrap closures)
+    let fn: any;
+    try {
+      fn = obj[mName];
+    } catch {
+      /* property access on opaque struct */
+    }
+    if (typeof fn === "function") {
+      const result = fn.call(obj);
+      if (result == null || typeof result !== "object") return result;
+      continue;
+    }
+    // WasmGC closure struct for valueOf/toString — dispatch via __call_fn_0 (#1090)
+    if (fn != null && typeof fn === "object" && _isWasmStruct(fn) && callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          try {
+            const result = callFn0(fn);
+            if (result == null || typeof result !== "object") return result;
+          } catch (e: any) {
+            if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          }
+          continue;
+        }
+      }
+    }
+    // Then sidecar
+    const scFn = _sidecarGet(raw, mName);
+    if (typeof scFn === "function") {
+      const result = scFn.call(raw);
+      if (result == null || typeof result !== "object") return result;
+      continue;
+    }
+    // WasmGC closure struct in sidecar (#1090)
+    if (scFn != null && typeof scFn === "object" && _isWasmStruct(scFn) && callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          try {
+            const result = callFn0(scFn);
+            if (result == null || typeof result !== "object") return result;
+          } catch (e: any) {
+            if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          }
+          continue;
+        }
+      }
+    }
+    // Then Wasm exports
+    if (callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn = exports[`__call_${mName}`];
+        if (typeof callFn === "function") {
+          try {
+            const result = callFn(raw);
+            if (result == null || typeof result !== "object") return result;
+          } catch (e: any) {
+            if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          }
+        }
+      }
+    }
+  }
+  throw new TypeError("Cannot convert object to primitive value");
 }
 
 /**
@@ -442,6 +673,11 @@ const _symbolIdToKeys: Map<number, { wasm: string; sym: symbol }> = new Map([
 /** Safe property get: works on both JS objects and WasmGC structs. */
 function _safeGet(obj: any, key: any): any {
   if (obj == null) return undefined;
+  // Coerce WasmGC struct keys to primitives via ToPrimitive (#1090)
+  if (key != null && typeof key === "object" && _isWasmStruct(key)) {
+    const prim = _toPrimitiveSync(key, "string");
+    if (prim != null && typeof prim !== "object") key = prim;
+  }
   // Well-known symbol ID (i32 from compiler): only apply to WasmGC structs.
   // For regular JS objects/arrays, numeric keys 1-12 are actual indices, not symbol IDs
   // (e.g. getOwnPropertyNames conversion loop uses __extern_get with integer indices).
@@ -500,6 +736,11 @@ function _safeGet(obj: any, key: any): any {
 /** Safe property set: works on both JS objects and WasmGC structs. */
 function _safeSet(obj: any, key: any, val: any): void {
   if (obj == null) return;
+  // Coerce WasmGC struct keys to primitives via ToPrimitive (#1090)
+  if (key != null && typeof key === "object" && _isWasmStruct(key)) {
+    const prim = _toPrimitiveSync(key, "string");
+    if (prim != null && typeof prim !== "object") key = prim;
+  }
   // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name"
   if (typeof key === "number" && key >= 1 && key <= 14) {
     const symKeys = _symbolIdToKeys.get(key);
@@ -683,16 +924,37 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
       // export so JS callers (including native ToPrimitive / Array built-ins)
       // can invoke it. Without this, JS sees `typeof val === "object"` and
       // ToPrimitive fails with "Cannot convert object to primitive value".
-      if (val != null && typeof val === "object" && typeof key === "string" && _isWasmStruct(val) && exports) {
-        const callFn = exports[`__call_${key}`];
-        if (typeof callFn === "function") {
-          return function closureBridge(this: any) {
-            // __call_<name>(parent) dispatches to the closure bound to `obj`.
-            // The args the JS caller passes are dropped — our closures for
-            // valueOf/toString/@@toPrimitive are nullary in practice.
-            return callFn(obj);
+      if (val != null && typeof val === "object" && _isWasmStruct(val) && exports) {
+        // Resolve the export key — for string keys use directly, for well-known
+        // symbols use the @@name form (e.g. Symbol.toPrimitive → "@@toPrimitive") (#1090)
+        const exportKey = typeof key === "string" ? key : typeof key === "symbol" ? _symbolToWasm.get(key) : undefined;
+        if (exportKey !== undefined) {
+          const callFn = exports[`__call_${exportKey}`];
+          if (typeof callFn === "function") {
+            return function closureBridge(this: any, ...args: any[]) {
+              return callFn(obj);
+            };
+          }
+        }
+        // Generic closure caller fallback — wraps any WasmGC closure struct
+        // in a JS function so V8's native ToPrimitive sees it as callable (#1090)
+        // Try __call_fn_1 first (for 1-arg closures like Symbol.toPrimitive(hint)),
+        // then __call_fn_0 (for zero-arg closures like valueOf/toString).
+        const callFn1 = exports["__call_fn_1"];
+        if (typeof callFn1 === "function") {
+          return function closureBridge(this: any, ...args: any[]) {
+            return callFn1(val, args[0]);
           };
         }
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          return function closureBridge(this: any, ...args: any[]) {
+            return callFn0(val);
+          };
+        }
+        // Non-closure WasmGC struct (e.g. nested object with valueOf/toString) —
+        // wrap with _wrapForHost so its properties are accessible from JS (#1090)
+        return _wrapForHost(val, exports);
       }
       return val;
     },
@@ -968,7 +1230,22 @@ function resolveImport(
           const plain = _wasmToPlain(v, exports);
           // Normalize sentinel values: NaN means "not provided"
           const rep = replacer == null || (typeof replacer === "number" && isNaN(replacer)) ? undefined : replacer;
-          const sp = space == null || (typeof space === "number" && isNaN(space)) ? undefined : space;
+          // Coerce space to primitive — handles WasmGC structs and JS objects
+          // with WasmGC closure valueOf/toString (#1090)
+          let sp: any = space;
+          if (sp != null && typeof sp === "object") {
+            const prim = _toPrimitive(sp, "number", callbackState);
+            if (prim !== undefined) {
+              sp = prim;
+            } else {
+              try {
+                sp = _hostToPrimitive(sp, "number", callbackState);
+              } catch {
+                /* let JSON.stringify handle the coercion error */
+              }
+            }
+          }
+          if (sp == null || (typeof sp === "number" && isNaN(sp))) sp = undefined;
           return JSON.stringify(plain, rep as any, sp);
         };
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
@@ -988,15 +1265,35 @@ function resolveImport(
       if (name === "__extern_length")
         return (obj: any) => {
           if (obj == null) return 0;
+          // Helper: coerce length value to number (#1090) — handles nested WasmGC
+          // structs with valueOf/toString that need ToPrimitive dispatch
+          const coerceLen = (v: any): number => {
+            if (v == null) return 0;
+            if (typeof v === "number") return v;
+            if (typeof v === "string") return Number(v);
+            if (typeof v === "object") {
+              // Try our ToPrimitive for WasmGC structs (#1090)
+              const prim = _toPrimitive(v, "number", callbackState);
+              if (prim !== undefined) return Number(prim);
+              try {
+                const prim2 = _hostToPrimitive(v, "number", callbackState);
+                return Number(prim2);
+              } catch {
+                /* fall through */
+              }
+              return Number(v);
+            }
+            return Number(v);
+          };
           // Reading .length on an opaque wasmGC struct throws — check sidecar first (#983)
           if (_isWasmStruct(obj)) {
             const sc = _sidecarGet(obj, "length");
-            if (sc !== undefined) return sc;
+            if (sc !== undefined) return coerceLen(sc);
             const exports = callbackState?.getExports();
             const getter = exports?.[`__sget_length`];
             if (typeof getter === "function") {
               try {
-                return getter(obj);
+                return coerceLen(getter(obj));
               } catch {
                 /* not a field */
               }
@@ -1004,13 +1301,13 @@ function resolveImport(
             return 0;
           }
           const len = obj.length;
-          if (len !== undefined) return len;
+          if (len !== undefined) return coerceLen(len);
           const sc = _sidecarGet(obj, "length");
-          if (sc !== undefined) return sc;
+          if (sc !== undefined) return coerceLen(sc);
           // Try struct getter export for WasmGC structs with a 'length' field
           const exports = callbackState?.getExports();
           const getter = exports?.__sget_length;
-          if (typeof getter === "function") return getter(obj) ?? 0;
+          if (typeof getter === "function") return coerceLen(getter(obj)) ?? 0;
           return 0;
         };
       // __extern_get_idx: numeric index access bypassing the well-known symbol ID
@@ -1075,6 +1372,16 @@ function resolveImport(
         };
       if (name === "__extern_is_undefined") return (v: any) => (v === undefined ? 1 : 0);
       if (name === "__get_undefined") return () => undefined;
+      // __to_primitive: full ToPrimitive per ECMA-262 §7.1.1 (#1090)
+      // Takes (externref obj, externref hint_string) → externref primitive
+      // Throws TypeError if conversion fails or Symbol.toPrimitive is non-callable
+      if (name === "__to_primitive")
+        return (obj: any, hintStr: any): any => {
+          if (obj == null || typeof obj !== "object") return obj;
+          const hint: "number" | "string" | "default" =
+            hintStr === "string" ? "string" : hintStr === "number" ? "number" : "default";
+          return _hostToPrimitive(obj, hint, callbackState);
+        };
       // __box_symbol: convert i32 symbol ID → real JS Symbol (cached by ID)
       // so symbols preserve identity when crossing the Wasm/JS boundary (#864)
       if (name === "__box_symbol") {
@@ -1116,6 +1423,17 @@ function resolveImport(
       if (name === "__unbox_string")
         return (s: any): any => {
           if (typeof s === "string") return s; // already a string primitive
+          // WasmGC structs with valueOf/toString closures need ToPrimitive (#1090)
+          if (s != null && typeof s === "object" && _isWasmStruct(s)) {
+            const prim = _toPrimitive(s, "string", callbackState);
+            if (prim !== undefined) return String(prim);
+            try {
+              const prim2 = _hostToPrimitive(s, "string", callbackState);
+              return String(prim2);
+            } catch {
+              /* fall through to String() */
+            }
+          }
           return String(s); // extract primitive from String wrapper object
         };
       if (name === "__object_freeze")
@@ -2563,8 +2881,9 @@ function resolveImport(
       return intent.targetType === "boolean"
         ? (v: any) => (v ? 1 : 0)
         : (v: any) => {
-            // For objects, try ToPrimitive first — Number() on WasmGC structs returns NaN
-            // without throwing (#866), so the catch-based approach doesn't work.
+            // For objects, try our ToPrimitive first — Number() on WasmGC structs
+            // returns NaN without throwing (#866), and proxied structs may have
+            // WasmGC closures for Symbol.toPrimitive that V8 can't call (#1090).
             if (v != null && typeof v === "object") {
               const prim = _toPrimitive(v, "number", callbackState);
               if (prim !== undefined) {
@@ -2574,21 +2893,15 @@ function resolveImport(
                   /* */
                 }
               }
+              // _toPrimitive returned undefined — try the full host ToPrimitive (#1090)
+              // which checks real JS properties, sidecar, and Wasm exports.
+              // Let TypeError propagate so Wasm catch_all can intercept it.
+              const prim2 = _hostToPrimitive(v, "number", callbackState);
+              return Number(prim2);
             }
             try {
               return Number(v);
             } catch {
-              // Number() failed (e.g. Symbol)
-              if (v != null && typeof v === "object") {
-                const prim = _toPrimitive(v, "number", callbackState);
-                if (prim !== undefined) {
-                  try {
-                    return Number(prim);
-                  } catch {
-                    /* */
-                  }
-                }
-              }
               return NaN;
             }
           };
