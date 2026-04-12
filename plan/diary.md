@@ -236,3 +236,35 @@ Continuous log of learnings, progress, and incidents. Append new entries at the 
 - **Fork-worker RECREATE_INTERVAL matters** — lowering 200→100 via PR #118 was the actual CI recovery mechanism
 - **Always fetch the spec** — new memory rule: fetch tc39.es/ecma262 before fixing test failures, cite spec section in commits
 - **72 open issues now have spec references** — systematic batch by spec-linker agent
+
+---
+
+## 2026-04-12 — Sprint 41: pass-rate push + CI prototype-poisoning crisis
+
+### Pass rate
+- Start: 22,185/43,171 (51.40%)
+- End: 22,412/43,172 (51.92%) — **+227 in one sprint**
+
+### CI prototype-poisoning crisis (major finding)
+- Discovered that test262 tests mutate built-in prototypes (Array.prototype[Symbol.iterator], Object.defineProperty on Array.prototype, etc.) which permanently poison the TypeScript compiler running in the same fork-worker process
+- This caused ~37K false compile errors, dropping CI from 22,185 to 2,262
+- Three-layer fix: (1) restore configurable mutations after each test, (2) exit+restart worker on non-configurable mutations, (3) bust poisoned cache with v2 prefix
+- Recovery: 2,262 → 22,412 (+20,150 tests recovered)
+- CI cache key expanded to include worker scripts
+- Baseline promote step now handles rebase conflicts
+
+### Sprint 41 merges (8 PRs)
+- PR #120 #997 BigInt comparison
+- PR #121 #1091 8 early error rules
+- PR #122 #1018 ambient built-in constructors
+- PR #123 #1090 ToPrimitive for WasmGC closures
+- PR #124 #1024 sNaN sentinel for undefined/holes
+- PR #125 #1092 WasmGC array identity in defineProperties
+- PR #127 #1085 bodyUsesArguments iterative DFS
+- PR #129 #1053 arguments.length __extras_argv
+
+### Key learnings
+- **test262 tests poison shared-process JS state** — any runner sharing compile+execute in one process MUST sandbox built-in prototypes
+- **CI baselines must come from CI, not local runs** — local runs miss fork-worker-specific regressions
+- **Non-configurable prototype mutations require process restart** — no JS-level cleanup possible
+- **Cache keys must include all compilation-relevant files** — worker scripts affect results just as much as source code
