@@ -42,7 +42,7 @@ import {
   ensureLateImport,
   flushLateImportShifts,
 } from "./shared.js";
-import { bodyUsesArguments } from "./statements/nested-declarations.js";
+import { bodyUsesArguments } from "./function-body.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
 import { resolveStructName } from "./expressions/misc.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
@@ -914,6 +914,13 @@ export function compileObjectLiteralForStruct(
         : retType && !isVoidType(retType)
           ? [resolveWasmType(ctx, retType)]
           : [];
+
+      // Track object-literal methods that read `arguments` (#1053) so
+      // callers can populate the __extras_argv global with runtime args
+      // beyond the formal param count.
+      if (prop.body && bodyUsesArguments(prop.body)) {
+        ctx.funcUsesArguments.add(fullName);
+      }
 
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
 
