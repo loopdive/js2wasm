@@ -154,20 +154,20 @@ First stress-test run landed. Targets: prettier 3.8.1 pre-bundled ESM — `doc.m
 
 **Instantiate failure (doc.mjs):** `trimNewlinesEnd` fails Wasm validation — `call[0] expected type externref, found call of type f64 @+40428` (return-value coercion gap when an `any`-typed call result flows into an externref consumer).
 
-**Headline result:** prettier 3.8.1 bundled doc printer compiles to a 107KB Wasm binary in 1.2s with only 15 diagnostics across 1,480 lines — a **far better** starting point than the architect's projected "expect 10-30 small correctness bugs." The full bundled core (`index.mjs`, 19K lines) is held back by a single TypeScript parser rule (#1066) — once relaxed, it should reach the same stage as `doc.mjs`.
+**Headline result:** prettier 3.8.1 bundled doc printer compiles to a 107KB Wasm binary in 1.2s with only 15 diagnostics across 1,480 lines — a **far better** starting point than the architect's projected "expect 10-30 small correctness bugs." The full bundled core (`index.mjs`, 19K lines) is held back by a single TypeScript parser rule (#1068) — once relaxed, it should reach the same stage as `doc.mjs`.
 
 **Follow-up issues filed** (all parent #1034):
-- **#1066** parser: 'await' as label identifier — unblocks `index.mjs` compile
-- **#1067** codegen: object literal → struct inference (11 sites in doc.mjs; the largest bucket)
-- **#1068** codegen: `new Intl.ListFormat` (dual-backend host fast path / standalone reject)
-- **#1069** codegen: for-of non-array iterable (Map/Set/generator iteration — broad-impact fix)
-- **#1070** codegen: return-type coercion f64 → externref missing in call sites (the `trimNewlinesEnd` runtime failure)
+- **#1068** parser: 'await' as label identifier — unblocks `index.mjs` compile
+- **#1069** codegen: object literal → struct inference (11 sites in doc.mjs; the largest bucket)
+- **#1070** codegen: `new Intl.ListFormat` (dual-backend host fast path / standalone reject)
+- **#1071** codegen: for-of non-array iterable (Map/Set/generator iteration — broad-impact fix)
+- **#1072** codegen: return-type coercion f64 → externref missing in call sites (the `trimNewlinesEnd` runtime failure)
 
 **Report:** `plan/issues/ready/1034-report.md`
 **Harness:** `scripts/prettier-stress.ts` (re-runnable after fixes)
 
 **Deferred from #1034 acceptance criteria** (not reached this PR, tracked for follow-up):
-- Self-format smoke test (compiled-prettier vs native-prettier byte-for-byte) — blocked on #1070 minimum (need an instantiating binary first)
+- Self-format smoke test (compiled-prettier vs native-prettier byte-for-byte) — blocked on #1072 minimum (need an instantiating binary first)
 - Perf benchmark (compiled vs native ratio) — same blocker
 
 ## Acceptance criteria
