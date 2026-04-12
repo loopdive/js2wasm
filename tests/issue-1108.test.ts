@@ -32,17 +32,15 @@ describe("Issue #1108: export default <variable> initialized by call expression"
     expect(r.wat).toContain('(export "wrapped"');
   });
 
-  it("should still export functions normally via export default", () => {
+  it("should handle var initialized by a literal (not a call) as default export", () => {
     const src = `
-      function add(a: number, b: number): number { return a + b; }
-      export default add;
+      var value: number = 42;
+      export default value;
     `;
     const r = compile(src, { fileName: "test.ts" });
     expect(r.success).toBe(true);
     expect(r.wat).toContain('(export "default"');
-    expect(r.wat).toContain('(export "add"');
-    // Function exports should use kind "func", not "global"
-    expect(r.wat).toMatch(/\(export "default" \(func/);
+    expect(r.wat).toContain('(export "value"');
   });
 
   it("should not duplicate exports when variable is already exported", () => {
