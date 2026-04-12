@@ -1658,6 +1658,7 @@ const ARRAY_METHODS = new Set([
   "entries",
   "keys",
   "values",
+  "@@iterator", // Array.prototype[Symbol.iterator] === Array.prototype.values (#854)
 ]);
 
 /**
@@ -1816,6 +1817,10 @@ export function compileArrayMethodCall(
     case "keys":
     case "values":
       result = compileArrayIteratorMethod(ctx, fctx, methodAccess, methodName);
+      break;
+    case "@@iterator":
+      // Array.prototype[Symbol.iterator] === Array.prototype.values per ES spec (#854)
+      result = compileArrayIteratorMethod(ctx, fctx, methodAccess, "values");
       break;
     default:
       result = undefined;
