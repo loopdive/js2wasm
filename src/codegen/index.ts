@@ -1,5 +1,8 @@
 import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
+import { eliminateDeadImports } from "./dead-elimination.js";
+import { peepholeOptimize } from "./peephole.js";
+import { stackBalance } from "./stack-balance.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -9,85 +12,126 @@ import {
   isStringType,
   isVoidType,
   mapTsTypeToWasm,
+  unwrapPromiseType,
 } from "../checker/type-mapper.js";
-import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction, WasmModule } from "../ir/types.js";
+import type {
+  ArrayTypeDef,
+  FieldDef,
+  FuncTypeDef,
+  Import,
+  Instr,
+  StructTypeDef,
+  ValType,
+  WasmFunction,
+  WasmModule,
+} from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
 import { createCodegenContext } from "./context/create-context.js";
-import { reportErrorNoNode } from "./context/errors.js";
-import { allocLocal } from "./context/locals.js";
+import { popBody, pushBody } from "./context/bodies.js";
+import { reportError, reportErrorNoNode } from "./context/errors.js";
+import { allocLocal, allocTempLocal, deduplicateLocals, getLocalType, releaseTempLocal } from "./context/locals.js";
+import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type {
   ClosureInfo,
   CodegenContext,
   CodegenOptions,
+  CodegenResult,
   ExternClassInfo,
   FunctionContext,
+  InlinableFunctionInfo,
   OptionalParamInfo,
+  RestParamInfo,
 } from "./context/types.js";
-import { eliminateDeadImports } from "./dead-elimination.js";
-import { emitUndefined } from "./expressions/late-imports.js";
+import {
+  addImport,
+  addStringConstantGlobal,
+  ensureExnTag,
+  localGlobalIdx,
+  nextModuleGlobalIdx,
+} from "./registry/imports.js";
+import {
+  addFuncType,
+  funcTypeEq,
+  getArrTypeIdxFromVec,
+  getOrRegisterArrayType,
+  getOrRegisterRefCellType,
+  getOrRegisterTemplateVecType,
+  getOrRegisterVecType,
+} from "./registry/types.js";
+import {
+  compileExpression,
+  resolveComputedKeyExpression,
+  coerceType,
+  valTypesMatch,
+  emitBoundsCheckedArrayGet,
+  ensureLateImport,
+  flushLateImportShifts,
+  compileStatement,
+  ensureBindingLocals,
+  hoistFunctionDeclarations,
+  emitNestedBindingDefault,
+  emitDefaultValueCheck,
+  emitArgumentsObject,
+  registerEnsureAnyHelpers,
+} from "./shared.js";
+import { shiftLateImportIndices, emitUndefined } from "./expressions/late-imports.js";
+import { collectShapes } from "../shape-inference.js";
+import { emitInlineMathFunctions } from "./math-helpers.js";
 import {
   fixupExternConvertAny,
   fixupStructNewArgCounts,
   fixupStructNewResultCoercion,
+  instrStackDelta,
   markLeafStructsFinal,
+  repairBody,
   repairStructTypeMismatches,
 } from "./fixups.js";
-import { emitInlineMathFunctions } from "./math-helpers.js";
-import { peepholeOptimize } from "./peephole.js";
-import { addImport, addStringConstantGlobal } from "./registry/imports.js";
-import {
-  addFuncType,
-  getArrTypeIdxFromVec,
-  getOrRegisterTemplateVecType,
-  getOrRegisterVecType,
-} from "./registry/types.js";
-import { stackBalance } from "./stack-balance.js";
 
 // ── Extracted sub-modules ──────────────────────────────────────────────────
 import {
-  emitWrapperValueOfFunctions,
-  ensureAnyHelpers,
   ensureAnyValueType,
   ensureWrapperTypes,
+  emitWrapperValueOfFunctions,
   isAnyValue,
+  ensureAnyHelpers,
 } from "./any-helpers.js";
 import {
-  buildShapePropFlagsTable,
+  nativeStringType,
+  nativeStringTypeNullable,
+  flatStringType,
+  ensureNativeStringHelpers,
+} from "./native-strings.js";
+import { destructureParamObject, destructureParamArray } from "./destructuring-params.js";
+import {
   collectClassDeclaration,
+  buildShapePropFlagsTable,
   collectDeclaredFuncRefs,
   compileClassBodies,
 } from "./class-bodies.js";
 import {
+  createUnifiedCollectorState,
+  unifiedVisitNode,
+  finalizeUnifiedCollector,
+  collectEmptyObjectWidening,
   applyShapeInference,
   collectDeclarations,
-  collectEmptyObjectWidening,
   compileDeclarations,
-  createUnifiedCollectorState,
-  finalizeUnifiedCollector,
-  unifiedVisitNode,
 } from "./declarations.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
-import {
-  ensureNativeStringHelpers,
-  flatStringType,
-  nativeStringType,
-  nativeStringTypeNullable,
-} from "./native-strings.js";
 
 // ── Re-exports for public API compatibility ─────────────────────────────────
 export {
-  collectClassDeclaration,
-  compileClassBodies,
-  destructureParamArray,
-  destructureParamObject,
-  ensureAnyHelpers,
   ensureAnyValueType,
-  ensureNativeStringHelpers,
   ensureWrapperTypes,
-  flatStringType,
   isAnyValue,
+  ensureAnyHelpers,
   nativeStringType,
   nativeStringTypeNullable,
+  flatStringType,
+  ensureNativeStringHelpers,
+  collectClassDeclaration,
+  compileClassBodies,
+  destructureParamObject,
+  destructureParamArray,
 };
 /**
  * Report a codegen error with source location extracted from an AST node.
@@ -5849,11 +5893,6 @@ export function ensureI32Condition(fctx: FunctionContext, condType: ValType | nu
   // i32 is already valid as-is
 }
 
-export { popBody, pushBody } from "./context/bodies.js";
-export { createCodegenContext } from "./context/create-context.js";
-export { reportError } from "./context/errors.js";
-export { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
-export { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 export type {
   ClosureInfo,
   CodegenContext,
@@ -5865,6 +5904,11 @@ export type {
   OptionalParamInfo,
   RestParamInfo,
 } from "./context/types.js";
+export { popBody, pushBody } from "./context/bodies.js";
+export { createCodegenContext } from "./context/create-context.js";
+export { reportError } from "./context/errors.js";
+export { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
+export { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 export {
   addImport,
   addStringConstantGlobal,

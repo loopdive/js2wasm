@@ -1,18 +1,20 @@
 import type {
-  BlockType,
-  FieldDef,
-  GlobalDef,
-  Import,
-  Instr,
-  SourcePos,
+  WasmModule,
   TypeDef,
   ValType,
-  WasmExport,
+  Instr,
+  BlockType,
+  FieldDef,
+  Import,
   WasmFunction,
-  WasmModule,
+  WasmExport,
+  GlobalDef,
+  CatchClause,
+  TagDef,
+  SourcePos,
 } from "../ir/types.js";
 import { WasmEncoder } from "./encoder.js";
-import { GC, OP, SECTION, SIMD, TYPE } from "./opcodes.js";
+import { OP, GC, TYPE, SECTION, SIMD } from "./opcodes.js";
 
 /** A source map entry: maps a wasm byte offset to a source position */
 export interface SourceMapEntry {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { resolve, basename, dirname } from "node:path";
 import { compile } from "./index.js";
 
 const args = process.argv.slice(2);

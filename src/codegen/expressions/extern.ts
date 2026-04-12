@@ -3,16 +3,26 @@
  * and dynamic struct patching.
  */
 import ts from "typescript";
-import type { Instr, ValType } from "../../ir/types.js";
-import { emitBoundsCheckedArrayGet } from "../array-methods.js";
-import { reportError } from "../context/errors.js";
+import { isExternalDeclaredClass, isVoidType } from "../../checker/type-mapper.js";
+import type { FieldDef, Instr, ValType } from "../../ir/types.js";
+import {
+  addFuncType,
+  addImport,
+  addUnionImports,
+  ensureExnTag,
+  getArrTypeIdxFromVec,
+  getOrRegisterVecType,
+  localGlobalIdx,
+  resolveWasmType,
+} from "../index.js";
 import { allocLocal } from "../context/locals.js";
-import type { CodegenContext, ExternClassInfo, FunctionContext, RestParamInfo } from "../context/types.js";
-import { getArrTypeIdxFromVec } from "../index.js";
-import { addStringConstantGlobal } from "../registry/imports.js";
+import { reportError } from "../context/errors.js";
+import type { CodegenContext, FunctionContext, ExternClassInfo, RestParamInfo } from "../context/types.js";
+import { compileExpression, coerceType, valTypesMatch, VOID_RESULT } from "../shared.js";
 import type { InnerResult } from "../shared.js";
-import { coerceType, compileExpression, valTypesMatch, VOID_RESULT } from "../shared.js";
-import { pushDefaultValue } from "../type-coercion.js";
+import { pushDefaultValue, defaultValueInstrs } from "../type-coercion.js";
+import { emitBoundsCheckedArrayGet } from "../array-methods.js";
+import { addStringConstantGlobal } from "../registry/imports.js";
 import { getFuncParamTypes } from "./helpers.js";
 
 export function findExternInfoForMember(
@@ -409,8 +419,8 @@ function compileSpreadCallArgs(
 
 export {
   compileExternMethodCall,
-  compileSpreadCallArgs,
-  defaultValueInstrForType,
   patchStructNewForDynamicField,
   patchStructNewInBody,
+  defaultValueInstrForType,
+  compileSpreadCallArgs,
 };

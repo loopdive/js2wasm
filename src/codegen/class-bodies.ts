@@ -4,26 +4,35 @@
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
 import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
+import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
+import { allocLocal, deduplicateLocals } from "./context/locals.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
-import { allocLocal, deduplicateLocals } from "./context/locals.js";
-import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
-import { bodyUsesArguments } from "./function-body.js";
-import { cacheStringLiterals, hasAbstractModifier, hasStaticModifier, resolveWasmType } from "./index.js";
-import { ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
-import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
+import { ensureExnTag } from "./registry/imports.js";
+import { addFuncType, getOrRegisterVecType } from "./registry/types.js";
+import { nextModuleGlobalIdx } from "./registry/imports.js";
+import { getArrTypeIdxFromVec } from "./registry/types.js";
 import {
   coerceType,
   compileExpression,
   compileStatement,
   emitArgumentsObject,
   emitBoundsCheckedArrayGet,
+  hoistFunctionDeclarations,
   resolveComputedKeyExpression,
   valTypesMatch,
 } from "./shared.js";
+import { compileFunctionBody, bodyUsesArguments } from "./function-body.js";
+import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  cacheStringLiterals,
+  hasAbstractModifier,
+  hasAsyncModifier,
+  hasStaticModifier,
+  resolveWasmType,
+} from "./index.js";
 
 export function resolveClassMemberName(ctx: CodegenContext, name: ts.PropertyName): string | undefined {
   if (ts.isIdentifier(name)) return name.text;

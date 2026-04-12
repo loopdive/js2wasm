@@ -3234,11 +3234,11 @@ function rewriteEvalSuperCall(source: string): string {
 
 export {
   DEFAULT_BLOCKED_MEMBERS,
-  detectEarlyErrors,
   getApproxSourceLocation,
-  hasExportModifier,
   pushSourceAnchoredDiagnostic,
-  rewriteEvalSuperCall,
-  validateHardenedMode,
+  hasExportModifier,
   validateSafeMode,
+  detectEarlyErrors,
+  validateHardenedMode,
+  rewriteEvalSuperCall,
 };

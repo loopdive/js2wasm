@@ -12,7 +12,7 @@
  * with scalar fallback for the remaining bytes/elements.
  */
 
-import type { Instr, LocalDef, ValType, WasmModule } from "../ir/types.js";
+import type { Instr, ValType, WasmModule, LocalDef } from "../ir/types.js";
 
 /** Find the function index (import count + local index) by name */
 function findFuncIndex(mod: WasmModule, name: string): number {

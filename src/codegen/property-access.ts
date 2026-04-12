@@ -7,24 +7,22 @@
  */
 
 import ts from "typescript";
-import { isExternalDeclaredClass, isIteratorResultType, isStringType } from "../checker/type-mapper.js";
-import type { FieldDef, Instr, ValType } from "../ir/types.js";
-import { emitBoundsCheckedArrayGet } from "./array-methods.js";
-import { popBody } from "./context/bodies.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
+import { popBody, pushBody } from "./context/bodies.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
-import { patchStructNewForAddedField } from "./expressions/late-imports.js";
-import { addUnionImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
+import { resolveWasmType, addUnionImports } from "./index.js";
+import { isStringType, isExternalDeclaredClass, isIteratorResultType } from "../checker/type-mapper.js";
+import type { Instr, ValType, FieldDef } from "../ir/types.js";
+import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import {
   coerceType,
   compileExpression,
   compileStringLiteral,
-  compileSuperElementAccess,
   compileSuperPropertyAccess,
+  compileSuperElementAccess,
   ensureLateImport,
   flushLateImportShifts,
   getCol,
@@ -33,7 +31,8 @@ import {
   resolveThisStructName,
   valTypesMatch,
 } from "./shared.js";
-import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
+import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
+import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 // Well-known Symbol IDs (inlined from literals.ts to avoid circular deps)
 const WELL_KNOWN_SYMBOLS: Record<string, number> = {
   iterator: 1,
@@ -68,6 +67,7 @@ function isAnonymousFunctionDefinition(expr: ts.Expression): boolean {
 function getWellKnownSymbolId(name: string): number | undefined {
   return WELL_KNOWN_SYMBOLS[name];
 }
+import { emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./array-methods.js";
 
 // ── Struct name resolution (moved from expressions/misc.ts) ──────────
 

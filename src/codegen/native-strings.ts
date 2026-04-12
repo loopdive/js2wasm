@@ -4,8 +4,8 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import type { Instr, ValType } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
+import type { Import, Instr, ValType } from "../ir/types.js";
 import { addImport } from "./registry/imports.js";
 import { addFuncType, getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
 

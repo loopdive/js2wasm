@@ -3,19 +3,20 @@
  * Extracted from expressions.ts (issue #688 step 5).
  */
 import ts from "typescript";
-import { isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
-import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { shiftLateImportIndices } from "./expressions/late-imports.js";
-import { resolveStructName } from "./expressions/misc.js";
-import { addUnionImports, parseRegExpLiteral, resolveWasmType } from "./index.js";
 import { addImport } from "./registry/imports.js";
 import { addFuncType } from "./registry/types.js";
+import { resolveWasmType, addUnionImports, parseRegExpLiteral } from "./index.js";
+import { isAnyValue, ensureAnyHelpers } from "./shared.js";
+import { isNumberType, isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
+import type { Instr, ValType } from "../ir/types.js";
+import { compileExpression, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
-import { compileExpression, ensureAnyHelpers, isAnyValue } from "./shared.js";
 import { compileStringLiteral } from "./string-ops.js";
+import { resolveStructName } from "./expressions/misc.js";
+import { shiftLateImportIndices } from "./expressions/late-imports.js";
 
 // ── Delete expression ─────────────────────────────────────────────────
 

@@ -135,53 +135,25 @@ These unblock prettier/doc.mjs instantiation — a second real-world demo. Order
 | 14 | **#1065** | Register Array as declared global | 68 FAIL + npm patterns | M | Needed for `.constructor === Array` comparisons |
 | 15 | **#1057** | String.prototype.split constructor (if not done in Sprint 41) | 68 FAIL | S | Reapply of reverted PR #100 (9 LOC) |
 
-### Phase 5: Compiler architecture hardening (from external review — background)
-
-Filed from external compiler engineer review (2026-04-12). These address structural risks flagged as blockers for production/standalone readiness.
-
-| Order | Issue | Title | Impact | Effort | Notes |
-|-------|-------|-------|--------|--------|-------|
-| 16 | **#1094** | Shrink runtime.ts host boundary | Standalone/WASI readiness | H | Audit + compile-away 3 host functions. Key for non-browser story |
-| 17 | **#1095** | Eliminate `as unknown as Instr` casts (273→≤50) | IR type safety | L | Extend Instr union, mechanical but wide. Improves dead-elim + peephole |
-| 18 | **#1096** | Isolate env adapters from core modules | Embedding/determinism | S | Remove top-level await + env probing from checker/resolve |
-| 19 | **#1097** | Remove stale import-helper generator in output.ts | Dead code cleanup | XS | Verify unused, delete ~200 LOC |
-| 20 | **#1098** | Audit codegen patch-layer accumulation (155 workarounds) | Code quality | M | Top 3 files: calls.ts (39), assignment.ts (16), property-access.ts (16) |
-| 21 | **#1099** | Standalone execution demo — FizzBuzz on Wasmtime, zero JS | Production credibility | H | Depends on #1094. Proves standalone story end-to-end |
-| 22 | **#1013** | Split codegen/index.ts (5,690 LOC remaining) | Maintainability | M | Already existed — now validated by external review |
-
-### Phase 6: CI hardening (background — assign to whoever has gaps)
+### Phase 5: CI hardening (background — assign to whoever has gaps)
 
 Deferred from Sprint 41. Important for pipeline stability but doesn't flip tests.
 
 | Order | Issue | Title | Effort |
 |-------|-------|-------|--------|
-| 23 | **#1076** | Split merge job into report + gate | M |
-| 24 | **#1077** | PR CI fetches current main baseline | M |
-| 25 | **#1078** | Emergency dispatch hardening | S |
-| 26 | **#1079** | Baseline age stamp on landing page | S |
-| 27 | **#1080** | CI hardening umbrella | tracking |
-| 28 | **#1085** | bodyUsesArguments iterative (if not done in Sprint 41) | S |
+| 16 | **#1076** | Split merge job into report + gate | M |
+| 17 | **#1077** | PR CI fetches current main baseline | M |
+| 18 | **#1078** | Emergency dispatch hardening | S |
+| 19 | **#1079** | Baseline age stamp on landing page | S |
+| 20 | **#1080** | CI hardening umbrella | tracking |
+| 21 | **#1085** | bodyUsesArguments iterative (if not done in Sprint 41) | S |
 
-### Phase 7: Wasm-native API implementations (standalone milestone)
-
-These replace JS host dependencies with Wasm-native implementations. Each is independently valuable — prioritize by impact on the standalone execution story (#1099).
-
-| Order | Issue | Title | Impact | Effort | Notes |
-|-------|-------|-------|--------|--------|-------|
-| 29 | **#1103** | Wasm-native Map, Set, WeakMap, WeakSet | Standalone collections | H | WasmGC struct-based hash maps. Unblocks standalone programs using collections |
-| 30 | **#1105** | Wasm-native String methods on i16 arrays | Standalone string ops | H | Tier 1 (no RegExp): indexOf, slice, trim, split, etc. Broad test262 impact |
-| 31 | **#1104** | Wasm-native Error construction | Standalone errors | M | Error structs + all 7 subclasses. Enables standalone throw/catch |
-| 32 | **#1100** | Wasm-native Proxy meta-object protocol | Standalone Proxy | H | Vtable dispatch on property ops. Large scope but high value |
-| 33 | **#1102** | Wasm-native eval (AOT compilation) | Standalone eval | H | Constant-string eval compiled at build time. Dynamic eval → compile error |
-| 34 | **#1101** | Wasm-native WeakRef / FinalizationRegistry | Standalone weak refs | H | Depends on WasmGC weak ref support. Lowest standalone priority |
-| 35 | **#682** | RegExp standalone engine | Standalone RegExp | H | Already tracked. Enables #1105 Tier 2 string methods |
-
-### Phase 8: Investigation (background)
+### Phase 6: Investigation (background)
 
 | Order | Issue | Title | Notes |
 |-------|-------|-------|-------|
-| 36 | **#1093** | Systematic ECMAScript spec conformance audit | Run as background investigation; file issues for Sprint 43 |
-| 37 | **#1088** | Assertion diagnostic regex fix | S effort, improves triage quality |
+| 22 | **#1093** | Systematic ECMAScript spec conformance audit | Run as background investigation; file issues for Sprint 43 |
+| 23 | **#1088** | Assertion diagnostic regex fix | S effort, improves triage quality |
 
 ## Dependency graph for Sprint 42
 
@@ -198,12 +170,6 @@ These replace JS host dependencies with Wasm-native implementations. Each is ind
 #1085 (bodyUsesArguments) ──→ #1053 (arguments.length rework)
 
 Sprint 41 overflow issues are independent of the npm chain.
-
-#1094 (shrink runtime.ts) ──→ #1099 (standalone demo on Wasmtime)
-#682 (RegExp standalone) ──→ #1105 Tier 2 (match, replace, search)
-#1101 (WeakRef) ──→ #1103 WeakMap/WeakSet (strong-ref fallback works without #1101)
-#1103, #1104, #1105 are independent of each other
-#1100 (Proxy) and #1102 (eval) are independent of everything
 ```
 
 ## Dev assignment strategy

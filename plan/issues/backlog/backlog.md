@@ -115,11 +115,6 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [1094](../ready/1094.md) | High | Shrink runtime.ts host boundary — compile-away JS semantics | Standalone/WASI readiness | Ready |
-| [1095](../ready/1095.md) | Medium | Eliminate `as unknown as Instr` casts (273 sites) — extend Instr union | Type safety / IR correctness | Ready |
-| [1096](../ready/1096.md) | Medium | Isolate environment adapters — remove top-level await from core | Embedding / determinism | Ready |
-| [1097](../ready/1097.md) | Low | Remove stale import-helper generator in output.ts | Dead code cleanup | Ready |
-| [1098](../ready/1098.md) | Medium | Audit and reduce patch-layer accumulation in codegen (155 workarounds) | Code quality / interaction risk | Ready |
 | [688](../ready/688.md) | Low | Refactor into smaller modules per feature | Maintainability | Ready |
 | [741](../ready/741.md) | Medium | Extract string/any helpers from index.ts | Maintainability | Ready |
 | [788](../ready/788.md) | Medium | Modularize src/ into focused subfolder structure | Maintainability | Ready |
@@ -160,19 +155,6 @@ and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
 | [994](../ready/994.md) | Medium | Class static-private-getter test hits 30s compiler timeout | 30s worker time/run | Ready |
 | [995](../ready/995.md) | Low | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | 30s worker time/run | Ready |
 | [996](../ready/996.md) | Low | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 30s worker time/run | Ready |
-
-## 10b. Standalone Execution & Wasm-native APIs
-
-| # | Priority | Issue | Impact | Status |
-|---|----------|-------|--------|--------|
-| [1099](../ready/1099.md) | High | Standalone execution demo — FizzBuzz on Wasmtime, zero JS host | Production/infra credibility | Ready (depends on #1094) |
-| [1035](../ready/1035.md) | High | WASI hello-fs: console.log + node:fs → WASI fd_write | Standalone FS proof | Ready |
-| [1100](../ready/1100.md) | Medium | Wasm-native Proxy: meta-object protocol without JS host | Standalone Proxy | Ready |
-| [1101](../ready/1101.md) | Low | Wasm-native WeakRef / FinalizationRegistry via WasmGC | Standalone weak refs | Ready |
-| [1102](../ready/1102.md) | Medium | Wasm-native eval: ahead-of-time compilation strategy | Standalone eval | Ready |
-| [1103](../ready/1103.md) | High | Wasm-native Map, Set, WeakMap, WeakSet using WasmGC | Standalone collections | Ready |
-| [1104](../ready/1104.md) | Medium | Wasm-native Error construction and stack traces | Standalone errors | Ready |
-| [1105](../ready/1105.md) | High | Wasm-native String method implementations | Standalone string ops | Ready |
 
 ## 11. Platform Support
 
