@@ -1,124 +1,97 @@
 ---
 agent: tech-lead
-session_end: 2026-04-11-fresh-team-restart
-next_session_entry_point: CLAUDE_CODE_TEAM_NAME=sprint-40-fresh claude — fresh session, fresh team, read this file + plan/sprints/sprint-40.md first thing
-last_handoff_reason: "third team restart of the day — inbox delivery to tech-lead session broken for hours (285 messages backlogged in ~/.claude/teams/sprint-40/inboxes/team-lead.json that were never auto-delivered as turns). Sprint 40 goal reached; fresh team starts Sprint 41 cleanly."
+session_end: 2026-04-12-sprint-40-complete
+next_session_entry_point: Start fresh session, fresh team. Read this file + plan/sprints/sprint-41.md first.
+last_handoff_reason: "Sprint 40 closed. Sprint 41+42 planned by PO. All PRs merged or deferred. CI baseline-drift crisis resolved. Team shut down cleanly."
 ---
 
-## CURRENT STATE (as of 2026-04-11 end of Sprint 40)
+## CURRENT STATE (as of 2026-04-12 end of Sprint 40)
 
 ### Baseline
-- **21,750 pass / 43,164 total = 50.39%** (projected after PR #87 merge, refresh commit pending)
-- Last-committed baseline on origin/main: 21,580 (50.00%)
-- **Sprint 40's headline goal (past 50%) REACHED**
+- **22,185 pass / 43,171 total = 51.40%**
+- Last baseline refresh: `59cee41a` on origin/main
+- Sprint 40 started at 18,899 (43.80%), net +3,286 pass this sprint
 
-### What shipped today (2026-04-11)
-Sprint 40 second-day session merged ~13 PRs net +2,851 pass:
-- Morning wave: #43, #64, #68, #70, #71, #73 (+479)
-- Afternoon wave: #77, #78, #79, #80, #81 (+672)
-- Evening wave: #82, #84, #85, #86, #87 (+1,700 across TypedArray, DisposableStack, getter-callback, Symbol.dispose, fn-name-cover)
-- Plus ci-status-feed auto-commits (~15 small [skip ci] commits)
+### What shipped in the final session (2026-04-11/12)
+24 PRs merged across two merge waves + a CI crisis investigation:
+- Wave 1: #86 #88 #89 #90 #91 #92 #93 #94 #95 #98 #101 #103 #106
+- Wave 2 (post-crisis): #105 #108 #109 #110 #111 #114 #116 #118
+- CI hardening: #111 (#1082 net_per_test fix), #118 (#1084 fork-worker compileCount)
+- Rescue: #114 (3-PR revert of #96/#100/#107 after baseline drift)
+- Reapply: #116 (#107 DataView reapply, clean)
 
-### Closed PRs (do NOT re-open)
-- #72 #1026 first attempt — catastrophic −18,504, over-broad __get_builtin rewrite
-- #75 #1025 first attempt — net −114 blanket ref.is_null replacement
-- #76 #1017 Pattern 3 — orphaned +2, closed
-- #65 #1017 P3 yield* — marginal +2, closed
-- #83 #1026 second attempt — 221 [object WebAssembly.Exception] CEs, over-broad intercept (same shape as #72); needs NARROWER retry
+### CI baseline-drift incident (2026-04-11 19:00-21:00 UTC)
+- Main's baseline silently dropped from 22,157 to 20,624 due to stale-baseline gate + fork-worker state interaction
+- Investigation: artifact-diff bisect, 4 revert probes (PR #112-#114, #115), compile_ms histogram, fork-worker audit
+- Root cause: 3-PR interaction (#96+#100+#107) under CI cgroup stack budget + fork-worker compileCount bypass
+- Fix: PR #118 (RECREATE_INTERVAL 200→100, try/finally compileCount, explicit dispose)
+- Rescue: PR #114 (3-PR revert) restored baseline to 22,157
+- Walker-recursion hypothesis (PR #115) refuted empirically
+- Full writeup: `plan/investigations/2026-04-11-baseline-regression-bisect.md`
+- Reusable playbook: `plan/retrospectives/2026-04-11-ci-baseline-drift-investigation.md`
 
-### In-flight worktrees (preserve, these may contain uncommitted WIP)
-```
-.claude/worktrees/issue-1017-class-name-binding/        2 commits
-.claude/worktrees/issue-1017-pattern3/                  3 commits
-.claude/worktrees/issue-1024-destr-rest-holes-null/     3 commits (PR #74 closed, stale)
-.claude/worktrees/issue-1025/                           3 commits (dev-1030's #1025 BindingElement audit, in progress)
-.claude/worktrees/issue-1026-builtin-prototype/         1 commit (stale)
-.claude/worktrees/issue-1026-proto-globals-v2/          3 commits (dev-1038's narrower retry for #1026 — needs PR or rework)
-.claude/worktrees/issue-1037-symbol-dispose/            2 commits (merged as PR #86)
-.claude/worktrees/issue-1049-dstr-fn-name-cover/        1 commit (merged as PR #87)
-.claude/worktrees/issue-1050-annexb-extension-suppress/ 1 commit (dev-990's #1050 WIP, not yet in PR)
-.claude/worktrees/issue-1051-private-static-methods/    1 commit (dev-1036's #1051 WIP, not yet in PR)
-```
+### Reverted work needing rework (Sprint 41)
+- **#1053** (arguments.length argv extras) — cherry-pick onto current main caused 37k CE catastrophe due to semantic conflicts with #108/#110. Needs rework against current codebase, not just reapply.
+- **#1057** (vec-struct constructor runtime half) — 9 LOC, interaction with #107 triggers stack overflow without fork-worker fix. Untested solo on fork-worker-fixed main. Low-risk but unvalidated.
+- Both issues updated with "Status: Reverted" sections in their issue files.
 
-### Open PRs waiting for merge/review (next session)
-- None currently (all merged or closed). But #1025 #1026 #1050 #1051 and others are WIP in worktrees and will push soon.
+### Open PRs
+- **#102** (#1006 eval host import) — draft, blocked on #1073 scope-injection
+- **#38** (MCP channel server) — old draft from March, not ours
 
-## ISSUES STATE
+### Sprint 41 plan (ready)
+File: `plan/sprints/sprint-41.md`
+- 15 issues, 3 phases, 100% pass-rate push
+- Phase 1 quick wins: #1056, #997, #1057 reapply
+- Phase 2 medium-effort: #1049, #1090, #1018, #1053 rework, #1054, #1091, #1051, #1052, #1055, #1092, #1024
+- Phase 3 stretch: #1016, #1006+#1073, #990
+- Projection: 52.7% conservative, 53.7% realistic, 54.6% optimistic
 
-### Active tasks (work someone has in flight, do NOT reassign without checking)
-- **#1025** BindingElement audit (dev-1030, worktree `issue-1025`) — 3 commits, still progressing
-- **#1026** String/Number/Boolean.prototype globals (dev-1038 was on it, PR #83 closed. v2 worktree has 3 commits) — may need explicit re-dispatch with NARROWER guard (only match when `propAccess.expression.text === "String"|"Number"|"Boolean"` AND `propAccess.name.text === "prototype"`)
-- **#1050** annexB extension-suppression (dev-990, worktree `issue-1050-annexb-extension-suppress`) — 1 commit, needs push
-- **#1051** Private static class methods (dev-1036, worktree `issue-1051-private-static-methods`) — 1 commit, needs push
+### Sprint 42 plan (ready)
+File: `plan/sprints/sprint-42.md`
+- Goal: lodash-es compiles and runs E2E in Wasm
+- Critical enabler: #1074 (export default surfacing)
+- Phases: enabler → lodash demo → Sprint 41 overflow → prettier follow-ups → CJS support → CI hardening
 
-### #1047 — reassigned to architect, DO NOT dispatch as dev task
-Issue is MISNAMED. Actual root cause per dev-990's investigation: **public instance fields** leak via `emitLazyProtoGet` in `src/codegen/expressions/extern.ts:125-181` materializing `C.prototype` as a full instance struct, then `_wrapForHost` (`src/runtime.ts:587`) Proxy enumerates every struct field. arch-npm-stress wrote the implementation spec in commit `d3807e0b` (Option B: runtime method-name allowlist in _wrapForHost). Feasibility: hard. Ready for dev pickup AFTER reading the arch spec.
+### Issues filed this session
+#1066-#1093 (28 new issues):
+- CI hardening: #1076-#1082, #1084-#1087
+- Lodash chain: #1074, #1075
+- Error analysis: #1088, #1089, #1090, #1091, #1092
+- Spec conformance audit: #1093
+- Eval: #1066, #1073
+- UI: #1067 (dep graph web component)
+- Prettier follow-ups: #1068-#1072
+- Latent bugs: #1083 (double-compile), #1086 (dedup+memo bodyUsesArguments)
 
-### #832 — TypeScript 6.x upgrade — CLOSED / DEFERRED
-dev-990 attempted and found **81 equivalence regressions** across async-function, async-iteration, promise-chains, for-await-of, tdz, arrow-call-apply, null-deref. Net-negative vs +82 unicode gain and hits exactly the areas Sprint 40 fixed. Closed in TaskList #36 with note "re-evaluate at TS 7 migration (#1029)".
+### Preserved drafts in worktrees (may still exist on disk)
+- `.claude/worktrees/issue-1053-stack-depth-fix` — dev-1031's iterative bodyUsesArguments + walkInstructions drafts
+- `.claude/worktrees/issue-1082-ci-feed-net-per-test` — dev-1047's fork-worker draft (now merged via #118)
+- `origin/issue-1087-walk-instructions-iterative` — dev-1031's PR #115 branch (closed, retained)
 
-### Harvester top picks still pending (Sprint 41/42 queue)
-Filed earlier today by `harvester-post-sprint-40-merge` in commit `13c3d5cc`:
-- **#1047** (246, reassigned to architect — see above)
-- **#1049** (176) — MERGED via PR #87 ✓
-- **#1053** (133) arguments.length trailing-comma — dev-1038 assigned via SendMessage but may not have started
-- **#1054** (122) derived class indirect-eval supercall
-- **#1050** (110) — dev-990's WIP, needs push
-- **#1056** (89) DataView set methods
-- **#1051** (88) — dev-1036's WIP, needs push
-- **#1052** (80) Array destr with overridden Symbol.iterator
-- **#1055** (77) RegExp pattern modifiers
-- **#1048** (75) async-gen dstr illegal cast
-- **#1057** (68) String.prototype.split constructor
+### Memory rules added this session
+- `feedback_baseline_drift_cross_check.md` — cross-check regressions across PRs
+- `feedback_tasklist_sync_unreliable.md` — SendMessage as authoritative dispatch
+- `feedback_spec_first_fixes.md` — always fetch ECMAScript spec before fixing test failures
 
-## LESSONS FROM TODAY (applied to fresh team)
+### Skills added this session
+- `.claude/skills/tech-lead-loop.md` — 5-phase sprint orchestration loop
+- `.claude/skills/create-issue.md` — updated to require ECMAScript spec references
 
-1. **Inbox delivery to tech-lead can break silently.** 285 messages backlogged in `~/.claude/teams/sprint-40/inboxes/team-lead.json` while my conversation thought the team was idle. Detection: periodically `python3 -c "import json; print(len(json.load(open('~/.claude/teams/<team>/inboxes/team-lead.json'))))"` and if the count jumps without corresponding conversation turns, delivery is broken.
+### Key lessons from this session
+1. **Stale-baseline drift** is a first-class failure mode — PR CIs against frozen baselines systematically overestimate progress (~5x inflation observed)
+2. **Fork-worker compileCount bypass** (error-path early return skipping counter) prevented RECREATE from firing under CI cgroup pressure
+3. **Walker-recursion hypothesis was wrong** — always verify with empirical revert probes before shipping theoretical fixes
+4. **72 issue files** now have ECMAScript spec references for future devs
+5. **Sonnet tech-lead** viable for routine orchestration; escalate to Opus for crisis synthesis
 
-2. **TaskList has per-agent namespace splits.** When devs see task IDs different from tech-lead's, two separate stores are running. Fallback: SendMessage is authoritative for dispatch; TaskList is an index, not a channel.
+## FRESH SESSION START PROTOCOL
 
-3. **"Devs idle" ≠ stuck.** The between-turn idle state looks identical to "hung" from tech-lead's view. Before worrying, check `gh pr list --state open` and recent commits — they may be shipping continuously.
-
-4. **Dev self-merge skill exists** (`.claude/skills/dev-self-merge.md`). Tech-lead merges only for ambiguous cases; routine clean merges are self-service.
-
-5. **Option B CI Status Feed** (`.github/workflows/ci-status-feed.yml` → `.claude/ci-status/pr-<N>.json` → dev FileChanged hook) is working. Devs don't need to download artifacts manually.
-
-6. **"Pushed = done, claim next NOW"** is the dev protocol. Do NOT wait for merge confirmations. Documented in CLAUDE.md.
-
-## FRESH TEAM RESTART PROTOCOL
-
-1. Create new team: `TeamCreate(team_name="sprint-40-fresh", description="Fresh restart after Sprint 40 goal reached; broken inbox delivery on original sprint-40 team")`
-2. User shuts down old dev tmux panes (or sends shutdown_requests to all)
-3. Spawn 3-4 fresh devs via Agent+team_name, each with direct task assignment in prompt (not relying on TaskList)
-4. Top priority assignments:
-   - **dev-1030-fresh** → #1053 (arguments.length, 133 FAIL) — narrow codegen bug
-   - **dev-1031-fresh** → #1054 (derived class indirect-eval supercall, 122 FAIL) — narrow early-error gap
-   - **dev-1032-fresh** → #1056 (DataView set methods, 89 FAIL) — straightforward missing built-ins
-   - **dev-1033-fresh** → #1026 narrower retry (String/Number/Boolean.prototype globals) — incorporate the lesson from PR #83's 221-CE catastrophe
-5. Delete old team: `TeamDelete(team_name="sprint-40")` AFTER confirming old dev processes are terminated
-
-### Commands for the fresh tech-lead session
-```
-pwd && git branch --show-current
-git log --oneline origin/main -8
-gh pr list --state open
-cat plan/agent-context/tech-lead.md
-ls .claude/worktrees/
-```
-
-Then TeamCreate the fresh team and dispatch.
-
-## Things that are DONE (do NOT redo)
-
-- Sprint 40 goal crossed 50% ✓
-- Option B CI Status Feed workflow + FileChanged hook ✓
-- `/dev-self-merge` skill written ✓
-- 11 harvester issues filed (#1047–#1057) ✓
-- arch-npm-stress implementation spec for #1047 ✓
-- Sprint 41 stress test issues #1031–#1034 + #1058 TypeScript compiler + #1059 parallel tsc ✓
-- WASI hello-fs issue #1035 ✓
-- feedback memory rules (`_compact_before_sprint`, `_context_discipline`, `_team_comm_channels`, `_token_budget_guardrails`, `_diary_and_sprints_before_compact`, `_dev_self_serve_tasklist`, `_tasklist_sync_unreliable`) ✓
-- 5 dead VOID_RESULT comparisons in `src/codegen/expressions/calls.ts` fixed ✓
-- `.tmp/` scratch convention + hook regex fix ✓
-
-The fresh session starts Sprint 41 work. See plan/sprints/sprint-41.md.
+1. Read this file
+2. Read `plan/sprints/sprint-41.md`
+3. `git log --oneline origin/main -10` to verify baseline
+4. `gh pr list --state open` to check for stale PRs
+5. Create fresh team: `TeamCreate(team_name="sprint-41")`
+6. Tag sprint start: `git tag sprint-41/begin`
+7. Spawn 3 devs + dispatch Phase 1 quick wins
+8. Run `/tech-lead-loop` for continuous orchestration
