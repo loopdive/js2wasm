@@ -266,7 +266,7 @@ All independent — can run in parallel.
 | 1094 | Shrink runtime.ts host boundary — compile-away JS semantics | Standalone/WASI readiness | **Ready** (H) |
 | 1095 | Eliminate `as unknown as Instr` casts (273 sites) | IR type safety | **Ready** (L) |
 | 1096 | Isolate env adapters — remove top-level await from core | Embedding/determinism | **Ready** (S) |
-| 1097 | Remove stale import-helper generator in output.ts | Dead code | **Ready** (XS) |
+| ~~1097~~ | ~~Remove stale import-helper generator in output.ts~~ | Dead code | **Done** ✓ PR#142 |
 | 1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds) | Code quality | **Ready** (M) |
 
 ### Standalone execution & Wasm-native APIs
