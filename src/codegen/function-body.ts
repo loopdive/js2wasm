@@ -23,6 +23,8 @@ import {
   valTypesMatch,
 } from "./shared.js";
 import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import { emitArgumentsVecBody, bodyUsesArguments } from "./statements/nested-declarations.js";
+export { bodyUsesArguments };
 import {
   hoistVarDeclarations,
   hoistLetConstWithTdz,
@@ -30,25 +32,6 @@ import {
   resolveWasmType,
   hasAsyncModifier,
 } from "./index.js";
-
-export function bodyUsesArguments(node: ts.Node): boolean {
-  // Iterative DFS to avoid stack overflow on deeply nested ASTs (CI cgroup limits)
-  const stack: ts.Node[] = [node];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    if (ts.isIdentifier(current) && current.text === "arguments") return true;
-    // Don't recurse into nested functions/function expressions — they have their own `arguments`
-    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) {
-      continue;
-    }
-    // Arrow functions do NOT have their own `arguments` — they inherit
-    // the enclosing function's, so we must traverse into them.
-    current.forEachChild((child) => {
-      stack.push(child);
-    });
-  }
-  return false;
-}
 
 /** Maximum number of instructions for a function body to be considered inlinable */
 export const INLINE_MAX_INSTRS = 10;
@@ -321,40 +304,15 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
       };
     }
 
-    // Create backing array from parameters: push each param coerced to externref
-    for (let i = 0; i < params.length; i++) {
-      const paramType = params[i]!.type;
-      fctx.body.push({ op: "local.get", index: i });
-      if (paramType.kind === "f64") {
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-        } else {
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-      } else if (paramType.kind === "i32") {
-        fctx.body.push({ op: "f64.convert_i32_s" });
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-        } else {
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-      } else if (paramType.kind === "ref" || paramType.kind === "ref_null") {
-        fctx.body.push({ op: "extern.convert_any" });
-      }
-      // externref params are already externref — no conversion needed
-    }
-    // array.new_fixed creates the backing array
-    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: params.length });
-    fctx.body.push({ op: "local.set", index: arrTmp });
-    // Create vec struct: { length: i32, data: ref $arr }
-    fctx.body.push({ op: "i32.const", value: params.length });
-    fctx.body.push({ op: "local.get", index: arrTmp });
-    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
-    fctx.body.push({ op: "local.set", index: argsLocal });
+    // Build the arguments vec by concatenating formal params with
+    // extras delivered via the __extras_argv global (#1053).
+    emitArgumentsVecBody(
+      ctx,
+      fctx,
+      params.map((p) => p.type),
+      0,
+      { vecTypeIdx, arrTypeIdx, argsLocalIdx: argsLocal, arrTmpIdx: arrTmp },
+    );
   }
 
   if (isGenerator) {
