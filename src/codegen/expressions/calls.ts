@@ -231,6 +231,165 @@ function compileOptionalDirectCall(ctx: CodegenContext, fctx: FunctionContext, e
   return resultType;
 }
 
+/**
+ * #1063 Part B: inline dynamic-dispatch for an identifier callee whose static
+ * type is `any` (externref) but which may hold a wrapped closure struct at
+ * runtime (e.g. `function outer(op: any) { return function (x) { return op(x); } }`).
+ *
+ * Emits a `ref.test`/`ref.cast`/`struct.get`/`call_ref` chain against every
+ * closure struct type in the module whose arity matches the call's arg count.
+ * Mirrors `emitClosureCallExport` (__call_fn_0) but specialized to arity N
+ * with inline arg marshalling.
+ *
+ * Returns `{ kind: "externref" }` on success, or `null` to let the caller
+ * fall back to the existing `ref.null.extern` behavior.
+ */
+function tryEmitInlineDynamicCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  isKnownVariable: boolean,
+): InnerResult | null {
+  if (!isKnownVariable) return null;
+
+  const arity = expr.arguments.length;
+
+  // Pre-filter candidates: matching arity, and all param/return types
+  // supported by inline marshalling (f64 / i32 / externref / ref / ref_null).
+  type Cand = { structTypeIdx: number; info: ClosureInfo };
+  const supported = (t: ValType | null): boolean => {
+    if (t === null) return true;
+    return t.kind === "f64" || t.kind === "i32" || t.kind === "externref" || t.kind === "ref" || t.kind === "ref_null";
+  };
+
+  const allCandidates: Cand[] = [];
+  for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+    if (info.paramTypes.length !== arity) continue;
+    if (!supported(info.returnType)) continue;
+    let ok = true;
+    for (const p of info.paramTypes) {
+      if (!supported(p)) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+    allCandidates.push({ structTypeIdx: typeIdx, info });
+  }
+  if (allCandidates.length === 0) return null;
+
+  // Dedupe by funcTypeIdx — concrete subtypes share funcTypeIdx with their
+  // base wrapper; one dispatch arm per unique funcref type is enough.
+  const seenFuncType = new Set<number>();
+  const candidates: Cand[] = [];
+  for (const c of allCandidates) {
+    if (seenFuncType.has(c.info.funcTypeIdx)) continue;
+    seenFuncType.add(c.info.funcTypeIdx);
+    candidates.push(c);
+  }
+
+  // Ensure box/unbox helpers.
+  addUnionImports(ctx);
+  const boxNumberIdx = ctx.funcMap.get("__box_number");
+  const unboxNumberIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+  if (boxNumberIdx === undefined || unboxNumberIdx === undefined) return null;
+
+  // Compile callee (externref) → anyref → temp local.
+  const calleeType = compileExpression(ctx, fctx, expr.expression);
+  if (calleeType === null) return null;
+  // If already a ref type, skip the extern→any convert; otherwise expect externref.
+  if (calleeType.kind === "externref") {
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+  } else if (calleeType.kind !== "ref" && calleeType.kind !== "ref_null") {
+    // Unexpected stack type — bail, the existing fallback will run.
+    fctx.body.push({ op: "drop" });
+    return null;
+  }
+  const anyLocal = allocLocal(fctx, `__dyn_any_${fctx.locals.length}`, { kind: "anyref" });
+  fctx.body.push({ op: "local.set", index: anyLocal });
+
+  // Compile each argument to externref and stash in a temp local so each
+  // dispatch arm can marshal it independently without re-evaluating.
+  const argLocals: number[] = [];
+  for (let i = 0; i < arity; i++) {
+    compileExpression(ctx, fctx, expr.arguments[i]!, { kind: "externref" });
+    const argLocal = allocLocal(fctx, `__dyn_arg${i}_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: argLocal });
+    argLocals.push(argLocal);
+  }
+
+  // Build dispatch chain (innermost = default, outermost = first).
+  // Default: ref.null.extern (matches existing fallback semantics).
+  let dispatch: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+  for (const cand of candidates) {
+    const funcTypeDef = ctx.mod.types[cand.info.funcTypeIdx];
+    const selfParam = funcTypeDef?.kind === "func" ? funcTypeDef.params[0] : undefined;
+    const selfTypeIdx =
+      selfParam && (selfParam.kind === "ref" || selfParam.kind === "ref_null")
+        ? (selfParam as { typeIdx: number }).typeIdx
+        : cand.structTypeIdx;
+
+    const callBody: Instr[] = [];
+
+    // Self arg: anyref → the concrete struct type this funcref expects.
+    callBody.push({ op: "local.get", index: anyLocal } as Instr);
+    callBody.push({ op: "ref.cast", typeIdx: selfTypeIdx } as Instr);
+
+    // Push each call arg, unboxing per the candidate's declared param type.
+    for (let i = 0; i < arity; i++) {
+      const pType = cand.info.paramTypes[i]!;
+      callBody.push({ op: "local.get", index: argLocals[i]! } as Instr);
+      if (pType.kind === "f64") {
+        callBody.push({ op: "call", funcIdx: unboxNumberIdx } as Instr);
+      } else if (pType.kind === "i32") {
+        callBody.push({ op: "call", funcIdx: unboxNumberIdx } as Instr);
+        callBody.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+      } else if (pType.kind === "externref") {
+        // already externref
+      } else if (pType.kind === "ref" || pType.kind === "ref_null") {
+        callBody.push({ op: "any.convert_extern" } as Instr);
+        callBody.push({ op: "ref.cast", typeIdx: (pType as { typeIdx: number }).typeIdx } as Instr);
+      }
+    }
+
+    // Extract funcref from field 0 and call_ref.
+    callBody.push({ op: "local.get", index: anyLocal } as Instr);
+    callBody.push({ op: "ref.cast", typeIdx: selfTypeIdx } as Instr);
+    callBody.push({ op: "struct.get", typeIdx: selfTypeIdx, fieldIdx: 0 } as Instr);
+    callBody.push({ op: "ref.cast", typeIdx: cand.info.funcTypeIdx } as Instr);
+    callBody.push({ op: "call_ref", typeIdx: cand.info.funcTypeIdx } as Instr);
+
+    // Coerce return value to externref.
+    const ret = cand.info.returnType;
+    if (ret === null) {
+      callBody.push({ op: "ref.null.extern" } as Instr);
+    } else if (ret.kind === "f64") {
+      callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+    } else if (ret.kind === "i32") {
+      callBody.push({ op: "f64.convert_i32_s" } as Instr);
+      callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+    } else if (ret.kind === "ref" || ret.kind === "ref_null") {
+      callBody.push({ op: "extern.convert_any" } as Instr);
+    }
+    // externref: no conversion
+
+    dispatch = [
+      { op: "local.get", index: anyLocal } as Instr,
+      { op: "ref.test", typeIdx: selfTypeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "externref" } },
+        then: callBody,
+        else: dispatch,
+      } as Instr,
+    ];
+  }
+
+  fctx.body.push(...dispatch);
+  return { kind: "externref" };
+}
+
 function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult {
   // Optional chaining on calls: obj?.method()
   if (expr.questionDotToken && ts.isPropertyAccessExpression(expr.expression)) {
@@ -4328,6 +4487,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           return matchedClosureInfo.returnType ?? VOID_RESULT;
         }
       }
+
+      // #1063 Part B: try inline dynamic-dispatch through closure-struct
+      // candidates when the callee is a known variable of externref/any type
+      // that may wrap a closure at runtime.
+      const dyn = tryEmitInlineDynamicCall(ctx, fctx, expr, isKnownVariable);
+      if (dyn !== null) return dyn;
 
       // Graceful fallback for unknown functions — compile arguments (for side effects)
       // then emit ref.null extern (undefined) as the return value.
