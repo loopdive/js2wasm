@@ -84,6 +84,51 @@ function pushStringHint(ctx: CodegenContext, fctx: FunctionContext, hint: string
 }
 
 /**
+ * Emit instructions to call the __to_primitive host import (#1090).
+ * Expects a struct ref on the stack. Converts it to externref, pushes
+ * the hint string, calls __to_primitive, and converts the result to
+ * the target type (f64 or externref).
+ *
+ * @param targetKind - "f64" to unbox the result to f64, "externref" to leave as externref
+ * @param hint - ToPrimitive hint ("number", "string", or "default")
+ */
+function emitToPrimitiveHostCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  targetKind: "f64" | "externref",
+  hint: "number" | "string" | "default",
+): void {
+  // Convert struct ref → externref
+  fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  // Push hint string
+  pushStringHint(ctx, fctx, hint);
+  // Call __to_primitive(externref, externref) → externref
+  const toPrimIdx = ensureLateImport(
+    ctx,
+    "__to_primitive",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (toPrimIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx: toPrimIdx });
+  }
+  // Convert result to target type
+  if (targetKind === "f64") {
+    addUnionImports(ctx);
+    const unboxIdx = ctx.funcMap.get("__unbox_number");
+    if (unboxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    } else {
+      // Can't unbox — push NaN
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+    }
+  }
+  // For externref target, result is already externref
+}
+
+/**
  * Check if a type index corresponds to a vec struct (__vec_*) and return its
  * array type index and element type if so.
  */
@@ -1426,17 +1471,22 @@ export function coerceType(
             cleanup();
             return;
           }
-          // No toString either — ToNumber({}) = NaN per spec
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
+          // No compile-time toString either — fall through to host ToPrimitive (#1090)
+          // Sidecar may have dynamically-set valueOf/toString/Symbol.toPrimitive
+          {
+            const hint = toPrimitiveHint ?? "number";
+            emitToPrimitiveHostCall(ctx, fctx, "f64", hint);
+          }
           cleanup();
           return;
         }
         const valueOfField = fields[fieldIdx];
         if (!valueOfField) {
-          // Field index valid from findIndex but entry missing — treat as NaN
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
+          // Field index valid from findIndex but entry missing — fall through to host (#1090)
+          {
+            const hint = toPrimitiveHint ?? "number";
+            emitToPrimitiveHostCall(ctx, fctx, "f64", hint);
+          }
           cleanup();
           return;
         }
@@ -1629,8 +1679,11 @@ export function coerceType(
             cleanup();
             return;
           }
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
+          // Fall through to host ToPrimitive (#1090)
+          {
+            const hint = toPrimitiveHint ?? "number";
+            emitToPrimitiveHostCall(ctx, fctx, "f64", hint);
+          }
           cleanup();
           return;
         }
