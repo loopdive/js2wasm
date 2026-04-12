@@ -5,9 +5,23 @@ import {
   IncrementalLanguageService,
   type TypedAST,
 } from "./checker/index.js";
-import { generateModule, generateMultiModule } from "./codegen/index.js";
-import { resetCompileDepth } from "./codegen/expressions.js";
 import { generateLinearModule, generateLinearMultiModule } from "./codegen-linear/index.js";
+import { resetCompileDepth } from "./codegen/expressions.js";
+import { generateModule, generateMultiModule } from "./codegen/index.js";
+import {
+  buildImportManifest,
+  checkJsTypeCoverage,
+  DOWNGRADE_DIAG_CODES,
+  looksLikeTsSyntaxOnJs,
+} from "./compiler/import-manifest.js";
+import { applyCabiTransform, generateDts, generateImportsHelper, widenNonDefaultableTypes } from "./compiler/output.js";
+import {
+  detectEarlyErrors,
+  pushSourceAnchoredDiagnostic,
+  rewriteEvalSuperCall,
+  validateHardenedMode,
+  validateSafeMode,
+} from "./compiler/validation.js";
 import { emitBinary, emitBinaryWithSourceMap, emitSourceMappingURLSection } from "./emit/binary.js";
 import { WasmEncoder } from "./emit/encoder.js";
 import { generateSourceMap } from "./emit/sourcemap.js";
@@ -16,22 +30,8 @@ import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult } from "./index.js";
 import { optimizeBinary } from "./optimize.js";
 import { generateWit } from "./wit-generator.js";
-import {
-  validateSafeMode,
-  detectEarlyErrors,
-  validateHardenedMode,
-  pushSourceAnchoredDiagnostic,
-  rewriteEvalSuperCall,
-} from "./compiler/validation.js";
-import {
-  DOWNGRADE_DIAG_CODES,
-  looksLikeTsSyntaxOnJs,
-  checkJsTypeCoverage,
-  buildImportManifest,
-} from "./compiler/import-manifest.js";
-import { applyCabiTransform, generateDts, generateImportsHelper, widenNonDefaultableTypes } from "./compiler/output.js";
-export type { ObjectCompileResult } from "./compiler/output.js";
 export { compileToObjectSource } from "./compiler/output.js";
+export type { ObjectCompileResult } from "./compiler/output.js";
 
 /**
  * Orchestrates the full compilation pipeline:
