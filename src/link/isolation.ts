@@ -11,22 +11,18 @@
  * 5. Table Isolation
  */
 
-import type { ParsedObject, SymbolInfo, RelocEntry } from "./reader.js";
-import type { Resolution } from "./resolver.js";
+import type { ParsedObject, SymbolInfo } from "./reader.js";
 import {
-  SYMTAB_FUNCTION,
-  SYMTAB_GLOBAL,
-  SYMTAB_TABLE,
-  SYMBOL_UNDEFINED,
-  SYMBOL_EXPORTED,
-  SYMBOL_BINDING_LOCAL,
-  R_WASM_FUNCTION_INDEX_LEB,
-  R_WASM_GLOBAL_INDEX_LEB,
-  R_WASM_TABLE_INDEX_SLEB,
   R_WASM_TABLE_INDEX_I32,
   R_WASM_TABLE_INDEX_LEB,
+  R_WASM_TABLE_INDEX_SLEB,
   R_WASM_TABLE_NUMBER_LEB,
+  SYMBOL_BINDING_LOCAL,
+  SYMBOL_EXPORTED,
+  SYMBOL_UNDEFINED,
+  SYMTAB_GLOBAL,
 } from "./reader.js";
+import type { Resolution } from "./resolver.js";
 
 // ── Public types ──────────────────────────────────────────────────
 

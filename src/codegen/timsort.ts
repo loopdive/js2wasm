@@ -12,7 +12,7 @@
  * Galloping mode is omitted (optimization, not required for correctness).
  */
 
-import type { Instr, ValType, LocalDef } from "../ir/types.js";
+import type { Instr, LocalDef, ValType } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
 import { addFuncType, getOrRegisterArrayType } from "./registry/types.js";
 

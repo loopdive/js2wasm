@@ -19,8 +19,8 @@
  */
 
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./context/types.js";
 import type { ValType } from "../ir/types.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
 
 // ── VOID_RESULT sentinel ──────────────────────────────────────────────
 
