@@ -2963,12 +2963,21 @@ function resolveImport(
         // Array.prototype.map, etc.) must report `.constructor === Array`.
         // Only fire AFTER _safeGet and __sget_ fallback return nothing —
         // class instances with sidecar constructors or struct getters are
-        // already handled above. Vec wrappers have no registered field
-        // names in __struct_field_names (codegen skips __vec_* structs).
+        // already handled above. Use __vec_len to positively identify vec
+        // wrappers: it returns a number for vecs and throws for non-vecs.
+        // (fieldNames === null was too broad — closure structs also lack
+        // field names, causing 1545 range_error regressions.)
         if (key === "constructor" && obj != null && _isWasmStruct(obj)) {
           const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(obj, exports);
-          if (fieldNames === null) return Array;
+          const vecLen = exports?.__vec_len;
+          if (typeof vecLen === "function") {
+            try {
+              const len = vecLen(obj);
+              if (typeof len === "number") return Array;
+            } catch {
+              // Not a vec wrapper — fall through
+            }
+          }
         }
         return undefined;
       };
