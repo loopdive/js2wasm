@@ -2,14 +2,14 @@
   "pr": 146,
   "conclusion": "failure",
   "head_branch": "issue-973-incremental-state-leak",
-  "head_sha": "57c1e523a064d533f76e6a42b24169d9b26c1763",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24310714957",
-  "timestamp": "2026-04-12T16:37:12Z",
-  "pass": 22392,
-  "fail": 15386,
-  "compile_error": 4025,
-  "snapshot_delta": -20,
-  "net_per_test": -20,
+  "head_sha": "22ebf4f5c8f3dc69da16a8f5678c496770748dcf",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24312294888",
+  "timestamp": "2026-04-12T17:55:53Z",
+  "pass": 22418,
+  "fail": 15374,
+  "compile_error": 4011,
+  "snapshot_delta": -6,
+  "net_per_test": -6,
   "regressions": 32,
-  "improvements": 12
+  "improvements": 26
 }
