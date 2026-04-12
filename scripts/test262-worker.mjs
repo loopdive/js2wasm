@@ -83,6 +83,31 @@ function restoreBuiltins() {
   if (Map.prototype.get !== _origMapGet) Map.prototype.get = _origMapGet;
   if (Map.prototype.set !== _origMapSet) Map.prototype.set = _origMapSet;
   if (Map.prototype.has !== _origMapHas) Map.prototype.has = _origMapHas;
+
+  // Detect non-configurable poison on Array.prototype (cannot be cleaned up).
+  // Some test262 tests add non-configurable getters/setters to Array.prototype
+  // which permanently corrupt all arrays in this process. When detected,
+  // signal the pool to terminate and restart this worker.
+  for (const key of Object.getOwnPropertyNames(Array.prototype)) {
+    if (/^\d+$/.test(key)) {
+      const desc = Object.getOwnPropertyDescriptor(Array.prototype, key);
+      if (desc && !desc.configurable) {
+        console.error(`[unified-worker pid=${process.pid}] FATAL: non-configurable Array.prototype[${key}] — exiting for restart`);
+        process.exit(1);
+      }
+    }
+  }
+
+  // Also check Object.prototype for non-configurable additions
+  for (const key of Object.getOwnPropertyNames(Object.prototype)) {
+    if (!_origObjectProtoKeys.has(key)) {
+      const desc = Object.getOwnPropertyDescriptor(Object.prototype, key);
+      if (desc && !desc.configurable) {
+        console.error(`[unified-worker pid=${process.pid}] FATAL: non-configurable Object.prototype[${key}] — exiting for restart`);
+        process.exit(1);
+      }
+    }
+  }
 }
 
 function doCompile(source, sourceMapUrl) {
