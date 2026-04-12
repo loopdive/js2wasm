@@ -22,6 +22,7 @@ export function createCodegenContext(
     typeIdxToStructName: new Map(),
     structFields: new Map(),
     numImportFuncs: 0,
+    jsStringImports: new Map(),
     currentFunc: null,
     funcStack: [],
     errors: [],
