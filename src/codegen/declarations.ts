@@ -5,8 +5,6 @@
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
-import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -17,7 +15,36 @@ import {
   mapTsTypeToWasm,
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
+import { collectShapes } from "../shape-inference.js";
+import { ensureWrapperTypes } from "./any-helpers.js";
+import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
 import { reportError } from "./context/errors.js";
+import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
+import { bodyUsesArguments, compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import {
+  addArrayIteratorImports,
+  addForInImports,
+  addIteratorImports,
+  addStringImports,
+  addUnionImports,
+  collectEnumDeclarations,
+  ensureStructForType,
+  extractConstantDefault,
+  FUNCTIONAL_ARRAY_METHODS,
+  hasAsyncModifier,
+  hasDeclareModifier,
+  hasExportModifier,
+  isGeneratorFunction,
+  KNOWN_CONSTRUCTORS,
+  MATH_HOST_METHODS_1ARG,
+  MATH_HOST_METHODS_2ARG,
+  parseRegExpLiteral,
+  resolveWasmType,
+  STRING_METHODS,
+  unwrapGeneratorYieldType,
+} from "./index.js";
+import { ensureNativeStringHelpers } from "./native-strings.js";
 import { addImport, addStringConstantGlobal, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
 import {
   addFuncType,
@@ -25,35 +52,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
-import { coerceType, compileExpression, compileStatement, hoistFunctionDeclarations } from "./shared.js";
-import { collectShapes } from "../shape-inference.js";
-import { ensureNativeStringHelpers } from "./native-strings.js";
-import { ensureWrapperTypes } from "./any-helpers.js";
-import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
-import { compileFunctionBody, registerInlinableFunction, bodyUsesArguments } from "./function-body.js";
-import {
-  resolveWasmType,
-  ensureStructForType,
-  addStringImports,
-  addUnionImports,
-  addIteratorImports,
-  addArrayIteratorImports,
-  addForInImports,
-  collectEnumDeclarations,
-  extractConstantDefault,
-  FUNCTIONAL_ARRAY_METHODS,
-  hasAsyncModifier,
-  hasDeclareModifier,
-  hasExportModifier,
-  hasStaticModifier,
-  isGeneratorFunction,
-  KNOWN_CONSTRUCTORS,
-  MATH_HOST_METHODS_1ARG,
-  MATH_HOST_METHODS_2ARG,
-  parseRegExpLiteral,
-  STRING_METHODS,
-  unwrapGeneratorYieldType,
-} from "./index.js";
+import { compileExpression, compileStatement } from "./shared.js";
 
 /** Accumulated state for the single-pass collector */
 interface UnifiedCollectorState {

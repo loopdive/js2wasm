@@ -133,10 +133,9 @@ export interface CompileOptions {
 }
 
 import * as path from "path";
-import { compileSource, compileMultiSource, compileFilesSource, compileToObjectSource } from "./compiler.js";
 import { IncrementalLanguageService } from "./checker/index.js";
+import { compileFilesSource, compileMultiSource, compileSource, compileToObjectSource } from "./compiler.js";
 import { ModuleResolver, resolveAllImports } from "./resolve.js";
-import { treeshake, getEntryExportNames } from "./treeshake.js";
 
 /**
  * Compile TypeScript source to Wasm GC binary.
@@ -271,17 +270,17 @@ export function createIncrementalCompiler(defaultOptions?: CompileOptions): {
   };
 }
 
+export { getBarePackageName, ModuleResolver, resolveAllImports } from "./resolve.js";
+export { getEntryExportNames, treeshake } from "./treeshake.js";
 export { generateWit } from "./wit-generator.js";
 export type { WitGeneratorOptions } from "./wit-generator.js";
-export { ModuleResolver, resolveAllImports, getBarePackageName } from "./resolve.js";
-export { treeshake, getEntryExportNames } from "./treeshake.js";
 
 export {
-  jsString,
   buildImports,
   buildStringConstants,
   checkPolicy,
   compileAndInstantiate,
   instantiateWasm,
   instantiateWasmStreaming,
+  jsString,
 } from "./runtime.js";

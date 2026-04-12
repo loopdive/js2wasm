@@ -9,16 +9,16 @@
 import ts from "typescript";
 import { isVoidType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { addFuncType, addImport, localGlobalIdx, resolveWasmType } from "../index.js";
+import { getOrCreateFuncRefWrapperTypes } from "../closures.js";
 import { allocLocal } from "../context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "../context/types.js";
-import { compileExpression, coerceType, VOID_RESULT } from "../shared.js";
-import type { InnerResult } from "../shared.js";
-import { defaultValueInstrs, emitGuardedFuncRefCast, emitGuardedRefCast, pushDefaultValue } from "../type-coercion.js";
+import { addFuncType, addImport, localGlobalIdx, resolveWasmType } from "../index.js";
 import { emitNullCheckThrow } from "../property-access.js";
-import { getOrCreateFuncRefWrapperTypes } from "../closures.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
+import type { InnerResult } from "../shared.js";
+import { coerceType, compileExpression, VOID_RESULT } from "../shared.js";
+import { emitGuardedFuncRefCast, emitGuardedRefCast, pushDefaultValue } from "../type-coercion.js";
 import { getFuncParamTypes, getWasmFuncReturnType, isEffectivelyVoidReturn, wasmFuncReturnsVoid } from "./helpers.js";
+import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 
 /** Compile a call to a closure variable: closureVar(args...) */
 export function compileClosureCall(

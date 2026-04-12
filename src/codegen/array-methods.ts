@@ -6,26 +6,24 @@
  * shared.ts (NOT expressions.ts) to avoid circular dependencies.
  */
 import ts from "typescript";
+import { isStringType } from "../checker/type-mapper.js";
+import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
+import { addArrayIteratorImports, addStringImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
-import { resolveWasmType, addStringImports, addArrayIteratorImports } from "./index.js";
-import { isStringType } from "../checker/type-mapper.js";
-import type { Instr, ValType } from "../ir/types.js";
 import {
-  compileExpression,
   compileArrowAsClosure,
-  VOID_RESULT,
-  getLine,
-  getCol,
-  registerEmitBoundsCheckedArrayGet,
+  compileExpression,
   ensureLateImport,
   flushLateImportShifts,
+  registerEmitBoundsCheckedArrayGet,
+  VOID_RESULT,
 } from "./shared.js";
-import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import { ensureTimsortHelper } from "./timsort.js";
+import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 
 type ArrayMethodAccess = ts.PropertyAccessExpression | ts.ElementAccessExpression;
 
