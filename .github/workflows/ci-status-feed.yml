@@ -153,5 +153,15 @@ jobs:
             exit 0
           fi
           git commit -m "chore(ci-status): feed PR #${{ steps.pr.outputs.pr }} result — ${{ github.event.workflow_run.conclusion }} [skip ci]"
-          git pull --rebase origin main || true
+          # Pull latest main before pushing. On conflict, abort rebase, reset to
+          # main, and re-apply only our ci-status file to avoid staging stale deletions.
+          if ! git pull --rebase origin main; then
+            git rebase --abort 2>/dev/null || true
+            STATUS_FILE=".claude/ci-status/pr-${{ steps.pr.outputs.pr }}.json"
+            cp "$STATUS_FILE" /tmp/ci-status-backup.json
+            git reset --hard origin/main
+            cp /tmp/ci-status-backup.json "$STATUS_FILE"
+            git add "$STATUS_FILE"
+            git commit -m "chore(ci-status): feed PR #${{ steps.pr.outputs.pr }} result — ${{ github.event.workflow_run.conclusion }} [skip ci]"
+          fi
           git push
