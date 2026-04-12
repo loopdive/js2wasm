@@ -263,3 +263,37 @@ At the end of Sprint 42:
 - **Pass rate**: 53.5-55% (Sprint 41 gains preserved + Sprint 42 overflow fixes)
 - **Pipeline stable**: CI baseline-drift structural fixes landed
 - **Sprint 43 seeded**: #1093 spec audit has filed 5-10 targeted issues from the remaining 45% failure space
+
+## Sprint Progress (live — updated 2026-04-12)
+
+### Merged today
+| PR | Issue | Delta | Notes |
+|----|-------|-------|-------|
+| #131 | #1074 export default fn | 0 | clean |
+| #133 | #1106 CI baseline-refresh fix | — | infra |
+| #130 | #1057 vec constructor short-circuit | +1 | |
+| #136 | #1107 lodash-es E2E harness | 0 | Tier 1 harness + identity/noop/stubTrue/stubFalse pass |
+| #137 | #1071 for-of non-array iterables | 0 | Map/Set/generator for-of fixed |
+| #138 | #1072 f64 externref coercion | 0 | |
+| #139 | #1069 struct inference externref | +11 | |
+
+### Baseline: 22,412 → 22,423 (+11) so far
+
+### In CI (awaiting results)
+- PR #132 #1068 await-label: -1 regression (needs fix, dev-1 notified)
+- PR #134 #1016 iterator class dstr: test262 run queued
+- PR #135 #990 early errors: test262 run pending
+- PR #140 #1108 export default variable: merge shard reports queued
+- PR #141 #1070 Intl.ListFormat: test262 run pending
+- PR #142 #1097 dead code removal: 14/18 shards
+- PR #143 #1088 assertion diagnostic: 7/18 shards
+
+### Active dev work
+| Dev | Task | Issue |
+|-----|------|-------|
+| dev-A | #20 | #825 null dereference (1,754) |
+| dev-1 | #19 | #856 Expected TypeError (136) + fix PR #132 |
+| dev-2 | #17 | #1109 lodash-es clamp Wasm validation |
+| dev-3 | #18 | #826 illegal cast (1,276) |
+| dev-B | #15 | #862 empty error messages (212) |
+| dev-C | — | #854 iterator null methods (126) |
