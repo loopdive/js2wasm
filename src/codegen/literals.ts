@@ -13,39 +13,36 @@
  */
 
 import ts from "typescript";
-import { reportError } from "./context/errors.js";
+import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
+import { emitMethodParamDefaults, promoteAccessorCapturesToGlobals } from "./closures.js";
 import { popBody, pushBody } from "./context/bodies.js";
+import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { nextModuleGlobalIdx, ensureExnTag } from "./registry/imports.js";
-import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
+import { patchStructNewForAddedField } from "./expressions/late-imports.js";
+import { resolveStructName } from "./expressions/misc.js";
+import { bodyUsesArguments } from "./function-body.js";
 import {
-  resolveWasmType,
-  ensureStructForType,
-  isTupleType,
-  getTupleElementTypes,
-  getOrRegisterTupleType,
   cacheStringLiterals,
   destructureParamArray,
   destructureParamObject,
+  ensureStructForType,
+  getOrRegisterTupleType,
+  getTupleElementTypes,
+  isTupleType,
+  resolveWasmType,
 } from "./index.js";
-import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
-import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
+import { ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
   compileExpression,
   compileStatement,
   emitArgumentsObject,
-  getLine,
-  getCol,
-  registerResolveComputedKeyExpression,
-  VOID_RESULT,
   ensureLateImport,
   flushLateImportShifts,
+  registerResolveComputedKeyExpression,
 } from "./shared.js";
-import { bodyUsesArguments } from "./function-body.js";
-import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
-import { resolveStructName } from "./expressions/misc.js";
-import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { pushDefaultValue } from "./type-coercion.js";
 
 /**

@@ -4,11 +4,11 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
+import type { Instr, StructTypeDef, ValType } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
-import type { Import, Instr, StructTypeDef, ValType } from "../ir/types.js";
+import { nativeStringType } from "./native-strings.js";
 import { addFuncType } from "./registry/types.js";
 import { registerEnsureAnyHelpers } from "./shared.js";
-import { nativeStringType } from "./native-strings.js";
 
 /**
  * Register the $AnyValue struct type for boxing `any` typed values.

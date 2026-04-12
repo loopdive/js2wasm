@@ -4,13 +4,21 @@
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./context/types.js";
-import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
-import { allocLocal, deduplicateLocals } from "./context/locals.js";
+import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
+import { allocLocal, deduplicateLocals } from "./context/locals.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  cacheStringLiterals,
+  hasAsyncModifier,
+  hoistLetConstWithTdz,
+  hoistVarDeclarations,
+  resolveWasmType,
+} from "./index.js";
 import { ensureExnTag } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
@@ -22,16 +30,8 @@ import {
   hoistFunctionDeclarations,
   valTypesMatch,
 } from "./shared.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
-import { emitArgumentsVecBody, bodyUsesArguments } from "./statements/nested-declarations.js";
+import { bodyUsesArguments, emitArgumentsVecBody } from "./statements/nested-declarations.js";
 export { bodyUsesArguments };
-import {
-  hoistVarDeclarations,
-  hoistLetConstWithTdz,
-  cacheStringLiterals,
-  resolveWasmType,
-  hasAsyncModifier,
-} from "./index.js";
 
 /** Maximum number of instructions for a function body to be considered inlinable */
 export const INLINE_MAX_INSTRS = 10;

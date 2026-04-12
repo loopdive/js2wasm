@@ -5,24 +5,20 @@
  * Extracted from expressions.ts (#688 step 6).
  */
 import ts from "typescript";
+import { isVoidType } from "../checker/type-mapper.js";
+import type { Instr, ValType, WasmFunction } from "../ir/types.js";
+import { collectReferencedIdentifiers, collectWrittenIdentifiers, compileArrowAsCallback } from "./closures.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
-import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType, getOrRegisterRefCellType } from "./registry/types.js";
-import { resolveWasmType, addUnionImports, getOrRegisterTupleType, cacheStringLiterals } from "./index.js";
-import { isVoidType } from "../checker/type-mapper.js";
-import type { Instr, ValType, WasmFunction } from "../ir/types.js";
-import { compileStatement } from "./shared.js";
-import { coerceType } from "./shared.js";
-import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
-import type { InnerResult } from "./shared.js";
-import { compileNativeStringLiteral } from "./string-ops.js";
-import { ensureLateImport, flushLateImportShifts } from "./shared.js";
 import { emitThrowString } from "./expressions/helpers.js";
 import { resolveStructName } from "./expressions/misc.js";
-import { emitGuardedRefCast } from "./type-coercion.js";
-import { compileArrowAsCallback, collectReferencedIdentifiers, collectWrittenIdentifiers } from "./closures.js";
+import { addUnionImports, cacheStringLiterals, getOrRegisterTupleType, resolveWasmType } from "./index.js";
+import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterRefCellType, getOrRegisterVecType } from "./registry/types.js";
+import type { InnerResult } from "./shared.js";
+import { coerceType, compileExpression, compileStatement, ensureLateImport, flushLateImportShifts } from "./shared.js";
+import { compileNativeStringLiteral } from "./string-ops.js";
 
 // ── Compile-time primitive type check for Object methods ─────────────
 
