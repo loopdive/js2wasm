@@ -7,17 +7,7 @@
  */
 
 import type { ParsedObject, SymbolInfo } from "./reader.js";
-import {
-  SYMTAB_FUNCTION,
-  SYMTAB_GLOBAL,
-  SYMTAB_DATA,
-  SYMTAB_EVENT,
-  SYMTAB_TABLE,
-  SYMBOL_UNDEFINED,
-  SYMBOL_EXPORTED,
-  SYMBOL_BINDING_LOCAL,
-  SYMBOL_BINDING_WEAK,
-} from "./reader.js";
+import { SYMBOL_BINDING_LOCAL, SYMBOL_BINDING_WEAK, SYMBOL_UNDEFINED } from "./reader.js";
 
 // ── Public types ──────────────────────────────────────────────────
 

@@ -1,17 +1,16 @@
 import ts from "typescript";
-import type { CompileError, CompileOptions } from "../index.js";
 import type { TypedAST } from "../checker/index.js";
 import { analyzeSource } from "../checker/index.js";
+import type { CabiExportInfo, ParamDef } from "../codegen-linear/c-abi.js";
+import { emitCabiWrappers, mapParamsToCabi, mapResultToCabi } from "../codegen-linear/c-abi.js";
 import { generateModule } from "../codegen/index.js";
+import { extractCHeaderExports, generateCHeader } from "../emit/c-header.js";
 import { emitObject } from "../emit/object.js";
 import { preprocessImports } from "../import-resolver.js";
-import type { WasmModule, ValType, Instr } from "../ir/types.js";
-import { generateCHeader, extractCHeaderExports } from "../emit/c-header.js";
-import type { CabiExportInfo, ParamDef } from "../codegen-linear/c-abi.js";
-import { mapParamsToCabi, mapResultToCabi, emitCabiWrappers } from "../codegen-linear/c-abi.js";
+import type { CompileError, CompileOptions } from "../index.js";
+import type { Instr, ValType, WasmModule } from "../ir/types.js";
+import { buildImportManifest, DOWNGRADE_DIAG_CODES } from "./import-manifest.js";
 import { hasExportModifier, pushSourceAnchoredDiagnostic } from "./validation.js";
-import { DOWNGRADE_DIAG_CODES } from "./import-manifest.js";
-import { buildImportManifest } from "./import-manifest.js";
 
 /**
  * Apply C ABI transformation to a compiled WasmModule.
@@ -496,4 +495,4 @@ function widenBlockTypesInBody(body: Instr[], widenValType: (t: ValType) => ValT
   }
 }
 
-export { applyCabiTransform, generateDts, generateImportsHelper, widenNonDefaultableTypes, widenBlockTypesInBody };
+export { applyCabiTransform, generateDts, generateImportsHelper, widenBlockTypesInBody, widenNonDefaultableTypes };

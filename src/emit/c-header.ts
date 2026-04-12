@@ -6,7 +6,7 @@
  * links against the generated wasm module.
  */
 
-import type { FuncTypeDef, ValType, WasmModule } from "../ir/types.js";
+import type { ValType, WasmModule } from "../ir/types.js";
 
 /** Information about a single exported function for C header generation */
 export interface CHeaderExport {

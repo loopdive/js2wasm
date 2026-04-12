@@ -49,7 +49,7 @@
  *        ...
  *      )
  */
-import type { Instr, WasmModule, ValType } from "../ir/types.js";
+import type { Instr, ValType, WasmModule } from "../ir/types.js";
 
 /**
  * Remove redundant ref.as_non_null after ref.cast in a single instruction list.
