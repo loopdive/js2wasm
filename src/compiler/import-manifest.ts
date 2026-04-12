@@ -95,6 +95,10 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   if (name === "__extern_get") return { type: "extern_get" };
   if (name === "__extern_set") return { type: "extern_set" };
 
+  // Host strict-equality for two externref operands that are not WasmGC eqrefs
+  // (e.g. host functions like `Array === Array`). (#1065)
+  if (name === "__host_eq") return { type: "host_eq" };
+
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
 

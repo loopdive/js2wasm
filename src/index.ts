@@ -18,6 +18,7 @@ export type ImportIntent =
   | { type: "date_method"; method: string }
   | { type: "date_now" }
   | { type: "declared_global"; name: string }
+  | { type: "host_eq" }
   | { type: "dynamic_import" }
   | { type: "proxy_create" };
 
