@@ -9,32 +9,18 @@
 
 import { WasmEncoder } from "../emit/encoder.js";
 import { SECTION } from "../emit/opcodes.js";
+import { validateIsolation, type IsolationReport } from "./isolation.js";
 import {
   parseObject,
-  type ParsedObject,
-  type MemoryEntry,
-  type RelocEntry,
-  R_WASM_FUNCTION_INDEX_LEB,
-  R_WASM_TABLE_INDEX_SLEB,
-  R_WASM_TABLE_INDEX_I32,
-  R_WASM_TABLE_INDEX_LEB,
-  R_WASM_MEMORY_ADDR_LEB,
-  R_WASM_MEMORY_ADDR_SLEB,
-  R_WASM_MEMORY_ADDR_I32,
-  R_WASM_TYPE_INDEX_LEB,
-  R_WASM_GLOBAL_INDEX_LEB,
-  R_WASM_TAG_INDEX_LEB,
-  R_WASM_TABLE_NUMBER_LEB,
-  R_WASM_FUNCTION_OFFSET_I32,
-  R_WASM_SECTION_OFFSET_I32,
+  SYMBOL_UNDEFINED,
   SYMTAB_FUNCTION,
   SYMTAB_GLOBAL,
-  SYMTAB_DATA,
   SYMTAB_TABLE,
-  SYMBOL_UNDEFINED,
+  type MemoryEntry,
+  type ParsedObject,
+  type RelocEntry,
 } from "./reader.js";
 import { resolveSymbols, type Resolution } from "./resolver.js";
-import { validateIsolation, type IsolationReport, type IsolationViolation } from "./isolation.js";
 
 // ── Public types ──────────────────────────────────────────────────
 

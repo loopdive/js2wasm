@@ -4,19 +4,19 @@
 import ts from "typescript";
 import { isStringType, isVoidType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { emitGuardedRefCast } from "../type-coercion.js";
-import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
-import { emitCoercedLocalSet } from "../expressions/helpers.js";
-import { emitUndefined } from "../expressions/late-imports.js";
 import { reportError } from "../context/errors.js";
 import { allocLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { localGlobalIdx } from "../registry/imports.js";
-import { getOrRegisterVecType } from "../registry/types.js";
+import { emitCoercedLocalSet } from "../expressions/helpers.js";
+import { emitUndefined } from "../expressions/late-imports.js";
 import { resolveWasmType } from "../index.js";
 import { resolveComputedKeyExpression } from "../literals.js";
+import { localGlobalIdx } from "../registry/imports.js";
+import { getOrRegisterVecType } from "../registry/types.js";
+import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
+import { emitGuardedRefCast } from "../type-coercion.js";
+import { compileArrayDestructuring, compileObjectDestructuring } from "./destructuring.js";
 import { emitTdzInit } from "./tdz.js";
-import { compileObjectDestructuring, compileArrayDestructuring } from "./destructuring.js";
 
 function inferArrayVecType(ctx: CodegenContext, decl: ts.VariableDeclaration): ValType | null {
   if (!ts.isIdentifier(decl.name)) return null;
