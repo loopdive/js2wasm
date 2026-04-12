@@ -768,6 +768,9 @@ export function compileBinaryExpression(
           }
         } else if (leftType.kind === "i32") {
           fctx.body.push({ op: "f64.convert_i32_s" });
+        } else if (leftType.kind === "ref" || leftType.kind === "ref_null") {
+          // Object wrapper (e.g. Object(0n)) → coerce via valueOf (#997)
+          coerceType(ctx, fctx, leftType, { kind: "f64" }, "number");
         }
 
         // Compile right operand
@@ -788,6 +791,9 @@ export function compileBinaryExpression(
           }
         } else if (rightType.kind === "i32") {
           fctx.body.push({ op: "f64.convert_i32_s" });
+        } else if (rightType.kind === "ref" || rightType.kind === "ref_null") {
+          // Object wrapper (e.g. Object(0n)) → coerce via valueOf (#997)
+          coerceType(ctx, fctx, rightType, { kind: "f64" }, "number");
         }
 
         // Emit f64 comparison
@@ -813,9 +819,48 @@ export function compileBinaryExpression(
 
     // Both operands are BigInt — compile as i64
     const i64Hint: ValType = { kind: "i64" };
-    const leftType = compileExpression(ctx, fctx, expr.left, i64Hint);
-    const rightType = compileExpression(ctx, fctx, expr.right, i64Hint);
-    if (!leftType || !rightType) return null;
+    let leftType2 = compileExpression(ctx, fctx, expr.left, i64Hint);
+    let rightType2 = compileExpression(ctx, fctx, expr.right, i64Hint);
+    if (!leftType2 || !rightType2) return null;
+    // Object(bigint) compiles to a struct ref, not i64. Coerce via valueOf (#997).
+    const leftIsRef2 = leftType2.kind === "ref" || leftType2.kind === "ref_null";
+    const rightIsRef2 = rightType2.kind === "ref" || rightType2.kind === "ref_null";
+    if (leftIsRef2 || rightIsRef2) {
+      // For strict equality: ref and i64 are never the same → always false/true
+      const isStrictEq2 = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+      const isStrictNeq2 = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+      if (isStrictEq2 || isStrictNeq2) {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: isStrictNeq2 ? 1 : 0 });
+        return { kind: "i32" };
+      }
+      // Coerce ref operands to f64 via valueOf, convert i64 to f64
+      if (rightIsRef2) {
+        coerceType(ctx, fctx, rightType2, { kind: "f64" }, "number");
+        rightType2 = { kind: "f64" };
+      }
+      if (leftIsRef2) {
+        const tmpR2 = allocTempLocal(fctx, rightType2);
+        fctx.body.push({ op: "local.set", index: tmpR2 });
+        coerceType(ctx, fctx, leftType2, { kind: "f64" }, "number");
+        fctx.body.push({ op: "local.get", index: tmpR2 });
+        releaseTempLocal(fctx, tmpR2);
+        leftType2 = { kind: "f64" };
+      }
+      // Convert remaining i64 operand to f64
+      if (rightType2.kind === "i64") {
+        fctx.body.push({ op: "f64.convert_i64_s" });
+      }
+      if (leftType2.kind === "i64") {
+        const tmpR3 = allocTempLocal(fctx, rightType2);
+        fctx.body.push({ op: "local.set", index: tmpR3 });
+        fctx.body.push({ op: "f64.convert_i64_s" });
+        fctx.body.push({ op: "local.get", index: tmpR3 });
+        releaseTempLocal(fctx, tmpR3);
+      }
+      return compileNumericBinaryOp(ctx, fctx, op, expr);
+    }
     return compileI64BinaryOp(ctx, fctx, op, expr);
   }
 

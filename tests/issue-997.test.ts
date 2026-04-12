@@ -69,4 +69,24 @@ describe("issue-997: BigInt i64 not boxed before externref in __call_fn_0", () =
       }
     `);
   });
+
+  it("compiles BigInt != Object(BigInt) without instantiation error", () => {
+    // Previously caused: f64.ne[1] expected type f64, found struct.new
+    compileOk(`
+      export function test(): i32 {
+        var a: number = (0n != Object(0n)) ? 1 : 0;
+        return 1;
+      }
+    `);
+  });
+
+  it("compiles BigInt == Object(BigInt) without instantiation error", () => {
+    // Previously caused: f64.eq[1] expected type f64, found struct.new
+    compileOk(`
+      export function test(): i32 {
+        var a: number = (0n == Object(0n)) ? 1 : 0;
+        return 1;
+      }
+    `);
+  });
 });
