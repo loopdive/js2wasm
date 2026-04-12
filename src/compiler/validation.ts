@@ -3060,13 +3060,17 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
           let reserved = false;
           let c: ts.Node | undefined = node.parent;
           while (c) {
-            if (
-              ts.isFunctionDeclaration(c) ||
-              ts.isFunctionExpression(c) ||
-              ts.isArrowFunction(c) ||
-              ts.isMethodDeclaration(c)
-            ) {
-              // Found a function boundary — reserved only if async
+            if (ts.isArrowFunction(c)) {
+              // Arrow functions inherit [+Await] from their enclosing context —
+              // they do NOT reset it. If async, mark reserved and stop.
+              // If non-async, keep walking outward.
+              if (c.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+                reserved = true;
+                break;
+              }
+              // non-async arrow: continue to enclosing scope
+            } else if (ts.isFunctionDeclaration(c) || ts.isFunctionExpression(c) || ts.isMethodDeclaration(c)) {
+              // Non-arrow function boundary resets [Await] context
               reserved = !!c.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword);
               break;
             }
