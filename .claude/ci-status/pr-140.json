@@ -1,0 +1,15 @@
+{
+  "pr": 140,
+  "conclusion": "success",
+  "head_branch": "issue-1108-add-default-export",
+  "head_sha": "b74ee5dcd76c2b98be0648a0d12725bc58a88627",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24309512809",
+  "timestamp": "2026-04-12T15:59:19Z",
+  "pass": 22412,
+  "fail": 15393,
+  "compile_error": 3998,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
+  "regressions": 0,
+  "improvements": 0
+}
