@@ -257,7 +257,40 @@ All independent -- low priority, can be picked up opportunistically.
 
 ## Cluster K: Architecture / Refactoring `[E][S][I]`
 
-Module extraction sub-tasks of #688. All independent, can run in parallel.
+### Compiler hardening (from external review, 2026-04-12)
+
+All independent — can run in parallel.
+
+| #   | Title | Impact | Ready? |
+|-----|-------|--------|--------|
+| 1094 | Shrink runtime.ts host boundary — compile-away JS semantics | Standalone/WASI readiness | **Ready** (H) |
+| 1095 | Eliminate `as unknown as Instr` casts (273 sites) | IR type safety | **Ready** (L) |
+| 1096 | Isolate env adapters — remove top-level await from core | Embedding/determinism | **Ready** (S) |
+| 1097 | Remove stale import-helper generator in output.ts | Dead code | **Ready** (XS) |
+| 1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds) | Code quality | **Ready** (M) |
+
+### Standalone execution & Wasm-native APIs
+
+```
+#1094 (shrink runtime.ts) ──→ #1099 (standalone demo on Wasmtime, zero JS host)
+#1035 (WASI hello-fs) -- independent but related
+#680 (pure Wasm generators) -- enables broader standalone coverage
+#681 (pure Wasm iterators) -- enables broader standalone coverage
+#682 (RegExp standalone) ──→ #1105 Tier 2 string methods (match, replace, search)
+#1101 (WeakRef) ──→ #1103 WeakMap/WeakSet (strong-ref fallback available without #1101)
+```
+
+| #   | Title | Impact | Ready? |
+|-----|-------|--------|--------|
+| 1099 | Standalone execution demo — FizzBuzz on Wasmtime, zero JS | Production credibility | **Ready** (H, depends on #1094) |
+| 1103 | Wasm-native Map, Set, WeakMap, WeakSet | Standalone collections | **Ready** (H) |
+| 1105 | Wasm-native String methods on i16 arrays | Standalone string ops | **Ready** (H) |
+| 1104 | Wasm-native Error construction | Standalone errors | **Ready** (M) |
+| 1100 | Wasm-native Proxy meta-object protocol | Standalone Proxy | **Ready** (H) |
+| 1102 | Wasm-native eval (AOT compilation) | Standalone eval | **Ready** (H) |
+| 1101 | Wasm-native WeakRef / FinalizationRegistry | Standalone weak refs | **Ready** (H) |
+
+### Module extraction sub-tasks of #688. All independent, can run in parallel.
 
 | #   | Title | Ready? |
 |-----|-------|--------|
