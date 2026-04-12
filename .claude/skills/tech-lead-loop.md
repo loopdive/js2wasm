@@ -258,22 +258,62 @@ Phase 0: context load  (once per session start)
 │     ↓
 │    Phase 4: protocol enforcement (after ≥2 corrections)
 │     ↓
-└─── Phase 5: sprint hygiene (every ~30 min)
+│    Phase 5: sprint hygiene (every ~30 min)
+│     ↓
+│    [all devs shut down + no tasks?] ──→ Sprint-end wrap-up ──→ STOP
+│     ↓ (no)
+└─── (continue loop)
 ```
 
 You don't always run every phase — you trigger on events. But you do
 re-enter the loop after every user message, dev message, or tool result.
+The sprint-end detection runs every iteration — when it triggers, the
+wrap-up is mandatory before the loop can stop.
 
-## When to break the loop
+## Sprint-end detection (MUST run before loop exit)
+
+**Trigger**: all devs shut down AND no unclaimed/unblocked tasks remain.
+
+When this condition is met, the sprint is over. You MUST complete the
+wrap-up before stopping the loop. Do NOT just stop — incomplete wrap-ups
+lose learnings, leave issues in the wrong state, and force the next
+session to reconstruct context from scratch.
+
+**Sprint-end checklist** (all mandatory, in order):
+
+1. **Tag**: `git tag sprint/<N>`
+2. **Sprint doc**: update `plan/sprints/sprint-<N>.md` with:
+   - Status: `done` in frontmatter
+   - Ending baseline numbers
+   - Results table (PRs merged, issues completed, issues deferred)
+   - Acceptance criteria review (checked/unchecked)
+   - Retrospective (what went well, what didn't, lessons learned)
+3. **Diary**: append session entry to `plan/diary.md`
+4. **Handoff**: update `plan/agent-context/tech-lead.md` for next session
+5. **Issues**: move completed issues from `ready/` to `done/`
+6. **Commit + push**: stage all wrap-up files, commit, push, push tags
+7. **Landing page**: verify Pages deploy triggered (baseline refresh uses
+   `[skip ci]` which also skips deploy — trigger manually if needed)
+8. **Shutdown PO**: if a PO agent is still alive, send shutdown request
+9. **TeamDelete**: clean up team directories and worktrees
+10. **THEN stop the loop** — omit ScheduleWakeup only after step 9
+
+If you are about to omit ScheduleWakeup (stop the loop) and have NOT
+completed steps 1-9, you are violating this protocol. Go back and do them.
+
+## When to pause or break the loop (non-sprint-end)
 
 - **User directly asks for something**: handle the user request first, loop after.
 - **Token budget approaching 40%**: Phase 5 hygiene + /compact.
-- **Sprint end**: `/sprint-wrap-up` + retrospective + tag `sprint/<N>`.
 - **Fresh team restart needed**: write `plan/agent-context/tech-lead.md`,
   TeamDelete, TeamCreate, resume from Phase 0.
 
 ## Anti-patterns (do NOT do these)
 
+- **Stopping the loop without sprint wrap-up**. "All devs shut down" is NOT
+  the exit condition. "All devs shut down + wrap-up complete + tag pushed"
+  is the exit condition. This is the #1 protocol violation — it happened in
+  Sprint 41 and required the user to catch it.
 - **Polling devs every minute for status**. Idle notifications are normal.
 - **Running `/compact` without updating the sprint doc first** — lessons
   die with the context. See `feedback_diary_and_sprints_before_compact.md`.
