@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-12T16:38:09.851Z",
+  "timestamp": "2026-04-12T17:36:10.309Z",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
@@ -907,18 +907,18 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 8625,
+    "assertion_fail": 8620,
     "illegal_cast": 288,
     "negative_test_fail": 92,
     "null_deref": 593,
     "oob": 48,
     "other": 3756,
-    "promise_error": 59,
+    "promise_error": 62,
     "range_error": 20,
     "runtime_error": 1246,
-    "type_error": 3111,
+    "type_error": 3117,
     "unreachable": 21,
-    "wasm_compile": 1520
+    "wasm_compile": 1516
   },
   "skip_reasons": {
     "compiler hang (see HANGING_TESTS)": 2,
