@@ -1,0 +1,15 @@
+{
+  "pr": 134,
+  "conclusion": "failure",
+  "head_branch": "issue-1016-iterator-class-dstr",
+  "head_sha": "44b60583f7067bf48ff26a7b7fb03b37f13f252f",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24308969936",
+  "timestamp": "2026-04-12T14:48:23Z",
+  "pass": 22458,
+  "fail": 15344,
+  "compile_error": 4001,
+  "snapshot_delta": 46,
+  "net_per_test": 46,
+  "regressions": 19,
+  "improvements": 65
+}
