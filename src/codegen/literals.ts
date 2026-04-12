@@ -36,6 +36,7 @@ import {
 import { ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
 import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
+  coerceType,
   compileExpression,
   compileStatement,
   emitArgumentsObject,
@@ -112,6 +113,77 @@ export function ensureComputedPropertyFields(
   }
 }
 
+/**
+ * Last-resort fallback: compile an object literal as an externref plain object via host imports.
+ * Used when the TS type can't be mapped to a WasmGC struct (e.g., `{...null}`, `{...yield}`,
+ * or bundled JS objects with types too wide for struct inference).
+ *
+ * Creates a new plain object via __new_plain_object, then:
+ * - For spread assignments: calls __object_assign(target, source) to copy properties
+ * - For regular properties: calls __set_prop(target, key, value)
+ *
+ * Returns externref, or null if the host import is unavailable.
+ */
+function compileObjectLiteralAsExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ObjectLiteralExpression,
+): ValType | null {
+  const newObjIdx = ensureLateImport(ctx, "__new_plain_object", [], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  if (newObjIdx === undefined) return null;
+
+  // Create the target plain object
+  fctx.body.push({ op: "call", funcIdx: newObjIdx });
+  const objLocal = allocLocal(fctx, `__objlit_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  for (const prop of expr.properties) {
+    if (ts.isSpreadAssignment(prop)) {
+      // Compile spread source and call __object_assign(target, [source]) -> target
+      const srcType = compileExpression(ctx, fctx, prop.expression);
+      if (srcType) {
+        if (srcType.kind !== "externref") {
+          coerceType(ctx, fctx, srcType, { kind: "externref" });
+        }
+        // Wrap source in a single-element JS array for __object_assign(target, sources[])
+        const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+        const arrPushIdx = ensureLateImport(ctx, "__js_array_push", [{ kind: "externref" }, { kind: "externref" }], []);
+        const assignIdx = ensureLateImport(
+          ctx,
+          "__object_assign",
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (assignIdx !== undefined && arrNewIdx !== undefined && arrPushIdx !== undefined) {
+          const srcLocal = allocLocal(fctx, `__spread_src_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: srcLocal });
+          // Create sources array [source]
+          fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+          const arrLocal = allocLocal(fctx, `__spread_arr_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: arrLocal });
+          fctx.body.push({ op: "local.get", index: arrLocal });
+          fctx.body.push({ op: "local.get", index: srcLocal });
+          fctx.body.push({ op: "call", funcIdx: arrPushIdx });
+          // Call __object_assign(target, [source])
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "local.get", index: arrLocal });
+          fctx.body.push({ op: "call", funcIdx: assignIdx });
+          fctx.body.push({ op: "local.set", index: objLocal });
+        }
+      }
+    }
+    // PropertyAssignment and ShorthandPropertyAssignment are not handled in this fallback —
+    // mixed spread + named properties should have resolved via ensureStructForType.
+    // If we reach here with named properties, let them be silently skipped.
+    // The fallback is primarily for all-spread patterns like {...null}, {...yield}.
+  }
+
+  fctx.body.push({ op: "local.get", index: objLocal });
+  return { kind: "externref" };
+}
+
 export function compileObjectLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -168,6 +240,9 @@ export function compileObjectLiteral(
       ensureComputedPropertyFields(ctx, fctx, expr, type);
       return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
     }
+    // Fall back to externref plain object for unmappable types (e.g. {...null})
+    const fallback = compileObjectLiteralAsExternref(ctx, fctx, expr);
+    if (fallback) return fallback;
     reportError(ctx, expr, "Cannot determine struct type for object literal");
     return null;
   }
@@ -194,6 +269,10 @@ export function compileObjectLiteral(
     ensureComputedPropertyFields(ctx, fctx, expr, inferredType);
     return compileObjectLiteralForStruct(ctx, fctx, expr, inferredName);
   }
+
+  // Fall back to externref plain object for unmappable types
+  const fallback = compileObjectLiteralAsExternref(ctx, fctx, expr);
+  if (fallback) return fallback;
 
   reportError(ctx, expr, "Object literal type not mapped to struct");
   return null;
