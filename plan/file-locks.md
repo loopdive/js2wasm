@@ -32,6 +32,7 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/runtime.ts | __dv_register_view + DataView bridge subview | dev-1053 | #1064 | 2026-04-11 |
 | src/runtime.ts | _toPrimitive + __to_primitive host import | dev-B | #1090 | 2026-04-12 |
 | src/codegen/type-coercion.ts | struct→f64/externref ToPrimitive fallback | dev-B | #1090 | 2026-04-12 |
+| src/compiler/validation.ts | checkReservedIdentifiers — await in non-async fn | dev-B | #1068 | 2026-04-12 |
 
 <!--
 Example entries:
