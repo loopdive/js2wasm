@@ -7,7 +7,6 @@
  * - Format follows: https://sourcemaps.info/spec.html
  */
 
-import type { SourcePos } from "../ir/types.js";
 import type { SourceMapEntry } from "./binary.js";
 
 /** Source map v3 JSON structure */

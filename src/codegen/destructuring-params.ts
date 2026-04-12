@@ -4,11 +4,13 @@
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./context/types.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { allocLocal, getLocalType } from "./context/locals.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { shiftLateImportIndices } from "./expressions/late-imports.js";
+import { addUnionImports, ensureStructForType, resolveWasmType } from "./index.js";
 import { addImport, addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
-import { getArrTypeIdxFromVec, addFuncType, getOrRegisterVecType } from "./registry/types.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
   coerceType,
   compileExpression,
@@ -20,8 +22,6 @@ import {
   flushLateImportShifts,
   valTypesMatch,
 } from "./shared.js";
-import { shiftLateImportIndices } from "./expressions/late-imports.js";
-import { resolveWasmType, ensureStructForType, addUnionImports } from "./index.js";
 
 function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
   if (elemKey === "externref") {

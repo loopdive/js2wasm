@@ -2,107 +2,42 @@
  * new/super/class expression compilation.
  */
 import ts from "typescript";
-import {
-  isExternalDeclaredClass,
-  isHeterogeneousUnion,
-  isNumberType,
-  isStringType,
-  isBooleanType,
-  isVoidType,
-  isGeneratorType,
-  isIteratorResultType,
-  mapTsTypeToWasm,
-} from "../../checker/type-mapper.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
+import { collectReferencedIdentifiers, collectWrittenIdentifiers } from "../closures.js";
+import { reportError } from "../context/errors.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
+import type { CodegenContext, FunctionContext } from "../context/types.js";
 import {
   addFuncType,
-  addImport,
   addStringConstantGlobal,
-  addStringImports,
-  addUnionImports,
-  ensureAnyHelpers,
   ensureExnTag,
-  ensureI32Condition,
-  ensureStructForType,
   getArrTypeIdxFromVec,
   getOrRegisterRefCellType,
   getOrRegisterVecType,
-  isAnyValue,
-  localGlobalIdx,
-  nativeStringType,
   resolveWasmType,
-  hoistLetConstWithTdz,
-  hoistVarDeclarations,
 } from "../index.js";
-import {
-  compileArrayConstructorCall,
-  compileArrayLiteral,
-  compileObjectLiteral,
-  compileSymbolCall,
-  resolveComputedKeyExpression,
-} from "../literals.js";
-import {
-  compileObjectDefineProperty,
-  compileObjectDefineProperties,
-  compileObjectKeysOrValues,
-  compilePropertyIntrospection,
-} from "../object-ops.js";
-import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
-import { popBody, pushBody } from "../context/bodies.js";
-import { reportError, reportErrorNoNode } from "../context/errors.js";
-import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "../context/types.js";
-import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
+import { resolveComputedKeyExpression } from "../literals.js";
 import type { InnerResult } from "../shared.js";
-import { compileStatement, hoistFunctionDeclarations } from "../shared.js";
-import { emitTdzCheck } from "../statements/tdz.js";
 import {
-  compileNativeStringMethodCall,
-  compileStringLiteral,
-  compileTaggedTemplateExpression,
-  compileTemplateExpression,
-  emitBoolToString,
-} from "../string-ops.js";
+  coerceType,
+  compileExpression,
+  compileStatement,
+  registerCompileSuperElementAccess,
+  registerCompileSuperPropertyAccess,
+  registerResolveEnclosingClassName,
+} from "../shared.js";
+import { compileStringLiteral } from "../string-ops.js";
+import { coerceType as coerceTypeImpl, pushDefaultValue } from "../type-coercion.js";
+import { ensureDateDaysFromCivilHelper, ensureDateStruct } from "./builtins.js";
+import { compileSpreadCallArgs } from "./extern.js";
 import {
-  coerceType as coerceTypeImpl,
-  defaultValueInstrs,
-  emitGuardedRefCast,
-  emitGuardedFuncRefCast,
-  emitSafeExternrefToF64,
-  pushDefaultValue,
-  pushParamSentinel,
-} from "../type-coercion.js";
-import {
-  compileElementAccess,
-  compilePropertyAccess,
-  emitBoundsGuardedArraySet,
-  emitNullCheckThrow,
-  emitNullGuardedStructGet,
-  isProvablyNonNull,
-  typeErrorThrowInstrs,
-} from "../property-access.js";
-import {
-  collectReferencedIdentifiers,
-  collectWrittenIdentifiers,
-  compileArrowFunction,
-  emitFuncRefAsClosure,
-  getOrCreateFuncRefWrapperTypes,
-} from "../closures.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
-import {
+  emitThrowString,
   getFuncParamTypes,
-  wasmFuncReturnsVoid,
-  wasmFuncTypeReturnsVoid,
   getWasmFuncReturnType,
   isEffectivelyVoidReturn,
-  emitThrowString,
+  wasmFuncReturnsVoid,
 } from "./helpers.js";
-import { compileSpreadCallArgs, findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
-import {
-  registerResolveEnclosingClassName,
-  registerCompileSuperPropertyAccess,
-  registerCompileSuperElementAccess,
-} from "../shared.js";
-import { ensureDateStruct, ensureDateDaysFromCivilHelper } from "./builtins.js";
+import { ensureLateImport, flushLateImportShifts } from "./late-imports.js";
 
 function resolveEnclosingClassName(fctx: FunctionContext): string | undefined {
   if (fctx.enclosingClassName) return fctx.enclosingClassName;
@@ -2641,10 +2576,10 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
 }
 
 export {
-  compileSuperMethodCall,
-  compileSuperElementMethodCall,
-  compileNewExpression,
   compileClassExpression,
+  compileNewExpression,
+  compileSuperElementMethodCall,
+  compileSuperMethodCall,
   resolveEnclosingClassName,
 };
 
