@@ -36,17 +36,53 @@ createFreshCompiler();
 // Suppress unhandled Promise rejections from async tests
 process.on("unhandledRejection", () => {});
 
-// Save pristine built-in prototypes.  Some test262 tests mutate
-// Array.prototype[Symbol.iterator], Object.prototype, etc.  Since compile
-// and execute share the same process, poisoned prototypes break the TS
-// compiler's `for...of` loops on subsequent compilations.
+// ── Prototype-poisoning sandbox ───────────────────────────────────────
+// test262 tests routinely mutate built-in prototypes (Object.defineProperty
+// on Array.prototype, freezing arrays, overriding Symbol.iterator, etc.).
+// Since compile and execute share the same process, poisoned prototypes
+// break the TypeScript compiler on subsequent compilations.
+//
+// Strategy: snapshot numeric index descriptors on Array.prototype and
+// well-known symbols at startup. After each test, delete any numeric
+// properties added to Array.prototype and restore Symbol.iterator.
+// Full descriptor restoration is too aggressive — it interferes with
+// V8's internal array optimizations.
+
 const _origArrayIterator = Array.prototype[Symbol.iterator];
-const _origObjectProto = Object.getOwnPropertyDescriptors(Object.prototype);
+const _origArrayProtoNumericKeys = new Set(
+  Object.getOwnPropertyNames(Array.prototype).filter(k => /^\d+$/.test(k))
+);
+const _origObjectProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype));
+const _origMapGet = Map.prototype.get;
+const _origMapSet = Map.prototype.set;
+const _origMapHas = Map.prototype.has;
 
 function restoreBuiltins() {
+  // Restore Array.prototype[Symbol.iterator]
   if (Array.prototype[Symbol.iterator] !== _origArrayIterator) {
     Array.prototype[Symbol.iterator] = _origArrayIterator;
   }
+
+  // Remove numeric-indexed accessor properties added to Array.prototype
+  // (e.g. Object.defineProperty(Array.prototype, "0", {get: ...}))
+  // These cause "Cannot set property N of [object Array] which has only a getter"
+  for (const key of Object.getOwnPropertyNames(Array.prototype)) {
+    if (/^\d+$/.test(key) && !_origArrayProtoNumericKeys.has(key)) {
+      try { delete Array.prototype[key]; } catch {}
+    }
+  }
+
+  // Remove properties added to Object.prototype
+  for (const key of Object.getOwnPropertyNames(Object.prototype)) {
+    if (!_origObjectProtoKeys.has(key)) {
+      try { delete Object.prototype[key]; } catch {}
+    }
+  }
+
+  // Restore Map.prototype core methods (mapperCache.get errors)
+  if (Map.prototype.get !== _origMapGet) Map.prototype.get = _origMapGet;
+  if (Map.prototype.set !== _origMapSet) Map.prototype.set = _origMapSet;
+  if (Map.prototype.has !== _origMapHas) Map.prototype.has = _origMapHas;
 }
 
 function doCompile(source, sourceMapUrl) {
