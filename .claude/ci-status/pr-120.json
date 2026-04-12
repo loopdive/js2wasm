@@ -1,0 +1,15 @@
+{
+  "pr": 120,
+  "conclusion": "failure",
+  "head_branch": "issue-997-bigint-toprimitive",
+  "head_sha": "f10b42c6f3d28072b18f206ec6c9034bd6ddc909",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24302620465",
+  "timestamp": "2026-04-12T08:39:48Z",
+  "pass": 2262,
+  "fail": 1884,
+  "compile_error": 37684,
+  "snapshot_delta": -19923,
+  "net_per_test": -19923,
+  "regressions": 19934,
+  "improvements": 11
+}
