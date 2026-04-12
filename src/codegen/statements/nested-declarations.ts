@@ -7,15 +7,25 @@ import ts from "typescript";
 import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import {
-  collectReferencedIdentifiers,
-  collectWrittenIdentifiers,
-  promoteAccessorCapturesToGlobals,
-} from "../closures.js";
+  compileExpression,
+  ensureLateImport,
+  flushLateImportShifts,
+  registerHoistFunctionDeclarations,
+  registerEmitArgumentsObject,
+} from "../shared.js";
+import { emitThrowString } from "../expressions/helpers.js";
+import { collectReferencedIdentifiers, collectWrittenIdentifiers } from "../closures.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { reportError } from "../context/errors.js";
 import { allocLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext, OptionalParamInfo } from "../context/types.js";
-import { emitThrowString } from "../expressions/helpers.js";
+import {
+  addFuncType,
+  getArrTypeIdxFromVec,
+  getOrRegisterRefCellType,
+  getOrRegisterVecType,
+} from "../registry/types.js";
+import { ensureExnTag, nextModuleGlobalIdx } from "../registry/imports.js";
 import {
   collectClassDeclaration,
   compileClassBodies,
@@ -24,21 +34,9 @@ import {
   extractConstantDefault,
   resolveWasmType,
 } from "../index.js";
-import { ensureExnTag, nextModuleGlobalIdx } from "../registry/imports.js";
-import {
-  addFuncType,
-  getArrTypeIdxFromVec,
-  getOrRegisterRefCellType,
-  getOrRegisterVecType,
-} from "../registry/types.js";
-import {
-  compileExpression,
-  compileStatement,
-  ensureLateImport,
-  flushLateImportShifts,
-  registerEmitArgumentsObject,
-  registerHoistFunctionDeclarations,
-} from "../shared.js";
+import { promoteAccessorCapturesToGlobals } from "../closures.js";
+import { collectInstrs } from "./shared.js";
+import { compileStatement } from "../shared.js";
 
 export function compileNestedClassDeclaration(
   ctx: CodegenContext,

@@ -2,15 +2,17 @@
  * Exception handling statement lowering: throw and try-catch.
  */
 import ts from "typescript";
-import type { Instr } from "../../ir/types.js";
+import type { Instr, ValType } from "../../ir/types.js";
+import { coerceType, compileExpression, ensureLateImport, flushLateImportShifts } from "../shared.js";
 import { popBody, pushBody } from "../context/bodies.js";
+import { reportError } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { addUnionImports } from "../index.js";
 import { addStringConstantGlobal, ensureExnTag } from "../registry/imports.js";
-import { coerceType, compileExpression, compileStatement, ensureLateImport, flushLateImportShifts } from "../shared.js";
+import { addUnionImports } from "../index.js";
+import { adjustRethrowDepth, saveBlockScopedShadows, restoreBlockScopedShadows } from "./shared.js";
 import { ensureBindingLocals } from "./destructuring.js";
-import { adjustRethrowDepth, restoreBlockScopedShadows, saveBlockScopedShadows } from "./shared.js";
+import { compileStatement } from "../shared.js";
 
 function compileExternrefCatchDestructure(
   ctx: CodegenContext,

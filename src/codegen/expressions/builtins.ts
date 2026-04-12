@@ -2,15 +2,37 @@
  * Host built-in compilation: console, Date, Math, and WASI output.
  */
 import ts from "typescript";
-import { isBooleanType, isNumberType, isStringType } from "../../checker/type-mapper.js";
+import { isStringType, isNumberType, isBooleanType, isVoidType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
+import {
+  addFuncType,
+  addImport,
+  addStringConstantGlobal,
+  addStringImports,
+  addUnionImports,
+  ensureAnyHelpers,
+  ensureExnTag,
+  getArrTypeIdxFromVec,
+  getOrRegisterVecType,
+  localGlobalIdx,
+  nativeStringType,
+  resolveWasmType,
+} from "../index.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
+import { reportError } from "../context/errors.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { addFuncType } from "../index.js";
+import { compileExpression, coerceType, VOID_RESULT } from "../shared.js";
 import type { InnerResult } from "../shared.js";
-import { compileExpression, VOID_RESULT } from "../shared.js";
-import { compileStringLiteral } from "../string-ops.js";
-import { isStaticNaN, tryStaticToNumber } from "./misc.js";
+import {
+  coerceType as coerceTypeImpl,
+  defaultValueInstrs,
+  emitGuardedRefCast,
+  pushDefaultValue,
+} from "../type-coercion.js";
+import { compileStringLiteral, compileNativeStringMethodCall, emitBoolToString } from "../string-ops.js";
+import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
+import { emitThrowString, getFuncParamTypes, isEffectivelyVoidReturn, getWasmFuncReturnType } from "./helpers.js";
+import { tryStaticToNumber, isStaticNaN } from "./misc.js";
 
 // ── Builtins ─────────────────────────────────────────────────────────
 

@@ -11,15 +11,16 @@
  *   4. Registers delegates in shared.ts (registerCompileExpression, etc.)
  */
 import ts from "typescript";
-import { mapTsTypeToWasm } from "../checker/type-mapper.js";
+import { mapTsTypeToWasm, isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { getLocalType } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { ensureAnyHelpers, isAnyValue } from "./shared.js";
 import type { InnerResult } from "./shared.js";
 import {
-  ensureAnyHelpers,
-  isAnyValue,
+  getCol,
+  getLine,
   registerCompileExpression,
   registerEnsureLateImport,
   registerFlushLateImportShifts,
@@ -31,29 +32,96 @@ import { coerceType as coerceTypeImpl, pushDefaultValue } from "./type-coercion.
 
 // ── Sub-module imports ─────────────────────────────────────────────────
 
-import { wasmFuncReturnsVoid, wasmFuncTypeReturnsVoid } from "./expressions/helpers.js";
+import {
+  emitThrowString,
+  wasmFuncReturnsVoid,
+  wasmFuncTypeReturnsVoid,
+  getFuncParamTypes,
+  getWasmFuncReturnType,
+} from "./expressions/helpers.js";
 
-import { emitUndefined, ensureLateImport, flushLateImportShifts } from "./expressions/late-imports.js";
+import {
+  shiftLateImportIndices,
+  ensureLateImport,
+  flushLateImportShifts,
+  emitUndefined,
+  ensureGetUndefined,
+  ensureExternIsUndefinedImport,
+  patchStructNewForAddedField,
+} from "./expressions/late-imports.js";
 
-import { compileHostInstanceOf, compileIdentifier, resolveInstanceOfRHS } from "./expressions/identifiers.js";
+import {
+  compileIdentifier,
+  narrowTypeToUnbox,
+  resolveInstanceOfRHS,
+  compileHostInstanceOf,
+  analyzeTdzAccessByPos,
+} from "./expressions/identifiers.js";
 
-import { compilePostfixUnary, compilePrefixUnary } from "./expressions/unary.js";
+import {
+  compileLogicalAnd,
+  compileLogicalOr,
+  compileNullishCoalescing,
+  emitMappedArgParamSync,
+  emitMappedArgReverseSync,
+} from "./expressions/logical-ops.js";
 
-import { compileCallExpression } from "./expressions/calls.js";
+import {
+  compileAssignment,
+  compileLogicalAssignment,
+  compileCompoundAssignment,
+  isCompoundAssignment,
+  compileDestructuringAssignment,
+  compileArrayDestructuringAssignment,
+  compilePropertyAssignment,
+  compileElementAssignment,
+  compileExternSetFallback,
+} from "./expressions/assignment.js";
 
-import { compileClassExpression, compileNewExpression } from "./expressions/new-super.js";
+import { compilePrefixUnary, compilePostfixUnary, compileMemberIncDec } from "./expressions/unary.js";
 
-import { compileConditionalExpression, compileYieldExpression } from "./expressions/misc.js";
+import { compileCallExpression, compileOptionalCallExpression, compileIIFE } from "./expressions/calls.js";
+
+import {
+  compileSuperMethodCall,
+  compileSuperElementMethodCall,
+  compileSuperPropertyAccess,
+  compileSuperElementAccess,
+  compileNewExpression,
+  compileClassExpression,
+  resolveEnclosingClassName,
+} from "./expressions/new-super.js";
+
+import {
+  findExternInfoForMember,
+  compileExternMethodCall,
+  emitLazyProtoGet,
+  patchStructNewForDynamicField,
+  patchStructNewInBody,
+  defaultValueInstrForType,
+  compileSpreadCallArgs,
+} from "./expressions/extern.js";
+
+import { compileConsoleCall, compileDateMethodCall, compileMathCall } from "./expressions/builtins.js";
+
+import {
+  compileConditionalExpression,
+  resolveStructName,
+  isGeneratorIteratorResultLike,
+  getIteratorResultValueType,
+  compileYieldExpression,
+  tryStaticToNumber,
+} from "./expressions/misc.js";
 
 // Closures (used inside compileExpressionInner)
 import { compileArrowFunction } from "./closures.js";
 
 // Property access + binary ops (used inside compileExpressionInner)
 import { compileBinaryExpression } from "./binary-ops.js";
-import { compileArrayLiteral, compileObjectLiteral } from "./literals.js";
 import { compileElementAccess, compilePropertyAccess } from "./property-access.js";
-import { compileTaggedTemplateExpression, compileTemplateExpression } from "./string-ops.js";
+import { compileObjectLiteral, compileArrayLiteral } from "./literals.js";
 import { compileDeleteExpression, compileRegExpLiteral, compileTypeofExpression } from "./typeof-delete.js";
+import { compileTaggedTemplateExpression, compileTemplateExpression } from "./string-ops.js";
 
 // ── Public re-exports (preserves the external API) ────────────────────
 
@@ -68,8 +136,8 @@ export { compileNumericBinaryOp } from "./binary-ops.js";
 export { collectReferencedIdentifiers, collectWrittenIdentifiers } from "./closures.js";
 export { getWellKnownSymbolId, resolveComputedKeyExpression, resolveConstantExpression } from "./literals.js";
 export {
-  compileObjectDefineProperties,
   compileObjectDefineProperty,
+  compileObjectDefineProperties,
   compileObjectKeysOrValues,
   compilePropertyIntrospection,
 } from "./object-ops.js";
@@ -95,40 +163,40 @@ export { coercionInstrs, defaultValueInstrs, pushDefaultValue, pushParamSentinel
 export { compileInstanceOf, compileTypeofComparison } from "./typeof-delete.js";
 
 // Re-exports from sub-modules
-export {
-  compileAssignment,
-  compileCompoundAssignment,
-  compileLogicalAssignment,
-  isCompoundAssignment,
-} from "./expressions/assignment.js";
-export { compileCallExpression, compileIIFE, compileOptionalCallExpression } from "./expressions/calls.js";
-export { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 export { emitThrowString, getFuncParamTypes } from "./expressions/helpers.js";
-export { analyzeTdzAccessByPos, compileIdentifier, narrowTypeToUnbox } from "./expressions/identifiers.js";
 export {
-  emitUndefined,
-  ensureExternIsUndefinedImport,
-  ensureGetUndefined,
+  shiftLateImportIndices,
   ensureLateImport,
   flushLateImportShifts,
+  emitUndefined,
+  ensureGetUndefined,
+  ensureExternIsUndefinedImport,
   patchStructNewForAddedField,
-  shiftLateImportIndices,
 } from "./expressions/late-imports.js";
+export { compileIdentifier, narrowTypeToUnbox, analyzeTdzAccessByPos } from "./expressions/identifiers.js";
 export { compileLogicalAnd, compileLogicalOr, compileNullishCoalescing } from "./expressions/logical-ops.js";
 export {
-  getIteratorResultValueType,
-  isGeneratorIteratorResultLike,
-  resolveStructName,
-  tryStaticToNumber,
-} from "./expressions/misc.js";
+  compileAssignment,
+  compileLogicalAssignment,
+  compileCompoundAssignment,
+  isCompoundAssignment,
+} from "./expressions/assignment.js";
+export { compilePrefixUnary, compilePostfixUnary, compileMemberIncDec } from "./expressions/unary.js";
+export { compileCallExpression, compileOptionalCallExpression, compileIIFE } from "./expressions/calls.js";
 export {
-  compileClassExpression,
-  compileNewExpression,
-  compileSuperElementAccess,
   compileSuperPropertyAccess,
+  compileSuperElementAccess,
+  compileNewExpression,
+  compileClassExpression,
   resolveEnclosingClassName,
 } from "./expressions/new-super.js";
-export { compileMemberIncDec, compilePostfixUnary, compilePrefixUnary } from "./expressions/unary.js";
+export { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
+export {
+  resolveStructName,
+  isGeneratorIteratorResultLike,
+  getIteratorResultValueType,
+  tryStaticToNumber,
+} from "./expressions/misc.js";
 
 // ── Dispatcher helpers (used only within this file) ────────────────────
 

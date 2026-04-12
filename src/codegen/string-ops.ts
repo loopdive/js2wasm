@@ -4,19 +4,28 @@
  * and native string method calls.
  */
 import ts from "typescript";
-import { isBooleanType, isStringType, isVoidType } from "../checker/type-mapper.js";
-import type { Instr, ValType } from "../ir/types.js";
-import { compileNumericBinaryOp } from "./binary-ops.js";
-import { pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
+import { pushBody } from "./context/bodies.js";
 import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
-import { getFuncParamTypes } from "./expressions/helpers.js";
-import { addStringImports, addUnionImports, flatStringType, nativeStringType, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterTemplateVecType, getOrRegisterVecType } from "./registry/types.js";
-import { compileExpression, ensureLateImport, flushLateImportShifts, registerCompileStringLiteral } from "./shared.js";
-import { coerceType, emitGuardedRefCast, pushDefaultValue, pushParamSentinel } from "./type-coercion.js";
+import { resolveWasmType, addUnionImports, nativeStringType, flatStringType, addStringImports } from "./index.js";
+import { isBooleanType, isStringType, isVoidType } from "../checker/type-mapper.js";
+import type { Instr, ValType } from "../ir/types.js";
+import {
+  compileExpression,
+  VOID_RESULT,
+  getLine,
+  getCol,
+  ensureLateImport,
+  flushLateImportShifts,
+  registerCompileStringLiteral,
+} from "./shared.js";
+import { compileNumericBinaryOp } from "./binary-ops.js";
+import { getFuncParamTypes } from "./expressions/helpers.js";
+import { emitNullCheckThrow } from "./property-access.js";
+import { pushDefaultValue, pushParamSentinel, emitGuardedRefCast, coerceType } from "./type-coercion.js";
 
 // ── Guarded funcref cast (ref.test before ref.cast to avoid illegal cast traps) ──
 function emitGuardedFuncRefCast(fctx: FunctionContext, funcTypeIdx: number): void {

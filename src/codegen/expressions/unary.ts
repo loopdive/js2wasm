@@ -2,27 +2,84 @@
  * Unary operator compilation: prefix/postfix unary, increment/decrement.
  */
 import ts from "typescript";
-import type { Instr, ValType } from "../../ir/types.js";
-import { emitBoundsCheckedArrayGet } from "../array-methods.js";
-import { emitToInt32 } from "../binary-ops.js";
-import { reportError } from "../context/errors.js";
-import { allocLocal, getLocalType } from "../context/locals.js";
-import type { CodegenContext, FunctionContext } from "../context/types.js";
 import {
+  isExternalDeclaredClass,
+  isHeterogeneousUnion,
+  isNumberType,
+  isStringType,
+  isBooleanType,
+  isVoidType,
+} from "../../checker/type-mapper.js";
+import type { FieldDef, Instr, ValType } from "../../ir/types.js";
+import {
+  addFuncType,
+  addImport,
+  addStringConstantGlobal,
+  addStringImports,
   addUnionImports,
   ensureAnyHelpers,
+  ensureExnTag,
   ensureI32Condition,
   ensureStructForType,
   getArrTypeIdxFromVec,
+  getOrRegisterRefCellType,
+  getOrRegisterVecType,
   isAnyValue,
   localGlobalIdx,
+  nativeStringType,
+  resolveWasmType,
 } from "../index.js";
-import { emitBoundsGuardedArraySet } from "../property-access.js";
-import { coerceType, compileExpression } from "../shared.js";
-import { defaultValueInstrs, emitSafeExternrefToF64 } from "../type-coercion.js";
+import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
+import { popBody, pushBody } from "../context/bodies.js";
+import { reportError } from "../context/errors.js";
+import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "../context/types.js";
+import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
+import type { InnerResult } from "../shared.js";
+import {
+  defaultValueInstrs,
+  emitGuardedRefCast,
+  emitGuardedFuncRefCast,
+  emitSafeExternrefToF64,
+  pushDefaultValue,
+  pushParamSentinel,
+} from "../type-coercion.js";
+import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
+import {
+  compileNativeStringMethodCall,
+  compileStringLiteral,
+  compileTaggedTemplateExpression,
+  compileTemplateExpression,
+  emitBoolToString,
+} from "../string-ops.js";
+import { compileBinaryExpression, emitModulo, emitToInt32 } from "../binary-ops.js";
+import {
+  compileElementAccess,
+  compilePropertyAccess,
+  emitBoundsGuardedArraySet,
+  emitNullCheckThrow,
+  emitNullGuardedStructGet,
+  isProvablyNonNull,
+  typeErrorThrowInstrs,
+} from "../property-access.js";
+import {
+  compileObjectDefineProperty,
+  compileObjectDefineProperties,
+  compileObjectKeysOrValues,
+  compilePropertyIntrospection,
+} from "../object-ops.js";
+import {
+  compileArrayConstructorCall,
+  compileArrayLiteral,
+  compileObjectLiteral,
+  compileSymbolCall,
+  resolveComputedKeyExpression,
+} from "../literals.js";
+import { findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
 import { emitThrowString, getFuncParamTypes } from "./helpers.js";
+import { compilePropertyAssignment, compileElementAssignment, compileExternSetFallback } from "./assignment.js";
 import { emitMappedArgParamSync } from "./logical-ops.js";
 import { resolveStructName, tryStaticToNumber } from "./misc.js";
+import { emitBoundsCheckedArrayGet } from "../array-methods.js";
 
 function unwrapParens(node: ts.Expression): ts.Expression {
   while (ts.isParenthesizedExpression(node)) {
@@ -1624,4 +1681,4 @@ function compilePostfixIncrementElement(
 
 /** Look up parameter types for a function by its index */
 
-export { compileMemberIncDec, compilePostfixUnary, compilePrefixUnary };
+export { compilePrefixUnary, compilePostfixUnary, compileMemberIncDec };

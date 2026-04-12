@@ -9,7 +9,7 @@
  * to determine which function indices and type indices are actually referenced,
  * then removes the dead ones and remaps all surviving indices.
  */
-import type { ArrayTypeDef, Instr, StructTypeDef, SubTypeDef, TypeDef, ValType, WasmModule } from "../ir/types.js";
+import type { Instr, TypeDef, ValType, WasmModule, StructTypeDef, SubTypeDef, ArrayTypeDef } from "../ir/types.js";
 import { walkInstructions } from "./walk-instructions.js";
 
 // --- Reference collection ---

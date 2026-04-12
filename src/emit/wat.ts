@@ -1,14 +1,14 @@
-import { walkInstructions } from "../codegen/walk-instructions.js";
 import type {
-  BlockType,
-  FieldDef,
-  FuncTypeDef,
-  Instr,
-  TypeDef,
-  ValType,
-  WasmFunction,
   WasmModule,
+  TypeDef,
+  FuncTypeDef,
+  ValType,
+  Instr,
+  BlockType,
+  WasmFunction,
+  FieldDef,
 } from "../ir/types.js";
+import { walkInstructions } from "../codegen/walk-instructions.js";
 
 /**
  * Compute the set of type indices that can be inlined into their sole

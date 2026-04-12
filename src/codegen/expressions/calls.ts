@@ -4,80 +4,124 @@
  */
 import ts from "typescript";
 import {
-  isBooleanType,
   isExternalDeclaredClass,
-  isGeneratorType,
+  isHeterogeneousUnion,
   isNumberType,
   isStringType,
+  isBooleanType,
   isVoidType,
+  isGeneratorType,
+  isIteratorResultType,
+  mapTsTypeToWasm,
 } from "../../checker/type-mapper.js";
-import type { Instr, ValType } from "../../ir/types.js";
-import { compileArrayMethodCall, compileArrayPrototypeCall, resolveArrayInfo } from "../array-methods.js";
-import {
-  collectReferencedIdentifiers,
-  collectWrittenIdentifiers,
-  compileArrowFunction,
-  getOrCreateFuncRefWrapperTypes,
-} from "../closures.js";
-import { popBody, pushBody } from "../context/bodies.js";
-import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
-import type { ClosureInfo, CodegenContext, FunctionContext } from "../context/types.js";
+import type { FieldDef, Instr, ValType } from "../../ir/types.js";
 import {
   addFuncType,
   addImport,
   addStringConstantGlobal,
   addStringImports,
   addUnionImports,
+  ensureAnyHelpers,
   ensureExnTag,
   ensureI32Condition,
+  ensureStructForType,
   getArrTypeIdxFromVec,
   getOrRegisterRefCellType,
   getOrRegisterVecType,
-  hoistLetConstWithTdz,
-  hoistVarDeclarations,
+  isAnyValue,
+  localGlobalIdx,
   nativeStringType,
   resolveWasmType,
+  hoistLetConstWithTdz,
+  hoistVarDeclarations,
 } from "../index.js";
-import { compileArrayConstructorCall, compileSymbolCall, resolveComputedKeyExpression } from "../literals.js";
 import {
-  compileObjectDefineProperties,
+  compileArrayMethodCall,
+  compileArrayPrototypeCall,
+  emitBoundsCheckedArrayGet,
+  resolveArrayInfo,
+} from "../array-methods.js";
+import { compileBinaryExpression, emitModulo, emitToInt32 } from "../binary-ops.js";
+import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
+import { popBody, pushBody } from "../context/bodies.js";
+import { reportError, reportErrorNoNode } from "../context/errors.js";
+import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "../context/types.js";
+import {
   compileObjectDefineProperty,
+  compileObjectDefineProperties,
   compileObjectKeysOrValues,
   compilePropertyIntrospection,
 } from "../object-ops.js";
-import { emitNullCheckThrow, typeErrorThrowInstrs } from "../property-access.js";
-import type { InnerResult } from "../shared.js";
-import { coerceType, compileExpression, valTypesMatch, VOID_RESULT } from "../shared.js";
-import { compileStatement, hoistFunctionDeclarations } from "../statements.js";
-import { emitSetExtrasArgv } from "../statements/nested-declarations.js";
-import { compileNativeStringMethodCall, compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import {
+  compileArrayConstructorCall,
+  compileArrayLiteral,
+  compileObjectLiteral,
+  compileSymbolCall,
+  resolveComputedKeyExpression,
+} from "../literals.js";
+import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
+import type { InnerResult } from "../shared.js";
+import { compileStatement, emitTdzCheck, hoistFunctionDeclarations } from "../statements.js";
+import { emitSetExtrasArgv } from "../statements/nested-declarations.js";
+import {
+  compileNativeStringMethodCall,
+  compileStringLiteral,
+  compileTaggedTemplateExpression,
+  compileTemplateExpression,
+  emitBoolToString,
+} from "../string-ops.js";
+import {
+  coerceType as coerceTypeImpl,
   defaultValueInstrs,
-  emitGuardedFuncRefCast,
   emitGuardedRefCast,
+  emitGuardedFuncRefCast,
+  emitSafeExternrefToF64,
   pushDefaultValue,
   pushParamSentinel,
 } from "../type-coercion.js";
+import {
+  compileElementAccess,
+  compilePropertyAccess,
+  emitBoundsGuardedArraySet,
+  emitNullCheckThrow,
+  emitNullGuardedStructGet,
+  isProvablyNonNull,
+  typeErrorThrowInstrs,
+} from "../property-access.js";
+import {
+  collectReferencedIdentifiers,
+  collectWrittenIdentifiers,
+  compileArrowFunction,
+  emitFuncRefAsClosure,
+  getOrCreateFuncRefWrapperTypes,
+} from "../closures.js";
+import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
+import {
+  getFuncParamTypes,
+  wasmFuncReturnsVoid,
+  wasmFuncTypeReturnsVoid,
+  getWasmFuncReturnType,
+  isEffectivelyVoidReturn,
+  emitThrowString,
+} from "./helpers.js";
+import { emitLazyProtoGet, compileExternMethodCall, compileSpreadCallArgs, findExternInfoForMember } from "./extern.js";
+import { compileSuperMethodCall, compileSuperElementMethodCall } from "./new-super.js";
 import {
   compileConsoleCall,
   compileDateMethodCall,
   compileMathCall,
   ensureDateDaysFromCivilHelper,
 } from "./builtins.js";
+import { resolveStructName } from "./misc.js";
+import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./identifiers.js";
+import { compileOptionalCallExpression } from "./calls-optional.js";
 import {
-  compileCallablePropertyCall,
   compileClosureCall,
+  compileCallablePropertyCall,
   compileGetterCallable,
   compileObjectPrototypeFallback,
   tryExternClassMethodOnAny,
 } from "./calls-closures.js";
-import { compileOptionalCallExpression } from "./calls-optional.js";
-import { compileExternMethodCall, compileSpreadCallArgs, emitLazyProtoGet } from "./extern.js";
-import { getFuncParamTypes, getWasmFuncReturnType, isEffectivelyVoidReturn, wasmFuncReturnsVoid } from "./helpers.js";
-import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./identifiers.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
-import { resolveStructName } from "./misc.js";
-import { compileSuperElementMethodCall, compileSuperMethodCall } from "./new-super.js";
 
 /**
  * Check if a node (function body) uses the `arguments` binding.
@@ -6513,4 +6557,4 @@ function compileIIFE(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallEx
 /** Resolve the enclosing class name from a FunctionContext.
  *  Uses enclosingClassName if set (e.g. closures), otherwise parses ClassName from "ClassName_methodName". */
 
-export { compileCallExpression, compileIIFE, compileOptionalCallExpression };
+export { compileCallExpression, compileOptionalCallExpression, compileIIFE };

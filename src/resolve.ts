@@ -1,6 +1,5 @@
-import * as path from "path";
 import ts from "typescript";
-import type { CompileOptions } from "./index.js";
+import * as path from "path";
 
 function isBrowserLikeRuntime(): boolean {
   return typeof window !== "undefined" || typeof (globalThis as any).WorkerGlobalScope !== "undefined";
@@ -18,6 +17,7 @@ try {
 function getFs() {
   return _fs;
 }
+import type { CompileOptions } from "./index.js";
 
 /**
  * Module resolver that uses TypeScript's built-in `ts.resolveModuleName()`
