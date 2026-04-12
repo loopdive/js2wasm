@@ -2376,6 +2376,28 @@ export function compileElementAccessBody(
     }
 
     // Handle vec struct (array wrapped in {length, data})
+    // First, check if the key is a well-known symbol (e.g. Symbol.iterator).
+    // Well-known symbols are NOT numeric array indices — route through
+    // extern.convert_any + __extern_get so the runtime can resolve them (#854).
+    {
+      const symKey = resolveComputedKeyExpression(ctx, expr.argumentExpression);
+      if (symKey !== undefined && symKey.startsWith("@@")) {
+        fctx.body.push({ op: "extern.convert_any" });
+        compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
+        const funcIdx = ensureLateImport(
+          ctx,
+          "__extern_get",
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+        return null;
+      }
+    }
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const arrDef = ctx.mod.types[arrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {
