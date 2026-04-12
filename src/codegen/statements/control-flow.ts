@@ -455,7 +455,7 @@ export function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContex
     } else {
       // Non-fast mode: externref string comparison via wasm:js-string equals
       addStringImports(ctx);
-      strEqFuncIdx = ctx.funcMap.get("equals");
+      strEqFuncIdx = ctx.jsStringImports.get("equals");
       wasmType = { kind: "externref" };
     }
   } else if (wasmType.kind === "externref") {

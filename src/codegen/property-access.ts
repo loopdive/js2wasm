@@ -704,7 +704,7 @@ export function compileOptionalPropertyAccess(
       // len is field 0 of $AnyString — works for both FlatString and ConsString
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
     } else {
-      const funcIdx = ctx.funcMap.get("length");
+      const funcIdx = ctx.jsStringImports.get("length");
       if (funcIdx !== undefined) fctx.body.push({ op: "call", funcIdx });
     }
     elseResultType = { kind: "i32" };
@@ -1396,7 +1396,7 @@ export function compilePropertyAccess(
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
       return { kind: "i32" };
     }
-    const funcIdx = ctx.funcMap.get("length");
+    const funcIdx = ctx.jsStringImports.get("length");
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "i32" };

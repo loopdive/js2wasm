@@ -2417,6 +2417,13 @@ export function addStringImports(ctx: CodegenContext): void {
     typeIdx: charCodeAtType,
   });
 
+  // Store wasm:js-string import indices separately so user-defined functions
+  // with the same name (e.g. user's "charCodeAt") don't shadow them (#1072).
+  for (const name of ["concat", "length", "equals", "substring", "charCodeAt"]) {
+    const idx = ctx.funcMap.get(name);
+    if (idx !== undefined) ctx.jsStringImports.set(name, idx);
+  }
+
   // If imports were added after defined functions were registered (late addition),
   // shift all defined-function indices.
   const delta = ctx.numImportFuncs - importsBefore;

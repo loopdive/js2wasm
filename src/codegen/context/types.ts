@@ -197,6 +197,9 @@ export interface CodegenContext {
   structFields: Map<string, FieldDef[]>;
   /** Number of imported functions */
   numImportFuncs: number;
+  /** wasm:js-string import indices — separate from funcMap to prevent
+   *  user-defined functions from shadowing them (#1072). */
+  jsStringImports: Map<string, number>;
   /** Current function context (set during function compilation) */
   currentFunc: FunctionContext | null;
   /** Stack of parent function contexts saved during nested closure compilation. */

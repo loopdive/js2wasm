@@ -1122,7 +1122,7 @@ function compileArrayPrototypeIndexOf(
   let apcEqInstrs: Instr[];
   if (elemType.kind === "externref") {
     addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
+    const equalsIdx = ctx.jsStringImports.get("equals")!;
     apcEqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
   } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
     apcEqInstrs = [{ op: "ref.eq" }];
@@ -2037,7 +2037,7 @@ function compileArrayIndexOf(
   let eqInstrs: Instr[];
   if (elemType.kind === "externref") {
     addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
+    const equalsIdx = ctx.jsStringImports.get("equals")!;
     eqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
   } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
     eqInstrs = [{ op: "ref.eq" }];
@@ -2233,7 +2233,7 @@ function compileArrayIncludes(
     ];
   } else if (elemType.kind === "externref") {
     addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
+    const equalsIdx = ctx.jsStringImports.get("equals")!;
     comparisonInstrs = [
       { op: "local.get", index: dataTmp } as Instr,
       { op: "local.get", index: iTmp } as Instr,
@@ -2903,7 +2903,7 @@ function compileArrayJoin(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  const concatIdx = ctx.funcMap.get("concat");
+  const concatIdx = ctx.jsStringImports.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) {
     reportError(ctx, callExpr, "join requires string support (wasm:js-string concat)");
@@ -4517,7 +4517,7 @@ function compileArrayLastIndexOf(
   let liofEqInstrs: Instr[];
   if (elemType.kind === "externref") {
     addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
+    const equalsIdx = ctx.jsStringImports.get("equals")!;
     liofEqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
   } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
     liofEqInstrs = [{ op: "ref.eq" }];
