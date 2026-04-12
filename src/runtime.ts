@@ -2952,21 +2952,23 @@ function resolveImport(
       return (v: any) => (v ? 1 : 0);
     case "extern_get":
       return (obj: any, key: any) => {
-        // #1057 — vec wrapper structs (results of String.prototype.split,
-        // Array.prototype.map, etc.) must report `.constructor === Array`.
-        // Vec wrappers are the only WasmGC struct kind with no registered
-        // field names; user classes always register via __struct_field_names.
-        if (key === "constructor" && obj != null && _isWasmStruct(obj)) {
-          const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(obj, exports);
-          if (fieldNames === null) return Array;
-        }
         const val = _safeGet(obj, key);
         if (val !== undefined) return val;
         if (typeof key === "string") {
           const exports = callbackState?.getExports();
           const getter = exports?.[`__sget_${key}`];
           if (typeof getter === "function") return getter(obj);
+        }
+        // #1057 — vec wrapper structs (results of String.prototype.split,
+        // Array.prototype.map, etc.) must report `.constructor === Array`.
+        // Only fire AFTER _safeGet and __sget_ fallback return nothing —
+        // class instances with sidecar constructors or struct getters are
+        // already handled above. Vec wrappers have no registered field
+        // names in __struct_field_names (codegen skips __vec_* structs).
+        if (key === "constructor" && obj != null && _isWasmStruct(obj)) {
+          const exports = callbackState?.getExports();
+          const fieldNames = _getStructFieldNames(obj, exports);
+          if (fieldNames === null) return Array;
         }
         return undefined;
       };
