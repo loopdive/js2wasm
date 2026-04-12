@@ -300,6 +300,9 @@ export interface CodegenContext {
   generatorYieldType: Map<string, ValType>;
   /** Map from module-level variable name → global index in mod.globals */
   moduleGlobals: Map<string, number>;
+  /** Deferred `export default <variable>` where variable is a module global (#1108).
+   *  Resolved after all collectDeclarations calls when global indices are final. */
+  deferredDefaultGlobalExport?: string;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
   /** Nested function capture info. */
