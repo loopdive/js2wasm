@@ -1,0 +1,15 @@
+{
+  "pr": 124,
+  "conclusion": "failure",
+  "head_branch": "issue-1024-dstr-rest-holes",
+  "head_sha": "9204b897bc65b7dc5f3f7162dbe678c61f126ff2",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24303707712",
+  "timestamp": "2026-04-12T09:47:22Z",
+  "pass": 12995,
+  "fail": 8989,
+  "compile_error": 19825,
+  "snapshot_delta": -9190,
+  "net_per_test": -9190,
+  "regressions": 9415,
+  "improvements": 225
+}
