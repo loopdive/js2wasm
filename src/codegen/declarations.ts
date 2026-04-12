@@ -1661,12 +1661,11 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
 
   // Third: collect function declarations (uses resolveWasmType for real type indices)
   for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && (stmt.name || hasExportModifier(stmt))) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name) {
       // Skip declare function stubs (no body, inside or matching declare)
       if (hasDeclareModifier(stmt)) continue;
 
-      // Anonymous `export default function() {}` gets the synthetic name "default"
-      const name = stmt.name ? stmt.name.text : "default";
+      const name = stmt.name.text;
       // Register the function's .name value for ES-spec compliance
       ctx.functionNameMap.set(name, name);
       const sig = ctx.checker.getSignatureFromDeclaration(stmt);
@@ -1843,65 +1842,6 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       if (isExported) {
         ctx.mod.exports.push({
           name,
-          desc: { kind: "func", index: funcIdx },
-        });
-        // `export default function foo() {}` — also export as "default" (#1074)
-        // Skip if name is already "default" (anonymous export default function)
-        const mods = ts.canHaveModifiers(stmt) ? ts.getModifiers(stmt) : undefined;
-        const isDefault = mods?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
-        if (isDefault && name !== "default") {
-          ctx.mod.exports.push({
-            name: "default",
-            desc: { kind: "func", index: funcIdx },
-          });
-        }
-      }
-    }
-  }
-
-  // Export default: surface `export default <ident>` as Wasm exports (#1074).
-  // Walk ExportAssignment nodes and resolve the bound declaration to a function
-  // already registered in funcMap.  Emit under both the declaration name AND
-  // "default" so either `instance.exports.identity(x)` or
-  // `instance.exports.default(x)` works from a JS host.
-  if (isEntryFile) {
-    for (const stmt of sourceFile.statements) {
-      if (!ts.isExportAssignment(stmt)) continue;
-      // `export = expr` (isExportEquals) is CJS — skip for now (#1075)
-      if (stmt.isExportEquals) continue;
-
-      let targetName: string | undefined;
-
-      // Case 1: `export default <identifier>` — resolve the referenced name
-      if (ts.isIdentifier(stmt.expression)) {
-        targetName = stmt.expression.text;
-      }
-      // Case 2: `export default function foo() {}` — inline function decl
-      else if (ts.isFunctionExpression(stmt.expression) && stmt.expression.name) {
-        targetName = stmt.expression.name.text;
-      }
-
-      if (targetName && ctx.funcMap.has(targetName)) {
-        const funcIdx = ctx.funcMap.get(targetName)!;
-
-        // Mark the function as exported (for dead-code elimination etc.)
-        const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
-        if (func && !func.exported) {
-          func.exported = true;
-        }
-
-        // Add the declaration name as an export if not already exported
-        const alreadyExported = ctx.mod.exports.some((e) => e.desc.kind === "func" && e.desc.index === funcIdx);
-        if (!alreadyExported) {
-          ctx.mod.exports.push({
-            name: targetName,
-            desc: { kind: "func", index: funcIdx },
-          });
-        }
-
-        // Always add "default" alias so ESM semantics are preserved
-        ctx.mod.exports.push({
-          name: "default",
           desc: { kind: "func", index: funcIdx },
         });
       }
@@ -2484,18 +2424,17 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
 
   // Compile top-level function declarations
   for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && (stmt.name || hasExportModifier(stmt)) && !hasDeclareModifier(stmt)) {
-      const fnName = stmt.name ? stmt.name.text : "default";
+    if (ts.isFunctionDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
       if (stmt.body) {
-        const idx = funcByName.get(fnName);
+        const idx = funcByName.get(stmt.name.text);
         if (idx !== undefined) {
           const func = ctx.mod.functions[idx]!;
           try {
             compileFunctionBody(ctx, stmt, func);
-            registerInlinableFunction(ctx, fnName, func);
+            registerInlinableFunction(ctx, stmt.name.text, func);
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            reportError(ctx, stmt, `Internal error compiling function '${fnName}': ${msg}`);
+            reportError(ctx, stmt, `Internal error compiling function '${stmt.name.text}': ${msg}`);
           }
         }
       }
