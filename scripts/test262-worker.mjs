@@ -15,7 +15,7 @@ import { buildImports } from "./runtime-bundle.mjs";
 
 let compileCount = 0;
 const GC_INTERVAL = 25;
-const RECREATE_INTERVAL = 200;
+const RECREATE_INTERVAL = 100;
 
 let incrementalCompiler = null;
 function createFreshCompiler() {
@@ -35,6 +35,19 @@ createFreshCompiler();
 
 // Suppress unhandled Promise rejections from async tests
 process.on("unhandledRejection", () => {});
+
+// Save pristine built-in prototypes.  Some test262 tests mutate
+// Array.prototype[Symbol.iterator], Object.prototype, etc.  Since compile
+// and execute share the same process, poisoned prototypes break the TS
+// compiler's `for...of` loops on subsequent compilations.
+const _origArrayIterator = Array.prototype[Symbol.iterator];
+const _origObjectProto = Object.getOwnPropertyDescriptors(Object.prototype);
+
+function restoreBuiltins() {
+  if (Array.prototype[Symbol.iterator] !== _origArrayIterator) {
+    Array.prototype[Symbol.iterator] = _origArrayIterator;
+  }
+}
 
 function doCompile(source, sourceMapUrl) {
   const compileFn = incrementalCompiler ? incrementalCompiler.compile : compile;
@@ -180,6 +193,10 @@ process.on("message", async (msg) => {
   try {
     result = doCompile(source, msg.sourceMapUrl);
   } catch (err) {
+    // Thrown exception may have poisoned the incremental compiler's internal
+    // state.  Recreate immediately so subsequent compilations don't cascade-fail.
+    incrementalCompiler = null;
+    createFreshCompiler();
     process.send({
       id,
       status: "compile_error",
@@ -410,9 +427,20 @@ process.on("message", async (msg) => {
 });
 
 function postCompileCleanup() {
+  // Restore any built-in prototypes mutated by the test (must happen BEFORE
+  // the next compile — the TS parser uses for...of on Arrays internally).
+  restoreBuiltins();
+
   compileCount++;
   if (compileCount % RECREATE_INTERVAL === 0) {
+    try {
+      incrementalCompiler?.dispose?.();
+    } catch (_e) {
+      // dispose() may fail if the service is already in a bad state
+    }
     incrementalCompiler = null;
+    const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    console.error(`[unified-worker] RECREATE at compile ${compileCount}, heap=${heapMB}MB`);
     if (typeof globalThis.gc === "function") globalThis.gc();
     createFreshCompiler();
   } else if (compileCount % GC_INTERVAL === 0 && typeof globalThis.gc === "function") {
