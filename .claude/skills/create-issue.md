@@ -71,6 +71,14 @@ Error: `{exact error}`
 ```
 Root cause: {why the compiler produces wrong output}
 
+## ECMAScript spec reference
+
+{Link to the relevant spec section(s) at https://tc39.es/ecma262/}
+Example: [§7.1.1 ToPrimitive](https://tc39.es/ecma262/#sec-toprimitive)
+
+If multiple sections apply, list each with a one-line note on which
+step or sub-algorithm is relevant to this issue.
+
 ## Root cause in compiler
 
 {Which codegen function/file produces this pattern}
