@@ -307,14 +307,13 @@ class SiteNav extends HTMLElement {
       </style>
       <nav class="site-nav">
         <a class="nav-logo" href="${base}" aria-label="js2 home">
-          <span>JS<sup style="font-size:0.55em;vertical-align:super;margin-left:1px">2</sup></span>
+          <img src="${base}js2logo.svg" alt="JS2 logo" />
         </a>
         <ul class="nav-links">
           <li><a href="${isLanding ? "" : base}#mission">Mission</a></li>
           <li><a href="${isLanding ? "" : base}#goals">Compatibility</a></li>
           <li><a href="${isLanding ? "" : base}#how-it-works">How it works</a></li>
           <li><a href="${isLanding ? "" : base}#roadmap">Roadmap</a></li>
-          <li><a href="${base}dashboard/">Progress</a></li>
         </ul>
         <div class="nav-actions">
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">
