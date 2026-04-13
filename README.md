@@ -32,7 +32,7 @@ The Bytecode Alliance's [StarlingMonkey](https://github.com/bytecodealliance/Sta
 - **No runtime overhead** — compiled to native Wasm instructions, not interpreted
 - **Tiny output** — hundreds of bytes per function vs. megabytes for interpreter-bundling approaches
 - **Standalone deployment** — runs on wasmtime, wasmer, wazero, or any Wasm runtime via `--target wasi`
-- **No vendor lock-in** — open source (MIT), no corporate runtime dependency
+- **No vendor lock-in** — open source (GNU AGPL v3), no corporate runtime dependency
 - **Intra-process sandboxing** — each module runs in isolated Wasm memory with deny-by-default permissions (Object Capabilities)
 
 **[Project Roadmap →](ROADMAP.md)** — vision, achievements, and planned work.
@@ -299,7 +299,7 @@ js2wasm/
 
 ## License
 
-MIT
+GNU Affero General Public License v3.0 only. See [LICENSE](./LICENSE).
 
 ---
 
