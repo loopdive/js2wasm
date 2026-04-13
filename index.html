@@ -18,7 +18,6 @@
     <style>
       :root {
         --bg: #060a14;
-        --hero-piece-clearance: 0px;
         --bg-soft: #0c1220;
         --fg: #ffffff;
         --fg-soft: rgba(255, 255, 255, 0.68);
@@ -70,66 +69,31 @@
         display: block;
         -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
         mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
+        contain: strict;
       }
 
       .puzzle-bg path {
         fill: none;
-        stroke: rgba(255, 255, 255, 0.05);
         stroke-width: 2;
         stroke-linecap: round;
         stroke-linejoin: round;
         vector-effect: non-scaling-stroke;
       }
       .puzzle-bg #puzzle-bg-path {
-        filter: blur(1px);
+        display: none;
       }
 
-      @keyframes glow-fade-soft {
-        0% {
-          opacity: 0;
-        }
-        10% {
-          opacity: 0.5;
-        }
-        80% {
-          opacity: 0.5;
-        }
-        100% {
-          opacity: 0;
-        }
-      }
-      @keyframes glow-fade {
-        0% {
-          opacity: 0;
-        }
-        10% {
-          opacity: 1;
-        }
-        80% {
-          opacity:;
-        }
-        100% {
-          opacity: 0;
-        }
-      }
-      .puzzle-bg #puzzle-bg-glow {
-        stroke: url(#puzzle-glow-gradient);
-        stroke-width: 4;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        filter: blur(8px);
-        animation: glow-fade-soft 15s ease infinite;
-      }
       .puzzle-bg #puzzle-bg-glow-sharp {
         stroke: url(#puzzle-glow-gradient);
-        stroke-width: 2.5;
+        stroke-width: 1.8;
         stroke-linecap: round;
         stroke-linejoin: round;
-        animation: glow-fade 15s ease infinite;
-        filter: blur(0.5px);
+        opacity: 0.76;
+      }
+      .puzzle-bg.is-paused #puzzle-bg-glow-sharp {
+        opacity: 0;
       }
       @media (prefers-reduced-motion: reduce) {
-        .puzzle-bg #puzzle-bg-glow,
         .puzzle-bg #puzzle-bg-glow-sharp {
           animation: none;
           opacity: 1;
@@ -1122,21 +1086,33 @@
       <defs>
         <linearGradient id="puzzle-glow-gradient" x1="0%" y1="-50%" x2="0%" y2="-10%" gradientUnits="objectBoundingBox">
           <stop offset="0%" stop-color="#ffffff" stop-opacity="0"></stop>
-          <stop offset="30%" stop-color="#d4c8ff" stop-opacity="0"></stop>
-          <stop offset="45%" stop-color="#ffffff" stop-opacity="1"></stop>
-          <stop offset="55%" stop-color="#ffffff" stop-opacity="1"></stop>
-          <stop offset="70%" stop-color="#d4c8ff" stop-opacity="0"></stop>
+          <stop offset="24%" stop-color="#d4c8ff" stop-opacity="0"></stop>
+          <stop offset="40%" stop-color="#ffffff" stop-opacity="0.44"></stop>
+          <stop offset="50%" stop-color="#ffffff" stop-opacity="0.58"></stop>
+          <stop offset="60%" stop-color="#ffffff" stop-opacity="0.44"></stop>
+          <stop offset="76%" stop-color="#d4c8ff" stop-opacity="0"></stop>
           <stop offset="100%" stop-color="#ffffff" stop-opacity="0"></stop>
-          <animate attributeName="y1" values="-50%;100%" dur="15s" repeatCount="indefinite" />
-          <animate attributeName="y2" values="-10%;150%" dur="15s" repeatCount="indefinite" />
+          <animate
+            id="puzzle-glow-y1"
+            attributeName="y1"
+            values="-60%;100%;100%"
+            keyTimes="0;0.7;1"
+            dur="12.9s"
+            begin="0s"
+            repeatCount="indefinite"
+          />
+          <animate
+            id="puzzle-glow-y2"
+            attributeName="y2"
+            values="0%;160%;160%"
+            keyTimes="0;0.7;1"
+            dur="12.9s"
+            begin="0s"
+            repeatCount="indefinite"
+          />
         </linearGradient>
-        <filter id="puzzle-glow-filter" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="0.8" result="blur"></feGaussianBlur>
-          <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1.25 0"></feColorMatrix>
-        </filter>
       </defs>
       <path id="puzzle-bg-path"></path>
-      <path id="puzzle-bg-glow"></path>
       <path id="puzzle-bg-glow-sharp"></path>
     </svg>
     <site-nav></site-nav>
@@ -3093,12 +3069,11 @@ const dom = await js2.import("./dom.js", { document });
       (function mountPuzzleBackground() {
         const svg = document.querySelector(".puzzle-bg");
         const path = document.getElementById("puzzle-bg-path");
-        const glowPath = document.getElementById("puzzle-bg-glow");
         const glowSharp = document.getElementById("puzzle-bg-glow-sharp");
         if (
           !(svg instanceof SVGElement) ||
           !(path instanceof SVGPathElement) ||
-          !(glowPath instanceof SVGPathElement)
+          !(glowSharp instanceof SVGPathElement)
         ) {
           return;
         }
@@ -3251,10 +3226,22 @@ const dom = await js2.import("./dom.js", { document });
           return str.trim();
         };
 
-        let raf = 0;
+        let resizeRaf = 0;
+        let isInView = true;
+        let isVisible = document.visibilityState !== "hidden";
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const updateAnimationState = () => {
+          const shouldPause = prefersReducedMotion.matches || !isInView || !isVisible;
+          svg.classList.toggle("is-paused", shouldPause);
+          if (shouldPause) {
+            if (typeof svg.pauseAnimations === "function") svg.pauseAnimations();
+          } else {
+            if (typeof svg.unpauseAnimations === "function") svg.unpauseAnimations();
+          }
+        };
         const render = () => {
-          raf = 0;
-          width = Math.max(window.innerWidth, document.documentElement.scrollWidth, document.body.scrollWidth);
+          resizeRaf = 0;
+          width = document.documentElement.clientWidth;
           height = window.innerHeight;
           const pieceHeight = window.innerWidth <= 720 ? mobilePieceHeight : basePieceHeight;
           xn = Math.max(2, Math.ceil(width / basePieceWidth));
@@ -3266,19 +3253,37 @@ const dom = await js2.import("./dom.js", { document });
           svg.style.height = `${height}px`;
           const d = genD();
           path.setAttribute("d", d);
-          glowPath.setAttribute("d", d);
-          if (glowSharp) glowSharp.setAttribute("d", d);
-          document.documentElement.style.setProperty("--hero-piece-clearance", `0px`);
+          glowSharp.setAttribute("d", d);
         };
 
         render();
+        updateAnimationState();
+
+        const heroWrap = document.querySelector(".hero-wrap");
+        if (heroWrap && "IntersectionObserver" in window) {
+          const observer = new IntersectionObserver(
+            ([entry]) => {
+              isInView = !!entry?.isIntersecting;
+              updateAnimationState();
+            },
+            { threshold: 0.08 },
+          );
+          observer.observe(heroWrap);
+        }
+
+        document.addEventListener("visibilitychange", () => {
+          isVisible = document.visibilityState !== "hidden";
+          updateAnimationState();
+        });
+        prefersReducedMotion.addEventListener?.("change", updateAnimationState);
+
         window.addEventListener("resize", () => {
-          if (raf) cancelAnimationFrame(raf);
-          raf = requestAnimationFrame(render);
+          if (resizeRaf) cancelAnimationFrame(resizeRaf);
+          resizeRaf = requestAnimationFrame(render);
         });
       })();
 
-      // Glow wave animation is now pure CSS/SMIL — no JS needed
+      // Glow wave animation is CSS/SVG-driven and paused when offscreen
 
       // Minimal syntax highlighter for feature code examples
       // Syntax highlight feature examples and how-it-works code blocks with shiki
