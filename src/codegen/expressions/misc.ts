@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Miscellaneous expression compilation: conditionals, generators/yield,
  * struct name resolution, and static analysis helpers.

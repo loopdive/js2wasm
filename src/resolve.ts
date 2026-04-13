@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 import * as path from "path";
 import ts from "typescript";
 import type { CompileOptions } from "./index.js";

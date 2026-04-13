@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 import { walkInstructions } from "../codegen/walk-instructions.js";
 import type {
   BlockType,

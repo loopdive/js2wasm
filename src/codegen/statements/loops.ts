@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Loop statement lowering: while, for, do-while, for-of, for-in.
  */

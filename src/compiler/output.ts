@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 import ts from "typescript";
 import type { TypedAST } from "../checker/index.js";
 import { analyzeSource } from "../checker/index.js";

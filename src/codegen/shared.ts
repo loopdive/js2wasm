@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Shared types, values, and late-bound function registrations for the codegen
  * modules.  This module exists solely to break circular dependencies between

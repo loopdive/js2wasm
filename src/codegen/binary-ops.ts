@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Binary operations extracted from expressions.ts.
  * Handles binary expression compilation including numeric, i32, i64,

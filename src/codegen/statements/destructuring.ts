@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Destructuring declaration lowering.
  * Handles object destructuring, array destructuring, and string destructuring patterns.

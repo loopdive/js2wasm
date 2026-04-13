@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Identifier resolution, TDZ analysis, and instanceof handling.
  */

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * SIMD-accelerated runtime helpers for linear memory string and array operations.
  *

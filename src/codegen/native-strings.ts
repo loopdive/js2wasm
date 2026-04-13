@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Native WasmGC string helpers — $AnyString, $FlatString, $ConsString types
  * and ensureNativeStringHelpers which emits the full string runtime.
