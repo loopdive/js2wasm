@@ -3028,14 +3028,15 @@ const dom = await js2.import("./dom.js", { document });
 
         const basePieceWidth = 220;
         const basePieceHeight = 228;
-        const mobilePieceHeight = 156;
+        const mobilePieceWidth = 172;
+        const mobilePieceAspect = basePieceHeight / basePieceWidth;
         const seedBase = 37;
         const tabsize = 20;
         const jitter = 4;
         const cycleDuration = 12.9;
         const activePortion = 0.7;
         const targetFrameMs = 1000 / 30;
-        const lineHalfWidth = 0.9;
+        const lineHalfWidth = 1.1;
         const segmentSteps = 12;
 
         let seed = seedBase;
@@ -3249,13 +3250,13 @@ const dom = await js2.import("./dom.js", { document });
               float center = mix(-0.16, 1.16, sweep);
               float strike = center;
               float frontDist = abs(vUv.y - (strike + 0.085));
-              float front = smoothstep(0.032, 0.0, frontDist);
-              float frontGlow = smoothstep(0.11, 0.0, frontDist);
+              float front = smoothstep(0.02, 0.0, frontDist);
+              float frontGlow = smoothstep(0.085, 0.0, frontDist);
               float behind = (strike + 0.085) - vUv.y;
               float afterglow =
                 (1.0 - smoothstep(0.0, 0.24, behind)) *
                 step(0.0, behind);
-              float alpha = front * 1.02 + frontGlow * 0.38 + afterglow * 0.22;
+              float alpha = front * 1.12 + frontGlow * 0.34 + afterglow * 0.22;
               alpha *= smoothstep(0.0, 0.08, vUv.y);
               alpha *= smoothstep(1.05, 0.6, vUv.y);
               alpha *= 0.82;
@@ -3343,9 +3344,17 @@ const dom = await js2.import("./dom.js", { document });
           canvas.width = deviceWidth;
           canvas.height = deviceHeight;
           canvas.style.height = `${height}px`;
-          const pieceHeight = window.innerWidth <= 720 ? mobilePieceHeight : basePieceHeight;
-          xn = Math.max(2, Math.ceil(width / basePieceWidth));
-          yn = Math.max(2, Math.ceil(height / pieceHeight));
+          const isMobile = window.innerWidth <= 720;
+          const pieceWidth = isMobile ? mobilePieceWidth : basePieceWidth;
+          const pieceHeight = isMobile ? mobilePieceWidth * mobilePieceAspect : basePieceHeight;
+          xn = Math.max(2, Math.ceil(width / pieceWidth));
+          if (isMobile) {
+            const actualPieceWidth = width / xn;
+            const actualPieceHeight = actualPieceWidth * mobilePieceAspect;
+            yn = Math.max(2, Math.ceil(height / actualPieceHeight));
+          } else {
+            yn = Math.max(2, Math.ceil(height / pieceHeight));
+          }
           const geometry = buildGeometry();
           vertexCount = geometry.length / 3;
           gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
