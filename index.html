@@ -102,6 +102,15 @@
         padding: 112px 56px 88px;
       }
 
+      .hero-logo {
+        width: 111px;
+        height: 111px;
+        display: block;
+        margin: 0 0 24px;
+        border-radius: 2px;
+        box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28);
+      }
+
       h1 {
         max-width: 1180px;
         margin: 0 0 34px;
@@ -115,7 +124,7 @@
 
       .hero-title-shell {
         display: grid;
-        align-items: end;
+        align-items: start;
       }
 
       .hero-title-measure,
@@ -628,31 +637,43 @@
         max-width: 1400px;
         margin: 0 auto;
         padding: 64px 56px;
+        border-top: 1px solid var(--line);
       }
 
       .footer-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 44px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        align-items: start;
+        gap: 44px 64px;
         padding-bottom: 42px;
       }
 
+      .footer-brand {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 16px;
+        min-width: 0;
+      }
+
       .footer-brand img {
-        height: 34px;
+        height: 42px;
         width: auto;
         display: block;
       }
 
       .footer-brand p {
-        margin-top: 12px;
+        margin: 0;
+        max-width: 34ch;
         font-size: 14px;
+        line-height: 1.6;
         color: var(--fg-faint);
       }
 
       .footer-cols {
-        display: flex;
-        gap: 72px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 28px 40px;
       }
 
       .footer-col h4 {
@@ -681,16 +702,6 @@
 
       .footer-col a:hover {
         color: var(--fg);
-      }
-
-      .footer-bottom {
-        padding-top: 30px;
-        border-top: 1px solid var(--line);
-        display: flex;
-        justify-content: space-between;
-        gap: 24px;
-        color: var(--fg-faint);
-        font-size: 13px;
       }
 
       @media (max-width: 1120px) {
@@ -727,6 +738,16 @@
           padding-top: 104px;
         }
 
+        .hero-logo {
+          width: 80px;
+          height: 80px;
+          margin: 14px 0 20px;
+        }
+
+        h1 {
+          font-size: clamp(42px, 8vw, 64px);
+        }
+
         .code-section,
         .footer-top {
           grid-template-columns: 1fr;
@@ -734,8 +755,8 @@
         }
 
         .footer-cols {
-          gap: 36px;
-          flex-wrap: wrap;
+          grid-template-columns: 1fr 1fr;
+          gap: 28px 24px;
         }
       }
 
@@ -757,8 +778,13 @@
           border-bottom: none;
         }
 
-        .footer-bottom {
-          flex-direction: column;
+        .footer-cols {
+          grid-template-columns: 1fr;
+        }
+
+        .footer-brand {
+          grid-template-columns: 1fr;
+          gap: 12px;
         }
 
         .hero-actions,
@@ -1065,16 +1091,14 @@
     <main>
       <div class="hero-wrap">
         <section class="hero">
+          <img class="hero-logo" src="./js2logo.svg" alt="JS2 logo" />
           <h1
             id="hero-title"
-            data-texts='["JS2: A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
+            data-texts='["JS2: A next generation JavaScript compiler.", "Compile JavaScript without embedding a JS engine.",
             "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
           >
             <span class="hero-title-shell">
-              <span class="hero-title-measure" aria-hidden="true">
-                JS2 - A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an
-                interpreter.
-              </span>
+              <span class="hero-title-measure" aria-hidden="true"></span>
               <span class="hero-title-type"></span>
             </span>
           </h1>
@@ -1085,8 +1109,8 @@
             WebAssembly.
           </p>
           <div class="hero-actions">
-            <a class="btn-solid" href="./playground/">Live demo</a>
-            <a class="btn-outline" href="#goals">Javascript compatibility</a>
+            <a class="btn-solid" href="./playground/">Playground</a>
+            <a class="btn-outline" href="#goals">Compatibility</a>
           </div>
         </section>
       </div>
@@ -2959,8 +2983,7 @@ const dom = await js2.import("./dom.js", { document });
           direction concrete and inspectable.
         </p>
         <div class="cta-actions">
-          <a class="btn-solid" href="./playground/">Open Playground</a>
-          <a class="btn-outline" href="./dashboard/">Project Progress</a>
+          <a class="btn-solid" href="./dashboard/">Roadmap</a>
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">View Source</a>
         </div>
       </section>
@@ -2969,39 +2992,29 @@ const dom = await js2.import("./dom.js", { document });
     <footer>
       <div class="footer-top">
         <div class="footer-brand">
-          <img src="/jswasmlogo.png" alt="js2 logo" />
+          <img src="./js2logo.svg" alt="JS2 logo" />
           <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
         </div>
         <div class="footer-cols">
           <div class="footer-col">
-            <h4>Project</h4>
+            <h4>Explore</h4>
             <ul>
               <li><a href="./playground/">Playground</a></li>
-              <li><a href="./dashboard/">Progress</a></li>
+              <li><a href="./dashboard/">Roadmap</a></li>
               <li><a href="./benchmarks/report.html">Conformance Report</a></li>
+              <li><a href="#goals">Compatibility</a></li>
             </ul>
           </div>
           <div class="footer-col">
-            <h4>Analysis</h4>
+            <h4>Inspect</h4>
             <ul>
-              <li><a href="./issues-graph.html">Issues Graph</a></li>
               <li><a href="./wasm-treemap.html">Wasm Treemap</a></li>
+              <li><a href="./issues-graph.html">Issues Graph</a></li>
               <li><a href="https://github.com/loopdive/js2wasm">GitHub</a></li>
-            </ul>
-          </div>
-          <div class="footer-col">
-            <h4>Focus</h4>
-            <ul>
-              <li><a href="#goals">Goals</a></li>
               <li><a href="#approach">Approach</a></li>
-              <li><a href="#links">Published tools</a></li>
             </ul>
           </div>
         </div>
-      </div>
-      <div class="footer-bottom">
-        <span>js2 GitHub Pages site</span>
-        <span>Built from the same artifacts used for compiler development.</span>
       </div>
     </footer>
 
