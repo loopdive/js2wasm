@@ -3033,10 +3033,10 @@ const dom = await js2.import("./dom.js", { document });
         const seedBase = 37;
         const tabsize = 20;
         const jitter = 4;
-        const cycleDuration = 12.9;
+        const cycleDuration = 25.8;
         const activePortion = 0.7;
         const targetFrameMs = 1000 / 30;
-        const lineHalfWidth = 1.1;
+        const lineHalfWidth = 3.4;
         const segmentSteps = 12;
 
         let seed = seedBase;
@@ -3159,8 +3159,8 @@ const dom = await js2.import("./dom.js", { document });
           appendCurve(pts[6], pts[7], pts[8], pts[9]);
           return out;
         };
-        const pushVertex = (buffer, x, y, centerY) => {
-          buffer.push(x, y, centerY);
+        const pushVertex = (buffer, x, y, centerY, edgeCoord) => {
+          buffer.push(x, y, centerY, edgeCoord);
         };
         const appendPolylineTriangles = (polyline, buffer) => {
           for (let i = 0; i < polyline.length - 1; ++i) {
@@ -3172,12 +3172,12 @@ const dom = await js2.import("./dom.js", { document });
             if (!len) continue;
             const nx = (-dy / len) * lineHalfWidth;
             const ny = (dx / len) * lineHalfWidth;
-            pushVertex(buffer, p0.x + nx, p0.y + ny, p0.y);
-            pushVertex(buffer, p0.x - nx, p0.y - ny, p0.y);
-            pushVertex(buffer, p1.x + nx, p1.y + ny, p1.y);
-            pushVertex(buffer, p1.x + nx, p1.y + ny, p1.y);
-            pushVertex(buffer, p0.x - nx, p0.y - ny, p0.y);
-            pushVertex(buffer, p1.x - nx, p1.y - ny, p1.y);
+            pushVertex(buffer, p0.x + nx, p0.y + ny, p0.y, 1.0);
+            pushVertex(buffer, p0.x - nx, p0.y - ny, p0.y, -1.0);
+            pushVertex(buffer, p1.x + nx, p1.y + ny, p1.y, 1.0);
+            pushVertex(buffer, p1.x + nx, p1.y + ny, p1.y, 1.0);
+            pushVertex(buffer, p0.x - nx, p0.y - ny, p0.y, -1.0);
+            pushVertex(buffer, p1.x - nx, p1.y - ny, p1.y, -1.0);
           }
         };
         const buildGeometry = () => {
@@ -3226,13 +3226,16 @@ const dom = await js2.import("./dom.js", { document });
           `
             attribute vec2 aPosition;
             attribute float aCenterY;
+            attribute float aEdgeCoord;
             uniform vec2 uResolution;
             varying vec2 vUv;
+            varying float vEdgeCoord;
             void main() {
               vec2 zeroToOne = aPosition / uResolution;
               vec2 clip = zeroToOne * 2.0 - 1.0;
               gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
               vUv = vec2(zeroToOne.x, aCenterY / uResolution.y);
+              vEdgeCoord = aEdgeCoord;
             }
           `,
         );
@@ -3244,23 +3247,54 @@ const dom = await js2.import("./dom.js", { document });
             uniform float uCycleDuration;
             uniform float uActivePortion;
             varying vec2 vUv;
+            varying float vEdgeCoord;
+            float hash(float n) {
+              return fract(sin(n) * 43758.5453123);
+            }
             void main() {
               float cycle = fract(uTime / uCycleDuration);
               float sweep = min(cycle / uActivePortion, 1.0);
               float center = mix(-0.16, 1.16, sweep);
               float strike = center;
-              float frontDist = abs(vUv.y - (strike + 0.085));
-              float front = smoothstep(0.02, 0.0, frontDist);
-              float frontGlow = smoothstep(0.085, 0.0, frontDist);
-              float behind = (strike + 0.085) - vUv.y;
+              float frontAnchor = strike + 0.22;
+              float frontGlowDist = abs(vUv.y - frontAnchor);
+              float frontDelta = frontAnchor - vUv.y;
+              float front =
+                smoothstep(-0.05, 0.0, frontDelta) *
+                (1.0 - smoothstep(0.0, 0.085, frontDelta));
+              float frontGlow = smoothstep(0.095, 0.0, frontGlowDist);
+              float behind = frontAnchor - vUv.y;
               float afterglow =
-                (1.0 - smoothstep(0.0, 0.24, behind)) *
+                (1.0 - smoothstep(0.02, 0.56, behind)) *
                 step(0.0, behind);
-              float alpha = front * 1.12 + frontGlow * 0.34 + afterglow * 0.22;
+              float cometLane = floor(vUv.x * 6.0);
+              float cometPhase = fract(vUv.x * 6.0);
+              float cometHead = smoothstep(0.16, 0.0, abs(cometPhase - 0.5));
+              float cometTrail =
+                (1.0 - smoothstep(0.0, 0.32, 0.5 - cometPhase)) *
+                step(cometPhase, 0.5);
+              float cometGlow = smoothstep(0.42, 0.0, abs(cometPhase - 0.5));
+              float cometStrength = 0.75 + 0.25 * hash(cometLane + floor(uTime * 2.0) * 11.0);
+              float comet = (cometHead * 1.2 + cometTrail * 0.42) * cometStrength;
+              float cometBloom = cometGlow * cometStrength;
+              float alpha = afterglow * 0.2 + frontGlow * 0.18;
+              alpha += front * 0.64;
+              alpha += front * comet * 1.7;
+              alpha += frontGlow * cometBloom * 0.95;
+              float edgeT = abs(vEdgeCoord);
+              float normalEdge = 1.0 - smoothstep(0.04, 1.0, edgeT);
+              float cometEdge = 1.0 - smoothstep(0.0, 1.0, edgeT);
+              float edgeSoft = mix(normalEdge, cometEdge, clamp(cometBloom * 0.95, 0.0, 1.0));
+              alpha *= edgeSoft;
               alpha *= smoothstep(0.0, 0.08, vUv.y);
               alpha *= smoothstep(1.05, 0.6, vUv.y);
               alpha *= 0.82;
-              gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+              vec3 bgTint = vec3(0.08, 0.11, 0.18);
+              vec3 glowTint = vec3(0.72, 0.79, 0.96);
+              float headMix = clamp(front * 0.95 + frontGlow * 0.45 + cometBloom * 0.55, 0.0, 1.0);
+              vec3 color = mix(bgTint, glowTint, clamp(afterglow * 0.9 + headMix, 0.0, 1.0));
+              color = mix(color, vec3(1.0), clamp(front * 0.8 + comet * 0.55, 0.0, 1.0));
+              gl_FragColor = vec4(color, alpha);
             }
           `,
         );
@@ -3280,6 +3314,7 @@ const dom = await js2.import("./dom.js", { document });
 
         const positionLoc = gl.getAttribLocation(program, "aPosition");
         const centerYLoc = gl.getAttribLocation(program, "aCenterY");
+        const edgeCoordLoc = gl.getAttribLocation(program, "aEdgeCoord");
         const resolutionLoc = gl.getUniformLocation(program, "uResolution");
         const timeLoc = gl.getUniformLocation(program, "uTime");
         const cycleDurationLoc = gl.getUniformLocation(program, "uCycleDuration");
@@ -3288,9 +3323,11 @@ const dom = await js2.import("./dom.js", { document });
         if (!buffer) return;
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.enableVertexAttribArray(positionLoc);
-        gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 12, 0);
+        gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
         gl.enableVertexAttribArray(centerYLoc);
-        gl.vertexAttribPointer(centerYLoc, 1, gl.FLOAT, false, 12, 8);
+        gl.vertexAttribPointer(centerYLoc, 1, gl.FLOAT, false, 16, 8);
+        gl.enableVertexAttribArray(edgeCoordLoc);
+        gl.vertexAttribPointer(edgeCoordLoc, 1, gl.FLOAT, false, 16, 12);
 
         const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
         const clearFrame = () => {
@@ -3356,7 +3393,7 @@ const dom = await js2.import("./dom.js", { document });
             yn = Math.max(2, Math.ceil(height / pieceHeight));
           }
           const geometry = buildGeometry();
-          vertexCount = geometry.length / 3;
+          vertexCount = geometry.length / 4;
           gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
           gl.bufferData(gl.ARRAY_BUFFER, geometry, gl.STATIC_DRAW);
           clearFrame();
