@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 import ts from "typescript";
 import type { AnalyzeOptions, TypedAST } from "./index.js";
 import { getLibSourceFile, isKnownLibName } from "./index.js";

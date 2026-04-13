@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 import type { FuncTypeDef, GlobalDef, Instr, ValType, WasmModule } from "../ir/types.js";
 
 /** Heap starts at byte offset 1024 (leave low addresses for null/sentinel) */

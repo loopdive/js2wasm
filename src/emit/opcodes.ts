@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 export const OP = {
   unreachable: 0x00,
   nop: 0x01,

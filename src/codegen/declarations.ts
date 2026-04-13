@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Declaration collection and compilation — unified AST visitor, class declarations,
  * function bodies, and struct type registration.

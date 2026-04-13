@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 export interface ExternClassMeta {
   importPrefix: string;
   namespacePath: string[];

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 export type ImportIntent =
   | { type: "string_literal"; value: string }
   | { type: "math"; method: string }

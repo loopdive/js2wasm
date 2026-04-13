@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Nested function and class declaration lowering.
  * Handles function declarations within other functions, class declarations,

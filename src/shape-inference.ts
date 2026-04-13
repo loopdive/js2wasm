@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * Shape inference pre-pass: scan source files for variables used as array-like objects.
  *

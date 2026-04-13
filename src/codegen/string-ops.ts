@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 /**
  * String operations extracted from expressions.ts.
  * Handles string literals, templates, tagged templates, string binary ops,

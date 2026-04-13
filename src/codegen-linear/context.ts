@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
 import ts from "typescript";
 import type { Instr, LocalDef, ValType, WasmModule } from "../ir/types.js";
 import type { ClassLayout } from "./layout.js";
