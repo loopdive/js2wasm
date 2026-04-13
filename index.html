@@ -3036,7 +3036,8 @@ const dom = await js2.import("./dom.js", { document });
         const cycleDuration = 25.8;
         const activePortion = 0.7;
         const targetFrameMs = 1000 / 30;
-        const lineHalfWidth = 3.4;
+        const desktopLineHalfWidth = 3.4;
+        const mobileLineHalfWidth = 2.7;
         const segmentSteps = 12;
 
         let seed = seedBase;
@@ -3063,6 +3064,7 @@ const dom = await js2.import("./dom.js", { document });
         let isVisible = document.visibilityState !== "hidden";
         let shouldAnimate = true;
         let vertexCount = 0;
+        let currentLineHalfWidth = desktopLineHalfWidth;
 
         const random = () => {
           const x = Math.sin(seed) * 10000;
@@ -3170,8 +3172,8 @@ const dom = await js2.import("./dom.js", { document });
             const dy = p1.y - p0.y;
             const len = Math.hypot(dx, dy);
             if (!len) continue;
-            const nx = (-dy / len) * lineHalfWidth;
-            const ny = (dx / len) * lineHalfWidth;
+            const nx = (-dy / len) * currentLineHalfWidth;
+            const ny = (dx / len) * currentLineHalfWidth;
             pushVertex(buffer, p0.x + nx, p0.y + ny, p0.y, 1.0);
             pushVertex(buffer, p0.x - nx, p0.y - ny, p0.y, -1.0);
             pushVertex(buffer, p1.x + nx, p1.y + ny, p1.y, 1.0);
@@ -3384,6 +3386,7 @@ const dom = await js2.import("./dom.js", { document });
           const isMobile = window.innerWidth <= 720;
           const pieceWidth = isMobile ? mobilePieceWidth : basePieceWidth;
           const pieceHeight = isMobile ? mobilePieceWidth * mobilePieceAspect : basePieceHeight;
+          currentLineHalfWidth = isMobile ? mobileLineHalfWidth : desktopLineHalfWidth;
           xn = Math.max(2, Math.ceil(width / pieceWidth));
           if (isMobile) {
             const actualPieceWidth = width / xn;
