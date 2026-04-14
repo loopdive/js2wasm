@@ -39,13 +39,13 @@ read the results and decide.
 
 **Checklist**:
 
-1. Read the current sprint doc: `plan/sprints/sprint-<N>.md`
+1. Read the current sprint doc: `plan/issues/sprints/<N>/sprint.md`
 2. Read the tech lead handoff: `plan/agent-context/tech-lead.md`
 3. Read this skill (refresher).
 4. `git status && git branch --show-current && git log --oneline origin/main -10`
 5. `gh pr list --state open --limit 20` — snapshot of inherited open PRs
 6. `ls .claude/worktrees/` — inherited worktrees (may contain WIP)
-7. Read `plan/file-locks.md` if it exists — active dev claims
+7. Read `plan/method/file-locks.md` if it exists — active dev claims
 8. Read `.claude/memory/MEMORY.md` top section — critical rules + feedback index
 
 **Output**: before touching any dev, write a 3–5 sentence situation summary to
@@ -71,7 +71,7 @@ worktree path, and protocol expectations.
 2. For each idle dev, check inbox activity. Idle notification ≠ stuck — see
    Phase 3 for the stuck criteria.
 3. For each new task:
-   - Pick from the priority queue in `plan/sprints/sprint-<N>.md` or the
+   - Pick from the priority queue in `plan/issues/sprints/<N>/sprint.md` or the
      harvester top picks (see `plan/agent-context/tech-lead.md` for the list)
    - Verify the issue file exists. If not, invoke `/create-issue` first.
    - If feasibility is `hard`, invoke `/architect-spec` before dispatch.
@@ -84,7 +84,7 @@ worktree path, and protocol expectations.
 
 ```
 Task: #<N> — <title>
-File: plan/issues/ready/<N>.md (+ any arch spec link)
+File: plan/issues/<N>.md (+ any arch spec link)
 Primary source: src/<path>
 Worktree: .claude/worktrees/issue-<N>-<slug>
 Scope: <one-line estimate>
@@ -222,11 +222,11 @@ Nothing important is trapped in conversation context only.
 
 **Checklist**:
 
-1. Update `plan/sprints/sprint-<N>.md` "interim results" with the latest
+1. Update `plan/issues/sprints/<N>/sprint.md` "interim results" with the latest
    baseline and merge count.
-2. Move completed issues from `plan/issues/ready/` to `plan/issues/done/` —
-   update frontmatter `status: done`.
-3. Update `plan/dependency-graph.md` — strike through completed issues.
+2. Update completed issues in `plan/issues/` —
+   set frontmatter `status: done`.
+3. Update `plan/log/dependency-graph.md` — strike through completed issues.
 4. Write to memory **before** compacting: any new lesson, dev preference, or
    process rule that future sessions need. See
    `.claude/memory/feedback_diary_and_sprints_before_compact.md`.
@@ -282,7 +282,7 @@ session to reconstruct context from scratch.
 **Sprint-end checklist** (all mandatory, in order):
 
 1. **Tag**: `git tag sprint/<N>`
-2. **Sprint doc**: update `plan/sprints/sprint-<N>.md` with:
+2. **Sprint doc**: update `plan/issues/sprints/<N>/sprint.md` with:
    - Status: `done` in frontmatter
    - Ending baseline numbers
    - Results table (PRs merged, issues completed, issues deferred)
@@ -335,7 +335,7 @@ completed steps 1-9, you are violating this protocol. Go back and do them.
 ## Cross-references
 
 - `CLAUDE.md` — team config, merge protocol, memory budget
-- `plan/team-setup.md` — roster, capacity limits
+- `plan/method/team-setup.md` — roster, capacity limits
 - `.claude/skills/dev-self-merge.md` — what devs do after push
 - `.claude/skills/merge-wave.md` — batched merges
 - `.claude/skills/handle-regression.md` — when a merge breaks something

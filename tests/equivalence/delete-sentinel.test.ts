@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { assertEquivalent } from "./helpers.js";
 
-describe("delete operator via sentinel (#124)", () => {
+describe("delete operator via sentinel (#1112)", () => {
   it("delete obj.prop returns true and property becomes undefined", async () => {
     await assertEquivalent(
       `export function test(): string {

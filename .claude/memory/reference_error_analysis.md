@@ -27,7 +27,7 @@ For any pattern >50 tests, classify by reading actual test file content:
 - What code pattern triggers the error?
 
 ### 4. Cross-reference with existing issues
-- Read all issues in plan/issues/ready/ and plan/issues/blocked/
+- Read all canonical issue files in `plan/issues/`
 - Match error patterns to existing issue titles/content
 - Identify: needs metric update, needs new issue, or already covered
 
@@ -39,7 +39,7 @@ Any issue covering >100 tests with multiple root causes should be split:
 ### 6. Update/create issues
 - Update frontmatter: test262_skip, test262_fail, test262_ce
 - Create new issues for unmatched patterns with proper metrics
-- Move completed issues to done/
+- Update completed issues via frontmatter (`status: done`, `completed: ...`)
 
 **Why:** This procedure ensures issues are actionable and properly sized.
 
