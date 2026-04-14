@@ -38,7 +38,7 @@
     "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
     "build:pages": "npx tsx scripts/sprint-stats.ts && node dashboard/build-data.js && pnpm run build:playground && npx tsx scripts/generate-size-benchmarks.ts && node scripts/build-pages.js",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
-    "prepare": "husky"
+    "prepare": "git config core.hooksPath .husky || true"
   },
   "dependencies": {
     "binaryen": "^125.0.0",
