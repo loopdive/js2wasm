@@ -46,8 +46,8 @@ refactoring track that was planned in Sprint 37 but never completed there:
 | 5 | **#811** | Extract fixup passes from `index.ts` → `fixups.ts` | Low-risk refactoring slice that fits directly into the Sprint 39 cleanup work. |
 | 6 | **#742** | Extract and refactor `compileCallExpression` | Refactoring fit for Sprint 39, but still blocked on the broader extraction sequence under `#688`. |
 | 7 | **#910** | Split expressions.ts into syntax-family modules | Reassigned here from Sprint 37. Still open and now prioritized for repo cleanup / contributor friendliness. |
-| 8 | **#911** | Split statements.ts into control-flow, variables, destructuring, loops, and functions modules | Reassigned here from Sprint 37. Still open. |
-| 9 | **#912** | Remove circular dependencies from the core codegen backend | Reassigned here from Sprint 37. Still open and depends on the file-split work. |
+| 8 | **#911** | Split statements.ts into control-flow, variables, destructuring, loops, and functions modules | Completed in Sprint 39 and later merged to main. |
+| 9 | **#912** | Remove circular dependencies from the core codegen backend | Completed in Sprint 39 after the file-split work landed; later merged to main. |
 | 10 | **#913** | Split compiler.ts into validation, orchestration, and output modules | Reassigned here from Sprint 37. Still open. |
 
 ## Carry-over
@@ -75,3 +75,23 @@ Sprint 39 should have been split earlier. The sprint mixed compiler correctness,
 UI work, DX work, and runner-performance cleanup in one queue. Sprint 40 now
 contains the remaining correctness/perf carry-over, while Sprint 39 holds the
 presentation- and contributor-focused refactoring continuation.
+
+<!-- GENERATED_ISSUE_TABLES_START -->
+## Issue Tables
+
+_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #788 | Architecture: modularize src/ into focused subfolder structure | medium | done |
+| #811 | Extract fixup passes from index.ts → fixups.ts | medium | done |
+| #910 | Split expressions.ts into syntax-family modules | high | done |
+| #911 | Split statements.ts into control-flow, variables, destructuring, loops, and functions modules | high | done |
+| #912 | Remove circular dependencies from the core codegen backend | high | done |
+| #913 | Split compiler.ts into validation, orchestration, and output modules | medium | done |
+| #985 | Follow-up to #931: source-anchored locations for compiler catch paths | medium | done |
+| #989 | Enrich invalid Wasm binary CEs with byte offset, WAT slice, and source-mapped location | high | done |
+
+<!-- GENERATED_ISSUE_TABLES_END -->

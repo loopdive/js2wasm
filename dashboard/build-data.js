@@ -46,109 +46,14 @@ function extractSprintNumber(name) {
   return match ? parseInt(match[1], 10) : null;
 }
 
-function extractIssueIds(text) {
-  const ids = new Set();
-  const queueSection = text.match(/## Task queue[\s\S]*?(?=\n## |\s*$)/i)?.[0];
-  if (!queueSection) return [];
-  for (const line of queueSection.split("\n")) {
-    if (!line.trim().startsWith("|")) continue;
-    if (/^\|\s*-/.test(line)) continue;
-    const cells = line
-      .split("|")
-      .slice(1, -1)
-      .map((s) => s.trim());
-    if (cells.length < 2) continue;
-    const m = cells[1].match(/#(\d{2,4})\b/);
-    if (m) ids.add(parseInt(m[1], 10));
-  }
-  return [...ids].sort((a, b) => a - b);
-}
-
-function extractIssueBullets(text) {
-  const issueSection = text.match(/## Issues[\s\S]*?(?=\n## |\s*$)/i)?.[0];
-  if (!issueSection) return [];
-  const rows = [];
-  for (const line of issueSection.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("-")) continue;
-    const ids = [...trimmed.matchAll(/#(\d{2,4})\b/g)].map((m) => parseInt(m[1], 10));
-    if (!ids.length) continue;
-    rows.push({ line: trimmed, ids });
-  }
-  return rows;
-}
-
-function extractListedIssueIds(text) {
-  const ids = new Set();
-  for (const row of extractIssueBullets(text)) {
-    for (const id of row.ids) ids.add(id);
-  }
-  return [...ids].sort((a, b) => a - b);
-}
-
-function extractCompletedIssueIds(text) {
-  const ids = new Set();
-  for (const line of text.split("\n")) {
-    if (!line.trim().startsWith("|")) continue;
-    if (/^\|\s*-/.test(line)) continue;
-    const cells = line
-      .split("|")
-      .slice(1, -1)
-      .map((s) => s.trim());
-    if (cells.length < 2) continue;
-    const issueCell = cells.find((cell) => /#\d{2,4}\b/.test(cell));
-    if (!issueCell) continue;
-    const issueMatch = issueCell.match(/#(\d{2,4})\b/);
-    if (!issueMatch) continue;
-    const tail = cells.slice(cells.indexOf(issueCell) + 1).join(" | ");
-    if (/\b(done|merged|complete(?:d)?|verified fixed)\b/i.test(tail)) {
-      ids.add(parseInt(issueMatch[1], 10));
-    }
-  }
-  return [...ids].sort((a, b) => a - b);
-}
-
-function mergeUniqueIds(...lists) {
-  const ids = new Set();
-  for (const list of lists) {
-    for (const id of list || []) ids.add(id);
-  }
-  return [...ids].sort((a, b) => a - b);
-}
-
-function deriveHistoricalCompletedIssueIds(text, issueIds) {
-  const doneIds = new Set(
-    readdirSync(join(ROOT, "plan/issues/done"))
-      .filter((f) => /^[0-9]+\.md$/.test(f))
-      .map((f) => parseInt(f.replace(".md", ""), 10)),
-  );
-  const createdIds = new Set();
-  for (const row of extractIssueBullets(text)) {
-    if (!/\bcreated\b/i.test(row.line)) continue;
-    for (const id of row.ids) createdIds.add(id);
-  }
-  return issueIds.filter((id) => doneIds.has(id) && !createdIds.has(id));
-}
-
-function loadDoneSprintMap() {
-  const p = join(ROOT, "plan/issues/done/log.md");
-  const bySprint = new Map();
-  if (!existsSync(p)) return bySprint;
-  const text = readFileSync(p, "utf-8");
-  for (const line of text.split("\n")) {
-    const m = line.match(/^\|\s*([0-9]+)\s*\|\s*[^|]*\|\s*[^|]*\|\s*Sprint[- ]?(\d+)\s*\|/i);
-    if (!m) continue;
-    const id = parseInt(m[1], 10);
-    const sprint = parseInt(m[2], 10);
-    if (!bySprint.has(sprint)) bySprint.set(sprint, []);
-    bySprint.get(sprint).push(id);
-  }
-  return bySprint;
+function extractSprintNumberFromLabel(label) {
+  return extractSprintNumber(label);
 }
 
 // ── Load issues ──────────────────────────────────────────────
 function loadIssuesFromDir(dir) {
   if (!existsSync(dir)) return [];
+  const dirName = dir.split("/").pop();
   return readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
     .map((f) => {
@@ -156,7 +61,10 @@ function loadIssuesFromDir(dir) {
       const fm = parseFrontmatter(text);
       const id = f.replace(".md", "");
       const title = fm.title || extractTitle(text);
-      const status = fm.status || null;
+      const rawStatus = String(fm.status || "").trim();
+      const status =
+        rawStatus ||
+        (dirName === "done" ? "done" : dirName === "blocked" ? "blocked" : "ready");
       return {
         id,
         title,
@@ -165,6 +73,7 @@ function loadIssuesFromDir(dir) {
         depends_on: fm.depends_on || [],
         goal: fm.goal || "",
         status,
+        sprint: fm.sprint || "",
       };
     })
     .sort((a, b) => Number(b.id) - Number(a.id)); // newest first
@@ -190,6 +99,20 @@ for (const iss of issues.ready) {
   }
 }
 issues.ready = ready;
+
+const allIssueEntries = [...issues.ready, ...issues.inprogress, ...issues.review, ...issues.blocked, ...issues.done];
+const issueIdsBySprint = new Map();
+const completedIssueIdsBySprint = new Map();
+for (const issue of allIssueEntries) {
+  const sprintNumber = extractSprintNumberFromLabel(issue.sprint);
+  if (!Number.isFinite(sprintNumber)) continue;
+  if (!issueIdsBySprint.has(sprintNumber)) issueIdsBySprint.set(sprintNumber, new Set());
+  issueIdsBySprint.get(sprintNumber).add(parseInt(issue.id, 10));
+  if (issue.status === "done") {
+    if (!completedIssueIdsBySprint.has(sprintNumber)) completedIssueIdsBySprint.set(sprintNumber, new Set());
+    completedIssueIdsBySprint.get(sprintNumber).add(parseInt(issue.id, 10));
+  }
+}
 
 writeFileSync(join(OUT, "issues.json"), JSON.stringify(issues, null, 2));
 console.log(
@@ -220,7 +143,6 @@ console.log(`Test262 runs: ${runs.length} entries (filtered from raw data)`);
 // ── Load sprints ─────────────────────────────────────────────
 const sprintsDir = join(ROOT, "plan/sprints");
 const sprints = [];
-const doneBySprint = loadDoneSprintMap();
 if (existsSync(sprintsDir)) {
   for (const f of readdirSync(sprintsDir)
     .filter((f) => /^sprint-\d+\.md$/.test(f))
@@ -230,6 +152,7 @@ if (existsSync(sprintsDir)) {
       return numA - numB;
     })) {
     const text = readFileSync(join(sprintsDir, f), "utf-8");
+    const fm = parseFrontmatter(text);
     const name = f.replace(".md", "").replace(/-/g, " ");
 
     // Extract date
@@ -252,14 +175,13 @@ if (existsSync(sprintsDir)) {
       /Issues not completed in this sprint were returned to the backlog/i.test(text) ||
       /moved into \[sprint-\d+\.md\]/i.test(text) ||
       /contains only the unfinished carry-over work/i.test(text);
-    const issueIds = mergeUniqueIds(extractIssueIds(text), extractListedIssueIds(text));
-    const completedFromLog = sprintNumber != null ? doneBySprint.get(sprintNumber) || [] : [];
-    const completedFromSprint = extractCompletedIssueIds(text);
-    const completedFromHistory = explicitCarryOver ? deriveHistoricalCompletedIssueIds(text, issueIds) : [];
-    const completedIssueIds = mergeUniqueIds(completedFromLog, completedFromSprint, completedFromHistory);
+    const issueIds = sprintNumber != null ? [...(issueIdsBySprint.get(sprintNumber) || new Set())].sort((a, b) => a - b) : [];
+    const completedIssueIds =
+      sprintNumber != null ? [...(completedIssueIdsBySprint.get(sprintNumber) || new Set())].sort((a, b) => a - b) : [];
     sprints.push({
       name,
       sprintNumber,
+      status: fm.status || "",
       date,
       baseline,
       result,
