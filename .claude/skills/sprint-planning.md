@@ -19,23 +19,23 @@ Planning should involve multiple perspectives. If dedicated agents are spawned, 
 
 ```bash
 # Check baseline
-cat plan/sprints/sprint-{N-1}.md | grep "Final numbers"
+cat plan/issues/{N-1}/sprint.md | grep "Final numbers"
 
 # Check what's ready
-ls plan/issues/ready/
+rg -l '^status: ready$' plan/issues/*.md
 
 # Check dependency graph
-cat plan/dependency-graph.md
+cat plan/log/dependency-graph.md
 
 # Check last retro for process constraints
-cat plan/retrospectives/sprint-{N-1}.md | grep -A 3 "Action items"
+cat plan/issues/{N-1}/sprint.md | grep -A 3 "Action items"
 ```
 
 ## Step 2: Validate candidate issues
 
 For each high-priority issue, smoke-test against current main (use `/smoke-test-issue`):
 - **Still fails**: candidate for sprint
-- **Already passes**: close it, move to done/
+- **Already passes**: close it, mark it done
 - **Partially fixed**: update issue with current status
 
 ## Step 3: Prioritize by value
@@ -78,7 +78,7 @@ Write `plan/sprints/sprint-{N}-planning.md` with:
 
 ## Step 8: Create sprint doc
 
-Write `plan/sprints/sprint-{N}.md` with:
+Write `plan/issues/sprints/{N}/sprint.md` with:
 - Date, goal, baseline numbers
 - Team roster
 - Task queue table
@@ -87,4 +87,4 @@ Write `plan/sprints/sprint-{N}.md` with:
 
 ## Output
 
-Message tech lead: `"Sprint-{N} plan ready. {X} tasks, estimated {Y} tests improved. Doc at plan/sprints/sprint-{N}.md"`
+Message tech lead: `"Sprint-{N} plan ready. {X} tasks, estimated {Y} tests improved. Doc at plan/issues/sprints/{N}/sprint.md"`

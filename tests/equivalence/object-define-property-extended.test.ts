@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 import { assertEquivalent } from "./helpers.js";
 
-describe("Object.defineProperty extended patterns (#125)", () => {
+describe("Object.defineProperty extended patterns (#1113)", () => {
   it("defineProperty with boolean value", async () => {
     await assertEquivalent(
       `

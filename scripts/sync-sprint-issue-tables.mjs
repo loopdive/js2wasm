@@ -1,13 +1,17 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs";
-import { join, resolve } from "path";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
+import { basename, dirname, join, resolve } from "path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const ISSUE_ROOT = join(ROOT, "plan/issues");
-const SPRINT_ROOT = join(ROOT, "plan/sprints");
+const SPRINT_ROOT = join(ROOT, "plan/issues/sprints");
+const LEGACY_SPRINT_ROOT = join(ROOT, "plan/sprints");
 
 const START = "<!-- GENERATED_ISSUE_TABLES_START -->";
 const END = "<!-- GENERATED_ISSUE_TABLES_END -->";
+function isIssueFileName(name) {
+  return /^\d+[a-z]?(?:-.+)?\.md$/i.test(name);
+}
 
 function parseFrontmatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---/);
@@ -37,8 +41,25 @@ function extractSprintNumber(value) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+function walkFiles(root) {
+  if (!existsSync(root)) return [];
+  const out = [];
+  for (const name of readdirSync(root)) {
+    const file = join(root, name);
+    const stat = statSync(file);
+    if (stat.isDirectory()) {
+      out.push(...walkFiles(file));
+    } else {
+      out.push(file);
+    }
+  }
+  return out;
+}
+
 function normalizeStatus(dirName, fmStatus) {
   const normalized = String(fmStatus || "").trim();
+  if (normalized === "backlog") return "backlog";
+  if (normalized === "wont-fix") return "wont-fix";
   if (normalized === "done") return "done";
   if (normalized === "blocked") return "blocked";
   if (normalized === "review" || normalized === "in-review" || normalized === "in_review") return "review";
@@ -51,27 +72,23 @@ function normalizeStatus(dirName, fmStatus) {
 
 function loadIssues() {
   const issues = [];
-  for (const dirName of ["ready", "blocked", "done"]) {
-    const dir = join(ISSUE_ROOT, dirName);
-    if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir)) {
-      if (!/^\d+\.md$/.test(name)) continue;
-      const file = join(dir, name);
-      const text = readFileSync(file, "utf8");
-      const fm = parseFrontmatter(text);
-      const sprintNumber = extractSprintNumber(fm.sprint);
-      if (!Number.isFinite(sprintNumber)) continue;
-      issues.push({
-        id: parseInt(name.replace(".md", ""), 10),
-        title: extractTitle(text, fm),
-        sprintNumber,
-        status: normalizeStatus(dirName, fm.status || ""),
-        priority: fm.priority || "",
-        path: file,
-      });
-    }
+  for (const file of walkFiles(ISSUE_ROOT)) {
+    const name = file.split("/").pop();
+    if (!isIssueFileName(name)) continue;
+    const text = readFileSync(file, "utf8");
+    const fm = parseFrontmatter(text);
+    const sprintNumber = extractSprintNumber(fm.sprint);
+    if (!Number.isFinite(sprintNumber)) continue;
+    issues.push({
+      id: String(fm.id || name.replace(/\.md$/, "")),
+      title: extractTitle(text, fm),
+      sprintNumber,
+      status: normalizeStatus("", fm.status || ""),
+      priority: fm.priority || "",
+      path: file,
+    });
   }
-  return issues.sort((a, b) => a.id - b.id);
+  return issues.sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
 }
 
 function renderTable(title, issues) {
@@ -85,11 +102,13 @@ function renderTable(title, issues) {
 
 function renderSprintSection(sprintNumber, issues) {
   const groups = [
+    ["backlog", "Backlog"],
     ["blocked", "Blocked"],
     ["ready", "Ready"],
     ["in-progress", "In Progress"],
     ["review", "Review"],
     ["done", "Done"],
+    ["wont-fix", "Won't Fix"],
   ];
 
   const lines = [
@@ -114,9 +133,31 @@ function renderSprintSection(sprintNumber, issues) {
   return lines.join("\n");
 }
 
+function findSprintFiles() {
+  const files = [];
+  for (const file of walkFiles(SPRINT_ROOT)) {
+    if (file.endsWith("/sprint.md")) {
+      const sprintNumber = extractSprintNumber(basename(dirname(file)));
+      if (Number.isFinite(sprintNumber)) files.push({ file, sprintNumber });
+    }
+  }
+  if (existsSync(LEGACY_SPRINT_ROOT)) {
+    for (const name of readdirSync(LEGACY_SPRINT_ROOT)) {
+      if (!/^sprint-\d+\.md$/.test(name)) continue;
+      const file = join(LEGACY_SPRINT_ROOT, name);
+      const sprintNumber = extractSprintNumber(name);
+      if (Number.isFinite(sprintNumber)) files.push({ file, sprintNumber });
+    }
+  }
+  return files.sort((a, b) => a.sprintNumber - b.sprintNumber);
+}
+
 function syncSprintFile(file, sprintNumber, issues) {
   const text = readFileSync(file, "utf8").replace(/\s*$/, "");
-  const generated = renderSprintSection(sprintNumber, issues.filter((issue) => issue.sprintNumber === sprintNumber));
+  const generated = renderSprintSection(
+    sprintNumber,
+    issues.filter((issue) => issue.sprintNumber === sprintNumber),
+  );
   const pattern = new RegExp(`${START}[\\s\\S]*?${END}\\n?`, "m");
   const next = pattern.test(text) ? text.replace(pattern, generated.trimEnd()) : `${text}\n\n${generated.trimEnd()}\n`;
   writeFileSync(file, next);
@@ -128,14 +169,12 @@ function main() {
     args.length > 0 ? args.map((arg) => parseInt(arg, 10)).filter((n) => Number.isFinite(n)) : null;
 
   const issues = loadIssues();
-  const sprintFiles = readdirSync(SPRINT_ROOT)
-    .filter((name) => /^sprint-\d+\.md$/.test(name))
-    .map((name) => ({ name, sprintNumber: extractSprintNumber(name) }))
-    .filter((entry) => Number.isFinite(entry.sprintNumber))
-    .filter((entry) => !targetSprintNumbers || targetSprintNumbers.includes(entry.sprintNumber));
+  const sprintFiles = findSprintFiles().filter(
+    (entry) => !targetSprintNumbers || targetSprintNumbers.includes(entry.sprintNumber),
+  );
 
   for (const entry of sprintFiles) {
-    syncSprintFile(join(SPRINT_ROOT, entry.name), entry.sprintNumber, issues);
+    syncSprintFile(entry.file, entry.sprintNumber, issues);
     console.log(`synced sprint-${entry.sprintNumber}`);
   }
 }

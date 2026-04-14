@@ -5,13 +5,36 @@
  * No dependencies — uses only Node.js built-ins.
  */
 
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from "fs";
-import { join, resolve } from "path";
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSync } from "fs";
+import { basename, dirname, join, resolve } from "path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const OUT = join(import.meta.dirname, "data");
+const SPRINT_ROOT = join(ROOT, "plan/issues/sprints");
+const LEGACY_SPRINT_ROOT = join(ROOT, "plan/sprints");
 
 mkdirSync(OUT, { recursive: true });
+
+const ISSUE_ROOT = join(ROOT, "plan/issues");
+
+function isIssueFileName(name) {
+  return /^\d+[a-z]?(?:-.+)?\.md$/i.test(name);
+}
+
+function walkFiles(root) {
+  if (!existsSync(root)) return [];
+  const out = [];
+  for (const name of readdirSync(root)) {
+    const file = join(root, name);
+    const stat = statSync(file);
+    if (stat.isDirectory()) {
+      out.push(...walkFiles(file));
+    } else {
+      out.push(file);
+    }
+  }
+  return out;
+}
 
 // ── Frontmatter parser ───────────────────────────────────────
 function parseFrontmatter(text) {
@@ -51,20 +74,24 @@ function extractSprintNumberFromLabel(label) {
 }
 
 // ── Load issues ──────────────────────────────────────────────
-function loadIssuesFromDir(dir) {
-  if (!existsSync(dir)) return [];
-  const dirName = dir.split("/").pop();
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".md"))
-    .map((f) => {
-      const text = readFileSync(join(dir, f), "utf-8");
+function normalizeIssueStatus(rawStatus) {
+  const status = String(rawStatus || "").trim();
+  if (status === "in_progress") return "in-progress";
+  if (status === "in-review" || status === "in_review") return "review";
+  if (status) return status;
+  return "ready";
+}
+
+function loadIssues() {
+  if (!existsSync(ISSUE_ROOT)) return [];
+  return walkFiles(ISSUE_ROOT)
+    .filter((file) => isIssueFileName(file.split("/").pop()))
+    .map((file) => {
+      const text = readFileSync(file, "utf-8");
+      const f = file.split("/").pop();
       const fm = parseFrontmatter(text);
-      const id = f.replace(".md", "");
+      const id = String(fm.id || f.replace(".md", ""));
       const title = fm.title || extractTitle(text);
-      const rawStatus = String(fm.status || "").trim();
-      const status =
-        rawStatus ||
-        (dirName === "done" ? "done" : dirName === "blocked" ? "blocked" : "ready");
       return {
         id,
         title,
@@ -72,51 +99,66 @@ function loadIssuesFromDir(dir) {
         feasibility: fm.feasibility || "",
         depends_on: fm.depends_on || [],
         goal: fm.goal || "",
-        status,
+        status: normalizeIssueStatus(fm.status),
         sprint: fm.sprint || "",
       };
     })
-    .sort((a, b) => Number(b.id) - Number(a.id)); // newest first
+    .sort((a, b) => String(b.id).localeCompare(String(a.id), undefined, { numeric: true })); // newest first
 }
 
 const issues = {
-  blocked: loadIssuesFromDir(join(ROOT, "plan/issues/blocked")),
-  ready: loadIssuesFromDir(join(ROOT, "plan/issues/ready")),
-  inprogress: [], // in-progress issues are in ready/ with status: in-progress
-  review: [], // review issues are in ready/ with status: review
-  done: loadIssuesFromDir(join(ROOT, "plan/issues/done")),
+  backlog: [],
+  blocked: [],
+  ready: [],
+  inprogress: [],
+  review: [],
+  done: [],
+  wontfix: [],
 };
 
-// Split ready into ready vs in-progress vs review based on frontmatter status
-const ready = [];
-for (const iss of issues.ready) {
-  if (iss.status === "in-progress" || iss.status === "in_progress") {
+for (const iss of loadIssues()) {
+  if (iss.status === "backlog") {
+    issues.backlog.push(iss);
+  } else if (iss.status === "blocked") {
+    issues.blocked.push(iss);
+  } else if (iss.status === "in-progress") {
     issues.inprogress.push(iss);
-  } else if (iss.status === "review" || iss.status === "in-review" || iss.status === "in_review") {
+  } else if (iss.status === "review") {
     issues.review.push(iss);
+  } else if (iss.status === "done") {
+    issues.done.push(iss);
+  } else if (iss.status === "wont-fix") {
+    issues.wontfix.push(iss);
   } else {
-    ready.push(iss);
+    issues.ready.push(iss);
   }
 }
-issues.ready = ready;
 
-const allIssueEntries = [...issues.ready, ...issues.inprogress, ...issues.review, ...issues.blocked, ...issues.done];
+const allIssueEntries = [
+  ...issues.backlog,
+  ...issues.ready,
+  ...issues.inprogress,
+  ...issues.review,
+  ...issues.blocked,
+  ...issues.done,
+  ...issues.wontfix,
+];
 const issueIdsBySprint = new Map();
 const completedIssueIdsBySprint = new Map();
 for (const issue of allIssueEntries) {
   const sprintNumber = extractSprintNumberFromLabel(issue.sprint);
   if (!Number.isFinite(sprintNumber)) continue;
   if (!issueIdsBySprint.has(sprintNumber)) issueIdsBySprint.set(sprintNumber, new Set());
-  issueIdsBySprint.get(sprintNumber).add(parseInt(issue.id, 10));
+  issueIdsBySprint.get(sprintNumber).add(String(issue.id));
   if (issue.status === "done") {
     if (!completedIssueIdsBySprint.has(sprintNumber)) completedIssueIdsBySprint.set(sprintNumber, new Set());
-    completedIssueIdsBySprint.get(sprintNumber).add(parseInt(issue.id, 10));
+    completedIssueIdsBySprint.get(sprintNumber).add(String(issue.id));
   }
 }
 
 writeFileSync(join(OUT, "issues.json"), JSON.stringify(issues, null, 2));
 console.log(
-  `Issues: ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.blocked.length} blocked, ${issues.done.length} done`,
+  `Issues: ${issues.backlog.length} backlog, ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.blocked.length} blocked, ${issues.done.length} done, ${issues.wontfix.length} wont-fix`,
 );
 
 // ── Load test262 runs ────────────────────────────────────────
@@ -141,56 +183,74 @@ writeFileSync(join(OUT, "runs.json"), JSON.stringify(runs));
 console.log(`Test262 runs: ${runs.length} entries (filtered from raw data)`);
 
 // ── Load sprints ─────────────────────────────────────────────
-const sprintsDir = join(ROOT, "plan/sprints");
-const sprints = [];
-if (existsSync(sprintsDir)) {
-  for (const f of readdirSync(sprintsDir)
-    .filter((f) => /^sprint-\d+\.md$/.test(f))
-    .sort((a, b) => {
-      const numA = parseInt(a.match(/(\d+)/)?.[1] ?? "0", 10);
-      const numB = parseInt(b.match(/(\d+)/)?.[1] ?? "0", 10);
-      return numA - numB;
-    })) {
-    const text = readFileSync(join(sprintsDir, f), "utf-8");
-    const fm = parseFrontmatter(text);
-    const name = f.replace(".md", "").replace(/-/g, " ");
-
-    // Extract date
-    const dateM = text.match(/\*\*Date\*\*:\s*(.+)/);
-    const date = dateM ? dateM[1].trim() : "";
-
-    // Extract baseline
-    const baseM = text.match(/\*\*Baseline\*\*:\s*(.+)/);
-    const baseline = baseM ? baseM[1].trim() : "";
-
-    // Extract result
-    const resultM = text.match(/\*\*Final numbers?\*\*:\s*(.+)/i) || text.match(/\*\*Result\*\*:\s*(.+)/i);
-    const result = resultM ? resultM[1].trim() : "";
-
-    // Count merged issues
-    const mergedCount = (text.match(/\*\*Merged\*\*/gi) || []).length;
-
-    const sprintNumber = extractSprintNumber(name);
-    const explicitCarryOver =
-      /Issues not completed in this sprint were returned to the backlog/i.test(text) ||
-      /moved into \[sprint-\d+\.md\]/i.test(text) ||
-      /contains only the unfinished carry-over work/i.test(text);
-    const issueIds = sprintNumber != null ? [...(issueIdsBySprint.get(sprintNumber) || new Set())].sort((a, b) => a - b) : [];
-    const completedIssueIds =
-      sprintNumber != null ? [...(completedIssueIdsBySprint.get(sprintNumber) || new Set())].sort((a, b) => a - b) : [];
-    sprints.push({
-      name,
-      sprintNumber,
-      status: fm.status || "",
-      date,
-      baseline,
-      result,
-      issueCount: mergedCount,
-      issueIds,
-      completedIssueIds,
-      explicitCarryOver,
-    });
+function findSprintFiles() {
+  const files = [];
+  for (const file of walkFiles(SPRINT_ROOT)) {
+    if (!file.endsWith("/sprint.md")) continue;
+    const sprintNumber = extractSprintNumber(basename(dirname(file)));
+    if (Number.isFinite(sprintNumber)) files.push({ file, sprintNumber });
   }
+  if (existsSync(LEGACY_SPRINT_ROOT)) {
+    for (const name of readdirSync(LEGACY_SPRINT_ROOT)) {
+      if (!/^sprint-\d+\.md$/.test(name)) continue;
+      const file = join(LEGACY_SPRINT_ROOT, name);
+      const sprintNumber = extractSprintNumber(name);
+      if (Number.isFinite(sprintNumber)) files.push({ file, sprintNumber });
+    }
+  }
+  return files.sort((a, b) => a.sprintNumber - b.sprintNumber);
+}
+
+const sprints = [];
+for (const entry of findSprintFiles()) {
+  const text = readFileSync(entry.file, "utf-8");
+  const fm = parseFrontmatter(text);
+  const name = `sprint ${entry.sprintNumber}`;
+
+  // Extract date
+  const dateM = text.match(/\*\*Date\*\*:\s*(.+)/);
+  const date = dateM ? dateM[1].trim() : "";
+
+  // Extract baseline
+  const baseM = text.match(/\*\*Baseline\*\*:\s*(.+)/);
+  const baseline = baseM ? baseM[1].trim() : "";
+
+  // Extract result
+  const resultM = text.match(/\*\*Final numbers?\*\*:\s*(.+)/i) || text.match(/\*\*Result\*\*:\s*(.+)/i);
+  const result = resultM ? resultM[1].trim() : "";
+
+  // Count merged issues
+  const mergedCount = (text.match(/\*\*Merged\*\*/gi) || []).length;
+
+  const sprintNumber = entry.sprintNumber;
+  const explicitCarryOver =
+    /Issues not completed in this sprint were returned to the backlog/i.test(text) ||
+    /moved into \[sprint-\d+\.md\]/i.test(text) ||
+    /contains only the unfinished carry-over work/i.test(text);
+  const issueIds =
+    sprintNumber != null
+      ? [...(issueIdsBySprint.get(sprintNumber) || new Set())].sort((a, b) =>
+          String(a).localeCompare(String(b), undefined, { numeric: true }),
+        )
+      : [];
+  const completedIssueIds =
+    sprintNumber != null
+      ? [...(completedIssueIdsBySprint.get(sprintNumber) || new Set())].sort((a, b) =>
+          String(a).localeCompare(String(b), undefined, { numeric: true }),
+        )
+      : [];
+  sprints.push({
+    name,
+    sprintNumber,
+    status: fm.status || "",
+    date,
+    baseline,
+    result,
+    issueCount: mergedCount,
+    issueIds,
+    completedIssueIds,
+    explicitCarryOver,
+  });
 }
 const maxSprintNumber = Math.max(...sprints.map((s) => s.sprintNumber || 0), 0);
 for (const sprint of sprints) {

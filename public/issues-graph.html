@@ -116,7 +116,7 @@ async function init() {
     const resp = await fetch('graph-data.json');
     data = await resp.json();
   } catch {
-    document.body.innerHTML = '<div style="padding:40px;color:#f85149">Could not load graph-data.json. Run: npx tsx plan/generate-graph.ts</div>';
+    document.body.innerHTML = '<div style="padding:40px;color:#f85149">Could not load graph-data.json. Run: node --experimental-strip-types plan/generate-graph.ts</div>';
     return;
   }
 
@@ -514,7 +514,7 @@ async function init() {
         const n = nodeMap.get(id);
         if (n) {
           const pColor = { critical: '#f85149', high: '#f0883e', medium: '#8b949e', low: '#484f58' }[n.priority] || '#8b949e';
-          html += `<span class="dep-link" onclick="focusNode(${id})" style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.05);border-left:3px solid ${pColor};font-size:11px">#${id}</span>`;
+          html += `<span class="dep-link" onclick="focusNode('${id}')" style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.05);border-left:3px solid ${pColor};font-size:11px">#${id}</span>`;
         }
       }
       html += '</div>';
@@ -526,7 +526,7 @@ async function init() {
     const info = document.getElementById('info');
     info.style.display = 'block';
     document.getElementById('info-title').textContent = `#${d.id}: ${d.title}`;
-    let meta = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.status}`;
+    let meta = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.raw_status || d.status}`;
     if (d.cluster && d.cluster !== 'Unclustered') meta += ` | <b>Cluster:</b> ${d.cluster}`;
     if (d.goal) meta += ` | <b>Goal:</b> <span class="goal-link" onclick="focusGoal('${d.goal}')">${d.goal}</span>`;
     if (d.compiler_errors) meta += ` | <b>CE:</b> ${d.compiler_errors}`;
@@ -538,10 +538,10 @@ async function init() {
     const dependers = nodes.filter(n => n.depends_on && n.depends_on.includes(d.id));
     let html = '';
     if (deps.length) {
-      html += `<div><b>Depends on:</b> ${deps.map(id => `<span class="dep-link" onclick="focusNode(${id})">#${id}</span>`).join(', ')}</div>`;
+      html += `<div><b>Depends on:</b> ${deps.map(id => `<span class="dep-link" onclick="focusNode('${id}')">#${id}</span>`).join(', ')}</div>`;
     }
     if (dependers.length) {
-      html += `<div><b>Unblocks:</b> ${dependers.map(n => `<span class="dep-link" onclick="focusNode(${n.id})">#${n.id}</span>`).join(', ')}</div>`;
+      html += `<div><b>Unblocks:</b> ${dependers.map(n => `<span class="dep-link" onclick="focusNode('${n.id}')">#${n.id}</span>`).join(', ')}</div>`;
     }
     const files = d.files;
     if (files && (Array.isArray(files) ? files.length : Object.keys(files).length)) {

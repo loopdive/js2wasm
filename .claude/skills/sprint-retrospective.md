@@ -11,7 +11,7 @@ Reviews the sprint and proposes process improvements.
 
 ```bash
 # Sprint doc
-cat plan/sprints/sprint-{N}.md
+cat plan/issues/sprints/{N}/sprint.md
 
 # Diary entries from this sprint
 cat plan/diary.md
@@ -19,8 +19,8 @@ cat plan/diary.md
 # Git history for the sprint
 git log --oneline --since="YYYY-MM-DD"
 
-# Completed issues
-ls plan/issues/done/ | tail -20
+# Recently completed issues
+rg -n '^status: done$' plan/issues/*.md | tail -20
 
 # Task completion times (if available)
 # Check TaskList or sprint doc task table
@@ -60,7 +60,7 @@ Each action item should be:
 
 ## Step 5: Write retrospective
 
-Write to `plan/retrospectives/sprint-{N}.md`:
+Write to `plan/issues/sprints/{N}/sprint.md`:
 
 ```markdown
 # Sprint {N} Retrospective
@@ -93,4 +93,4 @@ Share the retro with tech lead and user. Don't apply edits unilaterally — prop
 
 ## Output
 
-Message tech lead: `"Sprint-{N} retro complete. {X} incidents, {Y} action items. Review at plan/retrospectives/sprint-{N}.md"`
+Message tech lead: `"Sprint-{N} retro complete. {X} incidents, {Y} action items. Review at plan/issues/sprints/{N}/sprint.md"`
