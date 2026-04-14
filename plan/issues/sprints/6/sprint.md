@@ -64,8 +64,5 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #201 | Object.keys/values/entries: 24 compile errors | low | done |
 | #314 | Issue #314: Performance -- compile time profiling and optimization | low | done |
 | #320 | [ts2wasm] Codegen: Dead import and type elimination | medium | done |
-| #812 | - Test262Error 'no dependency provided for extern class' (801 tests) | critical | done |
-| #813 | - gen.next is not a function (1,164 tests) | critical | done |
-| #814 | - ArrayBuffer 'no dependency provided for extern class' (413 tests) | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
