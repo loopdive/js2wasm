@@ -10,7 +10,7 @@
         document.head.appendChild(base);
       })();
     </script>
-    <title>JS2 - Javascript compiler</title>
+    <title>JS² - Javascript compiler</title>
     <meta
       name="description"
       content="js2wasm is an ahead-of-time compiler that compiles JavaScript and TypeScript to WebAssembly GC."
@@ -279,7 +279,7 @@
       .intro p,
       .code-copy p,
       .cta p {
-        max-width: 760px;
+        max-width: 960px;
         font-size: 18px;
         line-height: 1.72;
         color: var(--fg-soft);
@@ -320,6 +320,12 @@
         filter: grayscale(1) contrast(2.4) brightness(1.25);
       }
 
+      .feature-icon img {
+        display: block;
+        width: 38px;
+        height: 38px;
+      }
+
       .feature-card h3 {
         margin: 0 0 18px;
         font-family: var(--mono);
@@ -327,6 +333,12 @@
         font-weight: 500;
         letter-spacing: 0.06em;
         text-transform: uppercase;
+      }
+
+      .feature-card h3 .heart-mark {
+        font-size: 1.22em;
+        line-height: 0;
+        vertical-align: -0.08em;
       }
 
       .feature-card p {
@@ -1094,8 +1106,8 @@
           <img class="hero-logo" src="./js2logo.svg" alt="JS2 logo" />
           <h1
             id="hero-title"
-            data-texts='["JS2: A next generation JavaScript compiler.", "Compile JavaScript without embedding a JS engine.",
-            "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
+            data-texts='["JS² - A next generation JavaScript compiler.", "Compile JavaScript without embedding a JS engine.",
+            "JavaScript compiled ahead of time, for fast cold starts and speed.", "Reduce supply chain attack surface with module sandboxing.", "Target existing Javascript code, not a new language."]'
           >
             <span class="hero-title-shell">
               <span class="hero-title-measure" aria-hidden="true"></span>
@@ -1105,8 +1117,7 @@
           <p class="hero-sub">
             The JS
             <sup>2</sup>
-            compiler project is a technology study for next generation Javascript that AOT compiles real JavaScript to
-            WebAssembly.
+            compiler is a Loopdive project focused on ahead-of-time compilation of real JavaScript to WebAssembly.
           </p>
           <div class="hero-actions">
             <a class="btn-solid" href="./playground/">Playground</a>
@@ -1119,57 +1130,47 @@
 
       <section class="section-pad" id="mission">
         <div class="intro">
-          <h2>Next generation JavaScript compiler.</h2>
+          <h2>Mission: Next generation JavaScript.</h2>
           <p>
-            The mission of the JS
-            <sup>2</sup>
-            compiler project is to make JavaScript more secure, modular, and lightweight.
+            The mission of the JS² compiler project is to make WebAssembly a drop-in deployment target for existing
+            JavaScript and npm packages, running modules without embedding a JS runtime and enabling more secure,
+            flexible dependency management.
           </p>
         </div>
         <div class="features-grid">
           <article class="feature-card">
-            <div class="feature-icon">🧩</div>
-            <h3>Small modules</h3>
-            <p>Target Wasm GC directly and avoid bundling a JavaScript runtime into every output module.</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon">🔒</div>
-            <h3>Sandboxed by default</h3>
-            <p>Filesystem, network, DOM, and globals stay behind explicit imports instead of ambient access.</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon">JS</div>
-            <h3>Just Javascript</h3>
+            <div class="feature-icon"><img src="./javascript-logo-white.svg" alt="JavaScript logo" /></div>
+            <h3>Not a New Language</h3>
             <p>
-              Write idiomatic JavaScript and TypeScript instead of switching to a separate language just to target Wasm.
+              Compile existing JavaScript and npm packages without rewriting them into a new language or restricted
+              subset. Stay compatible with the JavaScript ecosystem.
             </p>
           </article>
           <article class="feature-card">
-            <div class="feature-icon">npm</div>
-            <h3>npm compatibility</h3>
-            <p>Move existing package ecosystems toward Wasm hosts instead of forcing rewrites into other languages.</p>
+            <div class="feature-icon"><img src="./wasm-logo-white.svg" alt="WebAssembly logo" /></div>
+            <h3>JS Host or Standalone</h3>
+            <p>
+              Deploy compiled modules across JavaScript hosts and standalone WebAssembly runtimes without embedding a JS
+              engine in the module or hand-writing glue code.
+            </p>
           </article>
-        </div>
-        <div class="intro" style="margin-top: 56px">
-          <h2>JS & NPM compatible.</h2>
-          <p>
-            Compile existing Javascript code to WebAssembly and run it anywhere - in a browser, Node.js or WebAssembly runtime or even compatible to a native executable without shipping a JS runtime.
-          </p>
-        </div>
+          <article class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <h3>Module Sandboxing</h3>
+            <p>
+              Reduce supply chain attack surface by isolating JavaScript modules from each other inside the same
+              application and keeping filesystem, network, DOM, and globals behind explicit imports.
+            </p>
+          </article>
 
-        <div class="intro" style="margin-top: 56px">
-          <h2>Plug & Play composition.</h2>
-          <p>
-            Dependencies are resolved at link or runtime and thus code can be composed by module consumers, breaking down dependencies on toolchains, platforms, or applications.
-          </p>
-        </div>
-        <div class="intro" style="margin-top: 56px">
-          <h2>Module Sandboxing.</h2>
-          <p>
-            While JavaScript in the browser is running in a sandbox, dependencies are not isolated from each other and
-            one foul module risks it all, as has been proven by recent supply chain attacks. In Node.js it is worse —
-            any program has full access to the file system and network.
-          </p>
+          <article class="feature-card">
+            <div class="feature-icon">🧩</div>
+            <h3>Dependency Injection</h3>
+            <p>
+              Link modules through explicit imports so consumers can choose implementations, control upgrades, and swap
+              dependencies for each environment.
+            </p>
+          </article>
         </div>
       </section>
 
@@ -1179,8 +1180,8 @@
         <div class="intro">
           <h2>Goal: 100% JavaScript compatibility.</h2>
           <p>
-            Which JS language features compile to WebAssembly today, and which are still on the roadmap. Status is
-            derived from ECMAScript Test262 pass rates and known compiler limitations.
+            Which JS language features compile to WebAssembly today, which still rely on host support, and which are
+            still on the roadmap. Status is derived from ECMAScript Test262 pass rates and known compiler limitations.
           </p>
           <p style="margin-top: 1.25rem">
             <a class="btn-outline" href="./benchmarks/report.html">Compatibility Test Report</a>
@@ -2311,7 +2312,7 @@ const sum = big + 1n;</pre
                 <details>
                   <summary></summary>
                   <pre>new WeakRef(obj); // not supported</pre>
-                  <div class="feat-explain">GC-observable. Not available in WasmGC.</div>
+                  <div class="feat-explain">GC-observable. Not available in standard WasmGC today.</div>
                 </details>
               </div>
             </div>
@@ -2835,8 +2836,8 @@ match (value) {
           <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
             Write regular JavaScript. The compiler produces a .wasm binary that runs anywhere WebAssembly runs &mdash;
-            browser, server, edge. No interpreter embedded, no garbage collector shipped. The module is isolated from
-            its host and other modules and thus the surface for supply chain attacks through dependencies is reduced.
+            browser, server, edge. No interpreter embedded, no garbage collector shipped. When deployed with explicit
+            imports, the module boundary can reduce ambient access and limit supply-chain attack surface.
           </p>
         </div>
 
@@ -2979,8 +2980,8 @@ const dom = await js2.import("./dom.js", { document });
       <section class="section-pad cta" id="roadmap">
         <h2>Project roadmap.</h2>
         <p>
-          The project is still incomplete, but the playground, report, and planning artifacts already make the compiler
-          direction concrete and inspectable.
+          The roadmap is to first establish compatibility with existing code, then expand host support, optimize
+          performance, and strengthen security.
         </p>
         <div class="cta-actions">
           <a class="btn-solid" href="./dashboard/">Roadmap</a>
@@ -2992,7 +2993,7 @@ const dom = await js2.import("./dom.js", { document });
     <footer>
       <div class="footer-top">
         <div class="footer-brand">
-          <img src="./js2logo.svg" alt="JS2 logo" />
+          <img src="./js2logo.svg" alt="JS² logo" />
           <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
         </div>
         <div class="footer-cols">
@@ -3473,7 +3474,9 @@ const dom = await js2.import("./dom.js", { document });
         const tables = document.querySelector(".feat-tables");
         if (tables) {
           tables.classList.add("strict-only");
-          const hostRows = Array.from(document.querySelectorAll(".feat-row")).filter((row) => row.querySelector(".feat-host"));
+          const hostRows = Array.from(document.querySelectorAll(".feat-row")).filter((row) =>
+            row.querySelector(".feat-host"),
+          );
           hostRows.forEach((row) => {
             const badge = row.querySelector(".feat-badge");
             if (!(badge instanceof HTMLElement)) return;
@@ -3819,7 +3822,9 @@ const dom = await js2.import("./dom.js", { document });
             setSize("how-dom-js-size", dom.jsSizeGzip);
             setSize("how-dom-wasm-size", dom.wasmSizeGzip);
           }
-        } catch { /* keep static fallbacks */ }
+        } catch {
+          /* keep static fallbacks */
+        }
       })();
 
       (function typeHeroTitle() {
