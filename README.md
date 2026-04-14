@@ -14,10 +14,12 @@ Most JavaScript-on-Wasm systems work by putting a JavaScript engine inside a Was
 
 - **Direct AOT compilation to WasmGC** instead of interpreter bundling
 - **No embedded JS engine** in the deployed module
-- **No 5 MB runtime tax** just to execute application code
+- **No multi-megabyte runtime tax** just to execute application code
 - **Wasm-native deployment model** for runtimes, serverless platforms, and embedded hosts
 
 This matters for infrastructure workloads where artifact size, cold start, density, and host integration are first-order constraints.
+
+It also matters for security boundaries. In browsers, Node.js, and other JavaScript-capable hosts, compiling modules to Wasm introduces an isolation boundary that can limit how much third-party dependencies and user-provided code can affect the surrounding process. That is relevant for supply-chain defense, plugin systems, and multi-tenant execution.
 
 ## Why This Architecture
 
@@ -27,14 +29,111 @@ This matters for infrastructure workloads where artifact size, cold start, densi
 - Wasm-first infrastructure platforms
 - plugin and extension systems
 - embedders that want JavaScript semantics without shipping an interpreter
+- desktop applications that want a lighter and safer alternative to Electron-style runtime bundling
+
+That includes practical combinations with hosts like Tauri, where compiler output can be shipped as executable Wasm artifacts instead of bundling a full browser-plus-JS-engine runtime into the application.
 
 The current public benchmark and conformance work is aimed at proving that direct compilation can become a viable alternative to interpreter bundling for production infrastructure.
+
+Many alternatives in adjacent spaces solve the problem by narrowing the language instead:
+
+- supporting only a constrained subset of TypeScript or JavaScript
+- introducing a new language or dialect that compiles to Wasm more easily
+
+`js2wasm` is aimed at a harder target: targeting mainstream JavaScript semantics through direct compilation rather than changing the language model to fit the compiler.
+
+Projects in this category usually take years to reach meaningful semantic coverage. A large part of the Loopdive thesis is that an AI-native compiler workflow can compress that timeline substantially without giving up on the harder target.
 
 Current public milestone:
 
 - **52% Test262 compliance**
 
 See the [Playground](https://loopdive.github.io/js2wasm/playground/) and [Roadmap](./ROADMAP.md) for the current public surface.
+
+## Current Status
+
+`js2wasm` is still an active compiler effort, but it is no longer just a research prototype. The project now has:
+
+- **52% Test262 compliance**
+- a public browser playground
+- ongoing benchmark and compatibility reporting
+- both JS-hosted and standalone-oriented compiler work, with standalone support still in progress and not yet the primary conformance path
+
+The project is being positioned for a community-first release while the compiler, runtime boundary, and conformance story continue to harden.
+
+## How It Compares
+
+The core tradeoff in this space is straightforward:
+
+- **bundle an interpreter into Wasm**
+- or **compile the program directly to Wasm**
+
+`js2wasm` is in the second category.
+
+| Project | Approach | WasmGC | Standalone story | Output profile | Conformance posture |
+| --- | --- | --- | --- | --- | --- |
+| **js2wasm** | **Direct AOT to WasmGC** | **Yes** | **Yes, but still in progress and not yet the primary conformance path** | **small compiled modules** | **growing compiler-native conformance** |
+| Javy | QuickJS bundled in Wasm | No | WASI-focused | ships engine/runtime | inherits interpreter behavior |
+| StarlingMonkey | SpiderMonkey bundled in Wasm | No | host/runtime dependent | ships engine/runtime | inherits interpreter behavior |
+| Porffor | AOT to Wasm / linear memory | No | yes | compiler output plus custom runtime model | experimental |
+
+That difference is the main reason `js2wasm` exists. The goal is not “JavaScript in Wasm” in the abstract. The goal is **JavaScript semantics without shipping a JS engine inside the deployed artifact**.
+
+## Quick Start
+
+Install dependencies:
+
+```bash
+pnpm install
+```
+
+Compile a file:
+
+```bash
+npx js2wasm input.ts -o output.wasm
+```
+
+Programmatic API:
+
+```ts
+import { compile } from "js2wasm";
+
+const result = compile(`
+  export function add(a: number, b: number): number {
+    return a + b;
+  }
+`);
+
+if (result.success) {
+  const { instance } = await WebAssembly.instantiate(result.binary, {});
+  console.log((instance.exports as any).add(2, 3));
+}
+```
+
+Useful local commands:
+
+```bash
+pnpm typecheck
+pnpm lint
+npm test
+pnpm run test:262
+pnpm dev
+```
+
+## What Works Today
+
+The compiler already covers a meaningful subset of the language and runtime surface. Current work is concentrated on steadily expanding spec coverage while reducing dependence on JS-host fallbacks.
+
+Areas with meaningful progress today include:
+
+- arithmetic and basic scalar operations
+- functions, closures, and many control-flow forms
+- classes, inheritance, and object operations
+- arrays, strings, destructuring, and template literals
+- significant portions of built-in and host interop behavior
+- a public conformance workflow based on Test262
+
+This is not yet a “drop in any npm package” story. It is a serious compiler with a growing compatibility baseline and a clear infrastructure target.
 
 ## The Methodology
 
@@ -86,29 +185,9 @@ Contact: `hello@loopdive.com`
 
 ## Development
 
-Install dependencies:
-
-```bash
-pnpm install
-```
-
-Run the local development loop:
-
-```bash
-pnpm typecheck
-pnpm lint
-npm test
-```
-
-Start the browser playground:
-
-```bash
-pnpm dev
-```
-
 Additional contributor workflow details, including CLA terms, are in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## Project Links
+## Further Reading
 
 - [Playground](https://loopdive.github.io/js2wasm/playground/)
 - [Roadmap](./ROADMAP.md)
