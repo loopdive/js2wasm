@@ -322,3 +322,48 @@ Top error buckets:
 - 1 × `createMathOperation` closure function-slot indexing → **#1063**
 
 Follow-up issues filed: **#1060, #1061, #1062, #1063** (all ready, all reference `parent: 1031`). The Tier 1 acceptance criterion ("`lodash/clamp(5,0,10) === 5`") is **not yet met** and deferred to #1060-#1063. No compiler source was modified in this PR — it's pure investigation per the dispatch scope rule.
+
+<!-- GENERATED_ISSUE_TABLES_START -->
+## Issue Tables
+
+_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #830 | DisposableStack extern class missing (39 failures) | low | done |
+| #844 | Unsupported new expression for built-in classes (85 CE) | medium | done |
+| #864 | WeakMap/WeakSet invalid key errors (45 FAIL) | low | done |
+| #882 | Test262 runner: sharded parallel execution with merged reports | high | done |
+| #884 | CI: GitHub Actions test262 on every PR | high | done |
+| #971 | Mixed assertion failures after sprint 38 merges (~180 tests) | medium | done |
+| #975 | Sprint file cleanup — remove orphan issue refs from closed sprints | low | done |
+| #977 | Edition coverage chart: rename 'Other' to 'ES3/Core' or 'Proposals' | low | done |
+| #978 | Add responsive burger menu to site-nav component | medium | done |
+| #979 | Add site-nav to report page and align styling with landing page | medium | done |
+| #980 | Auto-generate module size + load time benchmarks for landing page | medium | done |
+| #981 | Reuse t262-donut chart on report page, refactor as standalone component | medium | done |
+| #982 | Extract performance benchmark chart into a reusable web component | medium | done |
+| #984 | Regression: compileExpression receives undefined AST nodes in class/private generator paths (154 CE) | medium | done |
+| #986 | Internal compiler crash: BigInt serialization in statement/object emit paths (37 CE) | medium | done |
+| #987 | Object-literal spread/object-shape fallbacks still fail in generator and spread call sites (40 CE) | medium | done |
+| #988 | FinalizationRegistry constructor unsupported in official-scope tests (23 CE) | low | done |
+| #998 | Class static-private method line-terminator variants still emit argless call/return_call in constructors (121 CE) | high | done |
+| #999 | for-of / for-await-of destructuring still emits f64↔externref and struct field mismatches (75 CE) | high | done |
+| #1012 | Add source-anchored line numbers to all runtime error patterns | high | done |
+| #1014 | Promise .then() called on non-Promise values (1,969 FAIL) | critical | done |
+| #1015 | Support fixture/includes tests in unified compilation mode (172 CE) | medium | done |
+| #1021 | Destructuring: use __extern_is_undefined instead of ref.is_null for defaults (~2,000+ FAIL) | critical | done |
+| #1025 | BindingElement array-pattern default guards still use ref.is_null | high | done |
+| #1026 | String.prototype / Number.prototype / Boolean.prototype globals access | medium | done |
+| #1027 | Missing __make_getter_callback late-import in PR #43 accessor paths | high | done |
+| #1028 | TypedArray.prototype.toLocaleString null/undefined in element toLocaleString path | medium | done |
+| #1030 | Array.prototype method dispatch long tail — 372 'object is not a function' | critical | done |
+| #1031 | Compile lodash to Wasm as a real-world stress test; harvest error patterns | high | done |
+| #1040 | Array.prototype reduce/map — invalid Wasm binary regression from #1030 extended dispatch | high | done |
+| #1054 | Derived class indirect-eval supercall does not throw SyntaxError | medium | done |
+| #1082 | ci-status-feed delta is absolute snapshot not per-test regression — lies to dev-self-merge gate | critical | done |
+| #1084 | compileCount bypass in compiler-fork-worker.mjs — RECREATE never fires when errors dominate a chunk | critical | done |
+
+<!-- GENERATED_ISSUE_TABLES_END -->

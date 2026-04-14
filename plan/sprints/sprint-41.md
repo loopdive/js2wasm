@@ -1,7 +1,7 @@
 ---
 title: "Sprint 41 — Pass-rate push: 51.4% → 52%"
 status: done
-sprint: Sprint-41
+sprint: 41
 ---
 
 # Sprint 41 — Pass-rate push: 51.4% → 52%
@@ -246,3 +246,36 @@ If any dev finishes early, pick from: #1051, #1024, #997, #1016a (class dstr sli
 2. **CI baselines must come from CI**, not local runs. Local runs don't exercise the fork-worker pool and miss environment-specific regressions.
 3. **Non-configurable prototype mutations require process restart** — there's no JS-level fix. The worker exit+respawn pattern is the correct solution.
 4. **Cache keys must include all compilation-relevant files**, not just source. Worker scripts, runtime bundles, and test harness files all affect results.
+
+<!-- GENERATED_ISSUE_TABLES_START -->
+## Issue Tables
+
+_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #997 | BigInt ToPrimitive/wrapped-value helper emits i64 into externref __call_fn_0 wrapper (55 CE) | high | done |
+| #1013 | Split codegen/index.ts (14,344 lines) into focused modules | high | done |
+| #1018 | Object.getOwnPropertyDescriptor returns null for missing/accessor properties (160 FAIL) | high | done |
+| #1023 | __unbox_number(null) crashes — should apply ToNumber(null) = +0 | high | done |
+| #1024 | Destructuring rest elements + array holes drop null vs undefined | high | done |
+| #1034 | Compile prettier to Wasm — parser + AST + printer stress test; self-format smoke test | high | done |
+| #1053 | arguments.length wrong in class methods with trailing-comma call sites | medium | done |
+| #1056 | DataView setUintN / setIntN / setFloatN instance methods missing | low | done |
+| #1060 | ModuleResolver prefers @types/*/.d.ts over real .js body, dropping npm implementations | high | done |
+| #1061 | analyzeMultiSource / compileMultiSource drops allowJs and forces .js → .ts | high | done |
+| #1062 | compileProject emits invalid Wasm for lodash-es/clamp.js (toNumber type mismatch) | high | done |
+| #1063 | createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee) | high | done |
+| #1068 | parser: 'await' not allowed as label identifier — blocks prettier/index.mjs | medium | done |
+| #1069 | codegen: object literal → struct inference fails on bundled JS config objects | high | done |
+| #1070 | codegen: unsupported new expression for Intl.ListFormat (and other Intl builtins) | medium | done |
+| #1072 | runtime: f64 → externref coercion missing on function return in bundled prettier (trimNewlinesEnd validation fail) | high | done |
+| #1074 | Surface ESM default export as a named Wasm function export | high | done |
+| #1085 | codegen: bodyUsesArguments recursive walker blows stack under tight CI stack budget when called from recursive nested-declarations compile path | critical | done |
+| #1090 | ToPrimitive 'Cannot convert object to primitive value' — 161 FAIL | high | done |
+| #1091 | Early error detection gap — 94 tests compile when they should throw SyntaxError | high | done |
+| #1092 | Wrong error type — 69 tests throw Test262Error instead of expected TypeError | medium | done |
+
+<!-- GENERATED_ISSUE_TABLES_END -->
