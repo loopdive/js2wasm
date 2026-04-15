@@ -1,4 +1,4 @@
-# Competitive Runtime Benchmarks
+# Runtime Comparison Benchmarks
 
 This benchmark harness compares the same JavaScript benchmark programs across:
 
@@ -52,10 +52,10 @@ that lane beyond the generated benchmark module size.
 
 - `js2wasm`: `scripts/compiler-bundle.mjs`
 - `js2wasm` hosted runtime/helper: `benchmarks/competitive/run-node-wasm-program.mjs`
-- AssemblyScript: vendored AssemblyScript compiler distribution
-- Javy: vendored `javy` binary, with `plugin.wasm` counted as runtime/helper bytes
-- Porffor: vendored `compiler/` tree, with `runtime/` counted separately
-- StarlingMonkey: vendored Wasmtime binary, with `starling.wasm` counted separately
+- AssemblyScript: the configured `asc` toolchain path
+- Javy: the configured `javy` binary, with `plugin.wasm` counted as runtime/helper bytes
+- Porffor: the configured `compiler/` tree, with `runtime/` counted separately
+- StarlingMonkey: the configured Wasmtime binary, with `starling.wasm` counted separately
 
 The hot-runtime metric is measured by:
 
@@ -84,6 +84,51 @@ harness there yet.
 pnpm run benchmark:competitive
 ```
 
+The harness can run against externally managed external toolchain checkouts and binaries.
+Vendoring them into this repository is optional and not required.
+
+## External toolchain setup
+
+The benchmark runner honors environment variables for every non-js2wasm lane.
+Point them at local checkouts or installed binaries before running the suite.
+
+### Required local tools
+
+- `wasmtime`
+- `wasm-opt`
+- `node`
+- `pnpm`
+
+### Optional external toolchains
+
+```bash
+# Javy
+export JAVY_BIN=/absolute/path/to/javy
+export JAVY_PLUGIN=/absolute/path/to/plugin.wasm
+
+# AssemblyScript
+export ASSEMBLYSCRIPT_ROOT=/absolute/path/to/AssemblyScript
+export ASSEMBLYSCRIPT_ASC=/absolute/path/to/asc
+
+# Porffor
+export PORFFOR_ROOT=/absolute/path/to/Porffor
+export PORFFOR_WRAP=/absolute/path/to/Porffor/compiler/wrap.js
+export PORFFOR_RUNTIME_BIN=/absolute/path/to/Porffor/runtime/index.js
+
+# StarlingMonkey runtime-eval lane
+export STARLINGMONKEY_ROOT=/absolute/path/to/StarlingMonkey
+export STARLINGMONKEY_BUILD_DIR=/absolute/path/to/StarlingMonkey/cmake-build-release
+export STARLINGMONKEY_RUNTIME=/absolute/path/to/StarlingMonkey/cmake-build-release/starling.wasm
+export STARLINGMONKEY_WASMTIME_BIN=/absolute/path/to/wasmtime
+
+# Optional StarlingMonkey AOT adapter lane
+export STARLINGMONKEY_ADAPTER=/absolute/path/to/adapter-script
+```
+
+The benchmark script falls back to `vendor/...` paths only if those exist and no
+environment override is provided. That keeps local private benchmarking
+convenient without making vendored trees part of the committed benchmark story.
+
 Outputs:
 
 - `benchmarks/results/runtime-compare-latest.json`
@@ -91,14 +136,6 @@ Outputs:
 - timestamped copies in the same directory
 
 ## StarlingMonkey
-
-The benchmark repo now vendors a pinned StarlingMonkey checkout at:
-
-- `vendor/StarlingMonkey`
-
-Current pinned revision:
-
-- `9dda8ba7fcda2e17c6795d402f0478cf4c1f7f37`
 
 The harness uses StarlingMonkey's documented runtime-eval flow:
 
@@ -130,18 +167,11 @@ $STARLINGMONKEY_ADAPTER <input.js> <output.wasm>
 
 and write a Wasm module to `<output.wasm>`.
 
-The adapter path is now only needed if you want to compare against a different
-StarlingMonkey compilation flow than the vendored runtime-eval component.
+The adapter path is only needed if you want to compare against a
+benchmark-specific StarlingMonkey compile flow instead of the runtime-eval
+component lane.
 
 ## Javy
-
-The harness uses the vendored Javy CLI at:
-
-- `vendor/Javy/javy`
-
-Current pinned release:
-
-- `v8.1.1`
 
 For each benchmark program, the harness generates a wrapper script that:
 
@@ -155,14 +185,6 @@ size includes the bundled QuickJS runtime.
 
 ## AssemblyScript
 
-The harness uses the vendored AssemblyScript CLI at:
-
-- `vendor/AssemblyScript/node_modules/.bin/asc`
-
-Current pinned release:
-
-- `v0.28.14`
-
 This lane is not source-identical JavaScript. The harness translates each
 benchmark kernel into a small typed AssemblyScript equivalent and compiles it
 with:
@@ -171,14 +193,6 @@ with:
 - followed by `wasm-opt -O4`
 
 ## Porffor
-
-The harness uses the vendored Porffor checkout at:
-
-- `vendor/Porffor`
-
-Current pinned revision:
-
-- `84fdcda4741ed2ee1383ae65e15743869cd6c017`
 
 Porffor's raw wasm output is not a drop-in WASI/Wasmtime target, so the harness
 measures Porffor through its own module compiler/runtime path in Node.js:
