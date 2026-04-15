@@ -5,7 +5,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "author": "Thomas Tränkler <git@thomas.traenkler.com>",
-  "license": "AGPL-3.0-only",
+  "license": "Apache-2.0 WITH LLVM-exception",
   "publishConfig": {
     "access": "restricted",
     "registry": "https://npm.pkg.github.com"
@@ -35,10 +35,12 @@
     "generate:editions": "npx tsx scripts/generate-editions.ts",
     "generate:size-benchmarks": "npx tsx scripts/generate-size-benchmarks.ts",
     "generate:browser-runtime-benchmarks": "node scripts/generate-browser-runtime-benchmarks.mjs",
+    "export:public": "node scripts/export-public-tree.mjs",
+    "sync:public": "node scripts/sync-public-repo.mjs",
     "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
-    "build:pages": "npx tsx scripts/sprint-stats.ts && pnpm run build:planning-artifacts && pnpm run build:playground && npx tsx scripts/generate-size-benchmarks.ts && node scripts/build-pages.js",
+    "build:pages": "node scripts/run-pages-build.mjs",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
     "prepare": "git config core.hooksPath .husky || true"
   },
