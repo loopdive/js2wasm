@@ -1,0 +1,20 @@
+[
+  {
+    "name": "JS²",
+    "jsUs": 32.3949166,
+    "wasmUs": 11.0458332,
+    "label": "11.0 ms"
+  },
+  {
+    "name": "Javy",
+    "jsUs": 32.3949166,
+    "wasmUs": 712.0643834,
+    "label": "712.1 ms"
+  },
+  {
+    "name": "StarlingMonkey",
+    "jsUs": 32.3949166,
+    "wasmUs": 1449.6988166,
+    "label": "1449.7 ms"
+  }
+]
