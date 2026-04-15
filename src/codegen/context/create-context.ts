@@ -88,6 +88,7 @@ export function createCodegenContext(
     nativeStrTypeIdx: -1,
     consStrTypeIdx: -1,
     nativeStrHelpersEmitted: false,
+    nativeStrExternBridgeEmitted: false,
     nativeStrHelpers: new Map(),
     refCellTypeMap: new Map(),
     anyValueTypeIdx: -1,
