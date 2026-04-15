@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { compile } from "./index.js";

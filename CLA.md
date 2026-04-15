@@ -6,7 +6,7 @@ You grant **Loopdive GmbH** an irrevocable, worldwide, perpetual, sublicensable 
 
 This includes use in:
 
-- the AGPL community distribution
+- the Apache 2.0 with LLVM Exceptions community distribution
 - commercial licenses
 - proprietary partner integrations
 - private forks and negotiated infrastructure agreements

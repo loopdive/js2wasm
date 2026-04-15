@@ -4,7 +4,7 @@ Direct AOT compilation from JavaScript and TypeScript to WebAssembly GC.
 
 `js2wasm` compiles source code into WasmGC binaries without embedding a JavaScript interpreter or shipping a bundled runtime. That removes the multi-megabyte runtime tax common in interpreter-in-Wasm stacks and keeps the output aligned with Wasm-native deployment models.
 
-`js2wasm` is the core compiler product of **Loopdive GmbH** and is being prepared for a community-first launch under **GNU AGPL v3**.
+`js2wasm` is the core compiler product of **Loopdive GmbH** and is being prepared for a community-first launch under **Apache License 2.0 with LLVM Exceptions**.
 
 ## Value Proposition
 
@@ -162,11 +162,11 @@ The project is optimized for:
 
 ## Licensing
 
-This repository is licensed under the **GNU Affero General Public License v3.0 only**. See [LICENSE](./LICENSE).
+This repository is licensed under the **Apache License 2.0 with LLVM Exceptions**. See [LICENSE](./LICENSE).
 
 ### Community License
 
-- Source code in this repository is available under **AGPL-3.0-only**
+- Source code in this repository is available under **Apache-2.0 WITH LLVM-exception**
 - Community contributions are accepted under the contributor terms described in [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ### Commercial Licensing

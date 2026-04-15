@@ -57,7 +57,7 @@ By contributing code, documentation, tests, or other material to this repository
 
 If you do not agree to these terms, do not submit a contribution.
 
-This CLA requirement exists so the project can maintain an AGPL community distribution while also supporting commercial and proprietary licensing arrangements for infrastructure partners.
+This CLA requirement exists so the project can maintain an Apache 2.0 with LLVM Exceptions community distribution while also supporting commercial and proprietary licensing arrangements for infrastructure partners.
 
 ## Pull Requests
 
@@ -71,6 +71,6 @@ PRs may be subject to an automated CLA check workflow placeholder until a dedica
 
 ## License
 
-The repository source is licensed under **AGPL-3.0-only**. See [LICENSE](./LICENSE).
+The repository source is licensed under **Apache-2.0 WITH LLVM-exception**. See [LICENSE](./LICENSE).
 
 Contributions are accepted only under the CLA terms above.

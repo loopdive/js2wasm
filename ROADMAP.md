@@ -15,7 +15,7 @@ Over 31 development sprints and **784 closed issues**, js2wasm has grown from a 
 ### Conformance
 
 - **17,252 / 48,088** test262 tests passing (**35.9%** of the full ECMAScript conformance suite)
-- Automated conformance tracking with historical trend data and a [live dashboard](https://loopdive.github.io/js2wasm/dashboard/)
+- Automated conformance tracking with historical trend data and a public [conformance report](https://loopdive.github.io/js2wasm/benchmarks/report.html)
 - 195 project-level equivalence tests validating JS↔Wasm output parity
 
 ### Language Features (compiled to native Wasm)
@@ -126,8 +126,8 @@ Compute-intensive workloads (fibonacci, loops, array operations) already match o
 
 - **Repository**: [github.com/loopdive/js2wasm](https://github.com/loopdive/js2wasm)
 - **Playground**: [Live demo](https://loopdive.github.io/js2wasm/playground/)
-- **Dashboard**: [Conformance tracking](https://loopdive.github.io/js2wasm/dashboard/)
-- **License**: GNU AGPL v3
+- **Conformance report**: [Historical compatibility tracking](https://loopdive.github.io/js2wasm/benchmarks/report.html)
+- **License**: Apache 2.0 with LLVM Exceptions
 
 ---
 
