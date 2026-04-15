@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Loopdive GmbH. Licensed under AGPL-3.0.
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Relocatable Wasm object file (.o) emitter.
  *
