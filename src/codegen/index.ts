@@ -69,6 +69,7 @@ import {
 } from "./declarations.js";
 import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
 import {
+  ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   flatStringType,
   nativeStringType,
@@ -83,6 +84,7 @@ export {
   destructureParamObject,
   ensureAnyHelpers,
   ensureAnyValueType,
+  ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   ensureWrapperTypes,
   flatStringType,

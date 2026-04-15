@@ -358,6 +358,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
 | #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
+| #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
+| #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
+| #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
 
 ### In Progress
 

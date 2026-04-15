@@ -79,6 +79,7 @@ import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./
 import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 import { resolveStructName } from "./misc.js";
 import { compileSuperElementMethodCall, compileSuperMethodCall } from "./new-super.js";
+import { ensureNativeStringExternBridge } from "../native-strings.js";
 
 /**
  * Check if a node (function body) uses the `arguments` binding.
@@ -1121,6 +1122,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         fctx.body.push({ op: "call", funcIdx });
         // In fast mode, marshal externref string to native string
         if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+          ensureNativeStringExternBridge(ctx);
+          flushLateImportShifts(ctx, fctx);
           const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
           if (fromExternIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: fromExternIdx });

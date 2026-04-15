@@ -151,6 +151,7 @@ and [#998](../sprints/40/998.md); [#848](../sprints/30/848.md) is already comple
 | [1001](../sprints/42/1001.md) | Medium | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark | Ready |
 | [1004](../sprints/42/1004.md) | Medium | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark | Ready |
 | [1005](../sprints/42/1005.md) | Medium | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Startup benchmarking | Ready |
+| [888](888.md) | High | Benchmark js2wasm vs StarlingMonkey vs native Node.js on Wasmtime cold start, size, and runtime | Competitive positioning / deployment tradeoffs | Ready |
 | [1007](1007.md) | Medium | Re-run historical test262 checkpoints with the current harness for comparable conformance history | Historical benchmark normalization | Ready |
 | [1008](1008.md) | Medium | Add mobile-first layout support to the playground | Playground mobile UX | Ready |
 | [1009](1009.md) | Medium | Investigate report-page benchmark outliers where Wasm is much slower than JS | Report benchmark analysis | Ready |

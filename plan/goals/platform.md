@@ -54,7 +54,6 @@ WASI HTTP enables serverless edge functions.
 | **865** | Console wrapper for fd_write in JavaScript environments | Backlog | ready | medium |
 | **885** | README: update with real conformance numbers, architecture diagram, comparison table | 33 | done | high |
 | **887** | Project roadmap document for STF funding application | 33 | done | high |
-| **888** | Performance benchmark: js2wasm vs StarlingMonkey vs Javy on V8 and Wasmtime | Backlog | ready | high |
 | **910** | Split expressions.ts into syntax-family modules | 39 | done | high |
 | **937** | Add console.info() and console.debug() as aliases for console.log() | 37 | done | low |
 | **940** | Add String.fromCodePoint to WASI/standalone string helpers | 37 | done | low |
