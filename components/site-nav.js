@@ -336,7 +336,6 @@ class SiteNav extends HTMLElement {
           <li><a href="${isLanding ? "" : base}#goals">Compatibility</a></li>
           <li><a href="${isLanding ? "" : base}#how-it-works">How it works</a></li>
           <li><a href="${isLanding ? "" : base}#roadmap">Roadmap</a></li>
-          <li><a href="${base}dashboard/">Progress</a></li>
         </ul>
         <div class="mobile-actions">
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">

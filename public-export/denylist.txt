@@ -1,0 +1,6 @@
+# Public repository export denylist.
+# One path per line, relative to the private repository root or the staged tree.
+
+playground/vite-plugin-dashboard.ts
+public/graph-data.json
+public/issues-graph.html

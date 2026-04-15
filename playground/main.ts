@@ -1085,7 +1085,7 @@ const compatLink = document.getElementById("compat-link") as HTMLAnchorElement |
 const planLink = document.getElementById("plan-link") as HTMLAnchorElement | null;
 
 if (compatLink) compatLink.href = resolveSiteLink("benchmarks/report.html");
-if (planLink) planLink.href = resolveSiteLink("dashboard/");
+if (planLink) planLink.href = resolveSiteLink("#roadmap");
 
 // Session storage for input
 bindInputModelPersistence(inputFile.model);
