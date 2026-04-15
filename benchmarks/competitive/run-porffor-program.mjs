@@ -1,5 +1,11 @@
 import { readFileSync } from "node:fs";
-import compile from "../../vendor/Porffor/compiler/wrap.js";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+const ROOT = path.resolve(import.meta.dirname, "..", "..");
+const porfforRoot = process.env.PORFFOR_ROOT || path.resolve(ROOT, "vendor", "Porffor");
+const porfforWrapPath = process.env.PORFFOR_WRAP || path.join(porfforRoot, "compiler", "wrap.js");
+const { default: compile } = await import(pathToFileURL(porfforWrapPath).href);
 
 const args = process.argv.slice(2);
 const hotMode = args[0] === "--hot";
