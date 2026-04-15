@@ -432,6 +432,40 @@
         border-top-color: rgba(255, 255, 255, 0.82);
       }
 
+      .host-bench-copy {
+        max-width: 860px;
+        margin-top: 18px;
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--fg-faint);
+      }
+
+      .host-bench-group {
+        margin-top: 42px;
+      }
+
+      .host-bench-group:first-of-type {
+        margin-top: 32px;
+      }
+
+      .host-bench-title {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--fg-faint);
+        margin: 0 0 16px;
+      }
+
+      .host-bench-subcopy {
+        max-width: 780px;
+        margin: 0 0 28px;
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--fg-faint);
+      }
+
       /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
       /* Benchmark performance chart is now in <perf-benchmark-chart> shadow DOM */
 
@@ -2831,6 +2865,59 @@ match (value) {
 
       <hr class="divider" />
 
+      <section class="section-pad" id="wasm-hosts">
+        <div class="intro">
+          <h2>Run JavaScript without an interpreter.</h2>
+          <p>
+            When running outside of a JS engine like found in browsers or Node.js, compatibility today typically means
+            embedding a JS interpreter inside the WebAssembly module. This increases module size and slows execution.
+          </p>
+          <p class="host-bench-copy">
+            Each bar shows the measured median for one toolchain. Lower values are better. The vertical marker shows
+            the plain JavaScript baseline running in a JS host.
+          </p>
+        </div>
+
+        <div class="host-bench-group">
+          <h3 class="host-bench-title">Wasmtime</h3>
+          <p class="host-bench-subcopy">
+            Compare direct AOT WebAssembly output against interpreter-bundling approaches in a standalone WebAssembly
+            runtime.
+          </p>
+          <div class="conformance-diagrams">
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
+                mode="absolute-lower-better"
+                baseline-label="JS (V8)"
+                title="Cold Start"
+                legend="Median startup time for standalone Wasmtime execution, with JS-host baseline marker (lower is better)"
+              ></perf-benchmark-chart>
+            </div>
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
+                mode="absolute-lower-better"
+                baseline-label="JS (V8)"
+                title="Hot Runtime"
+                legend="Median amortized runtime per call after one module load in Wasmtime, with JS-host baseline marker (lower is better)"
+              ></perf-benchmark-chart>
+            </div>
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
+                mode="absolute-lower-better"
+                baseline-label="JS (V8)"
+                title="Module Size"
+                legend="Raw .wasm or component size for the standalone Wasmtime comparison, with JS baseline marker (lower is better)"
+              ></perf-benchmark-chart>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
       <section class="section-pad" id="how-it-works">
         <div class="intro">
           <h2>Compiled ahead of time, no interpreter.</h2>
@@ -2984,7 +3071,7 @@ const dom = await js2.import("./dom.js", { document });
           performance, and strengthen security.
         </p>
         <div class="cta-actions">
-          <a class="btn-solid" href="./dashboard/">Roadmap</a>
+          <a class="btn-solid" href="#roadmap">Roadmap</a>
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">View Source</a>
         </div>
       </section>
@@ -3001,7 +3088,7 @@ const dom = await js2.import("./dom.js", { document });
             <h4>Explore</h4>
             <ul>
               <li><a href="./playground/">Playground</a></li>
-              <li><a href="./dashboard/">Roadmap</a></li>
+              <li><a href="#roadmap">Roadmap</a></li>
               <li><a href="./benchmarks/report.html">Conformance Report</a></li>
               <li><a href="#goals">Compatibility</a></li>
             </ul>
@@ -3010,7 +3097,6 @@ const dom = await js2.import("./dom.js", { document });
             <h4>Inspect</h4>
             <ul>
               <li><a href="./wasm-treemap.html">Wasm Treemap</a></li>
-              <li><a href="./issues-graph.html">Issues Graph</a></li>
               <li><a href="https://github.com/loopdive/js2wasm">GitHub</a></li>
               <li><a href="#approach">Approach</a></li>
             </ul>
