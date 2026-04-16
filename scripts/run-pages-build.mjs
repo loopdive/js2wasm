@@ -20,10 +20,10 @@ const hasPlanningArtifacts =
   existsSync(resolve(ROOT, "scripts", "build-planning-artifacts.mjs"));
 
 if (hasPlanningArtifacts) {
-  run("npx", ["tsx", "scripts/sprint-stats.ts"]);
+  run(process.execPath, ["--experimental-strip-types", "scripts/sprint-stats.ts"]);
   run("node", ["scripts/build-planning-artifacts.mjs"]);
 }
 
 run("pnpm", ["run", "build:playground"]);
-run("npx", ["tsx", "scripts/generate-size-benchmarks.ts"]);
+run(process.execPath, ["--experimental-strip-types", "scripts/generate-size-benchmarks.ts"]);
 run("node", ["scripts/build-pages.js"]);

@@ -51,6 +51,12 @@ function copyDirectory(source, destination) {
   });
 }
 
+function copyDirectoryIfExists(source, destination) {
+  if (!existsSync(source)) return false;
+  copyDirectory(source, destination);
+  return true;
+}
+
 function copyFileIfExists(source, destination) {
   if (!existsSync(source)) return false;
   copyFile(source, destination);
@@ -222,7 +228,7 @@ if (hasDashboardBundle) {
   copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"));
 }
 // issues-graph.html + graph-data.json are in public/ → included via Vite build
-copyDirectory(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
+copyDirectoryIfExists(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
 
 // Add the benchmark data files fetched by the public report pages. Public pages
 // should read from the already-curated public summaries, not from the full
