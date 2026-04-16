@@ -5,7 +5,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const DEFAULT_EXPORT_DIR = join(ROOT, "tmp", "public-export");
+const DEFAULT_EXPORT_DIR = join(ROOT, ".tmp", "public-export");
 const DEFAULT_PUBLIC_REMOTE = "https://github.com/loopdive/js2wasm.git";
 
 function parseArgs(argv) {

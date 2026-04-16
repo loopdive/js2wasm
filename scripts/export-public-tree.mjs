@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const DEFAULT_OUT_DIR = join(ROOT, "tmp", "public-export");
+const DEFAULT_OUT_DIR = join(ROOT, ".tmp", "public-export");
 const ALLOWLIST_PATH = join(ROOT, "public-export", "allowlist.txt");
 const DENYLIST_PATH = join(ROOT, "public-export", "denylist.txt");
 
