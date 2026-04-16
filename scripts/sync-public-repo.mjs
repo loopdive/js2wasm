@@ -43,6 +43,14 @@ function git(cwd, args) {
   }).trim();
 }
 
+function normalizeRemote(value) {
+  return value
+    .trim()
+    .replace(/^git@github\.com:/, "github.com/")
+    .replace(/^https?:\/\/github\.com\//, "github.com/")
+    .replace(/\.git$/, "");
+}
+
 function assertRepoDir(repoDir, publicRemote, allowDirty) {
   if (!existsSync(join(repoDir, ".git"))) {
     throw new Error(`Target repo is missing .git: ${repoDir}`);
@@ -55,7 +63,7 @@ function assertRepoDir(repoDir, publicRemote, allowDirty) {
   if (origin.includes("js2wasm-private")) {
     throw new Error(`Target repo still points at the private remote: ${origin}`);
   }
-  if (publicRemote && !origin.includes(publicRemote.replace(/^https?:\/\//, "").replace(/\.git$/, ""))) {
+  if (publicRemote && normalizeRemote(origin) !== normalizeRemote(publicRemote)) {
     throw new Error(`Target repo origin does not match expected public remote ${publicRemote}: ${origin}`);
   }
 
