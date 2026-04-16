@@ -336,6 +336,9 @@ class T262Donut extends HTMLElement {
           <div class="pass-tick"></div>
         </div>
       </div>
+      <div class="legend">
+        ${legendHTML}
+      </div>
     `;
 
     // Animate: sweep tick from 0 to passDeg, count up percentage
