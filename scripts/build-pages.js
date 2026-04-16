@@ -89,6 +89,14 @@ function resolvePreferredFile(primarySource, ...fallbackSources) {
   throw new Error(`Required path does not exist: ${primarySource}`);
 }
 
+function resolvePreferredFileOrNull(primarySource, ...fallbackSources) {
+  if (existsSync(primarySource)) return primarySource;
+  for (const fallbackSource of fallbackSources) {
+    if (fallbackSource && existsSync(fallbackSource)) return fallbackSource;
+  }
+  return null;
+}
+
 function writeJson(destination, value) {
   mkdirSync(dirname(destination), { recursive: true });
   writeFileSync(destination, JSON.stringify(value));
@@ -196,6 +204,25 @@ function buildStaticTest262Data(resultsJsonlPath) {
   };
 }
 
+function buildStaticTest262DataFromReport(reportPath) {
+  const report = JSON.parse(readFileSync(reportPath, "utf-8"));
+  const categories = Array.isArray(report.categories)
+    ? report.categories
+        .map((entry) => ({
+          name: entry.name,
+          path: entry.name,
+          fileCount: 0,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+
+  return {
+    categories: { categories },
+    filesJson: {},
+    resultsJson: {},
+  };
+}
+
 ensureExists(PLAYGROUND_DIST);
 const hasDashboardBundle =
   existsSync(join(DASHBOARD_DIR, "index.html")) &&
@@ -249,13 +276,15 @@ const test262ReportSource = resolvePreferredFile(
   join(BENCHMARKS_RESULTS_DIR, "test262-report.json"),
   latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-report-", ".json"),
 );
-const test262ResultsSource = resolvePreferredFile(
+const test262ResultsSource = resolvePreferredFileOrNull(
   join(BENCHMARKS_RESULTS_DIR, "test262-current.jsonl"),
   join(BENCHMARKS_RESULTS_DIR, "test262-results.jsonl"),
   latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-results-", ".jsonl"),
 );
 copyFile(test262ReportSource, join(PAGES_DIST, "benchmarks", "results", "test262-report.json"));
-copyFile(test262ResultsSource, join(PAGES_DIST, "benchmarks", "results", "test262-results.jsonl"));
+if (test262ResultsSource) {
+  copyFile(test262ResultsSource, join(PAGES_DIST, "benchmarks", "results", "test262-results.jsonl"));
+}
 copyFile(
   join(BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
   join(PAGES_DIST, "benchmarks", "results", "runs", "index.json"),
@@ -265,7 +294,9 @@ const equivTests = buildEquivTests();
 writeJson(join(PLAYGROUND_DATA_DIR, "equiv-tests.json"), equivTests);
 writeJson(join(PLAYGROUND_APP_DATA_DIR, "equiv-tests.json"), equivTests);
 
-const test262Data = buildStaticTest262Data(test262ResultsSource);
+const test262Data = test262ResultsSource
+  ? buildStaticTest262Data(test262ResultsSource)
+  : buildStaticTest262DataFromReport(test262ReportSource);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-index-summary.json"), test262Data.categories);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-files.json"), test262Data.filesJson);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-file-results.json"), test262Data.resultsJson);
