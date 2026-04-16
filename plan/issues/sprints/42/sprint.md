@@ -320,6 +320,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #744 | Function monomorphization for polymorphic call sites | high | ready |
+| #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
 | #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
 | #862 | Empty error message failures: iterator/destructuring step-err tests (212 FAIL) | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
@@ -358,11 +360,11 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
 | #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
-| #744 | Function monomorphization for polymorphic call sites | high | ready |
-| #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
 | #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
+| #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
+| #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
 
 ### In Progress
@@ -395,5 +397,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1106 | CI baseline-refresh bot wipes plan/ and .claude/memory/ on every run | high | done |
 | #1107 | lodash-es Tier 1 E2E harness — identity, clamp, add compile and run | critical | done |
 | #1108 | lodash-es add: export default of HOF closure result not surfaced as Wasm export | high | done |
+| #1124 | Audit current codegen IR and, if needed, define a minimal SSA middle-end | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
