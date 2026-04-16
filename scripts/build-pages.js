@@ -281,14 +281,17 @@ const test262ResultsSource = resolvePreferredFileOrNull(
   join(BENCHMARKS_RESULTS_DIR, "test262-results.jsonl"),
   latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-results-", ".jsonl"),
 );
+const test262RunsIndexSource = resolvePreferredFileOrNull(
+  join(BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
+  join(PUBLIC_BENCH, "runs", "index.json"),
+);
 copyFile(test262ReportSource, join(PAGES_DIST, "benchmarks", "results", "test262-report.json"));
 if (test262ResultsSource) {
   copyFile(test262ResultsSource, join(PAGES_DIST, "benchmarks", "results", "test262-results.jsonl"));
 }
-copyFile(
-  join(BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
-  join(PAGES_DIST, "benchmarks", "results", "runs", "index.json"),
-);
+if (test262RunsIndexSource) {
+  copyFile(test262RunsIndexSource, join(PAGES_DIST, "benchmarks", "results", "runs", "index.json"));
+}
 
 const equivTests = buildEquivTests();
 writeJson(join(PLAYGROUND_DATA_DIR, "equiv-tests.json"), equivTests);
@@ -315,10 +318,9 @@ copyFileIfExists(
 if (existsSync(join(PUBLIC_BENCH, "loadtime"))) {
   copyDirectory(join(PUBLIC_BENCH, "loadtime"), join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime"));
 }
-copyFileIfExists(
-  join(BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
-  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
-);
+if (test262RunsIndexSource) {
+  copyFile(test262RunsIndexSource, join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "runs", "index.json"));
+}
 copyFileIfExists(
   join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "test262-report.json"),
