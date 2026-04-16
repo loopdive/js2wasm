@@ -278,6 +278,7 @@ const test262ReportSource = resolvePreferredFile(
 );
 const test262ResultsSource = resolvePreferredFileOrNull(
   join(BENCHMARKS_RESULTS_DIR, "test262-current.jsonl"),
+  join(PUBLIC_BENCH, "test262-results.jsonl"),
   join(BENCHMARKS_RESULTS_DIR, "test262-results.jsonl"),
   latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-results-", ".jsonl"),
 );
