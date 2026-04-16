@@ -47,15 +47,35 @@ node scripts/export-public-tree.mjs --out /tmp/js2wasm-public
 
 ## Publish Flow
 
-1. Update the private repository normally.
-2. Regenerate public-facing artifacts, especially `public/benchmarks/results/*`.
-3. Run `node scripts/export-public-tree.mjs`.
-4. Review the staged tree under `.tmp/public-export`.
-5. Sync that tree into the public `js2wasm` repository.
+The normal one-command flow is now:
+
+```bash
+pnpm run publish:public
+```
+
+That:
+
+- regenerates the staged export under `.tmp/public-export`
+- syncs it into the local public checkout at `../js2wasm-public`
+- stops before commit/push so the public diff can still be reviewed
+
+To commit and push in one go:
+
+```bash
+pnpm run publish:public -- --commit --push
+```
+
+You can also override the target checkout:
+
+```bash
+pnpm run publish:public -- --repo-dir /path/to/js2wasm-public --commit
+```
+
+The lower-level steps still exist when you want to inspect them independently.
 
 ## Sync Into The Public Repository
 
-Once the public repository exists locally, sync the staged export into it:
+Once the public repository exists locally, you can still sync the staged export into it directly:
 
 ```bash
 node scripts/sync-public-repo.mjs --repo-dir ../js2wasm-public
@@ -68,7 +88,7 @@ This script:
 - refuses to run on a dirty target repo unless `--allow-dirty` is passed
 - replaces the target working tree with the exported public snapshot while preserving `.git`
 
-After that:
+After that, either commit manually:
 
 ```bash
 cd ../js2wasm-public
@@ -76,6 +96,12 @@ git status --short
 git add .
 git commit -m "chore(public): initial public snapshot"
 git push origin main
+```
+
+Or use the new wrapper:
+
+```bash
+pnpm run publish:public -- --commit --push
 ```
 
 ## Notes

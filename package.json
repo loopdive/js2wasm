@@ -38,6 +38,7 @@
     "setup:benchmark-vendors": "node scripts/setup-benchmark-vendors.mjs",
     "export:public": "node scripts/export-public-tree.mjs",
     "sync:public": "node scripts/sync-public-repo.mjs",
+    "publish:public": "node scripts/publish-public-repo.mjs",
     "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
