@@ -36,7 +36,7 @@ node scripts/export-public-tree.mjs
 This writes a clean staging tree to:
 
 ```text
-tmp/public-export
+.tmp/public-export
 ```
 
 You can also choose a custom destination:
@@ -50,7 +50,7 @@ node scripts/export-public-tree.mjs --out /tmp/js2wasm-public
 1. Update the private repository normally.
 2. Regenerate public-facing artifacts, especially `public/benchmarks/results/*`.
 3. Run `node scripts/export-public-tree.mjs`.
-4. Review the staged tree under `tmp/public-export`.
+4. Review the staged tree under `.tmp/public-export`.
 5. Sync that tree into the public `js2wasm` repository.
 
 ## Sync Into The Public Repository
