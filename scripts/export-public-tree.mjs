@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -45,10 +45,31 @@ function copyEntry(root, outDir, entry) {
   }
   const destination = join(outDir, entry);
   mkdirSync(dirname(destination), { recursive: true });
-  cpSync(source, destination, {
+  const resolvedSource = lstatSync(source).isSymbolicLink() ? realpathSync(source) : source;
+  cpSync(resolvedSource, destination, {
     recursive: true,
     dereference: true,
   });
+}
+
+function materializeSymlinks(rootPath) {
+  for (const entry of readdirSync(rootPath, { withFileTypes: true })) {
+    const fullPath = join(rootPath, entry.name);
+    const stats = lstatSync(fullPath);
+    if (stats.isSymbolicLink()) {
+      const target = readlinkSync(fullPath);
+      const resolvedSource = realpathSync(resolve(dirname(fullPath), target));
+      rmSync(fullPath, { recursive: true, force: true });
+      cpSync(resolvedSource, fullPath, {
+        recursive: true,
+        dereference: true,
+      });
+      continue;
+    }
+    if (stats.isDirectory()) {
+      materializeSymlinks(fullPath);
+    }
+  }
 }
 
 function main() {
@@ -67,6 +88,8 @@ function main() {
   for (const entry of denylist) {
     removeEntry(outDir, entry);
   }
+
+  materializeSymlinks(outDir);
 
   console.log(
     `Exported ${allowlist.length} allowlisted paths to ${relative(ROOT, outDir) || "."} and pruned ${denylist.length} paths`,

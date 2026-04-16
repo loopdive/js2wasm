@@ -79,31 +79,30 @@ function runNodeScript(scriptName, scriptArgs) {
 }
 
 function listChangedPaths(repoDir) {
-  const output = run("git", ["status", "--porcelain=v1", "-z"], { cwd: repoDir });
+  const output = execFileSync("git", ["status", "--porcelain=v1"], {
+    cwd: repoDir,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   if (!output) return [];
 
-  const paths = [];
-  let index = 0;
-  while (index < output.length) {
-    const status = output.slice(index, index + 2);
-    index += 3;
-
-    const end = output.indexOf("\0", index);
-    if (end === -1) break;
-    const firstPath = output.slice(index, end);
-    index = end + 1;
-    paths.push(firstPath);
-
-    if (status.includes("R") || status.includes("C")) {
-      const secondEnd = output.indexOf("\0", index);
-      if (secondEnd === -1) break;
-      const secondPath = output.slice(index, secondEnd);
-      index = secondEnd + 1;
-      paths.push(secondPath);
-    }
-  }
-
-  return [...new Set(paths.filter(Boolean))];
+  return [
+    ...new Set(
+      output
+        .split("\n")
+        .map((line) => line.trimEnd())
+        .filter(Boolean)
+        .flatMap((line) => {
+          const entry = line.slice(3);
+          if (entry.includes(" -> ")) {
+            const [fromPath, toPath] = entry.split(" -> ");
+            return [fromPath, toPath];
+          }
+          return [entry];
+        })
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function stageChangedPaths(repoDir) {
