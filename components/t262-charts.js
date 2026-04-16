@@ -285,7 +285,7 @@ class T262Donut extends HTMLElement {
           color: var(--_text-muted);
         }
         .legend {
-          display: grid;
+          display: none;
           grid-template-columns: 1fr 1fr;
           gap: 8px 16px;
           margin-top: 24px;
@@ -299,6 +299,9 @@ class T262Donut extends HTMLElement {
           .orbit-connector,
           .orbit-stat {
             display: none;
+          }
+          .legend {
+            display: grid;
           }
         }
         .legend-item {
