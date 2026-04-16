@@ -2,7 +2,7 @@ import type { Plugin } from "vite";
 import { readdirSync, readFileSync, existsSync, statSync, realpathSync } from "fs";
 import { join, relative, resolve, normalize } from "path";
 
-const projectRoot = resolve(__dirname, "..");
+const projectRoot = resolve(import.meta.dirname, "..");
 const publicRoot = join(projectRoot, "public");
 const TEST_CATEGORIES = [
   "built-ins/Math/abs",
@@ -219,7 +219,7 @@ function collectFiles(dir: string): string[] {
 }
 
 export function test262Plugin(): Plugin {
-  const projectRoot = resolve(__dirname, "..");
+  const projectRoot = resolve(import.meta.dirname, "..");
   const testBase = join(projectRoot, "test262", "test");
 
   // Cache the index so we don't rescan on every request
