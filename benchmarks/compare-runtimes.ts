@@ -66,6 +66,17 @@ interface ToolchainResult {
   metadata?: Record<string, unknown>;
 }
 
+interface StarlingMonkeyAdapterMetadata {
+  kind?: "module" | "component";
+  invokeExport?: string;
+  hotInvokeExport?: string;
+  componentize?: Record<string, unknown>;
+}
+
+function toComponentHotExport(entryExport: string): string {
+  return `${entryExport}Hot`;
+}
+
 interface ProgramResult {
   id: string;
   label: string;
@@ -111,6 +122,7 @@ const STARLINGMONKEY_WASMTIME_BIN =
   process.env.STARLINGMONKEY_WASMTIME_BIN ||
   (STARLINGMONKEY_ROOT ? path.join(STARLINGMONKEY_ROOT, "deps", "cpm_cache", "wasmtime", "487d", "wasmtime") : "");
 const STARLINGMONKEY_ADAPTER = process.env.STARLINGMONKEY_ADAPTER || "";
+const STARLINGMONKEY_ADAPTER_KIND = process.env.STARLINGMONKEY_ADAPTER_KIND || "module";
 const WASMTIME_OPTIMIZE = process.env.WASMTIME_OPTIMIZE || "opt-level=2";
 const WASMTIME_WASM_FLAGS = ["-W", "gc=y,gc-support=y,function-references=y,exceptions=y"];
 const WASM_OPT_FLAGS = (process.env.WASM_OPT_FLAGS || "--all-features -O4").trim().split(/\s+/).filter(Boolean);
@@ -163,13 +175,14 @@ function sumExistingPathFootprints(...targetPaths: string[]): number | null {
 function runCommand(
   command: string,
   args: string[],
-  options: { cwd?: string; input?: string | Buffer } = {},
+  options: { cwd?: string; input?: string | Buffer; env?: NodeJS.ProcessEnv } = {},
 ): { ok: boolean; stdout: string; stderr: string; durationMs: number } {
   const started = performance.now();
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? ROOT,
     encoding: "utf8",
     input: options.input,
+    env: options.env ? { ...process.env, ...options.env } : process.env,
   });
   const durationMs = performance.now() - started;
   return {
@@ -281,6 +294,26 @@ function parseWasmtimeInvokeOutput(stdout: string): number {
     throw new Error(`Could not parse wasmtime output: ${stdout}`);
   }
   return Number(match[0]);
+}
+
+function readStarlingMonkeyAdapterMetadata(outputPath: string): StarlingMonkeyAdapterMetadata {
+  const metadataPath = `${outputPath}.json`;
+  if (!existsSync(metadataPath)) {
+    return {
+      kind: STARLINGMONKEY_ADAPTER_KIND === "component" ? "component" : "module",
+    };
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(metadataPath, "utf8")) as StarlingMonkeyAdapterMetadata;
+    return {
+      kind: parsed.kind ?? (STARLINGMONKEY_ADAPTER_KIND === "component" ? "component" : "module"),
+      invokeExport: parsed.invokeExport,
+      hotInvokeExport: parsed.hotInvokeExport,
+      componentize: parsed.componentize,
+    };
+  } catch (error) {
+    throw new Error(`Failed to parse StarlingMonkey adapter metadata at ${metadataPath}: ${String(error)}`);
+  }
 }
 
 function measureNodeProcess(program: LoadedProgram, arg: number, runs: number): InvocationMetric {
@@ -1520,203 +1553,22 @@ function evaluateJs2Wasm(program: LoadedProgram, baselineCold: number, baselineR
   }
 }
 
-function evaluateStarlingMonkey(
+function evaluateStarlingMonkeyRuntimeEval(
   program: LoadedProgram,
   baselineCold: number,
   baselineRuntime: number,
 ): ToolchainResult {
   if (
-    STARLINGMONKEY_RUNTIME &&
-    STARLINGMONKEY_WASMTIME_BIN &&
-    existsSync(STARLINGMONKEY_RUNTIME) &&
-    existsSync(STARLINGMONKEY_WASMTIME_BIN)
+    !STARLINGMONKEY_RUNTIME ||
+    !STARLINGMONKEY_WASMTIME_BIN ||
+    !existsSync(STARLINGMONKEY_RUNTIME) ||
+    !existsSync(STARLINGMONKEY_WASMTIME_BIN)
   ) {
-    const tmpDir = mkdtempSync(path.join(os.tmpdir(), "starlingmonkey-competitive-"));
-    try {
-      const hotIterations = program.benchmark.hotIterations;
-      const compilerBytes = sumExistingPathFootprints(STARLINGMONKEY_WASMTIME_BIN);
-      const runtimeBytes = sumExistingPathFootprints(STARLINGMONKEY_RUNTIME);
-      const cwasmPath = path.join(tmpDir, "starling.cwasm");
-      const precompile = runCommand(STARLINGMONKEY_WASMTIME_BIN, [
-        "compile",
-        "-S",
-        "http",
-        "-O",
-        WASMTIME_OPTIMIZE,
-        "-o",
-        cwasmPath,
-        STARLINGMONKEY_RUNTIME,
-      ]);
-      if (!precompile.ok) {
-        return {
-          id: "starlingmonkey-wasmtime",
-          label: "StarlingMonkey -> Wasmtime",
-          status: "runtime-error",
-          notes: [precompile.stderr || "wasmtime compile failed"],
-          compilerBytes,
-          runtimeBytes,
-          compileMs: precompile.durationMs,
-          rawBytes: statSync(STARLINGMONKEY_RUNTIME).size,
-          gzipBytes: gzipBytes(readFileSync(STARLINGMONKEY_RUNTIME)),
-          precompiledBytes: null,
-          coldStart: null,
-          runtime: null,
-          computeOnly: null,
-        };
-      }
-
-      const rawBytes = statSync(STARLINGMONKEY_RUNTIME).size;
-      const compressedBytes = gzipBytes(readFileSync(STARLINGMONKEY_RUNTIME));
-      let coldStart: InvocationMetric;
-      try {
-        coldStart = measureStarlingInvocation(
-          cwasmPath,
-          program,
-          program.benchmark.coldArg,
-          program.benchmark.coldRuns,
-        );
-      } catch (error) {
-        return {
-          id: "starlingmonkey-wasmtime",
-          label: "StarlingMonkey -> Wasmtime",
-          status: "runtime-error",
-          notes: [String(error)],
-          compilerBytes,
-          runtimeBytes,
-          compileMs: precompile.durationMs,
-          rawBytes,
-          gzipBytes: compressedBytes,
-          precompiledBytes: statSync(cwasmPath).size,
-          coldStart: null,
-          runtime: null,
-          computeOnly: null,
-        };
-      }
-      if (coldStart.result !== baselineCold) {
-        return {
-          id: "starlingmonkey-wasmtime",
-          label: "StarlingMonkey -> Wasmtime",
-          status: "runtime-error",
-          notes: [`checksum mismatch for cold run: expected ${baselineCold}, got ${coldStart.result}`],
-          compilerBytes,
-          runtimeBytes,
-          compileMs: precompile.durationMs,
-          rawBytes,
-          gzipBytes: compressedBytes,
-          precompiledBytes: statSync(cwasmPath).size,
-          coldStart,
-          runtime: null,
-          computeOnly: null,
-        };
-      }
-
-      const runtimeSingleCall = measureStarlingInvocation(
-        cwasmPath,
-        program,
-        program.benchmark.runtimeArg,
-        program.benchmark.runtimeRuns,
-      );
-      if (runtimeSingleCall.result !== baselineRuntime) {
-        return {
-          id: "starlingmonkey-wasmtime",
-          label: "StarlingMonkey -> Wasmtime",
-          status: "runtime-error",
-          notes: [
-            `checksum mismatch for runtime single call: expected ${baselineRuntime}, got ${runtimeSingleCall.result}`,
-          ],
-          compilerBytes,
-          runtimeBytes,
-          compileMs: precompile.durationMs,
-          rawBytes,
-          gzipBytes: compressedBytes,
-          precompiledBytes: statSync(cwasmPath).size,
-          coldStart,
-          runtime: null,
-          computeOnly: null,
-        };
-      }
-
-      let runtime: InvocationMetric;
-      try {
-        runtime = measureStarlingHotInvocation(
-          cwasmPath,
-          program,
-          program.benchmark.runtimeArg,
-          program.benchmark.runtimeRuns,
-          hotIterations,
-        );
-      } catch (error) {
-        return {
-          id: "starlingmonkey-wasmtime",
-          label: "StarlingMonkey -> Wasmtime",
-          status: "runtime-error",
-          notes: [String(error)],
-          compilerBytes,
-          runtimeBytes,
-          compileMs: precompile.durationMs,
-          rawBytes,
-          gzipBytes: compressedBytes,
-          precompiledBytes: statSync(cwasmPath).size,
-          coldStart,
-          runtime: null,
-          computeOnly: null,
-        };
-      }
-      if (runtime.result !== baselineRuntime) {
-        return {
-          id: "starlingmonkey-wasmtime",
-          label: "StarlingMonkey -> Wasmtime",
-          status: "runtime-error",
-          notes: [`checksum mismatch for runtime run: expected ${baselineRuntime}, got ${runtime.result}`],
-          compilerBytes,
-          runtimeBytes,
-          compileMs: precompile.durationMs,
-          rawBytes,
-          gzipBytes: compressedBytes,
-          precompiledBytes: statSync(cwasmPath).size,
-          coldStart,
-          runtime,
-          computeOnly: null,
-        };
-      }
-
-      return {
-        id: "starlingmonkey-wasmtime",
-        label: "StarlingMonkey -> Wasmtime",
-        status: "ok",
-        notes: ["runtime-eval component reused across programs"],
-        compilerBytes,
-        runtimeBytes,
-        compileMs: precompile.durationMs,
-        rawBytes,
-        gzipBytes: compressedBytes,
-        precompiledBytes: statSync(cwasmPath).size,
-        coldStart,
-        runtime,
-        computeOnly: estimateComputeOnly(runtimeSingleCall, runtime),
-        metadata: {
-          runtime: path.relative(ROOT, STARLINGMONKEY_RUNTIME),
-          wasmtime: path.relative(ROOT, STARLINGMONKEY_WASMTIME_BIN),
-          wasmtimeOptimize: WASMTIME_OPTIMIZE,
-          hotIterations,
-          computeMethod: "estimated = hot_runtime - single_call/iterations",
-        },
-      };
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  }
-
-  if (!STARLINGMONKEY_ADAPTER) {
     return {
-      id: "starlingmonkey-wasmtime",
-      label: "StarlingMonkey -> Wasmtime",
+      id: "starlingmonkey-runtime-eval-wasmtime",
+      label: "StarlingMonkey runtime-eval -> Wasmtime",
       status: "unavailable",
-      notes: STARLINGMONKEY_ROOT
-        ? [
-            `vendored checkout found at ${path.relative(ROOT, STARLINGMONKEY_ROOT)}, but no adapter is configured yet; StarlingMonkey currently exposes runtime-eval and fetch-component flows rather than a direct benchmark-module compiler`,
-          ]
-        : ["STARLINGMONKEY_ADAPTER is not configured"],
+      notes: ["StarlingMonkey runtime-eval artifact is not configured"],
       rawBytes: null,
       runtimeBytes: null,
       gzipBytes: null,
@@ -1730,14 +1582,221 @@ function evaluateStarlingMonkey(
   const tmpDir = mkdtempSync(path.join(os.tmpdir(), "starlingmonkey-competitive-"));
   try {
     const hotIterations = program.benchmark.hotIterations;
+    const compilerBytes = sumExistingPathFootprints(STARLINGMONKEY_WASMTIME_BIN);
+    const runtimeBytes = sumExistingPathFootprints(STARLINGMONKEY_RUNTIME);
+    const cwasmPath = path.join(tmpDir, "starling.cwasm");
+    const precompile = runCommand(STARLINGMONKEY_WASMTIME_BIN, [
+      "compile",
+      "-S",
+      "http",
+      "-O",
+      WASMTIME_OPTIMIZE,
+      "-o",
+      cwasmPath,
+      STARLINGMONKEY_RUNTIME,
+    ]);
+    if (!precompile.ok) {
+      return {
+        id: "starlingmonkey-runtime-eval-wasmtime",
+        label: "StarlingMonkey runtime-eval -> Wasmtime",
+        status: "runtime-error",
+        notes: [precompile.stderr || "wasmtime compile failed"],
+        compilerBytes,
+        runtimeBytes,
+        compileMs: precompile.durationMs,
+        rawBytes: statSync(STARLINGMONKEY_RUNTIME).size,
+        gzipBytes: gzipBytes(readFileSync(STARLINGMONKEY_RUNTIME)),
+        precompiledBytes: null,
+        coldStart: null,
+        runtime: null,
+        computeOnly: null,
+      };
+    }
+
+    const rawBytes = statSync(STARLINGMONKEY_RUNTIME).size;
+    const compressedBytes = gzipBytes(readFileSync(STARLINGMONKEY_RUNTIME));
+    let coldStart: InvocationMetric;
+    try {
+      coldStart = measureStarlingInvocation(cwasmPath, program, program.benchmark.coldArg, program.benchmark.coldRuns);
+    } catch (error) {
+      return {
+        id: "starlingmonkey-runtime-eval-wasmtime",
+        label: "StarlingMonkey runtime-eval -> Wasmtime",
+        status: "runtime-error",
+        notes: [String(error)],
+        compilerBytes,
+        runtimeBytes,
+        compileMs: precompile.durationMs,
+        rawBytes,
+        gzipBytes: compressedBytes,
+        precompiledBytes: statSync(cwasmPath).size,
+        coldStart: null,
+        runtime: null,
+        computeOnly: null,
+      };
+    }
+    if (coldStart.result !== baselineCold) {
+      return {
+        id: "starlingmonkey-runtime-eval-wasmtime",
+        label: "StarlingMonkey runtime-eval -> Wasmtime",
+        status: "runtime-error",
+        notes: [`checksum mismatch for cold run: expected ${baselineCold}, got ${coldStart.result}`],
+        compilerBytes,
+        runtimeBytes,
+        compileMs: precompile.durationMs,
+        rawBytes,
+        gzipBytes: compressedBytes,
+        precompiledBytes: statSync(cwasmPath).size,
+        coldStart,
+        runtime: null,
+        computeOnly: null,
+      };
+    }
+
+    const runtimeSingleCall = measureStarlingInvocation(
+      cwasmPath,
+      program,
+      program.benchmark.runtimeArg,
+      program.benchmark.runtimeRuns,
+    );
+    if (runtimeSingleCall.result !== baselineRuntime) {
+      return {
+        id: "starlingmonkey-runtime-eval-wasmtime",
+        label: "StarlingMonkey runtime-eval -> Wasmtime",
+        status: "runtime-error",
+        notes: [
+          `checksum mismatch for runtime single call: expected ${baselineRuntime}, got ${runtimeSingleCall.result}`,
+        ],
+        compilerBytes,
+        runtimeBytes,
+        compileMs: precompile.durationMs,
+        rawBytes,
+        gzipBytes: compressedBytes,
+        precompiledBytes: statSync(cwasmPath).size,
+        coldStart,
+        runtime: null,
+        computeOnly: null,
+      };
+    }
+
+    let runtime: InvocationMetric;
+    try {
+      runtime = measureStarlingHotInvocation(
+        cwasmPath,
+        program,
+        program.benchmark.runtimeArg,
+        program.benchmark.runtimeRuns,
+        hotIterations,
+      );
+    } catch (error) {
+      return {
+        id: "starlingmonkey-runtime-eval-wasmtime",
+        label: "StarlingMonkey runtime-eval -> Wasmtime",
+        status: "runtime-error",
+        notes: [String(error)],
+        compilerBytes,
+        runtimeBytes,
+        compileMs: precompile.durationMs,
+        rawBytes,
+        gzipBytes: compressedBytes,
+        precompiledBytes: statSync(cwasmPath).size,
+        coldStart,
+        runtime: null,
+        computeOnly: null,
+      };
+    }
+    if (runtime.result !== baselineRuntime) {
+      return {
+        id: "starlingmonkey-runtime-eval-wasmtime",
+        label: "StarlingMonkey runtime-eval -> Wasmtime",
+        status: "runtime-error",
+        notes: [`checksum mismatch for runtime run: expected ${baselineRuntime}, got ${runtime.result}`],
+        compilerBytes,
+        runtimeBytes,
+        compileMs: precompile.durationMs,
+        rawBytes,
+        gzipBytes: compressedBytes,
+        precompiledBytes: statSync(cwasmPath).size,
+        coldStart,
+        runtime,
+        computeOnly: null,
+      };
+    }
+
+    return {
+      id: "starlingmonkey-runtime-eval-wasmtime",
+      label: "StarlingMonkey runtime-eval -> Wasmtime",
+      status: "ok",
+      notes: ["runtime-eval component reused across programs"],
+      compilerBytes,
+      runtimeBytes,
+      compileMs: precompile.durationMs,
+      rawBytes,
+      gzipBytes: compressedBytes,
+      precompiledBytes: statSync(cwasmPath).size,
+      coldStart,
+      runtime,
+      computeOnly: estimateComputeOnly(runtimeSingleCall, runtime),
+      metadata: {
+        runtime: path.relative(ROOT, STARLINGMONKEY_RUNTIME),
+        wasmtime: path.relative(ROOT, STARLINGMONKEY_WASMTIME_BIN),
+        wasmtimeOptimize: WASMTIME_OPTIMIZE,
+        hotIterations,
+        computeMethod: "estimated = hot_runtime - single_call/iterations",
+      },
+    };
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function evaluateStarlingMonkeyComponentize(
+  program: LoadedProgram,
+  baselineCold: number,
+  baselineRuntime: number,
+): ToolchainResult {
+  if (!STARLINGMONKEY_ADAPTER) {
+    return {
+      id: "starlingmonkey-componentize-wasmtime",
+      label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+      status: "unavailable",
+      notes: STARLINGMONKEY_ROOT
+        ? [
+            `vendored checkout found at ${path.relative(ROOT, STARLINGMONKEY_ROOT)}, but STARLINGMONKEY_ADAPTER is not configured`,
+          ]
+        : ["STARLINGMONKEY_ADAPTER is not configured"],
+      rawBytes: null,
+      runtimeBytes: null,
+      gzipBytes: null,
+      precompiledBytes: null,
+      coldStart: null,
+      runtime: null,
+      computeOnly: null,
+    };
+  }
+
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), "starlingmonkey-componentize-competitive-"));
+  try {
+    const hotIterations = program.benchmark.hotIterations;
     const inputPath = path.join(tmpDir, program.fileName);
     const wasmPath = path.join(tmpDir, `${program.benchmark.id}.wasm`);
     copyFileSync(program.filePath, inputPath);
-    const compileStep = runCommand(STARLINGMONKEY_ADAPTER, [inputPath, wasmPath]);
+    const adapterCommand =
+      STARLINGMONKEY_ADAPTER.endsWith(".mjs") || STARLINGMONKEY_ADAPTER.endsWith(".js")
+        ? process.execPath
+        : STARLINGMONKEY_ADAPTER;
+    const adapterArgs =
+      adapterCommand === process.execPath ? [STARLINGMONKEY_ADAPTER, inputPath, wasmPath] : [inputPath, wasmPath];
+    const compileStep = runCommand(adapterCommand, adapterArgs, {
+      env: {
+        STARLINGMONKEY_ENTRY_EXPORT: program.benchmark.entryExport,
+        STARLINGMONKEY_HOT_EXPORT: toComponentHotExport(program.benchmark.entryExport),
+      },
+    });
     if (!compileStep.ok) {
       return {
-        id: "starlingmonkey-wasmtime",
-        label: "StarlingMonkey -> Wasmtime",
+        id: "starlingmonkey-componentize-wasmtime",
+        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
         status: "compile-error",
         notes: [compileStep.stderr || "adapter failed to compile program"],
         compilerBytes: null,
@@ -1751,14 +1810,17 @@ function evaluateStarlingMonkey(
       };
     }
 
+    const metadata = readStarlingMonkeyAdapterMetadata(wasmPath);
+    const invokeExport = metadata.invokeExport || program.benchmark.entryExport;
+    const hotInvokeExport = metadata.hotInvokeExport || `${program.benchmark.entryExport}-hot`;
     const rawBytes = statSync(wasmPath).size;
     const compressedBytes = gzipBytes(readFileSync(wasmPath));
     const cwasmPath = path.join(tmpDir, `${program.benchmark.id}.cwasm`);
     const precompile = compileWithWasmtimeProfile(wasmPath, cwasmPath);
     if (!precompile.ok) {
       return {
-        id: "starlingmonkey-wasmtime",
-        label: "StarlingMonkey -> Wasmtime",
+        id: "starlingmonkey-componentize-wasmtime",
+        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
         status: "runtime-error",
         notes: [precompile.stderr || "wasmtime compile failed"],
         compilerBytes: null,
@@ -1772,16 +1834,11 @@ function evaluateStarlingMonkey(
       };
     }
 
-    const coldStart = measureWasmtimeInvocation(
-      cwasmPath,
-      program.benchmark.entryExport,
-      program.benchmark.coldArg,
-      program.benchmark.coldRuns,
-    );
+    const coldStart = measureWasmtimeInvocation(cwasmPath, invokeExport, program.benchmark.coldArg, program.benchmark.coldRuns);
     if (coldStart.result !== baselineCold) {
       return {
-        id: "starlingmonkey-wasmtime",
-        label: "StarlingMonkey -> Wasmtime",
+        id: "starlingmonkey-componentize-wasmtime",
+        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
         status: "runtime-error",
         notes: [`checksum mismatch for cold run: expected ${baselineCold}, got ${coldStart.result}`],
         compilerBytes: null,
@@ -1797,14 +1854,14 @@ function evaluateStarlingMonkey(
 
     const runtimeSingleCall = measureWasmtimeInvocation(
       cwasmPath,
-      program.benchmark.entryExport,
+      invokeExport,
       program.benchmark.runtimeArg,
       program.benchmark.runtimeRuns,
     );
     if (runtimeSingleCall.result !== baselineRuntime) {
       return {
-        id: "starlingmonkey-wasmtime",
-        label: "StarlingMonkey -> Wasmtime",
+        id: "starlingmonkey-componentize-wasmtime",
+        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
         status: "runtime-error",
         notes: [
           `checksum mismatch for runtime single call: expected ${baselineRuntime}, got ${runtimeSingleCall.result}`,
@@ -1822,15 +1879,15 @@ function evaluateStarlingMonkey(
 
     const runtime = measureWasmtimeHotInvocation(
       cwasmPath,
-      program.benchmark.entryExport,
+      hotInvokeExport,
       program.benchmark.runtimeArg,
       program.benchmark.runtimeRuns,
       hotIterations,
     );
     if (runtime.result !== baselineRuntime) {
       return {
-        id: "starlingmonkey-wasmtime",
-        label: "StarlingMonkey -> Wasmtime",
+        id: "starlingmonkey-componentize-wasmtime",
+        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
         status: "runtime-error",
         notes: [`checksum mismatch for runtime run: expected ${baselineRuntime}, got ${runtime.result}`],
         compilerBytes: null,
@@ -1845,10 +1902,13 @@ function evaluateStarlingMonkey(
     }
 
     return {
-      id: "starlingmonkey-wasmtime",
-      label: "StarlingMonkey -> Wasmtime",
+      id: "starlingmonkey-componentize-wasmtime",
+      label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
       status: "ok",
-      notes: [],
+      notes:
+        metadata.kind === "component"
+          ? ["benchmark-specific component artifact generated through ComponentizeJS"]
+          : ["benchmark-specific Wasm artifact generated through adapter"],
       compilerBytes: null,
       runtimeBytes: null,
       rawBytes,
@@ -1859,6 +1919,10 @@ function evaluateStarlingMonkey(
       computeOnly: estimateComputeOnly(runtimeSingleCall, runtime),
       metadata: {
         adapter: STARLINGMONKEY_ADAPTER,
+        adapterKind: metadata.kind ?? "module",
+        invokeExport,
+        hotInvokeExport,
+        componentize: metadata.componentize ?? null,
         wasmtimeOptimize: WASMTIME_OPTIMIZE,
         hotIterations,
         computeMethod: "estimated = hot_runtime - single_call/iterations",
@@ -2591,7 +2655,8 @@ async function main() {
         evaluateAssemblyScript(program, baselineCold.result, baselineRuntime.result),
         evaluateJavy(program, baselineCold.result, baselineRuntime.result),
         evaluatePorffor(program, baselineCold.result, baselineRuntime.result),
-        evaluateStarlingMonkey(program, baselineCold.result, baselineRuntime.result),
+        evaluateStarlingMonkeyRuntimeEval(program, baselineCold.result, baselineRuntime.result),
+        evaluateStarlingMonkeyComponentize(program, baselineCold.result, baselineRuntime.result),
       ],
     });
   }
