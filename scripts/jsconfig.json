@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noEmit": true
+  },
+  "include": ["./**/*.ts", "./**/*.mjs", "./**/*.js", "./node-globals.d.ts"],
+  "exclude": [
+    "./compiler-bundle.mjs",
+    "./runner-bundle.mjs",
+    "./runtime-bundle.mjs",
+    "../node_modules",
+    "../dist",
+    "../playground/dist"
+  ]
+}
