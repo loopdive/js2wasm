@@ -15594,6 +15594,18 @@
       "cluster": "compiler-architecture"
     },
     {
+      "id": "1125",
+      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "benchmarking",
+      "cluster": "benchmarking"
+    },
+    {
       "id": "1126",
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
