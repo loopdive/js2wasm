@@ -4,3 +4,5 @@
 playground/vite-plugin-dashboard.ts
 public/graph-data.json
 public/issues-graph.html
+playground/graph-data.json
+playground/issues-graph.html
