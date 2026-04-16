@@ -116,16 +116,6 @@
       "sprint": "42"
     },
     {
-      "id": "1125",
-      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "benchmarking",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
       "id": "1123",
       "title": "Verify landing page claims and code examples against current compiler behavior",
       "priority": "high",

@@ -7,6 +7,7 @@
 
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
+import { execFileSync } from "node:child_process";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const OUT = join(import.meta.dirname, "data");
@@ -16,6 +17,38 @@ const LEGACY_SPRINT_ROOT = join(ROOT, "plan/sprints");
 mkdirSync(OUT, { recursive: true });
 
 const ISSUE_ROOT = join(ROOT, "plan/issues");
+
+function git(args) {
+  return execFileSync("git", args, {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
+function getTrackedMarkdownFiles(root) {
+  try {
+    return new Set(
+      git(["ls-files", root])
+        .split("\n")
+        .map((file) => file.trim())
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => join(ROOT, file)),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function getStableGeneratedAt(paths) {
+  const candidates = paths.filter((p) => existsSync(p));
+  if (!candidates.length) return "";
+  try {
+    return git(["log", "-1", "--format=%cI", "--", ...candidates]);
+  } catch {
+    return "";
+  }
+}
 
 function isIssueFileName(name) {
   return /^\d+[a-z]?(?:-.+)?\.md$/i.test(name);
@@ -84,8 +117,10 @@ function normalizeIssueStatus(rawStatus) {
 
 function loadIssues() {
   if (!existsSync(ISSUE_ROOT)) return [];
+  const trackedFiles = getTrackedMarkdownFiles("plan/issues");
   return walkFiles(ISSUE_ROOT)
     .filter((file) => isIssueFileName(file.split("/").pop()))
+    .filter((file) => !trackedFiles || trackedFiles.has(file))
     .map((file) => {
       const text = readFileSync(file, "utf-8");
       const f = file.split("/").pop();
@@ -202,7 +237,8 @@ function findSprintFiles() {
 }
 
 const sprints = [];
-for (const entry of findSprintFiles()) {
+const sprintFiles = findSprintFiles();
+for (const entry of sprintFiles) {
   const text = readFileSync(entry.file, "utf-8");
   const fm = parseFrontmatter(text);
   const name = `sprint ${entry.sprintNumber}`;

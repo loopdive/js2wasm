@@ -9,6 +9,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { execFileSync } from "node:child_process";
 
 type RawIssueStatus = "ready" | "in-progress" | "review" | "blocked" | "backlog" | "done" | "wont-fix" | "planning";
 
@@ -55,6 +56,38 @@ const ISSUES_DIR = path.join(ROOT, "plan", "issues");
 const GOALS_DIR = path.join(ROOT, "plan", "goals");
 const OUTPUT = path.join(ROOT, "public", "graph-data.json");
 const NON_ISSUE_FILES = new Set([path.join(ISSUES_DIR, "SCHEMA.md"), path.join(ISSUES_DIR, "AUDIT-2026-04-14.md")]);
+
+function git(args: string[]): string {
+  return execFileSync("git", args, {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
+function getTrackedMarkdownFiles(root: string): Set<string> | null {
+  try {
+    return new Set(
+      git(["ls-files", root])
+        .split("\n")
+        .map((file) => file.trim())
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => path.join(ROOT, file)),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function getStableGeneratedAt(paths: string[]): string {
+  const candidates = paths.filter((file) => fs.existsSync(file));
+  if (!candidates.length) return "";
+  try {
+    return git(["log", "-1", "--format=%cI", "--", ...candidates]);
+  } catch {
+    return "";
+  }
+}
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -178,7 +211,8 @@ function parseIdList(raw: unknown): string[] {
 
 function scanIssues(): IssueNode[] {
   const nodes: IssueNode[] = [];
-  for (const file of walk(ISSUES_DIR).filter(isIssueFile)) {
+  const trackedFiles = getTrackedMarkdownFiles("plan/issues");
+  for (const file of walk(ISSUES_DIR).filter(isIssueFile).filter((file) => !trackedFiles || trackedFiles.has(file))) {
     const content = fs.readFileSync(file, "utf8");
     const fm = parseFrontmatter(content);
     if (!fm.id && !fm.title && !fm.status) continue;
@@ -302,7 +336,10 @@ const data: GraphData = {
   goals: goals.sort((a, b) => a.id.localeCompare(b.id)),
   goalIssueLinks,
   goalDepLinks,
-  generated: new Date().toISOString(),
+  generated: getStableGeneratedAt([
+    ...walk(ISSUES_DIR),
+    ...walk(GOALS_DIR),
+  ]),
 };
 
 fs.writeFileSync(OUTPUT, JSON.stringify(data, null, 2));
