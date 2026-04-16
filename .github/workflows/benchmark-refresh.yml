@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   refresh-benchmarks:
-    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+    if: github.repository == 'loopdive/js2wasm' && (github.event_name != 'push' || github.actor != 'github-actions[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 90
 

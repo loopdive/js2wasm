@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.repository == 'loopdive/js2wasm'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -54,6 +55,7 @@ jobs:
           path: pages-dist
 
   deploy:
+    if: github.repository == 'loopdive/js2wasm'
     needs: build
     runs-on: ubuntu-latest
     environment:
