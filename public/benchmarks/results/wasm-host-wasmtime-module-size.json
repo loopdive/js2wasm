@@ -6,13 +6,13 @@
     "label": "0.2 kB"
   },
   {
-    "name": "Javy",
+    "name": "JS interpreter",
     "jsUs": 220,
     "wasmUs": 1256767,
     "label": "1227.3 kB"
   },
   {
-    "name": "StarlingMonkey",
+    "name": "JS engine",
     "jsUs": 220,
     "wasmUs": 10542123,
     "label": "10295.0 kB"

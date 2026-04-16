@@ -1136,6 +1136,7 @@ let staticEquivTests: { name: string; source: string }[] | null = null;
 let bundledEquivTests: { name: string; source: string }[] | null = null;
 const prefersStaticPlaygroundData =
   location.protocol === "https:" || (location.hostname !== "localhost" && location.hostname !== "127.0.0.1");
+const TEST262_REMOTE_BASE = "https://raw.githubusercontent.com/tc39/test262/main/";
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
@@ -1402,12 +1403,13 @@ const T262_MARKER_OWNER = "test262-selected-result";
 
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
-  const data = prefersStaticPlaygroundData
-    ? ((await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json")) ??
-      (await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")))
-    : ((await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary")) ??
-      (await fetchJson<{ categories: T262CategorySummary[] }>("playground-data/test262-index-summary.json")));
-  t262Index = data?.categories ?? [];
+  const staticData = await fetchJson<{ categories: T262CategorySummary[] }>(
+    "playground-data/test262-index-summary.json",
+  );
+  const apiData = await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary");
+  const preferred = prefersStaticPlaygroundData ? [staticData, apiData] : [apiData, staticData];
+  const resolved = preferred.find((entry) => (entry?.categories?.length ?? 0) > 0) ?? preferred.find(Boolean) ?? null;
+  t262Index = resolved?.categories ?? [];
   return t262Index;
 }
 
@@ -1417,10 +1419,10 @@ async function t262LoadFiles(category: string): Promise<string[]> {
   if (!prefersStaticPlaygroundData) {
     files = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
   }
-  if (!files) {
+  if (!files || files.length === 0) {
     files = (await loadStaticT262Files())[category] ?? null;
   }
-  if (!files && prefersStaticPlaygroundData) {
+  if ((!files || files.length === 0) && prefersStaticPlaygroundData) {
     files = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
   }
   const resolved = files ?? [];
@@ -1434,8 +1436,16 @@ async function t262LoadFile(path: string): Promise<string> {
     if (apiData !== null) return apiData;
   }
   const normalizedPath = path.startsWith("test/") ? path : `test/${path}`;
-  const staticData = await fetchText(`test262/${normalizedPath}`);
-  if (staticData !== null) return staticData;
+  for (const staticPath of [
+    `/test262/${normalizedPath}`,
+    `/playground/test262/${normalizedPath}`,
+    `test262/${normalizedPath}`,
+  ]) {
+    const staticData = await fetchText(staticPath);
+    if (staticData !== null) return staticData;
+  }
+  const remoteData = await fetchText(`${TEST262_REMOTE_BASE}${normalizedPath}`);
+  if (remoteData !== null) return remoteData;
   if (prefersStaticPlaygroundData) {
     const apiData = await fetchText(`/api/test262-file?path=${encodeURIComponent(path)}`);
     if (apiData !== null) return apiData;

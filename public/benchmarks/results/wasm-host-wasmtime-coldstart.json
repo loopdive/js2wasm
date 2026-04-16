@@ -6,13 +6,13 @@
     "label": "20.2 ms"
   },
   {
-    "name": "Javy",
+    "name": "JS interpreter",
     "jsUs": 302.867834,
     "wasmUs": 20.591959,
     "label": "20.6 ms"
   },
   {
-    "name": "StarlingMonkey",
+    "name": "JS engine",
     "jsUs": 302.867834,
     "wasmUs": 160.556333,
     "label": "160.6 ms"
