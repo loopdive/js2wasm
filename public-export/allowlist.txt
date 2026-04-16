@@ -5,6 +5,8 @@
 .github/workflows/ci.yml
 .github/workflows/deploy-pages.yml
 .gitignore
+.prettierignore
+.prettierrc
 biome.json
 CONTRIBUTING.md
 LICENSE
