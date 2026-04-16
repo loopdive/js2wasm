@@ -21,6 +21,7 @@ function parseArgs(argv) {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === "--") continue;
     if (arg === "--repo-dir") args.repoDir = argv[++i] || args.repoDir;
     else if (arg === "--export-dir") args.exportDir = argv[++i] || args.exportDir;
     else if (arg === "--public-remote") args.publicRemote = argv[++i] || args.publicRemote;
