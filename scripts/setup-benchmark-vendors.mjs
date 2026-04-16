@@ -82,6 +82,34 @@ export STARLINGMONKEY_RUNTIME=/path/to/StarlingMonkey/cmake-build-release/starli
 export STARLINGMONKEY_WASMTIME_BIN=/path/to/wasmtime
 \`\`\`
 
+For the benchmark-specific ComponentizeJS lane, the repo ships:
+
+\`\`\`text
+scripts/starlingmonkey-componentize-adapter.mjs
+\`\`\`
+
+That adapter expects ComponentizeJS to be installed separately, either as a
+local package import or as a \`componentize-js\` CLI on \`PATH\`. Simplest setup:
+
+\`\`\`bash
+pnpm add -D @bytecodealliance/componentize-js
+export STARLINGMONKEY_ADAPTER=$PWD/scripts/starlingmonkey-componentize-adapter.mjs
+\`\`\`
+
+Optional CLI fallback instead of a local package install:
+
+\`\`\`bash
+export COMPONENTIZE_JS_BIN=/path/to/componentize-js
+\`\`\`
+
+Optional AOT attempt with Wizer/Weval:
+
+\`\`\`bash
+export STARLINGMONKEY_COMPONENTIZE_AOT=1
+export STARLINGMONKEY_WIZER_BIN=/path/to/wizer
+export STARLINGMONKEY_WEVAL_BIN=/path/to/weval
+\`\`\`
+
 ## Javy
 
 The setup script cannot guess the correct Javy binary and plugin artifact for

@@ -9,6 +9,7 @@ This benchmark harness compares the same JavaScript benchmark programs across:
 - Javy's static QuickJS runtime running the same JS in Wasmtime
 - Porffor running through its own Node.js runtime/compiler path
 - StarlingMonkey's runtime-eval component running the same JS in Wasmtime
+- a benchmark-specific StarlingMonkey + ComponentizeJS lane running in Wasmtime
 
 ## What it measures
 
@@ -43,7 +44,8 @@ The Node-hosted `js2wasm` lane is intentionally different:
 - AssemblyScript: `asc` + `wasm-opt` + `wasmtime compile`
 - Javy: `javy build` + `wasmtime compile`
 - Porffor: the module-mode wasm compile used for size reporting
-- StarlingMonkey: precompiling the vendored runtime component with Wasmtime
+- StarlingMonkey runtime-eval: precompiling the vendored runtime component with Wasmtime
+- StarlingMonkey + ComponentizeJS: adapter compilation plus `wasmtime compile`
 
 `Compiler bytes` means the main compiler asset footprint used by that lane.
 
@@ -55,7 +57,8 @@ that lane beyond the generated benchmark module size.
 - AssemblyScript: the configured `asc` toolchain path
 - Javy: the configured `javy` binary, with `plugin.wasm` counted as runtime/helper bytes
 - Porffor: the configured `compiler/` tree, with `runtime/` counted separately
-- StarlingMonkey: the configured Wasmtime binary, with `starling.wasm` counted separately
+- StarlingMonkey runtime-eval: the configured Wasmtime binary, with `starling.wasm` counted separately
+- StarlingMonkey + ComponentizeJS: adapter-specific assets reported via metadata when available
 
 The hot-runtime metric is measured by:
 
@@ -130,8 +133,15 @@ export STARLINGMONKEY_BUILD_DIR=/absolute/path/to/StarlingMonkey/cmake-build-rel
 export STARLINGMONKEY_RUNTIME=/absolute/path/to/StarlingMonkey/cmake-build-release/starling.wasm
 export STARLINGMONKEY_WASMTIME_BIN=/absolute/path/to/wasmtime
 
-# Optional StarlingMonkey AOT adapter lane
-export STARLINGMONKEY_ADAPTER=/absolute/path/to/adapter-script
+# Optional StarlingMonkey + ComponentizeJS lane
+export STARLINGMONKEY_ADAPTER=$PWD/scripts/starlingmonkey-componentize-adapter.mjs
+
+# Optional explicit Wizer / Weval binaries
+export STARLINGMONKEY_WIZER_BIN=/absolute/path/to/wizer
+export STARLINGMONKEY_WEVAL_BIN=/absolute/path/to/weval
+
+# Optional: ask the adapter to attempt ComponentizeJS AOT
+export STARLINGMONKEY_COMPONENTIZE_AOT=1
 ```
 
 The benchmark script falls back to `vendor/...` paths only if those exist and no
@@ -169,12 +179,29 @@ For each benchmark program, the harness generates a small wrapper script that:
 This means the StarlingMonkey lane measures the runtime-eval component, not a
 benchmark-specific compiled module.
 
-## StarlingMonkey adapter
+## StarlingMonkey + ComponentizeJS adapter
 
-The repo does not assume a specific StarlingMonkey CLI. To enable that path, set:
+The repo now ships a benchmark adapter at:
 
 ```bash
-export STARLINGMONKEY_ADAPTER=/absolute/path/to/adapter-script
+scripts/starlingmonkey-componentize-adapter.mjs
+```
+
+To enable that lane, point `STARLINGMONKEY_ADAPTER` at the script and make
+ComponentizeJS available in the local repo, for example:
+
+```bash
+pnpm add -D @bytecodealliance/componentize-js
+```
+
+The adapter first tries the installed Node.js library and only falls back to a
+`componentize-js` CLI if the package import is unavailable.
+
+Minimal setup:
+
+```bash
+pnpm add -D @bytecodealliance/componentize-js
+export STARLINGMONKEY_ADAPTER=$PWD/scripts/starlingmonkey-componentize-adapter.mjs
 ```
 
 The adapter script must support:
@@ -183,11 +210,46 @@ The adapter script must support:
 $STARLINGMONKEY_ADAPTER <input.js> <output.wasm>
 ```
 
-and write a Wasm module to `<output.wasm>`.
+The bundled adapter writes:
+
+- a benchmark-specific Wasm component to `<output.wasm>`
+- optional sidecar metadata to `<output.wasm>.json` describing invoke export
+  names and artifact kind
+
+The benchmark harness reads that metadata automatically, so component exports
+such as `run-hot` can be invoked correctly through Wasmtime.
+
+By default the adapter generates a minimal pure component by disabling:
+
+- `random`
+- `stdio`
+- `clocks`
+- `http`
+- `fetch-event`
+
+Override that list through:
+
+```bash
+export STARLINGMONKEY_COMPONENTIZE_DISABLE_FEATURES=random,stdio,clocks,http,fetch-event
+```
 
 The adapter path is only needed if you want to compare against a
 benchmark-specific StarlingMonkey compile flow instead of the runtime-eval
 component lane.
+
+If you want the adapter to try ComponentizeJS AOT with Wizer/Weval:
+
+```bash
+export STARLINGMONKEY_COMPONENTIZE_AOT=1
+export STARLINGMONKEY_WIZER_BIN=/absolute/path/to/wizer
+export STARLINGMONKEY_WEVAL_BIN=/absolute/path/to/weval
+```
+
+If you prefer to use the CLI instead of installing the package into this repo:
+
+```bash
+export COMPONENTIZE_JS_BIN=/absolute/path/to/componentize-js
+```
 
 ## Javy
 
