@@ -87,6 +87,15 @@ pnpm run benchmark:competitive
 The harness can run against externally managed external toolchain checkouts and binaries.
 Vendoring them into this repository is optional and not required.
 
+If you want the historical local `vendor/` fallback layout back, recreate it with:
+
+```bash
+pnpm run setup:benchmark-vendors
+```
+
+`vendor/` is intentionally gitignored. It is a local cache for benchmark toolchains,
+not source of truth.
+
 ## External toolchain setup
 
 The benchmark runner honors environment variables for every non-js2wasm lane.
@@ -128,6 +137,15 @@ export STARLINGMONKEY_ADAPTER=/absolute/path/to/adapter-script
 The benchmark script falls back to `vendor/...` paths only if those exist and no
 environment override is provided. That keeps local private benchmarking
 convenient without making vendored trees part of the committed benchmark story.
+
+For Javy specifically, the helper script cannot infer the correct binary for every
+platform. If you want it staged under `vendor/Javy`, provide:
+
+```bash
+JAVY_BIN_SOURCE=/path/to/javy \
+JAVY_PLUGIN_SOURCE=/path/to/plugin.wasm \
+pnpm run setup:benchmark-vendors
+```
 
 Outputs:
 

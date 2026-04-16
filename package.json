@@ -35,6 +35,7 @@
     "generate:editions": "npx tsx scripts/generate-editions.ts",
     "generate:size-benchmarks": "npx tsx scripts/generate-size-benchmarks.ts",
     "generate:browser-runtime-benchmarks": "node scripts/generate-browser-runtime-benchmarks.mjs",
+    "setup:benchmark-vendors": "node scripts/setup-benchmark-vendors.mjs",
     "export:public": "node scripts/export-public-tree.mjs",
     "sync:public": "node scripts/sync-public-repo.mjs",
     "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
