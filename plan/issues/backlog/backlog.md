@@ -141,9 +141,9 @@ and [#998](../sprints/40/998.md); [#848](../sprints/30/848.md) is already comple
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
 | [743](743.md) | Critical | Whole-program type mapper | High pass impact | Ready |
-| [773](773.md) | Critical | Monomorphize functions with call-site types | High pass impact | Ready |
+| [773](../sprints/42/773.md) | Critical | Monomorphize functions with call-site types | High pass impact | Ready |
 | [745](745.md) | High | Tagged union types for WasmGC | Type precision | Ready |
-| [744](744.md) | High | Monomorphize: specialized function copies | Perf | Blocked by #743 |
+| [744](../sprints/42/744.md) | High | Monomorphize: specialized function copies | Perf | Ready |
 | [746](746.md) | Medium | Hidden class optimization | Perf | Blocked |
 | [747](747.md) | Medium | Escape analysis / stack allocation | Perf | Blocked |
 | [699](699.md) | High | Shared compiler pool for test262 | Test perf | Ready |
