@@ -777,7 +777,8 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
-  if (state.primitiveNeeded.has("string_compare")) {
+  if (state.primitiveNeeded.has("string_compare") && !ctx.nativeStrings) {
+    // In native strings mode, __str_compare Wasm helper handles this — no host import needed
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
@@ -873,9 +874,32 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
       ctx.pendingMathMethods.add(method);
     }
   }
+  // ToUint32: emit Wasm helper function — no host import (#1094)
   if (state.mathNeedsToUint32 && !ctx.funcMap.has("__toUint32")) {
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.funcMap.set("__toUint32", funcIdx);
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 0 },
+      { op: "f64.ne" },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+      { op: "local.get", index: 0 },
+      { op: "f64.abs" },
+      { op: "f64.const", value: Infinity },
+      { op: "f64.eq" },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+      { op: "local.get", index: 0 },
+      { op: "i64.trunc_sat_f64_s" } as unknown as Instr,
+      { op: "i32.wrap_i64" },
+    ];
+    ctx.mod.functions.push({
+      name: "__toUint32",
+      typeIdx,
+      locals: [],
+      body,
+      exported: false,
+    });
   }
 
   // ── collectParseImports finalize ──
