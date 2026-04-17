@@ -2995,6 +2995,11 @@ function resolveImport(
       // #1065 — strict equality for two externref operands that the GC path
       // could not compare via ref.eq (e.g. host functions like `Array === Array`).
       return (a: any, b: any) => (a === b ? 1 : 0);
+    case "host_loose_eq":
+      // #1134 — loose equality for two externref operands (§7.2.15).
+      // Handles null == undefined → true and other JS coercion rules.
+      // eslint-disable-next-line eqeqeq
+      return (a: any, b: any) => (a == b ? 1 : 0);
     case "date_new":
       return () => new Date();
     case "date_now":
