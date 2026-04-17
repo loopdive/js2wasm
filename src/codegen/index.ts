@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import {
@@ -68,6 +69,7 @@ import {
 } from "./declarations.js";
 import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
 import {
+  ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   flatStringType,
   nativeStringType,
@@ -82,6 +84,7 @@ export {
   destructureParamObject,
   ensureAnyHelpers,
   ensureAnyValueType,
+  ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   ensureWrapperTypes,
   flatStringType,

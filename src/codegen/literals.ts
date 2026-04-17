@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Literal compilation for js2wasm — object, array, tuple, and symbol literals.
  *

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Declaration collection and compilation — unified AST visitor, class declarations,
  * function bodies, and struct type registration.
@@ -44,7 +45,7 @@ import {
   STRING_METHODS,
   unwrapGeneratorYieldType,
 } from "./index.js";
-import { ensureNativeStringHelpers } from "./native-strings.js";
+import { ensureNativeStringExternBridge, ensureNativeStringHelpers } from "./native-strings.js";
 import { addImport, addStringConstantGlobal, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
 import {
   addFuncType,
@@ -899,7 +900,7 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
-      ensureNativeStringHelpers(ctx);
+      ensureNativeStringExternBridge(ctx);
     }
   }
   if (state.needsFromCodePoint) {
