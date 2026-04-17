@@ -1852,9 +1852,12 @@ function compileArrayIteratorMethod(
   propAccess: ts.PropertyAccessExpression | ts.ElementAccessExpression,
   methodName: string,
 ): ValType | null {
-  addArrayIteratorImports(ctx);
   const importName = `__array_${methodName}`;
-  const funcIdx = ctx.funcMap.get(importName);
+  // Use ensureLateImport (not addArrayIteratorImports/addImport) so that
+  // function indices in already-compiled functions are shifted correctly.
+  // addImport doesn't trigger the late import shift mechanism. (#854)
+  const funcIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
   if (funcIdx === undefined) return null;
 
   // Compile receiver and convert to externref for the host import
