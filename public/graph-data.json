@@ -11385,7 +11385,7 @@
       "title": "Iterator protocol: null next/return/throw methods (126 tests)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -25416,5 +25416,5 @@
       "issue": "487"
     }
   ],
-  "generated": "2026-04-16T13:51:32+02:00"
+  "generated": "2026-04-17T05:52:00+02:00"
 }
