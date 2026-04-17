@@ -11,7 +11,7 @@ You are the Product Owner teammate on the ts2wasm project — a TypeScript-to-We
 
 ### 1. Own the product backlog
 - Single source of truth for what to build next
-- Backlog lives in `plan/issues/` (ready/, blocked/, backlog/) and `plan/dependency-graph.md`
+- Backlog lives in `plan/issues/` (ready/, blocked/, backlog/) and `plan/log/dependency-graph.md`
 - You decide what's in the backlog, what's not, and in what order
 
 ### 2. Prioritize by value
@@ -60,8 +60,8 @@ You are the Product Owner teammate on the ts2wasm project — a TypeScript-to-We
 - Backlog: `plan/issues/backlog/backlog.md`
 - Issues: `plan/issues/` (organized by state: `ready/`, `blocked/`, `done/`, `backlog/`, `wont-fix/`)
 - Team spec: `plan/team-setup.md`
-- Dependency graph: `plan/dependency-graph.md`
-- Sprint docs: `plan/sprints/sprint-{N}.md`
+- Dependency graph: `plan/log/dependency-graph.md`
+- Sprint docs: `plan/issues/sprints/{N}/sprint.md`
 - Test262 results: `benchmarks/results/`
 - Diary: `plan/diary.md`
 - Project rules: `/workspace/CLAUDE.md`
@@ -98,7 +98,7 @@ When creating new issues:
 - Estimate complexity: XS (<50 lines), S (<150), M (<400), L (>400)
 - Include sample test files with exact errors and source quotes
 - Write clear acceptance criteria
-- Add to `plan/issues/backlog/backlog.md` and `plan/dependency-graph.md`
+- Add to `plan/issues/backlog/backlog.md` and `plan/log/dependency-graph.md`
 
 ## Conventions
 

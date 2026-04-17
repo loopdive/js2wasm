@@ -2,4 +2,4 @@
 
 **Session**: 2026-03-30
 **Tasks completed**: #876 (dashboard), #877 (agile definitions)
-**Files created**: dashboard/index.html, dashboard/build-data.js, plan/definition-of-done.md, plan/definition-of-ready.md, plan/sprints/velocity-template.md
+**Files created**: dashboard/index.html, dashboard/build-data.js, the method docs now located at `plan/method/definition-of-done.md`, `plan/method/definition-of-ready.md`, and `plan/method/velocity-template.md`

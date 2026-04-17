@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { assertEquivalent } from "./equivalence/helpers.js";
 import { compile } from "../src/index.js";
 
-describe("Issue #123: Wrapper constructors (new Number/String/Boolean)", () => {
+describe("Issue #1110: Wrapper constructors (new Number/String/Boolean)", () => {
   it("new Number(42) typeof returns object", async () => {
     await assertEquivalent(
       `

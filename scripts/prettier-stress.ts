@@ -9,7 +9,7 @@
  *   2. index.mjs       (~19K lines)  — full core + language-js (Tier 1+3+4)
  *
  * Output: bucket report + per-entry first-error snippet, written to
- * `plan/issues/ready/1034-report.md`.
+ * `plan/log/issues/1034-report.md`.
  */
 import { compile, type CompileResult } from "../src/index.ts";
 import { buildImports } from "../src/runtime.ts";
@@ -213,7 +213,7 @@ async function main() {
   }
 
   const report = renderReport(results);
-  const outPath = resolve("plan/issues/ready/1034-report.md");
+  const outPath = resolve("plan/log/issues/1034-report.md");
   writeFileSync(outPath, report);
   process.stdout.write(`\nWrote ${outPath}\n`);
 }

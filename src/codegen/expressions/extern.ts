@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Extern class helpers, spread call args, lazy prototype initialization,
  * and dynamic struct patching.

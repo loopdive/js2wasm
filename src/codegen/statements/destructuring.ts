@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Destructuring declaration lowering.
  * Handles object destructuring, array destructuring, and string destructuring patterns.

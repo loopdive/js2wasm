@@ -5,7 +5,7 @@
 
 ## What was done this session
 
-1. **Sprint-30 retrospective written** — `plan/retrospectives/sprint-30.md`
+1. **Sprint-30 retrospective written** — `plan/issues/sprints/30/sprint.md`
    - 7 incidents documented with root causes and 12 action items
    - Key themes: #822 merged/reverted twice (no architect spec), devs treating "code done" as "task done", stale dependency graph wasting cycles
 

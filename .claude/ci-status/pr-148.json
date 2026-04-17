@@ -1,0 +1,15 @@
+{
+  "pr": 148,
+  "conclusion": "failure",
+  "head_branch": "issue-862-iterator-step-errors",
+  "head_sha": "e3e973494d26a723cb08c2dd2401e25a65755419",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24312288066",
+  "timestamp": "2026-04-12T17:49:05Z",
+  "pass": 21617,
+  "fail": 16308,
+  "compile_error": 3878,
+  "snapshot_delta": -807,
+  "net_per_test": -807,
+  "regressions": 1226,
+  "improvements": 419
+}
