@@ -192,6 +192,17 @@ function getLibSource(name: string): string | undefined {
       "lib.es2021.promise.d.ts",
       "lib.es2021.string.d.ts",
       "lib.es2021.weakref.d.ts",
+      // ES2022
+      "lib.es2022.array.d.ts",
+      "lib.es2022.error.d.ts",
+      "lib.es2022.intl.d.ts",
+      "lib.es2022.object.d.ts",
+      "lib.es2022.regexp.d.ts",
+      "lib.es2022.string.d.ts",
+      // ES2023
+      "lib.es2023.array.d.ts",
+      "lib.es2023.collection.d.ts",
+      "lib.es2023.intl.d.ts",
       // ES2024
       "lib.es2024.collection.d.ts",
       // ESNext — Set methods (union, intersection, difference, etc.)
