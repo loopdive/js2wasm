@@ -4415,6 +4415,66 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         if (wrapperTypes) {
           const matchedClosureInfo = wrapperTypes.closureInfo;
           const matchedStructTypeIdx = wrapperTypes.structTypeIdx;
+          const expectedReturn = matchedClosureInfo.returnType; // null for void
+
+          // (#1131) Preemptively create alternative closure wrapper types.
+          // TypeScript allows covariant return types in callbacks, e.g.
+          // () => string is assignable to () => void. The actual closure may
+          // use a different funcref type than the declared signature expects.
+          // V8's isorecursive canonicalization merges struct types with the same
+          // layout, so struct-level casts succeed. But funcref types remain
+          // distinct per return type — we must dispatch on funcref type.
+          // Create common return-type variants now so closures compiled later
+          // reuse the same funcref types and the dispatch chain finds them.
+          type FuncCandidate = { funcTypeIdx: number; structTypeIdx: number; returnType: ValType | null };
+          const funcCandidates: FuncCandidate[] = [
+            {
+              funcTypeIdx: matchedClosureInfo.funcTypeIdx,
+              structTypeIdx: matchedClosureInfo.structTypeIdx,
+              returnType: matchedClosureInfo.returnType,
+            },
+          ];
+          const seenFuncTypeIdx = new Set<number>([matchedClosureInfo.funcTypeIdx]);
+
+          const tryAltFuncType = (retTypes: ValType[]) => {
+            const alt = getOrCreateFuncRefWrapperTypes(ctx, sigParamWasmTypes, retTypes);
+            if (alt && !seenFuncTypeIdx.has(alt.closureInfo.funcTypeIdx)) {
+              seenFuncTypeIdx.add(alt.closureInfo.funcTypeIdx);
+              funcCandidates.push({
+                funcTypeIdx: alt.closureInfo.funcTypeIdx,
+                structTypeIdx: alt.closureInfo.structTypeIdx,
+                returnType: alt.closureInfo.returnType,
+              });
+            }
+          };
+          // Create externref-return variant if not already expected
+          if (!expectedReturn || expectedReturn.kind !== "externref") {
+            tryAltFuncType([{ kind: "externref" }]);
+          }
+          // Create void-return variant if not already expected
+          if (expectedReturn !== null) {
+            tryAltFuncType([]);
+          }
+          // Also scan closureInfoByTypeIdx for other matching-arity func types
+          for (const [, info] of ctx.closureInfoByTypeIdx) {
+            if (info.paramTypes.length !== sigParamCount) continue;
+            if (seenFuncTypeIdx.has(info.funcTypeIdx)) continue;
+            let paramsMatch = true;
+            for (let pi = 0; pi < sigParamCount; pi++) {
+              if (!valTypesMatch(info.paramTypes[pi]!, sigParamWasmTypes[pi]!)) {
+                paramsMatch = false;
+                break;
+              }
+            }
+            if (paramsMatch) {
+              seenFuncTypeIdx.add(info.funcTypeIdx);
+              funcCandidates.push({
+                funcTypeIdx: info.funcTypeIdx,
+                structTypeIdx: info.structTypeIdx,
+                returnType: info.returnType,
+              });
+            }
+          }
 
           // Compile the callee to get the value on the stack
           const innerResultType = compileExpression(ctx, fctx, expr.expression);
@@ -4439,15 +4499,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             fctx.body.push({ op: "local.set", index: closureLocal });
           }
 
-          // Push closure ref as first arg (self param) — null-check → TypeError (#728)
-          fctx.body.push({ op: "local.get", index: closureLocal });
-          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
-
-          // Push call arguments with type coercion (only up to declared param count)
+          // Compile call arguments with type coercion (only up to declared param count)
+          // Save them to locals so they can be re-pushed in each dispatch branch.
+          const argLocals: number[] = [];
           {
             const cpParamCnt = matchedClosureInfo.paramTypes.length;
             for (let i = 0; i < Math.min(expr.arguments.length, cpParamCnt); i++) {
               compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+              const argLocal = allocLocal(fctx, `__carg_${fctx.locals.length}`, matchedClosureInfo.paramTypes[i]!);
+              fctx.body.push({ op: "local.set", index: argLocal });
+              argLocals.push(argLocal);
             }
             for (let i = cpParamCnt; i < expr.arguments.length; i++) {
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
@@ -4457,12 +4518,15 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
 
-          // Pad missing arguments with defaults
+          // Pad missing arguments with defaults and save to locals
           for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
             pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!, ctx);
+            const argLocal = allocLocal(fctx, `__carg_${fctx.locals.length}`, matchedClosureInfo.paramTypes[i]!);
+            fctx.body.push({ op: "local.set", index: argLocal });
+            argLocals.push(argLocal);
           }
 
-          // Push the funcref from the closure struct (field 0) and call_ref — null-check → TypeError (#728)
+          // Extract funcref from the closure struct (field 0) — null-check → TypeError (#728)
           fctx.body.push({ op: "local.get", index: closureLocal });
           emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
           fctx.body.push({
@@ -4470,15 +4534,88 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             typeIdx: matchedStructTypeIdx,
             fieldIdx: 0,
           });
-          // Guard funcref cast to avoid illegal cast (#778)
-          emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
-          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
-          fctx.body.push({
-            op: "call_ref",
-            typeIdx: matchedClosureInfo.funcTypeIdx,
-          });
 
-          return matchedClosureInfo.returnType ?? VOID_RESULT;
+          if (funcCandidates.length <= 1) {
+            // Single func type — push self+args back onto stack then call
+            // Stack before: [funcref]
+            // Need: [self, ...args, funcref] for call_ref
+            // Re-push self and args under the funcref by saving funcref first
+            const funcrefLocal = allocLocal(fctx, `__frd_${fctx.locals.length}`, { kind: "funcref" } as ValType);
+            fctx.body.push({ op: "local.set", index: funcrefLocal } as unknown as Instr);
+            // Push self (null-check)
+            fctx.body.push({ op: "local.get", index: closureLocal });
+            emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
+            // Push args
+            for (const al of argLocals) {
+              fctx.body.push({ op: "local.get", index: al });
+            }
+            // Push funcref back, guarded cast, call
+            fctx.body.push({ op: "local.get", index: funcrefLocal } as unknown as Instr);
+            emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
+            emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
+            fctx.body.push({
+              op: "call_ref",
+              typeIdx: matchedClosureInfo.funcTypeIdx,
+            });
+          } else {
+            // (#1131) Multi-funcref-type dispatch: the closure may have a different
+            // return type than declared (e.g. () => string passed as () => void).
+            // Save funcref, then dispatch on funcref type. Each branch re-pushes
+            // self + args + typed funcref for call_ref.
+            const funcrefLocal = allocLocal(fctx, `__frd_${fctx.locals.length}`, { kind: "funcref" } as ValType);
+            fctx.body.push({ op: "local.set", index: funcrefLocal } as unknown as Instr);
+
+            const retBlockType =
+              expectedReturn === null ? ({ kind: "empty" } as const) : ({ kind: "val", type: expectedReturn } as const);
+
+            // Build dispatch chain bottom-up (innermost = throw TypeError)
+            let funcDispatch: Instr[] = typeErrorThrowInstrs(ctx);
+
+            for (const fc of [...funcCandidates].reverse()) {
+              // Each candidate needs: push self, push args, push typed funcref, call_ref
+              // The self struct type must match the funcref's expected first param.
+              // All wrapper struct types have the same layout so closureLocal works,
+              // but call_ref expects (ref $specificStruct). We use ref.cast to cast
+              // closureLocal to the funcref's expected struct type.
+              const fcCallBody: Instr[] = [];
+              // Push self (cast to the funcref's expected struct type)
+              fcCallBody.push({ op: "local.get", index: closureLocal } as unknown as Instr);
+              if (fc.structTypeIdx !== matchedStructTypeIdx) {
+                // V8 canonicalizes same-layout structs, so this cast succeeds
+                fcCallBody.push({ op: "ref.cast", typeIdx: fc.structTypeIdx } as unknown as Instr);
+              }
+              // Push args
+              for (const al of argLocals) {
+                fcCallBody.push({ op: "local.get", index: al } as unknown as Instr);
+              }
+              // Push typed funcref and call
+              fcCallBody.push({ op: "local.get", index: funcrefLocal } as unknown as Instr);
+              fcCallBody.push({ op: "ref.cast", typeIdx: fc.funcTypeIdx } as unknown as Instr);
+              fcCallBody.push({ op: "call_ref", typeIdx: fc.funcTypeIdx } as unknown as Instr);
+
+              // Coerce return to expected type
+              if (expectedReturn === null && fc.returnType !== null) {
+                fcCallBody.push({ op: "drop" } as Instr);
+              } else if (expectedReturn !== null && fc.returnType === null) {
+                fcCallBody.push(...defaultValueInstrs(expectedReturn));
+              }
+
+              funcDispatch = [
+                { op: "local.get", index: funcrefLocal } as unknown as Instr,
+                { op: "ref.test", typeIdx: fc.funcTypeIdx } as unknown as Instr,
+                {
+                  op: "if",
+                  blockType: retBlockType,
+                  then: fcCallBody,
+                  else: funcDispatch,
+                } as Instr,
+              ];
+            }
+
+            fctx.body.push(...funcDispatch);
+          }
+
+          return expectedReturn ?? VOID_RESULT;
         }
       }
 
