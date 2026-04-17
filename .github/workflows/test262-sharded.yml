@@ -109,7 +109,7 @@ jobs:
             benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
           if-no-files-found: warn
 
-  merge:
+  merge-report:
     if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
     name: merge shard reports
     needs: test262-shard
@@ -152,10 +152,48 @@ jobs:
             --output merged-reports/test262-report-merged.json \
             ${{ inputs.include_proposals && '--include-proposals' || '' }}
 
+      - name: Upload merged reports
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-merged-report
+          path: |
+            merged-reports/**
+          if-no-files-found: warn
+
+  regression-gate:
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+    name: check for test262 regressions
+    needs: merge-report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download merged reports
+        uses: actions/download-artifact@v7
+        with:
+          path: merged-reports
+          pattern: test262-merged-report
+          merge-multiple: true
+
       - name: Compare against current main baseline
         id: regression_diff
         run: |
-          mkdir -p merged-reports
           BASELINE="benchmarks/results/test262-current.jsonl"
           if [ ! -f "$BASELINE" ]; then
             echo "Missing baseline JSONL: $BASELINE"
@@ -184,19 +222,10 @@ jobs:
           cat merged-reports/test262-regressions.txt
           exit 1
 
-      - name: Upload merged reports
-        uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: test262-merged-report
-          path: |
-            merged-reports/**
-          if-no-files-found: warn
-
   promote-baseline:
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'github-actions[bot]' && needs.merge.result == 'success'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'github-actions[bot]'
     name: promote merged report to main baseline
-    needs: merge
+    needs: merge-report
     runs-on: ubuntu-latest
 
     steps:
