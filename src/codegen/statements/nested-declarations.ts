@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Nested function and class declaration lowering.
  * Handles function declarations within other functions, class declarations,

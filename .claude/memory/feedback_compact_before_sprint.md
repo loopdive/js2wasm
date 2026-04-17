@@ -9,7 +9,7 @@ Run `/compact` at the natural break between sprints — after sprint wrap-up / b
 **Why:** A long tech-lead session accumulates hundreds of tool calls (merge triage, regression analysis, PR reviews, file diffs, rebase output). Every subsequent tool call re-pays the full history as input tokens, so the per-action cost climbs linearly with context size. On the day we hit 43% of the weekly budget in the first day, the dominant driver was long context from a single sprint-40 merge wave + sprint-41 planning session that spanned ~150+ tool calls in one continuous conversation.
 
 Sprint boundaries are the right breakpoint because:
-- The sprint's decisions are already persisted to `plan/sprints/sprint-N.md`, issue files, and git history
+- The sprint's decisions are already persisted to `plan/issues/sprints/N/sprint.md`, issue files, and git history
 - New sprint work doesn't need the prior sprint's merge-by-merge narration
 - Memory files + CLAUDE.md carry forward the rules; the conversation-level detail is disposable
 

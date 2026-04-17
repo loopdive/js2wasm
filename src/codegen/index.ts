@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import {
@@ -68,6 +69,7 @@ import {
 } from "./declarations.js";
 import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
 import {
+  ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   flatStringType,
   nativeStringType,
@@ -82,6 +84,7 @@ export {
   destructureParamObject,
   ensureAnyHelpers,
   ensureAnyValueType,
+  ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   ensureWrapperTypes,
   flatStringType,
@@ -276,6 +279,26 @@ export function generateModule(
 
     // Collect ref.func targets so the binary emitter can add a declarative element segment
     collectDeclaredFuncRefs(ctx);
+
+    // Resolve deferred `export default <variable>` for module globals (#1108).
+    // Must run AFTER compileDeclarations — string-constant imports added during
+    // body compilation shift numImportGlobals, so indices aren't final until now.
+    if (ctx.deferredDefaultGlobalExport) {
+      const varName = ctx.deferredDefaultGlobalExport;
+      const globalName = `__mod_${varName}`;
+      const localIdx = ctx.mod.globals.findIndex((g) => g.name === globalName);
+      if (localIdx >= 0) {
+        const absIdx = ctx.numImportGlobals + localIdx;
+        const alreadyExported = ctx.mod.exports.some(
+          (e) => e.name === "default" || (e.name === varName && e.desc.kind === "global"),
+        );
+        if (!alreadyExported) {
+          ctx.mod.exports.push({ name: "default", desc: { kind: "global", index: absIdx } });
+          ctx.mod.exports.push({ name: varName, desc: { kind: "global", index: absIdx } });
+        }
+      }
+      ctx.deferredDefaultGlobalExport = undefined;
+    }
 
     // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
     const importNames = mod.imports.map((imp) => imp.name);
@@ -1839,6 +1862,26 @@ export function generateMultiModule(
 
     // Collect ref.func targets so the binary emitter can add a declarative element segment
     collectDeclaredFuncRefs(ctx);
+
+    // Resolve deferred `export default <variable>` for module globals (#1108).
+    // Must run AFTER compileDeclarations — string-constant imports added during
+    // body compilation shift numImportGlobals, so indices aren't final until now.
+    if (ctx.deferredDefaultGlobalExport) {
+      const varName = ctx.deferredDefaultGlobalExport;
+      const globalName = `__mod_${varName}`;
+      const localIdx = ctx.mod.globals.findIndex((g) => g.name === globalName);
+      if (localIdx >= 0) {
+        const absIdx = ctx.numImportGlobals + localIdx;
+        const alreadyExported = ctx.mod.exports.some(
+          (e) => e.name === "default" || (e.name === varName && e.desc.kind === "global"),
+        );
+        if (!alreadyExported) {
+          ctx.mod.exports.push({ name: "default", desc: { kind: "global", index: absIdx } });
+          ctx.mod.exports.push({ name: varName, desc: { kind: "global", index: absIdx } });
+        }
+      }
+      ctx.deferredDefaultGlobalExport = undefined;
+    }
 
     // Copy metadata for .d.ts / helper generation
     const importNames = mod.imports.map((imp) => imp.name);
@@ -4544,6 +4587,38 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
       constructorParams: [],
       methods,
       properties: new Map([["constructor", { type: { kind: "externref" }, readonly: true }]]),
+    });
+  }
+
+  // Intl.ListFormat — extern class for internationalized list formatting
+  if (!ctx.externClasses.has("ListFormat")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("format", externMethod(1)); // format(list) → string (externref)
+    methods.set("formatToParts", externMethod(1)); // formatToParts(list) → array (externref)
+    methods.set("resolvedOptions", externMethod(0)); // resolvedOptions() → object (externref)
+    ctx.externClasses.set("ListFormat", {
+      importPrefix: "Intl_ListFormat",
+      namespacePath: ["Intl"],
+      className: "ListFormat",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }], // locale?, options?
+      methods,
+      properties: new Map(),
+    });
+  }
+
+  // Intl.NumberFormat — extern class for internationalized number formatting
+  if (!ctx.externClasses.has("NumberFormat")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("format", externMethod(1)); // format(n) → string (externref)
+    methods.set("formatToParts", externMethod(1)); // formatToParts(n) → array (externref)
+    methods.set("resolvedOptions", externMethod(0)); // resolvedOptions() → object (externref)
+    ctx.externClasses.set("NumberFormat", {
+      importPrefix: "Intl_NumberFormat",
+      namespacePath: ["Intl"],
+      className: "NumberFormat",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }], // locale?, options?
+      methods,
+      properties: new Map(),
     });
   }
 

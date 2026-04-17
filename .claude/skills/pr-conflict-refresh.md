@@ -33,8 +33,8 @@ UNKNOWN status is normal right after a merge — wait another 30s and re-check.
 The PR branch name is the strongest hint: `issue-NNNN-<slug>` or `worktree-issue-NNNN-<slug>` corresponds to dev-NNN in our team convention (the dev agent that was spawned for the issue). Cross-reference with:
 
 1. The PR author (`gh pr view <N> --json author`)
-2. The issue file frontmatter (`grep -l "#NNNN" plan/issues/ready/`)
-3. Active tmux panes / team registry in `plan/agent-sessions.md` if present
+2. The issue file frontmatter in `plan/issues/`
+3. Active tmux panes / team registry in `plan/method/agent-sessions.md` if present
 
 ## Step 4: Verify the PR had a positive pre-merge delta
 

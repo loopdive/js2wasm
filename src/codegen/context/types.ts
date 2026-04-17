@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Shared backend context and metadata types.
  *
@@ -303,6 +304,9 @@ export interface CodegenContext {
   generatorYieldType: Map<string, ValType>;
   /** Map from module-level variable name → global index in mod.globals */
   moduleGlobals: Map<string, number>;
+  /** Deferred `export default <variable>` where variable is a module global (#1108).
+   *  Resolved after all collectDeclarations calls when global indices are final. */
+  deferredDefaultGlobalExport?: string;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
   /** Nested function capture info. */
@@ -334,6 +338,8 @@ export interface CodegenContext {
   consStrTypeIdx: number;
   /** Whether native string helper functions have been emitted */
   nativeStrHelpersEmitted: boolean;
+  /** Whether native string host bridge helpers have been emitted */
+  nativeStrExternBridgeEmitted: boolean;
   /** Map from native string helper name → function index */
   nativeStrHelpers: Map<string, number>;
   /** Map from value type kind → ref cell struct type index */
