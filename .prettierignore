@@ -10,3 +10,4 @@ scripts/test262-worker.mjs
 scripts/wasm-exec-worker.mjs
 *.wasm
 *.wat
+public/graph-data.json
