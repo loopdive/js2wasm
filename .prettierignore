@@ -12,3 +12,4 @@ scripts/wasm-exec-worker.mjs
 *.wat
 dashboard/data.js
 public/graph-data.json
+dashboard/data/
