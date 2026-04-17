@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Declaration collection and compilation — unified AST visitor, class declarations,
  * function bodies, and struct type registration.
@@ -5,8 +6,6 @@
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
-import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -17,7 +16,36 @@ import {
   mapTsTypeToWasm,
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
+import { collectShapes } from "../shape-inference.js";
+import { ensureWrapperTypes } from "./any-helpers.js";
+import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
 import { reportError } from "./context/errors.js";
+import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
+import { bodyUsesArguments, compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import {
+  addArrayIteratorImports,
+  addForInImports,
+  addIteratorImports,
+  addStringImports,
+  addUnionImports,
+  collectEnumDeclarations,
+  ensureStructForType,
+  extractConstantDefault,
+  FUNCTIONAL_ARRAY_METHODS,
+  hasAsyncModifier,
+  hasDeclareModifier,
+  hasExportModifier,
+  isGeneratorFunction,
+  KNOWN_CONSTRUCTORS,
+  MATH_HOST_METHODS_1ARG,
+  MATH_HOST_METHODS_2ARG,
+  parseRegExpLiteral,
+  resolveWasmType,
+  STRING_METHODS,
+  unwrapGeneratorYieldType,
+} from "./index.js";
+import { ensureNativeStringExternBridge, ensureNativeStringHelpers } from "./native-strings.js";
 import { addImport, addStringConstantGlobal, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
 import {
   addFuncType,
@@ -25,35 +53,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
-import { coerceType, compileExpression, compileStatement, hoistFunctionDeclarations } from "./shared.js";
-import { collectShapes } from "../shape-inference.js";
-import { ensureNativeStringHelpers } from "./native-strings.js";
-import { ensureWrapperTypes } from "./any-helpers.js";
-import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
-import { compileFunctionBody, registerInlinableFunction } from "./function-body.js";
-import {
-  resolveWasmType,
-  ensureStructForType,
-  addStringImports,
-  addUnionImports,
-  addIteratorImports,
-  addArrayIteratorImports,
-  addForInImports,
-  collectEnumDeclarations,
-  extractConstantDefault,
-  FUNCTIONAL_ARRAY_METHODS,
-  hasAsyncModifier,
-  hasDeclareModifier,
-  hasExportModifier,
-  hasStaticModifier,
-  isGeneratorFunction,
-  KNOWN_CONSTRUCTORS,
-  MATH_HOST_METHODS_1ARG,
-  MATH_HOST_METHODS_2ARG,
-  parseRegExpLiteral,
-  STRING_METHODS,
-  unwrapGeneratorYieldType,
-} from "./index.js";
+import { compileExpression, compileStatement } from "./shared.js";
 
 /** Accumulated state for the single-pass collector */
 interface UnifiedCollectorState {
@@ -900,7 +900,7 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
-      ensureNativeStringHelpers(ctx);
+      ensureNativeStringExternBridge(ctx);
     }
   }
   if (state.needsFromCodePoint) {
@@ -1817,6 +1817,13 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         ctx.funcOptionalParams.set(name, optionalParams);
       }
 
+      // Track functions that read `arguments` (#1053) so callers can
+      // populate the __extras_argv global with runtime args beyond the
+      // formal param count.
+      if (stmt.body && bodyUsesArguments(stmt.body)) {
+        ctx.funcUsesArguments.add(name);
+      }
+
       const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
       const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
       ctx.funcMap.set(name, funcIdx);
@@ -2096,6 +2103,28 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
     if (targetName && ctx.moduleGlobals.has(targetName)) {
       ctx.moduleInitStatements.push(stmt);
+    }
+  }
+
+  // Export default for module globals (#1108): `export default <variable>` where
+  // the variable is a module-level global (e.g. `var add = createMathOperation(fn, 0)`)
+  // This runs AFTER module globals are registered (Fourth pass above).
+  if (isEntryFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExportAssignment(stmt) || stmt.isExportEquals) continue;
+      if (!ts.isIdentifier(stmt.expression)) continue;
+      const varName = stmt.expression.text;
+      // Skip if already handled as a function export
+      if (ctx.funcMap.has(varName)) continue;
+      if (ctx.moduleGlobals.has(varName)) {
+        // Defer the actual export — global indices are not final yet because
+        // later collectDeclarations calls may add string-constant import globals
+        // which shift all defined-global indices.  Record the variable name
+        // and resolve the correct absolute index in a fixup pass.
+        if (!ctx.deferredDefaultGlobalExport) {
+          ctx.deferredDefaultGlobalExport = varName;
+        }
+      }
     }
   }
 }

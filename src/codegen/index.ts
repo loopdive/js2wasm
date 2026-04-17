@@ -1,8 +1,6 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
-import { eliminateDeadImports } from "./dead-elimination.js";
-import { peepholeOptimize } from "./peephole.js";
-import { stackBalance } from "./stack-balance.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -12,126 +10,87 @@ import {
   isStringType,
   isVoidType,
   mapTsTypeToWasm,
-  unwrapPromiseType,
 } from "../checker/type-mapper.js";
-import type {
-  ArrayTypeDef,
-  FieldDef,
-  FuncTypeDef,
-  Import,
-  Instr,
-  StructTypeDef,
-  ValType,
-  WasmFunction,
-  WasmModule,
-} from "../ir/types.js";
+import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction, WasmModule } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
 import { createCodegenContext } from "./context/create-context.js";
-import { popBody, pushBody } from "./context/bodies.js";
-import { reportError, reportErrorNoNode } from "./context/errors.js";
-import { allocLocal, allocTempLocal, deduplicateLocals, getLocalType, releaseTempLocal } from "./context/locals.js";
-import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
+import { reportErrorNoNode } from "./context/errors.js";
+import { allocLocal } from "./context/locals.js";
 import type {
   ClosureInfo,
   CodegenContext,
   CodegenOptions,
-  CodegenResult,
   ExternClassInfo,
   FunctionContext,
-  InlinableFunctionInfo,
   OptionalParamInfo,
-  RestParamInfo,
 } from "./context/types.js";
-import {
-  addImport,
-  addStringConstantGlobal,
-  ensureExnTag,
-  localGlobalIdx,
-  nextModuleGlobalIdx,
-} from "./registry/imports.js";
-import {
-  addFuncType,
-  funcTypeEq,
-  getArrTypeIdxFromVec,
-  getOrRegisterArrayType,
-  getOrRegisterRefCellType,
-  getOrRegisterTemplateVecType,
-  getOrRegisterVecType,
-} from "./registry/types.js";
-import {
-  compileExpression,
-  resolveComputedKeyExpression,
-  coerceType,
-  valTypesMatch,
-  emitBoundsCheckedArrayGet,
-  ensureLateImport,
-  flushLateImportShifts,
-  compileStatement,
-  ensureBindingLocals,
-  hoistFunctionDeclarations,
-  emitNestedBindingDefault,
-  emitDefaultValueCheck,
-  emitArgumentsObject,
-  registerEnsureAnyHelpers,
-} from "./shared.js";
-import { shiftLateImportIndices, emitUndefined } from "./expressions/late-imports.js";
-import { collectShapes } from "../shape-inference.js";
-import { emitInlineMathFunctions } from "./math-helpers.js";
+import { eliminateDeadImports } from "./dead-elimination.js";
+import { emitUndefined } from "./expressions/late-imports.js";
 import {
   fixupExternConvertAny,
   fixupStructNewArgCounts,
   fixupStructNewResultCoercion,
-  instrStackDelta,
   markLeafStructsFinal,
-  repairBody,
   repairStructTypeMismatches,
 } from "./fixups.js";
+import { emitInlineMathFunctions } from "./math-helpers.js";
+import { peepholeOptimize } from "./peephole.js";
+import { addImport, addStringConstantGlobal } from "./registry/imports.js";
+import {
+  addFuncType,
+  getArrTypeIdxFromVec,
+  getOrRegisterTemplateVecType,
+  getOrRegisterVecType,
+} from "./registry/types.js";
+import { stackBalance } from "./stack-balance.js";
 
 // ── Extracted sub-modules ──────────────────────────────────────────────────
 import {
+  emitWrapperValueOfFunctions,
+  ensureAnyHelpers,
   ensureAnyValueType,
   ensureWrapperTypes,
-  emitWrapperValueOfFunctions,
   isAnyValue,
-  ensureAnyHelpers,
 } from "./any-helpers.js";
 import {
-  nativeStringType,
-  nativeStringTypeNullable,
-  flatStringType,
-  ensureNativeStringHelpers,
-} from "./native-strings.js";
-import { destructureParamObject, destructureParamArray } from "./destructuring-params.js";
-import {
-  collectClassDeclaration,
   buildShapePropFlagsTable,
+  collectClassDeclaration,
   collectDeclaredFuncRefs,
   compileClassBodies,
 } from "./class-bodies.js";
 import {
-  createUnifiedCollectorState,
-  unifiedVisitNode,
-  finalizeUnifiedCollector,
-  collectEmptyObjectWidening,
   applyShapeInference,
   collectDeclarations,
+  collectEmptyObjectWidening,
   compileDeclarations,
+  createUnifiedCollectorState,
+  finalizeUnifiedCollector,
+  unifiedVisitNode,
 } from "./declarations.js";
+import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  ensureNativeStringExternBridge,
+  ensureNativeStringHelpers,
+  flatStringType,
+  nativeStringType,
+  nativeStringTypeNullable,
+} from "./native-strings.js";
 
 // ── Re-exports for public API compatibility ─────────────────────────────────
 export {
-  ensureAnyValueType,
-  ensureWrapperTypes,
-  isAnyValue,
-  ensureAnyHelpers,
-  nativeStringType,
-  nativeStringTypeNullable,
-  flatStringType,
-  ensureNativeStringHelpers,
   collectClassDeclaration,
   compileClassBodies,
-  destructureParamObject,
   destructureParamArray,
+  destructureParamObject,
+  ensureAnyHelpers,
+  ensureAnyValueType,
+  ensureNativeStringExternBridge,
+  ensureNativeStringHelpers,
+  ensureWrapperTypes,
+  flatStringType,
+  isAnyValue,
+  nativeStringType,
+  nativeStringTypeNullable,
 };
 /**
  * Report a codegen error with source location extracted from an AST node.
@@ -321,6 +280,26 @@ export function generateModule(
     // Collect ref.func targets so the binary emitter can add a declarative element segment
     collectDeclaredFuncRefs(ctx);
 
+    // Resolve deferred `export default <variable>` for module globals (#1108).
+    // Must run AFTER compileDeclarations — string-constant imports added during
+    // body compilation shift numImportGlobals, so indices aren't final until now.
+    if (ctx.deferredDefaultGlobalExport) {
+      const varName = ctx.deferredDefaultGlobalExport;
+      const globalName = `__mod_${varName}`;
+      const localIdx = ctx.mod.globals.findIndex((g) => g.name === globalName);
+      if (localIdx >= 0) {
+        const absIdx = ctx.numImportGlobals + localIdx;
+        const alreadyExported = ctx.mod.exports.some(
+          (e) => e.name === "default" || (e.name === varName && e.desc.kind === "global"),
+        );
+        if (!alreadyExported) {
+          ctx.mod.exports.push({ name: "default", desc: { kind: "global", index: absIdx } });
+          ctx.mod.exports.push({ name: varName, desc: { kind: "global", index: absIdx } });
+        }
+      }
+      ctx.deferredDefaultGlobalExport = undefined;
+    }
+
     // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
     const importNames = mod.imports.map((imp) => imp.name);
     for (const [key, info] of ctx.externClasses) {
@@ -357,6 +336,9 @@ export function generateModule(
 
     // Emit __call_fn_0 export for calling zero-arg closures from JS (#851)
     emitClosureCallExport(ctx);
+
+    // Emit __call_fn_1 export for calling one-arg closures from JS (#1090)
+    emitClosureCallExport1(ctx);
 
     // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
     emitToPrimitiveMethodExports(ctx);
@@ -947,6 +929,200 @@ function emitClosureCallExport(ctx: CodegenContext): void {
 
   mod.exports.push({
     name: "__call_fn_0",
+    desc: { kind: "func", index: funcIdx },
+  });
+}
+
+/**
+ * Emit __call_fn_1 export (#1090): call a one-arg WasmGC closure from JS.
+ * Takes (externref closure, externref arg) and returns externref.
+ * Needed for Symbol.toPrimitive closures which take a hint argument.
+ * Same dispatch strategy as __call_fn_0 but for arity 1.
+ */
+function emitClosureCallExport1(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+
+  let baseWrapperIdx: number | undefined;
+  const seenFuncTypeIdx = new Set<number>();
+  const entries: { funcTypeIdx: number; returnType: ValType | null; selfTypeIdx: number }[] = [];
+
+  for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+    if (info.paramTypes.length !== 1) continue;
+
+    const typeDef = mod.types[typeIdx];
+    if (!typeDef || typeDef.kind !== "struct") continue;
+
+    if (typeDef.superTypeIdx === -1 && baseWrapperIdx === undefined) {
+      baseWrapperIdx = typeIdx;
+    }
+
+    if (!seenFuncTypeIdx.has(info.funcTypeIdx)) {
+      seenFuncTypeIdx.add(info.funcTypeIdx);
+      const funcTypeDef = mod.types[info.funcTypeIdx];
+      const selfParam = funcTypeDef?.kind === "func" ? funcTypeDef.params[0] : undefined;
+      const selfTypeIdx =
+        selfParam && (selfParam.kind === "ref" || selfParam.kind === "ref_null")
+          ? (selfParam as { typeIdx: number }).typeIdx
+          : typeIdx;
+      entries.push({ funcTypeIdx: info.funcTypeIdx, returnType: info.returnType, selfTypeIdx });
+    }
+  }
+
+  if (entries.length === 0) return;
+
+  // If no base wrapper found, try any 0-arg base wrapper (V8 canonicalizes
+  // all single-funcref base wrappers to the same type regardless of arity)
+  if (baseWrapperIdx === undefined) {
+    for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+      const typeDef = mod.types[typeIdx];
+      if (typeDef && typeDef.kind === "struct" && typeDef.superTypeIdx === -1) {
+        baseWrapperIdx = typeIdx;
+        break;
+      }
+    }
+  }
+  if (baseWrapperIdx === undefined) {
+    for (const [typeIdx] of ctx.closureInfoByTypeIdx) {
+      if (ctx.closureInfoByTypeIdx.get(typeIdx)!.paramTypes.length === 1) {
+        baseWrapperIdx = typeIdx;
+        break;
+      }
+    }
+  }
+  if (baseWrapperIdx === undefined) return;
+
+  addUnionImports(ctx);
+  const boxNumberIdx = ctx.funcMap.get("__box_number");
+
+  // __call_fn_1(closure: externref, arg: externref) → externref
+  const exportFuncTypeIdx = addFuncType(
+    ctx,
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+    "$call_fn_1_type",
+  );
+  const funcIdx = ctx.numImportFuncs + mod.functions.length;
+  const bwIdx = baseWrapperIdx;
+
+  // Locals: 0=closure externref, 1=arg externref, 2=anyref, 3=struct ref, 4=funcref
+  const body: Instr[] = [];
+  body.push({ op: "local.get", index: 0 });
+  body.push({ op: "any.convert_extern" } as Instr);
+  body.push({ op: "local.set", index: 2 } as Instr);
+
+  let funcrefDispatch: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+  for (const entry of entries) {
+    // The funcref type for 1-arg closures is: (ref $self, param_type) → return_type
+    // We need to convert the externref arg to the expected param type.
+    // Most commonly it's externref (for hint strings), f64, or i32.
+    const funcTypeDef = mod.types[entry.funcTypeIdx];
+    const paramType =
+      funcTypeDef?.kind === "func" && funcTypeDef.params.length >= 2 ? funcTypeDef.params[1] : undefined;
+
+    const argConversion: Instr[] = [{ op: "local.get", index: 1 } as Instr];
+    if (paramType) {
+      if (paramType.kind === "f64") {
+        // externref → f64: unbox
+        const unboxIdx = ctx.funcMap.get("__unbox_number");
+        if (unboxIdx !== undefined) {
+          argConversion.push({ op: "call", funcIdx: unboxIdx } as Instr);
+        }
+      } else if (paramType.kind === "i32") {
+        const unboxIdx = ctx.funcMap.get("__unbox_number");
+        if (unboxIdx !== undefined) {
+          argConversion.push({ op: "call", funcIdx: unboxIdx } as Instr);
+          argConversion.push({ op: "i32.trunc_f64_s" } as unknown as Instr);
+        }
+      }
+      // externref → externref: no conversion
+    }
+
+    const callBody: Instr[] = [
+      { op: "local.get", index: 2 } as Instr,
+      { op: "ref.cast", typeIdx: entry.selfTypeIdx } as Instr,
+      ...argConversion,
+      { op: "local.get", index: 4 } as Instr,
+      { op: "ref.cast", typeIdx: entry.funcTypeIdx } as Instr,
+      { op: "call_ref", typeIdx: entry.funcTypeIdx } as Instr,
+    ];
+
+    // Coerce result to externref
+    if (entry.returnType) {
+      if (entry.returnType.kind === "ref" || entry.returnType.kind === "ref_null") {
+        callBody.push({ op: "extern.convert_any" } as Instr);
+      } else if (entry.returnType.kind === "f64") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i32") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i32_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i64") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i64_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      }
+    } else {
+      callBody.push({ op: "ref.null.extern" } as Instr);
+    }
+
+    funcrefDispatch = [
+      { op: "local.get", index: 4 } as Instr,
+      { op: "ref.test", typeIdx: entry.funcTypeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "externref" } },
+        then: callBody,
+        else: funcrefDispatch,
+      } as Instr,
+    ];
+  }
+
+  const structExtractAndDispatch: Instr[] = [
+    { op: "local.get", index: 2 } as Instr,
+    { op: "ref.cast", typeIdx: bwIdx } as Instr,
+    { op: "local.tee", index: 3 } as Instr,
+    { op: "struct.get", typeIdx: bwIdx, fieldIdx: 0 } as Instr,
+    { op: "local.set", index: 4 } as Instr,
+    ...funcrefDispatch,
+  ];
+
+  body.push({ op: "local.get", index: 2 } as Instr);
+  body.push({ op: "ref.test", typeIdx: bwIdx } as Instr);
+  body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "externref" } },
+    then: structExtractAndDispatch,
+    else: [{ op: "ref.null.extern" } as Instr],
+  } as Instr);
+
+  mod.functions.push({
+    name: "__call_fn_1",
+    typeIdx: exportFuncTypeIdx,
+    locals: [
+      { name: "__any", type: { kind: "anyref" } },
+      { name: "__struct", type: { kind: "ref_null", typeIdx: bwIdx } },
+      { name: "__funcref", type: { kind: "funcref" } },
+    ],
+    body,
+    exported: true,
+  } as WasmFunction);
+
+  mod.exports.push({
+    name: "__call_fn_1",
     desc: { kind: "func", index: funcIdx },
   });
 }
@@ -1687,6 +1863,26 @@ export function generateMultiModule(
     // Collect ref.func targets so the binary emitter can add a declarative element segment
     collectDeclaredFuncRefs(ctx);
 
+    // Resolve deferred `export default <variable>` for module globals (#1108).
+    // Must run AFTER compileDeclarations — string-constant imports added during
+    // body compilation shift numImportGlobals, so indices aren't final until now.
+    if (ctx.deferredDefaultGlobalExport) {
+      const varName = ctx.deferredDefaultGlobalExport;
+      const globalName = `__mod_${varName}`;
+      const localIdx = ctx.mod.globals.findIndex((g) => g.name === globalName);
+      if (localIdx >= 0) {
+        const absIdx = ctx.numImportGlobals + localIdx;
+        const alreadyExported = ctx.mod.exports.some(
+          (e) => e.name === "default" || (e.name === varName && e.desc.kind === "global"),
+        );
+        if (!alreadyExported) {
+          ctx.mod.exports.push({ name: "default", desc: { kind: "global", index: absIdx } });
+          ctx.mod.exports.push({ name: varName, desc: { kind: "global", index: absIdx } });
+        }
+      }
+      ctx.deferredDefaultGlobalExport = undefined;
+    }
+
     // Copy metadata for .d.ts / helper generation
     const importNames = mod.imports.map((imp) => imp.name);
     for (const [key, info] of ctx.externClasses) {
@@ -2263,6 +2459,13 @@ export function addStringImports(ctx: CodegenContext): void {
     kind: "func",
     typeIdx: charCodeAtType,
   });
+
+  // Store wasm:js-string import indices separately so user-defined functions
+  // with the same name (e.g. user's "charCodeAt") don't shadow them (#1072).
+  for (const name of ["concat", "length", "equals", "substring", "charCodeAt"]) {
+    const idx = ctx.funcMap.get(name);
+    if (idx !== undefined) ctx.jsStringImports.set(name, idx);
+  }
 
   // If imports were added after defined functions were registered (late addition),
   // shift all defined-function indices.
@@ -4387,6 +4590,38 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
     });
   }
 
+  // Intl.ListFormat — extern class for internationalized list formatting
+  if (!ctx.externClasses.has("ListFormat")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("format", externMethod(1)); // format(list) → string (externref)
+    methods.set("formatToParts", externMethod(1)); // formatToParts(list) → array (externref)
+    methods.set("resolvedOptions", externMethod(0)); // resolvedOptions() → object (externref)
+    ctx.externClasses.set("ListFormat", {
+      importPrefix: "Intl_ListFormat",
+      namespacePath: ["Intl"],
+      className: "ListFormat",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }], // locale?, options?
+      methods,
+      properties: new Map(),
+    });
+  }
+
+  // Intl.NumberFormat — extern class for internationalized number formatting
+  if (!ctx.externClasses.has("NumberFormat")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("format", externMethod(1)); // format(n) → string (externref)
+    methods.set("formatToParts", externMethod(1)); // formatToParts(n) → array (externref)
+    methods.set("resolvedOptions", externMethod(0)); // resolvedOptions() → object (externref)
+    ctx.externClasses.set("NumberFormat", {
+      importPrefix: "Intl_NumberFormat",
+      namespacePath: ["Intl"],
+      className: "NumberFormat",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }], // locale?, options?
+      methods,
+      properties: new Map(),
+    });
+  }
+
   // Set Object as terminal parent for any extern class that has no parent
   for (const [className] of ctx.externClasses) {
     if (className !== "Object" && !ctx.externClassParent.has(className)) {
@@ -4944,6 +5179,63 @@ function collectDeclaredGlobals(ctx: CodegenContext, libFile: ts.SourceFile, use
       }
     }
   }
+
+  // #1065 — Register ambient builtin constructors (Array, Object, Function, ...)
+  // as declared globals when referenced in source. These are filtered out of
+  // isExternalDeclaredClass because they have Wasm-native fast paths (vec
+  // structs, tuples, etc.), but they ALSO need to resolve to the real host
+  // constructor when used in identity-compare positions (`x.constructor === Array`).
+  // The fast paths at call sites (`new Array(n)`, `Array.of`, `Array.prototype`,
+  // `Array.isArray`) intercept BEFORE identifier resolution, so adding the
+  // global only affects bare-identifier uses.
+  const AMBIENT_BUILTIN_CTORS = [
+    "Array",
+    "Object",
+    "Function",
+    "Number",
+    "String",
+    "Boolean",
+    "Symbol",
+    "Error",
+    "TypeError",
+    "RangeError",
+    "SyntaxError",
+    "ReferenceError",
+    "Date",
+    "RegExp",
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "Promise",
+    "Math",
+    "JSON",
+    "Reflect",
+    "ArrayBuffer",
+    "DataView",
+    "Int8Array",
+    "Uint8Array",
+    "Uint8ClampedArray",
+    "Int16Array",
+    "Uint16Array",
+    "Int32Array",
+    "Uint32Array",
+    "Float32Array",
+    "Float64Array",
+    "BigInt64Array",
+    "BigUint64Array",
+  ];
+  for (const name of AMBIENT_BUILTIN_CTORS) {
+    if (!referencedNames.has(name)) continue;
+    if (ctx.declaredGlobals.has(name)) continue;
+    const importName = `global_${name}`;
+    const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+    addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx !== undefined) {
+      ctx.declaredGlobals.set(name, { type: { kind: "externref" }, funcIdx });
+    }
+  }
 }
 
 /** Check if source code references DOM globals (document, window) */
@@ -4962,6 +5254,38 @@ const LIB_GLOBALS = new Set([
   "Element",
   "Node",
   "Event",
+  // #1065 — ambient builtin constructors that need host-global resolution
+  // for bare-identifier uses (e.g. `x.constructor === Array`). Call-site
+  // fast paths intercept before identifier resolution runs.
+  "Array",
+  "Object",
+  "Function",
+  "Number",
+  "String",
+  "Boolean",
+  "Symbol",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  // #1018 — additional builtins whose .prototype access needs host resolution
+  "Promise",
+  "Math",
+  "JSON",
+  "Reflect",
+  "ArrayBuffer",
+  "DataView",
+  "Int8Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float32Array",
+  "Float64Array",
+  "BigInt64Array",
+  "BigUint64Array",
 ]);
 
 function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {
@@ -5607,6 +5931,11 @@ export function ensureI32Condition(fctx: FunctionContext, condType: ValType | nu
   // i32 is already valid as-is
 }
 
+export { popBody, pushBody } from "./context/bodies.js";
+export { createCodegenContext } from "./context/create-context.js";
+export { reportError } from "./context/errors.js";
+export { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
+export { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 export type {
   ClosureInfo,
   CodegenContext,
@@ -5618,11 +5947,6 @@ export type {
   OptionalParamInfo,
   RestParamInfo,
 } from "./context/types.js";
-export { popBody, pushBody } from "./context/bodies.js";
-export { createCodegenContext } from "./context/create-context.js";
-export { reportError } from "./context/errors.js";
-export { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
-export { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 export {
   addImport,
   addStringConstantGlobal,

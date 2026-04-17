@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Shared types, values, and late-bound function registrations for the codegen
  * modules.  This module exists solely to break circular dependencies between
@@ -19,8 +20,8 @@
  */
 
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./context/types.js";
 import type { ValType } from "../ir/types.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
 
 // ── VOID_RESULT sentinel ──────────────────────────────────────────────
 

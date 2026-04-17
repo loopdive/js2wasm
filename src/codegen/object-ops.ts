@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Object operations: Object.defineProperty, Object.keys/values/entries,
  * hasOwnProperty / propertyIsEnumerable.
@@ -5,24 +6,20 @@
  * Extracted from expressions.ts (#688 step 6).
  */
 import ts from "typescript";
+import { isVoidType } from "../checker/type-mapper.js";
+import type { Instr, ValType, WasmFunction } from "../ir/types.js";
+import { collectReferencedIdentifiers, collectWrittenIdentifiers, compileArrowAsCallback } from "./closures.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
-import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType, getOrRegisterRefCellType } from "./registry/types.js";
-import { resolveWasmType, addUnionImports, getOrRegisterTupleType, cacheStringLiterals } from "./index.js";
-import { isVoidType } from "../checker/type-mapper.js";
-import type { Instr, ValType, WasmFunction } from "../ir/types.js";
-import { compileStatement } from "./shared.js";
-import { coerceType } from "./shared.js";
-import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
-import type { InnerResult } from "./shared.js";
-import { compileNativeStringLiteral } from "./string-ops.js";
-import { ensureLateImport, flushLateImportShifts } from "./shared.js";
 import { emitThrowString } from "./expressions/helpers.js";
 import { resolveStructName } from "./expressions/misc.js";
-import { emitGuardedRefCast } from "./type-coercion.js";
-import { compileArrowAsCallback, collectReferencedIdentifiers, collectWrittenIdentifiers } from "./closures.js";
+import { addUnionImports, cacheStringLiterals, getOrRegisterTupleType, resolveWasmType } from "./index.js";
+import { addStringConstantGlobal, ensureExnTag } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterRefCellType, getOrRegisterVecType } from "./registry/types.js";
+import type { InnerResult } from "./shared.js";
+import { coerceType, compileExpression, compileStatement, ensureLateImport, flushLateImportShifts } from "./shared.js";
+import { compileNativeStringLiteral } from "./string-ops.js";
 
 // ── Compile-time primitive type check for Object methods ─────────────
 
@@ -1794,12 +1791,13 @@ export function compileObjectDefineProperties(
 
       // Externref fallback
       const dpIsAccessor = !!(dpGetNode || dpSetNode || dpGetExpr || dpSetExpr);
-      if (objType.kind !== "externref") {
-        // Coerce obj to externref for the host call
-        fctx.body.push({ op: "local.get", index: objLocal });
+      // Use extern.convert_any directly (not coerceType) to avoid __make_iterable
+      // for vec structs, which would create a new JS array with different identity (#856/#1092).
+      fctx.body.push({ op: "local.get", index: objLocal });
+      if (objType.kind === "ref" || objType.kind === "ref_null") {
+        fctx.body.push({ op: "extern.convert_any" } as Instr);
+      } else if (objType.kind !== "externref") {
         coerceType(ctx, fctx, objType, { kind: "externref" });
-      } else {
-        fctx.body.push({ op: "local.get", index: objLocal });
       }
       const objExtLocal = allocLocal(fctx, `__defprops_ext_${fctx.locals.length}`, { kind: "externref" });
       fctx.body.push({ op: "local.set", index: objExtLocal });
@@ -1911,9 +1909,13 @@ export function compileObjectDefineProperties(
   }
 
   // Dynamic fallback: delegate to __defineProperties host import
-  const objType = compileExpression(ctx, fctx, objArg, { kind: "externref" });
+  const objType = compileExpression(ctx, fctx, objArg);
   if (!objType) return null;
-  if (objType.kind !== "externref") {
+  // Use extern.convert_any directly (not coerceType) to avoid __make_iterable
+  // for vec structs, which would create a new JS array with different identity (#856/#1092).
+  if (objType.kind === "ref" || objType.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" } as Instr);
+  } else if (objType.kind !== "externref") {
     coerceType(ctx, fctx, objType, { kind: "externref" });
   }
   const descsType = compileExpression(ctx, fctx, descsArg, { kind: "externref" });

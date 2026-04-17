@@ -26,8 +26,9 @@ jq . .claude/ci-status/pr-<N>.json
 ```
 
 Pull out:
-- `conclusion` (either `success` or `failure` — `failure` just means the sharded workflow's "fail on regressions" gate triggered, which is expected for any PR with >0 regressions; it does NOT mean the delta is negative)
-- `delta` (pass count change vs current main baseline)
+- `conclusion` (either `success` or `failure` — `failure` just means the sharded workflow's "fail on regressions" gate triggered, which is expected for any PR with >0 regressions; it does NOT mean the PR is bad)
+- `net_per_test` (improvements − regressions — **the authoritative merge gate**)
+- `snapshot_delta` (absolute pass count vs the committed baseline — historical context only, do NOT use as a merge criterion; see "What the fields mean" below)
 - `improvements` (count of tests that moved other → pass)
 - `regressions` (count of tests that moved pass → other)
 
@@ -35,13 +36,34 @@ Pull out:
 
 **All must be true:**
 
-1. ✅ `delta > 0` — your PR improves the pass count net of regressions
+1. ✅ `net_per_test > 0` — more per-test improvements than regressions from this PR
 2. ✅ `regressions / improvements < 0.10` — regression-to-improvement ratio under 10%
 3. ✅ No single error-pattern bucket has >50 regressions (see Step 3)
 4. ✅ PR touches ≤ 5 files AND is in a single codegen path (not a blanket rewrite)
 5. ✅ The PR is on your own branch (you're the author)
 
 If any fail → go to Step 5 (escalate).
+
+### What the fields mean (and why `snapshot_delta` is NOT the gate)
+
+The feed publishes two numbers that sound similar but measure different things:
+
+- **`net_per_test = improvements − regressions`** — counts individual tests that flipped between the PR's base and the PR tip. `diff-test262.ts` computes these per-test transitions from the two JSONL files. This is what "did my PR help or hurt" actually means. It is the merge gate.
+- **`snapshot_delta = pass_in_pr_run − pass_in_committed_baseline_file`** — a bulk subtraction of two pass counts. The baseline is the `test262-current.json` committed on main, which only refreshes when the main-push workflow's regression gate succeeds. If main has silently regressed (which happens the instant any main-push fails the regression gate — see #1076), the committed baseline freezes at the prior high-water mark while real main drops below it. `snapshot_delta` then includes **all inherited drift** between the two, and can be strongly positive even when the PR itself introduced real regressions.
+
+**Concrete example from the 2026-04-11 incident** (PR #100, #1057 runtime):
+
+```
+snapshot_delta:    +296    ← pass count (22046) vs frozen committed baseline (21750)
+net_per_test:      +150    ← 169 improvements − 19 regressions (vs PR #98 base)
+regressions:        19     ← 16 DataView + 2 RegExp + 1 ArrayBuffer inherited from PRs
+                              #90 and #94 that merged between the two PR-event runs
+improvements:      169     ← real, from PR #100's own change
+```
+
+The old criterion (`delta > 0`) passed on `+296` even though the honest PR contribution was `+150` — the `+146` gap was inherited drift that the old `delta` field misattributed to the PR. Under the new gate, `net_per_test = +150` still passes, which is the correct outcome for this specific PR. Under the new gate, a PR that showed `snapshot_delta = +50, net_per_test = −30` (possible when frozen baseline inflates the bulk number) would correctly be rejected.
+
+**Rule of thumb**: if `snapshot_delta` and `net_per_test` disagree sharply, the baseline file is stale. Report it to tech lead (the #1076-#1081 structural fixes address the stale baseline directly). Always trust `net_per_test`.
 
 ### Step 3 — sample the regressions
 
@@ -93,7 +115,7 @@ for m, c in msgs.most_common(5): print(f"  {c:4d} {m}")
 ### Step 4 — if all checks pass, merge
 
 ```bash
-gh pr merge <N> --merge --admin --body "Self-merged by <your-name>. Net +<delta> pass, <imp> improvements vs <reg> regressions (<ratio>% ratio). Regressions sampled: <one-line summary>. Criteria per .claude/skills/dev-self-merge.md."
+gh pr merge <N> --merge --admin --body "Self-merged by <your-name>. net_per_test=+<N> (<imp> improvements − <reg> regressions, <ratio>% ratio). Regressions sampled: <one-line summary>. Criteria per .claude/skills/dev-self-merge.md."
 ```
 
 Include the regression sample summary in the body so the audit trail is clear.

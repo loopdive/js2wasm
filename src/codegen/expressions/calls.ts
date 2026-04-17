@@ -1,126 +1,85 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Call expression compilation: direct calls, optional calls, closure calls,
  * property method calls, IIFEs, and conditional callees.
  */
 import ts from "typescript";
 import {
+  isBooleanType,
   isExternalDeclaredClass,
-  isHeterogeneousUnion,
+  isGeneratorType,
   isNumberType,
   isStringType,
-  isBooleanType,
   isVoidType,
-  isGeneratorType,
-  isIteratorResultType,
-  mapTsTypeToWasm,
 } from "../../checker/type-mapper.js";
-import type { FieldDef, Instr, ValType } from "../../ir/types.js";
+import type { Instr, ValType } from "../../ir/types.js";
+import { compileArrayMethodCall, compileArrayPrototypeCall, resolveArrayInfo } from "../array-methods.js";
+import {
+  collectReferencedIdentifiers,
+  collectWrittenIdentifiers,
+  compileArrowFunction,
+  getOrCreateFuncRefWrapperTypes,
+} from "../closures.js";
+import { popBody, pushBody } from "../context/bodies.js";
+import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
+import type { ClosureInfo, CodegenContext, FunctionContext } from "../context/types.js";
 import {
   addFuncType,
   addImport,
   addStringConstantGlobal,
   addStringImports,
   addUnionImports,
-  ensureAnyHelpers,
   ensureExnTag,
   ensureI32Condition,
-  ensureStructForType,
   getArrTypeIdxFromVec,
   getOrRegisterRefCellType,
   getOrRegisterVecType,
-  isAnyValue,
-  localGlobalIdx,
-  nativeStringType,
-  resolveWasmType,
   hoistLetConstWithTdz,
   hoistVarDeclarations,
+  nativeStringType,
+  resolveWasmType,
 } from "../index.js";
+import { compileArrayConstructorCall, compileSymbolCall, resolveComputedKeyExpression } from "../literals.js";
 import {
-  compileArrayMethodCall,
-  compileArrayPrototypeCall,
-  emitBoundsCheckedArrayGet,
-  resolveArrayInfo,
-} from "../array-methods.js";
-import { compileBinaryExpression, emitModulo, emitToInt32 } from "../binary-ops.js";
-import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
-import { popBody, pushBody } from "../context/bodies.js";
-import { reportError, reportErrorNoNode } from "../context/errors.js";
-import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "../context/types.js";
-import {
-  compileObjectDefineProperty,
   compileObjectDefineProperties,
+  compileObjectDefineProperty,
   compileObjectKeysOrValues,
   compilePropertyIntrospection,
 } from "../object-ops.js";
-import {
-  compileArrayConstructorCall,
-  compileArrayLiteral,
-  compileObjectLiteral,
-  compileSymbolCall,
-  resolveComputedKeyExpression,
-} from "../literals.js";
-import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
+import { emitNullCheckThrow, typeErrorThrowInstrs } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
-import { compileStatement, emitTdzCheck, hoistFunctionDeclarations } from "../statements.js";
+import { coerceType, compileExpression, valTypesMatch, VOID_RESULT } from "../shared.js";
+import { compileStatement, hoistFunctionDeclarations } from "../statements.js";
+import { emitSetExtrasArgv } from "../statements/nested-declarations.js";
+import { compileNativeStringMethodCall, compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import {
-  compileNativeStringMethodCall,
-  compileStringLiteral,
-  compileTaggedTemplateExpression,
-  compileTemplateExpression,
-  emitBoolToString,
-} from "../string-ops.js";
-import {
-  coerceType as coerceTypeImpl,
   defaultValueInstrs,
-  emitGuardedRefCast,
   emitGuardedFuncRefCast,
-  emitSafeExternrefToF64,
+  emitGuardedRefCast,
   pushDefaultValue,
   pushParamSentinel,
 } from "../type-coercion.js";
-import {
-  compileElementAccess,
-  compilePropertyAccess,
-  emitBoundsGuardedArraySet,
-  emitNullCheckThrow,
-  emitNullGuardedStructGet,
-  isProvablyNonNull,
-  typeErrorThrowInstrs,
-} from "../property-access.js";
-import {
-  collectReferencedIdentifiers,
-  collectWrittenIdentifiers,
-  compileArrowFunction,
-  emitFuncRefAsClosure,
-  getOrCreateFuncRefWrapperTypes,
-} from "../closures.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
-import {
-  getFuncParamTypes,
-  wasmFuncReturnsVoid,
-  wasmFuncTypeReturnsVoid,
-  getWasmFuncReturnType,
-  isEffectivelyVoidReturn,
-  emitThrowString,
-} from "./helpers.js";
-import { emitLazyProtoGet, compileExternMethodCall, compileSpreadCallArgs, findExternInfoForMember } from "./extern.js";
-import { compileSuperMethodCall, compileSuperElementMethodCall } from "./new-super.js";
 import {
   compileConsoleCall,
   compileDateMethodCall,
   compileMathCall,
   ensureDateDaysFromCivilHelper,
 } from "./builtins.js";
-import { resolveStructName } from "./misc.js";
-import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./identifiers.js";
-import { compileOptionalCallExpression } from "./calls-optional.js";
 import {
-  compileClosureCall,
   compileCallablePropertyCall,
+  compileClosureCall,
   compileGetterCallable,
   compileObjectPrototypeFallback,
   tryExternClassMethodOnAny,
 } from "./calls-closures.js";
+import { compileOptionalCallExpression } from "./calls-optional.js";
+import { compileExternMethodCall, compileSpreadCallArgs, emitLazyProtoGet } from "./extern.js";
+import { getFuncParamTypes, getWasmFuncReturnType, isEffectivelyVoidReturn, wasmFuncReturnsVoid } from "./helpers.js";
+import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./identifiers.js";
+import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
+import { resolveStructName } from "./misc.js";
+import { compileSuperElementMethodCall, compileSuperMethodCall } from "./new-super.js";
+import { ensureNativeStringExternBridge } from "../native-strings.js";
 
 /**
  * Check if a node (function body) uses the `arguments` binding.
@@ -246,6 +205,165 @@ function isEvalCallExpression(expr: ts.CallExpression): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * #1063 Part B: inline dynamic-dispatch for an identifier callee whose static
+ * type is `any` (externref) but which may hold a wrapped closure struct at
+ * runtime (e.g. `function outer(op: any) { return function (x) { return op(x); } }`).
+ *
+ * Emits a `ref.test`/`ref.cast`/`struct.get`/`call_ref` chain against every
+ * closure struct type in the module whose arity matches the call's arg count.
+ * Mirrors `emitClosureCallExport` (__call_fn_0) but specialized to arity N
+ * with inline arg marshalling.
+ *
+ * Returns `{ kind: "externref" }` on success, or `null` to let the caller
+ * fall back to the existing `ref.null.extern` behavior.
+ */
+function tryEmitInlineDynamicCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  isKnownVariable: boolean,
+): InnerResult | null {
+  if (!isKnownVariable) return null;
+
+  const arity = expr.arguments.length;
+
+  // Pre-filter candidates: matching arity, and all param/return types
+  // supported by inline marshalling (f64 / i32 / externref / ref / ref_null).
+  type Cand = { structTypeIdx: number; info: ClosureInfo };
+  const supported = (t: ValType | null): boolean => {
+    if (t === null) return true;
+    return t.kind === "f64" || t.kind === "i32" || t.kind === "externref" || t.kind === "ref" || t.kind === "ref_null";
+  };
+
+  const allCandidates: Cand[] = [];
+  for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+    if (info.paramTypes.length !== arity) continue;
+    if (!supported(info.returnType)) continue;
+    let ok = true;
+    for (const p of info.paramTypes) {
+      if (!supported(p)) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+    allCandidates.push({ structTypeIdx: typeIdx, info });
+  }
+  if (allCandidates.length === 0) return null;
+
+  // Dedupe by funcTypeIdx — concrete subtypes share funcTypeIdx with their
+  // base wrapper; one dispatch arm per unique funcref type is enough.
+  const seenFuncType = new Set<number>();
+  const candidates: Cand[] = [];
+  for (const c of allCandidates) {
+    if (seenFuncType.has(c.info.funcTypeIdx)) continue;
+    seenFuncType.add(c.info.funcTypeIdx);
+    candidates.push(c);
+  }
+
+  // Ensure box/unbox helpers.
+  addUnionImports(ctx);
+  const boxNumberIdx = ctx.funcMap.get("__box_number");
+  const unboxNumberIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+  if (boxNumberIdx === undefined || unboxNumberIdx === undefined) return null;
+
+  // Compile callee (externref) → anyref → temp local.
+  const calleeType = compileExpression(ctx, fctx, expr.expression);
+  if (calleeType === null) return null;
+  // If already a ref type, skip the extern→any convert; otherwise expect externref.
+  if (calleeType.kind === "externref") {
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+  } else if (calleeType.kind !== "ref" && calleeType.kind !== "ref_null") {
+    // Unexpected stack type — bail, the existing fallback will run.
+    fctx.body.push({ op: "drop" });
+    return null;
+  }
+  const anyLocal = allocLocal(fctx, `__dyn_any_${fctx.locals.length}`, { kind: "anyref" });
+  fctx.body.push({ op: "local.set", index: anyLocal });
+
+  // Compile each argument to externref and stash in a temp local so each
+  // dispatch arm can marshal it independently without re-evaluating.
+  const argLocals: number[] = [];
+  for (let i = 0; i < arity; i++) {
+    compileExpression(ctx, fctx, expr.arguments[i]!, { kind: "externref" });
+    const argLocal = allocLocal(fctx, `__dyn_arg${i}_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: argLocal });
+    argLocals.push(argLocal);
+  }
+
+  // Build dispatch chain (innermost = default, outermost = first).
+  // Default: ref.null.extern (matches existing fallback semantics).
+  let dispatch: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+  for (const cand of candidates) {
+    const funcTypeDef = ctx.mod.types[cand.info.funcTypeIdx];
+    const selfParam = funcTypeDef?.kind === "func" ? funcTypeDef.params[0] : undefined;
+    const selfTypeIdx =
+      selfParam && (selfParam.kind === "ref" || selfParam.kind === "ref_null")
+        ? (selfParam as { typeIdx: number }).typeIdx
+        : cand.structTypeIdx;
+
+    const callBody: Instr[] = [];
+
+    // Self arg: anyref → the concrete struct type this funcref expects.
+    callBody.push({ op: "local.get", index: anyLocal } as Instr);
+    callBody.push({ op: "ref.cast", typeIdx: selfTypeIdx } as Instr);
+
+    // Push each call arg, unboxing per the candidate's declared param type.
+    for (let i = 0; i < arity; i++) {
+      const pType = cand.info.paramTypes[i]!;
+      callBody.push({ op: "local.get", index: argLocals[i]! } as Instr);
+      if (pType.kind === "f64") {
+        callBody.push({ op: "call", funcIdx: unboxNumberIdx } as Instr);
+      } else if (pType.kind === "i32") {
+        callBody.push({ op: "call", funcIdx: unboxNumberIdx } as Instr);
+        callBody.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+      } else if (pType.kind === "externref") {
+        // already externref
+      } else if (pType.kind === "ref" || pType.kind === "ref_null") {
+        callBody.push({ op: "any.convert_extern" } as Instr);
+        callBody.push({ op: "ref.cast", typeIdx: (pType as { typeIdx: number }).typeIdx } as Instr);
+      }
+    }
+
+    // Extract funcref from field 0 and call_ref.
+    callBody.push({ op: "local.get", index: anyLocal } as Instr);
+    callBody.push({ op: "ref.cast", typeIdx: selfTypeIdx } as Instr);
+    callBody.push({ op: "struct.get", typeIdx: selfTypeIdx, fieldIdx: 0 } as Instr);
+    callBody.push({ op: "ref.cast", typeIdx: cand.info.funcTypeIdx } as Instr);
+    callBody.push({ op: "call_ref", typeIdx: cand.info.funcTypeIdx } as Instr);
+
+    // Coerce return value to externref.
+    const ret = cand.info.returnType;
+    if (ret === null) {
+      callBody.push({ op: "ref.null.extern" } as Instr);
+    } else if (ret.kind === "f64") {
+      callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+    } else if (ret.kind === "i32") {
+      callBody.push({ op: "f64.convert_i32_s" } as Instr);
+      callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+    } else if (ret.kind === "ref" || ret.kind === "ref_null") {
+      callBody.push({ op: "extern.convert_any" } as Instr);
+    }
+    // externref: no conversion
+
+    dispatch = [
+      { op: "local.get", index: anyLocal } as Instr,
+      { op: "ref.test", typeIdx: selfTypeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "externref" } },
+        then: callBody,
+        else: dispatch,
+      } as Instr,
+    ];
+  }
+
+  fctx.body.push(...dispatch);
+  return { kind: "externref" };
 }
 
 function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult {
@@ -1055,6 +1173,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         fctx.body.push({ op: "call", funcIdx });
         // In fast mode, marshal externref string to native string
         if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+          ensureNativeStringExternBridge(ctx);
+          flushLateImportShifts(ctx, fctx);
           const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
           if (fromExternIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: fromExternIdx });
@@ -2684,13 +2804,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // No self parameter for static methods
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           const staticParamCount = paramTypes ? paramTypes.length : expr.arguments.length;
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < staticParamCount) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          const calleeReadsArgsEarly = ctx.funcUsesArguments.has(fullName);
+          for (let i = 0; i < Math.min(expr.arguments.length, staticParamCount); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          }
+          if (expr.arguments.length > staticParamCount) {
+            if (calleeReadsArgsEarly) {
+              emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], staticParamCount);
             } else {
-              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null) {
-                fctx.body.push({ op: "drop" });
+              for (let i = staticParamCount; i < expr.arguments.length; i++) {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null) {
+                  fctx.body.push({ op: "drop" });
+                }
               }
             }
           }
@@ -3047,13 +3173,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           const resolvedStaticIdx = ctx.funcMap.get(fullName) ?? funcIdx;
           const paramTypes = getFuncParamTypes(ctx, resolvedStaticIdx);
           const paramCount = paramTypes ? paramTypes.length : expr.arguments.length;
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < paramCount) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          const calleeReadsArgsStatic = ctx.funcUsesArguments.has(fullName);
+          for (let i = 0; i < Math.min(expr.arguments.length, paramCount); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          }
+          if (expr.arguments.length > paramCount) {
+            if (calleeReadsArgsStatic) {
+              emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], paramCount);
             } else {
-              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null) {
-                fctx.body.push({ op: "drop" });
+              for (let i = paramCount; i < expr.arguments.length; i++) {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null) {
+                  fctx.body.push({ op: "drop" });
+                }
               }
             }
           }
@@ -3120,15 +3252,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
           // User-visible param count excludes self (param 0)
           const ngParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < ngParamCount) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          const calleeReadsArgsNg = ctx.funcUsesArguments.has(fullName);
+          for (let i = 0; i < Math.min(expr.arguments.length, ngParamCount); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          }
+          if (expr.arguments.length > ngParamCount) {
+            if (calleeReadsArgsNg) {
+              emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], ngParamCount);
             } else {
-              // Extra argument beyond method's parameter count — evaluate for
-              // side effects (JS semantics) and discard the result
-              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null) {
-                fctx.body.push({ op: "drop" });
+              for (let i = ngParamCount; i < expr.arguments.length; i++) {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null) {
+                  fctx.body.push({ op: "drop" });
+                }
               }
             }
           }
@@ -3170,15 +3306,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         // User-visible param count excludes self (param 0)
         const methodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
-        for (let i = 0; i < expr.arguments.length; i++) {
-          if (i < methodParamCount) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+        const calleeReadsArgsNn = ctx.funcUsesArguments.has(fullName);
+        for (let i = 0; i < Math.min(expr.arguments.length, methodParamCount); i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+        }
+        if (expr.arguments.length > methodParamCount) {
+          if (calleeReadsArgsNn) {
+            emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], methodParamCount);
           } else {
-            // Extra argument beyond method's parameter count — evaluate for
-            // side effects (JS semantics) and discard the result
-            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-            if (extraType !== null) {
-              fctx.body.push({ op: "drop" });
+            for (let i = methodParamCount; i < expr.arguments.length; i++) {
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null) {
+                fctx.body.push({ op: "drop" });
+              }
             }
           }
         }
@@ -3248,13 +3388,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               }
             }
             const smMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
-            for (let i = 0; i < expr.arguments.length; i++) {
-              if (i < smMethodParamCount) {
-                compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            const calleeReadsArgsSm = ctx.funcUsesArguments.has(fullName);
+            for (let i = 0; i < Math.min(expr.arguments.length, smMethodParamCount); i++) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            }
+            if (expr.arguments.length > smMethodParamCount) {
+              if (calleeReadsArgsSm) {
+                emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], smMethodParamCount);
               } else {
-                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-                if (extraType !== null) {
-                  fctx.body.push({ op: "drop" });
+                for (let i = smMethodParamCount; i < expr.arguments.length; i++) {
+                  const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                  if (extraType !== null) {
+                    fctx.body.push({ op: "drop" });
+                  }
                 }
               }
             }
@@ -3298,13 +3444,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           const nnMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < nnMethodParamCount) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          const calleeReadsArgsNns = ctx.funcUsesArguments.has(fullName);
+          for (let i = 0; i < Math.min(expr.arguments.length, nnMethodParamCount); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          }
+          if (expr.arguments.length > nnMethodParamCount) {
+            if (calleeReadsArgsNns) {
+              emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], nnMethodParamCount);
             } else {
-              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null) {
-                fctx.body.push({ op: "drop" });
+              for (let i = nnMethodParamCount; i < expr.arguments.length; i++) {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null) {
+                  fctx.body.push({ op: "drop" });
+                }
               }
             }
           }
@@ -3530,8 +3682,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
 
       // charCodeAt: uses wasm:js-string charCodeAt import (not string_charCodeAt)
+      // Use jsStringImports to avoid shadowing by user-defined functions (#1072).
       if (method === "charCodeAt") {
-        const charCodeAtIdx = ctx.funcMap.get("charCodeAt");
+        const charCodeAtIdx = ctx.jsStringImports.get("charCodeAt");
         if (charCodeAtIdx !== undefined) {
           compileExpression(ctx, fctx, propAccess.expression);
           if (expr.arguments.length > 0) {
@@ -4220,7 +4373,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const argTsType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
         if (isStringType(argTsType)) {
           addStringImports(ctx);
-          const lenIdx = ctx.funcMap.get("length");
+          const lenIdx = ctx.jsStringImports.get("length");
           if (lenIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: lenIdx });
             fctx.body.push({ op: "i32.const", value: 0 });
@@ -4379,6 +4532,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           return matchedClosureInfo.returnType ?? VOID_RESULT;
         }
       }
+
+      // #1063 Part B: try inline dynamic-dispatch through closure-struct
+      // candidates when the callee is a known variable of externref/any type
+      // that may wrap a closure at runtime.
+      const dyn = tryEmitInlineDynamicCall(ctx, fctx, expr, isKnownVariable);
+      if (dyn !== null) return dyn;
 
       // Graceful fallback for unknown functions — compile arguments (for side effects)
       // then emit ref.null extern (undefined) as the return value.
@@ -4546,16 +4705,20 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       const captureCount = nestedCaptures ? nestedCaptures.length : 0;
       // User-visible param count excludes capture params (which are prepended internally)
       const paramCount = paramTypes ? paramTypes.length - captureCount : expr.arguments.length;
-      for (let i = 0; i < expr.arguments.length; i++) {
-        if (i < paramCount) {
-          // Offset into paramTypes by captureCount since captures are the leading params
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
+      const calleeReadsArgsDirect = ctx.funcUsesArguments.has(funcName);
+      for (let i = 0; i < Math.min(expr.arguments.length, paramCount); i++) {
+        // Offset into paramTypes by captureCount since captures are the leading params
+        compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
+      }
+      if (expr.arguments.length > paramCount) {
+        if (calleeReadsArgsDirect) {
+          emitSetExtrasArgv(ctx, fctx, expr.arguments as unknown as ts.Expression[], paramCount);
         } else {
-          // Extra argument beyond function's parameter count — evaluate for
-          // side effects (JS semantics) and discard the result
-          const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-          if (extraType !== null) {
-            fctx.body.push({ op: "drop" });
+          for (let i = paramCount; i < expr.arguments.length; i++) {
+            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+            if (extraType !== null) {
+              fctx.body.push({ op: "drop" });
+            }
           }
         }
       }
@@ -6406,4 +6569,4 @@ function compileIIFE(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallEx
 /** Resolve the enclosing class name from a FunctionContext.
  *  Uses enclosingClassName if set (e.g. closures), otherwise parses ClassName from "ClassName_methodName". */
 
-export { compileCallExpression, compileOptionalCallExpression, compileIIFE };
+export { compileCallExpression, compileIIFE, compileOptionalCallExpression };

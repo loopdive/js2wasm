@@ -1,6 +1,6 @@
 ---
 name: Team Setup
-description: Up to 8 devs when no tests running, TTL runs tests, PO on demand. Details in plan/team-setup.md.
+description: Up to 8 devs when no tests running, TTL runs tests, PO on demand. Details in plan/method/team-setup.md.
 type: project
 ---
 
@@ -10,7 +10,7 @@ Team structure via `TeamCreate`:
 - **No tester teammate** — TTL runs tests directly in background
 - Container: 16GB RAM, 32GB swap
 
-Full config: `plan/team-setup.md`
+Full config: `plan/method/team-setup.md`
 
 Key decisions:
 - Devs broadcast file claims on start

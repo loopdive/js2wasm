@@ -1,16 +1,25 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Function body compilation — compileFunctionBody and call-site inlining helpers.
  *
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./context/types.js";
-import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
-import { allocLocal, deduplicateLocals } from "./context/locals.js";
+import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
+import { allocLocal, deduplicateLocals } from "./context/locals.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  cacheStringLiterals,
+  hasAsyncModifier,
+  hoistLetConstWithTdz,
+  hoistVarDeclarations,
+  resolveWasmType,
+} from "./index.js";
 import { ensureExnTag } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
@@ -22,25 +31,8 @@ import {
   hoistFunctionDeclarations,
   valTypesMatch,
 } from "./shared.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
-import {
-  hoistVarDeclarations,
-  hoistLetConstWithTdz,
-  cacheStringLiterals,
-  resolveWasmType,
-  hasAsyncModifier,
-} from "./index.js";
-
-export function bodyUsesArguments(node: ts.Node): boolean {
-  if (ts.isIdentifier(node) && node.text === "arguments") return true;
-  // Don't recurse into nested functions/function expressions — they have their own `arguments`
-  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
-    return false;
-  }
-  // Arrow functions do NOT have their own `arguments` — they inherit
-  // the enclosing function's, so we must traverse into them.
-  return ts.forEachChild(node, bodyUsesArguments) ?? false;
-}
+import { bodyUsesArguments, emitArgumentsVecBody } from "./statements/nested-declarations.js";
+export { bodyUsesArguments };
 
 /** Maximum number of instructions for a function body to be considered inlinable */
 export const INLINE_MAX_INSTRS = 10;
@@ -313,40 +305,15 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
       };
     }
 
-    // Create backing array from parameters: push each param coerced to externref
-    for (let i = 0; i < params.length; i++) {
-      const paramType = params[i]!.type;
-      fctx.body.push({ op: "local.get", index: i });
-      if (paramType.kind === "f64") {
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-        } else {
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-      } else if (paramType.kind === "i32") {
-        fctx.body.push({ op: "f64.convert_i32_s" });
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-        } else {
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-      } else if (paramType.kind === "ref" || paramType.kind === "ref_null") {
-        fctx.body.push({ op: "extern.convert_any" });
-      }
-      // externref params are already externref — no conversion needed
-    }
-    // array.new_fixed creates the backing array
-    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: params.length });
-    fctx.body.push({ op: "local.set", index: arrTmp });
-    // Create vec struct: { length: i32, data: ref $arr }
-    fctx.body.push({ op: "i32.const", value: params.length });
-    fctx.body.push({ op: "local.get", index: arrTmp });
-    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
-    fctx.body.push({ op: "local.set", index: argsLocal });
+    // Build the arguments vec by concatenating formal params with
+    // extras delivered via the __extras_argv global (#1053).
+    emitArgumentsVecBody(
+      ctx,
+      fctx,
+      params.map((p) => p.type),
+      0,
+      { vecTypeIdx, arrTypeIdx, argsLocalIdx: argsLocal, arrTmpIdx: arrTmp },
+    );
   }
 
   if (isGenerator) {

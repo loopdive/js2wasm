@@ -1,0 +1,15 @@
+{
+  "pr": 118,
+  "conclusion": "success",
+  "head_branch": "issue-1084-fork-worker-compilecount",
+  "head_sha": "6c1c19a8777dcabc8fb21e298433736ab07be0be",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24292127083",
+  "timestamp": "2026-04-11T21:43:08Z",
+  "pass": 22185,
+  "fail": 18309,
+  "compile_error": 1326,
+  "snapshot_delta": 28,
+  "net_per_test": 28,
+  "regressions": 0,
+  "improvements": 28
+}

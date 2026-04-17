@@ -15,7 +15,7 @@ import { buildImports } from "./runtime-bundle.mjs";
 
 let compileCount = 0;
 const GC_INTERVAL = 25;
-const RECREATE_INTERVAL = 200;
+const RECREATE_INTERVAL = 100;
 
 let incrementalCompiler = null;
 function createFreshCompiler() {
@@ -35,6 +35,80 @@ createFreshCompiler();
 
 // Suppress unhandled Promise rejections from async tests
 process.on("unhandledRejection", () => {});
+
+// ── Prototype-poisoning sandbox ───────────────────────────────────────
+// test262 tests routinely mutate built-in prototypes (Object.defineProperty
+// on Array.prototype, freezing arrays, overriding Symbol.iterator, etc.).
+// Since compile and execute share the same process, poisoned prototypes
+// break the TypeScript compiler on subsequent compilations.
+//
+// Strategy: snapshot numeric index descriptors on Array.prototype and
+// well-known symbols at startup. After each test, delete any numeric
+// properties added to Array.prototype and restore Symbol.iterator.
+// Full descriptor restoration is too aggressive — it interferes with
+// V8's internal array optimizations.
+
+const _origArrayIterator = Array.prototype[Symbol.iterator];
+const _origArrayProtoNumericKeys = new Set(
+  Object.getOwnPropertyNames(Array.prototype).filter(k => /^\d+$/.test(k))
+);
+const _origObjectProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype));
+const _origMapGet = Map.prototype.get;
+const _origMapSet = Map.prototype.set;
+const _origMapHas = Map.prototype.has;
+
+function restoreBuiltins() {
+  // Restore Array.prototype[Symbol.iterator]
+  if (Array.prototype[Symbol.iterator] !== _origArrayIterator) {
+    Array.prototype[Symbol.iterator] = _origArrayIterator;
+  }
+
+  // Remove numeric-indexed accessor properties added to Array.prototype
+  // (e.g. Object.defineProperty(Array.prototype, "0", {get: ...}))
+  // These cause "Cannot set property N of [object Array] which has only a getter"
+  for (const key of Object.getOwnPropertyNames(Array.prototype)) {
+    if (/^\d+$/.test(key) && !_origArrayProtoNumericKeys.has(key)) {
+      try { delete Array.prototype[key]; } catch {}
+    }
+  }
+
+  // Remove properties added to Object.prototype
+  for (const key of Object.getOwnPropertyNames(Object.prototype)) {
+    if (!_origObjectProtoKeys.has(key)) {
+      try { delete Object.prototype[key]; } catch {}
+    }
+  }
+
+  // Restore Map.prototype core methods (mapperCache.get errors)
+  if (Map.prototype.get !== _origMapGet) Map.prototype.get = _origMapGet;
+  if (Map.prototype.set !== _origMapSet) Map.prototype.set = _origMapSet;
+  if (Map.prototype.has !== _origMapHas) Map.prototype.has = _origMapHas;
+
+  // Detect non-configurable poison on Array.prototype (cannot be cleaned up).
+  // Some test262 tests add non-configurable getters/setters to Array.prototype
+  // which permanently corrupt all arrays in this process. When detected,
+  // signal the pool to terminate and restart this worker.
+  for (const key of Object.getOwnPropertyNames(Array.prototype)) {
+    if (/^\d+$/.test(key)) {
+      const desc = Object.getOwnPropertyDescriptor(Array.prototype, key);
+      if (desc && !desc.configurable) {
+        console.error(`[unified-worker pid=${process.pid}] FATAL: non-configurable Array.prototype[${key}] — exiting for restart`);
+        process.exit(1);
+      }
+    }
+  }
+
+  // Also check Object.prototype for non-configurable additions
+  for (const key of Object.getOwnPropertyNames(Object.prototype)) {
+    if (!_origObjectProtoKeys.has(key)) {
+      const desc = Object.getOwnPropertyDescriptor(Object.prototype, key);
+      if (desc && !desc.configurable) {
+        console.error(`[unified-worker pid=${process.pid}] FATAL: non-configurable Object.prototype[${key}] — exiting for restart`);
+        process.exit(1);
+      }
+    }
+  }
+}
 
 function doCompile(source, sourceMapUrl) {
   const compileFn = incrementalCompiler ? incrementalCompiler.compile : compile;
@@ -180,6 +254,10 @@ process.on("message", async (msg) => {
   try {
     result = doCompile(source, msg.sourceMapUrl);
   } catch (err) {
+    // Thrown exception may have poisoned the incremental compiler's internal
+    // state.  Recreate immediately so subsequent compilations don't cascade-fail.
+    incrementalCompiler = null;
+    createFreshCompiler();
     process.send({
       id,
       status: "compile_error",
@@ -410,9 +488,20 @@ process.on("message", async (msg) => {
 });
 
 function postCompileCleanup() {
+  // Restore any built-in prototypes mutated by the test (must happen BEFORE
+  // the next compile — the TS parser uses for...of on Arrays internally).
+  restoreBuiltins();
+
   compileCount++;
   if (compileCount % RECREATE_INTERVAL === 0) {
+    try {
+      incrementalCompiler?.dispose?.();
+    } catch (_e) {
+      // dispose() may fail if the service is already in a bad state
+    }
     incrementalCompiler = null;
+    const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    console.error(`[unified-worker] RECREATE at compile ${compileCount}, heap=${heapMB}MB`);
     if (typeof globalThis.gc === "function") globalThis.gc();
     createFreshCompiler();
   } else if (compileCount % GC_INTERVAL === 0 && typeof globalThis.gc === "function") {

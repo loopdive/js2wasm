@@ -1,0 +1,15 @@
+{
+  "pr": 139,
+  "conclusion": "success",
+  "head_branch": "issue-1069-struct-inference",
+  "head_sha": "2c0d0b87f2b9634b8ae09603203bc9e9fdea5d40",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24309413685",
+  "timestamp": "2026-04-12T15:48:35Z",
+  "pass": 22423,
+  "fail": 15418,
+  "compile_error": 3962,
+  "snapshot_delta": 11,
+  "net_per_test": 11,
+  "regressions": 0,
+  "improvements": 11
+}

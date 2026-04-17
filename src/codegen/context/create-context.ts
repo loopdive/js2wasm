@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Backend context creation ownership.
  *
@@ -6,8 +7,8 @@
  */
 import ts from "typescript";
 import type { WasmModule } from "../../ir/types.js";
-import type { CodegenContext, CodegenOptions } from "./types.js";
 import { getOrRegisterVecType, registerNativeStringTypes } from "../registry/types.js";
+import type { CodegenContext, CodegenOptions } from "./types.js";
 
 export function createCodegenContext(
   mod: WasmModule,
@@ -22,6 +23,7 @@ export function createCodegenContext(
     typeIdxToStructName: new Map(),
     structFields: new Map(),
     numImportFuncs: 0,
+    jsStringImports: new Map(),
     currentFunc: null,
     funcStack: [],
     errors: [],
@@ -59,6 +61,9 @@ export function createCodegenContext(
     closureInfoByTypeIdx: new Map(),
     genericResolved: new Map(),
     funcRestParams: new Map(),
+    funcUsesArguments: new Set(),
+    extrasArgvGlobalIdx: -1,
+    extrasArgvVecTypeIdx: -1,
     valueOfClosureTypes: new Map(),
     exnTagIdx: -1,
     hasUnionImports: false,
@@ -83,6 +88,7 @@ export function createCodegenContext(
     nativeStrTypeIdx: -1,
     consStrTypeIdx: -1,
     nativeStrHelpersEmitted: false,
+    nativeStrExternBridgeEmitted: false,
     nativeStrHelpers: new Map(),
     refCellTypeMap: new Map(),
     anyValueTypeIdx: -1,

@@ -10,7 +10,7 @@
 - **NEVER kill running tests without asking.**
 
 ## Single source of truth
-- Team setup, memory budget, spawn config, communication protocol: **`plan/team-setup.md`**
+- Team setup, memory budget, spawn config, communication protocol: **`plan/method/team-setup.md`**
 - Agent definitions: **`.claude/agents/{product-owner,developer,tester}.md`**
 - Memory files below store only user prefs/feedback that don't belong in repo files.
 
@@ -18,10 +18,10 @@
 
 ### User & project
 - [user_role.md](user_role.md) — Project lead: challenges assumptions, thinks in compilation strategies
-- [project_team_setup.md](project_team_setup.md) — All agents as teammates via TeamCreate; details in plan/team-setup.md
+- [project_team_setup.md](project_team_setup.md) — All agents as teammates via TeamCreate; details in plan/method/team-setup.md
 - [project_next_session.md](project_next_session.md) — Session state: 16,013 pass, honest baseline after exception tag fix
 
-### Team & agents (rules not in plan/team-setup.md)
+### Team & agents (rules not in plan/method/team-setup.md)
 - [feedback_dev_limit.md](feedback_dev_limit.md) — Max 4 devs as teammates, test file naming, merge method
 - [feedback_dev_agents_worktree.md](feedback_dev_agents_worktree.md) — ALL writing agents must use worktree isolation
 - [feedback_serialize_cherry_picks.md](feedback_serialize_cherry_picks.md) — Wait for wave to finish, then batch merge (not cherry-pick)
@@ -38,7 +38,8 @@
 - [feedback_context_discipline.md](feedback_context_discipline.md) — Don't re-check state; split planning/execution sessions; write handoffs to plan/agent-context/tech-lead.md
 - [feedback_team_comm_channels.md](feedback_team_comm_channels.md) — Dev status via TaskUpdate not verbose SendMessage; shutdown handoffs via agent-context files
 - [feedback_token_budget_guardrails.md](feedback_token_budget_guardrails.md) — Warn at 25% weekly budget, force break at 40%, hard stop at 50%
-- [feedback_diary_and_sprints_before_compact.md](feedback_diary_and_sprints_before_compact.md) — Update plan/diary.md and plan/sprints/sprint-N.md (+ retrospective) BEFORE /compact — never discard learnings with the conversation
+- [feedback_diary_and_sprints_before_compact.md](feedback_diary_and_sprints_before_compact.md) — Update plan/diary.md and plan/issues/sprints/N/sprint.md (+ retrospective) BEFORE /compact — never discard learnings with the conversation
+- [feedback_tasklist_sync_unreliable.md](feedback_tasklist_sync_unreliable.md) — TaskList sync per-agent is unreliable; when devs report mismatched task IDs, fall back to SendMessage as authoritative dispatch
 
 ### Issue management
 - [feedback_issue_completion.md](feedback_issue_completion.md) — Completion procedure: move, frontmatter, summary, log, unblock
@@ -52,7 +53,14 @@
 - [feedback_test262_skip_issues.md](feedback_test262_skip_issues.md) — Every skip filter must have an issue
 - [feedback_never_delete_test_data.md](feedback_never_delete_test_data.md) — Never delete test data/cache/runs without asking
 - [feedback_ask_before_killing_tests.md](feedback_ask_before_killing_tests.md) — Never kill running tests without asking
+- [feedback_baseline_drift_cross_check.md](feedback_baseline_drift_cross_check.md) — Cross-check CI regressions against other open PRs; sample locally — identical clusters across unrelated PRs are drift
 - [reference_error_analysis.md](reference_error_analysis.md) — Test262 error analysis procedure
+
+### Development methodology
+- [feedback_spec_first_fixes.md](feedback_spec_first_fixes.md) — Always fetch the ECMAScript spec (tc39.es/ecma262) before fixing test failures; implement from fetched spec text, never from memory; cite spec section in commits
+
+### Model usage
+- [feedback_sonnet_for_sprint_loop.md](feedback_sonnet_for_sprint_loop.md) — Use Sonnet for routine sprint loop; Opus only for crisis/architecture
 
 ### General behavior
 - [feedback_ask_role.md](feedback_ask_role.md) — Ask at conversation start: Tech Lead or Product Owner

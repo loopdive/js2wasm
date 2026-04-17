@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Closure and arrow-function compilation for js2wasm.
  *
@@ -14,45 +15,41 @@
  */
 
 import ts from "typescript";
-import { reportError } from "./context/errors.js";
+import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { pushBody } from "./context/bodies.js";
+import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import {
-  resolveWasmType,
-  getArrTypeIdxFromVec,
-  getOrRegisterVecType,
   addFuncType,
-  nextModuleGlobalIdx,
-  ensureStructForType,
-  getOrRegisterRefCellType,
   destructureParamArray,
-  destructureParamObject,
   ensureExnTag,
-  addStringConstantGlobal,
+  ensureStructForType,
+  getArrTypeIdxFromVec,
+  getOrRegisterRefCellType,
+  getOrRegisterVecType,
   hoistLetConstWithTdz,
+  nextModuleGlobalIdx,
+  resolveWasmType,
 } from "./index.js";
-import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
-import type { Instr, ValType, FieldDef, StructTypeDef } from "../ir/types.js";
 import {
-  compileStatement,
-  compileExternrefObjectDestructuringDecl,
-  compileExternrefArrayDestructuringDecl,
-  collectInstrs,
-} from "./statements.js";
-import { defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
-import {
-  compileExpression,
-  registerCompileArrowAsClosure,
-  valTypesMatch,
-  getLine,
-  getCol,
-  emitBoundsCheckedArrayGet,
-  resolveEnclosingClassName,
   coerceType,
+  compileExpression,
+  emitBoundsCheckedArrayGet,
   ensureLateImport as ensureLateImportShared,
   flushLateImportShifts as flushLateImportShiftsShared,
+  registerCompileArrowAsClosure,
+  resolveEnclosingClassName,
+  valTypesMatch,
 } from "./shared.js";
+import {
+  collectInstrs,
+  compileExternrefArrayDestructuringDecl,
+  compileExternrefObjectDestructuringDecl,
+  compileStatement,
+} from "./statements.js";
+import { coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
 
 // ── Arrow function callbacks ──────────────────────────────────────────
 

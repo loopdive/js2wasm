@@ -1,108 +1,44 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * new/super/class expression compilation.
  */
 import ts from "typescript";
-import {
-  isExternalDeclaredClass,
-  isHeterogeneousUnion,
-  isNumberType,
-  isStringType,
-  isBooleanType,
-  isVoidType,
-  isGeneratorType,
-  isIteratorResultType,
-  mapTsTypeToWasm,
-} from "../../checker/type-mapper.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
+import { collectReferencedIdentifiers, collectWrittenIdentifiers } from "../closures.js";
+import { reportError } from "../context/errors.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
+import type { CodegenContext, FunctionContext } from "../context/types.js";
 import {
   addFuncType,
-  addImport,
   addStringConstantGlobal,
-  addStringImports,
-  addUnionImports,
-  ensureAnyHelpers,
   ensureExnTag,
-  ensureI32Condition,
-  ensureStructForType,
   getArrTypeIdxFromVec,
   getOrRegisterRefCellType,
   getOrRegisterVecType,
-  isAnyValue,
-  localGlobalIdx,
-  nativeStringType,
   resolveWasmType,
-  hoistLetConstWithTdz,
-  hoistVarDeclarations,
 } from "../index.js";
-import {
-  compileArrayConstructorCall,
-  compileArrayLiteral,
-  compileObjectLiteral,
-  compileSymbolCall,
-  resolveComputedKeyExpression,
-} from "../literals.js";
-import {
-  compileObjectDefineProperty,
-  compileObjectDefineProperties,
-  compileObjectKeysOrValues,
-  compilePropertyIntrospection,
-} from "../object-ops.js";
-import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
-import { popBody, pushBody } from "../context/bodies.js";
-import { reportError, reportErrorNoNode } from "../context/errors.js";
-import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "../context/types.js";
-import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
+import { resolveComputedKeyExpression } from "../literals.js";
 import type { InnerResult } from "../shared.js";
-import { compileStatement, hoistFunctionDeclarations } from "../shared.js";
-import { emitTdzCheck } from "../statements/tdz.js";
 import {
-  compileNativeStringMethodCall,
-  compileStringLiteral,
-  compileTaggedTemplateExpression,
-  compileTemplateExpression,
-  emitBoolToString,
-} from "../string-ops.js";
+  coerceType,
+  compileExpression,
+  compileStatement,
+  registerCompileSuperElementAccess,
+  registerCompileSuperPropertyAccess,
+  registerResolveEnclosingClassName,
+} from "../shared.js";
+import { compileStringLiteral } from "../string-ops.js";
+import { coerceType as coerceTypeImpl, pushDefaultValue } from "../type-coercion.js";
+import { ensureDateDaysFromCivilHelper, ensureDateStruct } from "./builtins.js";
+import { compileSpreadCallArgs } from "./extern.js";
 import {
-  coerceType as coerceTypeImpl,
-  defaultValueInstrs,
-  emitGuardedRefCast,
-  emitGuardedFuncRefCast,
-  emitSafeExternrefToF64,
-  pushDefaultValue,
-  pushParamSentinel,
-} from "../type-coercion.js";
-import {
-  compileElementAccess,
-  compilePropertyAccess,
-  emitBoundsGuardedArraySet,
-  emitNullCheckThrow,
-  emitNullGuardedStructGet,
-  isProvablyNonNull,
-  typeErrorThrowInstrs,
-} from "../property-access.js";
-import {
-  collectReferencedIdentifiers,
-  collectWrittenIdentifiers,
-  compileArrowFunction,
-  emitFuncRefAsClosure,
-  getOrCreateFuncRefWrapperTypes,
-} from "../closures.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
-import {
+  emitThrowString,
   getFuncParamTypes,
-  wasmFuncReturnsVoid,
-  wasmFuncTypeReturnsVoid,
   getWasmFuncReturnType,
   isEffectivelyVoidReturn,
-  emitThrowString,
+  wasmFuncReturnsVoid,
 } from "./helpers.js";
-import { compileSpreadCallArgs, findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
-import {
-  registerResolveEnclosingClassName,
-  registerCompileSuperPropertyAccess,
-  registerCompileSuperElementAccess,
-} from "../shared.js";
-import { ensureDateStruct, ensureDateDaysFromCivilHelper } from "./builtins.js";
+import { ensureLateImport, flushLateImportShifts } from "./late-imports.js";
 
 function resolveEnclosingClassName(fctx: FunctionContext): string | undefined {
   if (fctx.enclosingClassName) return fctx.enclosingClassName;
@@ -2355,21 +2291,22 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     if (args.length >= 1) {
       // Compile buffer arg first
       const resultType = compileExpression(ctx, fctx, args[0]!);
+      const isStructBuf = resultType !== null && (resultType.kind === "ref" || resultType.kind === "ref_null");
 
-      // Validate byteOffset (2nd arg) if provided
+      // Always stash the buffer in a local so we can validate, register the
+      // view window via __dv_register_view (#1064), and restore it on stack.
+      const bufLocalType: ValType = isStructBuf ? resultType! : { kind: "externref" };
+      const bufLocal = allocLocal(fctx, `__dv_buf_${fctx.locals.length}`, bufLocalType);
+      fctx.body.push({ op: "local.set", index: bufLocal });
+
+      // Offset and length f64 locals (used for validation AND view-metadata
+      // registration). Defaults: offset=0, length=bufferByteLength-offset.
+      const offsetF64 = allocLocal(fctx, `__dv_offset_f64_${fctx.locals.length}`, { kind: "f64" });
+      const lenF64 = allocLocal(fctx, `__dv_len_f64_${fctx.locals.length}`, { kind: "f64" });
+
       if (args.length >= 2) {
-        // Store buffer in local so we can access its length for validation
-        const bufLocal = allocLocal(
-          fctx,
-          `__dv_buf_${fctx.locals.length}`,
-          resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")
-            ? resultType
-            : { kind: "externref" },
-        );
-        fctx.body.push({ op: "local.set", index: bufLocal });
-
+        // Validate byteOffset
         compileExpression(ctx, fctx, args[1]!, { kind: "f64" });
-        const offsetF64 = allocLocal(fctx, `__dv_offset_f64_${fctx.locals.length}`, { kind: "f64" });
         fctx.body.push({ op: "local.tee", index: offsetF64 });
         // Check: offset < 0
         fctx.body.push({ op: "f64.const", value: 0 });
@@ -2382,7 +2319,7 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
         fctx.body.push({ op: "i32.or" });
 
         // If buffer is a vec struct, also check offset > bufferByteLength
-        if (resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
+        if (isStructBuf) {
           fctx.body.push({ op: "local.get", index: offsetF64 });
           fctx.body.push({ op: "local.get", index: bufLocal });
           fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 }); // buffer length
@@ -2403,61 +2340,93 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
             else: [],
           });
         }
+      } else {
+        // No explicit byteOffset — default to 0
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "local.set", index: offsetF64 });
+      }
 
-        // Validate byteLength (3rd arg) if provided
-        if (args.length >= 3) {
-          compileExpression(ctx, fctx, args[2]!, { kind: "f64" });
-          const lenF64 = allocLocal(fctx, `__dv_len_f64_${fctx.locals.length}`, { kind: "f64" });
-          fctx.body.push({ op: "local.tee", index: lenF64 });
-          // Check: len < 0
-          fctx.body.push({ op: "f64.const", value: 0 });
-          fctx.body.push({ op: "f64.lt" });
-          // Check: len != floor(len) (NaN/non-integer)
+      if (args.length >= 3) {
+        // Validate byteLength
+        compileExpression(ctx, fctx, args[2]!, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: lenF64 });
+        // Check: len < 0
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
+        // Check: len != floor(len) (NaN/non-integer)
+        fctx.body.push({ op: "local.get", index: lenF64 });
+        fctx.body.push({ op: "local.get", index: lenF64 });
+        fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+        fctx.body.push({ op: "f64.ne" });
+        fctx.body.push({ op: "i32.or" });
+
+        // Check: offset + length > bufferByteLength
+        if (isStructBuf) {
+          fctx.body.push({ op: "local.get", index: offsetF64 });
           fctx.body.push({ op: "local.get", index: lenF64 });
-          fctx.body.push({ op: "local.get", index: lenF64 });
-          fctx.body.push({ op: "f64.floor" } as unknown as Instr);
-          fctx.body.push({ op: "f64.ne" });
+          fctx.body.push({ op: "f64.add" });
+          fctx.body.push({ op: "local.get", index: bufLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          fctx.body.push({ op: "f64.gt" });
           fctx.body.push({ op: "i32.or" });
-
-          // Check: offset + length > bufferByteLength
-          if (resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
-            fctx.body.push({ op: "local.get", index: offsetF64 });
-            fctx.body.push({ op: "local.get", index: lenF64 });
-            fctx.body.push({ op: "f64.add" });
-            fctx.body.push({ op: "local.get", index: bufLocal });
-            fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "f64.convert_i32_s" });
-            fctx.body.push({ op: "f64.gt" });
-            fctx.body.push({ op: "i32.or" });
-          }
-
-          {
-            const rangeErrMsg = "RangeError: Invalid DataView length";
-            addStringConstantGlobal(ctx, rangeErrMsg);
-            const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
-            const tagIdx = ensureExnTag(ctx);
-            fctx.body.push({
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
-              else: [],
-            });
-          }
         }
 
-        // Restore buffer on stack
+        {
+          const rangeErrMsg = "RangeError: Invalid DataView length";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
+            else: [],
+          });
+        }
+      } else if (isStructBuf) {
+        // Default byteLength = bufferByteLength - offset
         fctx.body.push({ op: "local.get", index: bufLocal });
-        if (resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
-          return resultType;
-        }
-        if (resultType) return resultType;
-        return { kind: "ref_null", typeIdx: vecTypeIdx };
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+        fctx.body.push({ op: "f64.convert_i32_s" });
+        fctx.body.push({ op: "local.get", index: offsetF64 });
+        fctx.body.push({ op: "f64.sub" });
+        fctx.body.push({ op: "local.set", index: lenF64 });
+      } else {
+        // externref buffer — we can't read length at compile time. Use a
+        // NaN sentinel; the runtime __dv_register_view handler treats NaN as
+        // "compute from __dv_byte_len(buf) - offset" at dispatch time.
+        fctx.body.push({ op: "f64.const", value: NaN });
+        fctx.body.push({ op: "local.set", index: lenF64 });
       }
 
-      // No offset/length args — just return buffer as-is
-      if (resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
-        return resultType;
+      // #1064: register view metadata with host so the runtime bridge can
+      // reconstruct a correctly-windowed native DataView on method dispatch.
+      // Always register, even for externref buffers — ArrayBuffer variables
+      // in user code are lowered to externref (see checker/type-mapper.ts),
+      // but the actual wasmGC struct is what the bridge dispatches on.
+      {
+        const regIdx = ensureLateImport(
+          ctx,
+          "__dv_register_view",
+          [{ kind: "externref" }, { kind: "f64" }, { kind: "f64" }],
+          [],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (regIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: bufLocal });
+          if (isStructBuf) {
+            fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+          }
+          fctx.body.push({ op: "local.get", index: offsetF64 });
+          fctx.body.push({ op: "local.get", index: lenF64 });
+          fctx.body.push({ op: "call", funcIdx: regIdx });
+        }
       }
+
+      // Restore buffer on stack
+      fctx.body.push({ op: "local.get", index: bufLocal });
+      if (isStructBuf) return resultType!;
       if (resultType) return resultType;
       return { kind: "ref_null", typeIdx: vecTypeIdx };
     } else {
@@ -2608,10 +2577,10 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
 }
 
 export {
-  compileSuperMethodCall,
-  compileSuperElementMethodCall,
-  compileNewExpression,
   compileClassExpression,
+  compileNewExpression,
+  compileSuperElementMethodCall,
+  compileSuperMethodCall,
   resolveEnclosingClassName,
 };
 

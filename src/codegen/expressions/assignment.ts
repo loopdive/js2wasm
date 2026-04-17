@@ -1,85 +1,44 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Assignment operator compilation: simple assignment, destructuring, compound, logical.
  */
 import ts from "typescript";
-import {
-  isExternalDeclaredClass,
-  isHeterogeneousUnion,
-  isNumberType,
-  isStringType,
-  isBooleanType,
-  isVoidType,
-} from "../../checker/type-mapper.js";
+import { isBooleanType, isExternalDeclaredClass, isStringType } from "../../checker/type-mapper.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
+import { emitBoundsCheckedArrayGet, resolveArrayInfo } from "../array-methods.js";
+import { emitModulo, emitToInt32 } from "../binary-ops.js";
+import { pushBody } from "../context/bodies.js";
+import { reportError } from "../context/errors.js";
+import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
+import type { CodegenContext, FunctionContext } from "../context/types.js";
 import {
   addFuncType,
   addImport,
   addStringConstantGlobal,
   addStringImports,
   addUnionImports,
-  ensureAnyHelpers,
   ensureExnTag,
   ensureI32Condition,
   ensureStructForType,
   getArrTypeIdxFromVec,
-  getOrRegisterRefCellType,
-  getOrRegisterVecType,
-  isAnyValue,
   localGlobalIdx,
-  nativeStringType,
   resolveWasmType,
 } from "../index.js";
-import {
-  compileObjectDefineProperty,
-  compileObjectDefineProperties,
-  compileObjectKeysOrValues,
-  compilePropertyIntrospection,
-} from "../object-ops.js";
-import {
-  compileArrayConstructorCall,
-  compileArrayLiteral,
-  compileObjectLiteral,
-  compileSymbolCall,
-  resolveComputedKeyExpression,
-} from "../literals.js";
-import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
-import { popBody, pushBody } from "../context/bodies.js";
-import { reportError, reportErrorNoNode } from "../context/errors.js";
-import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "../context/types.js";
-import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
+import { resolveComputedKeyExpression } from "../literals.js";
+import { emitNullGuardedStructGet, isProvablyNonNull } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
-import {
-  defaultValueInstrs,
-  emitGuardedRefCast,
-  emitGuardedFuncRefCast,
-  emitSafeExternrefToF64,
-  pushDefaultValue,
-  pushParamSentinel,
-} from "../type-coercion.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
-import {
-  compileNativeStringMethodCall,
-  compileStringLiteral,
-  compileTaggedTemplateExpression,
-  compileTemplateExpression,
-  emitBoolToString,
-} from "../string-ops.js";
-import { compileBinaryExpression, emitModulo, emitToInt32 } from "../binary-ops.js";
-import {
-  compileElementAccess,
-  compilePropertyAccess,
-  emitBoundsGuardedArraySet,
-  emitNullCheckThrow,
-  emitNullGuardedStructGet,
-  isProvablyNonNull,
-  typeErrorThrowInstrs,
-} from "../property-access.js";
+import { coerceType, compileExpression, resolveThisStructName, valTypesMatch } from "../shared.js";
+import { compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import { findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
-import { emitThrowString, getFuncParamTypes, emitCoercedLocalSet, updateLocalType } from "./helpers.js";
-import { patchStructNewForAddedField } from "./late-imports.js";
+import { emitCoercedLocalSet, emitThrowString, getFuncParamTypes, updateLocalType } from "./helpers.js";
+import {
+  ensureLateImport,
+  flushLateImportShifts,
+  patchStructNewForAddedField,
+  shiftLateImportIndices,
+} from "./late-imports.js";
 import { emitMappedArgParamSync, emitMappedArgReverseSync } from "./logical-ops.js";
 import { resolveStructName } from "./misc.js";
-import { emitBoundsCheckedArrayGet, resolveArrayInfo } from "../array-methods.js";
 
 export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, expr: ts.BinaryExpression): InnerResult {
   // Unwrap parenthesized LHS: (x) = 1 → x = 1
@@ -3064,7 +3023,7 @@ function compileStringCompoundAssignment(
   // Ensure string imports are registered
   addStringImports(ctx);
 
-  const concatIdx = ctx.funcMap.get("concat");
+  const concatIdx = ctx.jsStringImports.get("concat");
   if (concatIdx === undefined) {
     reportError(ctx, expr, "String concat import not available");
     return null;
@@ -3376,7 +3335,7 @@ export function compileCompoundAssignment(
       if (rhsIsString || varHasStringAssign) {
         // String concat path: current value (externref) is on stack
         addStringImports(ctx);
-        const concatIdx = ctx.funcMap.get("concat");
+        const concatIdx = ctx.jsStringImports.get("concat");
         if (concatIdx !== undefined) {
           const compoundRhsStr = compileExpression(ctx, fctx, expr.right);
           if (!compoundRhsStr) {
@@ -4332,5 +4291,10 @@ function compileElementCompoundAssignment(
 
 /** Unwrap parenthesized expressions: (x) -> x, ((x)) -> x, etc. */
 
-export { compileDestructuringAssignment, compileArrayDestructuringAssignment };
-export { compilePropertyAssignment, compileElementAssignment, compileExternSetFallback };
+export {
+  compileArrayDestructuringAssignment,
+  compileDestructuringAssignment,
+  compileElementAssignment,
+  compileExternSetFallback,
+  compilePropertyAssignment,
+};
