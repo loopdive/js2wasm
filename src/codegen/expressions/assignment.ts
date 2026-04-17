@@ -27,7 +27,7 @@ import {
 import { resolveComputedKeyExpression } from "../literals.js";
 import { emitNullGuardedStructGet, isProvablyNonNull } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
-import { coerceType, compileExpression, resolveThisStructName, valTypesMatch } from "../shared.js";
+import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import { findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
 import { emitCoercedLocalSet, emitThrowString, getFuncParamTypes, updateLocalType } from "./helpers.js";
@@ -38,7 +38,7 @@ import {
   shiftLateImportIndices,
 } from "./late-imports.js";
 import { emitMappedArgParamSync, emitMappedArgReverseSync } from "./logical-ops.js";
-import { resolveStructName } from "./misc.js";
+import { resolveStructName, resolveStructNameForExpr } from "./misc.js";
 
 export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, expr: ts.BinaryExpression): InnerResult {
   // Unwrap parenthesized LHS: (x) = 1 → x = 1
@@ -1131,15 +1131,7 @@ function emitAssignToTarget(
       return;
     }
 
-    const objType = ctx.checker.getTypeAtLocation(target.expression);
-    let typeName = resolveStructName(ctx, objType);
-    if (!typeName && ts.isIdentifier(target.expression)) {
-      typeName = ctx.widenedVarStructMap.get(target.expression.text);
-    }
-    // Fallback for `this.prop` in function constructors
-    if (!typeName && target.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      typeName = resolveThisStructName(ctx, fctx);
-    }
+    const typeName = resolveStructNameForExpr(ctx, fctx, target.expression);
     if (!typeName) return;
 
     const structTypeIdx = ctx.structMap.get(typeName);
@@ -1492,15 +1484,7 @@ function compilePropertyAssignment(
     }
   }
 
-  let typeName = resolveStructName(ctx, objType);
-  // Fallback: check widened variable struct map for empty objects that got properties added later
-  if (!typeName && ts.isIdentifier(target.expression)) {
-    typeName = ctx.widenedVarStructMap.get(target.expression.text);
-  }
-  // Fallback for `this.prop` in function constructors
-  if (!typeName && target.expression.kind === ts.SyntaxKind.ThisKeyword) {
-    typeName = resolveThisStructName(ctx, fctx);
-  }
+  const typeName = resolveStructNameForExpr(ctx, fctx, target.expression);
   if (!typeName) {
     // No struct type resolved and not an external class. This happens when obj: any has only
     // accessor properties defined via Object.defineProperty (those are excluded from struct
@@ -2484,10 +2468,7 @@ function compilePropertyLogicalAssignment(
   const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
 
   // Resolve struct type
-  let typeName = resolveStructName(ctx, objType);
-  if (!typeName && ts.isIdentifier(target.expression)) {
-    typeName = ctx.widenedVarStructMap.get(target.expression.text);
-  }
+  const typeName = resolveStructNameForExpr(ctx, fctx, target.expression);
   if (!typeName) {
     // Fallback: treat as externref property access via __extern_get / __extern_set
     return compilePropertyLogicalAssignmentExternref(ctx, fctx, target, rhs, op, propName);
@@ -3587,10 +3568,7 @@ function compilePropertyCompoundAssignment(
   }
 
   // Resolve struct type
-  let typeName = resolveStructName(ctx, objType);
-  if (!typeName && ts.isIdentifier(target.expression)) {
-    typeName = ctx.widenedVarStructMap.get(target.expression.text);
-  }
+  const typeName = resolveStructNameForExpr(ctx, fctx, target.expression);
   if (!typeName) {
     // Fallback: treat as externref property access via __extern_get / __extern_set
     return compilePropertyCompoundAssignmentExternref(ctx, fctx, target, rhs, op, propName);
