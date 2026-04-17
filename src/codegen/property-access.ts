@@ -942,6 +942,16 @@ export function compilePropertyAccess(
         const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         return globalDef?.type ?? { kind: "externref" };
       }
+      // Static accessor via `this` in a static method: this.#getter / this.#setter
+      const accessorKey = `${enclosingClass}_${propName}`;
+      if (ctx.classAccessorSet.has(accessorKey)) {
+        const getterName = `${enclosingClass}_get_${propName}`;
+        const getterIdx = ctx.funcMap.get(getterName);
+        if (getterIdx !== undefined) {
+          const retType = emitGetterCallWithDummy(ctx, fctx, enclosingClass, getterName, getterIdx);
+          return retType ?? { kind: "externref" };
+        }
+      }
     }
   }
 
