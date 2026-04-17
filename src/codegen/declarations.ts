@@ -1909,6 +1909,134 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
   }
 
+  // CJS exports: recognize `module.exports` / `exports.foo` patterns (#1075).
+  // Phase 1 — register CJS function expressions and surface CJS assignments as Wasm exports.
+  // This runs after the ESM export-default block so CJS and ESM don't conflict.
+  if (isEntryFile) {
+    // Helper: check if expression is `module.exports`
+    function isModuleExports(e: ts.Expression): boolean {
+      return (
+        ts.isPropertyAccessExpression(e) &&
+        ts.isIdentifier(e.expression) &&
+        e.expression.text === "module" &&
+        e.name.text === "exports"
+      );
+    }
+
+    // Helper: extract export name from `module.exports.foo` or `exports.foo`
+    function getCjsNamedExportName(e: ts.Expression): string | undefined {
+      if (!ts.isPropertyAccessExpression(e)) return undefined;
+      // module.exports.foo
+      if (isModuleExports(e.expression)) return e.name.text;
+      // exports.foo
+      if (ts.isIdentifier(e.expression) && e.expression.text === "exports") return e.name.text;
+      return undefined;
+    }
+
+    // Track whether we saw `module.exports = ...` (replaces entire exports object)
+    let hasModuleExportsDefault = false;
+
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExpressionStatement(stmt)) continue;
+      const expr = stmt.expression;
+      if (!ts.isBinaryExpression(expr) || expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
+
+      // Pattern 1: `module.exports = <ident>` — default export of an existing function
+      if (isModuleExports(expr.left) && ts.isIdentifier(expr.right)) {
+        const targetName = expr.right.text;
+        if (ctx.funcMap.has(targetName)) {
+          hasModuleExportsDefault = true;
+          const funcIdx = ctx.funcMap.get(targetName)!;
+          const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+          if (func && !func.exported) func.exported = true;
+
+          const alreadyExported = ctx.mod.exports.some((e) => e.desc.kind === "func" && e.desc.index === funcIdx);
+          if (!alreadyExported) {
+            ctx.mod.exports.push({ name: targetName, desc: { kind: "func", index: funcIdx } });
+          }
+          ctx.mod.exports.push({ name: "default", desc: { kind: "func", index: funcIdx } });
+        }
+        continue;
+      }
+
+      // Pattern 1b: `module.exports = function foo() {}` — default export of inline function
+      if (isModuleExports(expr.left) && ts.isFunctionExpression(expr.right)) {
+        hasModuleExportsDefault = true;
+        const fnExpr = expr.right;
+        const name = fnExpr.name?.text ?? "default";
+        if (!ctx.funcMap.has(name)) {
+          // Register the function expression
+          const sig = ctx.checker.getSignatureFromDeclaration(fnExpr);
+          if (sig) {
+            const params: ValType[] = [];
+            for (const param of fnExpr.parameters) {
+              const paramType = ctx.checker.getTypeAtLocation(param);
+              params.push(resolveWasmType(ctx, paramType));
+            }
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            const results = isVoidType(retType) ? [] : [resolveWasmType(ctx, retType)];
+            const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
+            const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+            ctx.funcMap.set(name, funcIdx);
+            ctx.functionNameMap.set(name, fnExpr.name?.text ?? name);
+            ctx.mod.functions.push({ name, typeIdx, locals: [], body: [], exported: true });
+            ctx.mod.exports.push({ name, desc: { kind: "func", index: funcIdx } });
+            if (name !== "default") {
+              ctx.mod.exports.push({ name: "default", desc: { kind: "func", index: funcIdx } });
+            }
+          }
+        }
+        continue;
+      }
+
+      // Pattern 2: `module.exports.foo = <fn>` or `exports.foo = <fn>` — named export
+      const exportName = getCjsNamedExportName(expr.left);
+      if (!exportName) continue;
+
+      if (ts.isFunctionExpression(expr.right)) {
+        const fnExpr = expr.right;
+        const name = exportName;
+        if (!ctx.funcMap.has(name)) {
+          // Register the CJS function expression
+          const sig = ctx.checker.getSignatureFromDeclaration(fnExpr);
+          if (!sig) continue;
+          const params: ValType[] = [];
+          for (const param of fnExpr.parameters) {
+            const paramType = ctx.checker.getTypeAtLocation(param);
+            params.push(resolveWasmType(ctx, paramType));
+          }
+          const retType = ctx.checker.getReturnTypeOfSignature(sig);
+          const results = isVoidType(retType) ? [] : [resolveWasmType(ctx, retType)];
+          const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
+          const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+          ctx.funcMap.set(name, funcIdx);
+          ctx.functionNameMap.set(name, fnExpr.name?.text ?? name);
+          ctx.mod.functions.push({ name, typeIdx, locals: [], body: [], exported: true });
+          ctx.mod.exports.push({ name, desc: { kind: "func", index: funcIdx } });
+        } else {
+          // Function already registered (e.g., as a FunctionDeclaration) — just export it
+          const funcIdx = ctx.funcMap.get(name)!;
+          const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+          if (func && !func.exported) func.exported = true;
+          if (!ctx.mod.exports.some((e) => e.name === name)) {
+            ctx.mod.exports.push({ name, desc: { kind: "func", index: funcIdx } });
+          }
+        }
+      } else if (ts.isIdentifier(expr.right)) {
+        // `exports.foo = someExistingFunction`
+        const targetName = expr.right.text;
+        if (ctx.funcMap.has(targetName)) {
+          const funcIdx = ctx.funcMap.get(targetName)!;
+          const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+          if (func && !func.exported) func.exported = true;
+          if (!ctx.mod.exports.some((e) => e.name === exportName)) {
+            ctx.mod.exports.push({ name: exportName, desc: { kind: "func", index: funcIdx } });
+          }
+        }
+      }
+    }
+  }
+
   // Fourth: collect module-level variable declarations as wasm globals
   /** Register a single module-level global variable with the given name and wasm type. */
   function registerModuleGlobal(name: string, wasmType: ValType): void {
@@ -2522,6 +2650,61 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
           }
         }
       }
+    }
+  }
+
+  // Compile CJS function expression bodies (#1075)
+  // These were registered in collectDeclarations from `module.exports.foo = function() {}`
+  // and `exports.foo = function() {}` patterns.
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isExpressionStatement(stmt)) continue;
+    const expr = stmt.expression;
+    if (!ts.isBinaryExpression(expr) || expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
+
+    // Extract the function expression from CJS patterns
+    let fnExpr: ts.FunctionExpression | undefined;
+    let funcName: string | undefined;
+
+    const left = expr.left;
+    if (ts.isFunctionExpression(expr.right)) {
+      // Check for module.exports = function() {} or module.exports.foo = function() {} or exports.foo = function() {}
+      if (
+        ts.isPropertyAccessExpression(left) &&
+        ts.isIdentifier(left.expression) &&
+        left.expression.text === "module" &&
+        left.name.text === "exports"
+      ) {
+        // module.exports = function foo() {}
+        fnExpr = expr.right;
+        funcName = fnExpr.name?.text ?? "default";
+      } else if (ts.isPropertyAccessExpression(left)) {
+        // module.exports.foo or exports.foo
+        const inner = left.expression;
+        const isModExports =
+          ts.isPropertyAccessExpression(inner) &&
+          ts.isIdentifier(inner.expression) &&
+          inner.expression.text === "module" &&
+          inner.name.text === "exports";
+        const isExports = ts.isIdentifier(inner) && inner.text === "exports";
+        if (isModExports || isExports) {
+          fnExpr = expr.right;
+          funcName = left.name.text;
+        }
+      }
+    }
+
+    if (!fnExpr || !funcName || !fnExpr.body) continue;
+    const idx = funcByName.get(funcName);
+    if (idx === undefined) continue;
+    const func = ctx.mod.functions[idx]!;
+    // Skip if body already compiled (e.g., was also a FunctionDeclaration)
+    if (func.body.length > 0) continue;
+    try {
+      compileFunctionBody(ctx, fnExpr as unknown as ts.FunctionDeclaration, func);
+      registerInlinableFunction(ctx, funcName, func);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      reportError(ctx, stmt, `Internal error compiling CJS function '${funcName}': ${msg}`);
     }
   }
 
