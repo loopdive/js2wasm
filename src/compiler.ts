@@ -64,7 +64,8 @@ export function compileSource(
   // Step 0: Pre-process imports (replace import * as X with declare namespace)
   // #1054: rewrite eval("...super()...") to a throwing IIFE so early-error
   // rules for PerformEval fire at runtime.
-  const processedSource = preprocessImports(rewriteEvalSuperCall(source));
+  const preprocessed = preprocessImports(rewriteEvalSuperCall(source));
+  const processedSource = preprocessed.source;
 
   // Step 1: Parse and type-check
   let isJsMode = options.allowJs === true || (options.fileName?.endsWith(".js") ?? false);
@@ -249,6 +250,7 @@ export function compileSource(
         fast: options.fast,
         nativeStrings: options.nativeStrings,
         wasi: options.target === "wasi",
+        nodeBuiltins: preprocessed.nodeBuiltins,
       });
       mod = result.module;
       // Propagate codegen errors with source locations

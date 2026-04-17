@@ -46,16 +46,36 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Extern classes — check mod.externClasses
   for (const ec of mod.externClasses) {
     const prefix = ec.importPrefix;
-    if (name === `${prefix}_new`) return { type: "extern_class", className: ec.className, action: "new" };
+    const nsPath = ec.namespacePath.length > 0 ? ec.namespacePath : undefined;
+    if (name === `${prefix}_new`)
+      return { type: "extern_class", className: ec.className, action: "new", namespacePath: nsPath };
     for (const [methodName] of ec.methods) {
       if (name === `${prefix}_${methodName}`)
-        return { type: "extern_class", className: ec.className, action: "method", member: methodName };
+        return {
+          type: "extern_class",
+          className: ec.className,
+          action: "method",
+          member: methodName,
+          namespacePath: nsPath,
+        };
     }
     for (const [propName] of ec.properties) {
       if (name === `${prefix}_get_${propName}`)
-        return { type: "extern_class", className: ec.className, action: "get", member: propName };
+        return {
+          type: "extern_class",
+          className: ec.className,
+          action: "get",
+          member: propName,
+          namespacePath: nsPath,
+        };
       if (name === `${prefix}_set_${propName}`)
-        return { type: "extern_class", className: ec.className, action: "set", member: propName };
+        return {
+          type: "extern_class",
+          className: ec.className,
+          action: "set",
+          member: propName,
+          namespacePath: nsPath,
+        };
     }
   }
 
@@ -99,6 +119,9 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Host strict-equality for two externref operands that are not WasmGC eqrefs
   // (e.g. host functions like `Array === Array`). (#1065)
   if (name === "__host_eq") return { type: "host_eq" };
+
+  // Node builtin modules (#1044)
+  if (name.startsWith("__node_")) return { type: "node_builtin", moduleName: name.slice(7) };
 
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };

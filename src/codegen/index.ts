@@ -24,6 +24,7 @@ import type {
   FunctionContext,
   OptionalParamInfo,
 } from "./context/types.js";
+import type { NodeBuiltinImport } from "../import-resolver.js";
 import { eliminateDeadImports } from "./dead-elimination.js";
 import { emitUndefined } from "./expressions/late-imports.js";
 import {
@@ -225,6 +226,11 @@ export function generateModule(
 
     // Register built-in collection types as extern classes if not already collected from lib files
     registerBuiltinExternClasses(ctx);
+
+    // #1044 — Register Node builtin modules as externref host imports
+    if (options?.nodeBuiltins && options.nodeBuiltins.length > 0) {
+      registerNodeBuiltinImports(ctx, options.nodeBuiltins);
+    }
 
     // Pre-pass: detect empty object literals that get properties assigned later
     // Must run before import collectors so that widened types are known
@@ -5234,6 +5240,46 @@ function collectDeclaredGlobals(ctx: CodegenContext, libFile: ts.SourceFile, use
     const funcIdx = ctx.funcMap.get(importName);
     if (funcIdx !== undefined) {
       ctx.declaredGlobals.set(name, { type: { kind: "externref" }, funcIdx });
+    }
+  }
+}
+
+/**
+ * Register Node.js builtin module imports as externref host imports (#1044).
+ *
+ * For each detected `import * as X from 'node:http'` (or named/default import),
+ * we register a function import `__node_<module>` that returns the module object
+ * as externref. The local binding name is added to `declaredGlobals` so that
+ * identifier resolution in expressions picks it up via the existing extern path.
+ *
+ * In WASI mode, emit a compile error instead (Node builtins not available).
+ */
+function registerNodeBuiltinImports(ctx: CodegenContext, builtins: NodeBuiltinImport[]): void {
+  for (const builtin of builtins) {
+    if (ctx.wasi) {
+      ctx.errors.push({
+        message: `Node builtin module '${builtin.moduleName}' is not available in WASI target. Use compile-time syscall path for node:fs (#1035).`,
+        line: 1,
+        column: 1,
+        severity: "error",
+      });
+      continue;
+    }
+
+    // Track this module as a Node builtin so the import manifest/runtime can resolve it
+    ctx.mod.nodeBuiltinModules.add(builtin.moduleName);
+
+    const importName = `__node_${builtin.moduleName}`;
+    // Skip if already registered (e.g. duplicate imports)
+    if (ctx.funcMap.has(importName)) continue;
+
+    const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+    addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx !== undefined) {
+      // Register as a declared global so identifier resolution picks it up
+      ctx.declaredGlobals.set(builtin.localName, { type: { kind: "externref" }, funcIdx });
+      ctx.nodeBuiltinGlobals.set(builtin.localName, funcIdx);
     }
   }
 }
