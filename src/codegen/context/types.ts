@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Shared backend context and metadata types.
  *
@@ -337,6 +338,8 @@ export interface CodegenContext {
   consStrTypeIdx: number;
   /** Whether native string helper functions have been emitted */
   nativeStrHelpersEmitted: boolean;
+  /** Whether native string host bridge helpers have been emitted */
+  nativeStrExternBridgeEmitted: boolean;
   /** Map from native string helper name → function index */
   nativeStrHelpers: Map<string, number>;
   /** Map from value type kind → ref cell struct type index */

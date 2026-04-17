@@ -121,11 +121,7 @@ cd /workspace
 
 For each regression source:
 
-1. **Move the offending issue back from `done/` to `ready/`**:
-   ```bash
-   mv plan/issues/done/{N}.md plan/issues/ready/
-   ```
-2. **Update issue frontmatter**: set `status: regression`, add `regression: true`
+1. **Update the offending issue frontmatter**: set `status: ready`, add `regression: true`
 3. **Add a `## Regression` section** to the issue file (preserve existing `## Implementation Notes`):
    ```markdown
    ## Regression (sprint-{N})
@@ -145,7 +141,7 @@ For each regression source:
    ```
 
    The issue file becomes the full history: problem → fix → regression → regression fix.
-4. **Update the sprint doc** (`plan/sprints/sprint-{N}.md`): mark the issue as regressed in the task table
+4. **Update the sprint doc** (`plan/issues/sprints/{N}/sprint.md`): mark the issue as regressed in the task table
 5. **Update dependency graph**: re-add the issue as ready
 6. **Create tasks** for each regression pattern, referencing the reopened issue
 

@@ -1,12 +1,12 @@
 ## Suspended Work — Tester (2026-03-31)
 
 ### Completed this session
-- **#839 (issue-839-redo)**: Merged to main (commit 8b5f9d67). Branch deleted. Issue moved to `plan/issues/done/839.md`. Dep graph already shows `~~#839~~` as DONE.
+- **#839 (issue-839-redo)**: Merged to main (commit 8b5f9d67). Branch deleted. Issue moved to `plan/issues/sprints/31/839.md`. Dep graph already shows `~~#839~~` as DONE.
 - Equivalence results on branch: 1167 passed / 54 failed (all pre-existing, unrelated to tail call guard)
 
 ### Pending uncommitted cleanup on main
-- `plan/issues/done/839.md` needs to be committed to main
-- `plan/issues/ready/839.md` deleted but not yet staged/committed
+- `plan/issues/sprints/31/839.md` needs to be committed to main
+- `plan/issues/sprints/31/839.md` deleted but not yet staged/committed
 - Other issue moves (829, 835, 841, 844 → done/) visible as unstaged — moved by dev agents
 
 ### Merge queue (in priority order)
