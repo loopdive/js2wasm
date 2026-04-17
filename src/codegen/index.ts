@@ -383,16 +383,29 @@ export function generateModule(
   return { module: mod, errors: ctx.errors };
 }
 
-/** Add a _start export for WASI — wraps main() or __module_init */
+/** Add a _start export for WASI — wraps __module_init or a no-arg main() (#1122) */
 function addWasiStartExport(ctx: CodegenContext): void {
-  // Find main or __module_init by name in the functions array
-  let targetIdx = ctx.funcMap.get("main");
+  // Prefer __module_init — it's always () -> void and handles all top-level code
+  let targetIdx: number | undefined;
+  for (let i = 0; i < ctx.mod.functions.length; i++) {
+    if (ctx.mod.functions[i]!.name === "__module_init") {
+      targetIdx = ctx.numImportFuncs + i;
+      break;
+    }
+  }
+
+  // Fall back to main only if __module_init doesn't exist AND main is () -> void
   if (targetIdx === undefined) {
-    // Search functions array for __module_init
-    for (let i = 0; i < ctx.mod.functions.length; i++) {
-      if (ctx.mod.functions[i]!.name === "__module_init") {
-        targetIdx = ctx.numImportFuncs + i;
-        break;
+    const mainIdx = ctx.funcMap.get("main");
+    if (mainIdx !== undefined) {
+      // Check that the function takes no parameters and returns no values
+      const funcArrayIdx = mainIdx - ctx.numImportFuncs;
+      if (funcArrayIdx >= 0 && funcArrayIdx < ctx.mod.functions.length) {
+        const func = ctx.mod.functions[funcArrayIdx]!;
+        const funcType = ctx.mod.types[func.typeIdx];
+        if (funcType && funcType.kind === "func" && funcType.params.length === 0 && funcType.results.length === 0) {
+          targetIdx = mainIdx;
+        }
       }
     }
   }
@@ -401,12 +414,13 @@ function addWasiStartExport(ctx: CodegenContext): void {
     // Create _start wrapper that calls the target function
     const startTypeIdx = addFuncType(ctx, [], [], "$wasi_start_type");
     const startFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    const body: Instr[] = [{ op: "call", funcIdx: targetIdx }];
 
     ctx.mod.functions.push({
       name: "_start",
       typeIdx: startTypeIdx,
       locals: [],
-      body: [{ op: "call", funcIdx: targetIdx }],
+      body,
       exported: true,
     });
 
