@@ -1100,6 +1100,32 @@ export const jsString = {
 
 const JS_STRINGS_NATIVE_BUILTIN = true;
 
+/** Convert a WasmGC vec struct (or JS array) to a plain JS array.
+ *  Used by array method host imports that need a real JS array. */
+function _toJsArray(arr: any, exports: Record<string, Function> | undefined): any[] {
+  if (arr == null) return [];
+  if (Array.isArray(arr)) return arr;
+  if (exports) {
+    const vecLen = exports.__vec_len;
+    const vecGet = exports.__vec_get;
+    if (typeof vecLen === "function" && typeof vecGet === "function") {
+      try {
+        const len = vecLen(arr) as number;
+        if (typeof len === "number" && len >= 0) {
+          const result: any[] = new Array(len);
+          for (let i = 0; i < len; i++) {
+            result[i] = vecGet(arr, i);
+          }
+          return result;
+        }
+      } catch {
+        // Not a vec — fall through
+      }
+    }
+  }
+  return [arr]; // Fallback: wrap single value
+}
+
 function resolveImport(
   intent: ImportIntent,
   deps?: Record<string, any>,
@@ -2815,6 +2841,21 @@ function resolveImport(
             jsArr[i] = vecGet(arr, i);
           }
           return jsArr.concat(...args);
+        };
+      // Array.prototype.flat(depth?) — flatten nested arrays (#1136)
+      // Converts WasmGC vec to JS array, then calls native flat()
+      if (name === "__array_flat")
+        return (arr: any, depth: any) => {
+          const exports = callbackState?.getExports();
+          const jsArr = _toJsArray(arr, exports);
+          return jsArr.flat(depth === undefined ? undefined : depth);
+        };
+      // Array.prototype.flatMap(callback, thisArg?) — map then flatten (#1136)
+      if (name === "__array_flatMap")
+        return (arr: any, fn: Function, thisArg: any) => {
+          const exports = callbackState?.getExports();
+          const jsArr = _toJsArray(arr, exports);
+          return thisArg !== undefined ? jsArr.flatMap(fn as any, thisArg) : jsArr.flatMap(fn as any);
         };
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
