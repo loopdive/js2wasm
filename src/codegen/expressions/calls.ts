@@ -82,6 +82,80 @@ import { compileSuperElementMethodCall, compileSuperMethodCall } from "./new-sup
 import { ensureNativeStringExternBridge } from "../native-strings.js";
 
 /**
+ * Known built-in global class/object names that compile to ref.null.extern
+ * via compileIdentifier's graceful fallback. These need __get_builtin to
+ * resolve the real JS object for host-delegated calls (method dispatch,
+ * getOwnPropertyDescriptor, etc.).
+ */
+const BUILTIN_CLASS_NAMES = new Set([
+  "Object",
+  "Array",
+  "Function",
+  "Symbol",
+  "Proxy",
+  "Reflect",
+  "Math",
+  "BigInt",
+  "JSON",
+  "Date",
+  "RegExp",
+  "ArrayBuffer",
+  "SharedArrayBuffer",
+  "DataView",
+  "Promise",
+  "WeakMap",
+  "WeakSet",
+  "WeakRef",
+  "FinalizationRegistry",
+  "Atomics",
+  "Iterator",
+  "Map",
+  "Set",
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "ReferenceError",
+  "String",
+  "Number",
+  "Boolean",
+  "Int8Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float32Array",
+  "Float64Array",
+  "BigInt64Array",
+  "BigUint64Array",
+]);
+
+/**
+ * Look up closure info for a variable by checking if its local type
+ * is a ref to a known closure struct. Handles cases like:
+ *   var f = function() { ... }; f();
+ *   const f = makeAdder(5); f.call(null, 10);
+ */
+function resolveClosureInfoFromLocal(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  name: string,
+): ClosureInfo | undefined {
+  const localIdx = fctx.localMap.get(name);
+  if (localIdx === undefined) return undefined;
+  const localType =
+    localIdx < fctx.params.length ? fctx.params[localIdx]?.type : fctx.locals[localIdx - fctx.params.length]?.type;
+  if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+    return ctx.closureInfoByTypeIdx.get(localType.typeIdx);
+  }
+  return undefined;
+}
+
+/**
  * Check if a node (function body) uses the `arguments` binding.
  * Skips nested function/function-expression scopes (they have their own `arguments`),
  * but traverses arrow functions (which inherit the enclosing `arguments`).
@@ -548,20 +622,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         let closureInfo = ctx.closureMap.get(funcName);
         const funcIdx = ctx.funcMap.get(funcName);
 
-        // Fallback: if the variable is a local with a ref type, look up closure info
-        // by struct type index. This handles cases like:
-        //   const f = makeAdder(5); f.call(null, 10);
         if (!closureInfo && funcIdx === undefined) {
-          const localIdx = fctx.localMap.get(funcName);
-          if (localIdx !== undefined) {
-            const localType =
-              localIdx < fctx.params.length
-                ? fctx.params[localIdx]?.type
-                : fctx.locals[localIdx - fctx.params.length]?.type;
-            if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-              closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
-            }
-          }
+          closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
         }
 
         if (closureInfo || funcIdx !== undefined) {
@@ -1898,58 +1960,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
 
       // Fallback: dynamic case — delegate to __getOwnPropertyDescriptor host import
-      // If arg0 is a known built-in global identifier (Math, Object, Array, etc.),
-      // use __get_builtin to get the real JS object instead of the ref.null.extern
-      // produced by compileIdentifier's graceful fallback. This mirrors the same
-      // pattern used for __extern_method_call receivers (see BUILTIN_CLASS_NAMES below).
-      const arg0IsBuiltin =
-        ts.isIdentifier(arg0) &&
-        new Set([
-          "Object",
-          "Array",
-          "Function",
-          "Symbol",
-          "Proxy",
-          "Reflect",
-          "Math",
-          "BigInt",
-          "JSON",
-          "Date",
-          "RegExp",
-          "ArrayBuffer",
-          "SharedArrayBuffer",
-          "DataView",
-          "Promise",
-          "WeakMap",
-          "WeakSet",
-          "WeakRef",
-          "FinalizationRegistry",
-          "Atomics",
-          "Iterator",
-          "Map",
-          "Set",
-          "Error",
-          "TypeError",
-          "RangeError",
-          "SyntaxError",
-          "URIError",
-          "EvalError",
-          "ReferenceError",
-          "String",
-          "Number",
-          "Boolean",
-          "Int8Array",
-          "Uint8Array",
-          "Uint8ClampedArray",
-          "Int16Array",
-          "Uint16Array",
-          "Int32Array",
-          "Uint32Array",
-          "Float32Array",
-          "Float64Array",
-          "BigInt64Array",
-          "BigUint64Array",
-        ]).has((arg0 as ts.Identifier).text);
+      // If arg0 is a known built-in global identifier, use __get_builtin to get
+      // the real JS object instead of the ref.null.extern from compileIdentifier.
+      const arg0IsBuiltin = ts.isIdentifier(arg0) && BUILTIN_CLASS_NAMES.has((arg0 as ts.Identifier).text);
 
       let getBuiltinFuncIdx: number | undefined;
       if (arg0IsBuiltin) {
@@ -3880,40 +3893,6 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         // (#965) For known built-in class identifiers (Object, Array, Proxy, etc.) that would
         // otherwise compile to ref.null.extern, use __get_builtin to get the real JS object.
         {
-          // Known built-in class names that compile to null in compileIdentifier fallback.
-          // These need __get_builtin to get the actual JS object for method dispatch.
-          const BUILTIN_CLASS_NAMES = new Set([
-            "Object",
-            "Array",
-            "Function",
-            "Symbol",
-            "Proxy",
-            "Reflect",
-            "Math",
-            "BigInt",
-            "JSON",
-            "Date",
-            "RegExp",
-            "ArrayBuffer",
-            "SharedArrayBuffer",
-            "DataView",
-            "Promise",
-            "WeakMap",
-            "WeakSet",
-            "WeakRef",
-            "FinalizationRegistry",
-            "Atomics",
-            "Iterator",
-            "Map",
-            "Set",
-            "Error",
-            "TypeError",
-            "RangeError",
-            "String",
-            "Number",
-            "Boolean",
-          ]);
-
           const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
           const arrPushIdx = ensureLateImport(
             ctx,
@@ -4107,12 +4086,6 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const unboxIdx = ctx.funcMap.get("__unbox_number");
         if (unboxIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: unboxIdx });
-          return { kind: "f64" };
-        }
-        // Fallback to parseFloat if __unbox_number not registered yet
-        const pfIdx = ctx.funcMap.get("parseFloat");
-        if (pfIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: pfIdx });
           return { kind: "f64" };
         }
       }
@@ -4361,19 +4334,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     let closureInfo = ctx.closureMap.get(funcName);
 
     if (!closureInfo) {
-      // Fallback: if the variable is a local with a ref type, look up closure info
-      // by struct type index. This handles cases like:
-      //   var f; f = function() { ... }; f();
-      const localIdx = fctx.localMap.get(funcName);
-      if (localIdx !== undefined) {
-        const localType =
-          localIdx < fctx.params.length
-            ? fctx.params[localIdx]?.type
-            : fctx.locals[localIdx - fctx.params.length]?.type;
-        if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-          closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
-        }
-      }
+      closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
     }
     if (closureInfo) {
       return compileClosureCall(ctx, fctx, expr, funcName, closureInfo);
@@ -5877,18 +5838,8 @@ function compileConditionalCallee(
     if (ts.isIdentifier(branchExpr)) {
       const funcName = branchExpr.text;
       let closureInfo = ctx.closureMap.get(funcName);
-      // Fallback: if variable is a local with ref type, look up closure info by type idx
       if (!closureInfo) {
-        const localIdx = fctx.localMap.get(funcName);
-        if (localIdx !== undefined) {
-          const localType =
-            localIdx < fctx.params.length
-              ? fctx.params[localIdx]?.type
-              : fctx.locals[localIdx - fctx.params.length]?.type;
-          if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-            closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
-          }
-        }
+        closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
       }
       if (closureInfo) {
         // Use the original expr's arguments but with this identifier as callee
