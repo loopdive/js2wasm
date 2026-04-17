@@ -33,6 +33,7 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/runtime.ts | _toPrimitive + __to_primitive host import | dev-B | #1090 | 2026-04-12 |
 | src/codegen/type-coercion.ts | struct→f64/externref ToPrimitive fallback | dev-B | #1090 | 2026-04-12 |
 | src/codegen/literals.ts | compileObjectLiteralAsExternref fallback | dev-C | #1069 | 2026-04-12 |
+| src/codegen/literals.ts | detectCountedPushLoopSize + compileArrayLiteral prealloc | dev-2 | #1001 | 2026-04-17 |
 
 <!--
 Example entries:
