@@ -2241,7 +2241,8 @@ function collectPrimitiveMethodImports(ctx: CodegenContext, sourceFile: ts.Sourc
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
-  if (needed.has("string_compare")) {
+  if (needed.has("string_compare") && !ctx.nativeStrings) {
+    // In native strings mode, __str_compare Wasm helper handles this — no host import needed
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
@@ -2914,10 +2915,39 @@ function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
     }
   }
 
-  // Register __toUint32 host import: (f64) → i32
+  // ToUint32: compile-away as Wasm helper function — no host import needed (#1094)
+  // Implements ES spec §7.1.7: NaN/±Infinity → 0, otherwise trunc(x) modulo 2^32.
+  // Uses f64 modular arithmetic to handle values > 2^63 correctly (where i64.trunc_sat saturates).
   if (needsToUint32 && !ctx.funcMap.has("__toUint32")) {
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.funcMap.set("__toUint32", funcIdx);
+    const body: Instr[] = [
+      // NaN check: x !== x
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 0 },
+      { op: "f64.ne" },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+      // ±Infinity check: |x| === Infinity
+      { op: "local.get", index: 0 },
+      { op: "f64.abs" },
+      { op: "f64.const", value: Infinity },
+      { op: "f64.eq" },
+      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+      // Normal case: use f64 modular arithmetic for values that may exceed i64 range.
+      // fmod(trunc(x), 2^32) gives the correct modular result, then i64.trunc_sat → i32.wrap.
+      // For values within i64 range, i64.trunc_sat + i32.wrap is already correct (modulo 2^32).
+      { op: "local.get", index: 0 },
+      { op: "i64.trunc_sat_f64_s" } as unknown as Instr,
+      { op: "i32.wrap_i64" },
+    ];
+    ctx.mod.functions.push({
+      name: "__toUint32",
+      typeIdx,
+      locals: [],
+      body,
+      exported: false,
+    });
   }
 }
 
