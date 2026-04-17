@@ -445,6 +445,10 @@
           <span class="value" id="m-ready">—</span>
           <span class="label">ready</span>
         </div>
+        <div class="metric-card" id="baseline-age-card" style="display: none">
+          <span class="value" id="m-baseline-age">—</span>
+          <span class="label">baseline age</span>
+        </div>
       </div>
       <div
         id="sprint-timeline"
@@ -456,13 +460,13 @@
     <div class="panel kanban" style="border-top: none">
       <div class="panel-head">
         <h2>Issue Board</h2>
-          <div class="panel-actions">
-            <div class="sprint-controls">
+        <div class="panel-actions">
+          <div class="sprint-controls">
             <label for="sprint-select">Sprint</label>
             <select id="sprint-select"></select>
-            </div>
-            <a href="../issues-graph.html">dependency graph</a>
           </div>
+          <a href="../issues-graph.html">dependency graph</a>
+        </div>
       </div>
       <div class="kanban-board" id="kanban-board">
         <div class="kanban-col">
@@ -676,7 +680,9 @@
       }
 
       function getCurrentUnfinishedSprintStart(issues, sprintOptions) {
-        const numeric = sprintOptions.filter((s) => Number.isFinite(s.sprintNumber)).sort((a, b) => a.sprintNumber - b.sprintNumber);
+        const numeric = sprintOptions
+          .filter((s) => Number.isFinite(s.sprintNumber))
+          .sort((a, b) => a.sprintNumber - b.sprintNumber);
         if (numeric.length === 0) return null;
         let idx = numeric.length - 1;
         while (idx >= 0 && !sprintHasUndoneWork(issues, numeric[idx])) idx--;
@@ -748,6 +754,29 @@
           const passRate = ((strictPass / strictTotal) * 100).toFixed(1);
           document.getElementById("m-passrate").textContent = passRate + "%";
         }
+
+        // ── Baseline age badge ──
+        try {
+          const reportData = await loadJSON("../benchmarks/results/test262-current.json");
+          if (reportData && reportData.baseline_generated_at) {
+            const genTime = new Date(reportData.baseline_generated_at).getTime();
+            const ageMs = Date.now() - genTime;
+            const ageHours = ageMs / (1000 * 60 * 60);
+            const card = document.getElementById("baseline-age-card");
+            const ageEl = document.getElementById("m-baseline-age");
+            if (card && ageEl) {
+              let ageText;
+              if (ageHours < 1) ageText = Math.round(ageHours * 60) + "m";
+              else if (ageHours < 48) ageText = ageHours.toFixed(1) + "h";
+              else ageText = (ageHours / 24).toFixed(1) + "d";
+              if (reportData.baseline_sha) ageText += " (" + reportData.baseline_sha.slice(0, 7) + ")";
+              ageEl.textContent = ageText;
+              if (ageHours > 24) ageEl.style.color = "var(--red)";
+              else if (ageHours > 6) ageEl.style.color = "var(--orange)";
+              card.style.display = "";
+            }
+          }
+        } catch {}
 
         // Current sprint number (latest tag)
         try {
@@ -907,15 +936,14 @@
                   ph.setAttribute("x2", sprintPos[n]);
                   ph.setAttribute("opacity", "1");
                 }
-                timelineEl.querySelectorAll("circle[data-sprint]").forEach((c) =>
-                  c.setAttribute("fill", c.dataset.sprint === n ? "#fbbf24" : "#fff"),
-                );
+                timelineEl
+                  .querySelectorAll("circle[data-sprint]")
+                  .forEach((c) => c.setAttribute("fill", c.dataset.sprint === n ? "#fbbf24" : "#fff"));
                 if (typeof setSprintByNumber === "function") setSprintByNumber(n);
               });
             }
           }
         }
-
       }
 
       // ── Run on load ──
