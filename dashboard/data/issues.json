@@ -104,6 +104,18 @@
   ],
   "ready": [
     {
+      "id": "1127",
+      "title": "export default of HOF variable not exported — add.js blocked",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1074"
+      ],
+      "goal": "correctness",
+      "status": "ready",
+      "sprint": "42"
+    },
+    {
       "id": "1126",
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
