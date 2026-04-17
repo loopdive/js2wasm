@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Call expression compilation: direct calls, optional calls, closure calls,
  * property method calls, IIFEs, and conditional callees.
@@ -78,6 +79,7 @@ import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./
 import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 import { resolveStructName } from "./misc.js";
 import { compileSuperElementMethodCall, compileSuperMethodCall } from "./new-super.js";
+import { ensureNativeStringExternBridge } from "../native-strings.js";
 
 /**
  * Check if a node (function body) uses the `arguments` binding.
@@ -1120,6 +1122,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         fctx.body.push({ op: "call", funcIdx });
         // In fast mode, marshal externref string to native string
         if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+          ensureNativeStringExternBridge(ctx);
+          flushLateImportShifts(ctx, fctx);
           const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
           if (fromExternIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: fromExternIdx });
@@ -3627,8 +3631,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
 
       // charCodeAt: uses wasm:js-string charCodeAt import (not string_charCodeAt)
+      // Use jsStringImports to avoid shadowing by user-defined functions (#1072).
       if (method === "charCodeAt") {
-        const charCodeAtIdx = ctx.funcMap.get("charCodeAt");
+        const charCodeAtIdx = ctx.jsStringImports.get("charCodeAt");
         if (charCodeAtIdx !== undefined) {
           compileExpression(ctx, fctx, propAccess.expression);
           if (expr.arguments.length > 0) {
@@ -4317,7 +4322,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const argTsType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
         if (isStringType(argTsType)) {
           addStringImports(ctx);
-          const lenIdx = ctx.funcMap.get("length");
+          const lenIdx = ctx.jsStringImports.get("length");
           if (lenIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: lenIdx });
             fctx.body.push({ op: "i32.const", value: 0 });

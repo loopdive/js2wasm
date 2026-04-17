@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Assignment operator compilation: simple assignment, destructuring, compound, logical.
  */
@@ -3022,7 +3023,7 @@ function compileStringCompoundAssignment(
   // Ensure string imports are registered
   addStringImports(ctx);
 
-  const concatIdx = ctx.funcMap.get("concat");
+  const concatIdx = ctx.jsStringImports.get("concat");
   if (concatIdx === undefined) {
     reportError(ctx, expr, "String concat import not available");
     return null;
@@ -3334,7 +3335,7 @@ export function compileCompoundAssignment(
       if (rhsIsString || varHasStringAssign) {
         // String concat path: current value (externref) is on stack
         addStringImports(ctx);
-        const concatIdx = ctx.funcMap.get("concat");
+        const concatIdx = ctx.jsStringImports.get("concat");
         if (concatIdx !== undefined) {
           const compoundRhsStr = compileExpression(ctx, fctx, expr.right);
           if (!compoundRhsStr) {

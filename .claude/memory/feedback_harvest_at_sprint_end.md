@@ -4,7 +4,7 @@ description: Invoke the harvest-errors skill (or spawn a harvester agent) as par
 type: feedback
 originSessionId: 0ffbd21c-b73d-429a-a76d-4fb742ea9794
 ---
-At the end of every sprint — as part of the `/sprint-wrap-up` skill — run the `harvest-errors` skill (or spawn a dedicated harvester agent) against the current `benchmarks/results/test262-current.jsonl`. The harvester clusters failure patterns, cross-references with existing issues, and files new issue files in `plan/issues/ready/` for buckets above the threshold (default: >50 occurrences).
+At the end of every sprint — as part of the `/sprint-wrap-up` skill — run the `harvest-errors` skill (or spawn a dedicated harvester agent) against the current `benchmarks/results/test262-current.jsonl`. The harvester clusters failure patterns, cross-references with existing issues, and files new issue files in `plan/issues/` for buckets above the threshold (default: >50 occurrences).
 
 ## Why at sprint end, not sprint start
 
@@ -15,7 +15,7 @@ Running harvest at **sprint start** uses stale data from the previous sprint's f
 ## How to apply
 
 1. `/sprint-wrap-up` Step 7 runs harvest before the final commit
-2. Newly-filed issues go into `plan/issues/ready/` with `sprint: Backlog`
+2. Newly-filed issues go into `plan/issues/` with `status: ready` and `sprint: Backlog`
 3. The next sprint's PO session (via `po-sprint-N` product-owner agent) sees them and assigns to the new sprint based on theme
 4. Tech lead dispatches from the new task queue
 

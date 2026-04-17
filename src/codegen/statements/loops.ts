@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Loop statement lowering: while, for, do-while, for-of, for-in.
  */
@@ -10,7 +11,13 @@ import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { emitCoercedLocalSet } from "../expressions/helpers.js";
 import { shiftLateImportIndices } from "../expressions/late-imports.js";
-import { ensureI32Condition, ensureNativeStringHelpers, nativeStringType, resolveWasmType } from "../index.js";
+import {
+  addIteratorImports,
+  ensureI32Condition,
+  ensureNativeStringHelpers,
+  nativeStringType,
+  resolveWasmType,
+} from "../index.js";
 import { resolveComputedKeyExpression } from "../literals.js";
 import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "../registry/imports.js";
 import { addFuncType, getArrTypeIdxFromVec } from "../registry/types.js";
@@ -2330,6 +2337,9 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   }
 
   // Fallback: host-delegated iterator protocol
+  // Ensure iterator host imports are registered before using them
+  addIteratorImports(ctx);
+
   // Coerce to externref if the iterable is a struct ref (GC type).
   if (iterableType.kind !== "externref") {
     coerceType(ctx, fctx, iterableType, { kind: "externref" });

@@ -1,7 +1,7 @@
 ---
 agent: tech-lead
 session_end: 2026-04-12-sprint-41-complete
-next_session_entry_point: Start fresh session, fresh team. Read this file + plan/sprints/sprint-42.md first.
+next_session_entry_point: Start fresh session, fresh team. Read this file + plan/issues/sprints/42/sprint.md first.
 last_handoff_reason: "Sprint 41 closed. CI prototype-poisoning crisis resolved. All PRs merged. Team shut down."
 ---
 
@@ -37,7 +37,7 @@ last_handoff_reason: "Sprint 41 closed. CI prototype-poisoning crisis resolved. 
 - **#38** (MCP channel server) — old draft, not ours
 
 ### Sprint 42 plan (ready)
-File: `plan/sprints/sprint-42.md`
+File: `plan/issues/sprints/42/sprint.md`
 - Goal: lodash-es compiles and runs E2E in Wasm
 - Critical enabler: #1074 (export default surfacing)
 - PO filed #1094-#1097 from Fastly review (Sprint 42 Phase 5)
@@ -49,7 +49,7 @@ File: `plan/sprints/sprint-42.md`
 ## FRESH SESSION START PROTOCOL
 
 1. Read this file
-2. Read `plan/sprints/sprint-42.md`
+2. Read `plan/issues/sprints/42/sprint.md`
 3. `git log --oneline origin/main -10` to verify baseline
 4. `gh pr list --state open` to check for stale PRs
 5. Shut down stale PO if still alive

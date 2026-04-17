@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Backend context creation ownership.
  *
@@ -22,6 +23,7 @@ export function createCodegenContext(
     typeIdxToStructName: new Map(),
     structFields: new Map(),
     numImportFuncs: 0,
+    jsStringImports: new Map(),
     currentFunc: null,
     funcStack: [],
     errors: [],
@@ -86,6 +88,7 @@ export function createCodegenContext(
     nativeStrTypeIdx: -1,
     consStrTypeIdx: -1,
     nativeStrHelpersEmitted: false,
+    nativeStrExternBridgeEmitted: false,
     nativeStrHelpers: new Map(),
     refCellTypeMap: new Map(),
     anyValueTypeIdx: -1,

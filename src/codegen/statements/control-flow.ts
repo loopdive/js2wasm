@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Control flow statement lowering: return, if, switch, break, continue, labeled.
  */
@@ -455,7 +456,7 @@ export function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContex
     } else {
       // Non-fast mode: externref string comparison via wasm:js-string equals
       addStringImports(ctx);
-      strEqFuncIdx = ctx.funcMap.get("equals");
+      strEqFuncIdx = ctx.jsStringImports.get("equals");
       wasmType = { kind: "externref" };
     }
   } else if (wasmType.kind === "externref") {

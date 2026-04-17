@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Declaration collection and compilation — unified AST visitor, class declarations,
  * function bodies, and struct type registration.
@@ -44,7 +45,7 @@ import {
   STRING_METHODS,
   unwrapGeneratorYieldType,
 } from "./index.js";
-import { ensureNativeStringHelpers } from "./native-strings.js";
+import { ensureNativeStringExternBridge, ensureNativeStringHelpers } from "./native-strings.js";
 import { addImport, addStringConstantGlobal, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
 import {
   addFuncType,
@@ -899,7 +900,7 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
-      ensureNativeStringHelpers(ctx);
+      ensureNativeStringExternBridge(ctx);
     }
   }
   if (state.needsFromCodePoint) {
@@ -2102,6 +2103,28 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
     if (targetName && ctx.moduleGlobals.has(targetName)) {
       ctx.moduleInitStatements.push(stmt);
+    }
+  }
+
+  // Export default for module globals (#1108): `export default <variable>` where
+  // the variable is a module-level global (e.g. `var add = createMathOperation(fn, 0)`)
+  // This runs AFTER module globals are registered (Fourth pass above).
+  if (isEntryFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExportAssignment(stmt) || stmt.isExportEquals) continue;
+      if (!ts.isIdentifier(stmt.expression)) continue;
+      const varName = stmt.expression.text;
+      // Skip if already handled as a function export
+      if (ctx.funcMap.has(varName)) continue;
+      if (ctx.moduleGlobals.has(varName)) {
+        // Defer the actual export — global indices are not final yet because
+        // later collectDeclarations calls may add string-constant import globals
+        // which shift all defined-global indices.  Record the variable name
+        // and resolve the correct absolute index in a fixup pass.
+        if (!ctx.deferredDefaultGlobalExport) {
+          ctx.deferredDefaultGlobalExport = varName;
+        }
+      }
     }
   }
 }

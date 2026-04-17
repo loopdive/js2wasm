@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 export type ImportIntent =
   | { type: "string_literal"; value: string }
   | { type: "math"; method: string }
@@ -217,8 +218,12 @@ export function compileProject(entryFile: string, options?: CompileOptions): Com
   const resolvedEntry = path.resolve(entryFile);
   const rootDir = path.dirname(resolvedEntry);
 
+  // Auto-enable allowJs when entry file is .js/.mjs (#1107)
+  const isJs = /\.[cm]?js$/.test(resolvedEntry);
+  const effectiveOptions = isJs && !options?.allowJs ? { ...options, allowJs: true } : options;
+
   // Create resolver
-  const resolver = new ModuleResolver(rootDir, options);
+  const resolver = new ModuleResolver(rootDir, effectiveOptions);
 
   // Resolve all imports recursively
   const allFiles = resolveAllImports(resolvedEntry, resolver);
@@ -236,7 +241,7 @@ export function compileProject(entryFile: string, options?: CompileOptions): Com
   // Entry file key
   const entryKey = `./${path.relative(rootDir, resolvedEntry)}`;
 
-  return compileMultiSource(files, entryKey, options);
+  return compileMultiSource(files, entryKey, effectiveOptions);
 }
 
 /**

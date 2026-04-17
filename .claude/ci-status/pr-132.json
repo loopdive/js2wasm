@@ -1,0 +1,15 @@
+{
+  "pr": 132,
+  "conclusion": "failure",
+  "head_branch": "issue-1068-await-label",
+  "head_sha": "9f096ab618b413d34aa7e8bab11a59bdd059bef0",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24309569022",
+  "timestamp": "2026-04-12T15:46:55Z",
+  "pass": 22411,
+  "fail": 15394,
+  "compile_error": 3998,
+  "snapshot_delta": -1,
+  "net_per_test": -1,
+  "regressions": 1,
+  "improvements": 0
+}
