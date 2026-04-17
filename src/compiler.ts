@@ -159,7 +159,10 @@ export function compileSource(
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
   );
-  const hasHardTypeErrors = ast.diagnostics.some(isHardTypeScriptDiagnostic);
+  // In JS mode (allowJs), skip hard type errors — TS type inference on untyped JS
+  // produces false positives (e.g., lodash-es patterns). Only block on hard type
+  // errors for TS source where the user wrote explicit conflicting annotations.
+  const hasHardTypeErrors = !isJsMode && ast.diagnostics.some(isHardTypeScriptDiagnostic);
 
   if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
@@ -445,7 +448,7 @@ export function compileMultiSource(
   const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
     (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
   );
-  const hasHardTypeErrors = multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
+  const hasHardTypeErrors = !options.allowJs && multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
 
   if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
@@ -676,7 +679,7 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
   const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
     (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
   );
-  const hasHardTypeErrors = multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
+  const hasHardTypeErrors = !options.allowJs && multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
 
   if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
