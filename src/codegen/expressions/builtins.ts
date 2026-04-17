@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Host built-in compilation: console, Date, Math, and WASI output.
  */
@@ -6,7 +7,9 @@ import { isBooleanType, isNumberType, isStringType } from "../../checker/type-ma
 import type { Instr, ValType } from "../../ir/types.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
+import { flushLateImportShifts } from "../expressions/late-imports.js";
 import { addFuncType } from "../index.js";
+import { ensureNativeStringExternBridge } from "../native-strings.js";
 import type { InnerResult } from "../shared.js";
 import { compileExpression, VOID_RESULT } from "../shared.js";
 import { compileStringLiteral } from "../string-ops.js";
@@ -32,6 +35,8 @@ function compileConsoleCall(
     if (isStringType(argType)) {
       // Fast mode: flatten + marshal native string to externref before passing to host
       if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+        ensureNativeStringExternBridge(ctx);
+        flushLateImportShifts(ctx, fctx);
         const strFlattenIdx = ctx.nativeStrHelpers.get("__str_flatten");
         if (strFlattenIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: strFlattenIdx });

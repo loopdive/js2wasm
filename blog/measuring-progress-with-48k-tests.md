@@ -166,7 +166,7 @@ No subjective prioritization debates. The test count decides.
 
 ## The dependency graph
 
-Below the goal DAG, individual issues have fine-grained dependencies documented in `plan/dependency-graph.md`. This file serves as the dispatch queue — it shows which issues are ready now, which are blocked, and which coordinate with each other:
+Below the goal DAG, individual issues have fine-grained dependencies documented in `plan/log/dependency-graph.md`. This file serves as the dispatch queue — it shows which issues are ready now, which are blocked, and which coordinate with each other:
 
 ```
 #852 (destructuring params — 1,525 FAIL)

@@ -24,7 +24,7 @@ Planning sessions decide *what* to do. Execution sessions do the work. Keep them
 **Why:** A planning session accumulates triage tables, PR diffs, regression samples, and architectural discussion. An execution session accumulates rebase output, merge narrations, and dispatch messages. Combined, they hit budget limits fast.
 
 **How to apply:**
-- Planning phase: triage → write issues → populate TaskList → persist decisions in `plan/sprints/sprint-N.md`. End session.
+- Planning phase: triage → write issues → populate TaskList → persist decisions in `plan/issues/sprints/N/sprint.md`. End session.
 - Execution phase: fresh session. Read issues / TaskList. Dispatch. Merge. Repeat.
 - If a single session must do both, run `/compact` between them.
 

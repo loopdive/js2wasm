@@ -12,7 +12,7 @@ import { existsSync } from "node:fs";
  * Current state (2026-04-11): the stress test documents a precondition gap.
  * compileProject does not yet compile npm-installed lodash sources to Wasm
  * in a way that produces a callable exported function. See
- * plan/issues/ready/1031.md "## Stress Test Results" for the full write-up.
+ * plan/issues/1031.md "## Stress Test Results" for the full write-up.
  *
  * These tests encode the CURRENT observed behavior so future work (follow-up
  * issues filed from #1031) can flip the assertions when the gaps are closed.

@@ -20,7 +20,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as zlib from "node:zlib";
 import * as ts from "typescript";
-import { compile, compileMulti } from "../src/index.js";
+import { compile, compileMulti } from "./compiler-bundle.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const HELPERS_PATH = path.resolve(ROOT, "playground", "examples", "benchmarks", "helpers.ts");
