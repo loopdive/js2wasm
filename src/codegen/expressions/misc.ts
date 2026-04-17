@@ -14,6 +14,7 @@ import { ensureI32Condition, isAnyValue } from "../index.js";
 import { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
+import { evaluateConstantCondition } from "../statements/control-flow.js";
 
 // Re-export for backward compatibility — these helpers now live in property-access.ts.
 export { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName };
@@ -23,6 +24,12 @@ function compileConditionalExpression(
   fctx: FunctionContext,
   expr: ts.ConditionalExpression,
 ): ValType | null {
+  // Constant-folding: if the condition is a compile-time constant, emit only the taken branch.
+  const constResult = evaluateConstantCondition(expr.condition);
+  if (constResult !== undefined) {
+    return compileExpression(ctx, fctx, constResult ? expr.whenTrue : expr.whenFalse);
+  }
+
   const condType = compileExpression(ctx, fctx, expr.condition);
   if (!condType) {
     // void condition — JS treats undefined as falsy, so push i32.const 0

@@ -131,6 +131,11 @@ export interface CompileOptions {
    *  Requires either the 'binaryen' npm package or wasm-opt on PATH.
    *  Set to true for -O3 defaults, or pass a number (1-4) for a specific level. */
   optimize?: boolean | 1 | 2 | 3 | 4;
+  /** Compile-time constant definitions. Substitutes identifiers/dotted paths with literal values
+   *  before TypeScript parsing. Example: `{ "process.env.NODE_ENV": '"production"' }`.
+   *  Values must be valid JS expression literals (strings need inner quotes).
+   *  Also supports shorthand: `"production"` mode sets process.env.NODE_ENV and typeof guards. */
+  define?: Record<string, string>;
 }
 
 import * as path from "path";
