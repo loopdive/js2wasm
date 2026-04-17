@@ -1,0 +1,15 @@
+{
+  "pr": 149,
+  "conclusion": "failure",
+  "head_branch": "issue-1074-esm-default-export",
+  "head_sha": "d9dae41523ecbf3c1aafbd9ad6348038afd9c164",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24546706911",
+  "timestamp": "2026-04-17T04:06:32Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
