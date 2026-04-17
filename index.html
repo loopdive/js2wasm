@@ -2873,8 +2873,8 @@ match (value) {
             embedding a JS interpreter inside the WebAssembly module. This increases module size and slows execution.
           </p>
           <p class="host-bench-copy">
-            Each bar shows the measured median for one toolchain. Lower values are better. The vertical marker shows
-            the plain JavaScript baseline running in a JS host.
+            Each bar shows the measured median for one toolchain. Lower values are better. The vertical marker shows the
+            plain JavaScript baseline running in a JS host.
           </p>
         </div>
 
@@ -3064,6 +3064,17 @@ const dom = await js2.import("./dom.js", { document });
 
       <hr class="divider" />
 
+      <section class="section-pad" id="dep-graph">
+        <h2>Dependency graph.</h2>
+        <p style="color: var(--fg-soft); max-width: 640px; margin-bottom: 24px">
+          Interactive view of issue dependencies. Hover a node to see details, click to highlight its prerequisite and
+          dependent chains.
+        </p>
+        <dep-graph src="./public/graph-data.json"></dep-graph>
+      </section>
+
+      <hr class="divider" />
+
       <section class="section-pad cta" id="roadmap">
         <h2>Project roadmap.</h2>
         <p>
@@ -3109,6 +3120,7 @@ const dom = await js2.import("./dom.js", { document });
     <script type="module" src="./components/t262-charts.js"></script>
     <script type="module" src="./components/perf-benchmark-chart.js"></script>
     <script src="./components/trend-chart.js"></script>
+    <script src="./components/dep-graph.js"></script>
 
     <script>
       (function mountPuzzleBackground() {
