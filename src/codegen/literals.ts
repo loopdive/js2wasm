@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Literal compilation for js2wasm — object, array, tuple, and symbol literals.
  *
@@ -13,40 +14,53 @@
  */
 
 import ts from "typescript";
-import { reportError } from "./context/errors.js";
+import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
+import { emitMethodParamDefaults, promoteAccessorCapturesToGlobals } from "./closures.js";
 import { popBody, pushBody } from "./context/bodies.js";
+import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { nextModuleGlobalIdx, ensureExnTag } from "./registry/imports.js";
-import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
+import { patchStructNewForAddedField } from "./expressions/late-imports.js";
+import { resolveStructName } from "./expressions/misc.js";
+import { bodyUsesArguments } from "./function-body.js";
 import {
-  resolveWasmType,
-  ensureStructForType,
-  isTupleType,
-  getTupleElementTypes,
-  getOrRegisterTupleType,
   cacheStringLiterals,
   destructureParamArray,
   destructureParamObject,
+  ensureStructForType,
+  getOrRegisterTupleType,
+  getTupleElementTypes,
+  isTupleType,
+  resolveWasmType,
 } from "./index.js";
-import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
-import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
+import { ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
+  coerceType,
   compileExpression,
   compileStatement,
   emitArgumentsObject,
-  getLine,
-  getCol,
-  registerResolveComputedKeyExpression,
-  VOID_RESULT,
   ensureLateImport,
   flushLateImportShifts,
+  registerResolveComputedKeyExpression,
 } from "./shared.js";
-import { bodyUsesArguments } from "./statements/nested-declarations.js";
-import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
-import { resolveStructName } from "./expressions/misc.js";
-import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { pushDefaultValue } from "./type-coercion.js";
+
+/**
+ * Check if a TS expression is "undefined-like" — OmittedExpression (array hole),
+ * undefined keyword, identifier `undefined`, or void expression.
+ * Used to emit sNaN sentinels in tuple/array contexts so destructuring
+ * default checks trigger correctly (#1024).
+ */
+function _isUndefinedLike(node: ts.Node): boolean {
+  return (
+    ts.isOmittedExpression(node) ||
+    node.kind === ts.SyntaxKind.UndefinedKeyword ||
+    (ts.isIdentifier(node) && node.text === "undefined") ||
+    ts.isVoidExpression(node)
+  );
+}
 
 /**
  * Ensure that a struct registered for an object literal includes fields for
@@ -98,6 +112,77 @@ export function ensureComputedPropertyFields(
     const wasmType = resolveWasmType(ctx, propType);
     patchStructNewForAddedField(ctx, fctx, structTypeIdx, wasmType);
   }
+}
+
+/**
+ * Last-resort fallback: compile an object literal as an externref plain object via host imports.
+ * Used when the TS type can't be mapped to a WasmGC struct (e.g., `{...null}`, `{...yield}`,
+ * or bundled JS objects with types too wide for struct inference).
+ *
+ * Creates a new plain object via __new_plain_object, then:
+ * - For spread assignments: calls __object_assign(target, source) to copy properties
+ * - For regular properties: calls __set_prop(target, key, value)
+ *
+ * Returns externref, or null if the host import is unavailable.
+ */
+function compileObjectLiteralAsExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ObjectLiteralExpression,
+): ValType | null {
+  const newObjIdx = ensureLateImport(ctx, "__new_plain_object", [], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  if (newObjIdx === undefined) return null;
+
+  // Create the target plain object
+  fctx.body.push({ op: "call", funcIdx: newObjIdx });
+  const objLocal = allocLocal(fctx, `__objlit_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  for (const prop of expr.properties) {
+    if (ts.isSpreadAssignment(prop)) {
+      // Compile spread source and call __object_assign(target, [source]) -> target
+      const srcType = compileExpression(ctx, fctx, prop.expression);
+      if (srcType) {
+        if (srcType.kind !== "externref") {
+          coerceType(ctx, fctx, srcType, { kind: "externref" });
+        }
+        // Wrap source in a single-element JS array for __object_assign(target, sources[])
+        const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+        const arrPushIdx = ensureLateImport(ctx, "__js_array_push", [{ kind: "externref" }, { kind: "externref" }], []);
+        const assignIdx = ensureLateImport(
+          ctx,
+          "__object_assign",
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (assignIdx !== undefined && arrNewIdx !== undefined && arrPushIdx !== undefined) {
+          const srcLocal = allocLocal(fctx, `__spread_src_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: srcLocal });
+          // Create sources array [source]
+          fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+          const arrLocal = allocLocal(fctx, `__spread_arr_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: arrLocal });
+          fctx.body.push({ op: "local.get", index: arrLocal });
+          fctx.body.push({ op: "local.get", index: srcLocal });
+          fctx.body.push({ op: "call", funcIdx: arrPushIdx });
+          // Call __object_assign(target, [source])
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "local.get", index: arrLocal });
+          fctx.body.push({ op: "call", funcIdx: assignIdx });
+          fctx.body.push({ op: "local.set", index: objLocal });
+        }
+      }
+    }
+    // PropertyAssignment and ShorthandPropertyAssignment are not handled in this fallback —
+    // mixed spread + named properties should have resolved via ensureStructForType.
+    // If we reach here with named properties, let them be silently skipped.
+    // The fallback is primarily for all-spread patterns like {...null}, {...yield}.
+  }
+
+  fctx.body.push({ op: "local.get", index: objLocal });
+  return { kind: "externref" };
 }
 
 export function compileObjectLiteral(
@@ -156,6 +241,9 @@ export function compileObjectLiteral(
       ensureComputedPropertyFields(ctx, fctx, expr, type);
       return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
     }
+    // Fall back to externref plain object for unmappable types (e.g. {...null})
+    const fallback = compileObjectLiteralAsExternref(ctx, fctx, expr);
+    if (fallback) return fallback;
     reportError(ctx, expr, "Cannot determine struct type for object literal");
     return null;
   }
@@ -182,6 +270,10 @@ export function compileObjectLiteral(
     ensureComputedPropertyFields(ctx, fctx, expr, inferredType);
     return compileObjectLiteralForStruct(ctx, fctx, expr, inferredName);
   }
+
+  // Fall back to externref plain object for unmappable types
+  const fallback = compileObjectLiteralAsExternref(ctx, fctx, expr);
+  if (fallback) return fallback;
 
   reportError(ctx, expr, "Object literal type not mapped to struct");
   return null;
@@ -915,6 +1007,13 @@ export function compileObjectLiteralForStruct(
           ? [resolveWasmType(ctx, retType)]
           : [];
 
+      // Track object-literal methods that read `arguments` (#1053) so
+      // callers can populate the __extras_argv global with runtime args
+      // beyond the formal param count.
+      if (prop.body && bodyUsesArguments(prop.body)) {
+        ctx.funcUsesArguments.add(fullName);
+      }
+
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
 
       // Check if a placeholder function was already pre-registered (by ensureStructForType).
@@ -1113,7 +1212,17 @@ export function compileTupleLiteral(
   for (let i = 0; i < elemTypes.length; i++) {
     const expectedType = elemTypes[i] ?? { kind: "externref" as const };
     if (i < expr.elements.length) {
-      compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
+      const el = expr.elements[i]!;
+      // For holes (OmittedExpression) and explicit `undefined` in f64 context,
+      // emit the sNaN sentinel so destructuring default checks trigger correctly.
+      // compileExpression emits regular NaN for undefined, which doesn't match
+      // the sNaN sentinel that emitDefaultValueCheck looks for (#1024).
+      if (expectedType.kind === "f64" && _isUndefinedLike(el)) {
+        fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
+        fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
+      } else {
+        compileExpression(ctx, fctx, el, expectedType);
+      }
     } else {
       // Missing element — push sentinel value that destructuring recognizes as
       // "absent": sNaN sentinel for f64, ref.null for refs/externref, 0 for i32 (#852, #866).
@@ -1168,7 +1277,18 @@ export function compileArrayLiteral(
             const actualHeterogeneous =
               actualElemTypes.length > 1 && !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
             if (actualHeterogeneous) {
-              tupleType = actualType;
+              // Don't switch to the actual type if the heterogeneity is only
+              // from undefined/void holes (i32) mixed with f64. The contextual
+              // type's f64 is better because it supports the sNaN sentinel for
+              // destructuring default checks. Switching to [i32, i32, f64] would
+              // lose default-value detection on the hole positions (#1024).
+              const onlyUndefinedHeterogeneity =
+                actualElemTypes.every((t) => t.kind === "f64" || t.kind === "i32") &&
+                actualElemTypes.some((t) => t.kind === "i32") &&
+                actualElemTypes.some((t) => t.kind === "f64");
+              if (!onlyUndefinedHeterogeneity) {
+                tupleType = actualType;
+              }
             }
           }
         }
@@ -1253,7 +1373,14 @@ export function compileArrayLiteral(
   if (!hasSpread) {
     // No spread — use the fast array.new_fixed path, then wrap in vec struct
     for (const el of expr.elements) {
-      compileExpression(ctx, fctx, el, elemWasm);
+      // For holes and explicit undefined in f64 context, emit sNaN sentinel
+      // so destructuring default checks trigger correctly (#1024).
+      if (elemWasm.kind === "f64" && _isUndefinedLike(el)) {
+        fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
+        fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
+      } else {
+        compileExpression(ctx, fctx, el, elemWasm);
+      }
     }
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: expr.elements.length });
     // Store data array in temp local, then build vec struct

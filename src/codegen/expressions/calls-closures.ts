@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Closure and callable property call compilation:
  * - compileClosureCall — call to a closure variable
@@ -9,16 +10,16 @@
 import ts from "typescript";
 import { isVoidType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { addFuncType, addImport, localGlobalIdx, resolveWasmType } from "../index.js";
+import { getOrCreateFuncRefWrapperTypes } from "../closures.js";
 import { allocLocal } from "../context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "../context/types.js";
-import { compileExpression, coerceType, VOID_RESULT } from "../shared.js";
-import type { InnerResult } from "../shared.js";
-import { defaultValueInstrs, emitGuardedFuncRefCast, emitGuardedRefCast, pushDefaultValue } from "../type-coercion.js";
+import { addFuncType, addImport, localGlobalIdx, resolveWasmType } from "../index.js";
 import { emitNullCheckThrow } from "../property-access.js";
-import { getOrCreateFuncRefWrapperTypes } from "../closures.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
+import type { InnerResult } from "../shared.js";
+import { coerceType, compileExpression, VOID_RESULT } from "../shared.js";
+import { emitGuardedFuncRefCast, emitGuardedRefCast, pushDefaultValue } from "../type-coercion.js";
 import { getFuncParamTypes, getWasmFuncReturnType, isEffectivelyVoidReturn, wasmFuncReturnsVoid } from "./helpers.js";
+import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 
 /** Compile a call to a closure variable: closureVar(args...) */
 export function compileClosureCall(
@@ -631,7 +632,20 @@ export function tryExternClassMethodOnAny(
   propAccess: ts.PropertyAccessExpression,
   methodName: string,
 ): InnerResult {
-  for (const [, info] of ctx.externClasses) {
+  // `.slice` is ambiguous across String, Array, ArrayBuffer, Blob, and every
+  // TypedArray. When a RegExp literal elsewhere in the module causes typed
+  // array extern classes to register before the call is compiled, first-match
+  // iteration order binds `value.slice(n)` on an `any` receiver to
+  // e.g. `Uint8ClampedArray_slice`, whose externref return type is incompatible
+  // with an f64-expected context like `parseInt(value.slice(2), 2)` and
+  // produces an invalid Wasm module (#1062). For `.slice` specifically we
+  // refuse extern-class dispatch entirely and let the regular String/Array
+  // code path handle it — other ambiguous methods (forEach, indexOf, etc.)
+  // keep the historical first-match behavior.
+  if (methodName === "slice") return null;
+
+  for (const [key, info] of ctx.externClasses) {
+    if (key !== info.className) continue;
     const sig = info.methods.get(methodName);
     if (!sig) continue;
 

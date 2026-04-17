@@ -19,7 +19,7 @@ The merge happens asynchronously in the background. If CI fails or the PR needs 
 
 **How to apply:**
 - Tech lead must keep `TaskList` populated with real, unowned tasks so there's always work available
-- Each task entry must reference a `plan/issues/ready/NNNN.md` with full context — devs shouldn't need a briefing message
+- Each task entry must reference a `plan/issues/NNNN.md` with full context — devs shouldn't need a briefing message
 - Dev protocol on merge:
   1. `TaskList` → find lowest-ID unowned pending task
   2. `TaskUpdate owner=self, status=in_progress`

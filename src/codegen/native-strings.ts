@@ -1,11 +1,13 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Native WasmGC string helpers — $AnyString, $FlatString, $ConsString types
  * and ensureNativeStringHelpers which emits the full string runtime.
  *
  * Extracted from codegen/index.ts (#1013).
  */
+import type { Instr, ValType } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
-import type { Import, Instr, ValType } from "../ir/types.js";
+import { ensureLateImport } from "./expressions/late-imports.js";
 import { addImport } from "./registry/imports.js";
 import { addFuncType, getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
 
@@ -47,36 +49,6 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
   const strRef: ValType = { kind: "ref", typeIdx: anyStrTypeIdx };
   const flatStrRef: ValType = { kind: "ref", typeIdx: strTypeIdx }; // ref $NativeString
   const strDataRef: ValType = { kind: "ref", typeIdx: strDataTypeIdx };
-
-  // ── Step 1: Register ALL host imports first ──────────────────────
-  // This must happen before any ctx.mod.functions.push() calls.
-
-  // Add a 1-page linear memory for string marshaling
-  if (ctx.mod.memories.length === 0) {
-    ctx.mod.memories.push({ min: 1 });
-    ctx.mod.exports.push({
-      name: "__str_mem",
-      desc: { kind: "memory", index: 0 },
-    });
-  }
-
-  // __str_from_mem: (i32, i32) -> externref
-  {
-    const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__str_from_mem", { kind: "func", typeIdx });
-  }
-
-  // __str_to_mem: (externref, i32) -> void
-  {
-    const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], []);
-    addImport(ctx, "env", "__str_to_mem", { kind: "func", typeIdx });
-  }
-
-  // __str_extern_len: (externref) -> i32
-  {
-    const lenTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__str_extern_len", { kind: "func", typeIdx: lenTypeIdx });
-  }
 
   // Helper: get the flatten function index (available after flatten is registered)
   const getFlattenIdx = () => ctx.nativeStrHelpers.get("__str_flatten")!;
@@ -2610,185 +2582,6 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
     });
   }
 
-  // --- Boundary marshaling helpers ---
-  // Uses linear memory as a shared buffer for string data transfer.
-  // Import registrations are in Step 1 above; here we add the module functions.
-
-  // $__str_to_extern(s: ref $NativeString) -> externref
-  // Copies GC array code units to linear memory, then calls __str_from_mem
-  {
-    const typeIdx = addFuncType(ctx, [strRef], [{ kind: "externref" }]);
-    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-    ctx.nativeStrHelpers.set("__str_to_extern", funcIdx);
-    ctx.funcMap.set("__str_to_extern", funcIdx);
-
-    const fromMemIdx = ctx.funcMap.get("__str_from_mem")!;
-
-    // locals: len, i, data, sOff
-    const body: Instr[] = [
-      // len = s.len
-      { op: "local.get", index: 0 },
-      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
-      { op: "local.set", index: 1 }, // len
-
-      // sOff = s.off
-      { op: "local.get", index: 0 },
-      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
-      { op: "local.set", index: 4 }, // sOff
-
-      // data = s.data
-      { op: "local.get", index: 0 },
-      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
-      { op: "local.set", index: 3 }, // data
-
-      // i = 0
-      { op: "i32.const", value: 0 },
-      { op: "local.set", index: 2 }, // i
-
-      // loop: copy code units from GC array to linear memory
-      {
-        op: "block",
-        blockType: { kind: "empty" },
-        body: [
-          {
-            op: "loop",
-            blockType: { kind: "empty" },
-            body: [
-              // if i >= len, break
-              { op: "local.get", index: 2 },
-              { op: "local.get", index: 1 },
-              { op: "i32.ge_u" },
-              { op: "br_if", depth: 1 },
-
-              // memory[i*2] = data[sOff + i] (i32.store16)
-              { op: "local.get", index: 2 },
-              { op: "i32.const", value: 1 },
-              { op: "i32.shl" }, // ptr = i * 2
-              { op: "local.get", index: 3 },
-              { op: "local.get", index: 4 },
-              { op: "local.get", index: 2 },
-              { op: "i32.add" }, // sOff + i
-              { op: "array.get_u", typeIdx: strDataTypeIdx },
-              { op: "i32.store16", align: 1, offset: 0 },
-
-              // i++
-              { op: "local.get", index: 2 },
-              { op: "i32.const", value: 1 },
-              { op: "i32.add" },
-              { op: "local.set", index: 2 },
-              { op: "br", depth: 0 },
-            ],
-          },
-        ],
-      },
-
-      // return __str_from_mem(0, len)
-      { op: "i32.const", value: 0 },
-      { op: "local.get", index: 1 },
-      { op: "call", funcIdx: fromMemIdx },
-    ];
-
-    ctx.mod.functions.push({
-      name: "__str_to_extern",
-      typeIdx,
-      locals: [
-        { name: "len", type: { kind: "i32" } },
-        { name: "i", type: { kind: "i32" } },
-        { name: "data", type: strDataRef },
-        { name: "sOff", type: { kind: "i32" } },
-      ],
-      body: wrapBodyWithFlatten(body, [0]),
-      exported: false,
-    });
-  }
-
-  // $__str_from_extern(s: externref) -> ref $NativeString
-  // Host writes JS string code units to linear memory, then wasm copies to GC array
-  {
-    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [strRef]);
-    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-    ctx.nativeStrHelpers.set("__str_from_extern", funcIdx);
-    ctx.funcMap.set("__str_from_extern", funcIdx);
-
-    const toMemIdx = ctx.funcMap.get("__str_to_mem")!;
-    const externLenIdx = ctx.funcMap.get("__str_extern_len")!;
-
-    // locals: len, arr, i
-    const body: Instr[] = [
-      // len = __str_extern_len(s)
-      { op: "local.get", index: 0 },
-      { op: "call", funcIdx: externLenIdx },
-      { op: "local.set", index: 1 }, // len
-
-      // __str_to_mem(s, 0) — host writes code units to linear memory at ptr=0
-      { op: "local.get", index: 0 },
-      { op: "i32.const", value: 0 },
-      { op: "call", funcIdx: toMemIdx },
-
-      // arr = array.new_default len
-      { op: "local.get", index: 1 },
-      { op: "array.new_default", typeIdx: strDataTypeIdx },
-      { op: "local.set", index: 2 }, // arr
-
-      // i = 0
-      { op: "i32.const", value: 0 },
-      { op: "local.set", index: 3 }, // i
-
-      // loop: copy from linear memory to GC array
-      {
-        op: "block",
-        blockType: { kind: "empty" },
-        body: [
-          {
-            op: "loop",
-            blockType: { kind: "empty" },
-            body: [
-              // if i >= len, break
-              { op: "local.get", index: 3 },
-              { op: "local.get", index: 1 },
-              { op: "i32.ge_u" },
-              { op: "br_if", depth: 1 },
-
-              // arr[i] = memory[i*2] (i32.load16_u)
-              { op: "local.get", index: 2 },
-              { op: "local.get", index: 3 },
-              { op: "local.get", index: 3 },
-              { op: "i32.const", value: 1 },
-              { op: "i32.shl" }, // ptr = i * 2
-              { op: "i32.load16_u", align: 1, offset: 0 },
-              { op: "array.set", typeIdx: strDataTypeIdx },
-
-              // i++
-              { op: "local.get", index: 3 },
-              { op: "i32.const", value: 1 },
-              { op: "i32.add" },
-              { op: "local.set", index: 3 },
-              { op: "br", depth: 0 },
-            ],
-          },
-        ],
-      },
-
-      // struct.new(len, 0, arr)
-      { op: "local.get", index: 1 }, // len
-      { op: "i32.const", value: 0 }, // off = 0
-      { op: "local.get", index: 2 }, // data = arr
-      { op: "struct.new", typeIdx: strTypeIdx },
-    ];
-
-    ctx.mod.functions.push({
-      name: "__str_from_extern",
-      typeIdx,
-      locals: [
-        { name: "len", type: { kind: "i32" } },
-        { name: "arr", type: strDataRef },
-        { name: "i", type: { kind: "i32" } },
-      ],
-      body,
-      exported: false,
-    });
-  }
-
   // --- $__str_fromCodePoint(cp: i32) -> ref $NativeString ---
   // Creates a NativeString from a Unicode code point.
   // BMP (cp <= 0xFFFF): 1-element array.
@@ -2844,6 +2637,167 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       name: "__str_fromCodePoint",
       typeIdx,
       locals: [],
+      body,
+      exported: false,
+    });
+  }
+}
+
+export function ensureNativeStringExternBridge(ctx: CodegenContext): void {
+  ensureNativeStringHelpers(ctx);
+  if (ctx.nativeStrExternBridgeEmitted) return;
+  ctx.nativeStrExternBridgeEmitted = true;
+
+  const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
+  const strTypeIdx = ctx.nativeStrTypeIdx;
+  const anyStrTypeIdx = ctx.anyStrTypeIdx;
+  const strRef: ValType = { kind: "ref", typeIdx: anyStrTypeIdx };
+  const strDataRef: ValType = { kind: "ref", typeIdx: strDataTypeIdx };
+
+  if (ctx.mod.memories.length === 0) {
+    ctx.mod.memories.push({ min: 1 });
+    ctx.mod.exports.push({
+      name: "__str_mem",
+      desc: { kind: "memory", index: 0 },
+    });
+  }
+
+  const fromMemIdx = ensureLateImport(
+    ctx,
+    "__str_from_mem",
+    [{ kind: "i32" }, { kind: "i32" }],
+    [{ kind: "externref" }],
+  )!;
+  const toMemIdx = ensureLateImport(ctx, "__str_to_mem", [{ kind: "externref" }, { kind: "i32" }], [])!;
+  const externLenIdx = ensureLateImport(ctx, "__str_extern_len", [{ kind: "externref" }], [{ kind: "i32" }])!;
+
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [{ kind: "externref" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_to_extern", funcIdx);
+    ctx.funcMap.set("__str_to_extern", funcIdx);
+
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 },
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 4 },
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 3 },
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 2 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: 2 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.shl" },
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 4 },
+              { op: "local.get", index: 2 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "i32.store16", align: 1, offset: 0 },
+              { op: "local.get", index: 2 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 2 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 1 },
+      { op: "call", funcIdx: fromMemIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_to_extern",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "data", type: strDataRef },
+        { name: "sOff", type: { kind: "i32" } },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_from_extern", funcIdx);
+    ctx.funcMap.set("__str_from_extern", funcIdx);
+
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: externLenIdx },
+      { op: "local.set", index: 1 },
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0 },
+      { op: "call", funcIdx: toMemIdx },
+      { op: "local.get", index: 1 },
+      { op: "array.new_default", typeIdx: strDataTypeIdx },
+      { op: "local.set", index: 2 },
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 3 },
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.shl" },
+              { op: "i32.load16_u", align: 1, offset: 0 },
+              { op: "array.set", typeIdx: strDataTypeIdx },
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 3 },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 2 },
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_from_extern",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "arr", type: strDataRef },
+        { name: "i", type: { kind: "i32" } },
+      ],
       body,
       exported: false,
     });

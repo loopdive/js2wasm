@@ -105,8 +105,8 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 ## Step 7: Update team state
 
 - Remove the dev from any active dispatch messaging
-- Update `plan/agent-sessions.md` if it tracks live sessions
-- Update `plan/file-locks.md` to drop any claims held by the dev
+- Update `plan/method/agent-sessions.md` if it tracks live sessions
+- Update `plan/method/file-locks.md` to drop any claims held by the dev
 
 ## Step 8: Confirm termination
 

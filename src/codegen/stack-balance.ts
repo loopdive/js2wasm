@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Stack-balancing fixup pass for Wasm function bodies.
  *
@@ -24,7 +25,7 @@
  * pushes/pops through a linear instruction sequence, plus type inference
  * for the last value-producing instruction to detect type mismatches.
  */
-import type { Instr, WasmModule, WasmFunction, BlockType, FuncTypeDef, TypeDef, ValType } from "../ir/types.js";
+import type { BlockType, FuncTypeDef, Instr, TypeDef, ValType, WasmFunction, WasmModule } from "../ir/types.js";
 
 /** Sentinel: the instruction sequence is unreachable (after return/br/throw/unreachable). */
 const UNREACHABLE = -999;

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Shared utilities used across all statement sub-modules.
  * No dependencies on other statement sub-modules or on statements.ts itself.

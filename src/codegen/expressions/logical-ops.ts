@@ -1,16 +1,15 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Logical operator compilation: &&, ||, ??, and mapped arguments helpers.
  */
 import ts from "typescript";
 import type { Instr, ValType } from "../../ir/types.js";
-import { ensureI32Condition } from "../index.js";
-import { allocTempLocal, releaseTempLocal, allocLocal } from "../context/locals.js";
 import { pushBody } from "../context/bodies.js";
 import { reportError } from "../context/errors.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { compileExpression, coerceType, valTypesMatch } from "../shared.js";
-import type { InnerResult } from "../shared.js";
-import { VOID_RESULT } from "../shared.js";
+import { ensureI32Condition } from "../index.js";
+import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { defaultValueInstrs } from "../type-coercion.js";
 import { ensureLateImport, flushLateImportShifts } from "./late-imports.js";
 

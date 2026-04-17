@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Array method compilation — extracted from expressions.ts.
  *
@@ -6,26 +7,24 @@
  * shared.ts (NOT expressions.ts) to avoid circular dependencies.
  */
 import ts from "typescript";
+import { isStringType } from "../checker/type-mapper.js";
+import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
+import { addArrayIteratorImports, addStringImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
-import { resolveWasmType, addStringImports, addArrayIteratorImports } from "./index.js";
-import { isStringType } from "../checker/type-mapper.js";
-import type { Instr, ValType } from "../ir/types.js";
 import {
-  compileExpression,
   compileArrowAsClosure,
-  VOID_RESULT,
-  getLine,
-  getCol,
-  registerEmitBoundsCheckedArrayGet,
+  compileExpression,
   ensureLateImport,
   flushLateImportShifts,
+  registerEmitBoundsCheckedArrayGet,
+  VOID_RESULT,
 } from "./shared.js";
-import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import { ensureTimsortHelper } from "./timsort.js";
+import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 
 type ArrayMethodAccess = ts.PropertyAccessExpression | ts.ElementAccessExpression;
 
@@ -1124,7 +1123,7 @@ function compileArrayPrototypeIndexOf(
   let apcEqInstrs: Instr[];
   if (elemType.kind === "externref") {
     addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
+    const equalsIdx = ctx.jsStringImports.get("equals")!;
     apcEqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
   } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
     apcEqInstrs = [{ op: "ref.eq" }];
@@ -2039,7 +2038,7 @@ function compileArrayIndexOf(
   let eqInstrs: Instr[];
   if (elemType.kind === "externref") {
     addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
+    const equalsIdx = ctx.jsStringImports.get("equals")!;
     eqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
   } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
     eqInstrs = [{ op: "ref.eq" }];
@@ -2235,7 +2234,7 @@ function compileArrayIncludes(
     ];
   } else if (elemType.kind === "externref") {
     addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
+    const equalsIdx = ctx.jsStringImports.get("equals")!;
     comparisonInstrs = [
       { op: "local.get", index: dataTmp } as Instr,
       { op: "local.get", index: iTmp } as Instr,
@@ -2905,7 +2904,7 @@ function compileArrayJoin(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  const concatIdx = ctx.funcMap.get("concat");
+  const concatIdx = ctx.jsStringImports.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) {
     reportError(ctx, callExpr, "join requires string support (wasm:js-string concat)");
@@ -4519,7 +4518,7 @@ function compileArrayLastIndexOf(
   let liofEqInstrs: Instr[];
   if (elemType.kind === "externref") {
     addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
+    const equalsIdx = ctx.jsStringImports.get("equals")!;
     liofEqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
   } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
     liofEqInstrs = [{ op: "ref.eq" }];

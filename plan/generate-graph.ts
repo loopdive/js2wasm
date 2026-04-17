@@ -1,21 +1,29 @@
 #!/usr/bin/env npx tsx
 /**
- * Scans plan/issues/ and plan/goals/ folders and generates a JSON graph
- * for the HTML visualizer.
- * Run: npx tsx plan/generate-graph.ts
- * Output: plan/graph-data.json
+ * Scans plan/issues/ and plan/goals/ and generates graph data for
+ * public/issues-graph.html.
+ *
+ * Run: node --experimental-strip-types plan/generate-graph.ts
+ * Output: public/graph-data.json
  */
 
 import * as fs from "fs";
 import * as path from "path";
+import { execFileSync } from "node:child_process";
+
+type RawIssueStatus = "ready" | "in-progress" | "review" | "blocked" | "backlog" | "done" | "wont-fix" | "planning";
+
+type GraphIssueStatus = "ready" | "blocked" | "done" | "backlog";
 
 interface IssueNode {
-  id: number;
+  id: string;
   title: string;
   priority: "critical" | "high" | "medium" | "low";
-  status: "ready" | "blocked" | "done" | "backlog" | "wont-fix";
-  depends_on: number[];
-  files: Record<string, { new?: string[]; breaking?: string[] }> | string[];
+  status: GraphIssueStatus;
+  raw_status: string;
+  sprint: string;
+  depends_on: string[];
+  files: Record<string, { new?: string[]; modify?: string[]; breaking?: string[] }> | string[];
   cluster?: string;
   goal?: string;
   compiler_errors?: number;
@@ -30,303 +38,310 @@ interface GoalNode {
   status: "active" | "activatable" | "blocked" | "done";
   target: string;
   depends_on: string[];
-  issues: number[];
-  track?: string; // "parallel" for standalone/performance/platform
+  issues: string[];
+  track?: string;
 }
 
 interface GraphData {
   nodes: IssueNode[];
-  links: { source: number; target: number }[];
+  links: { source: string; target: string }[];
   goals: GoalNode[];
-  /** issue → goal: member issues are dependencies of their goal */
-  goalIssueLinks: { goal: string; issue: number }[];
-  /** goal → issue: prerequisite goal connects to issues of dependent goals */
-  goalDepLinks: { goal: string; issue: number }[];
+  goalIssueLinks: { goal: string; issue: string }[];
+  goalDepLinks: { goal: string; issue: string }[];
   generated: string;
 }
 
-const PLAN_DIR = path.join(import.meta.dirname!, "issues");
-const GOALS_DIR = path.join(import.meta.dirname!, "goals");
+const ROOT = path.resolve(import.meta.dirname!, "..");
+const ISSUES_DIR = path.join(ROOT, "plan", "issues");
+const GOALS_DIR = path.join(ROOT, "plan", "goals");
+const OUTPUT = path.join(ROOT, "public", "graph-data.json");
+const NON_ISSUE_FILES = new Set([path.join(ISSUES_DIR, "SCHEMA.md"), path.join(ISSUES_DIR, "AUDIT-2026-04-14.md")]);
+
+function git(args: string[]): string {
+  return execFileSync("git", args, {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
+function getTrackedMarkdownFiles(root: string): Set<string> | null {
+  try {
+    return new Set(
+      git(["ls-files", root])
+        .split("\n")
+        .map((file) => file.trim())
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => path.join(ROOT, file)),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function getStableGeneratedAt(paths: string[]): string {
+  const candidates = paths.filter((file) => fs.existsSync(file));
+  if (!candidates.length) return "";
+  try {
+    return git(["log", "-1", "--format=%cI", "--", ...candidates]);
+  } catch {
+    return "";
+  }
+}
+
+function walk(dir: string, out: string[] = []): string[] {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walk(full, out);
+    else if (entry.isFile() && entry.name.endsWith(".md")) out.push(full);
+  }
+  return out;
+}
+
+function isIssueFile(file: string): boolean {
+  if (NON_ISSUE_FILES.has(file)) return false;
+  return path.basename(file) !== "sprint.md";
+}
 
 function parseFrontmatter(content: string): Record<string, any> {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};
-  const fm: Record<string, any> = {};
-  const lines = match[1].split("\n");
-  let currentKey = "";
-  let currentArray: string[] | null = null;
-  for (const line of lines) {
-    // YAML list item: "  - value"
-    if (currentArray !== null && /^\s+-\s+/.test(line)) {
-      currentArray.push(line.replace(/^\s+-\s+/, "").trim());
+
+  const data: Record<string, any> = {};
+  let currentKey: string | null = null;
+
+  for (const line of match[1].split("\n")) {
+    const kv = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (kv) {
+      currentKey = kv[1];
+      const raw = kv[2].trim();
+      if (!raw) {
+        data[currentKey] = [];
+      } else if (raw.startsWith("[")) {
+        try {
+          data[currentKey] = JSON.parse(raw);
+        } catch {
+          data[currentKey] = raw.replace(/^"|"$/g, "");
+        }
+      } else {
+        data[currentKey] = raw.replace(/^"|"$/g, "");
+      }
       continue;
     }
-    // End of array
-    if (currentArray !== null) {
-      fm[currentKey] = currentArray;
-      currentArray = null;
-    }
-    // Key: value or Key: [inline array]
-    const kv = line.match(/^(\w+):\s*(.*)$/);
-    if (kv) {
-      const [, key, val] = kv;
-      currentKey = key;
-      if (!val || val.trim() === "") {
-        // Start of YAML block array
-        currentArray = [];
-      } else if (val.startsWith("[")) {
-        try { fm[key] = JSON.parse(val); } catch { fm[key] = val; }
-      } else {
-        fm[key] = val.trim();
-      }
+
+    const li = line.match(/^\s*-\s*(.*)$/);
+    if (li && currentKey && Array.isArray(data[currentKey])) {
+      data[currentKey].push(li[1].replace(/^"|"$/g, ""));
     }
   }
-  if (currentArray !== null) fm[currentKey] = currentArray;
-  return fm;
+
+  return data;
 }
 
-function getTitle(content: string): string {
+function getTitle(content: string, fm: Record<string, any>): string {
+  if (typeof fm.title === "string" && fm.title.trim()) return fm.title.trim();
   const line = content.split("\n").find((l) => l.startsWith("# "));
   if (!line) return "Untitled";
-  return line.replace(/^#\s*/, "").replace(/^(Issue\s*)?#?\d+[\s:—-]*/, "");
+  return line.replace(/^#\s*/, "").replace(/^(Issue\s*)?#?[\w-]+[\s:—-]*/, "");
 }
 
-/** Extract the largest compile-error count mentioned in the issue body */
-function extractCompilerErrors(content: string): number | undefined {
-  const patterns = [
-    /~?(\d[\d,]*)\s+compil(?:e|er)\s+errors/gi,
-    /at\s+least\s+(\d[\d,]*)\s+compil(?:e|er)\s+errors/gi,
-    /(\d[\d,]*)\s+CE\b/g,
-  ];
+function extractLargestCount(content: string, patterns: RegExp[]): number | undefined {
   let max = 0;
   for (const pat of patterns) {
-    let m;
+    let m: RegExpExecArray | null;
     while ((m = pat.exec(content)) !== null) {
-      const n = parseInt(m[1].replace(/,/g, ""));
+      const n = parseInt(m[1].replace(/,/g, ""), 10);
       if (n > max) max = n;
     }
   }
   return max > 0 ? max : undefined;
 }
 
-function scanFolder(
-  folder: string,
-  status: IssueNode["status"]
-): IssueNode[] {
-  const dir = path.join(PLAN_DIR, folder);
-  if (!fs.existsSync(dir)) return [];
-  const nodes: IssueNode[] = [];
-  for (const file of fs.readdirSync(dir)) {
-    if (!file.endsWith(".md")) continue;
-    const num = parseInt(file);
-    if (isNaN(num)) continue;
-    const content = fs.readFileSync(path.join(dir, file), "utf-8");
-    const fm = parseFrontmatter(content);
-    const ce = extractCompilerErrors(content);
-    const node: IssueNode = {
-      id: num,
-      title: getTitle(content),
-      priority: fm.priority || (status === "done" ? "low" : "medium"),
-      status,
-      depends_on: Array.isArray(fm.depends_on) ? fm.depends_on : [],
-      files: normalizeFiles(fm.files),
-    };
-    if (ce) node.compiler_errors = ce;
-    if (fm.test262_skip) node.test262_skip = parseInt(String(fm.test262_skip)) || undefined;
-    if (fm.test262_fail) node.test262_fail = parseInt(String(fm.test262_fail)) || undefined;
-    if (fm.test262_ce) node.test262_ce = parseInt(String(fm.test262_ce)) || undefined;
-    nodes.push(node);
-  }
-  return nodes;
+function extractCompilerErrors(content: string): number | undefined {
+  return extractLargestCount(content, [
+    /~?(\d[\d,]*)\s+compil(?:e|er)\s+errors/gi,
+    /at\s+least\s+(\d[\d,]*)\s+compil(?:e|er)\s+errors/gi,
+    /(\d[\d,]*)\s+CE\b/g,
+  ]);
 }
 
-/** Accept both old flat list and new nested map format */
-function normalizeFiles(raw: any): Record<string, { new?: string[]; breaking?: string[] }> | string[] {
+function normalizeFiles(
+  raw: any,
+): Record<string, { new?: string[]; modify?: string[]; breaking?: string[] }> | string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
   if (typeof raw === "object") return raw;
   return [];
 }
 
-// ── Scan goals ──
+function normalizePriority(value: unknown): IssueNode["priority"] {
+  const v = String(value || "").toLowerCase();
+  if (v === "critical" || v === "high" || v === "medium" || v === "low") return v;
+  return "medium";
+}
 
-function scanGoals(): GoalNode[] {
-  if (!fs.existsSync(GOALS_DIR)) return [];
+function normalizeRawStatus(value: unknown): RawIssueStatus {
+  const v = String(value || "").toLowerCase();
+  if (
+    v === "ready" ||
+    v === "in-progress" ||
+    v === "review" ||
+    v === "blocked" ||
+    v === "backlog" ||
+    v === "done" ||
+    v === "wont-fix" ||
+    v === "planning"
+  ) {
+    return v;
+  }
+  return "backlog";
+}
+
+function normalizeGraphStatus(raw: RawIssueStatus): GraphIssueStatus {
+  if (raw === "blocked") return "blocked";
+  if (raw === "backlog") return "backlog";
+  if (raw === "done" || raw === "wont-fix") return "done";
+  return "ready";
+}
+
+function parseIdList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((value) => String(value).trim()).filter(Boolean);
+}
+
+function scanIssues(): IssueNode[] {
+  const nodes: IssueNode[] = [];
+  const trackedFiles = getTrackedMarkdownFiles("plan/issues");
+  for (const file of walk(ISSUES_DIR)
+    .filter(isIssueFile)
+    .filter((file) => !trackedFiles || trackedFiles.has(file))) {
+    const content = fs.readFileSync(file, "utf8");
+    const fm = parseFrontmatter(content);
+    if (!fm.id && !fm.title && !fm.status) continue;
+
+    const id = String(fm.id || path.basename(file, ".md")).trim();
+    const rawStatus = normalizeRawStatus(fm.status);
+    const node: IssueNode = {
+      id,
+      title: getTitle(content, fm),
+      priority: normalizePriority(fm.priority),
+      status: normalizeGraphStatus(rawStatus),
+      raw_status: rawStatus,
+      sprint: String(fm.sprint || ""),
+      depends_on: parseIdList(fm.depends_on),
+      files: normalizeFiles(fm.files),
+      goal: String(fm.goal || "").trim() || undefined,
+      cluster: String(fm.goal || "").trim() || (String(fm.sprint || "").trim() ? `sprint-${fm.sprint}` : "Unclustered"),
+    };
+
+    const ce = extractCompilerErrors(content);
+    if (ce) node.compiler_errors = ce;
+    if (fm.test262_skip) node.test262_skip = parseInt(String(fm.test262_skip), 10) || undefined;
+    if (fm.test262_fail) node.test262_fail = parseInt(String(fm.test262_fail), 10) || undefined;
+    if (fm.test262_ce) node.test262_ce = parseInt(String(fm.test262_ce), 10) || undefined;
+    nodes.push(node);
+  }
+  return nodes;
+}
+
+function scanGoals(nodes: IssueNode[]): GoalNode[] {
+  const issuesByGoal = new Map<string, string[]>();
+  for (const node of nodes) {
+    if (!node.goal) continue;
+    if (!issuesByGoal.has(node.goal)) issuesByGoal.set(node.goal, []);
+    issuesByGoal.get(node.goal)!.push(node.id);
+  }
+
   const goals: GoalNode[] = [];
   for (const file of fs.readdirSync(GOALS_DIR)) {
     if (!file.endsWith(".md") || file === "goal-graph.md") continue;
-    const id = file.replace(".md", "");
-    const content = fs.readFileSync(path.join(GOALS_DIR, file), "utf-8");
 
-    // Extract title from first heading
+    const id = file.replace(/\.md$/, "");
+    const content = fs.readFileSync(path.join(GOALS_DIR, file), "utf8");
     const titleMatch = content.match(/^#\s+Goal:\s*(.+)$/m);
     const title = titleMatch ? titleMatch[1].trim() : id;
 
-    // Extract status
     let status: GoalNode["status"] = "blocked";
-    const statusMatch = content.match(/\*\*Status\*\*:\s*(\w+)/i);
+    const statusMatch = content.match(/\*\*Status\*\*:\s*(.+)$/im);
     if (statusMatch) {
-      const s = statusMatch[1].toLowerCase();
+      const s = statusMatch[1].trim().toLowerCase();
       if (s === "active") status = "active";
       else if (s === "activatable" || s === "partially") status = "activatable";
       else if (s === "done") status = "done";
-      else status = "blocked";
     }
 
-    // Extract target
     const targetMatch = content.match(/\*\*Target\*\*:\s*(.+?)\.?\s*$/m);
     const target = targetMatch ? targetMatch[1].trim() : "";
 
-    // Extract dependencies (goal names)
-    const depends_on: string[] = [];
+    const dependsOn: string[] = [];
     const depsMatch = content.match(/\*\*Dependencies\*\*:\s*(.+?)$/m);
     if (depsMatch) {
-      const depsStr = depsMatch[1];
-      // Match backtick-quoted goal names
-      const goalRefs = depsStr.matchAll(/`([a-z][\w-]*)`/g);
-      for (const m of goalRefs) {
-        depends_on.push(m[1]);
+      for (const dep of depsMatch[1].matchAll(/`([a-z][\w-]*)`/g)) {
+        dependsOn.push(dep[1]);
       }
     }
 
-    // Extract track (parallel vs conformance)
-    const trackMatch = content.match(/\*\*Track\*\*:\s*(\w+)/i);
-    const track = trackMatch ? trackMatch[1].toLowerCase() : undefined;
+    const trackMatch = content.match(/\*\*Track\*\*:\s*(.+)$/im);
+    const track = trackMatch ? trackMatch[1].trim().toLowerCase() : undefined;
 
-    // Extract issue numbers from markdown tables: | **NNN** | or | NNN |
-    const issues: number[] = [];
-    const issueMatches = content.matchAll(/\|\s*\*?\*?(\d+)\*?\*?\s*\|/g);
-    for (const m of issueMatches) {
-      const num = parseInt(m[1]);
-      if (num > 0 && !issues.includes(num)) issues.push(num);
-    }
-
-    goals.push({ id, title, status, target, depends_on, issues, ...(track === "parallel" ? { track } : {}) });
+    goals.push({
+      id,
+      title,
+      status,
+      target,
+      depends_on: dependsOn,
+      issues: (issuesByGoal.get(id) || []).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+      ...(track ? { track } : {}),
+    });
   }
   return goals;
 }
 
-// Scan all issue folders
-const nodes: IssueNode[] = [
-  ...scanFolder("ready", "ready"),
-  ...scanFolder("blocked", "blocked"),
-  ...scanFolder("backlog", "backlog"),
-  ...scanFolder("wont-fix", "wont-fix"),
-];
+const nodes = scanIssues();
+const nodeIds = new Set(nodes.map((node) => node.id));
+const goals = scanGoals(nodes);
+const goalIds = new Set(goals.map((goal) => goal.id));
 
-// Find done issues referenced by open issues
-const openDeps = new Set<number>();
-for (const n of nodes) {
-  for (const d of n.depends_on) {
-    if (!nodes.find((x) => x.id === d)) {
-      openDeps.add(d);
-    }
-  }
-}
-// Add referenced done issues as context
-for (const doneId of openDeps) {
-  const file = path.join(PLAN_DIR, "done", `${doneId}.md`);
-  if (fs.existsSync(file)) {
-    const content = fs.readFileSync(file, "utf-8");
-    nodes.push({
-      id: doneId,
-      title: getTitle(content),
-      priority: "low",
-      status: "done",
-      depends_on: [],
-      files: [],
-    });
-  }
-}
-
-// Cluster assignments from dependency-graph.md
-const CLUSTERS: Record<number, string> = {};
-const clusterMap: [string, number[]][] = [
-  ["Diagnostics", [152, 242, 262, 265, 269, 270, 275, 276, 381, 383]],
-  ["Dead code / Scanning", [321, 317, 319, 320, 318, 322]],
-  ["Type coercion", [138, 139, 227, 228, 237, 295, 296, 299, 301, 308, 300, 324, 348]],
-  ["Class / New", [234, 232, 238, 261, 260, 329, 334, 375, 377]],
-  ["Property / Element", [140, 239, 263, 274, 281, 230, 305, 326, 337, 361, 362, 378]],
-  ["Assignment / Destructuring", [142, 190, 243, 279, 283, 286, 306, 294, 325, 328, 379]],
-  ["Generators / Yield", [241, 267, 287, 288]],
-  ["Loops / Iteration", [250, 292, 268, 289, 297, 298, 353, 373]],
-  ["Scope / Identifiers", [202, 146, 266, 331, 380]],
-  ["Wasm validation", [277, 178, 315]],
-  ["Test infrastructure", [271, 309, 310, 311, 312, 313, 314, 338, 360]],
-  ["Built-ins / Runtime", [342, 344, 347, 349, 355, 359, 369, 384, 385]],
-  ["Functions / Closures", [356, 364, 368, 382]],
-  ["String / Template literals", [357, 363, 367, 372]],
-  ["Modules / Imports", [332, 333, 371]],
-  ["Standalone", [235, 244, 249, 254, 280, 290, 291, 293, 302, 303, 304, 307, 316, 229, 327, 335, 336, 341, 374, 386]],
-];
-for (const [name, ids] of clusterMap) {
-  for (const id of ids) CLUSTERS[id] = name;
-}
-
-// Scan goals and assign issues to goals
-const goals = scanGoals();
-const issueToGoal = new Map<number, string>();
-for (const g of goals) {
-  for (const issueId of g.issues) {
-    issueToGoal.set(issueId, g.id);
-  }
-}
-
-for (const n of nodes) {
-  n.cluster = CLUSTERS[n.id] || "Unclustered";
-  const g = issueToGoal.get(n.id);
-  if (g) n.goal = g;
-}
-
-// Build issue-to-issue links from depends_on
 const links: GraphData["links"] = [];
-const nodeIds = new Set(nodes.map((n) => n.id));
-for (const n of nodes) {
-  for (const dep of n.depends_on) {
+for (const node of nodes) {
+  for (const dep of node.depends_on) {
     if (nodeIds.has(dep)) {
-      links.push({ source: dep, target: n.id });
+      links.push({ source: dep, target: node.id });
     }
   }
 }
 
-// Build goal-issue membership links (issue → goal: issues are dependencies of their goal)
 const goalIssueLinks: GraphData["goalIssueLinks"] = [];
-for (const g of goals) {
-  for (const issueId of g.issues) {
+for (const goal of goals) {
+  for (const issueId of goal.issues) {
     if (nodeIds.has(issueId)) {
-      goalIssueLinks.push({ goal: g.id, issue: issueId });
+      goalIssueLinks.push({ goal: goal.id, issue: issueId });
     }
   }
 }
 
-// Build goal-dep links: when goal A depends on goal B,
-// goal B connects to each issue in goal A (prerequisite → dependent issues)
 const goalDepLinks: GraphData["goalDepLinks"] = [];
-const goalIds = new Set(goals.map((g) => g.id));
-for (const g of goals) {
-  for (const dep of g.depends_on) {
-    if (goalIds.has(dep)) {
-      // Each issue in goal g depends on the prerequisite goal dep
-      for (const issueId of g.issues) {
-        if (nodeIds.has(issueId)) {
-          goalDepLinks.push({ goal: dep, issue: issueId });
-        }
+for (const goal of goals) {
+  for (const dep of goal.depends_on) {
+    if (!goalIds.has(dep)) continue;
+    for (const issueId of goal.issues) {
+      if (nodeIds.has(issueId)) {
+        goalDepLinks.push({ goal: dep, issue: issueId });
       }
     }
   }
 }
 
 const data: GraphData = {
-  nodes: nodes.sort((a, b) => a.id - b.id),
+  nodes: nodes.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
   links,
   goals: goals.sort((a, b) => a.id.localeCompare(b.id)),
   goalIssueLinks,
   goalDepLinks,
-  generated: new Date().toISOString(),
+  generated: getStableGeneratedAt([...walk(ISSUES_DIR), ...walk(GOALS_DIR)]),
 };
 
-const outPath = path.join(import.meta.dirname!, "graph-data.json");
-fs.writeFileSync(outPath, JSON.stringify(data, null, 2));
+fs.writeFileSync(OUTPUT, JSON.stringify(data, null, 2));
 console.log(
-  `Generated ${outPath}: ${data.nodes.length} issues, ${data.goals.length} goals, ${data.links.length} issue links, ${data.goalIssueLinks.length} member links, ${data.goalDepLinks.length} goal-dep links`
+  `Generated ${OUTPUT}: ${data.nodes.length} issues, ${data.goals.length} goals, ${data.links.length} issue links, ${data.goalIssueLinks.length} goal links, ${data.goalDepLinks.length} goal-dep links`,
 );

@@ -1,33 +1,44 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Loop statement lowering: while, for, do-while, for-of, for-in.
  */
 import ts from "typescript";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { coerceType, compileExpression, emitBoundsCheckedArrayGet, valTypesMatch } from "../shared.js";
-import { emitCoercedLocalSet } from "../expressions/helpers.js";
-import { shiftLateImportIndices } from "../expressions/late-imports.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { reportError, reportErrorNoNode } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { addFuncType, getArrTypeIdxFromVec } from "../registry/types.js";
-import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "../registry/imports.js";
-import { ensureI32Condition, ensureNativeStringHelpers, nativeStringType, resolveWasmType } from "../index.js";
-import { resolveComputedKeyExpression } from "../literals.js";
-import { collectInstrs, adjustRethrowDepth, saveBlockScopedShadows, restoreBlockScopedShadows } from "./shared.js";
+import { emitCoercedLocalSet } from "../expressions/helpers.js";
+import { shiftLateImportIndices } from "../expressions/late-imports.js";
 import {
-  ensureAsyncIterator,
-  ensureBindingLocals,
-  syncDestructuredLocalsToGlobals,
-  compileObjectDestructuring,
+  addIteratorImports,
+  ensureI32Condition,
+  ensureNativeStringHelpers,
+  nativeStringType,
+  resolveWasmType,
+} from "../index.js";
+import { resolveComputedKeyExpression } from "../literals.js";
+import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "../registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec } from "../registry/types.js";
+import {
+  coerceType,
+  compileExpression,
+  compileStatement,
+  emitBoundsCheckedArrayGet,
+  valTypesMatch,
+} from "../shared.js";
+import {
   compileArrayDestructuring,
-  emitNullGuard,
-  emitDefaultValueCheck,
-  compileExternrefObjectDestructuringDecl,
   compileExternrefArrayDestructuringDecl,
+  compileExternrefObjectDestructuringDecl,
+  compileObjectDestructuring,
+  emitDefaultValueCheck,
+  emitNullGuard,
+  ensureAsyncIterator,
+  syncDestructuredLocalsToGlobals,
 } from "./destructuring.js";
-import { compileStatement } from "../shared.js";
+import { adjustRethrowDepth, collectInstrs, restoreBlockScopedShadows, saveBlockScopedShadows } from "./shared.js";
 
 export function compileWhileStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.WhileStatement): void {
   // block $break
@@ -2326,6 +2337,9 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   }
 
   // Fallback: host-delegated iterator protocol
+  // Ensure iterator host imports are registered before using them
+  addIteratorImports(ctx);
+
   // Coerce to externref if the iterable is a struct ref (GC type).
   if (iterableType.kind !== "externref") {
     coerceType(ctx, fctx, iterableType, { kind: "externref" });

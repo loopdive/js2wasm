@@ -2,7 +2,7 @@ import type { Plugin } from "vite";
 import { readdirSync, readFileSync, existsSync, statSync, realpathSync } from "fs";
 import { join, relative, resolve, normalize } from "path";
 
-const projectRoot = resolve(__dirname, "..");
+const projectRoot = resolve(import.meta.dirname, "..");
 const publicRoot = join(projectRoot, "public");
 const TEST_CATEGORIES = [
   "built-ins/Math/abs",
@@ -219,7 +219,7 @@ function collectFiles(dir: string): string[] {
 }
 
 export function test262Plugin(): Plugin {
-  const projectRoot = resolve(__dirname, "..");
+  const projectRoot = resolve(import.meta.dirname, "..");
   const testBase = join(projectRoot, "test262", "test");
 
   // Cache the index so we don't rescan on every request
@@ -261,6 +261,23 @@ export function test262Plugin(): Plugin {
     return map;
   }
 
+  function buildIndexFromJsonl(): { categories: CategoryInfo[] } {
+    const byCategory = getJsonlByCategory();
+    const categories: CategoryInfo[] = [...byCategory.entries()]
+      .map(([category, entries]) => {
+        const files = [...new Set(entries.map((entry) => entry.file))].sort();
+        fileListCache.set(category, files);
+        return {
+          name: category,
+          path: category,
+          fileCount: files.length,
+          files,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { categories };
+  }
+
   // Cache equivalence test snippets
   let cachedEquivTests: { name: string; source: string }[] | null = null;
 
@@ -298,6 +315,10 @@ export function test262Plugin(): Plugin {
 
   function getIndex() {
     if (cachedIndex) return cachedIndex;
+    if (!existsSync(testBase)) {
+      cachedIndex = buildIndexFromJsonl();
+      return cachedIndex;
+    }
     const categories: CategoryInfo[] = [];
     for (const cat of TEST_CATEGORIES) {
       const dir = join(testBase, cat);
@@ -312,6 +333,10 @@ export function test262Plugin(): Plugin {
         });
         fileListCache.set(cat, relFiles);
       }
+    }
+    if (categories.length === 0) {
+      cachedIndex = buildIndexFromJsonl();
+      return cachedIndex;
     }
     cachedIndex = { categories };
     return cachedIndex;

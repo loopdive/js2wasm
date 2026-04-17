@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 export type ImportIntent =
   | { type: "string_literal"; value: string }
   | { type: "math"; method: string }
@@ -18,6 +19,7 @@ export type ImportIntent =
   | { type: "date_method"; method: string }
   | { type: "date_now" }
   | { type: "declared_global"; name: string }
+  | { type: "host_eq" }
   | { type: "dynamic_import" }
   | { type: "proxy_create" };
 
@@ -132,10 +134,9 @@ export interface CompileOptions {
 }
 
 import * as path from "path";
-import { compileSource, compileMultiSource, compileFilesSource, compileToObjectSource } from "./compiler.js";
 import { IncrementalLanguageService } from "./checker/index.js";
+import { compileFilesSource, compileMultiSource, compileSource, compileToObjectSource } from "./compiler.js";
 import { ModuleResolver, resolveAllImports } from "./resolve.js";
-import { treeshake, getEntryExportNames } from "./treeshake.js";
 
 /**
  * Compile TypeScript source to Wasm GC binary.
@@ -217,8 +218,12 @@ export function compileProject(entryFile: string, options?: CompileOptions): Com
   const resolvedEntry = path.resolve(entryFile);
   const rootDir = path.dirname(resolvedEntry);
 
+  // Auto-enable allowJs when entry file is .js/.mjs (#1107)
+  const isJs = /\.[cm]?js$/.test(resolvedEntry);
+  const effectiveOptions = isJs && !options?.allowJs ? { ...options, allowJs: true } : options;
+
   // Create resolver
-  const resolver = new ModuleResolver(rootDir, options);
+  const resolver = new ModuleResolver(rootDir, effectiveOptions);
 
   // Resolve all imports recursively
   const allFiles = resolveAllImports(resolvedEntry, resolver);
@@ -236,7 +241,7 @@ export function compileProject(entryFile: string, options?: CompileOptions): Com
   // Entry file key
   const entryKey = `./${path.relative(rootDir, resolvedEntry)}`;
 
-  return compileMultiSource(files, entryKey, options);
+  return compileMultiSource(files, entryKey, effectiveOptions);
 }
 
 /**
@@ -270,17 +275,17 @@ export function createIncrementalCompiler(defaultOptions?: CompileOptions): {
   };
 }
 
+export { getBarePackageName, ModuleResolver, resolveAllImports } from "./resolve.js";
+export { getEntryExportNames, treeshake } from "./treeshake.js";
 export { generateWit } from "./wit-generator.js";
 export type { WitGeneratorOptions } from "./wit-generator.js";
-export { ModuleResolver, resolveAllImports, getBarePackageName } from "./resolve.js";
-export { treeshake, getEntryExportNames } from "./treeshake.js";
 
 export {
-  jsString,
   buildImports,
   buildStringConstants,
   checkPolicy,
   compileAndInstantiate,
   instantiateWasm,
   instantiateWasmStreaming,
+  jsString,
 } from "./runtime.js";

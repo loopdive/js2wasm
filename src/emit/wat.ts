@@ -1,14 +1,15 @@
-import type {
-  WasmModule,
-  TypeDef,
-  FuncTypeDef,
-  ValType,
-  Instr,
-  BlockType,
-  WasmFunction,
-  FieldDef,
-} from "../ir/types.js";
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import { walkInstructions } from "../codegen/walk-instructions.js";
+import type {
+  BlockType,
+  FieldDef,
+  FuncTypeDef,
+  Instr,
+  TypeDef,
+  ValType,
+  WasmFunction,
+  WasmModule,
+} from "../ir/types.js";
 
 /**
  * Compute the set of type indices that can be inlined into their sole

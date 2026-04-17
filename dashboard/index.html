@@ -330,13 +330,6 @@
         color: var(--accent);
       }
 
-      /* Chart canvas */
-      trend-chart {
-        display: block;
-        width: 100%;
-        max-width: 600px;
-      }
-
       /* Sprint table */
       .sprint-table {
         width: 100%;
@@ -365,64 +358,6 @@
       }
       .sprint-table tr:hover td {
         background: var(--surface-2);
-      }
-
-      /* Process health badges */
-      .health-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-
-      .health-item {
-        background: var(--bg);
-        border-radius: 6px;
-        padding: 12px;
-        text-align: center;
-      }
-
-      .health-item .h-val {
-        font-size: 22px;
-        font-weight: 700;
-      }
-
-      .health-item .h-label {
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--text-muted);
-        margin-top: 2px;
-      }
-
-      /* Velocity sparkline */
-      .velocity-bar {
-        display: flex;
-        align-items: flex-end;
-        gap: 3px;
-        height: 60px;
-        margin-top: 8px;
-      }
-
-      .velocity-bar .bar {
-        flex: 1;
-        background: var(--accent);
-        border-radius: 2px 2px 0 0;
-        min-width: 4px;
-        position: relative;
-      }
-
-      .velocity-bar .bar:hover::after {
-        content: attr(data-tip);
-        position: absolute;
-        bottom: calc(100% + 4px);
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--surface-2);
-        color: var(--text);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 10px;
-        white-space: nowrap;
       }
 
       /* Loading state */
@@ -462,26 +397,23 @@
         background: var(--border);
         border-radius: 2px;
       }
-      #sprint-history::-webkit-scrollbar {
-        height: 4px;
-      }
-      #sprint-history {
+      #sprint-timeline {
         scrollbar-width: none;
       }
-      #sprint-history:hover {
+      #sprint-timeline:hover {
         scrollbar-width: thin;
         scrollbar-color: var(--border) transparent;
       }
-      #sprint-history::-webkit-scrollbar {
+      #sprint-timeline::-webkit-scrollbar {
         height: 0;
       }
-      #sprint-history:hover::-webkit-scrollbar {
+      #sprint-timeline:hover::-webkit-scrollbar {
         height: 4px;
       }
-      #sprint-history::-webkit-scrollbar-track {
+      #sprint-timeline::-webkit-scrollbar-track {
         background: transparent;
       }
-      #sprint-history::-webkit-scrollbar-thumb {
+      #sprint-timeline::-webkit-scrollbar-thumb {
         background: var(--border);
         border-radius: 2px;
       }
@@ -515,7 +447,7 @@
         </div>
       </div>
       <div
-        id="sprint-history"
+        id="sprint-timeline"
         style="overflow-x: auto; margin-left: -48px; margin-right: -48px; width: calc(100% + 96px)"
       ></div>
     </header>
@@ -524,14 +456,13 @@
     <div class="panel kanban" style="border-top: none">
       <div class="panel-head">
         <h2>Issue Board</h2>
-        <div class="panel-actions">
-          <div class="sprint-controls">
-            <label for="sprint-input">Sprint</label>
-            <input id="sprint-input" type="number" min="1" step="1" placeholder="32" />
+          <div class="panel-actions">
+            <div class="sprint-controls">
+            <label for="sprint-select">Sprint</label>
             <select id="sprint-select"></select>
+            </div>
+            <a href="../issues-graph.html">dependency graph</a>
           </div>
-          <a href="../issues-graph.html">dependency graph</a>
-        </div>
       </div>
       <div class="kanban-board" id="kanban-board">
         <div class="kanban-col">
@@ -565,74 +496,7 @@
       </div>
     </div>
 
-    <!-- Charts row -->
-    <div class="grid-2">
-      <div class="panel">
-        <h2>Official Test262 Pass Rate Trend</h2>
-        <trend-chart id="chart-passrate" mode="line" height="280"></trend-chart>
-      </div>
-      <div class="panel">
-        <h2>Test262 Breakdown Trend</h2>
-        <trend-chart id="chart-breakdown" mode="stacked" height="280"></trend-chart>
-      </div>
-    </div>
-
-    <!-- Issues dependency graph -->
-    <h2
-      style="
-        font-family: var(--mono);
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: rgba(255, 255, 255, 0.46);
-        margin: 24px 0 12px;
-      "
-    >
-      Issue Dependency Graph
-    </h2>
-    <iframe
-      id="graph-iframe"
-      src="../issues-graph.html"
-      style="width: 100%; height: 600px; border: 1px solid var(--border); background: #060a14; pointer-events: none"
-      onclick="this.style.pointerEvents = 'auto'"
-    ></iframe>
-    <script>
-      const gf = document.getElementById("graph-iframe");
-      gf.addEventListener("click", () => (gf.style.pointerEvents = "auto"));
-      document.addEventListener("click", (e) => {
-        if (!gf.contains(e.target)) gf.style.pointerEvents = "none";
-      });
-    </script>
-
-    <!-- Process health -->
-    <div class="grid-2">
-      <div class="panel">
-        <h2>Process Health</h2>
-        <div class="health-grid" id="health-grid">
-          <div class="health-item">
-            <div class="h-val green" id="h-total-done">—</div>
-            <div class="h-label">Issues Completed</div>
-          </div>
-          <div class="health-item">
-            <div class="h-val accent" id="h-total-runs">—</div>
-            <div class="h-label">Test262 Runs</div>
-          </div>
-          <div class="health-item">
-            <div class="h-val green" id="h-pass-delta">—</div>
-            <div class="h-label">Pass Δ (All Time)</div>
-          </div>
-          <div class="health-item">
-            <div class="h-val yellow" id="h-ready-ratio">—</div>
-            <div class="h-label">Ready / Total</div>
-          </div>
-        </div>
-        <h2 style="margin-top: 16px">Velocity (issues per hour)</h2>
-        <div class="velocity-bar" id="velocity-bar"></div>
-      </div>
-    </div>
-
     <script type="module" src="../components/site-nav.js"></script>
-    <script src="../components/trend-chart.js"></script>
     <script src="data.js" onerror=""></script>
     <script>
       // ── Data loading ──────────────────────────────────────────────
@@ -740,6 +604,16 @@
         );
       }
 
+      function getLatestActiveSprint(sprints) {
+        return (
+          [...sprints]
+            .filter((s) => Number.isFinite(s.sprintNumber))
+            .filter((s) => !s.isClosed)
+            .sort((a, b) => a.sprintNumber - b.sprintNumber)
+            .at(-1) || null
+        );
+      }
+
       function buildSprintOptions(sprints) {
         const byNumber = new Map();
         for (const sprint of sprints) {
@@ -760,14 +634,21 @@
         return [...byNumber.values()].sort((a, b) => a.sprintNumber - b.sprintNumber);
       }
 
+      function sprintHasUnfinishedIssueIds(sprint) {
+        if (!sprint || !Array.isArray(sprint.issueIds) || sprint.issueIds.length === 0) return false;
+        const completed = new Set((sprint.completedIssueIds || []).map(String));
+        return sprint.issueIds.some((id) => !completed.has(String(id)));
+      }
+
       function filterIssuesForSprint(issues, sprint) {
         if (!sprint) return issues;
-        if (sprint.isClosed) {
+        if (sprint.isClosed && !sprintHasUnfinishedIssueIds(sprint)) {
           const completed = new Set((sprint.completedIssueIds || []).map(String));
           return {
             blocked: [],
             ready: [],
             inprogress: [],
+            review: [],
             done: (issues.done || []).filter((iss) => completed.has(String(iss.id))),
           };
         }
@@ -777,8 +658,31 @@
           blocked: (issues.blocked || []).filter((iss) => allowed.has(String(iss.id))),
           ready: (issues.ready || []).filter((iss) => allowed.has(String(iss.id))),
           inprogress: (issues.inprogress || []).filter((iss) => allowed.has(String(iss.id))),
+          review: (issues.review || []).filter((iss) => allowed.has(String(iss.id))),
           done: (issues.done || []).filter((iss) => allowed.has(String(iss.id))),
         };
+      }
+
+      function sprintHasUndoneWork(issues, sprint) {
+        if (!sprint) return false;
+        if (sprintHasUnfinishedIssueIds(sprint)) return true;
+        const scopedIssues = filterIssuesForSprint(issues, sprint);
+        return (
+          (scopedIssues.blocked || []).length > 0 ||
+          (scopedIssues.ready || []).length > 0 ||
+          (scopedIssues.inprogress || []).length > 0 ||
+          (scopedIssues.review || []).length > 0
+        );
+      }
+
+      function getCurrentUnfinishedSprintStart(issues, sprintOptions) {
+        const numeric = sprintOptions.filter((s) => Number.isFinite(s.sprintNumber)).sort((a, b) => a.sprintNumber - b.sprintNumber);
+        if (numeric.length === 0) return null;
+        let idx = numeric.length - 1;
+        while (idx >= 0 && !sprintHasUndoneWork(issues, numeric[idx])) idx--;
+        if (idx < 0) return null;
+        while (idx > 0 && sprintHasUndoneWork(issues, numeric[idx - 1])) idx--;
+        return numeric[idx];
       }
 
       function renderIssueBoard(issues) {
@@ -795,13 +699,8 @@
         for (const [status, col] of Object.entries(cols)) {
           const list = issues[status] || [];
           col.count.textContent = list.length;
-          const display = status === "done" ? list.slice(-20).reverse() : list.slice(0, 30);
+          const display = status === "done" ? [...list].reverse() : list;
           col.el.innerHTML = display.map((iss) => makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)).join("");
-          if (list.length > display.length) {
-            col.el.innerHTML += `<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:8px">
-            +${list.length - display.length} more
-          </div>`;
-          }
         }
       }
 
@@ -819,24 +718,19 @@
         // For now, we parse from what we can fetch or use embedded data
         let issues = { ready: [], inprogress: [], review: [], done: [] };
 
-        if (EMBEDDED_DATA && EMBEDDED_DATA.issues) {
+        // Prefer generated JSON over embedded data so the board reflects the latest sprint files.
+        const issueIndex = await loadJSON("./data/issues.json");
+        if (issueIndex) {
+          issues = issueIndex;
+        } else if (EMBEDDED_DATA && EMBEDDED_DATA.issues) {
           issues = EMBEDDED_DATA.issues;
-        } else {
-          // Try loading issue index if available
-          const issueIndex = await loadJSON("./data/issues.json");
-          if (issueIndex) {
-            issues = issueIndex;
-          }
         }
 
         // Load sprint data
         let sprints = [];
-        if (EMBEDDED_DATA && EMBEDDED_DATA.sprints) {
-          sprints = EMBEDDED_DATA.sprints;
-        } else {
-          const sprintIndex = await loadJSON("./data/sprints.json");
-          if (sprintIndex) sprints = sprintIndex;
-        }
+        const sprintIndex = await loadJSON("./data/sprints.json");
+        if (sprintIndex) sprints = sprintIndex;
+        else if (EMBEDDED_DATA && EMBEDDED_DATA.sprints) sprints = EMBEDDED_DATA.sprints;
         sprints = sprints
           .map((s) => ({ ...s, sprintNumber: Number(s.sprintNumber ?? String(s.name).match(/(\d+)/)?.[1] ?? NaN) }))
           .sort((a, b) => (a.sprintNumber || 0) - (b.sprintNumber || 0));
@@ -883,34 +777,20 @@
 
         // ── Kanban board ──
         const sprintLabel = document.getElementById("sprint-label");
-        const sprintInput = document.getElementById("sprint-input");
         const sprintSelect = document.getElementById("sprint-select");
         const sprintOptions = buildSprintOptions(sprints);
         const latestSprint = getLatestSprint(sprintOptions);
-        // Default to first incomplete sprint (has ready issues)
-        const firstIncomplete = sprintOptions
-          .filter((s) => Number.isFinite(s.sprintNumber) && s.issueIds && s.issueIds.length > 0)
-          .sort((a, b) => a.sprintNumber - b.sprintNumber)
-          .find((s) => {
-            const scopedIssues = filterIssuesForSprint(issues, s);
-            return scopedIssues.ready.length > 0 || scopedIssues.inprogress.length > 0;
-          });
-        let selectedSprint = latestSprint || firstIncomplete;
-
-        // Clamp input to available sprints
-        const validNums = sprintOptions.filter((s) => Number.isFinite(s.sprintNumber)).map((s) => s.sprintNumber);
-        if (validNums.length > 0) {
-          sprintInput.min = Math.min(...validNums);
-          sprintInput.max = Math.max(...validNums);
-        }
+        const latestActiveSprint = getLatestActiveSprint(sprintOptions);
+        // Prefer the latest active sprint. Fall back to the current unfinished block, then latest closed sprint.
+        const firstCurrentIncomplete = getCurrentUnfinishedSprintStart(issues, sprintOptions);
+        let selectedSprint = latestActiveSprint || firstCurrentIncomplete || latestSprint;
 
         sprintSelect.innerHTML = sprintOptions
           .filter((s) => Number.isFinite(s.sprintNumber))
-          .map((s) => `<option value="${s.sprintNumber}">Sprint ${s.sprintNumber}</option>`)
+          .map((s) => `<option value="${s.sprintNumber}">${s.sprintNumber}</option>`)
           .join("");
 
         function syncSprintControls(numberValue) {
-          sprintInput.value = numberValue ? String(numberValue) : "";
           sprintSelect.value = numberValue ? String(numberValue) : "";
         }
 
@@ -932,78 +812,16 @@
           renderSprintBoard();
         }
 
-        if (latestSprint) {
+        if (selectedSprint) {
           renderSprintBoard();
         } else {
           renderIssueBoard(issues);
           if (sprintLabel) sprintLabel.textContent = "Board: All issues";
         }
 
-        sprintInput.addEventListener("change", () => setSprintByNumber(sprintInput.value));
         sprintSelect.addEventListener("change", () => setSprintByNumber(sprintSelect.value));
 
-        // ── Test262 Charts ──
-        if (runs.length > 0) {
-          // Subsample for readability if too many points
-          let chartRuns = runs;
-          if (runs.length > 60) {
-            const step = Math.ceil(runs.length / 60);
-            chartRuns = runs.filter((_, i) => i % step === 0 || i === runs.length - 1);
-          }
-
-          const labels = chartRuns.map((r) => {
-            const d = new Date(r.timestamp);
-            return `${d.getMonth() + 1}/${d.getDate()}`;
-          });
-
-          // Prepare data with labels for the trend-chart component
-          const trendData = chartRuns.map((r) => {
-            const d = new Date(r.timestamp);
-            return {
-              label: `${d.getMonth() + 1}/${d.getDate()}`,
-              passRate: (r.pass / r.total) * 100,
-              pass: r.pass,
-              fail: r.fail,
-              ce: r.ce || 0,
-              skip: r.total - r.pass - r.fail - (r.ce || 0),
-            };
-          });
-
-          // Pass rate chart
-          const prChart = document.getElementById("chart-passrate");
-          prChart.setAttribute("labels-key", "label");
-          prChart.setAttribute(
-            "series",
-            JSON.stringify([{ key: "passRate", color: "#fff", fill: true, lineOpacity: 1 }]),
-          );
-          prChart.data = trendData;
-
-          // Breakdown chart (stacked)
-          const bdChart = document.getElementById("chart-breakdown");
-          bdChart.setAttribute("labels-key", "label");
-          bdChart.setAttribute(
-            "series",
-            JSON.stringify([
-              { key: "pass", color: "#ffffff", areaOpacity: 0.15 },
-              { key: "fail", color: "rgba(255,255,255,0.5)", areaOpacity: 0.06 },
-              { key: "ce", color: "rgba(255,255,255,0.35)", areaOpacity: 0.04 },
-              { key: "skip", color: "rgba(255,255,255,0.2)", areaOpacity: 0.03 },
-            ]),
-          );
-          bdChart.data = trendData;
-        }
-
-        // ── Process health ──
-        const totalIssues =
-          (issues.done || []).length +
-          (issues.ready || []).length +
-          (issues.blocked || []).length +
-          (issues.inprogress || []).length;
-        document.getElementById("h-total-done").textContent = issues.done.length;
-        document.getElementById("h-total-runs").textContent = runs.length;
-        document.getElementById("h-ready-ratio").textContent = issues.ready.length + " / " + totalIssues;
-
-        // ── Sprint history (vertical timeline) ──
+        // ── Sprint timeline in header ──
         if (sprints.length > 0) {
           let sprintStats = null;
           try {
@@ -1011,140 +829,93 @@
             if (resp.ok) sprintStats = await resp.json();
           } catch {}
 
-          if (sprintStats && (sprintStats.sprints || sprintStats).length > 1) {
+          const timelineEl = document.getElementById("sprint-timeline");
+          if (timelineEl && sprintStats && (sprintStats.sprints || sprintStats).length > 1) {
             const rawStats = sprintStats.sprints || sprintStats;
             const ss = rawStats.filter((s) => s.sprint > 0 && s.epoch);
-            const minEpoch = sprintStats.repoStart || ss[0].epoch;
-            const maxEpoch = sprintStats.repoEnd || ss[ss.length - 1].epoch;
-            const range = maxEpoch - minEpoch || 1;
-            const ONE_WEEK = 7 * 24 * 3600;
-            const VIEWPORT_W = 1000; // 1 week = this many SVG units = 100vw
-            const pxPerSec = VIEWPORT_W / ONE_WEEK;
-            const H = 100;
-            const PAD = { top: 40, bottom: 30, left: 30, right: 30 };
-            const plotW = range * pxPerSec;
-            const W = plotW + PAD.left + PAD.right;
-            const lineY = PAD.top;
+            const minEpoch = sprintStats.repoStart || ss[0]?.epoch;
+            const maxEpoch = sprintStats.repoEnd || ss[ss.length - 1]?.epoch;
 
-            const xPos = (epoch) => PAD.left + (epoch - minEpoch) * pxPerSec;
+            if (ss.length > 1 && minEpoch && maxEpoch) {
+              const range = maxEpoch - minEpoch || 1;
+              const ONE_WEEK = 7 * 24 * 3600;
+              const VIEWPORT_W = 1000;
+              const pxPerSec = VIEWPORT_W / ONE_WEEK;
+              const H = 100;
+              const PAD = { top: 40, bottom: 30, left: 30, right: 30 };
+              const plotW = range * pxPerSec;
+              const W = plotW + PAD.left + PAD.right;
+              const lineY = PAD.top;
 
-            let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;overflow:visible">`;
+              const xPos = (epoch) => PAD.left + (epoch - minEpoch) * pxPerSec;
 
-            // Horizontal timeline line
-            svg += `<line x1="${PAD.left}" y1="${lineY}" x2="${PAD.left + plotW}" y2="${lineY}" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>`;
+              let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;overflow:visible">`;
+              svg += `<line x1="${PAD.left}" y1="${lineY}" x2="${PAD.left + plotW}" y2="${lineY}" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>`;
 
-            // Commit dots
-            const commitEpochs = sprintStats.commitEpochs || [];
-            for (const ce of commitEpochs) {
-              if (ce < minEpoch || ce > maxEpoch) continue;
-              const cx = xPos(ce);
-              svg += `<circle cx="${cx}" cy="${lineY}" r="2.5" fill="rgba(248,113,113,0.35)"/>`;
-            }
-
-            // Date ticks — one per calendar day
-            const startDay = new Date(minEpoch * 1000);
-            startDay.setHours(0, 0, 0, 0);
-            const endDay = new Date(maxEpoch * 1000);
-            endDay.setHours(23, 59, 59, 999);
-            for (let d = new Date(startDay); d <= endDay; d.setDate(d.getDate() + 1)) {
-              const dayEpoch = d.getTime() / 1000;
-              if (dayEpoch < minEpoch || dayEpoch > maxEpoch) continue;
-              const dx = xPos(dayEpoch);
-              svg += `<line x1="${dx}" y1="${lineY - 10}" x2="${dx}" y2="${lineY + 10}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
-              const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-              const label = d.getDate() === 1 ? months[d.getMonth()] : String(d.getDate());
-              const size = d.getDate() === 1 ? 14 : 12;
-              const opacity = d.getDate() === 1 ? 0.5 : 0.3;
-              svg += `<text x="${dx}" y="${lineY + 28}" text-anchor="middle" fill="rgba(255,255,255,${opacity})" font-size="${size}" font-family="monospace">${label}</text>`;
-            }
-
-            // Playhead (hidden initially)
-            svg += `<line id="tl-playhead" x1="0" y1="${lineY - 16}" x2="0" y2="${lineY + 16}" stroke="#fbbf24" stroke-width="2" opacity="0"/>`;
-
-            // Sprint dots — clickable, hide labels that are too close
-            const MIN_LABEL_GAP = 25;
-            let lastLabelX = -Infinity;
-            for (let i = ss.length - 1; i >= 0; i--) {
-              const s = ss[i];
-              const cx = xPos(s.epoch);
-              svg += `<rect x="${cx - 14}" y="${lineY - 22}" width="28" height="55" fill="transparent" data-sprint="${s.sprint}" style="cursor:pointer"/>`;
-              svg += `<circle cx="${cx}" cy="${lineY}" r="5" fill="#fff" data-sprint="${s.sprint}" style="cursor:pointer"/>`;
-              if (lastLabelX - cx >= MIN_LABEL_GAP || lastLabelX === -Infinity) {
-                svg += `<text x="${cx}" y="${lineY - 14}" text-anchor="middle" fill="#fff" font-size="13" font-weight="600" data-sprint="${s.sprint}" style="cursor:pointer">${s.sprint}</text>`;
-                lastLabelX = cx;
+              const commitEpochs = sprintStats.commitEpochs || [];
+              for (const ce of commitEpochs) {
+                if (ce < minEpoch || ce > maxEpoch) continue;
+                const cx = xPos(ce);
+                svg += `<circle cx="${cx}" cy="${lineY}" r="2.5" fill="rgba(248,113,113,0.35)"/>`;
               }
-            }
 
-            svg += `</svg>`;
-            const el = document.getElementById("sprint-history");
-            el.style.overflowX = "auto";
-            el.innerHTML = svg;
-            el.scrollLeft = el.scrollWidth;
-
-            // Sprint positions for playhead
-            const sprintPos = {};
-            for (const s of ss) sprintPos[s.sprint] = xPos(s.epoch);
-
-            // Click -> move playhead + select sprint on kanban
-            el.addEventListener("click", (e) => {
-              const t = e.target.closest("[data-sprint]");
-              if (!t) return;
-              const n = t.dataset.sprint;
-              const ph = el.querySelector("#tl-playhead");
-              if (ph && sprintPos[n] != null) {
-                ph.setAttribute("x1", sprintPos[n]);
-                ph.setAttribute("x2", sprintPos[n]);
-                ph.setAttribute("opacity", "1");
+              const startDay = new Date(minEpoch * 1000);
+              startDay.setHours(0, 0, 0, 0);
+              const endDay = new Date(maxEpoch * 1000);
+              endDay.setHours(23, 59, 59, 999);
+              for (let d = new Date(startDay); d <= endDay; d.setDate(d.getDate() + 1)) {
+                const dayEpoch = d.getTime() / 1000;
+                if (dayEpoch < minEpoch || dayEpoch > maxEpoch) continue;
+                const dx = xPos(dayEpoch);
+                svg += `<line x1="${dx}" y1="${lineY - 10}" x2="${dx}" y2="${lineY + 10}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
+                const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                const label = d.getDate() === 1 ? months[d.getMonth()] : String(d.getDate());
+                const size = d.getDate() === 1 ? 14 : 12;
+                const opacity = d.getDate() === 1 ? 0.5 : 0.3;
+                svg += `<text x="${dx}" y="${lineY + 28}" text-anchor="middle" fill="rgba(255,255,255,${opacity})" font-size="${size}" font-family="monospace">${label}</text>`;
               }
-              el.querySelectorAll("circle[data-sprint]").forEach((c) =>
-                c.setAttribute("fill", c.dataset.sprint === n ? "#fbbf24" : "#fff"),
-              );
-              if (typeof setSprintByNumber === "function") setSprintByNumber(n);
-            });
-          } else {
-            document.getElementById("sprint-history").innerHTML =
-              '<div style="color:var(--text-muted);font-size:12px;padding:16px">No sprint tags found.</div>';
-          }
 
-          // ── Velocity bar chart (issues per hour from sprint-stats) ──
-          const velStats = sprintStats ? sprintStats.sprints || sprintStats : [];
-          if (velStats.length > 0) {
-            function parseDuration(d) {
-              if (!d) return 0;
-              let hours = 0;
-              const dm = d.match(/(\d+)d/);
-              if (dm) hours += parseInt(dm[1]) * 24;
-              const hm = d.match(/(\d+)h/);
-              if (hm) hours += parseInt(hm[1]);
-              const mm = d.match(/(\d+)m/);
-              if (mm) hours += parseInt(mm[1]) / 60;
-              return hours || 1;
+              svg += `<line id="tl-playhead" x1="0" y1="${lineY - 16}" x2="0" y2="${lineY + 16}" stroke="#fbbf24" stroke-width="2" opacity="0"/>`;
+
+              const MIN_LABEL_GAP = 25;
+              let lastLabelX = -Infinity;
+              for (let i = ss.length - 1; i >= 0; i--) {
+                const s = ss[i];
+                const cx = xPos(s.epoch);
+                svg += `<rect x="${cx - 14}" y="${lineY - 22}" width="28" height="55" fill="transparent" data-sprint="${s.sprint}" style="cursor:pointer"/>`;
+                svg += `<circle cx="${cx}" cy="${lineY}" r="5" fill="#fff" data-sprint="${s.sprint}" style="cursor:pointer"/>`;
+                if (lastLabelX - cx >= MIN_LABEL_GAP || lastLabelX === -Infinity) {
+                  svg += `<text x="${cx}" y="${lineY - 14}" text-anchor="middle" fill="#fff" font-size="13" font-weight="600" data-sprint="${s.sprint}" style="cursor:pointer">${s.sprint}</text>`;
+                  lastLabelX = cx;
+                }
+              }
+
+              svg += `</svg>`;
+              timelineEl.innerHTML = svg;
+              timelineEl.scrollLeft = timelineEl.scrollWidth;
+
+              const sprintPos = {};
+              for (const s of ss) sprintPos[s.sprint] = xPos(s.epoch);
+
+              timelineEl.addEventListener("click", (e) => {
+                const t = e.target.closest("[data-sprint]");
+                if (!t) return;
+                const n = t.dataset.sprint;
+                const ph = timelineEl.querySelector("#tl-playhead");
+                if (ph && sprintPos[n] != null) {
+                  ph.setAttribute("x1", sprintPos[n]);
+                  ph.setAttribute("x2", sprintPos[n]);
+                  ph.setAttribute("opacity", "1");
+                }
+                timelineEl.querySelectorAll("circle[data-sprint]").forEach((c) =>
+                  c.setAttribute("fill", c.dataset.sprint === n ? "#fbbf24" : "#fff"),
+                );
+                if (typeof setSprintByNumber === "function") setSprintByNumber(n);
+              });
             }
-            const velocities = velStats
-              .filter((s) => s.sprint > 0 && s.issues > 0)
-              .map((s) => ({
-                sprint: s.sprint,
-                rate: s.issues / parseDuration(s.duration),
-                issues: s.issues,
-                duration: s.duration,
-              }));
-            const maxRate = Math.max(...velocities.map((v) => v.rate), 0.1);
-            document.getElementById("velocity-bar").innerHTML = velocities
-              .map((v) => {
-                const h = (v.rate / maxRate) * 100;
-                return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="Sprint ${v.sprint}: ${v.rate.toFixed(1)} issues/h (${v.issues} in ${v.duration})"></div>`;
-              })
-              .join("");
-          } else if (sprints.length > 0) {
-            const maxIssues = Math.max(...sprints.map((s) => s.issueCount || 0), 1);
-            document.getElementById("velocity-bar").innerHTML = sprints
-              .map((s) => {
-                const h = ((s.issueCount || 0) / maxIssues) * 100;
-                return `<div class="bar" style="height:${Math.max(h, 2)}%" data-tip="${s.name}: ${s.issueCount || 0} issues"></div>`;
-              })
-              .join("");
           }
         }
+
       }
 
       // ── Run on load ──

@@ -1,9 +1,12 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Identifier resolution, TDZ analysis, and instanceof handling.
  */
 import ts from "typescript";
 import { isBooleanType, isHeterogeneousUnion, isNumberType, isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
+import { emitFuncRefAsClosure } from "../closures.js";
+import type { CodegenContext, FunctionContext } from "../context/types.js";
 import {
   addFuncType,
   addImport,
@@ -13,13 +16,10 @@ import {
   localGlobalIdx,
   resolveWasmType,
 } from "../index.js";
-import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { compileExpression, coerceType, valTypesMatch } from "../shared.js";
-import type { InnerResult } from "../shared.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
-import { emitFuncRefAsClosure } from "../closures.js";
 import { emitNullGuardedStructGet } from "../property-access.js";
+import { coerceType, compileExpression } from "../shared.js";
 import { emitTdzCheck } from "../statements.js";
+import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 
 export function emitLocalTdzCheck(ctx: CodegenContext, fctx: FunctionContext, _name: string, flagIdx: number): void {
   const tagIdx = ensureExnTag(ctx);
@@ -547,4 +547,4 @@ function compileHostInstanceOf(ctx: CodegenContext, fctx: FunctionContext, expr:
   return { kind: "i32" };
 }
 
-export { compileIdentifier, narrowTypeToUnbox, resolveInstanceOfRHS, compileHostInstanceOf, analyzeTdzAccessByPos };
+export { analyzeTdzAccessByPos, compileHostInstanceOf, compileIdentifier, narrowTypeToUnbox, resolveInstanceOfRHS };

@@ -1,31 +1,30 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Binary operations extracted from expressions.ts.
  * Handles binary expression compilation including numeric, i32, i64,
  * bitwise, modulo, boolean, and any-typed binary operations.
  */
 import ts from "typescript";
+import { isBigIntType, isBooleanType, isNumberType, isStringType } from "../checker/type-mapper.js";
+import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { resolveWasmType, resolveNativeTypeAnnotation, addUnionImports, addStringImports } from "./index.js";
-import { ensureAnyHelpers } from "./shared.js";
-import { isNumberType, isBooleanType, isBigIntType, isStringType } from "../checker/type-mapper.js";
-import type { Instr, ValType } from "../ir/types.js";
-import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
-import type { InnerResult } from "./shared.js";
-import { coerceType, flushLateImportShifts } from "./shared.js";
 import {
   compileAssignment,
+  compileCompoundAssignment,
   compileLogicalAssignment,
   isCompoundAssignment,
-  compileCompoundAssignment,
 } from "./expressions/assignment.js";
+import { emitThrowString } from "./expressions/helpers.js";
+import { ensureExternIsUndefinedImport, ensureLateImport } from "./expressions/late-imports.js";
 import { compileLogicalAnd, compileLogicalOr, compileNullishCoalescing } from "./expressions/logical-ops.js";
 import { tryStaticToNumber } from "./expressions/misc.js";
-import { emitThrowString } from "./expressions/helpers.js";
-import { ensureExternIsUndefinedImport } from "./expressions/late-imports.js";
-import { compileInstanceOf, compileTypeofComparison } from "./typeof-delete.js";
+import { addStringImports, addUnionImports, resolveNativeTypeAnnotation, resolveWasmType } from "./index.js";
+import type { InnerResult } from "./shared.js";
+import { coerceType, compileExpression, ensureAnyHelpers, flushLateImportShifts } from "./shared.js";
 import { compileStringBinaryOp } from "./string-ops.js";
+import { compileInstanceOf, compileTypeofComparison } from "./typeof-delete.js";
 
 // ── Binary operations ─────────────────────────────────────────────────
 
@@ -768,6 +767,9 @@ export function compileBinaryExpression(
           }
         } else if (leftType.kind === "i32") {
           fctx.body.push({ op: "f64.convert_i32_s" });
+        } else if (leftType.kind === "ref" || leftType.kind === "ref_null") {
+          // Object wrapper (e.g. Object(0n)) → coerce via valueOf (#997)
+          coerceType(ctx, fctx, leftType, { kind: "f64" }, "number");
         }
 
         // Compile right operand
@@ -788,6 +790,9 @@ export function compileBinaryExpression(
           }
         } else if (rightType.kind === "i32") {
           fctx.body.push({ op: "f64.convert_i32_s" });
+        } else if (rightType.kind === "ref" || rightType.kind === "ref_null") {
+          // Object wrapper (e.g. Object(0n)) → coerce via valueOf (#997)
+          coerceType(ctx, fctx, rightType, { kind: "f64" }, "number");
         }
 
         // Emit f64 comparison
@@ -813,9 +818,48 @@ export function compileBinaryExpression(
 
     // Both operands are BigInt — compile as i64
     const i64Hint: ValType = { kind: "i64" };
-    const leftType = compileExpression(ctx, fctx, expr.left, i64Hint);
-    const rightType = compileExpression(ctx, fctx, expr.right, i64Hint);
-    if (!leftType || !rightType) return null;
+    let leftType2 = compileExpression(ctx, fctx, expr.left, i64Hint);
+    let rightType2 = compileExpression(ctx, fctx, expr.right, i64Hint);
+    if (!leftType2 || !rightType2) return null;
+    // Object(bigint) compiles to a struct ref, not i64. Coerce via valueOf (#997).
+    const leftIsRef2 = leftType2.kind === "ref" || leftType2.kind === "ref_null";
+    const rightIsRef2 = rightType2.kind === "ref" || rightType2.kind === "ref_null";
+    if (leftIsRef2 || rightIsRef2) {
+      // For strict equality: ref and i64 are never the same → always false/true
+      const isStrictEq2 = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+      const isStrictNeq2 = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+      if (isStrictEq2 || isStrictNeq2) {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: isStrictNeq2 ? 1 : 0 });
+        return { kind: "i32" };
+      }
+      // Coerce ref operands to f64 via valueOf, convert i64 to f64
+      if (rightIsRef2) {
+        coerceType(ctx, fctx, rightType2, { kind: "f64" }, "number");
+        rightType2 = { kind: "f64" };
+      }
+      if (leftIsRef2) {
+        const tmpR2 = allocTempLocal(fctx, rightType2);
+        fctx.body.push({ op: "local.set", index: tmpR2 });
+        coerceType(ctx, fctx, leftType2, { kind: "f64" }, "number");
+        fctx.body.push({ op: "local.get", index: tmpR2 });
+        releaseTempLocal(fctx, tmpR2);
+        leftType2 = { kind: "f64" };
+      }
+      // Convert remaining i64 operand to f64
+      if (rightType2.kind === "i64") {
+        fctx.body.push({ op: "f64.convert_i64_s" });
+      }
+      if (leftType2.kind === "i64") {
+        const tmpR3 = allocTempLocal(fctx, rightType2);
+        fctx.body.push({ op: "local.set", index: tmpR3 });
+        fctx.body.push({ op: "f64.convert_i64_s" });
+        fctx.body.push({ op: "local.get", index: tmpR3 });
+        releaseTempLocal(fctx, tmpR3);
+      }
+      return compileNumericBinaryOp(ctx, fctx, op, expr);
+    }
     return compileI64BinaryOp(ctx, fctx, op, expr);
   }
 
@@ -1083,7 +1127,7 @@ export function compileBinaryExpression(
         releaseTempLocal(fctx, tmpR);
       }
       addStringImports(ctx);
-      const equalsIdx = ctx.funcMap.get("equals");
+      const equalsIdx = ctx.jsStringImports.get("equals");
       if (equalsIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: equalsIdx });
         if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
@@ -1178,15 +1222,36 @@ export function compileBinaryExpression(
           ...(isNeqOp ? [{ op: "i32.eqz" } as Instr] : []),
         ],
         else: (() => {
-          // Numeric fallback: unbox both externrefs to f64 and compare
+          // Host `===` fallback FIRST — two host externrefs (e.g. functions
+          // like `Array === Array`) are not WasmGC eqrefs, so ref.eq cannot
+          // compare them. `__host_eq` calls JS `===` which handles reference
+          // identity for host values. If that returns false, still fall
+          // through to numeric unboxing for the boxed-number case. (#1065)
           addUnionImports(ctx);
           const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+          const hostEqIdx = ensureLateImport(
+            ctx,
+            "__host_eq",
+            [{ kind: "externref" }, { kind: "externref" }],
+            [{ kind: "i32" }],
+          );
+          flushLateImportShifts(ctx, fctx);
           return [
             { op: "local.get", index: tmpLeft },
-            { op: "call", funcIdx: unboxIdx },
             { op: "local.get", index: tmpRight },
-            { op: "call", funcIdx: unboxIdx },
-            { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
+            { op: "call", funcIdx: hostEqIdx } as Instr,
+            {
+              op: "if",
+              blockType: { kind: "val", type: { kind: "i32" } },
+              then: [{ op: "i32.const", value: isNeqOp ? 0 : 1 } as Instr],
+              else: [
+                { op: "local.get", index: tmpLeft },
+                { op: "call", funcIdx: unboxIdx },
+                { op: "local.get", index: tmpRight },
+                { op: "call", funcIdx: unboxIdx },
+                { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
+              ] as Instr[],
+            } as Instr,
           ] as Instr[];
         })(),
       });

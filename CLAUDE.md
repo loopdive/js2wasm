@@ -33,7 +33,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
   - `done/` — completed (with frontmatter + implementation summary)
   - `backlog/` — large scope / future
   - `wont-fix/` — decided against implementing
-- Dependency graph: `plan/dependency-graph.md`
+- Dependency graph: `plan/log/dependency-graph.md`
 - Goals (DAG): `plan/goals/goal-graph.md` — high-level goals with dependencies; issues belong to goals
   - Goals are not sequential milestones — they form a DAG and multiple can be active in parallel
   - Only work on issues from goals whose dependencies are met (active/activatable)
@@ -76,13 +76,13 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 
 ## Team & Workflow
 
-See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory budget, communication protocol, and merge lessons. Agent preferences and rules are in `.claude/memory/` (MEMORY.md index).
+See [plan/method/team-setup.md](plan/method/team-setup.md) for full team config, roles, memory budget, communication protocol, and merge lessons. Agent preferences and rules are in `.claude/memory/` (MEMORY.md index).
 
 **Checklists** (read at the right moment, not at spawn time):
-- `plan/session-start-checklist.md` — tech lead reads at session start
-- `plan/pre-commit-checklist.md` — devs read before every git add/commit
-- `plan/pre-completion-checklist.md` — devs read before signaling task completion
-- `plan/pre-merge-checklist.md` — tester reads before every merge to main
+- `plan/method/session-start-checklist.md` — tech lead reads at session start
+- `plan/method/pre-commit-checklist.md` — devs read before every git add/commit
+- `plan/method/pre-completion-checklist.md` — devs read before signaling task completion
+- `plan/method/pre-merge-checklist.md` — tester reads before every merge to main
 
 **Skills** (on-demand role protocols — any agent can invoke these):
 - `/test-and-merge` — full tester pipeline: merge main into branch, equiv tests, ff-only merge
@@ -104,7 +104,7 @@ Spawn dedicated agents when:
 
 **IMPORTANT: Always use teammates, not subagents.** Spawn agents via `TeamCreate` + `Agent` with `team_name` parameter. Never use bare `Agent` spawns — subagents can't coordinate, causing OOM from concurrent test runs and duplicate work. Teammates communicate via `SendMessage` to serialize test runs and coordinate on file conflicts.
 
-**Key numbers**: 16GB RAM + 16GB swap (container, set in `.devcontainer/devcontainer.json`). `free -m` may report ~20GB but Docker enforces 16GB hard limit. Max 4 dev teammates at a time. Default 1 test262 fork. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
+**Key numbers**: 16GB RAM + 16GB swap (container, set in `.devcontainer/devcontainer.json`). `free -m` may report ~20GB but Docker enforces 16GB hard limit. Max 4 dev teammates at a time. Default 1 test262 fork. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/log/dependency-graph.md`.
 
 **RAM monitoring**: Use `free -m` "available" column (not "free"). "free" excludes reclaimable disk cache. Example: "free" shows 1.5GB but "available" shows 7GB = the actual headroom. Hooks check "available" before allowing tests or agent spawns.
 
@@ -149,7 +149,7 @@ Scrum Master
 
 | Role | Agent | Owns | Reads from | Writes to |
 |------|-------|------|-----------|-----------|
-| **Product Owner** | `.claude/agents/product-owner.md` | Backlog, issue creation, priorities | test262 results, dependency graph | `plan/issues/`, `plan/dependency-graph.md` |
+| **Product Owner** | `.claude/agents/product-owner.md` | Backlog, issue creation, priorities | test262 results, dependency graph | `plan/issues/`, `plan/log/dependency-graph.md` |
 | **Architect** | `.claude/agents/architect.md` | Implementation specs | Issue files, compiler source | `## Implementation Plan` in issue files |
 | **Tech Lead** | (orchestrator) | Task queue, merges, test runs | Issue files, agent messages | `main` branch, task list |
 | **Developer** | `.claude/agents/developer.md` | Code changes in worktree | Issue file + impl spec, checklists | Source code, test files, issue status |
@@ -203,8 +203,8 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 - **Pause (immediate)**: send `PAUSE` via SendMessage. Agent stops current work, kills running tests, waits idle. Send `RESUME` to continue.
 - **Suspend**: send `SUSPEND` via SendMessage. Agent commits WIP, writes `## Suspended Work` to the issue file (worktree path, branch, resume steps), then **terminates**. A new agent resumes later from the issue file.
 - **Resume suspended work**: assign the issue to a new dev agent. It reads `status: suspended` and `## Suspended Work` in the issue file, enters the existing worktree, continues.
-- **Shutdown**: send `{"type": "shutdown_request"}` via SendMessage. Before sending: (1) confirm with user if they're talking to the agent, (2) ask the agent to write a context summary to `plan/agent-context/{name}.md` first. See `plan/agent-sessions.md` for the summary format.
-- **Session registry**: track active agent sessions in `plan/agent-sessions.md` so sessions can be resumed. When respawning, pass the context summary in the spawn prompt.
+- **Shutdown**: send `{"type": "shutdown_request"}` via SendMessage. Before sending: (1) confirm with user if they're talking to the agent, (2) ask the agent to write a context summary to `plan/agent-context/{name}.md` first. See `plan/method/agent-sessions.md` for the summary format.
+- **Session registry**: track active agent sessions in `plan/method/agent-sessions.md` so sessions can be resumed. When respawning, pass the context summary in the spawn prompt.
 - **Orphaned agents** (lost team context after crash): check worktrees for commits (`git -C <wt> log --oneline main..HEAD`) and uncommitted work (`git -C <wt> diff --stat`). Save any work, then kill the process. Write `## Suspended Work` in the issue file manually with the worktree path and state.
 
 ### Merge protocol (PR + CI, devs don't run local test262)
@@ -225,7 +225,7 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 
 ### Issue completion (tester post-merge)
 1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
-2. Update `plan/dependency-graph.md` — remove/strikethrough completed issue
+2. Update `plan/log/dependency-graph.md` — remove/strikethrough completed issue
 3. Update `plan/issues/backlog/backlog.md` — sprint priority
 4. Check for unblocked issues in `plan/issues/blocked/`
 
@@ -233,5 +233,5 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 - **Sprint 1**: 550 → 1,509 pass (+174%), 167 fail, 5,700 CE. Issues #138-#173.
 - **Sprint 2**: 12 branches, 18 issues (#207-#224). Key: destructuring hoisting (~1200 CE), string comparison, .call(), member increment/decrement, labeled break. Equivalence tests: 86 → 170.
 - **Sprint 3**: 32 issues (#225-#256). Target: 0 runtime failures, ~1,500 CE reduction.
-- **Sprint 4+**: Transitioned to dependency-driven execution. See `plan/dependency-graph.md`.
+- **Sprint 4+**: Transitioned to dependency-driven execution. See `plan/log/dependency-graph.md`.
 - **2026-03-19 session**: 53 issues in one session. WASI target, native strings, WIT generator, tail calls, SIMD, peephole optimizer, type annotations, prototype chain, delete operator, TypedArray/ArrayBuffer support, and extensive test262 improvements.
