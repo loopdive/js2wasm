@@ -329,7 +329,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | ready |
 | #992 | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | medium | ready |
 | #993 | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | high | ready |
-| #994 | Class static-private-getter test hits 30s compiler timeout | medium | ready |
 | #995 | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | low | ready |
 | #996 | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | low | ready |
 | #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
@@ -379,6 +378,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #825 | Null dereference failures (2,295 runtime failures) | high | review |
 | #826 | Illegal cast failures (1,276 runtime failures) | high | review |
+| #994 | Class static-private-getter test hits 30s compiler timeout | medium | review |
 | #1117 | Expected TypeError but got wrong error type (136 tests) | medium | review |
 
 ### Done

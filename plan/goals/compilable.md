@@ -197,7 +197,7 @@ type mismatches) and can be fixed in bulk.
 | **951** | Unused imports cause 'Missing initializer in const declaration' compile error | 37 | done | medium |
 | **953** | Add Wasm validation pass to compilation tests to ensure valid Wasm output | 37 | done | high |
 | **993** | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | 42 | ready | high |
-| **994** | Class static-private-getter test hits 30s compiler timeout | 42 | ready | medium |
+| **994** | Class static-private-getter test hits 30s compiler timeout | 42 | review | medium |
 | **1040** | Array.prototype reduce/map — invalid Wasm binary regression from #1030 extended dispatch | 40 | done | high |
 | **1109** | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | 42 | ready | medium |
 
