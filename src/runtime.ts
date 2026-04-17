@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import { compileSource } from "./compiler.js";
 import type { ImportDescriptor, ImportIntent, ImportPolicy } from "./index.js";
 
@@ -1195,6 +1196,13 @@ function resolveImport(
           ...(typeof DisposableStack !== "undefined" ? { DisposableStack } : {}),
           ...(typeof AsyncDisposableStack !== "undefined" ? { AsyncDisposableStack } : {}),
           ...(typeof SuppressedError !== "undefined" ? { SuppressedError } : {}),
+          // Intl constructors (#1070)
+          ...(typeof Intl !== "undefined" && typeof Intl.ListFormat !== "undefined"
+            ? { ListFormat: Intl.ListFormat }
+            : {}),
+          ...(typeof Intl !== "undefined" && typeof Intl.NumberFormat !== "undefined"
+            ? { NumberFormat: Intl.NumberFormat }
+            : {}),
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor)
@@ -2958,6 +2966,26 @@ function resolveImport(
           const exports = callbackState?.getExports();
           const getter = exports?.[`__sget_${key}`];
           if (typeof getter === "function") return getter(obj);
+        }
+        // #1057 — vec wrapper structs (results of String.prototype.split,
+        // Array.prototype.map, etc.) must report `.constructor === Array`.
+        // Only fire AFTER _safeGet and __sget_ fallback return nothing —
+        // class instances with sidecar constructors or struct getters are
+        // already handled above. Use __vec_len to positively identify vec
+        // wrappers: it returns a number for vecs and throws for non-vecs.
+        // (fieldNames === null was too broad — closure structs also lack
+        // field names, causing 1545 range_error regressions.)
+        if (key === "constructor" && obj != null && _isWasmStruct(obj)) {
+          const exports = callbackState?.getExports();
+          const vecLen = exports?.__vec_len;
+          if (typeof vecLen === "function") {
+            try {
+              const len = vecLen(obj);
+              if (typeof len === "number") return Array;
+            } catch {
+              // Not a vec wrapper — fall through
+            }
+          }
         }
         return undefined;
       };

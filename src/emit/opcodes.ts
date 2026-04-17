@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 export const OP = {
   unreachable: 0x00,
   nop: 0x01,

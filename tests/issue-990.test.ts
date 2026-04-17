@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compile } from "../src/index.js";
+import { compile } from "../src/index.ts";
 
 function compileFail(source: string): boolean {
   const r = compile(source);
@@ -100,5 +100,53 @@ describe("issue #990 — yield / await as reserved identifier", () => {
       }
     `;
     expect(hasReservedIdentError(wrapped)).toBe(false);
+  });
+});
+
+describe("issue #990 slice 2 — module strict, import(), async ctor, duplicate labels, var/let conflicts", () => {
+  function compileFail(source: string): boolean {
+    const r = compile(source);
+    return !r.success || r.errors.some((e) => e.severity === "error");
+  }
+
+  it("treats module code as strict mode (rejects octal)", () => {
+    expect(compileFail(`export {}; var x = 010;\n`)).toBe(true);
+  });
+
+  it("rejects import() with zero arguments", () => {
+    expect(compileFail(`var x = import();\n`)).toBe(true);
+  });
+
+  it("accepts import() with one argument", () => {
+    // Should NOT fail on import() with 1 arg
+    const r = compile(`var x = import("foo");\n`);
+    const hasImportArgError = r.errors?.some((e) => /import\(\) requires/.test(e.message));
+    expect(hasImportArgError).toBe(false);
+  });
+
+  it("rejects async constructor", () => {
+    expect(compileFail(`class C { async constructor() {} }\n`)).toBe(true);
+  });
+
+  it("rejects export default const", () => {
+    expect(compileFail(`export default const x = 1;\n`)).toBe(true);
+  });
+
+  it("rejects export default let", () => {
+    expect(compileFail(`export default let x = 1;\n`)).toBe(true);
+  });
+
+  it("rejects duplicate labels", () => {
+    expect(compileFail(`L: L: ;\n`)).toBe(true);
+  });
+
+  it("allows same label in different function scopes", () => {
+    const r = compile(`L: { (function() { L: ; })(); }\n`);
+    const hasDupLabel = r.errors?.some((e) => /Duplicate label/.test(e.message));
+    expect(hasDupLabel).toBe(false);
+  });
+
+  it("rejects var/let conflict at top level", () => {
+    expect(compileFail(`let x = 1; var x = 2;\n`)).toBe(true);
   });
 });

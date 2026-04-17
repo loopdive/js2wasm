@@ -1,0 +1,19 @@
+name: CLA Check
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+jobs:
+  cla-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder
+        run: |
+          echo "CLA enforcement placeholder."
+          echo "Replace this workflow with a real contributor signature or approval system."
+          echo "Required contributor terms are documented in CONTRIBUTING.md and CLA.md."

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * String operations extracted from expressions.ts.
  * Handles string literals, templates, tagged templates, string binary ops,
@@ -13,6 +14,7 @@ import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { getFuncParamTypes } from "./expressions/helpers.js";
 import { addStringImports, addUnionImports, flatStringType, nativeStringType, resolveWasmType } from "./index.js";
+import { ensureNativeStringExternBridge } from "./native-strings.js";
 import { addStringConstantGlobal, ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterTemplateVecType, getOrRegisterVecType } from "./registry/types.js";
 import { compileExpression, ensureLateImport, flushLateImportShifts, registerCompileStringLiteral } from "./shared.js";
@@ -107,7 +109,7 @@ export function compileTemplateExpression(
   // Ensure string imports (concat, etc.) are available — template literals need concat
   addStringImports(ctx);
 
-  const concatIdx = ctx.funcMap.get("concat");
+  const concatIdx = ctx.jsStringImports.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) return null;
 
@@ -167,6 +169,8 @@ export function compileNativeTemplateExpression(
 ): ValType | null {
   const concatIdx = ctx.nativeStrHelpers.get("__str_concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
+  ensureNativeStringExternBridge(ctx);
+  flushLateImportShifts(ctx, fctx);
   const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
   if (concatIdx === undefined) return null;
 
@@ -743,7 +747,7 @@ function compileBatchedConcat(ctx: CodegenContext, fctx: FunctionContext, operan
     fctx.body.push({ op: "call", funcIdx });
   } else {
     // Fallback: pairwise concat (shouldn't happen in js-string mode)
-    const concatIdx = ctx.funcMap.get("concat");
+    const concatIdx = ctx.jsStringImports.get("concat");
     if (concatIdx !== undefined) {
       for (let i = 1; i < arity; i++) {
         fctx.body.push({ op: "call", funcIdx: concatIdx });
@@ -1062,7 +1066,7 @@ export function compileStringBinaryOp(
   switch (op) {
     case ts.SyntaxKind.PlusToken: {
       // String concatenation
-      const funcIdx = ctx.funcMap.get("concat");
+      const funcIdx = ctx.jsStringImports.get("concat");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "externref" };
@@ -1071,7 +1075,7 @@ export function compileStringBinaryOp(
     }
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
     case ts.SyntaxKind.EqualsEqualsToken: {
-      const funcIdx = ctx.funcMap.get("equals");
+      const funcIdx = ctx.jsStringImports.get("equals");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "i32" };
@@ -1080,7 +1084,7 @@ export function compileStringBinaryOp(
     }
     case ts.SyntaxKind.ExclamationEqualsEqualsToken:
     case ts.SyntaxKind.ExclamationEqualsToken: {
-      const funcIdx = ctx.funcMap.get("equals");
+      const funcIdx = ctx.jsStringImports.get("equals");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         fctx.body.push({ op: "i32.eqz" }); // negate
@@ -1694,6 +1698,8 @@ export function compileNativeStringMethodCall(
   const importName = `string_${method}`;
   const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx !== undefined) {
+    ensureNativeStringExternBridge(ctx);
+    flushLateImportShifts(ctx, fctx);
     // Marshal receiver: flatten + native string -> externref
     compileExpression(ctx, fctx, propAccess.expression);
     emitFlatten();

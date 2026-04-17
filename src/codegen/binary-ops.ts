@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Binary operations extracted from expressions.ts.
  * Handles binary expression compilation including numeric, i32, i64,
@@ -1126,7 +1127,7 @@ export function compileBinaryExpression(
         releaseTempLocal(fctx, tmpR);
       }
       addStringImports(ctx);
-      const equalsIdx = ctx.funcMap.get("equals");
+      const equalsIdx = ctx.jsStringImports.get("equals");
       if (equalsIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: equalsIdx });
         if (isNeqOp) fctx.body.push({ op: "i32.eqz" });

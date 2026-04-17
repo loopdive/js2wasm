@@ -141,7 +141,7 @@ Action: admin-merge proceed, baseline refresh with allow_regressions=true.
 
 ## Output
 
-An updated plan/diary.md entry and any new issue files in plan/issues/ready/.
+An updated plan/diary.md entry and any new issue files in plan/issues/.
 
 ## Notes
 
