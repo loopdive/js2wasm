@@ -995,16 +995,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "854",
-      "title": "Iterator protocol: null next/return/throw methods (126 tests)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
       "id": "838",
       "title": "BigInt64Array / BigUint64Array typed arrays",
       "priority": "low",
@@ -1485,6 +1475,16 @@
       "goal": "maintainability",
       "status": "in-progress",
       "sprint": "Backlog"
+    },
+    {
+      "id": "854",
+      "title": "Iterator protocol: null next/return/throw methods (126 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "in-progress",
+      "sprint": "42"
     },
     {
       "id": "786",

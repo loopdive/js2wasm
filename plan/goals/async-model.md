@@ -61,7 +61,7 @@ promise infrastructure.
 | **808** | Extract string/import infrastructure from index.ts → imports.ts | Backlog | ready | medium |
 | **820** | Nullish TypeError / null-pointer / illegal-cast umbrella (6,993 FAIL) | Backlog | ready | critical |
 | **851** | Iterator close protocol not implemented (147 tests) | 31 | done | high |
-| **854** | Iterator protocol: null next/return/throw methods (126 tests) | 42 | ready | high |
+| **854** | Iterator protocol: null next/return/throw methods (126 tests) | 42 | in-progress | high |
 | **855** | Promise resolution and async error handling (210 tests) | 35 | done | high |
 | **859** | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | Backlog | ready | high |
 | **860** | Promise executor and property-assigned functions not compiled as host callbacks | Backlog | review | medium |
