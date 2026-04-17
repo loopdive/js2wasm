@@ -64,6 +64,7 @@ export function createCodegenContext(
     funcUsesArguments: new Set(),
     extrasArgvGlobalIdx: -1,
     extrasArgvVecTypeIdx: -1,
+    argcGlobalIdx: -1,
     valueOfClosureTypes: new Map(),
     exnTagIdx: -1,
     hasUnionImports: false,
