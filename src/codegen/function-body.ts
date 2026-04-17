@@ -31,7 +31,8 @@ import {
   hoistFunctionDeclarations,
   valTypesMatch,
 } from "./shared.js";
-import { bodyUsesArguments, emitArgumentsVecBody } from "./statements/nested-declarations.js";
+import { emitArgumentsVecBody } from "./statements/nested-declarations.js";
+import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 export { bodyUsesArguments };
 
 /** Maximum number of instructions for a function body to be considered inlinable */
