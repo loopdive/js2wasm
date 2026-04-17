@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 630 630" role="img" aria-labelledby="title desc">
+  <title id="title">JS2 logo</title>
+  <desc id="desc">White square with black JS lettering and a black 2 in the upper right.</desc>
+  <path d="M0 0H241A74 74 0 0 0 389 0H630V630H0Z" fill="#ffffff" />
+  <text
+    x="72"
+    y="520"
+    fill="#000000"
+    font-family="Helvetica Neue, Arial, Helvetica, sans-serif"
+    font-size="336"
+    font-weight="700"
+    letter-spacing="-14"
+  >
+    JS
+  </text>
+  <text
+    x="448"
+    y="230"
+    fill="#000000"
+    font-family="Helvetica Neue, Arial, Helvetica, sans-serif"
+    font-size="210"
+    font-weight="700"
+    letter-spacing="-8"
+  >
+    2
+  </text>
+</svg>

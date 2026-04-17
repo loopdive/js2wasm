@@ -14,7 +14,7 @@ SPRINT=$(echo "$CMD" | grep -oP 'sprint[/-](\d+)' | grep -oP '\d+' | head -1)
 if [ -z "$SPRINT" ]; then exit 0; fi
 
 # Check if sprint doc has been updated with results
-SPRINT_FILE="/workspace/plan/sprints/sprint-${SPRINT}.md"
+SPRINT_FILE="/workspace/plan/issues/${SPRINT}/sprint.md"
 if [ -f "$SPRINT_FILE" ]; then
   if ! grep -qi "results\|final.*pass\|completed" "$SPRINT_FILE"; then
     echo "BLOCKED: Sprint $SPRINT doc ($SPRINT_FILE) has no results section." >&2

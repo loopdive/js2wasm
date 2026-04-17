@@ -13,7 +13,7 @@ type: feedback
   - Team lead merges work, not agents
 - Each dev writes tests to `tests/issue-{N}.test.ts`, NOT `equivalence.test.ts`
 - Diagnostic-only issues — batch in one commit, no dev agent needed
-- Devs update their own issue file but NOT `plan/backlog.md`
+- Devs update their own issue file but NOT `plan/issues/backlog/backlog.md`
 - Merge worktree branches to main (not cherry-pick)
 - PO agents: spawn on demand for analysis, no worktree needed
 

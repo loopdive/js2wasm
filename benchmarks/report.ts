@@ -1,5 +1,6 @@
 import type { BenchmarkResult, Strategy } from "./harness.js";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 const STRATEGIES: Strategy[] = ["js", "host-call", "gc-native", "linear-memory"];
 
@@ -157,6 +158,7 @@ export function saveResults(results: BenchmarkResult[], outDir: string): void {
 
   // Build history.json from all timestamped result files
   buildHistory(outDir);
+  syncPublicSummary(outDir);
 }
 
 // ---------------------------------------------------------------------------
@@ -195,4 +197,17 @@ function buildHistory(outDir: string): void {
 
   fs.writeFileSync(`${outDir}/history.json`, JSON.stringify(history, null, 2));
   console.log(`History saved to ${outDir}/history.json (${history.length} runs)`);
+}
+
+function syncPublicSummary(outDir: string): void {
+  const publicResultsDir = path.resolve(outDir, "..", "..", "public", "benchmarks", "results");
+  fs.mkdirSync(publicResultsDir, { recursive: true });
+
+  for (const file of ["latest.json", "history.json"]) {
+    const source = path.join(outDir, file);
+    if (!fs.existsSync(source)) continue;
+    fs.copyFileSync(source, path.join(publicResultsDir, file));
+  }
+
+  console.log(`Public benchmark summaries updated in ${publicResultsDir}`);
 }

@@ -38,7 +38,7 @@ Add a new `## YYYY-MM-DD HH:MM — <brief title>` section at the bottom with:
 
 Keep it to ~30-60 lines. Bullets, not prose.
 
-## Step 3: Update plan/sprints/sprint-N.md
+## Step 3: Update plan/issues/sprints/N/sprint.md
 
 Fill the `## Results` section (mark as "interim" if sprint still active):
 
@@ -59,7 +59,7 @@ Sprint goal (<goal>) <met|not yet met>. <gap> tests <remaining>.
 
 And if the sprint has a `## Retrospective` section, append an interim retro with "What went well / What went badly / Process improvements / Key numbers / Sprint-close criteria remaining".
 
-## Step 4: Write/update plan/retrospectives/sprint-N.md
+## Step 4: Append the retrospective section in plan/issues/sprints/N/sprint.md
 
 If a retrospective file doesn't exist yet, create one with frontmatter:
 
@@ -81,7 +81,7 @@ Then fill with the same what-went-well / badly / process-improvements sections. 
 ---
 agent: tech-lead
 session_end: YYYY-MM-DD
-next_session_entry_point: read this file, then plan/sprints/sprint-N.md
+next_session_entry_point: read this file, then plan/issues/sprints/N/sprint.md
 ---
 
 # Tech Lead Context Summary — YYYY-MM-DD
@@ -103,7 +103,7 @@ This file is what the NEXT session reads as its first tool call instead of `clau
 ## Step 6: Stage and commit
 
 ```bash
-git add plan/diary.md plan/sprints/sprint-N.md plan/retrospectives/sprint-N.md plan/agent-context/tech-lead.md
+git add plan/diary.md plan/issues/sprints/N/sprint.md plan/agent-context/tech-lead.md
 git diff --cached --stat
 git commit -m "docs(session): end-of-session checkpoint — YYYY-MM-DD
 
@@ -111,8 +111,7 @@ CHECKLIST-FOXTROT
 
 Persist session learnings to disk before /compact.
 - plan/diary.md: <summary>
-- plan/sprints/sprint-N.md: <summary>
-- plan/retrospectives/sprint-N.md: <interim|final>
+- plan/issues/sprints/N/sprint.md: <summary + retrospective updates>
 - plan/agent-context/tech-lead.md: handoff for next session
 
 Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"

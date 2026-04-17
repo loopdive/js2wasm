@@ -34,3 +34,24 @@ jobs:
 
       - name: Typecheck
         run: pnpm run typecheck
+
+      - name: Regenerate planning artifacts
+        run: |
+          if [ -d plan ] || [ -d dashboard ]; then
+            pnpm run build:planning-artifacts
+          else
+            echo "No private planning artifacts in this checkout; skipping regeneration."
+          fi
+
+      - name: Check planning artifacts are committed
+        run: |
+          if [ -d plan ] || [ -d dashboard ]; then
+            git diff --exit-code -- \
+              plan/goals \
+              plan/issues/sprints \
+              dashboard/data.js \
+              dashboard/data \
+              public/graph-data.json
+          else
+            echo "No private planning artifacts in this checkout; skipping diff check."
+          fi

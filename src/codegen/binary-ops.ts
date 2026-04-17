@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Binary operations extracted from expressions.ts.
  * Handles binary expression compilation including numeric, i32, i64,

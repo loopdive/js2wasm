@@ -51,7 +51,7 @@ Record results in sprint doc.
 
 ## Step 5: Update sprint doc
 
-Edit `plan/sprints/sprint-{N}.md`:
+Edit `plan/issues/sprints/{N}/sprint.md`:
 - Fill in final test262 numbers
 - Calculate delta from baseline
 - Note any deferred tasks
@@ -71,7 +71,7 @@ Invoke the harvest-errors skill (or spawn a dedicated harvester agent)
 The harvester:
 - Clusters failures in `benchmarks/results/test262-current.jsonl` by normalized error pattern
 - Cross-references with existing issues in `plan/issues/`
-- Files new issue files in `plan/issues/ready/` for unaddressed buckets above the threshold (default: >50 occurrences)
+- Files new issue files in `plan/issues/` for unaddressed buckets above the threshold (default: >50 occurrences)
 - Reports a summary table
 
 Commit any newly-filed issues before Step 8.
@@ -89,7 +89,7 @@ Update `/home/node/.claude/projects/-workspace/memory/project_next_session.md` w
 ## Step 8: Commit everything
 
 ```bash
-git add plan/sprints/ plan/diary.md plan/dependency-graph.md
+git add plan/sprints/ plan/diary.md plan/log/dependency-graph.md
 git commit -m "chore: sprint-{N} wrap-up — [pass count] pass ([rate]%)"
 ```
 

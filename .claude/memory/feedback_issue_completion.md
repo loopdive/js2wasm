@@ -1,12 +1,12 @@
 ---
 name: Issue completion procedure
-description: When a developer agent completes an issue, what to do — move file, update frontmatter, write implementation summary, log completion, check test results. Also covers issue frontmatter format and file locking.
+description: When a developer agent completes an issue, what to do — update frontmatter, write implementation summary, log completion, check test results. Also covers issue frontmatter format and file locking.
 type: feedback
 ---
 
 ## Issue Frontmatter Format
 
-Every open issue file (in `ready/` or `blocked/`) has YAML frontmatter:
+Every issue file in `plan/issues/` has YAML frontmatter:
 
 ```markdown
 ---
@@ -28,17 +28,13 @@ The `files` field serves as a **lock claim**. Before a developer agent starts wo
 2. If any overlap, the developer must wait or request access from the PO
 3. Only the PO can grant concurrent access to the same file
 
-The `generate-graph.ts` script reads this frontmatter to build `graph-data.json` for the HTML visualizer.
+The `generate-graph.ts` script reads this frontmatter to build `public/graph-data.json` for the HTML visualizer.
 
 ## Issue Completion Procedure
 
 When a developer agent finishes an issue, the following steps must be performed:
 
-### 1. Move the issue file
-- Move from `plan/issues/ready/{N}.md` to `plan/issues/done/{N}.md`
-- If it was in `blocked/`, move to `done/` (it was unblocked and completed in one go)
-
-### 2. Add/update frontmatter
+### 1. Add/update frontmatter
 Add `completed:` date to the existing frontmatter:
 
 ```markdown
@@ -56,7 +52,11 @@ completed: 2026-03-12
 ---
 ```
 
-### 3. Write implementation summary
+Also update:
+- `status: done`
+- `updated: YYYY-MM-DD`
+
+### 2. Write implementation summary
 Append an `## Implementation Summary` section to the issue file with:
 - **What was done**: brief description of the approach taken
 - **What worked**: key decisions that went well
@@ -64,16 +64,17 @@ Append an `## Implementation Summary` section to the issue file with:
 - **Files changed**: list of modified files
 - **Tests**: which tests now pass that didn't before (equivalence tests, test262 categories, etc.)
 
-### 4. Update the completion log
-Add a row to `plan/issues/done/log.md`:
+### 3. Update the completion log
+Add a row to `plan/issues-log.md`:
 
 ```
 | {N} | {date} | {title} | {summary of what was done} |
 ```
 
-### 5. Check for unblocked issues
-Look at `plan/issues/blocked/` for any issues that list `#{N}` as a dependency.
-If all their dependencies are now in `done/`, move them to `ready/`.
+### 4. Check for unblocked issues
+Look through `plan/issues/` for any issues that list `#{N}` as a dependency.
+If all their dependencies are now done, update their `status` from `blocked`
+to the appropriate active state.
 
-### 6. Regenerate graph
-Run `npx tsx plan/generate-graph.ts` to update the visualization data.
+### 5. Regenerate graph
+Run `node --experimental-strip-types plan/generate-graph.ts` to update the visualization data.

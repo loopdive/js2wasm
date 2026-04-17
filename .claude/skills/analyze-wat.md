@@ -41,7 +41,7 @@ console.log('WAT:', result.wat.length, 'chars | Binary:', result.binary.length, 
    - How many instructions could be saved
    - Which codegen file to fix
 
-4. Create or update issues in `plan/issues/ready/` citing specific source code and WAT output.
+4. Create or update issues in `plan/issues/` citing specific source code and WAT output.
 
 ## Example
 

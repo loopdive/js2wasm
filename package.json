@@ -5,7 +5,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "author": "Thomas Tränkler <git@thomas.traenkler.com>",
-  "license": "MIT",
+  "license": "Apache-2.0 WITH LLVM-exception",
   "publishConfig": {
     "access": "restricted",
     "registry": "https://npm.pkg.github.com"
@@ -26,6 +26,7 @@
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
     "refresh:benchmarks": "npx tsx benchmarks/run.ts && pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && pnpm run generate:size-benchmarks && node scripts/generate-browser-runtime-benchmarks.mjs",
+    "benchmark:competitive": "pnpm run build:compiler-bundle && node --experimental-strip-types benchmarks/compare-runtimes.ts",
     "build:compiler-bundle": "esbuild scripts/compiler-bundle-entry.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript --external:binaryen",
     "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
     "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
@@ -34,11 +35,16 @@
     "generate:editions": "npx tsx scripts/generate-editions.ts",
     "generate:size-benchmarks": "npx tsx scripts/generate-size-benchmarks.ts",
     "generate:browser-runtime-benchmarks": "node scripts/generate-browser-runtime-benchmarks.mjs",
+    "setup:benchmark-vendors": "node scripts/setup-benchmark-vendors.mjs",
+    "export:public": "node scripts/export-public-tree.mjs",
+    "sync:public": "node scripts/sync-public-repo.mjs",
+    "publish:public": "node scripts/publish-public-repo.mjs",
+    "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
-    "build:pages": "npx tsx scripts/sprint-stats.ts && node dashboard/build-data.js && pnpm run build:playground && npx tsx scripts/generate-size-benchmarks.ts && node scripts/build-pages.js",
+    "build:pages": "node scripts/run-pages-build.mjs",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
-    "prepare": "husky"
+    "prepare": "git config core.hooksPath .husky || true"
   },
   "dependencies": {
     "binaryen": "^125.0.0",
@@ -47,6 +53,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1",
+    "@bytecodealliance/componentize-js": "^0.20.0",
     "@types/lodash": "^4.17.24",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^22",

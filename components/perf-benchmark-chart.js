@@ -5,7 +5,7 @@
  *   src     — URL to playground-benchmark-sidebar.json
  *   title   — chart heading (default: "Benchmark Performance (Wasm vs JS)")
  *   legend  — legend text (default: "WASM runtime performance relative to JS (larger is better)")
- *   mode    — perf | size | coldstart | loadtime
+ *   mode    — perf | size | coldstart | loadtime | absolute-lower-better
  *
  * Usage:
  *   <perf-benchmark-chart src="./benchmarks/results/playground-benchmark-sidebar.json"></perf-benchmark-chart>
@@ -13,7 +13,7 @@
 
 class PerfBenchmarkChart extends HTMLElement {
   static get observedAttributes() {
-    return ["src", "title", "legend", "mode", "benchmark", "browser-runtime-src"];
+    return ["src", "title", "legend", "mode", "benchmark", "browser-runtime-src", "baseline-label"];
   }
 
   static _measurementQueue = Promise.resolve();
@@ -44,6 +44,7 @@ class PerfBenchmarkChart extends HTMLElement {
     const src = this.getAttribute("src") || "./benchmarks/results/playground-benchmark-sidebar.json";
     const title = this.getAttribute("title") || "Benchmark Performance (Wasm vs JS)";
     const legend = this.getAttribute("legend") || "WASM runtime performance relative to JS (larger is better)";
+    const baselineLabel = this.getAttribute("baseline-label") || "JS";
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -69,10 +70,12 @@ class PerfBenchmarkChart extends HTMLElement {
         .js-label {
           position: absolute;
           top: 4px;
+          display: inline-block;
           font-family: var(--mono, ui-monospace, monospace);
           font-size: 11px;
           color: var(--fg-soft, rgba(255,255,255,0.55));
           letter-spacing: 0.05em;
+          white-space: nowrap;
         }
 
         .js-line {
@@ -190,7 +193,7 @@ class PerfBenchmarkChart extends HTMLElement {
 
       <h3 class="chart-title"></h3>
       <div class="bars-wrap">
-        <div class="js-label">JS</div>
+        <div class="js-label"></div>
         <div class="js-line"></div>
         <div class="bench-bars"></div>
       </div>
@@ -198,6 +201,7 @@ class PerfBenchmarkChart extends HTMLElement {
     `;
 
     this.shadowRoot.querySelector(".chart-title").textContent = title;
+    this.shadowRoot.querySelector(".js-label").textContent = baselineLabel;
     this.shadowRoot.querySelector(".legend").textContent = legend;
 
     this._load(src);
@@ -414,6 +418,7 @@ class PerfBenchmarkChart extends HTMLElement {
     const container = shadow.querySelector(".bench-bars");
     const jsLabelEl = shadow.querySelector(".js-label");
     const jsLineEl = shadow.querySelector(".js-line");
+    const baselineLabel = this.getAttribute("baseline-label") || "JS";
 
     try {
       const resp = await fetch(src);
@@ -425,8 +430,9 @@ class PerfBenchmarkChart extends HTMLElement {
       const mode = this.getAttribute("mode") || "perf";
       const benchmarkFilter = (this.getAttribute("benchmark") || "").trim();
 
-      // Transform data based on mode into [{name, ratio, label}]
+      // Transform data based on mode into chart rows.
       let ratios;
+      let absoluteRows = null;
       if (mode === "benchmark-runtime") {
         const rows = Array.isArray(json) ? json : [];
         if (rows.length === 0 || !benchmarkFilter) {
@@ -515,6 +521,20 @@ class PerfBenchmarkChart extends HTMLElement {
           }
           return measured;
         });
+      } else if (mode === "absolute-lower-better") {
+        const rows = Array.isArray(json) ? json : json?.benchmarks ?? [];
+        if (!Array.isArray(rows) || rows.length === 0) {
+          this.style.display = "none";
+          return;
+        }
+        absoluteRows = rows
+          .map((row) => ({
+            name: row.name,
+            value: Number(row?.wasmUs ?? row?.value ?? 0),
+            jsUs: Number(row?.jsUs ?? row?.baselineUs ?? 0),
+            label: row.label || null,
+          }))
+          .filter((row) => row.value > 0);
       } else {
         // Default perf mode: ratio = jsUs / wasmUs (higher = wasm faster)
         let rows = Array.isArray(json) ? json : [];
@@ -538,8 +558,106 @@ class PerfBenchmarkChart extends HTMLElement {
           ratios.push({ ...row, ratio: jsUs / wasmUs, ratioStd: Number(row?.ratioStd ?? 0) });
         }
       }
-      if (!ratios || ratios.length === 0) {
+      if (mode === "absolute-lower-better") {
+        if (!absoluteRows || absoluteRows.length === 0) {
+          this.style.display = "none";
+          return;
+        }
+      } else if (!ratios || ratios.length === 0) {
         this.style.display = "none";
+        return;
+      }
+
+      if (mode === "absolute-lower-better") {
+        const baselineValue = absoluteRows.reduce((value, row) => {
+          const candidate = Number(row?.jsUs ?? row?.baselineUs ?? 0);
+          return candidate > 0 ? candidate : value;
+        }, 0);
+        const absoluteMax = Math.max(...absoluteRows.map((row) => row.value), 1);
+        const maxValue = Math.max(absoluteMax, baselineValue > 0 ? baselineValue * 1.08 : 0, 1);
+        const baselinePct = baselineValue > 0 ? (baselineValue / maxValue) * 100 : 0;
+
+        if (baselineValue > 0) {
+          jsLabelEl.style.display = "";
+          jsLineEl.style.display = "";
+          jsLabelEl.textContent = baselineLabel;
+        } else {
+          jsLabelEl.style.display = "none";
+          jsLineEl.style.display = "none";
+        }
+
+        const duration = 3293;
+        const ease = (t) => 1 - (1 - t) * (1 - t);
+        const barData = [];
+        const baselineInsetPct = baselineValue > 0 ? Math.min(94, Math.max(6, baselinePct)) : 0;
+
+        for (const row of absoluteRows) {
+          const label = row.name || "unknown";
+          const targetWidth = (row.value / maxValue) * 100;
+          const rowEl = document.createElement("div");
+          rowEl.className = "bench-row";
+          rowEl.innerHTML = `
+            <span class="bench-name">${label}</span>
+            <div class="bench-track">
+              <div class="bench-track-bg" style="width: 100%"></div>
+              <div class="bench-fill" style="left: 0%; width: 0%; background: linear-gradient(to right, rgba(255,255,255,0.1), rgba(255,255,255,0.9)); border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
+              <div class="bench-errorbar" style="display: none"></div>
+              <span class="bench-value" style="left: 10px; color: rgba(255,255,255,0)">${row.label ?? ""}</span>
+            </div>
+          `;
+          container.appendChild(rowEl);
+          barData.push({
+            targetWidth,
+            customLabel: row.label || `${row.value.toFixed(1)}`,
+            fillEl: rowEl.querySelector(".bench-fill"),
+            valueEl: rowEl.querySelector(".bench-value"),
+          });
+        }
+
+        function animateAbsoluteBars(ts) {
+          if (!animateAbsoluteBars._start) animateAbsoluteBars._start = ts;
+          const elapsed = ts - animateAbsoluteBars._start;
+          const progress = Math.min(elapsed / duration, 1);
+          const t = ease(progress);
+
+          for (const d of barData) {
+            const curWidth = t * d.targetWidth;
+            d.fillEl.style.width = `${curWidth}%`;
+            d.valueEl.style.left = `min(calc(${curWidth}% + 10px), calc(100% - 7ch))`;
+            d.valueEl.style.color = `rgba(255,255,255,${(0.4 + t * 0.6).toFixed(2)})`;
+            d.valueEl.textContent = d.customLabel;
+          }
+
+          if (progress < 1) requestAnimationFrame(animateAbsoluteBars);
+        }
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) {
+                observer.disconnect();
+                requestAnimationFrame(animateAbsoluteBars);
+              }
+            }
+          },
+          { threshold: 0.3 },
+        );
+        observer.observe(this);
+        const positionAbsoluteBaseline = () => {
+          const track = container.querySelector(".bench-track");
+          const wrap = shadow.querySelector(".bars-wrap");
+          if (baselineValue > 0 && track && wrap && jsLabelEl && jsLineEl) {
+            const wrapRect = wrap.getBoundingClientRect();
+            const trackRect = track.getBoundingClientRect();
+            const rawX = trackRect.left + (trackRect.width * baselineInsetPct) / 100 - wrapRect.left;
+            const x = Math.min(Math.max(rawX, trackRect.left - wrapRect.left + 8), trackRect.right - wrapRect.left - 8);
+            jsLabelEl.style.left = `${x}px`;
+            jsLabelEl.style.transform = "translateX(-50%)";
+            jsLineEl.style.left = `${x}px`;
+          }
+        };
+        requestAnimationFrame(positionAbsoluteBaseline);
+        window.addEventListener("resize", positionAbsoluteBaseline);
         return;
       }
 
@@ -691,7 +809,8 @@ class PerfBenchmarkChart extends HTMLElement {
       };
       requestAnimationFrame(positionBaseline);
       window.addEventListener("resize", positionBaseline);
-    } catch {
+    } catch (error) {
+      console.error("[perf-benchmark-chart] render failed", error);
       this.style.display = "none";
     }
   }

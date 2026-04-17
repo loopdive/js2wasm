@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import { compileSource } from "./compiler.js";
 import type { ImportDescriptor, ImportIntent, ImportPolicy } from "./index.js";
 
@@ -1195,6 +1196,13 @@ function resolveImport(
           ...(typeof DisposableStack !== "undefined" ? { DisposableStack } : {}),
           ...(typeof AsyncDisposableStack !== "undefined" ? { AsyncDisposableStack } : {}),
           ...(typeof SuppressedError !== "undefined" ? { SuppressedError } : {}),
+          // Intl constructors (#1070)
+          ...(typeof Intl !== "undefined" && typeof Intl.ListFormat !== "undefined"
+            ? { ListFormat: Intl.ListFormat }
+            : {}),
+          ...(typeof Intl !== "undefined" && typeof Intl.NumberFormat !== "undefined"
+            ? { NumberFormat: Intl.NumberFormat }
+            : {}),
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor)

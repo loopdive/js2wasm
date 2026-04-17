@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Optional call expression compilation:
  * - obj?.method(args) — compileOptionalCallExpression
