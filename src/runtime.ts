@@ -1303,7 +1303,116 @@ function resolveImport(
           // Indirect eval — runs in global scope. Direct-eval scope access
           // is unreachable through a host import boundary; #1006 scopes this
           // explicitly to JS-host mode, standalone mode traps on instantiation.
-          return (0, eval)(src);
+          //
+          // #1073: Prepend JS-side shims for test262 harness identifiers that
+          // wrapTest text-rewrites into eval'd strings. Without these, the
+          // eval'd code raises ReferenceError for wasm-compiled identifiers
+          // like assert_sameValue, assert_throws, etc.
+          const harnessIds = [
+            "assert_sameValue",
+            "assert_notSameValue",
+            "assert_true",
+            "assert_throws",
+            "assert_throwsAsync",
+            "isSameValue",
+            "assert_sameValue_str",
+            "assert_notSameValue_str",
+            "assert_sameValue_bool",
+            "assert_notSameValue_bool",
+            "assert_compareArray",
+            "compareArray",
+            "__fail",
+            "__assert_count",
+            "fnGlobalObject",
+            "verifyProperty",
+            "verifyEnumerable",
+            "verifyNotEnumerable",
+            "verifyWritable",
+            "verifyNotWritable",
+            "verifyConfigurable",
+            "verifyNotConfigurable",
+            "Test262Error",
+            "$DONE",
+          ];
+          // Strip TypeScript annotations that wrapTest injects (e.g. `as number`,
+          // `as any`) — the eval'd code runs as plain JS and rejects TS syntax.
+          const jsSrc = src.replace(/\bas\s+number\b/g, "").replace(/\bas\s+any\b/g, "");
+          const needsShim = harnessIds.some((id) => jsSrc.includes(id));
+          if (!needsShim) return (0, eval)(jsSrc);
+
+          // Build a JS-side harness that mirrors the wasm-compiled preamble.
+          // State (__fail, __assert_count) is local to this eval — if an
+          // assertion fails, we throw so the outer wasm try/catch observes it.
+          const shim = `\
+var __fail = 0, __assert_count = 1;
+function Test262Error(msg) { this.message = msg; }
+function isSameValue(a, b) {
+  if (a === b) { if (a !== 0) return true; return 1/a === 1/b; }
+  return a !== a && b !== b;
+}
+function assert_sameValue(a, b) {
+  __assert_count++;
+  if (!isSameValue(a, b)) { if (!__fail) __fail = __assert_count; }
+}
+function assert_notSameValue(a, b) {
+  __assert_count++;
+  if (isSameValue(a, b)) { if (!__fail) __fail = __assert_count; }
+}
+function assert_true(v) {
+  __assert_count++;
+  if (!v) { if (!__fail) __fail = __assert_count; }
+}
+function assert_throws(fn) {
+  __assert_count++;
+  try { fn(); } catch(e) { return; }
+  if (!__fail) __fail = __assert_count;
+}
+function assert_throwsAsync(fn) {
+  __assert_count++;
+  try { fn(); } catch(e) { return; }
+  if (!__fail) __fail = __assert_count;
+}
+function assert_sameValue_str(a, b) {
+  __assert_count++;
+  if (a !== b) { if (!__fail) __fail = __assert_count; }
+}
+function assert_notSameValue_str(a, b) {
+  __assert_count++;
+  if (a === b) { if (!__fail) __fail = __assert_count; }
+}
+function assert_sameValue_bool(a, b) {
+  __assert_count++;
+  if (a !== b) { if (!__fail) __fail = __assert_count; }
+}
+function assert_notSameValue_bool(a, b) {
+  __assert_count++;
+  if (a === b) { if (!__fail) __fail = __assert_count; }
+}
+function compareArray(a, b) {
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) { if (a[i] !== b[i]) return false; }
+  return true;
+}
+function assert_compareArray(a, b) {
+  __assert_count++;
+  if (!compareArray(a, b)) { if (!__fail) __fail = __assert_count; }
+}
+function fnGlobalObject() { return globalThis; }
+function verifyProperty() {}
+function verifyEnumerable() {}
+function verifyNotEnumerable() {}
+function verifyWritable() {}
+function verifyNotWritable() {}
+function verifyConfigurable() {}
+function verifyNotConfigurable() {}
+function $DONE(err) {
+  __assert_count++;
+  if (err) { if (!__fail) __fail = __assert_count; }
+}
+`;
+          const wrapped =
+            shim + jsSrc + `;\nif (__fail) throw new Test262Error('eval harness assertion ' + __fail + ' failed');`;
+          return (0, eval)(wrapped);
         };
       if (name === "__extern_get")
         return (obj: any, key: any) => {
