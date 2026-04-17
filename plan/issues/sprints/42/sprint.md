@@ -322,7 +322,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #744 | Function monomorphization for polymorphic call sites | high | ready |
 | #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
-| #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
 | #862 | Empty error message failures: iterator/destructuring step-err tests (212 FAIL) | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | ready |
@@ -371,6 +370,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | in-progress |
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
 
 ### Review
