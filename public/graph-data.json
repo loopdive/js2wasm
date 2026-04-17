@@ -888,9 +888,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "70"
-      ],
+      "depends_on": ["70"],
       "files": [
         "v128 type and SIMD opcode support in binary emitter",
         "SIMD-accelerated string/array helper emission",
@@ -1829,9 +1827,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "property access on function type: resolve .name to struct field"
-      ],
+      "files": ["property access on function type: resolve .name to struct field"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 262
@@ -1860,9 +1856,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "232"
-      ],
+      "depends_on": ["232"],
       "files": [
         "Function.prototype.call/apply/bind compilation",
         "chained method call support (obj.method().other())",
@@ -1898,9 +1892,7 @@
       "raw_status": "done",
       "sprint": "1",
       "depends_on": [],
-      "files": [
-        "compiler options: set noImplicitThis to false"
-      ],
+      "files": ["compiler options: set noImplicitThis to false"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -1912,9 +1904,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES: add setter-return diagnostic code to suppression set"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES: add setter-return diagnostic code to suppression set"],
       "goal": "class-system",
       "cluster": "class-system",
       "compiler_errors": 262
@@ -1926,9 +1916,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "268"
-      ],
+      "depends_on": ["268"],
       "files": [
         "pushBody()/popBody() helpers for safe savedBody management",
         "savedBodies field on FunctionContext interface",
@@ -2053,9 +2041,7 @@
       "raw_status": "done",
       "sprint": "1",
       "depends_on": [],
-      "files": [
-        "import detection: also check PlusEqualsToken when registering number_toString"
-      ],
+      "files": ["import detection: also check PlusEqualsToken when registering number_toString"],
       "goal": "compilable",
       "cluster": "compilable",
       "test262_ce": 12
@@ -2083,9 +2069,7 @@
       "raw_status": "done",
       "sprint": "1",
       "depends_on": [],
-      "files": [
-        "skip filters: add IIFE and indirect eval skip patterns"
-      ],
+      "files": ["skip filters: add IIFE and indirect eval skip patterns"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "compiler_errors": 2
@@ -2098,9 +2082,7 @@
       "raw_status": "done",
       "sprint": "1",
       "depends_on": [],
-      "files": [
-        "skip filters: add indirect eval pattern (var x = eval)"
-      ],
+      "files": ["skip filters: add indirect eval pattern (var x = eval)"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
     },
@@ -2172,9 +2154,7 @@
       "raw_status": "done",
       "sprint": "1",
       "depends_on": [],
-      "files": [
-        "compileCallExpression: unwrap ParenthesizedExpression to detect and compile arrow/function IIFEs"
-      ],
+      "files": ["compileCallExpression: unwrap ParenthesizedExpression to detect and compile arrow/function IIFEs"],
       "goal": "compilable",
       "cluster": "compilable"
     },
@@ -2219,9 +2199,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "1",
-      "depends_on": [
-        "171"
-      ],
+      "depends_on": ["171"],
       "files": [],
       "goal": "builtin-methods",
       "cluster": "builtin-methods"
@@ -2233,13 +2211,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "242",
-        "265"
-      ],
-      "files": [
-        "compileCallExpression(): resolve numeric/computed keys for element access method calls"
-      ],
+      "depends_on": ["242", "265"],
+      "files": ["compileCallExpression(): resolve numeric/computed keys for element access method calls"],
       "goal": "class-system",
       "cluster": "class-system",
       "compiler_errors": 262
@@ -2279,9 +2252,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "tests verifying unicode escape sequences resolve correctly in property names"
-      ],
+      "files": ["tests verifying unicode escape sequences resolve correctly in property names"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -2322,9 +2293,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "wrapTest: adjust module wrapping so generator functions can use yield without reserved-word errors"
-      ],
+      "files": ["wrapTest: adjust module wrapping so generator functions can use yield without reserved-word errors"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 262,
@@ -2364,9 +2333,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "compileArrowAsClosure: fix type coercion at closure capture/use boundaries for externref"
-      ],
+      "files": ["compileArrowAsClosure: fix type coercion at closure capture/use boundaries for externref"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 262
@@ -2441,9 +2408,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "compileInstanceOf: extend to map class types to wasm struct types for ref.test"
-      ],
+      "files": ["compileInstanceOf: extend to map class types to wasm struct types for ref.test"],
       "goal": "class-system",
       "cluster": "class-system",
       "compiler_errors": 262
@@ -2502,9 +2467,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compilePropertyAccess: support variable computed property names in object and class contexts"
-      ],
+      "files": ["compilePropertyAccess: support variable computed property names in object and class contexts"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
       "compiler_errors": 262,
@@ -2531,9 +2494,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "compileLogicalAssignment: improve type handling for mismatched LHS/RHS types"
-      ],
+      "files": ["compileLogicalAssignment: improve type handling for mismatched LHS/RHS types"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 262
@@ -2585,9 +2546,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "compileSwitchStatement: add type coercion for mixed-type case clause comparisons"
-      ],
+      "files": ["compileSwitchStatement: add type coercion for mixed-type case clause comparisons"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 262
@@ -2600,9 +2559,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "compileLabeledStatement: support labels on block statements and labeled function declarations"
-      ],
+      "files": ["compileLabeledStatement: support labels on block statements and labeled function declarations"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 262
@@ -2628,9 +2585,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "compileCallExpression: fix Object.keys/values/entries for complex object types"
-      ],
+      "files": ["compileCallExpression: fix Object.keys/values/entries for complex object types"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 262
@@ -3077,9 +3032,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compilePropertyAccess: add Function.name property handling for function-typed values"
-      ],
+      "files": ["compilePropertyAccess: add Function.name property handling for function-typed values"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 380
@@ -3105,9 +3058,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "coerceType: add i64-to-externref conversion path (f64.convert_i64_s + __box_number)"
-      ],
+      "files": ["coerceType: add i64-to-externref conversion path (f64.convert_i64_s + __box_number)"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 170
@@ -3179,9 +3130,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES: add computed-property-name-in-class diagnostic code to suppression set"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES: add computed-property-name-in-class diagnostic code to suppression set"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 57
@@ -3344,9 +3293,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "diagnostic suppression: suppress codes 2540, 2803, 2806, 18030, 2729, 18014 for private fields"
-      ],
+      "files": ["diagnostic suppression: suppress codes 2540, 2803, 2806, 18030, 2729, 18014 for private fields"],
       "goal": "class-system",
       "cluster": "class-system",
       "compiler_errors": 16
@@ -3429,9 +3376,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ],
+      "files": ["src/codegen/expressions.ts"],
       "goal": "core-semantics",
       "cluster": "core-semantics"
     },
@@ -3505,9 +3450,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES: add computed-property-name-literal-type diagnostic code to suppression set"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES: add computed-property-name-literal-type diagnostic code to suppression set"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 50
@@ -3569,9 +3512,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES: add setter-return-value diagnostic code to suppression set"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES: add setter-return-value diagnostic code to suppression set"],
       "goal": "class-system",
       "cluster": "class-system",
       "compiler_errors": 20
@@ -3584,9 +3525,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES: add strict-mode reserved-word diagnostic code 1212"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES: add strict-mode reserved-word diagnostic code 1212"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 30
@@ -3599,9 +3538,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES: add codes 2318, 2468, 2583, 2585, 2693, 2697, 2705, 1238-1241"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES: add codes 2318, 2468, 2583, 2585, 2693, 2697, 2705, 1238-1241"],
       "goal": "async-model",
       "cluster": "async-model",
       "compiler_errors": 262
@@ -3666,9 +3603,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES: add comma-operator-unused diagnostic code to suppression set"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES: add comma-operator-unused diagnostic code to suppression set"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 50
@@ -3681,9 +3616,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES: add computed-property-name-type diagnostic code to suppression set"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES: add computed-property-name-type diagnostic code to suppression set"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
       "compiler_errors": 20
@@ -3874,10 +3807,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "241",
-        "267"
-      ],
+      "depends_on": ["241", "267"],
       "files": [
         "compileForStatement: support yield inside for-loop bodies in generators",
         "compileWhileStatement: support yield inside while-loop bodies in generators",
@@ -3913,9 +3843,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileForInStatement: support destructuring patterns and assignment expressions as loop variable"
-      ],
+      "files": ["compileForInStatement: support destructuring patterns and assignment expressions as loop variable"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 10
@@ -3928,9 +3856,7 @@
       "raw_status": "done",
       "sprint": "5",
       "depends_on": [],
-      "files": [
-        "compileInstanceOf: support class expressions and call expressions as right operand"
-      ],
+      "files": ["compileInstanceOf: support class expressions and call expressions as right operand"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 10
@@ -3943,9 +3869,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileBinaryExpression (InKeyword): support variable-name keys and externref dynamic dispatch"
-      ],
+      "files": ["compileBinaryExpression (InKeyword): support variable-name keys and externref dynamic dispatch"],
       "goal": "maintainability",
       "cluster": "maintainability",
       "compiler_errors": 8
@@ -3958,9 +3882,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "collectPrimitiveMethodImports: register number_toString for any-typed += operands"
-      ],
+      "files": ["collectPrimitiveMethodImports: register number_toString for any-typed += operands"],
       "goal": "core-semantics",
       "cluster": "core-semantics"
     },
@@ -4001,9 +3923,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileBinaryExpression: add BigInt-vs-String coercion for comparison operators via parseFloat"
-      ],
+      "files": ["compileBinaryExpression: add BigInt-vs-String coercion for comparison operators via parseFloat"],
       "goal": "compilable",
       "cluster": "compilable"
     },
@@ -4076,10 +3996,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "138",
-        "139"
-      ],
+      "depends_on": ["138", "139"],
       "files": [
         "coerceType: complete valueOf/toString/Symbol.toPrimitive coercion chain for all arithmetic and template literal contexts"
       ],
@@ -4108,9 +4025,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileMathCall: handle zero-argument Math.min (return Infinity) and Math.max (return -Infinity)"
-      ],
+      "files": ["compileMathCall: handle zero-argument Math.min (return Infinity) and Math.max (return -Infinity)"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods"
     },
@@ -4122,9 +4037,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "wrapTest: fix undefined assert stripping for nested calls"
-      ],
+      "files": ["wrapTest: fix undefined assert stripping for nested calls"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -4153,9 +4066,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileElementAccess: fix evaluation order or edge case in computed property name runtime path"
-      ],
+      "files": ["compileElementAccess: fix evaluation order or edge case in computed property name runtime path"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -4231,9 +4142,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "shouldSkip: remove or narrow overly conservative skip filters"
-      ],
+      "files": ["shouldSkip: remove or narrow overly conservative skip filters"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
     },
@@ -4245,9 +4154,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "TEST_CATEGORIES: add String.prototype method categories (padStart, padEnd, repeat, etc.)"
-      ],
+      "files": ["TEST_CATEGORIES: add String.prototype method categories (padStart, padEnd, repeat, etc.)"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 2
@@ -4260,9 +4167,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "TEST_CATEGORIES: add Number method categories (isInteger, isFinite, isNaN)"
-      ],
+      "files": ["TEST_CATEGORIES: add Number method categories (isInteger, isFinite, isNaN)"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods"
     },
@@ -4288,9 +4193,7 @@
       "raw_status": "done",
       "sprint": "6",
       "depends_on": [],
-      "files": [
-        "timing instrumentation for major compilation phases"
-      ],
+      "files": ["timing instrumentation for major compilation phases"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -4301,13 +4204,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "277",
-        "178"
-      ],
-      "files": [
-        "validateTypeConsistency() — pre-validation pass checking emitted instruction types"
-      ],
+      "depends_on": ["277", "178"],
+      "files": ["validateTypeConsistency() — pre-validation pass checking emitted instruction types"],
       "goal": "crash-free",
       "cluster": "crash-free"
     },
@@ -4319,9 +4217,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileElementAccess: add bounds checking for array element access"
-      ],
+      "files": ["compileElementAccess: add bounds checking for array element access"],
       "goal": "crash-free",
       "cluster": "crash-free"
     },
@@ -4349,10 +4245,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "317",
-        "320"
-      ],
+      "depends_on": ["317", "320"],
       "files": [
         "call-site argument type collection for module-local functions",
         "inferParamTypes() — unify argument types across call sites",
@@ -4385,10 +4278,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "6",
-      "depends_on": [
-        "317",
-        "321"
-      ],
+      "depends_on": ["317", "321"],
       "files": [
         "usesAnyType flag on CodegenContext",
         "per-string-operation import tracking (concat, length, equals, etc.)",
@@ -4426,9 +4316,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "5",
-      "depends_on": [
-        "321"
-      ],
+      "depends_on": ["321"],
       "files": [
         "Wasm polynomial approximation functions for sin, cos, exp, log, atan",
         "Derived Math method implementations (tan, asin, acos, atan2, etc.)",
@@ -4463,9 +4351,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "operator implementations: fix runtime correctness for arithmetic, comparison, and coercion"
-      ],
+      "files": ["operator implementations: fix runtime correctness for arithmetic, comparison, and coercion"],
       "goal": "compilable",
       "cluster": "compilable",
       "test262_fail": 396
@@ -4510,9 +4396,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "ToPrimitive: implement valueOf/toString dispatch for object operands"
-      ],
+      "files": ["ToPrimitive: implement valueOf/toString dispatch for object operands"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_fail": 17
@@ -4541,9 +4425,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Object builtins: stub or implement setPrototypeOf"
-      ],
+      "files": ["Object builtins: stub or implement setPrototypeOf"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_ce": 16
@@ -4572,9 +4454,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "wrapTest: detect sloppy-mode tests and avoid module wrapping"
-      ],
+      "files": ["wrapTest: detect sloppy-mode tests and avoid module wrapping"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "test262_ce": 27
@@ -4587,9 +4467,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "skipTest: filter out FIXTURE files from test execution"
-      ],
+      "files": ["skipTest: filter out FIXTURE files from test execution"],
       "goal": "standalone-mode",
       "cluster": "standalone-mode",
       "test262_ce": 17
@@ -4647,9 +4525,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compileForOfDestructuring: handle primitive and non-struct iterated values"
-      ],
+      "files": ["compileForOfDestructuring: handle primitive and non-struct iterated values"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_ce": 11
@@ -4678,9 +4554,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "handleNegativeTest() — check if compile/runtime error matches expected negative outcome"
-      ],
+      "files": ["handleNegativeTest() — check if compile/runtime error matches expected negative outcome"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "test262_skip": 3317,
@@ -4741,12 +4615,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "7",
-      "depends_on": [
-        "121"
-      ],
-      "files": [
-        "compileMethodCallApply() — .call/.apply on array prototype methods"
-      ],
+      "depends_on": ["121"],
+      "files": ["compileMethodCallApply() — .call/.apply on array prototype methods"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
       "test262_skip": 773
@@ -4803,9 +4673,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "7",
-      "depends_on": [
-        "147"
-      ],
+      "depends_on": ["147"],
       "files": [
         "compileFunctionExpression: add .name to all function forms",
         "emitFunction: store name in function struct"
@@ -4879,9 +4747,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compileDeleteExpression() — delete operator on struct fields"
-      ],
+      "files": ["compileDeleteExpression() — delete operator on struct fields"],
       "goal": "error-model",
       "cluster": "error-model",
       "test262_skip": 264
@@ -4893,12 +4759,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "153"
-      ],
-      "files": [
-        "compileForOfStatement: integrate with generator/iterator protocol"
-      ],
+      "depends_on": ["153"],
+      "files": ["compileForOfStatement: integrate with generator/iterator protocol"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol",
       "test262_skip": 152
@@ -4922,12 +4784,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "7",
-      "depends_on": [
-        "201"
-      ],
-      "files": [
-        "compileObjectKeys: handle all object types"
-      ],
+      "depends_on": ["201"],
+      "files": ["compileObjectKeys: handle all object types"],
       "goal": "platform",
       "cluster": "platform",
       "test262_skip": 74
@@ -4940,9 +4798,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "removed closure-as-value skip filter"
-      ],
+      "files": ["removed closure-as-value skip filter"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_skip": 106
@@ -4955,9 +4811,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileTaggedTemplate: support call expression as tag"
-      ],
+      "files": ["compileTaggedTemplate: support call expression as tag"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "test262_skip": 17
@@ -5040,12 +4894,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "121"
-      ],
-      "files": [
-        "compileCallApply — handle arrow function receivers"
-      ],
+      "depends_on": ["121"],
+      "files": ["compileCallApply — handle arrow function receivers"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "test262_skip": 15
@@ -5069,12 +4919,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "343"
-      ],
-      "files": [
-        "compileObjectCreate() — Object.create implementation"
-      ],
+      "depends_on": ["343"],
+      "files": ["compileObjectCreate() — Object.create implementation"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_skip": 14
@@ -5087,9 +4933,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compileStringConcat — fix variable concatenation in comparison contexts"
-      ],
+      "files": ["compileStringConcat — fix variable concatenation in comparison contexts"],
       "goal": "compilable",
       "cluster": "compilable",
       "test262_skip": 14
@@ -5102,9 +4946,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compileThisKeyword — handle global scope and arrow function this"
-      ],
+      "files": ["compileThisKeyword — handle global scope and arrow function this"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_skip": 13
@@ -5117,9 +4959,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compileGlobalThis — globalThis built-in support"
-      ],
+      "files": ["compileGlobalThis — globalThis built-in support"],
       "goal": "standalone-mode",
       "cluster": "standalone-mode",
       "test262_skip": 10
@@ -5145,9 +4985,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileImportMeta — import.meta expression support"
-      ],
+      "files": ["compileImportMeta — import.meta expression support"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "test262_skip": 10
@@ -5160,9 +4998,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Removed String.prototype.matchAll from SKIP_FEATURES"
-      ],
+      "files": ["Removed String.prototype.matchAll from SKIP_FEATURES"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol",
       "test262_skip": 7
@@ -5200,9 +5036,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileSuperPropertyAccess — super.prop and super[expr] support"
-      ],
+      "files": ["compileSuperPropertyAccess — super.prop and super[expr] support"],
       "goal": "compilable",
       "cluster": "compilable",
       "test262_ce": 5
@@ -5228,10 +5062,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compileGetAccessor — ensure return value",
-        "compileSetAccessor — handle parameter defaults"
-      ],
+      "files": ["compileGetAccessor — ensure return value", "compileSetAccessor — handle parameter defaults"],
       "goal": "class-system",
       "cluster": "class-system",
       "test262_ce": 10
@@ -5244,9 +5075,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compilePostfixUnary/compilePrefixUnary — handle property and element access"
-      ],
+      "files": ["compilePostfixUnary/compilePrefixUnary — handle property and element access"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "test262_ce": 12
@@ -5275,10 +5104,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "resolveVariable — handle test harness variables",
-        "test harness scope setup"
-      ],
+      "files": ["resolveVariable — handle test harness variables", "test harness scope setup"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_ce": 25
@@ -5291,9 +5117,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "DOWNGRADE_DIAG_CODES — add nullish coalescing false positive codes"
-      ],
+      "files": ["DOWNGRADE_DIAG_CODES — add nullish coalescing false positive codes"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_ce": 4
@@ -5306,9 +5130,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compileCallExpression — handle spread arguments in super and function calls"
-      ],
+      "files": ["compileCallExpression — handle spread arguments in super and function calls"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol",
       "test262_ce": 4
@@ -5321,10 +5143,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compiler options — handle label and let declaration strictness",
-        "script vs module mode detection"
-      ],
+      "files": ["compiler options — handle label and let declaration strictness", "script vs module mode detection"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "test262_ce": 8
@@ -5337,9 +5156,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compiler options — update target/lib to support newer string methods"
-      ],
+      "files": ["compiler options — update target/lib to support newer string methods"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "test262_ce": 5
@@ -5352,9 +5169,7 @@
       "raw_status": "done",
       "sprint": "7",
       "depends_on": [],
-      "files": [
-        "compileArrayMethodCall — relax argument count validation"
-      ],
+      "files": ["compileArrayMethodCall — relax argument count validation"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
       "test262_ce": 5
@@ -5382,9 +5197,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileCallExpression — handle calls in destructuring contexts, class bodies, generators"
-      ],
+      "files": ["compileCallExpression — handle calls in destructuring contexts, class bodies, generators"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 2356,
@@ -5398,9 +5211,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileElementAccess — handle externref base with __extern_get import"
-      ],
+      "files": ["compileElementAccess — handle externref base with __extern_get import"],
       "goal": "platform",
       "cluster": "platform",
       "compiler_errors": 262,
@@ -5414,9 +5225,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileElementAccess — handle struct-typed class instances with bracket notation"
-      ],
+      "files": ["compileElementAccess — handle struct-typed class instances with bracket notation"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 262,
@@ -5430,9 +5239,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileElementAssignment — handle non-array target types"
-      ],
+      "files": ["compileElementAssignment — handle non-array target types"],
       "goal": "platform",
       "cluster": "platform",
       "compiler_errors": 262,
@@ -5459,9 +5266,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compilePropertyAccess — handle unknown fields on class structs gracefully"
-      ],
+      "files": ["compilePropertyAccess — handle unknown fields on class structs gracefully"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 262,
@@ -5474,12 +5279,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "388"
-      ],
-      "files": [
-        "compileCompoundElementAssignment — handle +=, -=, etc. on externref element access"
-      ],
+      "depends_on": ["388"],
+      "files": ["compileCompoundElementAssignment — handle +=, -=, etc. on externref element access"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 262,
@@ -5526,12 +5327,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "394"
-      ],
-      "files": [
-        "compileDestructuringPattern — null guard before struct access"
-      ],
+      "depends_on": ["394"],
+      "files": ["compileDestructuringPattern — null guard before struct access"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "test262_fail": 118
@@ -5578,9 +5375,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileCallExpression — prototype method return values"
-      ],
+      "files": ["compileCallExpression — prototype method return values"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "test262_fail": 72
@@ -5644,9 +5439,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileMetaProperty — handle or skip import.source"
-      ],
+      "files": ["compileMetaProperty — handle or skip import.source"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 86,
@@ -5660,9 +5453,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileAssignment — handle compound assignment (+=, -=, etc.) on property access with unknown type"
-      ],
+      "files": ["compileAssignment — handle compound assignment (+=, -=, etc.) on property access with unknown type"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 88,
@@ -5706,9 +5497,7 @@
       "raw_status": "done",
       "sprint": "8",
       "depends_on": [],
-      "files": [
-        "compileProgram — set correct module flag for test262 input"
-      ],
+      "files": ["compileProgram — set correct module flag for test262 input"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 54,
@@ -5802,9 +5591,7 @@
       "raw_status": "done",
       "sprint": "9",
       "depends_on": [],
-      "files": [
-        "parameter validation -- self-reference and forward-reference checks"
-      ],
+      "files": ["parameter validation -- self-reference and forward-reference checks"],
       "goal": "error-model",
       "cluster": "error-model",
       "test262_ce": 59
@@ -5817,10 +5604,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileExpression -- SuperKeyword case",
-        "compilePropertyAccess -- super.prop and super[expr]"
-      ],
+      "files": ["compileExpression -- SuperKeyword case", "compilePropertyAccess -- super.prop and super[expr]"],
       "goal": "standalone-mode",
       "cluster": "standalone-mode",
       "test262_ce": 11
@@ -5833,9 +5617,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileLogicalAssignment -- struct type resolution for property targets"
-      ],
+      "files": ["compileLogicalAssignment -- struct type resolution for property targets"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "test262_ce": 14
@@ -5848,9 +5630,7 @@
       "raw_status": "done",
       "sprint": "9",
       "depends_on": [],
-      "files": [
-        "compileCompoundAssignment -- element access target handling"
-      ],
+      "files": ["compileCompoundAssignment -- element access target handling"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
       "test262_ce": 11
@@ -5910,9 +5690,7 @@
       "raw_status": "done",
       "sprint": "9",
       "depends_on": [],
-      "files": [
-        "compileDestructuringAssignment — support iterable protocol for array patterns"
-      ],
+      "files": ["compileDestructuringAssignment — support iterable protocol for array patterns"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 34,
@@ -5926,9 +5704,7 @@
       "raw_status": "done",
       "sprint": "9",
       "depends_on": [],
-      "files": [
-        "array method compilation — reduce/reduceRight support"
-      ],
+      "files": ["array method compilation — reduce/reduceRight support"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
       "compiler_errors": 23
@@ -5940,9 +5716,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "287"
-      ],
+      "depends_on": ["287"],
       "files": [
         "generator codegen — return type and yield type alignment",
         "compileTupleLiteral — pad missing tuple fields with defaults",
@@ -5961,9 +5735,7 @@
       "raw_status": "done",
       "sprint": "9",
       "depends_on": [],
-      "files": [
-        "registerClass — __tag field guard for built-in subclasses"
-      ],
+      "files": ["registerClass — __tag field guard for built-in subclasses"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 36
@@ -5976,9 +5748,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileAssignment — logical assignment with struct property targets"
-      ],
+      "files": ["compileAssignment — logical assignment with struct property targets"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "compiler_errors": 14
@@ -6007,9 +5777,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileAssignment — compound assignment on element access with non-ref types"
-      ],
+      "files": ["compileAssignment — compound assignment on element access with non-ref types"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "compiler_errors": 11
@@ -6022,9 +5790,7 @@
       "raw_status": "done",
       "sprint": "9",
       "depends_on": [],
-      "files": [
-        "compileSuperExpression — additional super usage patterns"
-      ],
+      "files": ["compileSuperExpression — additional super usage patterns"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 11
@@ -6049,9 +5815,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "fixupModuleGlobalIndices — traverse catches/catchAll, shift savedBodies and index maps"
-      ],
+      "files": ["fixupModuleGlobalIndices — traverse catches/catchAll, shift savedBodies and index maps"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 37
@@ -6064,9 +5828,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileBinaryExpression — handle string operands for -, *, /, %, &, |, ^, <<, >>"
-      ],
+      "files": ["compileBinaryExpression — handle string operands for -, *, /, %, &, |, ^, <<, >>"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 36
@@ -6079,9 +5841,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "compileElementAccess — null-guard if block type must match actual inner result type"
-      ],
+      "files": ["compileElementAccess — null-guard if block type must match actual inner result type"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 27
@@ -6094,9 +5854,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "compileDeclarations — guard preamble instruction sharing caused double-remap"
-      ],
+      "files": ["compileDeclarations — guard preamble instruction sharing caused double-remap"],
       "goal": "error-model",
       "cluster": "error-model",
       "compiler_errors": 42
@@ -6172,9 +5930,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "module resolution -- handle empty_FIXTURE.js import references"
-      ],
+      "files": ["module resolution -- handle empty_FIXTURE.js import references"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "compiler_errors": 38,
@@ -6188,9 +5944,7 @@
       "raw_status": "done",
       "sprint": "9",
       "depends_on": [],
-      "files": [
-        "compileExpressionInner -- null safety for undefined property access"
-      ],
+      "files": ["compileExpressionInner -- null safety for undefined property access"],
       "goal": "error-model",
       "cluster": "error-model",
       "compiler_errors": 20,
@@ -6203,9 +5957,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "10",
-      "depends_on": [
-        "412"
-      ],
+      "depends_on": ["412"],
       "files": [
         "compileGeneratorExpression -- generator result type must include next/return/throw",
         "generator struct type definition -- add iterator protocol methods"
@@ -6257,9 +6009,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "ref.cast emission -- type narrowing produces invalid casts at runtime"
-      ],
+      "files": ["ref.cast emission -- type narrowing produces invalid casts at runtime"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "test262_fail": 6
@@ -6272,9 +6022,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "variable resolution -- undeclared variable access should throw ReferenceError"
-      ],
+      "files": ["variable resolution -- undeclared variable access should throw ReferenceError"],
       "goal": "error-model",
       "cluster": "error-model",
       "test262_fail": 6
@@ -6306,9 +6054,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileCallExpression -- argument count must match function signature"
-      ],
+      "files": ["compileCallExpression -- argument count must match function signature"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 72,
@@ -6322,9 +6068,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileCallExpression -- call_ref signature must match function reference type"
-      ],
+      "files": ["compileCallExpression -- call_ref signature must match function reference type"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 56,
@@ -6374,9 +6118,7 @@
       "raw_status": "done",
       "sprint": "10",
       "depends_on": [],
-      "files": [
-        "compileCallExpression -- call_ref requires non-null function reference"
-      ],
+      "files": ["compileCallExpression -- call_ref requires non-null function reference"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 15,
@@ -6437,9 +6179,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "10",
-      "depends_on": [
-        "450"
-      ],
+      "depends_on": ["450"],
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
@@ -6594,9 +6334,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "allocLocal -- reuse locals of the same type when previous use is dead"
-      ],
+      "files": ["allocLocal -- reuse locals of the same type when previous use is dead"],
       "goal": "core-semantics",
       "cluster": "core-semantics"
     },
@@ -6608,9 +6346,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileBinaryExpression — fold constant operands at compile time"
-      ],
+      "files": ["compileBinaryExpression — fold constant operands at compile time"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods"
     },
@@ -6634,9 +6370,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "10",
-      "depends_on": [
-        "455"
-      ],
+      "depends_on": ["455"],
       "files": [],
       "goal": "platform",
       "cluster": "platform"
@@ -6797,12 +6531,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "481"
-      ],
-      "files": [
-        "@@toPrimitive dispatch in coerceType — ref→f64 and ref→externref paths"
-      ],
+      "depends_on": ["481"],
+      "files": ["@@toPrimitive dispatch in coerceType — ref→f64 and ref→externref paths"],
       "goal": "symbol-protocol",
       "cluster": "symbol-protocol",
       "test262_skip": 113
@@ -6814,12 +6544,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "471"
-      ],
-      "files": [
-        "narrowed Symbol skip filter"
-      ],
+      "depends_on": ["471"],
+      "files": ["narrowed Symbol skip filter"],
       "goal": "symbol-protocol",
       "cluster": "symbol-protocol",
       "test262_skip": 207
@@ -6831,12 +6557,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "481"
-      ],
-      "files": [
-        "compileSymbolSpecies — Symbol.species for subclass constructors"
-      ],
+      "depends_on": ["481"],
+      "files": ["compileSymbolSpecies — Symbol.species for subclass constructors"],
       "goal": "async-model",
       "cluster": "async-model",
       "test262_skip": 52
@@ -6848,12 +6570,8 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "481"
-      ],
-      "files": [
-        "compileWellKnownSymbol — Symbol.match/replace/search/split for RegExp protocol"
-      ],
+      "depends_on": ["481"],
+      "files": ["compileWellKnownSymbol — Symbol.match/replace/search/split for RegExp protocol"],
       "goal": "symbol-protocol",
       "cluster": "symbol-protocol",
       "test262_skip": 87
@@ -6865,9 +6583,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "481"
-      ],
+      "depends_on": ["481"],
       "files": [
         "compileSymbolToStringTag — Symbol.toStringTag as struct field",
         "compileSymbolHasInstance — Symbol.hasInstance as static method"
@@ -6883,10 +6599,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "481",
-        "483"
-      ],
+      "depends_on": ["481", "483"],
       "files": [
         "compileSymbolPropertyAccess — symbol-keyed property get/set via __symbol_props map",
         "addSymbolPropsField — conditionally add Map<i32, externref> field to structs"
@@ -6918,9 +6631,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileMethodCall — general .call()/.apply() on function references"
-      ],
+      "files": ["compileMethodCall — general .call()/.apply() on function references"],
       "goal": "compilable",
       "cluster": "compilable",
       "test262_skip": 822
@@ -6933,9 +6644,7 @@
       "raw_status": "done",
       "sprint": "14",
       "depends_on": [],
-      "files": [
-        "compileFunctionName — store function/class name as string struct field"
-      ],
+      "files": ["compileFunctionName — store function/class name as string struct field"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_skip": 576
@@ -6948,9 +6657,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "remove stale null/undefined arithmetic skip filter"
-      ],
+      "files": ["remove stale null/undefined arithmetic skip filter"],
       "goal": "maintainability",
       "cluster": "maintainability",
       "test262_skip": 480
@@ -6963,9 +6670,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileDeleteExpression — set field to undefined sentinel instead of removing"
-      ],
+      "files": ["compileDeleteExpression — set field to undefined sentinel instead of removing"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_skip": 288
@@ -6978,9 +6683,7 @@
       "raw_status": "done",
       "sprint": "11",
       "depends_on": [],
-      "files": [
-        "string literal stripping in prototype chain skip filter"
-      ],
+      "files": ["string literal stripping in prototype chain skip filter"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_skip": 502
@@ -6993,9 +6696,7 @@
       "raw_status": "done",
       "sprint": "22",
       "depends_on": [],
-      "files": [
-        "remove/narrow stale skip filters for Object.keys, new Object, for-of destructuring, globalThis"
-      ],
+      "files": ["remove/narrow stale skip filters for Object.keys, new Object, for-of destructuring, globalThis"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_skip": 194
@@ -7007,12 +6708,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "488"
-      ],
-      "files": [
-        "compileArrayLikeObject — object with numeric keys and .length as array"
-      ],
+      "depends_on": ["488"],
+      "files": ["compileArrayLikeObject — object with numeric keys and .length as array"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol",
       "test262_skip": 77
@@ -7057,9 +6754,7 @@
       "raw_status": "done",
       "sprint": "12",
       "depends_on": [],
-      "files": [
-        "compileProxyConstruction — type-aware proxy compilation with trap inlining"
-      ],
+      "files": ["compileProxyConstruction — type-aware proxy compilation with trap inlining"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_skip": 70
@@ -7071,12 +6766,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "488"
-      ],
-      "files": [
-        "compileWithStatement — static dispatch via AST identifier enumeration"
-      ],
+      "depends_on": ["488"],
+      "files": ["compileWithStatement — static dispatch via AST identifier enumeration"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_skip": 94
@@ -7113,12 +6804,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "471"
-      ],
-      "files": [
-        "shouldSkip — narrow Symbol filter to only skip Symbol-as-property-key"
-      ],
+      "depends_on": ["471"],
+      "files": ["shouldSkip — narrow Symbol filter to only skip Symbol-as-property-key"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol"
     },
@@ -7144,9 +6831,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "files": [
         "auto-generate feature coverage + benchmark tables from test262-report.json and latest.json",
         "feature table replaced with auto-generated version between marker comments"
@@ -7161,9 +6846,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "files": [
         "/api/test262-results endpoint — serves test262-report.json",
         "/api/test262-file-results?category=X endpoint — serves filtered JSONL",
@@ -7180,9 +6863,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "delete file — redundant with report.html"
-      ],
+      "files": ["delete file — redundant with report.html"],
       "goal": "developer-experience",
       "cluster": "developer-experience"
     },
@@ -7194,10 +6875,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "benchmark results — Wasm vs JS comparison",
-        "combined benchmark runner script"
-      ],
+      "files": ["benchmark results — Wasm vs JS comparison", "combined benchmark runner script"],
       "goal": "standalone-mode",
       "cluster": "standalone-mode"
     },
@@ -7225,9 +6903,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "501"
-      ],
+      "depends_on": ["501"],
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening",
@@ -7322,9 +6998,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "class struct construction — emit correct number of struct.new arguments"
-      ],
+      "files": ["class struct construction — emit correct number of struct.new arguments"],
       "goal": "property-model",
       "cluster": "property-model",
       "compiler_errors": 1781,
@@ -7338,9 +7012,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileCallExpression — handle class method calls, generator calls, string built-in calls"
-      ],
+      "files": ["compileCallExpression — handle class method calls, generator calls, string built-in calls"],
       "goal": "maintainability",
       "cluster": "maintainability",
       "test262_ce": 2164
@@ -7370,9 +7042,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileForOfStatement or compileDestructuringPattern — targetLocal reference error"
-      ],
+      "files": ["compileForOfStatement or compileDestructuringPattern — targetLocal reference error"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 66,
@@ -7400,10 +7070,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "TOLERATED_SYNTAX_CODES",
-        "DOWNGRADE_DIAG_CODES"
-      ],
+      "files": ["TOLERATED_SYNTAX_CODES", "DOWNGRADE_DIAG_CODES"],
       "goal": "generator-model",
       "cluster": "generator-model",
       "compiler_errors": 53,
@@ -7417,9 +7084,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Object.keys — accept non-struct arguments (externref, any)"
-      ],
+      "files": ["Object.keys — accept non-struct arguments (externref, any)"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "compiler_errors": 43,
@@ -7433,9 +7098,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileInternalError — handle undefined .text and missing expression types"
-      ],
+      "files": ["compileInternalError — handle undefined .text and missing expression types"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "compiler_errors": 59,
@@ -7449,9 +7112,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "type mapping — Function type should not require apply/call/bind properties"
-      ],
+      "files": ["type mapping — Function type should not require apply/call/bind properties"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "compiler_errors": 40,
@@ -7465,9 +7126,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "type coercion — fix struct ref cast failures at runtime"
-      ],
+      "files": ["type coercion — fix struct ref cast failures at runtime"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "test262_fail": 683
@@ -7498,9 +7157,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "test262 script: change 'node' to 'tsx' for TypeScript import resolution"
-      ],
+      "files": ["test262 script: change 'node' to 'tsx' for TypeScript import resolution"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -7561,9 +7218,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "struct.get — emit ref.as_non_null or null check before access on nullable refs"
-      ],
+      "files": ["struct.get — emit ref.as_non_null or null check before access on nullable refs"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 125,
@@ -7589,9 +7244,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "suppress TS strict-mode delete diagnostic in allowJs mode"
-      ],
+      "files": ["suppress TS strict-mode delete diagnostic in allowJs mode"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 20,
@@ -7605,9 +7258,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileSpreadExpression — handle spread in non-array/non-call positions"
-      ],
+      "files": ["compileSpreadExpression — handle spread in non-array/non-call positions"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "compiler_errors": 16,
@@ -7621,9 +7272,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "suppress various TypeScript diagnostics in allowJs mode"
-      ],
+      "files": ["suppress various TypeScript diagnostics in allowJs mode"],
       "goal": "async-model",
       "cluster": "async-model",
       "compiler_errors": 62,
@@ -7671,9 +7320,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "remove/narrow async flag skip — many async tests may compile now"
-      ],
+      "files": ["remove/narrow async flag skip — many async tests may compile now"],
       "goal": "async-model",
       "cluster": "async-model",
       "test262_skip": 1311
@@ -7698,9 +7345,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "propertyHelper.js shim — stub verifyProperty, verifyNotWritable etc."
-      ],
+      "files": ["propertyHelper.js shim — stub verifyProperty, verifyNotWritable etc."],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_skip": 1294
@@ -7873,9 +7518,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "string arithmetic coercion — check operand type before calling parseFloat/unbox"
-      ],
+      "files": ["string arithmetic coercion — check operand type before calling parseFloat/unbox"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 10,
@@ -7889,9 +7532,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "BigInt + Number mixed arithmetic — emit TypeError or handle gracefully"
-      ],
+      "files": ["BigInt + Number mixed arithmetic — emit TypeError or handle gracefully"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "compiler_errors": 2,
@@ -7905,9 +7546,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "closure captured variable type — local.tee returns ref instead of f64"
-      ],
+      "files": ["closure captured variable type — local.tee returns ref instead of f64"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 1,
@@ -7991,9 +7630,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "emit ref.as_non_null or ref.cast before struct.get on nullable refs"
-      ],
+      "files": ["emit ref.as_non_null or ref.cast before struct.get on nullable refs"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 860,
@@ -8024,9 +7661,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "dynamic field addition must also patch existing struct.new instructions"
-      ],
+      "files": ["dynamic field addition must also patch existing struct.new instructions"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 231,
@@ -8057,9 +7692,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "class compilation — ensure struct refs are non-null before struct.get"
-      ],
+      "files": ["class compilation — ensure struct refs are non-null before struct.get"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "compiler_errors": 751,
@@ -8086,9 +7719,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileClassDeclaration — fix return value in class statement tests"
-      ],
+      "files": ["compileClassDeclaration — fix return value in class statement tests"],
       "goal": "class-system",
       "cluster": "class-system",
       "test262_fail": 651
@@ -8113,9 +7744,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "create temporary worktree for test run, clean up on completion"
-      ],
+      "files": ["create temporary worktree for test run, clean up on completion"],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
     },
@@ -8139,9 +7768,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "struct.get on ref.null — Wasm:test function accesses struct before initialization"
-      ],
+      "files": ["struct.get on ref.null — Wasm:test function accesses struct before initialization"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 177,
@@ -8155,9 +7782,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "class method compilation — C_method local.set type mismatch with struct.new"
-      ],
+      "files": ["class method compilation — C_method local.set type mismatch with struct.new"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 84,
@@ -8189,9 +7814,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "null deref at runtime — struct.get on uninitialized class instances"
-      ],
+      "files": ["null deref at runtime — struct.get on uninitialized class instances"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "test262_fail": 361
@@ -8204,9 +7827,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "ref.cast fails on mismatched closure/struct types at runtime"
-      ],
+      "files": ["ref.cast fails on mismatched closure/struct types at runtime"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "test262_fail": 70
@@ -8255,9 +7876,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "try/catch/finally — compile finally body once, clone into each control-flow path"
-      ],
+      "files": ["try/catch/finally — compile finally body once, clone into each control-flow path"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness"
     },
@@ -8269,9 +7888,7 @@
       "raw_status": "done",
       "sprint": "21",
       "depends_on": [],
-      "files": [
-        "defaultValueInstrs — fix ref type default (remove ref.as_non_null on ref.null)"
-      ],
+      "files": ["defaultValueInstrs — fix ref type default (remove ref.as_non_null on ref.null)"],
       "goal": "crash-free",
       "cluster": "crash-free"
     },
@@ -8283,9 +7900,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileForOfString — add generatorReturnDepth update"
-      ],
+      "files": ["compileForOfString — add generatorReturnDepth update"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol"
     },
@@ -8296,13 +7911,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "586",
-        "587"
-      ],
-      "files": [
-        "split into binary-ops.ts, call-expression.ts, array-methods.ts, type-coercion.ts"
-      ],
+      "depends_on": ["586", "587"],
+      "files": ["split into binary-ops.ts, call-expression.ts, array-methods.ts, type-coercion.ts"],
       "goal": "core-semantics",
       "cluster": "core-semantics"
     },
@@ -8369,9 +7979,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "skip ref.cast when TypeScript type statically guarantees the struct type"
-      ],
+      "files": ["skip ref.cast when TypeScript type statically guarantees the struct type"],
       "goal": "compilable",
       "cluster": "compilable"
     },
@@ -8383,9 +7991,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "type-specialized arithmetic for known-type operands"
-      ],
+      "files": ["type-specialized arithmetic for known-type operands"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods"
     },
@@ -8430,10 +8036,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "598",
-        "599"
-      ],
+      "depends_on": ["598", "599"],
       "files": [
         "WIT interface generation from TypeScript type declarations",
         "Wire WIT generation into compile pipeline",
@@ -8463,9 +8066,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "emit return_call / return_call_ref for tail-recursive patterns"
-      ],
+      "files": ["emit return_call / return_call_ref for tail-recursive patterns"],
       "goal": "compilable",
       "cluster": "compilable"
     },
@@ -8477,9 +8078,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "remove/update 18+ stale skip filters for features already implemented"
-      ],
+      "files": ["remove/update 18+ stale skip filters for features already implemented"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_skip": 5100
@@ -8492,9 +8091,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "narrow async flag skip — many async tests compile with current async/await support"
-      ],
+      "files": ["narrow async flag skip — many async tests compile with current async/await support"],
       "goal": "async-model",
       "cluster": "async-model",
       "test262_skip": 1311
@@ -8518,9 +8115,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "1113"
-      ],
+      "depends_on": ["1113"],
       "files": [
         "propertyHelper.js shim with real descriptor support",
         "assert.throws harness support",
@@ -8551,9 +8146,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "TypedArray support via WasmGC arrays + linear memory views"
-      ],
+      "files": ["TypedArray support via WasmGC arrays + linear memory views"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
     },
@@ -8565,10 +8158,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "worktree runner crashes before completing all categories",
-        "TEST_CATEGORIES missing some directories"
-      ],
+      "files": ["worktree runner crashes before completing all categories", "TEST_CATEGORIES missing some directories"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -8580,10 +8170,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "add null guard before accessing .kind on AST nodes",
-        "same null guard pattern"
-      ],
+      "files": ["add null guard before accessing .kind on AST nodes", "same null guard pattern"],
       "goal": "error-model",
       "cluster": "error-model",
       "compiler_errors": 2995,
@@ -8597,9 +8184,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Symbol.asyncIterator support as compile-time struct field"
-      ],
+      "files": ["Symbol.asyncIterator support as compile-time struct field"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol",
       "test262_ce": 367
@@ -8612,9 +8197,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "add 'index' property to RegExpMatchArray type"
-      ],
+      "files": ["add 'index' property to RegExpMatchArray type"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
       "compiler_errors": 206,
@@ -8640,9 +8223,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Iterator interface as class instead of interface"
-      ],
+      "files": ["Iterator interface as class instead of interface"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol",
       "compiler_errors": 137,
@@ -8656,9 +8237,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "ensure stack is clean before drop instruction"
-      ],
+      "files": ["ensure stack is clean before drop instruction"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 109,
@@ -8672,9 +8251,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "multiple root causes — hasOwnProperty, assert patterns, wrong coercion"
-      ],
+      "files": ["multiple root causes — hasOwnProperty, assert patterns, wrong coercion"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_fail": 7912
@@ -8700,9 +8277,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "test file path has double test/ prefix"
-      ],
+      "files": ["test file path has double test/ prefix"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "compiler_errors": 559,
@@ -8716,9 +8291,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileCallExpression doesn't handle computed method calls, super.method(), etc."
-      ],
+      "files": ["compileCallExpression doesn't handle computed method calls, super.method(), etc."],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "compiler_errors": 1692,
@@ -8747,12 +8320,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "610"
-      ],
-      "files": [
-        "worker timeout too short for complex tests"
-      ],
+      "depends_on": ["610"],
+      "files": ["worker timeout too short for complex tests"],
       "goal": "generator-model",
       "cluster": "generator-model",
       "test262_fail": 559
@@ -8782,9 +8351,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "local.set type mismatch — value type doesn't match local declaration"
-      ],
+      "files": ["local.set type mismatch — value type doesn't match local declaration"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 552,
@@ -8798,9 +8365,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "call/call_ref argument types don't match function signature"
-      ],
+      "files": ["call/call_ref argument types don't match function signature"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 378,
@@ -8840,9 +8405,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "destructuring patterns in generator methods, async methods, class methods"
-      ],
+      "files": ["destructuring patterns in generator methods, async methods, class methods"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_fail": 2444
@@ -8855,9 +8418,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Temporal API built-in not implemented"
-      ],
+      "files": ["Temporal API built-in not implemented"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "test262_fail": 888
@@ -8870,10 +8431,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "prototype chain lookups not implemented",
-        "no prototype globals for classes"
-      ],
+      "files": ["prototype chain lookups not implemented", "no prototype globals for classes"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_fail": 625
@@ -8886,9 +8444,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "RegExp operations return wrong values"
-      ],
+      "files": ["RegExp operations return wrong values"],
       "goal": "error-model",
       "cluster": "error-model",
       "test262_fail": 367
@@ -8901,9 +8457,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Shape inference for empty objects not working inside try/catch blocks"
-      ],
+      "files": ["Shape inference for empty objects not working inside try/catch blocks"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_fail": 297
@@ -8916,9 +8470,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "getter/setter accessor side effects not triggered"
-      ],
+      "files": ["getter/setter accessor side effects not triggered"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_fail": 118
@@ -8931,9 +8483,7 @@
       "raw_status": "done",
       "sprint": "14",
       "depends_on": [],
-      "files": [
-        "add ~30 missing opcodes to InstrBase union"
-      ],
+      "files": ["add ~30 missing opcodes to InstrBase union"],
       "goal": "compilable",
       "cluster": "compilable"
     },
@@ -8945,9 +8495,7 @@
       "raw_status": "done",
       "sprint": "22",
       "depends_on": [],
-      "files": [
-        "extract createCodegenContext() factory from generateModule/generateMultiModule"
-      ],
+      "files": ["extract createCodegenContext() factory from generateModule/generateMultiModule"],
       "goal": "platform",
       "cluster": "platform"
     },
@@ -8979,9 +8527,7 @@
       "raw_status": "done",
       "sprint": "14",
       "depends_on": [],
-      "files": [
-        "typeIdxToStructName reverse lookup map"
-      ],
+      "files": ["typeIdxToStructName reverse lookup map"],
       "goal": "compilable",
       "cluster": "compilable"
     },
@@ -8992,12 +8538,8 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "600"
-      ],
-      "files": [
-        "Component Model canonical ABI adapter layer"
-      ],
+      "depends_on": ["600"],
+      "files": ["Component Model canonical ABI adapter layer"],
       "goal": "platform",
       "cluster": "platform"
     },
@@ -9008,12 +8550,8 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "578"
-      ],
-      "files": [
-        "wasi:http/incoming-handler implementation"
-      ],
+      "depends_on": ["578"],
+      "files": ["wasi:http/incoming-handler implementation"],
       "goal": "platform",
       "cluster": "platform"
     },
@@ -9024,13 +8562,8 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "578",
-        "599"
-      ],
-      "files": [
-        "shopify-function/ example project"
-      ],
+      "depends_on": ["578", "599"],
+      "files": ["shopify-function/ example project"],
       "goal": "platform",
       "cluster": "platform"
     },
@@ -9041,12 +8574,8 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "599"
-      ],
-      "files": [
-        "deno-loader/ and cloudflare-worker/ examples"
-      ],
+      "depends_on": ["599"],
+      "files": ["deno-loader/ and cloudflare-worker/ examples"],
       "goal": "platform",
       "cluster": "platform"
     },
@@ -9058,9 +8587,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "write report atomically at end of run, not incrementally"
-      ],
+      "files": ["write report atomically at end of run, not incrementally"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -9072,10 +8599,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "conformance panel integrated into playground IDE",
-        "click test file to open in editor"
-      ],
+      "files": ["conformance panel integrated into playground IDE", "click test file to open in editor"],
       "goal": "standalone-mode",
       "cluster": "standalone-mode"
     },
@@ -9086,12 +8610,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "608"
-      ],
-      "files": [
-        "add testTypedArray.js to allowed includes"
-      ],
+      "depends_on": ["608"],
+      "files": ["add testTypedArray.js to allowed includes"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "test262_skip": 1731
@@ -9103,13 +8623,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "619"
-      ],
-      "files": [
-        "add handlers for more AST node types",
-        "add handlers for more AST node types"
-      ],
+      "depends_on": ["619"],
+      "files": ["add handlers for more AST node types", "add handlers for more AST node types"],
       "goal": "generator-model",
       "cluster": "generator-model",
       "compiler_errors": 5329,
@@ -9122,9 +8637,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "22",
-      "depends_on": [
-        "622"
-      ],
+      "depends_on": ["622"],
       "files": [
         "add externref-to-vec conversion in destructureParamArray",
         "pre-register common vec types for early compilation",
@@ -9153,12 +8666,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "14",
-      "depends_on": [
-        "627"
-      ],
-      "files": [
-        "isStringType now recognizes String wrapper object type"
-      ],
+      "depends_on": ["627"],
+      "files": ["isStringType now recognizes String wrapper object type"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 876,
@@ -9184,9 +8693,7 @@
       "raw_status": "done",
       "sprint": "13",
       "depends_on": [],
-      "files": [
-        "investigate and fix empty-reason skips"
-      ],
+      "files": ["investigate and fix empty-reason skips"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "test262_skip": 932
@@ -9215,9 +8722,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Temporal tests cause 3,381 timeouts, statements cause 3,196"
-      ],
+      "files": ["Temporal tests cause 3,381 timeouts, statements cause 3,196"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_fail": 6715
@@ -9230,9 +8735,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "suppress more TS diagnostics for property access patterns"
-      ],
+      "files": ["suppress more TS diagnostics for property access patterns"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
       "compiler_errors": 1116,
@@ -9262,12 +8765,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "647"
-      ],
-      "files": [
-        "add null guards before struct.get in more codepaths"
-      ],
+      "depends_on": ["647"],
+      "files": ["add null guards before struct.get in more codepaths"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_fail": 2050
@@ -9279,12 +8778,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "628"
-      ],
-      "files": [
-        "propagate isGenerator flag to more contexts"
-      ],
+      "depends_on": ["628"],
+      "files": ["propagate isGenerator flag to more contexts"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "compiler_errors": 411,
@@ -9297,12 +8792,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "625"
-      ],
-      "files": [
-        "coerce values before local.set in more codepaths"
-      ],
+      "depends_on": ["625"],
+      "files": ["coerce values before local.set in more codepaths"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 659,
@@ -9315,12 +8806,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "626"
-      ],
-      "files": [
-        "coerce call arguments in more dispatch paths"
-      ],
+      "depends_on": ["626"],
+      "files": ["coerce call arguments in more dispatch paths"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 609,
@@ -9334,9 +8821,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "capture first failing assert in wrapTest output"
-      ],
+      "files": ["capture first failing assert in wrapTest output"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure",
       "test262_fail": 12974
@@ -9349,9 +8834,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "Temporal namespace with PlainDate/PlainTime/Duration classes"
-      ],
+      "files": ["Temporal namespace with PlainDate/PlainTime/Duration classes"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "compiler_errors": 200,
@@ -9376,12 +8859,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "647"
-      ],
-      "files": [
-        "add null guard for ref-typed objects in compilePropertyAccess struct.get paths"
-      ],
+      "depends_on": ["647"],
+      "files": ["add null guard for ref-typed objects in compilePropertyAccess struct.get paths"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "test262_fail": 2050
@@ -9394,9 +8873,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "use source maps to map Wasm trap byte offsets to TS source lines"
-      ],
+      "files": ["use source maps to map Wasm trap byte offsets to TS source lines"],
       "goal": "crash-free",
       "cluster": "crash-free"
     },
@@ -9420,9 +8897,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "suppress TS1308 await outside async diagnostic"
-      ],
+      "files": ["suppress TS1308 await outside async diagnostic"],
       "goal": "async-model",
       "cluster": "async-model",
       "compiler_errors": 146,
@@ -9436,9 +8911,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "fix hint variable scope in toPrimitive dispatch"
-      ],
+      "files": ["fix hint variable scope in toPrimitive dispatch"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 71,
@@ -9452,9 +8925,7 @@
       "raw_status": "done",
       "sprint": "14",
       "depends_on": [],
-      "files": [
-        "register empty string in string literal pool"
-      ],
+      "files": ["register empty string in string literal pool"],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness",
       "compiler_errors": 43,
@@ -9483,12 +8954,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "14",
-      "depends_on": [
-        "498"
-      ],
-      "files": [
-        "compile Proxy handler traps as interceptors at property access sites"
-      ],
+      "depends_on": ["498"],
+      "files": ["compile Proxy handler traps as interceptors at property access sites"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_fail": 465
@@ -9501,9 +8968,7 @@
       "raw_status": "backlog",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "compile with() via dynamic scope chain lookup"
-      ],
+      "files": ["compile with() via dynamic scope chain lookup"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_fail": 272
@@ -9516,9 +8981,7 @@
       "raw_status": "done",
       "sprint": "15",
       "depends_on": [],
-      "files": [
-        "WeakMap/WeakSet/WeakRef via externref-keyed host maps"
-      ],
+      "files": ["WeakMap/WeakSet/WeakRef via externref-keyed host maps"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "test262_fail": 580
@@ -9543,9 +9006,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "shared memory declaration, atomic instructions"
-      ],
+      "files": ["shared memory declaration, atomic instructions"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
       "compiler_errors": 28,
@@ -9559,9 +9020,7 @@
       "raw_status": "done",
       "sprint": "24",
       "depends_on": [],
-      "files": [
-        "compile import() to host-assisted module loader"
-      ],
+      "files": ["compile import() to host-assisted module loader"],
       "goal": "async-model",
       "cluster": "async-model",
       "test262_fail": 471
@@ -9589,9 +9048,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "1113"
-      ],
+      "depends_on": ["1113"],
       "files": [
         "property descriptor bitfield on struct fields",
         "Object.getOwnPropertyDescriptor returns descriptor object"
@@ -9607,12 +9064,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "15",
-      "depends_on": [
-        "631"
-      ],
-      "files": [
-        "dynamic prototype chain traversal for property lookup"
-      ],
+      "depends_on": ["631"],
+      "files": ["dynamic prototype chain traversal for property lookup"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_fail": 625
@@ -9624,9 +9077,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "14",
-      "depends_on": [
-        "599"
-      ],
+      "depends_on": ["599"],
       "files": [
         "dual string backend: wasm:js-string (js-host mode) vs native i16 arrays (standalone mode)",
         "string operation dispatch based on mode flag"
@@ -9656,9 +9107,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "680"
-      ],
+      "depends_on": ["680"],
       "files": [
         "compile iterator protocol as Wasm struct with next/done/value",
         "for-of uses struct-based iterators instead of host imports"
@@ -9674,9 +9123,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "standalone-mode RegExp lowering to a native engine or embedded regexp backend"
-      ],
+      "files": ["standalone-mode RegExp lowering to a native engine or embedded regexp backend"],
       "goal": "standalone-mode",
       "cluster": "standalone-mode"
     },
@@ -9688,9 +9135,7 @@
       "raw_status": "done",
       "sprint": "15",
       "depends_on": [],
-      "files": [
-        "emit different code paths for narrowed types in if/switch"
-      ],
+      "files": ["emit different code paths for narrowed types in if/switch"],
       "goal": "class-system",
       "cluster": "class-system"
     },
@@ -9702,9 +9147,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "infer concrete types for any-typed variables from usage patterns"
-      ],
+      "files": ["infer concrete types for any-typed variables from usage patterns"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods"
     },
@@ -9716,10 +9159,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "interprocedural return type analysis",
-        "use inferred return types at call sites"
-      ],
+      "files": ["interprocedural return type analysis", "use inferred return types at call sites"],
       "goal": "performance",
       "cluster": "performance"
     },
@@ -9731,9 +9171,7 @@
       "raw_status": "done",
       "sprint": "15",
       "depends_on": [],
-      "files": [
-        "keep concrete types for closure captures instead of widening to externref"
-      ],
+      "files": ["keep concrete types for closure captures instead of widening to externref"],
       "goal": "performance",
       "cluster": "performance"
     },
@@ -9745,9 +9183,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "add run selector dropdown, live streaming, progress indicator"
-      ],
+      "files": ["add run selector dropdown, live streaming, progress indicator"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -9759,9 +9195,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "split 27K line file into modules per language feature"
-      ],
+      "files": ["split 27K line file into modules per language feature"],
       "goal": "maintainability",
       "cluster": "maintainability"
     },
@@ -9773,9 +9207,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "dynamic worker pool with memory-aware scaling"
-      ],
+      "files": ["dynamic worker pool with memory-aware scaling"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -9786,9 +9218,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "689"
-      ],
+      "depends_on": ["689"],
       "files": [
         "streaming results from workers, incremental report updates",
         "send results as they complete, not in batch"
@@ -9803,10 +9233,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "689",
-        "690"
-      ],
+      "depends_on": ["689", "690"],
       "files": [
         "pipeline architecture: load → compile → run → report as overlapping stages",
         "release compiled binary after instantiation, release instance after execution"
@@ -9821,11 +9248,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "689",
-        "690",
-        "691"
-      ],
+      "depends_on": ["689", "690", "691"],
       "files": [
         "multi-stage pipeline with async overlap between stages",
         "parallel compile + run stages using worker_threads or async"
@@ -9852,9 +9275,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "693"
-      ],
+      "depends_on": ["693"],
       "files": [],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
@@ -9867,9 +9288,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "emit Wasm throw for TypeError/ReferenceError/RangeError/SyntaxError"
-      ],
+      "files": ["emit Wasm throw for TypeError/ReferenceError/RangeError/SyntaxError"],
       "goal": "error-model",
       "cluster": "error-model",
       "test262_fail": 4738
@@ -9882,9 +9301,7 @@
       "raw_status": "done",
       "sprint": "24",
       "depends_on": [],
-      "files": [
-        "capture full RuntimeError message for non-returned failures"
-      ],
+      "files": ["capture full RuntimeError message for non-returned failures"],
       "goal": "async-model",
       "cluster": "async-model",
       "compiler_errors": 512,
@@ -9914,12 +9331,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "659"
-      ],
-      "files": [
-        "argument coercion at property access fallback and setter dispatch paths"
-      ],
+      "depends_on": ["659"],
+      "files": ["argument coercion at property access fallback and setter dispatch paths"],
       "goal": "compilable",
       "cluster": "compilable",
       "compiler_errors": 1250,
@@ -9932,9 +9345,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "694"
-      ],
+      "depends_on": ["694"],
       "files": [
         "use shared compiler pool instead of per-test compile()",
         "persistent compiler worker pool with warm ts.Program"
@@ -9949,12 +9360,8 @@
       "status": "done",
       "raw_status": "wont-fix",
       "sprint": "Backlog",
-      "depends_on": [
-        "699"
-      ],
-      "files": [
-        "add reuseHost option to keep ts.CompilerHost warm between compilations"
-      ],
+      "depends_on": ["699"],
+      "files": ["add reuseHost option to keep ts.CompilerHost warm between compilations"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -9966,9 +9373,7 @@
       "raw_status": "done",
       "sprint": "24",
       "depends_on": [],
-      "files": [
-        "resolveWasmType now takes optional _depth parameter"
-      ],
+      "files": ["resolveWasmType now takes optional _depth parameter"],
       "goal": "async-model",
       "cluster": "async-model"
     },
@@ -10021,9 +9426,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "26",
-      "depends_on": [
-        "698"
-      ],
+      "depends_on": ["698"],
       "files": [
         "ensure all call sites push correct argument count before call/call_ref",
         "for-await-of closure argument passing"
@@ -10084,10 +9487,7 @@
       "raw_status": "done",
       "sprint": "26",
       "depends_on": [],
-      "files": [
-        "array bounds check before array.get in Array prototype methods",
-        "vec-to-tuple bounds check"
-      ],
+      "files": ["array bounds check before array.get in Array prototype methods", "vec-to-tuple bounds check"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_fail": 174
@@ -10116,9 +9516,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compile new Function() as no-op externref"
-      ],
+      "files": ["compile new Function() as no-op externref"],
       "goal": "async-model",
       "cluster": "async-model",
       "compiler_errors": 106,
@@ -10162,10 +9560,7 @@
       "raw_status": "done",
       "sprint": "26",
       "depends_on": [],
-      "files": [
-        "historical conformance trend chart",
-        "auto-archive each run's report.json with timestamp"
-      ],
+      "files": ["historical conformance trend chart", "auto-archive each run's report.json with timestamp"],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
     },
@@ -10177,9 +9572,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "emitNullGuardedStructGet call sites at lines ~2645 and ~7786 missing ctx parameter"
-      ],
+      "files": ["emitNullGuardedStructGet call sites at lines ~2645 and ~7786 missing ctx parameter"],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
     },
@@ -10245,9 +9638,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "i32 arithmetic on f64-typed globals"
-      ],
+      "files": ["i32 arithmetic on f64-typed globals"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "compiler_errors": 96,
@@ -10337,10 +9728,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "695",
-        "706"
-      ],
+      "depends_on": ["695", "706"],
       "files": [
         "emitNullGuardedStructGet must route null ref.cast results to __extern_get fallback",
         "emitExternrefToStructGet must not silently return defaults for valid objects"
@@ -10368,12 +9756,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "695"
-      ],
-      "files": [
-        "more code paths need null-check-then-throw instead of letting Wasm trap"
-      ],
+      "depends_on": ["695"],
+      "files": ["more code paths need null-check-then-throw instead of letting Wasm trap"],
       "goal": "crash-free",
       "cluster": "crash-free",
       "test262_fail": 1604
@@ -10385,9 +9769,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "678"
-      ],
+      "depends_on": ["678"],
       "files": [
         "class declaration codegen: field initializers, static members, computed keys",
         "class expression codegen: anonymous class, class name binding"
@@ -10436,12 +9818,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "678"
-      ],
-      "files": [
-        "hasOwnProperty/propertyIsEnumerable correctness"
-      ],
+      "depends_on": ["678"],
+      "files": ["hasOwnProperty/propertyIsEnumerable correctness"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_fail": 520
@@ -10454,9 +9832,7 @@
       "raw_status": "done",
       "sprint": "24",
       "depends_on": [],
-      "files": [
-        "range validation before built-in operations"
-      ],
+      "files": ["range validation before built-in operations"],
       "goal": "error-model",
       "cluster": "error-model",
       "test262_fail": 442
@@ -10469,9 +9845,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "Array method correctness — externref support, reduceRight, NaN includes"
-      ],
+      "files": ["Array method correctness — externref support, reduceRight, NaN includes"],
       "goal": "iterator-protocol",
       "cluster": "iterator-protocol",
       "test262_fail": 343
@@ -10483,14 +9857,8 @@
       "status": "blocked",
       "raw_status": "blocked",
       "sprint": "Backlog",
-      "depends_on": [
-        "680",
-        "681"
-      ],
-      "files": [
-        "for-await-of codegen",
-        "async generator functions"
-      ],
+      "depends_on": ["680", "681"],
+      "files": ["for-await-of codegen", "async generator functions"],
       "goal": "async-model",
       "cluster": "async-model",
       "test262_fail": 329
@@ -10503,9 +9871,7 @@
       "raw_status": "done",
       "sprint": "24",
       "depends_on": [],
-      "files": [
-        "detectEarlyErrors: extended with 8 new checks"
-      ],
+      "files": ["detectEarlyErrors: extended with 8 new checks"],
       "goal": "error-model",
       "cluster": "error-model",
       "test262_fail": 316
@@ -10518,10 +9884,7 @@
       "raw_status": "done",
       "sprint": "24",
       "depends_on": [],
-      "files": [
-        "undefined propagation in comparison and coercion",
-        "undefined handling in type coercion paths"
-      ],
+      "files": ["undefined propagation in comparison and coercion", "undefined handling in type coercion paths"],
       "goal": "core-semantics",
       "cluster": "core-semantics",
       "test262_fail": 276
@@ -10533,9 +9896,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "678"
-      ],
+      "depends_on": ["678"],
       "files": [
         "instanceof — delegate to host for unresolvable constructors",
         "instanceof host import",
@@ -10553,9 +9914,7 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [],
-      "files": [
-        "Object.defineProperty implementation with full descriptor support"
-      ],
+      "files": ["Object.defineProperty implementation with full descriptor support"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_fail": 262
@@ -10602,9 +9961,7 @@
       "status": "blocked",
       "raw_status": "blocked",
       "sprint": "42",
-      "depends_on": [
-        "688"
-      ],
+      "depends_on": ["688"],
       "files": [
         "extract compileCallExpression (3,350 lines) into calls.ts",
         "convert dispatch to table-driven pattern"
@@ -10637,10 +9994,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "743",
-        "1124"
-      ],
+      "depends_on": ["743", "1124"],
       "files": [
         "monomorphize(): generate specialized function copies per type signature",
         "monomorphizationRegistry: track which specializations exist",
@@ -10674,9 +10028,7 @@
       "status": "blocked",
       "raw_status": "blocked",
       "sprint": "Backlog",
-      "depends_on": [
-        "743"
-      ],
+      "depends_on": ["743"],
       "files": [
         "defineHiddenClass(): create WasmGC struct type from inferred object shape",
         "hiddenClassRegistry: map shape signatures to struct type indices",
@@ -10694,10 +10046,7 @@
       "status": "blocked",
       "raw_status": "blocked",
       "sprint": "Backlog",
-      "depends_on": [
-        "743",
-        "746"
-      ],
+      "depends_on": ["743", "746"],
       "files": [
         "escapeAnalysis(): determine which allocations can be stack-allocated",
         "object/array literals: use stack allocation when escape analysis permits",
@@ -10742,12 +10091,8 @@
       "status": "blocked",
       "raw_status": "blocked",
       "sprint": "Backlog",
-      "depends_on": [
-        "680"
-      ],
-      "files": [
-        "generator .next() argument handling — currently dropped"
-      ],
+      "depends_on": ["680"],
+      "files": ["generator .next() argument handling — currently dropped"],
       "goal": "async-model",
       "cluster": "async-model"
     },
@@ -10759,10 +10104,7 @@
       "raw_status": "done",
       "sprint": "37",
       "depends_on": [],
-      "files": [
-        "RegExp.prototype.exec result array construction",
-        "String.prototype.match/replace/split with RegExp"
-      ],
+      "files": ["RegExp.prototype.exec result array construction", "String.prototype.match/replace/split with RegExp"],
       "goal": "builtin-methods",
       "cluster": "builtin-methods"
     },
@@ -10827,10 +10169,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "18",
-      "depends_on": [
-        "716",
-        "728"
-      ],
+      "depends_on": ["716", "728"],
       "files": [],
       "goal": "crash-free",
       "cluster": "crash-free",
@@ -10843,9 +10182,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "26",
-      "depends_on": [
-        "740"
-      ],
+      "depends_on": ["740"],
       "files": [],
       "goal": "compilable",
       "cluster": "compilable",
@@ -10903,9 +10240,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1124"
-      ],
+      "depends_on": ["1124"],
       "files": [],
       "goal": "compilable",
       "cluster": "compilable"
@@ -11366,9 +10701,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "794"
-      ],
+      "depends_on": ["794"],
       "files": [],
       "goal": "core-semantics",
       "cluster": "core-semantics",
@@ -12067,9 +11400,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "35",
-      "depends_on": [
-        "944"
-      ],
+      "depends_on": ["944"],
       "files": [],
       "goal": "async-model",
       "cluster": "async-model",
@@ -12224,9 +11555,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "861"
-      ],
+      "depends_on": ["861"],
       "files": [],
       "goal": "developer-experience",
       "cluster": "developer-experience",
@@ -12239,9 +11568,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "867"
-      ],
+      "depends_on": ["867"],
       "files": [],
       "goal": "developer-experience",
       "cluster": "developer-experience"
@@ -12265,9 +11592,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "861"
-      ],
+      "depends_on": ["861"],
       "files": [],
       "goal": "developer-experience",
       "cluster": "developer-experience"
@@ -12279,9 +11604,7 @@
       "status": "ready",
       "raw_status": "review",
       "sprint": "Backlog",
-      "depends_on": [
-        "861"
-      ],
+      "depends_on": ["861"],
       "files": [],
       "goal": "error-model",
       "cluster": "error-model"
@@ -12365,9 +11688,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "876"
-      ],
+      "depends_on": ["876"],
       "files": [],
       "goal": "developer-experience",
       "cluster": "developer-experience"
@@ -12379,9 +11700,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "876"
-      ],
+      "depends_on": ["876"],
       "files": [],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
@@ -12393,9 +11712,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "876"
-      ],
+      "depends_on": ["876"],
       "files": [],
       "goal": "observability",
       "cluster": "observability"
@@ -12407,9 +11724,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "876"
-      ],
+      "depends_on": ["876"],
       "files": [],
       "goal": "observability",
       "cluster": "observability"
@@ -12445,9 +11760,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "40",
-      "depends_on": [
-        "882"
-      ],
+      "depends_on": ["882"],
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
@@ -12471,9 +11784,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "33",
-      "depends_on": [
-        "883"
-      ],
+      "depends_on": ["883"],
       "files": [],
       "goal": "performance",
       "cluster": "performance"
@@ -12689,9 +12000,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "34",
-      "depends_on": [
-        "896"
-      ],
+      "depends_on": ["896"],
       "files": [
         "Stop inserting helper calls around proven numeric array.set/array.get paths",
         "Keep as the concrete reproducer for the numeric element access regression"
@@ -12706,9 +12015,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "34",
-      "depends_on": [
-        "897"
-      ],
+      "depends_on": ["897"],
       "files": [
         "Stop inserting helper calls around proven numeric recursive call results and returns",
         "Keep as the concrete reproducer for the pure numeric recursion regression"
@@ -12740,10 +12047,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "33",
-        "743"
-      ],
+      "depends_on": ["33", "743"],
       "files": [
         "Resolve imported functions/globals to concrete definitions and expose enough information for post-link specialization",
         "Support late specialization/devirtualization once linked callees are known",
@@ -12759,10 +12063,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "743",
-        "746"
-      ],
+      "depends_on": ["743", "746"],
       "files": [
         "Track prototype/layout versions, not only single fixed shapes",
         "Lower known prototype transitions to versioned struct/layout dispatch",
@@ -12778,10 +12079,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "800",
-        "898"
-      ],
+      "depends_on": ["800", "898"],
       "files": [
         "Avoid emitting module-level TDZ globals for top-level locals that are provably initialized before first read",
         "Treat simple top-level definite-assignment cases as compile-time-safe instead of preserving runtime TDZ state"
@@ -12796,9 +12094,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "900"
-      ],
+      "depends_on": ["900"],
       "files": [
         "Avoid emitting __init_done runtime guard globals for module-init-only programs when start/init semantics can be decided statically",
         "Expose the selected init/entrypoint strategy clearly so runtimes can instantiate without extra hot-path guards",
@@ -12814,10 +12110,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "906",
-        "907"
-      ],
+      "depends_on": ["906", "907"],
       "files": [
         "Eliminate dead read/drop sequences after module-global writes in top-level init code",
         "Avoid unnecessary numeric representation churn in simple counted loops"
@@ -12847,9 +12140,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "39",
-      "depends_on": [
-        "909"
-      ],
+      "depends_on": ["909"],
       "files": [
         "Break the monolithic expression lowering file into smaller modules grouped by syntax family",
         "Introduce modules for identifiers, calls, assignment, unary/logical operators, constructors, generators, and host-specific expressions"
@@ -12864,9 +12155,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "39",
-      "depends_on": [
-        "909"
-      ],
+      "depends_on": ["909"],
       "files": [
         "Break the monolithic statement lowering file into feature-oriented modules",
         "Introduce modules for variables, destructuring, control flow, loops, exceptions, and nested declarations"
@@ -12881,11 +12170,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "39",
-      "depends_on": [
-        "909",
-        "910",
-        "911"
-      ],
+      "depends_on": ["909", "910", "911"],
       "files": [
         "Introduce stable lower-level interfaces so expressions, statements, and shared utilities do not depend on each other cyclically"
       ],
@@ -12976,10 +12261,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "36",
-      "depends_on": [
-        "914",
-        "915"
-      ],
+      "depends_on": ["914", "915"],
       "files": [
         "Curate a contributor-onboarding subset of issues with exact file pointers, scope boundaries, and acceptance criteria",
         "Optionally add labels or a lightweight convention marking good first subsystems/tasks"
@@ -13189,9 +12471,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "37",
-      "depends_on": [
-        "925"
-      ],
+      "depends_on": ["925"],
       "files": [],
       "goal": "standalone-mode",
       "cluster": "standalone-mode"
@@ -13231,9 +12511,7 @@
       "raw_status": "done",
       "sprint": "37",
       "depends_on": [],
-      "files": [
-        "math-builtins.test.ts — equivalence tests for Math methods"
-      ],
+      "files": ["math-builtins.test.ts — equivalence tests for Math methods"],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
     },
@@ -13245,9 +12523,7 @@
       "raw_status": "done",
       "sprint": "37",
       "depends_on": [],
-      "files": [
-        "Extend the console method check to include 'info' and 'debug'"
-      ],
+      "files": ["Extend the console method check to include 'info' and 'debug'"],
       "goal": "platform",
       "cluster": "platform"
     },
@@ -13259,9 +12535,7 @@
       "raw_status": "done",
       "sprint": "37",
       "depends_on": [],
-      "files": [
-        "number-statics.test.ts — equivalence tests for Number.isNaN, Number.isFinite, etc."
-      ],
+      "files": ["number-statics.test.ts — equivalence tests for Number.isNaN, Number.isFinite, etc."],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
     },
@@ -13273,9 +12547,7 @@
       "raw_status": "done",
       "sprint": "37",
       "depends_on": [],
-      "files": [
-        "math-constants.test.ts — equivalence tests for all Math constants"
-      ],
+      "files": ["math-constants.test.ts — equivalence tests for all Math constants"],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
     },
@@ -13286,9 +12558,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "37",
-      "depends_on": [
-        "935"
-      ],
+      "depends_on": ["935"],
       "files": [
         "Add __str_fromCodePoint helper function",
         "Wire String.fromCodePoint to native helper in nativeStrings mode"
@@ -13304,9 +12574,7 @@
       "raw_status": "done",
       "sprint": "37",
       "depends_on": [],
-      "files": [
-        "global-type-checks.test.ts — equivalence tests for isNaN, isFinite, typeof"
-      ],
+      "files": ["global-type-checks.test.ts — equivalence tests for isNaN, isFinite, typeof"],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
     },
@@ -13585,9 +12853,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "38",
-      "depends_on": [
-        "963"
-      ],
+      "depends_on": ["963"],
       "files": [],
       "goal": "async-model",
       "cluster": "async-model"
@@ -13671,11 +12937,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "40",
-      "depends_on": [
-        "967",
-        "968",
-        "969"
-      ],
+      "depends_on": ["967", "968", "969"],
       "files": [],
       "goal": "core-semantics",
       "cluster": "core-semantics"
@@ -13759,9 +13021,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "40",
-      "depends_on": [
-        "976"
-      ],
+      "depends_on": ["976"],
       "files": [],
       "goal": "developer-experience",
       "cluster": "developer-experience"
@@ -13773,9 +13033,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "40",
-      "depends_on": [
-        "976"
-      ],
+      "depends_on": ["976"],
       "files": [],
       "goal": "standalone-mode",
       "cluster": "standalone-mode"
@@ -13850,9 +13108,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "39",
-      "depends_on": [
-        "931"
-      ],
+      "depends_on": ["931"],
       "files": [],
       "goal": "performance",
       "cluster": "performance"
@@ -14081,9 +13337,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1000"
-      ],
+      "depends_on": ["1000"],
       "files": [],
       "goal": "contributor-readiness",
       "cluster": "contributor-readiness"
@@ -14131,10 +13385,7 @@
       "status": "ready",
       "raw_status": "in-progress",
       "sprint": "Backlog",
-      "depends_on": [
-        "882",
-        "884"
-      ],
+      "depends_on": ["882", "884"],
       "files": [],
       "goal": "test-infrastructure",
       "cluster": "test-infrastructure"
@@ -14194,11 +13445,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "41",
-      "depends_on": [
-        "910",
-        "911",
-        "912"
-      ],
+      "depends_on": ["910", "911", "912"],
       "files": [],
       "goal": "core-semantics",
       "cluster": "core-semantics"
@@ -14271,9 +13518,7 @@
       "status": "backlog",
       "raw_status": "backlog",
       "sprint": "Backlog",
-      "depends_on": [
-        "990"
-      ],
+      "depends_on": ["990"],
       "files": [],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
@@ -14417,9 +13662,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "1044"
-      ],
+      "depends_on": ["1044"],
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
@@ -14431,10 +13674,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "1043",
-        "1045"
-      ],
+      "depends_on": ["1043", "1045"],
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
@@ -14545,9 +13785,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "680"
-      ],
+      "depends_on": ["680"],
       "files": [],
       "goal": "async-model",
       "cluster": "async-model"
@@ -14571,9 +13809,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1041"
-      ],
+      "depends_on": ["1041"],
       "files": [],
       "goal": "async-model",
       "cluster": "async-model"
@@ -14585,9 +13821,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1041"
-      ],
+      "depends_on": ["1041"],
       "files": [],
       "goal": "platform",
       "cluster": "platform"
@@ -14745,11 +13979,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1042",
-        "1044",
-        "1046"
-      ],
+      "depends_on": ["1042", "1044", "1046"],
       "files": [],
       "goal": "compiler-architecture",
       "cluster": "compiler-architecture"
@@ -14761,9 +13991,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "1058"
-      ],
+      "depends_on": ["1058"],
       "files": [],
       "goal": "performance",
       "cluster": "performance"
@@ -14847,9 +14075,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "1006"
-      ],
+      "depends_on": ["1006"],
       "files": [],
       "goal": "platform",
       "cluster": "platform"
@@ -14933,9 +14159,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1006"
-      ],
+      "depends_on": ["1006"],
       "files": [],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
@@ -14947,10 +14171,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "41",
-      "depends_on": [
-        "1060",
-        "1061"
-      ],
+      "depends_on": ["1060", "1061"],
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
@@ -14962,11 +14183,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1060",
-        "1061",
-        "1074"
-      ],
+      "depends_on": ["1060", "1061", "1074"],
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
@@ -14990,9 +14207,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1076"
-      ],
+      "depends_on": ["1076"],
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
@@ -15004,9 +14219,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1076"
-      ],
+      "depends_on": ["1076"],
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
@@ -15042,9 +14255,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "1076"
-      ],
+      "depends_on": ["1076"],
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
@@ -15105,9 +14316,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1085"
-      ],
+      "depends_on": ["1085"],
       "files": [],
       "goal": "maintainability",
       "cluster": "maintainability"
@@ -15251,9 +14460,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1094"
-      ],
+      "depends_on": ["1094"],
       "files": [],
       "goal": "platform",
       "cluster": "platform"
@@ -15349,9 +14556,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "42",
-      "depends_on": [
-        "1074"
-      ],
+      "depends_on": ["1074"],
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
@@ -15363,10 +14568,7 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "42",
-      "depends_on": [
-        "1074",
-        "1107"
-      ],
+      "depends_on": ["1074", "1107"],
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
@@ -15378,9 +14580,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1107"
-      ],
+      "depends_on": ["1107"],
       "files": [],
       "goal": "compilable",
       "cluster": "compilable"
@@ -15425,9 +14625,7 @@
       "raw_status": "done",
       "sprint": "0",
       "depends_on": [],
-      "files": [
-        "compileDeleteExpression — set field to undefined sentinel"
-      ],
+      "files": ["compileDeleteExpression — set field to undefined sentinel"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_skip": 232
@@ -15455,12 +14653,8 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "0",
-      "depends_on": [
-        "1113"
-      ],
-      "files": [
-        "propertyHelper.js shim — stub verifyProperty with descriptor bitfield checks"
-      ],
+      "depends_on": ["1113"],
+      "files": ["propertyHelper.js shim — stub verifyProperty with descriptor bitfield checks"],
       "goal": "property-model",
       "cluster": "property-model",
       "test262_skip": 341
@@ -15484,9 +14678,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "Backlog",
-      "depends_on": [
-        "944"
-      ],
+      "depends_on": ["944"],
       "files": [],
       "goal": "async-model",
       "cluster": "async-model",
@@ -15536,7 +14728,7 @@
       "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -15550,9 +14742,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1124"
-      ],
+      "depends_on": ["1124"],
       "files": [],
       "goal": "performance",
       "cluster": "performance"
@@ -15612,9 +14802,7 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [
-        "1124"
-      ],
+      "depends_on": ["1124"],
       "files": [],
       "goal": "performance",
       "cluster": "performance"
@@ -16328,9 +15516,7 @@
       "title": "async-model",
       "status": "blocked",
       "target": "Async/await edge cases, Promise integration. Estimated +500 tests",
-      "depends_on": [
-        "generator-model"
-      ],
+      "depends_on": ["generator-model"],
       "issues": [
         "11",
         "20",
@@ -16415,10 +15601,7 @@
       "title": "builtin-methods",
       "status": "blocked",
       "target": "Built-in method edge cases fixed. Estimated +1,000 tests",
-      "depends_on": [
-        "core-semantics",
-        "error-model"
-      ],
+      "depends_on": ["core-semantics", "error-model"],
       "issues": [
         "3",
         "5",
@@ -16513,9 +15696,7 @@
       "title": "class-system",
       "status": "blocked",
       "target": "Class feature codegen complete. Estimated +1,200 tests",
-      "depends_on": [
-        "core-semantics"
-      ],
+      "depends_on": ["core-semantics"],
       "issues": [
         "37",
         "57",
@@ -16712,15 +15893,7 @@
       "status": "activatable",
       "target": "Architectural work that improves compilation boundaries, host contracts, and backend structure",
       "depends_on": [],
-      "issues": [
-        "68",
-        "746",
-        "905",
-        "1041",
-        "1046",
-        "1058",
-        "1124"
-      ],
+      "issues": ["68", "746", "905", "1041", "1046", "1058", "1124"],
       "track": "supporting track"
     },
     {
@@ -16776,9 +15949,7 @@
       "title": "core-semantics",
       "status": "active",
       "target": "Fix ~3,400 wrong-value failures. Estimated +2,500 tests",
-      "depends_on": [
-        "compilable"
-      ],
+      "depends_on": ["compilable"],
       "issues": [
         "1",
         "2",
@@ -16941,12 +16112,8 @@
       "title": "correctness",
       "status": "active",
       "target": "Fixes and audits that cut across core semantics, error behavior, and host integration",
-      "depends_on": [
-        "compilable"
-      ],
-      "issues": [
-        "1123"
-      ],
+      "depends_on": ["compilable"],
+      "issues": ["1123"],
       "track": "supporting track"
     },
     {
@@ -16954,9 +16121,7 @@
       "title": "crash-free",
       "status": "active",
       "target": "Traps → 0. Convert ~2,600 traps/TypeError to proper exceptions. Estimated +1,500 tests",
-      "depends_on": [
-        "compilable"
-      ],
+      "depends_on": ["compilable"],
       "issues": [
         "107",
         "174",
@@ -17032,9 +16197,7 @@
       "title": "error-model",
       "status": "active",
       "target": "~2,600 negative tests pass. Estimated +2,000 tests",
-      "depends_on": [
-        "compilable"
-      ],
+      "depends_on": ["compilable"],
       "issues": [
         "119",
         "191",
@@ -17108,9 +16271,7 @@
       "title": "full-conformance",
       "status": "blocked",
       "target": "48,102 / 48,102 pass",
-      "depends_on": [
-        "spec-completeness"
-      ],
+      "depends_on": ["spec-completeness"],
       "issues": []
     },
     {
@@ -17118,29 +16279,15 @@
       "title": "generator-model",
       "status": "blocked",
       "target": "State-machine generators, yield delegation. Estimated +500 tests",
-      "depends_on": [
-        "iterator-protocol"
-      ],
-      "issues": [
-        "44",
-        "267",
-        "287",
-        "335",
-        "521",
-        "623",
-        "628",
-        "646",
-        "1004"
-      ]
+      "depends_on": ["iterator-protocol"],
+      "issues": ["44", "267", "287", "335", "521", "623", "628", "646", "1004"]
     },
     {
       "id": "iterator-protocol",
       "title": "iterator-protocol",
       "status": "blocked",
       "target": "Symbol.iterator protocol works for custom iterables. Estimated +800 tests",
-      "depends_on": [
-        "class-system"
-      ],
+      "depends_on": ["class-system"],
       "issues": [
         "4",
         "9",
@@ -17227,10 +16374,7 @@
       "title": "npm-library-support",
       "status": "activatable",
       "target": "Broader support for CommonJS, ESM, package export shapes, and library stress cases",
-      "depends_on": [
-        "core-semantics",
-        "platform"
-      ],
+      "depends_on": ["core-semantics", "platform"],
       "issues": [
         "111",
         "347",
@@ -17269,11 +16413,7 @@
       "status": "activatable",
       "target": "Better reports, benchmark visibility, support matrices, and historical comparisons",
       "depends_on": [],
-      "issues": [
-        "880",
-        "881",
-        "1011"
-      ],
+      "issues": ["880", "881", "1011"],
       "track": "supporting track"
     },
     {
@@ -17281,9 +16421,7 @@
       "title": "performance",
       "status": "activatable",
       "target": "Competitive with JIT-compiled JavaScript for typed code",
-      "depends_on": [
-        "core-semantics"
-      ],
+      "depends_on": ["core-semantics"],
       "issues": [
         "25",
         "465",
@@ -17324,9 +16462,7 @@
       "title": "platform",
       "status": "blocked",
       "target": "Real deployments on at least 2 platforms",
-      "depends_on": [
-        "standalone-mode"
-      ],
+      "depends_on": ["standalone-mode"],
       "issues": [
         "21",
         "26",
@@ -17379,9 +16515,7 @@
       "title": "property-model",
       "status": "blocked",
       "target": "Property descriptor semantics correct. Estimated +1,500 tests",
-      "depends_on": [
-        "core-semantics"
-      ],
+      "depends_on": ["core-semantics"],
       "issues": [
         "69",
         "106",
@@ -17428,12 +16562,7 @@
       "title": "spec-completeness",
       "status": "blocked",
       "target": "90%+ pass rate. Fix remaining edge cases across all categories",
-      "depends_on": [
-        "async-model",
-        "symbol-protocol",
-        "builtin-methods",
-        "property-model"
-      ],
+      "depends_on": ["async-model", "symbol-protocol", "builtin-methods", "property-model"],
       "issues": [
         "10",
         "32",
@@ -17519,10 +16648,7 @@
       "title": "standalone-mode",
       "status": "blocked",
       "target": "Full program execution under WASI",
-      "depends_on": [
-        "iterator-protocol",
-        "generator-model"
-      ],
+      "depends_on": ["iterator-protocol", "generator-model"],
       "issues": [
         "34",
         "46",
@@ -17574,16 +16700,8 @@
       "title": "symbol-protocol",
       "status": "blocked",
       "target": "Well-known symbols implemented. Estimated +400 tests",
-      "depends_on": [
-        "iterator-protocol"
-      ],
-      "issues": [
-        "482",
-        "483",
-        "485",
-        "486",
-        "487"
-      ]
+      "depends_on": ["iterator-protocol"],
+      "issues": ["482", "483", "485", "486", "487"]
     },
     {
       "id": "test-infrastructure",
@@ -26298,5 +25416,5 @@
       "issue": "487"
     }
   ],
-  "generated": "2026-04-16T13:51:32+02:00"
+  "generated": "2026-04-17T07:18:14+02:00"
 }
