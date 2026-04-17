@@ -1263,26 +1263,8 @@
     "baseline": "~1,509 pass",
     "result": "incremental (same multi-day session)",
     "issueCount": 0,
-    "issueIds": [
-      "257",
-      "258",
-      "259",
-      "272",
-      "273",
-      "278",
-      "285",
-      "286"
-    ],
-    "completedIssueIds": [
-      "257",
-      "258",
-      "259",
-      "272",
-      "273",
-      "278",
-      "285",
-      "286"
-    ],
+    "issueIds": ["257", "258", "259", "272", "273", "278", "285", "286"],
+    "completedIssueIds": ["257", "258", "259", "272", "273", "278", "285", "286"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1294,16 +1276,8 @@
     "baseline": "building on Sprint 4",
     "result": "incremental improvements in runtime correctness",
     "issueCount": 0,
-    "issueIds": [
-      "250",
-      "290",
-      "322"
-    ],
-    "completedIssueIds": [
-      "250",
-      "290",
-      "322"
-    ],
+    "issueIds": ["250", "290", "322"],
+    "completedIssueIds": ["250", "290", "322"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1315,36 +1289,8 @@
     "baseline": "building on Sprint 5",
     "result": "significant test262 category expansion",
     "issueCount": 0,
-    "issueIds": [
-      "121",
-      "147",
-      "176",
-      "179",
-      "182",
-      "188",
-      "189",
-      "194",
-      "198",
-      "199",
-      "201",
-      "314",
-      "320"
-    ],
-    "completedIssueIds": [
-      "121",
-      "147",
-      "176",
-      "179",
-      "182",
-      "188",
-      "189",
-      "194",
-      "198",
-      "199",
-      "201",
-      "314",
-      "320"
-    ],
+    "issueIds": ["121", "147", "176", "179", "182", "188", "189", "194", "198", "199", "201", "314", "320"],
+    "completedIssueIds": ["121", "147", "176", "179", "182", "188", "189", "194", "198", "199", "201", "314", "320"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1429,12 +1375,8 @@
     "baseline": "~6,366 pass (from 2026-03-18 run, likely lower on 03-16)",
     "result": "incremental (no test262 run recorded this day)",
     "issueCount": 0,
-    "issueIds": [
-      "407"
-    ],
-    "completedIssueIds": [
-      "407"
-    ],
+    "issueIds": ["407"],
+    "completedIssueIds": ["407"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1491,30 +1433,8 @@
     "baseline": "~6,366 pass (test262 run at 21:35 UTC)",
     "result": "6,366 pass / 23,021 total (first recorded run)",
     "issueCount": 0,
-    "issueIds": [
-      "439",
-      "440",
-      "449",
-      "454",
-      "455",
-      "456",
-      "457",
-      "462",
-      "469",
-      "488"
-    ],
-    "completedIssueIds": [
-      "439",
-      "440",
-      "449",
-      "454",
-      "455",
-      "456",
-      "457",
-      "462",
-      "469",
-      "488"
-    ],
+    "issueIds": ["439", "440", "449", "454", "455", "456", "457", "462", "469", "488"],
+    "completedIssueIds": ["439", "440", "449", "454", "455", "456", "457", "462", "469", "488"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1526,12 +1446,8 @@
     "baseline": "6,366 pass / 23,021 total",
     "result": "6,366 pass / 23,025 total (second run, minimal change)",
     "issueCount": 0,
-    "issueIds": [
-      "493"
-    ],
-    "completedIssueIds": [
-      "493"
-    ],
+    "issueIds": ["493"],
+    "completedIssueIds": ["493"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1543,14 +1459,8 @@
     "baseline": "5,753 pass / 22,974 total (regression from skip filter changes)",
     "result": "5,797 pass / 22,974 total → 7,139 pass / 22,974 total",
     "issueCount": 0,
-    "issueIds": [
-      "498",
-      "1113"
-    ],
-    "completedIssueIds": [
-      "498",
-      "1113"
-    ],
+    "issueIds": ["498", "1113"],
+    "completedIssueIds": ["498", "1113"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1562,12 +1472,8 @@
     "baseline": "7,139 pass / 22,974 total",
     "result": "9,560 pass / 47,983 total (test set nearly doubled)",
     "issueCount": 0,
-    "issueIds": [
-      "651"
-    ],
-    "completedIssueIds": [
-      "651"
-    ],
+    "issueIds": ["651"],
+    "completedIssueIds": ["651"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1579,30 +1485,8 @@
     "baseline": "9,560 pass / 47,983 total",
     "result": "10,444 pass / 47,773 total",
     "issueCount": 0,
-    "issueIds": [
-      "333",
-      "490",
-      "635",
-      "638",
-      "649",
-      "665",
-      "668",
-      "670",
-      "679",
-      "1110"
-    ],
-    "completedIssueIds": [
-      "333",
-      "490",
-      "635",
-      "638",
-      "649",
-      "665",
-      "668",
-      "670",
-      "679",
-      "1110"
-    ],
+    "issueIds": ["333", "490", "635", "638", "649", "665", "668", "670", "679", "1110"],
+    "completedIssueIds": ["333", "490", "635", "638", "649", "665", "668", "670", "679", "1110"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1614,22 +1498,8 @@
     "baseline": "10,444 pass / 47,773 total",
     "result": "10,974 pass → 15,244 pass (by end of day runs)",
     "issueCount": 0,
-    "issueIds": [
-      "672",
-      "673",
-      "676",
-      "678",
-      "683",
-      "686"
-    ],
-    "completedIssueIds": [
-      "672",
-      "673",
-      "676",
-      "678",
-      "683",
-      "686"
-    ],
+    "issueIds": ["672", "673", "676", "678", "683", "686"],
+    "completedIssueIds": ["672", "673", "676", "678", "683", "686"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1641,14 +1511,8 @@
     "baseline": "~15,244 pass (from 03-20 evening run)",
     "result": "15,232 pass / 48,097 total",
     "issueCount": 0,
-    "issueIds": [
-      "697",
-      "725"
-    ],
-    "completedIssueIds": [
-      "697",
-      "725"
-    ],
+    "issueIds": ["697", "725"],
+    "completedIssueIds": ["697", "725"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1660,12 +1524,8 @@
     "baseline": "15,232 pass / 48,097 total",
     "result": "14,757 pass / 48,097 total → 14,720 pass / 48,102 total",
     "issueCount": 0,
-    "issueIds": [
-      "754"
-    ],
-    "completedIssueIds": [
-      "754"
-    ],
+    "issueIds": ["754"],
+    "completedIssueIds": ["754"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1677,18 +1537,8 @@
     "baseline": "14,720 pass / 48,102 total",
     "result": "14,720 pass / 48,102 total (stable)",
     "issueCount": 0,
-    "issueIds": [
-      "764",
-      "768",
-      "776",
-      "777"
-    ],
-    "completedIssueIds": [
-      "764",
-      "768",
-      "776",
-      "777"
-    ],
+    "issueIds": ["764", "768", "776", "777"],
+    "completedIssueIds": ["764", "768", "776", "777"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1700,14 +1550,8 @@
     "baseline": "14,720 pass / 48,102 total",
     "result": "14,120 pass / 48,102 total → 15,997 pass / 49,642 total",
     "issueCount": 0,
-    "issueIds": [
-      "767",
-      "774"
-    ],
-    "completedIssueIds": [
-      "767",
-      "774"
-    ],
+    "issueIds": ["767", "774"],
+    "completedIssueIds": ["767", "774"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1801,22 +1645,8 @@
     "baseline": "15,410 pass / 49,663 total",
     "result": "15,579 pass / 49,833 total",
     "issueCount": 0,
-    "issueIds": [
-      "494",
-      "636",
-      "647",
-      "655",
-      "693",
-      "770"
-    ],
-    "completedIssueIds": [
-      "494",
-      "636",
-      "647",
-      "655",
-      "693",
-      "770"
-    ],
+    "issueIds": ["494", "636", "647", "655", "693", "770"],
+    "completedIssueIds": ["494", "636", "647", "655", "693", "770"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1841,24 +1671,8 @@
     "baseline": "~15,182 pass / 49,840 total",
     "result": "14,169 pass → 14,616 pass / 49,880 total",
     "issueCount": 0,
-    "issueIds": [
-      "675",
-      "696",
-      "701",
-      "733",
-      "736",
-      "737",
-      "816"
-    ],
-    "completedIssueIds": [
-      "675",
-      "696",
-      "701",
-      "733",
-      "736",
-      "737",
-      "816"
-    ],
+    "issueIds": ["675", "696", "701", "733", "736", "737", "816"],
+    "completedIssueIds": ["675", "696", "701", "733", "736", "737", "816"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1870,26 +1684,8 @@
     "baseline": "14,616 pass / 49,880 total",
     "result": "15,197 pass / 49,881 total (+1,028 session gain)",
     "issueCount": 0,
-    "issueIds": [
-      "761",
-      "778",
-      "789",
-      "793",
-      "815",
-      "817",
-      "818",
-      "823"
-    ],
-    "completedIssueIds": [
-      "761",
-      "778",
-      "789",
-      "793",
-      "815",
-      "817",
-      "818",
-      "823"
-    ],
+    "issueIds": ["761", "778", "789", "793", "815", "817", "818", "823"],
+    "completedIssueIds": ["761", "778", "789", "793", "815", "817", "818", "823"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -1901,32 +1697,8 @@
     "baseline": "15,197 pass / 49,881 total (stale cache)",
     "result": "13,289 pass / 36,828 total (fresh run with worker threads)",
     "issueCount": 0,
-    "issueIds": [
-      "705",
-      "706",
-      "707",
-      "708",
-      "709",
-      "714",
-      "719",
-      "722",
-      "724",
-      "769",
-      "819"
-    ],
-    "completedIssueIds": [
-      "705",
-      "706",
-      "707",
-      "708",
-      "709",
-      "714",
-      "719",
-      "722",
-      "724",
-      "769",
-      "819"
-    ],
+    "issueIds": ["705", "706", "707", "708", "709", "714", "719", "722", "724", "769", "819"],
+    "completedIssueIds": ["705", "706", "707", "708", "709", "714", "719", "722", "724", "769", "819"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1938,12 +1710,8 @@
     "baseline": "13,289 pass (honest baseline)",
     "result": "17,612 pass / 48,086 total → 18,546 pass / 48,086 total",
     "issueCount": 0,
-    "issueIds": [
-      "835"
-    ],
-    "completedIssueIds": [
-      "835"
-    ],
+    "issueIds": ["835"],
+    "completedIssueIds": ["835"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1968,12 +1736,8 @@
     "baseline": "18,167 pass / 47,797 total",
     "result": "18,284 pass / 48,088 total",
     "issueCount": 0,
-    "issueIds": [
-      "841"
-    ],
-    "completedIssueIds": [
-      "841"
-    ],
+    "issueIds": ["841"],
+    "completedIssueIds": ["841"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -1985,24 +1749,8 @@
     "baseline": "18,284 pass / 48,088 total (38.0%)",
     "result": "18,599 pass / 48,088 total (38.7%)",
     "issueCount": 5,
-    "issueIds": [
-      "827",
-      "847",
-      "848",
-      "850",
-      "852",
-      "857",
-      "873"
-    ],
-    "completedIssueIds": [
-      "827",
-      "847",
-      "848",
-      "850",
-      "852",
-      "857",
-      "873"
-    ],
+    "issueIds": ["827", "847", "848", "850", "852", "857", "873"],
+    "completedIssueIds": ["827", "847", "848", "850", "852", "857", "873"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -2014,32 +1762,8 @@
     "baseline": "15,246 pass / 48,174 total (31.7%) — honest baseline, no cache, negative test bug fixed",
     "result": "",
     "issueCount": 0,
-    "issueIds": [
-      "822",
-      "828",
-      "839",
-      "849",
-      "851",
-      "866",
-      "876",
-      "877",
-      "894",
-      "895",
-      "909"
-    ],
-    "completedIssueIds": [
-      "822",
-      "828",
-      "839",
-      "849",
-      "851",
-      "866",
-      "876",
-      "877",
-      "894",
-      "895",
-      "909"
-    ],
+    "issueIds": ["822", "828", "839", "849", "851", "866", "876", "877", "894", "895", "909"],
+    "completedIssueIds": ["822", "828", "839", "849", "851", "866", "876", "877", "894", "895", "909"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -2051,24 +1775,8 @@
     "baseline": "15,187 pass / 42,934 official (35.4%) — post sprint-31 session",
     "result": "",
     "issueCount": 0,
-    "issueIds": [
-      "831",
-      "834",
-      "836",
-      "840",
-      "842",
-      "843",
-      "856"
-    ],
-    "completedIssueIds": [
-      "831",
-      "834",
-      "836",
-      "840",
-      "842",
-      "843",
-      "856"
-    ],
+    "issueIds": ["831", "834", "836", "840", "842", "843", "856"],
+    "completedIssueIds": ["831", "834", "836", "840", "842", "843", "856"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -2080,18 +1788,8 @@
     "baseline": "17,252 pass / 48,088 total (35.9%) — clean baseline, cache disabled, isolated worktree build",
     "result": "",
     "issueCount": 0,
-    "issueIds": [
-      "883",
-      "885",
-      "886",
-      "887"
-    ],
-    "completedIssueIds": [
-      "883",
-      "885",
-      "886",
-      "887"
-    ],
+    "issueIds": ["883", "885", "886", "887"],
+    "completedIssueIds": ["883", "885", "886", "887"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -2103,24 +1801,8 @@
     "baseline": "15,526 pass / 42,934 official (36.2%) — post sprint-35 final",
     "result": "",
     "issueCount": 0,
-    "issueIds": [
-      "896",
-      "897",
-      "898",
-      "899",
-      "900",
-      "901",
-      "902"
-    ],
-    "completedIssueIds": [
-      "896",
-      "897",
-      "898",
-      "899",
-      "900",
-      "901",
-      "902"
-    ],
+    "issueIds": ["896", "897", "898", "899", "900", "901", "902"],
+    "completedIssueIds": ["896", "897", "898", "899", "900", "901", "902"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -2132,24 +1814,8 @@
     "baseline": "17,583 pass / 43,120 official (40.8%) — post sprint-33",
     "result": "",
     "issueCount": 0,
-    "issueIds": [
-      "829",
-      "853",
-      "855",
-      "858",
-      "863",
-      "924",
-      "925"
-    ],
-    "completedIssueIds": [
-      "829",
-      "853",
-      "855",
-      "858",
-      "863",
-      "924",
-      "925"
-    ],
+    "issueIds": ["829", "853", "855", "858", "863", "924", "925"],
+    "completedIssueIds": ["829", "853", "855", "858", "863", "924", "925"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -2161,30 +1827,8 @@
     "baseline": "17,717 pass / 43,120 official (41.1%) — post sprint 35",
     "result": "",
     "issueCount": 0,
-    "issueIds": [
-      "914",
-      "915",
-      "916",
-      "917",
-      "918",
-      "920",
-      "922",
-      "932",
-      "935",
-      "942"
-    ],
-    "completedIssueIds": [
-      "914",
-      "915",
-      "916",
-      "917",
-      "918",
-      "920",
-      "922",
-      "932",
-      "935",
-      "942"
-    ],
+    "issueIds": ["914", "915", "916", "917", "918", "920", "922", "932", "935", "942"],
+    "completedIssueIds": ["914", "915", "916", "917", "918", "920", "922", "932", "935", "942"],
     "explicitCarryOver": true,
     "isClosed": true
   },
@@ -2320,26 +1964,8 @@
     "baseline": "18,408 pass / 21,652 fail / 2,973 CE / 43,120 total (42.7%)",
     "result": "",
     "issueCount": 0,
-    "issueIds": [
-      "788",
-      "811",
-      "910",
-      "911",
-      "912",
-      "913",
-      "985",
-      "989"
-    ],
-    "completedIssueIds": [
-      "788",
-      "811",
-      "910",
-      "911",
-      "912",
-      "913",
-      "985",
-      "989"
-    ],
+    "issueIds": ["788", "811", "910", "911", "912", "913", "985", "989"],
+    "completedIssueIds": ["788", "811", "910", "911", "912", "913", "985", "989"],
     "explicitCarryOver": false,
     "isClosed": true
   },
@@ -2555,7 +2181,8 @@
       "1123",
       "1124",
       "1125",
-      "1126"
+      "1126",
+      "1127"
     ],
     "completedIssueIds": [
       "990",
