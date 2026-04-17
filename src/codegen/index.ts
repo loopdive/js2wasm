@@ -2015,7 +2015,7 @@ function collectConsoleImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
   }
 }
 
-/** Register WASI imports: fd_write, proc_exit, linear memory, bump pointer global */
+/** Register WASI imports: fd_write, proc_exit, path_open, fd_close, linear memory, bump pointer global */
 function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   // Add linear memory (1 page = 64KB) for string data + iovec structs
   ctx.mod.memories.push({ min: 1 });
@@ -2033,9 +2033,13 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
   });
   ctx.wasiBumpPtrGlobalIdx = bumpGlobalIdx;
 
-  // Check if source uses console.log/warn/error
+  // Check if source uses console.log/warn/error, process.exit, or node:fs functions
   let needsFdWrite = false;
   let needsProcExit = false;
+
+  // ctx.wasiNodeFsFuncs is populated from the original source before import preprocessing
+  // (see detectNodeFsImports in compiler.ts)
+  const needsPathOpen = ctx.wasiNodeFsFuncs.has("writeFileSync");
 
   function visit(node: ts.Node) {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -2059,6 +2063,9 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
   }
   ts.forEachChild(sourceFile, visit);
 
+  // writeFileSync also needs fd_write for the actual file data write
+  if (needsPathOpen) needsFdWrite = true;
+
   // fd_write(fd: i32, iovs: i32, iovs_len: i32, nwritten: i32) -> i32
   if (needsFdWrite) {
     const fdWriteType = addFuncType(
@@ -2078,10 +2085,43 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
     ctx.wasiProcExitIdx = ctx.funcMap.get("proc_exit")!;
   }
 
+  // path_open(fd: i32, dirflags: i32, path: i32, path_len: i32, oflags: i32,
+  //           rights_base: i64, rights_inheriting: i64, fdflags: i32, fd_out: i32) -> i32
+  if (needsPathOpen) {
+    const pathOpenType = addFuncType(
+      ctx,
+      [
+        { kind: "i32" }, // fd (dirfd)
+        { kind: "i32" }, // dirflags
+        { kind: "i32" }, // path ptr
+        { kind: "i32" }, // path len
+        { kind: "i32" }, // oflags
+        { kind: "i64" }, // rights_base
+        { kind: "i64" }, // rights_inheriting
+        { kind: "i32" }, // fdflags
+        { kind: "i32" }, // fd_out ptr
+      ],
+      [{ kind: "i32" }],
+      "$wasi_path_open",
+    );
+    addImport(ctx, "wasi_snapshot_preview1", "path_open", { kind: "func", typeIdx: pathOpenType });
+    ctx.wasiPathOpenIdx = ctx.funcMap.get("path_open")!;
+
+    // fd_close(fd: i32) -> i32
+    const fdCloseType = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "i32" }], "$wasi_fd_close");
+    addImport(ctx, "wasi_snapshot_preview1", "fd_close", { kind: "func", typeIdx: fdCloseType });
+    ctx.wasiFdCloseIdx = ctx.funcMap.get("fd_close")!;
+  }
+
   // Register a helper function: __wasi_write_string(strPtr: i32, strLen: i32) -> void
   // This writes to stdout (fd=1) using fd_write
   if (needsFdWrite) {
     emitWasiWriteStringHelper(ctx);
+  }
+
+  // Register __wasi_write_file_sync(pathPtr, pathLen, dataPtr, dataLen) helper
+  if (needsPathOpen) {
+    emitWasiWriteFileSyncHelper(ctx);
   }
 }
 
@@ -2116,6 +2156,81 @@ function emitWasiWriteStringHelper(ctx: CodegenContext): void {
     name: "__wasi_write_string",
     typeIdx: funcTypeIdx,
     locals: [],
+    body,
+    exported: false,
+  });
+}
+
+/**
+ * Emit __wasi_write_file_sync(pathPtr: i32, pathLen: i32, dataPtr: i32, dataLen: i32) helper.
+ * Opens a file via path_open, writes data via fd_write, then closes via fd_close.
+ *
+ * WASI path_open signature:
+ *   path_open(dirfd, dirflags, path, path_len, oflags, rights_base, rights_inheriting, fdflags, fd_out) -> errno
+ *
+ * Memory layout (scratch area 0-1023):
+ *   [0..3]   = iovec.buf (ptr to data)
+ *   [4..7]   = iovec.buf_len
+ *   [8..11]  = nwritten (output from fd_write)
+ *   [12..15] = opened fd (output from path_open)
+ */
+function emitWasiWriteFileSyncHelper(ctx: CodegenContext): void {
+  // params: pathPtr(0), pathLen(1), dataPtr(2), dataLen(3)
+  // locals: openedFd(4)
+  const funcTypeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }, { kind: "i32" }, { kind: "i32" }], []);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__wasi_write_file_sync", funcIdx);
+
+  const body: Instr[] = [
+    // 1. Call path_open to open the file for writing
+    //    path_open(dirfd=3, dirflags=0, path, path_len,
+    //              oflags=O_CREAT|O_TRUNC(=9), rights_base=FD_WRITE(=64),
+    //              rights_inheriting=0, fdflags=0, fd_out=12)
+
+    { op: "i32.const", value: 3 } as Instr, // dirfd = 3 (first preopen)
+    { op: "i32.const", value: 0 } as Instr, // dirflags = 0
+    { op: "local.get", index: 0 } as Instr, // path ptr
+    { op: "local.get", index: 1 } as Instr, // path len
+    { op: "i32.const", value: 9 } as Instr, // oflags = O_CREAT(1) | O_TRUNC(8) = 9
+    { op: "i64.const", value: 64n } as unknown as Instr, // rights_base = RIGHT_FD_WRITE(64)
+    { op: "i64.const", value: 0n } as unknown as Instr, // rights_inheriting = 0
+    { op: "i32.const", value: 0 } as Instr, // fdflags = 0
+    { op: "i32.const", value: 12 } as Instr, // fd_out ptr at memory[12]
+    { op: "call", funcIdx: ctx.wasiPathOpenIdx } as Instr,
+    { op: "drop" } as Instr, // drop errno
+
+    // 2. Load the opened fd from memory[12]
+    { op: "i32.const", value: 12 } as Instr,
+    { op: "i32.load", align: 2, offset: 0 } as Instr,
+    { op: "local.set", index: 4 } as Instr, // store in local openedFd
+
+    // 3. Set up iovec for fd_write: iovec at memory[0]
+    //    iovec.buf = dataPtr, iovec.buf_len = dataLen
+    { op: "i32.const", value: 0 } as Instr,
+    { op: "local.get", index: 2 } as Instr, // dataPtr
+    { op: "i32.store", align: 2, offset: 0 } as Instr,
+    { op: "i32.const", value: 4 } as Instr,
+    { op: "local.get", index: 3 } as Instr, // dataLen
+    { op: "i32.store", align: 2, offset: 0 } as Instr,
+
+    // 4. Call fd_write(openedFd, iovs=0, iovs_len=1, nwritten=8)
+    { op: "local.get", index: 4 } as Instr, // fd = openedFd
+    { op: "i32.const", value: 0 } as Instr, // iovs pointer
+    { op: "i32.const", value: 1 } as Instr, // iovs_len = 1
+    { op: "i32.const", value: 8 } as Instr, // nwritten pointer
+    { op: "call", funcIdx: ctx.wasiFdWriteIdx } as Instr,
+    { op: "drop" } as Instr, // drop errno
+
+    // 5. Call fd_close(openedFd)
+    { op: "local.get", index: 4 } as Instr, // fd = openedFd
+    { op: "call", funcIdx: ctx.wasiFdCloseIdx } as Instr,
+    { op: "drop" } as Instr, // drop errno
+  ];
+
+  ctx.mod.functions.push({
+    name: "__wasi_write_file_sync",
+    typeIdx: funcTypeIdx,
+    locals: [{ name: "openedFd", type: { kind: "i32" } }],
     body,
     exported: false,
   });
@@ -4645,8 +4760,10 @@ function collectExternDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFil
     // can pass arguments correctly (missing args get padded with default values).
     // These are generated by preprocessImports for named imports from unresolved
     // external modules, e.g. `import { foo } from "./x.js"` → `declare function foo(a0, a1): any`.
+    // In WASI mode, skip node:fs functions — they're handled by WASI syscall helpers.
     if (ts.isFunctionDeclaration(stmt) && stmt.name && hasDeclareModifier(stmt) && !stmt.body) {
       const name = stmt.name.text;
+      if (ctx.wasi && ctx.wasiNodeFsFuncs.has(name)) continue;
       if (!ctx.funcMap.has(name)) {
         const sig = ctx.checker.getSignatureFromDeclaration(stmt);
         if (sig) {

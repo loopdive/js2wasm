@@ -738,27 +738,30 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
 /** Run all post-walk finalization (register imports based on collected state) */
 export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorState): void {
   // ── collectConsoleImports finalize ──
-  const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
-  for (const method of CONSOLE_METHODS) {
-    const needed = state.consoleNeededByMethod.get(method);
-    if (!needed) continue;
-    if (needed.has("number")) {
-      const t = addFuncType(ctx, [{ kind: "f64" }], []);
-      addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
+  // In WASI mode, console.log etc. are handled by WASI fd_write — skip host imports
+  if (!ctx.wasi) {
+    const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
+    for (const method of CONSOLE_METHODS) {
+      const needed = state.consoleNeededByMethod.get(method);
+      if (!needed) continue;
+      if (needed.has("number")) {
+        const t = addFuncType(ctx, [{ kind: "f64" }], []);
+        addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("bool")) {
+        const t = addFuncType(ctx, [{ kind: "i32" }], []);
+        addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("string")) {
+        const t = addFuncType(ctx, [{ kind: "externref" }], []);
+        addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("externref")) {
+        const t = addFuncType(ctx, [{ kind: "externref" }], []);
+        addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
+      }
     }
-    if (needed.has("bool")) {
-      const t = addFuncType(ctx, [{ kind: "i32" }], []);
-      addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("string")) {
-      const t = addFuncType(ctx, [{ kind: "externref" }], []);
-      addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("externref")) {
-      const t = addFuncType(ctx, [{ kind: "externref" }], []);
-      addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
-    }
-  }
+  } // end if (!ctx.wasi)
 
   // ── collectPrimitiveMethodImports finalize ──
   if (state.primitiveNeeded.has("number_toString")) {

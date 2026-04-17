@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
+import ts from "typescript";
 import {
   analyzeFiles,
   analyzeMultiSource,
@@ -44,6 +45,29 @@ function isHardTypeScriptDiagnostic(diag: { category: number; code: number }): b
 }
 
 /**
+ * Detect named imports from node:fs / fs before import preprocessing strips them.
+ * Returns a Set of function names imported from the fs module.
+ */
+function detectNodeFsImports(source: string): Set<string> {
+  const result = new Set<string>();
+  const sf = ts.createSourceFile("__detect_fs__.ts", source, ts.ScriptTarget.Latest, true);
+  for (const stmt of sf.statements) {
+    if (ts.isImportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
+      const mod = stmt.moduleSpecifier.text;
+      if (mod === "node:fs" || mod === "fs") {
+        const clause = stmt.importClause;
+        if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+          for (const spec of clause.namedBindings.elements) {
+            result.add(spec.name.text);
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * Orchestrates the full compilation pipeline:
  * TS Source → tsc Parser+Checker → Codegen → Binary + WAT
  */
@@ -64,6 +88,10 @@ export function compileSource(
   // Step 0: Pre-process imports (replace import * as X with declare namespace)
   // #1054: rewrite eval("...super()...") to a throwing IIFE so early-error
   // rules for PerformEval fire at runtime.
+  //
+  // Before preprocessing strips import declarations, detect node:fs imports
+  // for WASI mode (preprocessing replaces them with declare stubs).
+  const wasiNodeFsFuncs = options.target === "wasi" ? detectNodeFsImports(source) : undefined;
   const processedSource = preprocessImports(rewriteEvalSuperCall(source));
 
   // Step 1: Parse and type-check
@@ -249,6 +277,7 @@ export function compileSource(
         fast: options.fast,
         nativeStrings: options.nativeStrings,
         wasi: options.target === "wasi",
+        wasiNodeFsFuncs,
       });
       mod = result.module;
       // Propagate codegen errors with source locations
