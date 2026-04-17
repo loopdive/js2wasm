@@ -3159,7 +3159,14 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
               }
               // non-async arrow: continue to enclosing scope
             } else if (ts.isFunctionDeclaration(c) || ts.isFunctionExpression(c) || ts.isMethodDeclaration(c)) {
-              // Non-arrow function boundary resets [Await] context
+              // Non-arrow function boundary resets [Await] context.
+              // Exception: if 'await' is the BindingIdentifier (name) of THIS
+              // function, it's evaluated in the ENCLOSING scope's [Await] context,
+              // not the function's own body. Keep walking up. (#1068)
+              if ((c as any).name === node) {
+                c = c.parent;
+                continue;
+              }
               reserved = !!c.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword);
               break;
             }
