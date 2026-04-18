@@ -1,0 +1,15 @@
+{
+  "pr": 226,
+  "conclusion": "failure",
+  "head_branch": "issue-defineproperty-validate",
+  "head_sha": "809bb714104d3a5bbdf825d2695cd2993ccc06eb",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24614191282",
+  "timestamp": "2026-04-18T21:36:11Z",
+  "pass": 22461,
+  "fail": 15377,
+  "compile_error": 3962,
+  "snapshot_delta": 11,
+  "net_per_test": 11,
+  "regressions": 13,
+  "improvements": 24
+}
