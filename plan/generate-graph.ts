@@ -83,7 +83,7 @@ function getStableGeneratedAt(paths: string[]): string {
   const candidates = paths.filter((file) => fs.existsSync(file));
   if (!candidates.length) return "";
   try {
-    return git(["log", "-1", "--format=%cI", "--", ...candidates]);
+    return git(["log", "-1", "--no-merges", "--format=%aI", "--", ...candidates]);
   } catch {
     return "";
   }
