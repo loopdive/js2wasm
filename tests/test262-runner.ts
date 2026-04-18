@@ -260,6 +260,63 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 // ── Test wrapping ───────────────────────────────────────────────────
 
 /**
+ * Rewrite `srcFn(A, LIT)` → `dstFn(A, LIT)` when LIT is a boolean literal,
+ * using paren-counting so A can contain nested calls with commas. Handles
+ * both arg orders: `srcFn(A, true|false)` and `srcFn(true|false, A)`.
+ */
+function routeBoolAssert(code: string, srcFn: string, dstFn: string): string {
+  const search = srcFn + "(";
+  let result = "";
+  let i = 0;
+  while (i < code.length) {
+    const idx = code.indexOf(search, i);
+    if (idx === -1) {
+      result += code.slice(i);
+      break;
+    }
+    result += code.slice(i, idx);
+    let pos = idx + search.length;
+    let depth = 1;
+    let commaPos = -1;
+    let closePos = -1;
+    while (pos < code.length && depth > 0) {
+      const ch = code[pos]!;
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          closePos = pos;
+          break;
+        }
+      } else if (ch === "," && depth === 1 && commaPos === -1) commaPos = pos;
+      else if (ch === "'" || ch === '"') {
+        const q = ch;
+        pos++;
+        while (pos < code.length && code[pos] !== q) {
+          if (code[pos] === "\\") pos++;
+          pos++;
+        }
+      }
+      pos++;
+    }
+    if (closePos < 0 || commaPos < 0) {
+      result += code.slice(idx, closePos >= 0 ? closePos + 1 : code.length);
+      i = closePos >= 0 ? closePos + 1 : code.length;
+      continue;
+    }
+    const argA = code.slice(idx + search.length, commaPos).trim();
+    const argB = code.slice(commaPos + 1, closePos).trim();
+    if (argA === "true" || argA === "false" || argB === "true" || argB === "false") {
+      result += `${dstFn}(${argA}, ${argB})`;
+    } else {
+      result += code.slice(idx, closePos + 1);
+    }
+    i = closePos + 1;
+  }
+  return result;
+}
+
+/**
  * Strip the 3rd argument from function calls like fn(a, b, msg).
  * Handles nested parentheses correctly.
  */
@@ -1233,16 +1290,16 @@ function isSameValue(a: number, b: number): number {
   return 0;
 }
 
-function assert_sameValue(actual: number, expected: number): void {
+function assert_sameValue(actual: any, expected: number): void {
   __assert_count = __assert_count + 1;
-  if (!isSameValue(actual, expected)) {
+  if (!isSameValue(actual as number, expected)) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_notSameValue(actual: number, expected: number): void {
+function assert_notSameValue(actual: any, expected: number): void {
   __assert_count = __assert_count + 1;
-  if (isSameValue(actual, expected)) {
+  if (isSameValue(actual as number, expected)) {
     if (!__fail) __fail = __assert_count;
   }
 }
@@ -1307,14 +1364,14 @@ function assert_notSameValue_str(actual: string, expected: string): void {
   if (needsBoolAssert) {
     p += `
 
-function assert_sameValue_bool(actual: boolean, expected: boolean): void {
+function assert_sameValue_bool(actual: any, expected: boolean): void {
   __assert_count = __assert_count + 1;
   if (actual !== expected) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_notSameValue_bool(actual: boolean, expected: boolean): void {
+function assert_notSameValue_bool(actual: any, expected: boolean): void {
   __assert_count = __assert_count + 1;
   if (actual === expected) {
     if (!__fail) __fail = __assert_count;
@@ -1626,17 +1683,10 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // e.g. assert_sameValue(__executed[index], __expected[index])
   body = body.replace(/assert_sameValue\s*\(\s*(\w+\[\w+\])\s*,\s*(\w+\[\w+\])\s*\)/g, "assert_sameValue_str($1, $2)");
 
-  // Route boolean comparisons to boolean-aware assert
-  body = body.replace(/assert_sameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g, "assert_sameValue_bool($1, $2)");
-  body = body.replace(/assert_sameValue\s*\(\s*(true|false)\s*,\s*([^)]+?)\s*\)/g, "assert_sameValue_bool($1, $2)");
-  body = body.replace(
-    /assert_notSameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g,
-    "assert_notSameValue_bool($1, $2)",
-  );
-  body = body.replace(
-    /assert_notSameValue\s*\(\s*(true|false)\s*,\s*([^)]+?)\s*\)/g,
-    "assert_notSameValue_bool($1, $2)",
-  );
+  // Route boolean comparisons to boolean-aware assert. Paren-counting so the
+  // first arg can contain nested calls with commas, e.g. `.call(obj, fn)`.
+  body = routeBoolAssert(body, "assert_sameValue", "assert_sameValue_bool");
+  body = routeBoolAssert(body, "assert_notSameValue", "assert_notSameValue_bool");
 
   // Route compareArray assertions through assert_true
   body = body.replace(/\bassert_true\s*\(\s*compareArray\b/g, "assert_true(compareArray");
