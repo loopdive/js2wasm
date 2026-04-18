@@ -1,0 +1,15 @@
+{
+  "pr": 175,
+  "conclusion": "failure",
+  "head_branch": "issue-1122-standalone-entry-stability",
+  "head_sha": "634828cc3c43bf2ddc52dde5dadf1bc193ec34fe",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608486986",
+  "timestamp": "2026-04-18T18:50:31Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
