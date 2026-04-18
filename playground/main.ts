@@ -17,7 +17,7 @@ import { optimizeBinaryAsync } from "../src/optimize.js";
 import { buildImports, buildStringConstants, instantiateWasm } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
-import { LayoutManager, clearSavedLayout } from "./layout.js";
+import { LayoutManager, clearSavedLayout, getDefaultLayout, getMobileDefaultLayout } from "./layout.js";
 import DEFAULT_SOURCE from "./examples/dom/calendar.ts?raw";
 import BENCH_HELPERS_SOURCE from "./examples/benchmarks/helpers.ts?raw";
 
@@ -893,10 +893,8 @@ function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
     clearT262FailureAnnotations();
     sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
     lastResult = null;
-    compileBtn.disabled = false;
-    runBtn.disabled = true;
+    runBtn.disabled = false;
     benchBtn.disabled = true;
-    downloadWatBtn.disabled = true;
     downloadWasmBtn.disabled = true;
   });
 }
@@ -930,6 +928,7 @@ function setInputSourceModel(virtualPath: string, source: string): void {
     slot.editor.setModel(model);
   }
   updateTabLabel("ts-source", inputFile.displayName, tabTooltips["ts-source"]);
+  queueSidebarRefresh();
 }
 
 async function loadBundledExampleSource(path: string): Promise<string | null> {
@@ -1074,18 +1073,153 @@ function editorForPanel(panelId: string): EditorSlot | null {
 
 // ─── DOM references ─────────────────────────────────────────────────────
 const timingSpan = document.getElementById("timing") as HTMLSpanElement;
-const compileBtn = document.getElementById("compile") as HTMLButtonElement;
 const runBtn = document.getElementById("run") as HTMLButtonElement;
-const downloadWatBtn = document.getElementById("download-wat") as HTMLButtonElement;
 const downloadWasmBtn = document.getElementById("download-wasm") as HTMLButtonElement;
 const benchBtn = document.getElementById("bench") as HTMLButtonElement;
 const resetLayoutBtn = document.getElementById("reset-layout") as HTMLButtonElement;
-const toggleSidebarBtn = document.getElementById("toggle-sidebar") as HTMLButtonElement;
-const compatLink = document.getElementById("compat-link") as HTMLAnchorElement | null;
-const planLink = document.getElementById("plan-link") as HTMLAnchorElement | null;
+const mobileSidebarToggleBtn = document.getElementById("mobile-sidebar-toggle") as HTMLButtonElement | null;
+const mobileBottomToggleBtn = document.getElementById("mobile-bottom-toggle") as HTMLButtonElement | null;
+const desktopSidebarToggleBtn = document.getElementById("desktop-sidebar-toggle") as HTMLButtonElement | null;
+const desktopBottomToggleBtn = document.getElementById("desktop-bottom-toggle") as HTMLButtonElement | null;
+const desktopMenuToggleBtn = document.getElementById("desktop-menu-toggle") as HTMLButtonElement | null;
+const desktopNavPopoverEl = document.getElementById("desktop-nav-popover") as HTMLElement | null;
+const mobileMenuToggleBtn = document.getElementById("mobile-menu-toggle") as HTMLButtonElement | null;
+const mobileRunBtn = document.getElementById("mobile-run") as HTMLButtonElement | null;
+const mobileTimingSpan = document.getElementById("mobile-timing") as HTMLSpanElement | null;
+const mobileSidebarOverlayEl = document.getElementById("mobile-sidebar-overlay") as HTMLElement | null;
+const mobileSidebarContentEl = document.getElementById("mobile-sidebar-content") as HTMLElement | null;
+const toolbarEl = document.querySelector(".toolbar") as HTMLElement;
+const layoutRootEl = document.getElementById("layout-root") as HTMLElement;
+let bottomPanelSplitEl: HTMLElement | null = null;
 
-if (compatLink) compatLink.href = resolveSiteLink("benchmarks/report.html");
-if (planLink) planLink.href = resolveSiteLink("#roadmap");
+const mobileLayoutMedia = window.matchMedia("(max-width: 900px), (max-height: 720px)");
+let mobileMenuOpen = false;
+let desktopMenuOpen = false;
+let mobileSidebarOpen = false;
+let mobileBottomCollapsed = false;
+
+function syncDesktopToolbarLayout(): void {
+  const desktopMode = !mobileLayoutMedia.matches;
+  let sidebarWidth = 0;
+  let hasDesktopSidebar = false;
+
+  if (desktopMode && layout.hasPanel("sidebar-left")) {
+    const rootSplit = layoutRootEl.querySelector(":scope > .layout-split") as HTMLElement | null;
+    const sidebarChild = rootSplit?.querySelector(":scope > .layout-child:first-child") as HTMLElement | null;
+    const sidebarPanel = sidebarChild?.querySelector(
+      ':scope > .layout-panel[data-panel="sidebar-left"]',
+    ) as HTMLElement | null;
+    if (rootSplit?.style.flexDirection === "row" && sidebarChild && sidebarPanel) {
+      sidebarWidth = Math.round(sidebarChild.getBoundingClientRect().width);
+      hasDesktopSidebar = sidebarWidth > 0;
+    }
+  }
+
+  document.body.classList.toggle("desktop-sidebar-visible", hasDesktopSidebar);
+  document.body.style.setProperty("--desktop-sidebar-offset", hasDesktopSidebar ? `${sidebarWidth}px` : "0px");
+}
+
+function syncMobileMenu(): void {
+  toolbarEl.classList.toggle("mobile-open", mobileMenuOpen);
+  if (mobileMenuToggleBtn) {
+    mobileMenuToggleBtn.classList.toggle("open", mobileMenuOpen);
+    mobileMenuToggleBtn.setAttribute("aria-expanded", mobileMenuOpen ? "true" : "false");
+  }
+}
+
+function syncDesktopMenu(): void {
+  desktopNavPopoverEl?.classList.toggle("open", desktopMenuOpen);
+  desktopMenuToggleBtn?.classList.toggle("open", desktopMenuOpen);
+  desktopMenuToggleBtn?.setAttribute("aria-expanded", desktopMenuOpen ? "true" : "false");
+}
+
+function closeDesktopMenu(): void {
+  if (!desktopMenuOpen) return;
+  desktopMenuOpen = false;
+  syncDesktopMenu();
+}
+
+function toggleDesktopMenu(): void {
+  desktopMenuOpen = !desktopMenuOpen;
+  syncDesktopMenu();
+}
+
+function closeMobileMenu(): void {
+  if (!mobileMenuOpen) return;
+  mobileMenuOpen = false;
+  syncMobileMenu();
+}
+
+function toggleMobileMenu(): void {
+  mobileMenuOpen = !mobileMenuOpen;
+  syncMobileMenu();
+}
+
+function syncMobileSidebar(): void {
+  if (!mobileSidebarOverlayEl || !mobileSidebarContentEl) return;
+  mobileSidebarOverlayEl.classList.toggle("open", mobileSidebarOpen);
+  mobileSidebarToggleBtn?.classList.toggle("active", mobileSidebarOpen);
+  mobileSidebarToggleBtn?.setAttribute("aria-pressed", mobileSidebarOpen ? "true" : "false");
+  if (mobileSidebarOpen) {
+    if (!mobileSidebarContentEl.contains(test262Panel)) {
+      mobileSidebarContentEl.appendChild(test262Panel);
+    }
+    if (!t262Loaded) {
+      t262Loaded = true;
+      t262Render();
+    }
+  }
+}
+
+function closeMobileSidebar(): void {
+  if (!mobileSidebarOpen) return;
+  mobileSidebarOpen = false;
+  syncMobileSidebar();
+}
+
+function toggleMobileSidebar(): void {
+  mobileSidebarOpen = !mobileSidebarOpen;
+  syncMobileSidebar();
+}
+
+function getBottomPanelSplitEl(): HTMLElement | null {
+  const rootSplit = layoutRootEl.querySelector(":scope > .layout-split") as HTMLElement | null;
+  if (!rootSplit) return null;
+  if (rootSplit.style.flexDirection === "column") return rootSplit;
+  const nestedSplit = rootSplit.querySelector(
+    ":scope > .layout-child:last-child > .layout-split",
+  ) as HTMLElement | null;
+  if (nestedSplit?.style.flexDirection === "column") return nestedSplit;
+  return null;
+}
+
+function syncMobileBottomPanel(): void {
+  const nextSplitEl = getBottomPanelSplitEl();
+  if (bottomPanelSplitEl && bottomPanelSplitEl !== nextSplitEl) {
+    bottomPanelSplitEl.classList.remove("bottom-collapsible", "bottom-collapsed");
+  }
+  bottomPanelSplitEl = nextSplitEl;
+  bottomPanelSplitEl?.classList.add("bottom-collapsible");
+  bottomPanelSplitEl?.classList.toggle("bottom-collapsed", mobileBottomCollapsed);
+  mobileBottomToggleBtn?.classList.toggle("active", !mobileBottomCollapsed);
+  mobileBottomToggleBtn?.setAttribute("aria-pressed", (!mobileBottomCollapsed).toString());
+  desktopBottomToggleBtn?.classList.toggle("active", !mobileBottomCollapsed);
+  desktopBottomToggleBtn?.setAttribute("aria-pressed", (!mobileBottomCollapsed).toString());
+}
+
+function toggleMobileBottomPanel(): void {
+  mobileBottomCollapsed = !mobileBottomCollapsed;
+  syncMobileBottomPanel();
+  layout.onLayoutChanged?.();
+}
+
+function syncMobileHeaderActions(): void {
+  if (mobileRunBtn) mobileRunBtn.disabled = runBtn.disabled;
+  if (mobileTimingSpan) {
+    const desktopText = timingSpan.textContent ?? "";
+    mobileTimingSpan.textContent = desktopText.replace(/^compiled in\s+/, "");
+  }
+}
 
 // Session storage for input
 bindInputModelPersistence(inputFile.model);
@@ -1114,8 +1248,13 @@ test262Panel.innerHTML = `
       <input class="t262-search" type="text" placeholder="Filter tests..." />
     </div>
     <div class="t262-list"></div>
+    <div class="t262-footer">
+      <div class="t262-footer-action"></div>
+    </div>
   </div>
 `;
+const test262FooterActionEl = test262Panel.querySelector(".t262-footer-action") as HTMLElement;
+test262FooterActionEl.appendChild(resetLayoutBtn);
 
 interface T262Category {
   name: string;
@@ -1166,14 +1305,16 @@ async function fetchJsonFromPaths<T>(paths: string[]): Promise<T | null> {
   return null;
 }
 
+function staticPlaygroundJsonPaths(fileName: string): string[] {
+  return prefersStaticPlaygroundData
+    ? [`playground-data/${fileName}`]
+    : [`/playground-data/${fileName}`, `/playground/playground-data/${fileName}`, `playground-data/${fileName}`];
+}
+
 async function loadStaticEquivTests(): Promise<{ name: string; source: string }[]> {
   if (staticEquivTests) return staticEquivTests;
   staticEquivTests =
-    (await fetchJsonFromPaths<{ name: string; source: string }[]>([
-      "/playground-data/equiv-tests.json",
-      "/playground/playground-data/equiv-tests.json",
-      "playground-data/equiv-tests.json",
-    ])) ?? [];
+    (await fetchJsonFromPaths<{ name: string; source: string }[]>(staticPlaygroundJsonPaths("equiv-tests.json"))) ?? [];
   return staticEquivTests;
 }
 
@@ -1214,22 +1355,16 @@ async function loadBundledEquivTests(): Promise<{ name: string; source: string }
 async function loadStaticT262Files(): Promise<Record<string, string[]>> {
   if (staticT262Files) return staticT262Files;
   staticT262Files =
-    (await fetchJsonFromPaths<Record<string, string[]>>([
-      "/playground-data/test262-files.json",
-      "/playground/playground-data/test262-files.json",
-      "playground-data/test262-files.json",
-    ])) ?? {};
+    (await fetchJsonFromPaths<Record<string, string[]>>(staticPlaygroundJsonPaths("test262-files.json"))) ?? {};
   return staticT262Files;
 }
 
 async function loadStaticT262FileResults(): Promise<Record<string, T262FileResult[]>> {
   if (staticT262FileResults) return staticT262FileResults;
   staticT262FileResults =
-    (await fetchJsonFromPaths<Record<string, T262FileResult[]>>([
-      "/playground-data/test262-file-results.json",
-      "/playground/playground-data/test262-file-results.json",
-      "playground-data/test262-file-results.json",
-    ])) ?? {};
+    (await fetchJsonFromPaths<Record<string, T262FileResult[]>>(
+      staticPlaygroundJsonPaths("test262-file-results.json"),
+    )) ?? {};
   return staticT262FileResults;
 }
 
@@ -1265,7 +1400,7 @@ let t262Report: T262Report | null = null;
 const t262FileResultsCache = new Map<string, T262FileResult[]>();
 
 async function loadLatestT262Summary(): Promise<T262Report["summary"] | null> {
-  const runs = await fetchJson<T262TrendRun[]>("benchmarks/results/runs/index.json");
+  const runs = await fetchJson<T262TrendRun[]>(resolveSiteLink("benchmarks/results/runs/index.json"));
   const latest = runs?.[runs.length - 1];
   if (!latest || latest.total === 0) return null;
   return {
@@ -1281,10 +1416,9 @@ async function t262LoadReport(): Promise<T262Report | null> {
   if (t262Report) return t262Report;
   const latestSummary = prefersStaticPlaygroundData ? await loadLatestT262Summary() : null;
   const data = prefersStaticPlaygroundData
-    ? ((await fetchJson<T262Report>("benchmarks/results/test262-report.json")) ??
-      (await fetchJson<T262Report | { error: string }>("/api/test262-results")))
+    ? await fetchJson<T262Report>(resolveSiteLink("benchmarks/results/test262-report.json"))
     : ((await fetchJson<T262Report | { error: string }>("/api/test262-results")) ??
-      (await fetchJson<T262Report>("benchmarks/results/test262-report.json")));
+      (await fetchJson<T262Report>(resolveSiteLink("benchmarks/results/test262-report.json"))));
   if ((!data || "error" in data) && !latestSummary) return null;
   const report =
     !data || "error" in data
@@ -1307,9 +1441,6 @@ async function t262LoadFileResults(category: string): Promise<T262FileResult[]> 
   if (!data) {
     const staticResults = await loadStaticT262FileResults();
     data = staticResults[category] ?? null;
-  }
-  if (!data && prefersStaticPlaygroundData) {
-    data = await fetchJson<T262FileResult[]>(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
   }
   const resolved = data ?? [];
   t262FileResultsCache.set(category, resolved);
@@ -1389,7 +1520,7 @@ function buildEquivSummaryHtml(total: number): string {
 const t262ExpandedCats = new Set<string>();
 let t262Filter = "";
 let t262Debounce: ReturnType<typeof setTimeout> | null = null;
-let t262ActivePath = "";
+let t262ActivePath = inputFile.path;
 let t262Loading = false;
 let activeT262FileResult: T262FileResult | null = null;
 let pendingT262SourceDecorations: monaco.editor.IModelDeltaDecoration[] = [];
@@ -1406,7 +1537,9 @@ async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   const staticData = await fetchJson<{ categories: T262CategorySummary[] }>(
     "playground-data/test262-index-summary.json",
   );
-  const apiData = await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary");
+  const apiData = prefersStaticPlaygroundData
+    ? null
+    : await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary");
   const preferred = prefersStaticPlaygroundData ? [staticData, apiData] : [apiData, staticData];
   const resolved = preferred.find((entry) => (entry?.categories?.length ?? 0) > 0) ?? preferred.find(Boolean) ?? null;
   t262Index = resolved?.categories ?? [];
@@ -1421,9 +1554,6 @@ async function t262LoadFiles(category: string): Promise<string[]> {
   }
   if (!files || files.length === 0) {
     files = (await loadStaticT262Files())[category] ?? null;
-  }
-  if ((!files || files.length === 0) && prefersStaticPlaygroundData) {
-    files = await fetchJson<string[]>(`/api/test262-files?category=${encodeURIComponent(category)}`);
   }
   const resolved = files ?? [];
   t262FilesCache.set(category, resolved);
@@ -1446,10 +1576,6 @@ async function t262LoadFile(path: string): Promise<string> {
   }
   const remoteData = await fetchText(`${TEST262_REMOTE_BASE}${normalizedPath}`);
   if (remoteData !== null) return remoteData;
-  if (prefersStaticPlaygroundData) {
-    const apiData = await fetchText(`/api/test262-file?path=${encodeURIComponent(path)}`);
-    if (apiData !== null) return apiData;
-  }
   return "";
 }
 
@@ -1962,7 +2088,7 @@ function t262BuildTree(cats: T262CategorySummary[]): T262TreeNode {
   return root;
 }
 
-const t262ExpandedFolders = new Set<string>();
+const t262ExpandedFolders = new Set<string>(["__ex_dom__"]);
 
 async function t262Render() {
   const listEl = test262Panel.querySelector(".t262-list") as HTMLElement;
@@ -2014,6 +2140,48 @@ async function t262Render() {
     updateTabLabel("ts-source", bench.name, tabTooltips["ts-source"]);
     compileOnly();
     t262Loading = false;
+  }
+
+  function appendOutputFolder(parent: HTMLElement, paddingLeft = "22px") {
+    const outputCategoryEl = document.createElement("div");
+    outputCategoryEl.className = "t262-category";
+
+    const outputHeaderEl = document.createElement("div");
+    outputHeaderEl.className = "t262-cat-header t262-section-header-row";
+    outputHeaderEl.style.paddingLeft = paddingLeft;
+
+    const outputTitleEl = document.createElement("span");
+    outputTitleEl.className = "t262-cat-name";
+    outputTitleEl.textContent = "output";
+    outputHeaderEl.appendChild(outputTitleEl);
+
+    downloadWasmBtn.classList.add("output-section-btn");
+    outputHeaderEl.appendChild(downloadWasmBtn);
+    outputCategoryEl.appendChild(outputHeaderEl);
+
+    const outputFilesEl = document.createElement("div");
+    outputFilesEl.className = "t262-files";
+    outputFilesEl.style.paddingLeft = `calc(${paddingLeft} + 12px)`;
+
+    const outputEntries: Array<{ tabId: string; label: string }> = [
+      { tabId: "wat-output", label: watFile.displayName },
+      { tabId: "wasm-hex", label: wasmHexFile.displayName },
+      { tabId: "modular-ts", label: modularFile.displayName },
+    ];
+
+    for (const entry of outputEntries) {
+      const fileEl = document.createElement("div");
+      fileEl.className = "t262-file";
+      fileEl.textContent = entry.label;
+      fileEl.dataset.path = entry.tabId;
+      fileEl.addEventListener("click", () => {
+        showOutputPanel(entry.tabId);
+      });
+      outputFilesEl.appendChild(fileEl);
+    }
+
+    outputCategoryEl.appendChild(outputFilesEl);
+    parent.appendChild(outputCategoryEl);
   }
 
   function renderBenchmarkFile(bench: BenchmarkExample, parent: HTMLElement) {
@@ -2103,6 +2271,9 @@ async function t262Render() {
         for (const f of group.files) {
           if (filter && !f.name.toLowerCase().includes(filter) && !group.folder.includes(filter)) continue;
           renderExampleFile(f, filesEl);
+        }
+        if (group.files.some((f) => f.path === inputFile.path)) {
+          appendOutputFolder(filesEl);
         }
         container.appendChild(filesEl);
       });
@@ -2296,6 +2467,9 @@ async function t262Render() {
             });
             filesEl.appendChild(fileEl);
           }
+          if (displayFiles.includes(t262ActivePath)) {
+            appendOutputFolder(filesEl, `${10 + (depth + 1) * 12}px`);
+          }
           el.appendChild(filesEl);
         }
       }
@@ -2377,6 +2551,9 @@ async function t262Render() {
           });
           filesEl.appendChild(fileEl);
         }
+        if (t262ActivePath.startsWith("equiv:")) {
+          appendOutputFolder(filesEl);
+        }
         container.appendChild(filesEl);
       },
       buildEquivSummaryHtml(equivTests.length),
@@ -2410,8 +2587,12 @@ async function t262Render() {
   );
   if (benchMatches.length > 0) {
     const benchHeader = document.createElement("div");
-    benchHeader.className = "t262-section-header";
-    benchHeader.textContent = "BENCHMARKS";
+    benchHeader.className = "t262-section-header t262-section-header-row";
+    const benchTitle = document.createElement("span");
+    benchTitle.textContent = "BENCHMARKS";
+    benchHeader.appendChild(benchTitle);
+    benchBtn.classList.add("bench-section-btn");
+    benchHeader.appendChild(benchBtn);
     listEl.appendChild(benchHeader);
 
     await renderTopFolder("js2wasm Benchmark Suite", "__benchmarks__", listEl, (container) => {
@@ -2419,6 +2600,9 @@ async function t262Render() {
       filesEl.className = "t262-files";
       filesEl.style.paddingLeft = "22px";
       for (const bench of benchMatches) renderBenchmarkFile(bench, filesEl);
+      if (benchMatches.some((bench) => bench.path === inputFile.path)) {
+        appendOutputFolder(filesEl);
+      }
       container.appendChild(filesEl);
     });
   }
@@ -2436,6 +2620,11 @@ t262SearchInput.addEventListener("input", () => {
 
 // Lazy-load: render the test262 panel when it first becomes visible
 let t262Loaded = false;
+
+function queueSidebarRefresh(): void {
+  if (!t262Loaded) return;
+  void t262Render();
+}
 
 // Treemap
 const treemap = new WasmTreemap(treemapPanel);
@@ -2567,19 +2756,38 @@ layout.onLayoutChanged = () => {
   for (const slot of editorSlots) {
     if (slot.panelId) slot.editor.layout();
   }
+  syncMobileBottomPanel();
+  syncSidebarToggleButton();
+  syncDesktopToolbarLayout();
 };
 
 // Load saved layout or use default
 const allTabIds = new Set(Object.keys(tabDefs));
-const savedLayout = LayoutManager.loadLayout(allTabIds);
-layout.init(savedLayout ?? undefined);
+function loadResponsiveLayout(): void {
+  const savedLayout = LayoutManager.loadLayout(allTabIds);
+  layout.init(savedLayout ?? (mobileLayoutMedia.matches ? getMobileDefaultLayout() : getDefaultLayout()));
+}
+
+loadResponsiveLayout();
+revealSourceTab();
+syncMobileBottomPanel();
+syncDesktopToolbarLayout();
+syncMobileHeaderActions();
 
 function syncSidebarToggleButton(): void {
-  toggleSidebarBtn.setAttribute("aria-pressed", layout.hasPanel("sidebar-left") ? "true" : "false");
+  mobileSidebarToggleBtn?.setAttribute("aria-pressed", mobileSidebarOpen ? "true" : "false");
+  const desktopSidebarVisible = layout.hasPanel("sidebar-left");
+  desktopSidebarToggleBtn?.classList.toggle("active", desktopSidebarVisible);
+  desktopSidebarToggleBtn?.setAttribute("aria-pressed", desktopSidebarVisible ? "true" : "false");
 }
 
 function toggleSidebar(): void {
-  layout.toggleSidebar();
+  if (mobileLayoutMedia.matches) {
+    closeMobileMenu();
+    toggleMobileSidebar();
+  } else {
+    layout.toggleSidebar();
+  }
   syncSidebarToggleButton();
 }
 
@@ -3590,11 +3798,9 @@ function compileOnly() {
     errorsPre.textContent = result.errors.map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`).join("\n");
   }
 
-  timingSpan.textContent = `compile: ${compileTime.toFixed(1)}ms${result.success ? "" : " (failed)"}`;
-  compileBtn.disabled = true;
-  runBtn.disabled = !result.success;
+  timingSpan.textContent = `compiled in ${compileTime.toFixed(1)}ms${result.success ? "" : " (failed)"}`;
+  runBtn.disabled = false;
   benchBtn.disabled = !result.success;
-  downloadWatBtn.disabled = !result.success;
   downloadWasmBtn.disabled = !result.success;
 
   // Auto-open mod.wat tab on first successful compile
@@ -3803,15 +4009,10 @@ async function runOnly() {
   }
 }
 
-function downloadWat() {
-  if (!lastResult) return;
-  const blob = new Blob([lastResult.wat], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "example.wat";
-  a.click();
-  URL.revokeObjectURL(url);
+async function compileAndRun() {
+  compileOnly();
+  if (!lastResult?.success) return;
+  await runOnly();
 }
 
 function downloadWasm() {
@@ -4064,12 +4265,11 @@ async function runBenchmark() {
 }
 
 // ─── Event listeners ────────────────────────────────────────────────────
-compileBtn.addEventListener("click", compileOnly);
-runBtn.addEventListener("click", runOnly);
+runBtn.addEventListener("click", () => {
+  void compileAndRun();
+});
 benchBtn.addEventListener("click", runBenchmark);
-downloadWatBtn.addEventListener("click", downloadWat);
 downloadWasmBtn.addEventListener("click", downloadWasm);
-toggleSidebarBtn.addEventListener("click", toggleSidebar);
 resetLayoutBtn.addEventListener("click", () => {
   clearSavedLayout();
   sessionStorage.removeItem(STORAGE_KEY);
@@ -4081,6 +4281,8 @@ resetLayoutBtn.addEventListener("click", () => {
   updateTabLabel("ts-source", "calendar.ts", tabTooltips["ts-source"]);
   layout.resetLayout();
   clearSavedLayout();
+  closeMobileSidebar();
+  closeMobileMenu();
   compileOnly();
   syncSidebarToggleButton();
 });
@@ -4091,6 +4293,106 @@ document.addEventListener("keydown", (event) => {
     toggleSidebar();
   }
 });
+
+if (mobileMenuToggleBtn) {
+  desktopMenuToggleBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleDesktopMenu();
+  });
+
+  mobileMenuToggleBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleMobileMenu();
+  });
+
+  mobileSidebarToggleBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeMobileMenu();
+    toggleMobileSidebar();
+    syncSidebarToggleButton();
+  });
+
+  desktopSidebarToggleBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleSidebar();
+  });
+
+  mobileBottomToggleBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeMobileMenu();
+    toggleMobileBottomPanel();
+  });
+
+  desktopBottomToggleBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeMobileMenu();
+    toggleMobileBottomPanel();
+  });
+
+  mobileRunBtn?.addEventListener("click", () => {
+    if (!runBtn.disabled) runBtn.click();
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target as Node | null;
+    if (!target) return;
+    if (mobileLayoutMedia.matches && mobileMenuOpen) {
+      if (!toolbarEl.contains(target) && !mobileMenuToggleBtn.contains(target)) {
+        closeMobileMenu();
+      }
+    }
+    if (!mobileLayoutMedia.matches && desktopMenuOpen) {
+      if (!desktopNavPopoverEl?.contains(target) && !desktopMenuToggleBtn?.contains(target)) {
+        closeDesktopMenu();
+      }
+    }
+  });
+
+  mobileSidebarOverlayEl?.addEventListener("click", (event) => {
+    if (event.target === mobileSidebarOverlayEl) {
+      closeMobileSidebar();
+      syncSidebarToggleButton();
+    }
+  });
+
+  toolbarEl.querySelectorAll("button, a").forEach((entry) => {
+    if (entry === mobileMenuToggleBtn) return;
+    entry.addEventListener("click", () => {
+      if (mobileLayoutMedia.matches) closeMobileMenu();
+    });
+  });
+
+  mobileLayoutMedia.addEventListener("change", (event) => {
+    if (!event.matches) {
+      closeMobileMenu();
+      closeMobileSidebar();
+      mobileBottomCollapsed = false;
+    } else {
+      closeDesktopMenu();
+    }
+    loadResponsiveLayout();
+    revealSourceTab();
+    syncMobileSidebar();
+    syncMobileBottomPanel();
+    syncSidebarToggleButton();
+    syncDesktopToolbarLayout();
+  });
+
+  window.addEventListener("resize", syncDesktopToolbarLayout);
+}
+
+new MutationObserver(() => syncMobileHeaderActions()).observe(timingSpan, {
+  characterData: true,
+  childList: true,
+  subtree: true,
+});
+
+for (const button of [runBtn]) {
+  new MutationObserver(() => syncMobileHeaderActions()).observe(button, {
+    attributes: true,
+    attributeFilter: ["disabled"],
+  });
+}
 
 // Auto-compile and run on page load
 compileOnly();
