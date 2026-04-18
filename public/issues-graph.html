@@ -1,606 +1,930 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>js2wasm Issue &amp; Goal Dependency Graph</title>
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; overflow: hidden; }
-#controls { position: fixed; top: 12px; left: 12px; z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; max-width: 70vw; }
-#controls label { font-size: 12px; cursor: pointer; padding: 4px 10px; border-radius: 12px; border: 1px solid #30363d; background: #161b22; transition: all 0.15s; white-space: nowrap; }
-#controls label:hover { border-color: #58a6ff; }
-#controls label.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-#controls input[type=checkbox] { display: none; }
-#controls .sep { color: #8b949e; font-size: 12px; margin: 0 2px; }
-#info { position: fixed; top: 12px; right: 12px; z-index: 10; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; max-width: 360px; font-size: 13px; display: none; max-height: 80vh; overflow-y: auto; }
-#info h3 { margin-bottom: 6px; color: #58a6ff; }
-#info .goal-title { color: #f0883e; }
-#info .meta { color: #8b949e; margin-bottom: 4px; }
-#info .deps { margin-top: 6px; }
-#info .dep-link { color: #58a6ff; cursor: pointer; text-decoration: underline; }
-#info .goal-link { color: #f0883e; cursor: pointer; text-decoration: underline; }
-#legend { position: fixed; bottom: 12px; left: 12px; z-index: 10; font-size: 11px; display: flex; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; flex-wrap: wrap; max-width: 80vw; }
-#legend span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-#legend .swatch { display: inline-block; border-radius: 2px; }
-#stats { position: fixed; bottom: 12px; right: 12px; z-index: 10; font-size: 11px; color: #8b949e; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
-svg { width: 100vw; height: 100vh; }
-.ribbon { pointer-events: none; }
-.ribbon.dimmed { opacity: 0.02; }
-.ribbon.highlighted { opacity: 0.7; }
-.issue-col { cursor: pointer; }
-.issue-col:hover rect { filter: brightness(1.5); }
-.issue-col.dimmed { opacity: 0.06; }
-.goal-band { cursor: pointer; }
-.goal-band.dimmed { opacity: 0.06; }
-.issue-link { fill: none; stroke-opacity: 0.12; pointer-events: none; }
-.issue-link.dimmed { stroke-opacity: 0.02; }
-.issue-link.highlighted { stroke-opacity: 0.7; stroke-width: 1.5; }
-</style>
-</head>
-<body>
-<div id="controls">
-  <label class="active"><input type="checkbox" value="ready" checked> Ready</label>
-  <label class="active"><input type="checkbox" value="blocked" checked> Blocked</label>
-  <label><input type="checkbox" value="done"> Done</label>
-  <label><input type="checkbox" value="backlog"> Backlog</label>
-  <span class="sep">|</span>
-  <label class="active"><input type="checkbox" value="p-critical" checked> Critical</label>
-  <label class="active"><input type="checkbox" value="p-high" checked> High</label>
-  <label class="active"><input type="checkbox" value="p-medium" checked> Medium</label>
-  <label class="active"><input type="checkbox" value="p-low" checked> Low</label>
-  <span class="sep">|</span>
-  <label class="active"><input type="checkbox" value="show-goals" checked> Goals</label>
-</div>
-<div id="info">
-  <h3 id="info-title"></h3>
-  <div class="meta" id="info-meta"></div>
-  <div class="deps" id="info-deps"></div>
-</div>
-<div id="legend">
-  <span>Priority:</span>
-  <span><span class="swatch" style="width:20px;height:8px;background:rgba(180,80,80,0.7)"></span> Critical</span>
-  <span><span class="swatch" style="width:14px;height:8px;background:rgba(160,120,60,0.6)"></span> High</span>
-  <span><span class="swatch" style="width:9px;height:8px;background:rgba(90,100,110,0.5)"></span> Medium</span>
-  <span><span class="swatch" style="width:5px;height:8px;background:rgba(60,63,68,0.4)"></span> Low</span>
-  <span>|</span>
-  <span>Goal:</span>
-  <span><span class="swatch" style="width:16px;height:3px;background:#f0883e"></span> Active</span>
-  <span><span class="swatch" style="width:16px;height:3px;background:#1f6feb"></span> Activatable</span>
-  <span><span class="swatch" style="width:16px;height:3px;background:#484f58"></span> Blocked</span>
-  <span><span class="swatch" style="width:16px;height:3px;background:#3fb950"></span> Done</span>
-  <span>|</span>
-  <span style="border-top:2px solid rgba(255,0,0,0.4);padding-top:1px;font-size:10px">Blocked issue</span>
-</div>
-<div id="stats"></div>
-<svg></svg>
-<script>
-// Left-to-right layout: tiers are columns, issues are horizontal rows
-const ISSUE_H = { critical: 24, high: 18, medium: 14, low: 8 };
-const ISSUE_W = 120;
-const ISSUE_GAP = 2;
-const GOAL_LINE_W = 3;
-const TIER_GAP = 180;
-const GOAL_VERT_GAP = 40;
-const PRIO_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>js2wasm Issue &amp; Goal Dependency Graph</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0d1117;
+        color: #c9d1d9;
+        overflow: hidden;
+      }
+      #controls {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 10;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        max-width: 70vw;
+      }
+      #controls label {
+        font-size: 12px;
+        cursor: pointer;
+        padding: 4px 10px;
+        border-radius: 12px;
+        border: 1px solid #30363d;
+        background: #161b22;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      #controls label:hover {
+        border-color: #58a6ff;
+      }
+      #controls label.active {
+        background: #1f6feb;
+        border-color: #1f6feb;
+        color: #fff;
+      }
+      #controls input[type="checkbox"] {
+        display: none;
+      }
+      #controls .sep {
+        color: #8b949e;
+        font-size: 12px;
+        margin: 0 2px;
+      }
+      #info {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 10;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 12px 16px;
+        max-width: 360px;
+        font-size: 13px;
+        display: none;
+        max-height: 80vh;
+        overflow-y: auto;
+      }
+      #info h3 {
+        margin-bottom: 6px;
+        color: #58a6ff;
+      }
+      #info .goal-title {
+        color: #f0883e;
+      }
+      #info .meta {
+        color: #8b949e;
+        margin-bottom: 4px;
+      }
+      #info .deps {
+        margin-top: 6px;
+      }
+      #info .dep-link {
+        color: #58a6ff;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      #info .goal-link {
+        color: #f0883e;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      #legend {
+        position: fixed;
+        bottom: 12px;
+        left: 12px;
+        z-index: 10;
+        font-size: 11px;
+        display: flex;
+        gap: 12px;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 8px 12px;
+        flex-wrap: wrap;
+        max-width: 80vw;
+      }
+      #legend span {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+      }
+      #legend .swatch {
+        display: inline-block;
+        border-radius: 2px;
+      }
+      #stats {
+        position: fixed;
+        bottom: 12px;
+        right: 12px;
+        z-index: 10;
+        font-size: 11px;
+        color: #8b949e;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 8px 12px;
+      }
+      svg {
+        width: 100vw;
+        height: 100vh;
+      }
+      .ribbon {
+        pointer-events: none;
+      }
+      .ribbon.dimmed {
+        opacity: 0.02;
+      }
+      .ribbon.highlighted {
+        opacity: 0.7;
+      }
+      .issue-col {
+        cursor: pointer;
+      }
+      .issue-col:hover rect {
+        filter: brightness(1.5);
+      }
+      .issue-col.dimmed {
+        opacity: 0.06;
+      }
+      .goal-band {
+        cursor: pointer;
+      }
+      .goal-band.dimmed {
+        opacity: 0.06;
+      }
+      .issue-link {
+        fill: none;
+        stroke-opacity: 0.12;
+        pointer-events: none;
+      }
+      .issue-link.dimmed {
+        stroke-opacity: 0.02;
+      }
+      .issue-link.highlighted {
+        stroke-opacity: 0.7;
+        stroke-width: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <label class="active">
+        <input type="checkbox" value="ready" checked />
+        Ready
+      </label>
+      <label class="active">
+        <input type="checkbox" value="blocked" checked />
+        Blocked
+      </label>
+      <label>
+        <input type="checkbox" value="done" />
+        Done
+      </label>
+      <label>
+        <input type="checkbox" value="backlog" />
+        Backlog
+      </label>
+      <span class="sep">|</span>
+      <label class="active">
+        <input type="checkbox" value="p-critical" checked />
+        Critical
+      </label>
+      <label class="active">
+        <input type="checkbox" value="p-high" checked />
+        High
+      </label>
+      <label class="active">
+        <input type="checkbox" value="p-medium" checked />
+        Medium
+      </label>
+      <label class="active">
+        <input type="checkbox" value="p-low" checked />
+        Low
+      </label>
+      <span class="sep">|</span>
+      <label class="active">
+        <input type="checkbox" value="show-goals" checked />
+        Goals
+      </label>
+    </div>
+    <div id="info">
+      <h3 id="info-title"></h3>
+      <div class="meta" id="info-meta"></div>
+      <div class="deps" id="info-deps"></div>
+    </div>
+    <div id="legend">
+      <span>Priority:</span>
+      <span>
+        <span class="swatch" style="width: 20px; height: 8px; background: rgba(180, 80, 80, 0.7)"></span>
+        Critical
+      </span>
+      <span>
+        <span class="swatch" style="width: 14px; height: 8px; background: rgba(160, 120, 60, 0.6)"></span>
+        High
+      </span>
+      <span>
+        <span class="swatch" style="width: 9px; height: 8px; background: rgba(90, 100, 110, 0.5)"></span>
+        Medium
+      </span>
+      <span>
+        <span class="swatch" style="width: 5px; height: 8px; background: rgba(60, 63, 68, 0.4)"></span>
+        Low
+      </span>
+      <span>|</span>
+      <span>Goal:</span>
+      <span>
+        <span class="swatch" style="width: 16px; height: 3px; background: #f0883e"></span>
+        Active
+      </span>
+      <span>
+        <span class="swatch" style="width: 16px; height: 3px; background: #1f6feb"></span>
+        Activatable
+      </span>
+      <span>
+        <span class="swatch" style="width: 16px; height: 3px; background: #484f58"></span>
+        Blocked
+      </span>
+      <span>
+        <span class="swatch" style="width: 16px; height: 3px; background: #3fb950"></span>
+        Done
+      </span>
+      <span>|</span>
+      <span style="border-top: 2px solid rgba(255, 0, 0, 0.4); padding-top: 1px; font-size: 10px">Blocked issue</span>
+    </div>
+    <div id="stats"></div>
+    <svg></svg>
+    <script>
+      // Left-to-right layout: tiers are columns, issues are horizontal rows
+      const ISSUE_H = { critical: 24, high: 18, medium: 14, low: 8 };
+      const ISSUE_W = 120;
+      const ISSUE_GAP = 2;
+      const GOAL_LINE_W = 3;
+      const TIER_GAP = 180;
+      const GOAL_VERT_GAP = 40;
+      const PRIO_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 
-const GOAL_STATUS_COLOR = {
-  active: '#f0883e',
-  activatable: '#1f6feb',
-  blocked: '#484f58',
-  done: '#3fb950',
-};
+      const GOAL_STATUS_COLOR = {
+        active: "#f0883e",
+        activatable: "#1f6feb",
+        blocked: "#484f58",
+        done: "#3fb950",
+      };
 
-function ceColor(d) {
-  const impact = (d.compiler_errors || 0) + (d.test262_skip || 0) + (d.test262_fail || 0) + (d.test262_ce || 0);
-  if (!impact) return 'rgba(60,63,68,0.45)';
-  const t = Math.min(1, Math.log(impact + 1) / Math.log(4000));
-  const r = Math.round(60 + t * (255 - 60));
-  const g = Math.round(63 + t * (255 - 63));
-  const b = Math.round(68 + t * (0 - 68));
-  return `rgba(${r},${g},${b},${0.4 + t * 0.5})`;
-}
+      function ceColor(d) {
+        const impact = (d.compiler_errors || 0) + (d.test262_skip || 0) + (d.test262_fail || 0) + (d.test262_ce || 0);
+        if (!impact) return "rgba(60,63,68,0.45)";
+        const t = Math.min(1, Math.log(impact + 1) / Math.log(4000));
+        const r = Math.round(60 + t * (255 - 60));
+        const g = Math.round(63 + t * (255 - 63));
+        const b = Math.round(68 + t * (0 - 68));
+        return `rgba(${r},${g},${b},${0.4 + t * 0.5})`;
+      }
 
-// Horizontal ribbon path (left to right)
-function ribbonPath(y0s, y1s, xs, y0t, y1t, xt) {
-  const cx1 = xs + (xt - xs) * 0.42;
-  const cx2 = xs + (xt - xs) * 0.58;
-  return `M${xs},${y0s}C${cx1},${y0s} ${cx2},${y0t} ${xt},${y0t}` +
-         `L${xt},${y1t}C${cx2},${y1t} ${cx1},${y1s} ${xs},${y1s}Z`;
-}
+      // Horizontal ribbon path (left to right)
+      function ribbonPath(y0s, y1s, xs, y0t, y1t, xt) {
+        const cx1 = xs + (xt - xs) * 0.42;
+        const cx2 = xs + (xt - xs) * 0.58;
+        return (
+          `M${xs},${y0s}C${cx1},${y0s} ${cx2},${y0t} ${xt},${y0t}` +
+          `L${xt},${y1t}C${cx2},${y1t} ${cx1},${y1s} ${xs},${y1s}Z`
+        );
+      }
 
-async function init() {
-  let data;
-  try {
-    const resp = await fetch('graph-data.json');
-    data = await resp.json();
-  } catch {
-    document.body.innerHTML = '<div style="padding:40px;color:#f85149">Could not load graph-data.json. Run: node --experimental-strip-types plan/generate-graph.ts</div>';
-    return;
-  }
-
-  const { nodes, links, goals, goalIssueLinks, goalDepLinks } = data;
-  const goalDepLinksArr = goalDepLinks || [];
-  const nodeMap = new Map(nodes.map(n => [n.id, n]));
-  const goalMap = new Map(goals.map(g => [g.id, g]));
-
-  const issueGoalMap = new Map();
-  goalIssueLinks.forEach(l => issueGoalMap.set(l.issue, l.goal));
-
-  // Stats
-  const ready = nodes.filter(n => n.status === 'ready').length;
-  const blocked = nodes.filter(n => n.status === 'blocked').length;
-  const activeGoals = goals.filter(g => g.status === 'active' || g.status === 'activatable').length;
-  document.getElementById('stats').innerHTML =
-    `${nodes.length} issues | ${ready} ready | ${blocked} blocked | ${goals.length} goals (${activeGoals} active)`;
-
-  // ── Goal depths (BFS) ──
-  const goalDepth = new Map();
-  const gQueue = [];
-  goals.forEach(gg => {
-    if (gg.depends_on.filter(id => goalMap.has(id)).length === 0) {
-      goalDepth.set(gg.id, 0); gQueue.push(gg.id);
-    }
-  });
-  let qi = 0;
-  while (qi < gQueue.length) {
-    const id = gQueue[qi++];
-    const d = goalDepth.get(id);
-    goals.forEach(gg => {
-      if (gg.depends_on.includes(id)) {
-        const nd = d + 1;
-        if (!goalDepth.has(gg.id) || goalDepth.get(gg.id) < nd) {
-          goalDepth.set(gg.id, nd);
-          gQueue.push(gg.id);
+      async function init() {
+        let data;
+        try {
+          const resp = await fetch("graph-data.json");
+          data = await resp.json();
+        } catch {
+          document.body.innerHTML =
+            '<div style="padding:40px;color:#f85149">Could not load graph-data.json. Run: node --experimental-strip-types plan/generate-graph.ts</div>';
+          return;
         }
-      }
-    });
-  }
-  goals.forEach(gg => { if (!goalDepth.has(gg.id)) goalDepth.set(gg.id, 0); });
 
-  // ── Group issues by goal ──
-  const issuesByGoal = new Map();
-  goals.forEach(g => issuesByGoal.set(g.id, []));
-  issuesByGoal.set('__none__', []);
-  nodes.forEach(n => {
-    const gid = issueGoalMap.get(n.id) || '__none__';
-    if (issuesByGoal.has(gid)) issuesByGoal.get(gid).push(n);
-    else issuesByGoal.get('__none__').push(n);
-  });
-  for (const [, issues] of issuesByGoal) {
-    issues.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
-  }
+        const { nodes, links, goals, goalIssueLinks, goalDepLinks } = data;
+        const goalDepLinksArr = goalDepLinks || [];
+        const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+        const goalMap = new Map(goals.map((g) => [g.id, g]));
 
-  // ── Compute goal heights from member issues ──
-  goals.forEach(g => {
-    const issues = issuesByGoal.get(g.id) || [];
-    const h = issues.reduce((sum, n) => sum + (ISSUE_H[n.priority] || 8), 0)
-              + Math.max(0, issues.length - 1) * ISSUE_GAP;
-    g.h = Math.max(h, 24);
-    g.w = GOAL_LINE_W + ISSUE_W;
-  });
+        const issueGoalMap = new Map();
+        goalIssueLinks.forEach((l) => issueGoalMap.set(l.issue, l.goal));
 
-  // ── Build tiers by depth ──
-  const maxDepth = d3.max(goals, g => goalDepth.get(g.id)) || 0;
-  const tiers = [];
-  for (let d = 0; d <= maxDepth; d++) {
-    tiers.push(goals.filter(g => goalDepth.get(g.id) === d));
-  }
+        // Stats
+        const ready = nodes.filter((n) => n.status === "ready").length;
+        const blocked = nodes.filter((n) => n.status === "blocked").length;
+        const activeGoals = goals.filter((g) => g.status === "active" || g.status === "activatable").length;
+        document.getElementById("stats").innerHTML =
+          `${nodes.length} issues | ${ready} ready | ${blocked} blocked | ${goals.length} goals (${activeGoals} active)`;
 
-  // ── Position tiers (left to right: depth 0 at left) ──
-  const BAND_W = GOAL_LINE_W + ISSUE_W;
-  const margin = { left: 80, top: 80 };
-
-  // Compute total height per tier for centering
-  const tierHeights = tiers.map(tier =>
-    tier.reduce((sum, g) => sum + g.h, 0) + Math.max(0, tier.length - 1) * GOAL_VERT_GAP
-  );
-  const maxTierHeight = Math.max(...tierHeights, 200);
-
-  tiers.forEach((tier, ti) => {
-    const tierX = margin.left + ti * (BAND_W + TIER_GAP);
-    const tierH = tierHeights[ti];
-    // Center tier vertically relative to tallest tier
-    let y = margin.top + (maxTierHeight - tierH) / 2;
-
-    tier.forEach(g => {
-      g.x = tierX;
-      g.y = y;
-      g.tierIndex = ti;
-
-      // Position issues as rows within this goal
-      const issues = issuesByGoal.get(g.id) || [];
-      let iy = y;
-      issues.forEach(n => {
-        const ih = ISSUE_H[n.priority] || 8;
-        n.x = tierX + GOAL_LINE_W;
-        n.y = iy;
-        n.w = ISSUE_W;
-        n.h = ih;
-        iy += ih + ISSUE_GAP;
-      });
-
-      y += g.h + GOAL_VERT_GAP;
-    });
-  });
-
-  // Unassigned issues to the right of all tiers
-  const unassigned = issuesByGoal.get('__none__') || [];
-  if (unassigned.length > 0) {
-    const uX = margin.left + (maxDepth + 1) * (BAND_W + TIER_GAP);
-    let uy = margin.top;
-    unassigned.forEach(n => {
-      const ih = ISSUE_H[n.priority] || 8;
-      n.x = uX;
-      n.y = uy;
-      n.w = ISSUE_W;
-      n.h = ih;
-      uy += ih + ISSUE_GAP;
-    });
-  }
-
-  // ── Compute Sankey ribbons for goal-to-goal dependencies ──
-  goals.forEach(g => { g._rightUsed = 0; g._leftUsed = 0; });
-
-  // Build dependency edge list: B depends on A → ribbon from A (source) to B (target)
-  const goalDeps = [];
-  goals.forEach(g => {
-    g.depends_on.forEach(depId => {
-      if (goalMap.has(depId)) {
-        goalDeps.push({ source: depId, target: g.id });
-      }
-    });
-  });
-
-  // Compute outgoing/incoming totals for proportional allocation
-  const outTotals = new Map();
-  const inTotals = new Map();
-  goals.forEach(g => { outTotals.set(g.id, 0); inTotals.set(g.id, 0); });
-  goalDeps.forEach(dep => {
-    const tgt = goalMap.get(dep.target);
-    const src = goalMap.get(dep.source);
-    outTotals.set(dep.source, outTotals.get(dep.source) + tgt.h);
-    inTotals.set(dep.target, inTotals.get(dep.target) + src.h);
-  });
-
-  const ribbons = [];
-  goalDeps.forEach(dep => {
-    const src = goalMap.get(dep.source);
-    const tgt = goalMap.get(dep.target);
-
-    const srcOutTotal = outTotals.get(dep.source) || 1;
-    const tgtInTotal = inTotals.get(dep.target) || 1;
-    const srcRibbonH = src.h * (tgt.h / srcOutTotal);
-    const tgtRibbonH = tgt.h * (src.h / tgtInTotal);
-
-    ribbons.push({
-      srcY0: src.y + src._rightUsed,
-      srcY1: src.y + src._rightUsed + srcRibbonH,
-      srcX: src.x + BAND_W,
-      tgtY0: tgt.y + tgt._leftUsed,
-      tgtY1: tgt.y + tgt._leftUsed + tgtRibbonH,
-      tgtX: tgt.x,
-      source: src, target: tgt
-    });
-
-    src._rightUsed += srcRibbonH;
-    tgt._leftUsed += tgtRibbonH;
-  });
-
-  // ── Resolve issue-to-issue links ──
-  links.forEach(l => {
-    if (typeof l.source !== 'object') l.source = nodeMap.get(l.source);
-    if (typeof l.target !== 'object') l.target = nodeMap.get(l.target);
-  });
-
-  // ── Render ──
-  const width = window.innerWidth, height = window.innerHeight;
-  const svg = d3.select('svg').attr('viewBox', [0, 0, width, height]);
-  const gRoot = svg.append('g');
-  svg.call(d3.zoom().scaleExtent([0.08, 5]).on('zoom', e => gRoot.attr('transform', e.transform)));
-
-  // Layer 1: Sankey ribbons (goal-to-goal)
-  const ribbonEl = gRoot.append('g').selectAll('path')
-    .data(ribbons)
-    .join('path')
-    .attr('class', 'ribbon')
-    .attr('d', r => ribbonPath(r.srcY0, r.srcY1, r.srcX, r.tgtY0, r.tgtY1, r.tgtX))
-    .attr('fill', r => GOAL_STATUS_COLOR[r.source.status] || '#484f58')
-    .attr('fill-opacity', 0.10)
-    .attr('stroke', r => GOAL_STATUS_COLOR[r.source.status] || '#484f58')
-    .attr('stroke-width', 0.5)
-    .attr('stroke-opacity', 0.15);
-
-  // Layer 2: Issue-to-issue dependency curves
-  const issueLinkEl = gRoot.append('g').selectAll('path')
-    .data(links.filter(l => l.source && l.target))
-    .join('path')
-    .attr('class', 'issue-link')
-    .attr('d', l => {
-      const s = l.source, t = l.target;
-      if (!s || !t || s.x == null || t.x == null) return '';
-      // Connect from right-center of source to left-center of target
-      const sx = s.x + (s.w || ISSUE_W), sy = s.y + (s.h || 8) / 2;
-      const tx = t.x, ty = t.y + (t.h || 8) / 2;
-      // If same tier, use a vertical arc
-      if (Math.abs(sx - tx) < 5) {
-        const midX = sx + 30;
-        return `M${sx},${sy}Q${midX},${sy} ${midX},${(sy+ty)/2}Q${midX},${ty} ${tx},${ty}`;
-      }
-      const cx1 = sx + (tx - sx) * 0.42;
-      const cx2 = sx + (tx - sx) * 0.58;
-      return `M${sx},${sy}C${cx1},${sy} ${cx2},${ty} ${tx},${ty}`;
-    })
-    .attr('stroke', l => ceColor(l.target))
-    .attr('stroke-width', 1);
-
-  // Layer 3: Goal bands
-  const goalEl = gRoot.append('g').selectAll('g')
-    .data(goals)
-    .join('g')
-    .attr('class', 'goal-band');
-
-  // Thin colored bar on left edge of band
-  goalEl.append('rect')
-    .attr('x', d => d.x)
-    .attr('y', d => d.y)
-    .attr('width', GOAL_LINE_W)
-    .attr('height', d => d.h)
-    .attr('fill', d => GOAL_STATUS_COLOR[d.status] || '#484f58')
-    .attr('fill-opacity', 0.7)
-    .attr('rx', 1);
-
-  // Subtle transparent overlay for hover target
-  goalEl.append('rect')
-    .attr('x', d => d.x - 1)
-    .attr('y', d => d.y - 1)
-    .attr('width', d => d.w + 2)
-    .attr('height', d => d.h + 2)
-    .attr('fill', 'transparent')
-    .attr('stroke', d => GOAL_STATUS_COLOR[d.status] || '#484f58')
-    .attr('stroke-width', 0.5)
-    .attr('stroke-opacity', 0.12)
-    .attr('rx', 2);
-
-  // Goal label above the band
-  goalEl.append('text')
-    .attr('x', d => d.x + d.w / 2)
-    .attr('y', d => d.y - 8)
-    .attr('fill', d => GOAL_STATUS_COLOR[d.status] || '#8b949e')
-    .attr('font-size', '11px')
-    .attr('font-weight', 600)
-    .attr('text-anchor', 'middle')
-    .attr('opacity', 0.75)
-    .text(d => d.id);
-
-  // Sub-label below goal name
-  goalEl.append('text')
-    .attr('x', d => d.x + d.w / 2)
-    .attr('y', d => d.y - 8 + 13)
-    .attr('fill', '#8b949e')
-    .attr('font-size', '9px')
-    .attr('text-anchor', 'middle')
-    .attr('opacity', 0.5)
-    .text(d => {
-      const issues = issuesByGoal.get(d.id) || [];
-      const target = d.target?.match(/~?\d+%/)?.[0] || '';
-      return `${issues.length} issues${target ? ' | ' + target : ''}`;
-    });
-
-  goalEl.on('mouseover', (e, d) => highlightGoal(d))
-    .on('mouseout', () => unhighlight())
-    .on('click', (e, d) => showGoalInfo(d));
-
-  // Layer 4: Issue rows
-  const allIssues = nodes.filter(n => n.x != null);
-  const issueEl = gRoot.append('g').selectAll('g')
-    .data(allIssues)
-    .join('g')
-    .attr('class', 'issue-row');
-
-  // Issue rectangle (horizontal row)
-  issueEl.append('rect')
-    .attr('x', d => d.x)
-    .attr('y', d => d.y)
-    .attr('width', d => d.w || ISSUE_W)
-    .attr('height', d => d.h || 8)
-    .attr('fill', d => ceColor(d))
-    .attr('rx', 1);
-
-  // Blocked indicator: red left line
-  issueEl.filter(d => d.status === 'blocked')
-    .append('rect')
-    .attr('x', d => d.x)
-    .attr('y', d => d.y)
-    .attr('width', 2)
-    .attr('height', d => d.h || 8)
-    .attr('fill', 'rgba(255,60,60,0.6)');
-
-  // Issue label (horizontal text inside row)
-  issueEl.append('text')
-    .attr('x', d => d.x + 4)
-    .attr('y', d => d.y + (d.h || 8) / 2)
-    .attr('fill', d => {
-      const impact = (d.compiler_errors || 0) + (d.test262_skip || 0) + (d.test262_fail || 0) + (d.test262_ce || 0);
-      return impact > 0 ? '#000' : '#c9d1d9';
-    })
-    .attr('font-size', d => (d.h || 8) >= 14 ? '9px' : '7px')
-    .attr('dominant-baseline', 'central')
-    .attr('pointer-events', 'none')
-    .text(d => `#${d.id}`);
-
-  issueEl.on('mouseover', (e, d) => highlightIssue(d))
-    .on('mouseout', () => unhighlight())
-    .on('click', (e, d) => showIssueInfo(d));
-
-  // ── Highlight ──
-
-  function highlightGoal(d) {
-    const connGoals = new Set([d.id]);
-    const connIssues = new Set(d.issues);
-    goals.forEach(gg => {
-      if (gg.depends_on.includes(d.id)) connGoals.add(gg.id);
-    });
-    d.depends_on.forEach(id => { if (goalMap.has(id)) connGoals.add(id); });
-
-    goalEl.classed('dimmed', gg => !connGoals.has(gg.id));
-    issueEl.classed('dimmed', n => !connIssues.has(n.id));
-    ribbonEl.classed('dimmed', r => r.source.id !== d.id && r.target.id !== d.id);
-    ribbonEl.classed('highlighted', r => r.source.id === d.id || r.target.id === d.id);
-    issueLinkEl.classed('dimmed', true);
-  }
-
-  function highlightIssue(d) {
-    const connected = new Set([d.id]);
-    links.forEach(l => {
-      const s = typeof l.source === 'object' ? l.source.id : l.source;
-      const t = typeof l.target === 'object' ? l.target.id : l.target;
-      if (s === d.id) connected.add(t);
-      if (t === d.id) connected.add(s);
-    });
-    const myGoal = issueGoalMap.get(d.id);
-
-    issueEl.classed('dimmed', n => !connected.has(n.id));
-    issueLinkEl.classed('dimmed', l => {
-      const s = typeof l.source === 'object' ? l.source.id : l.source;
-      const t = typeof l.target === 'object' ? l.target.id : l.target;
-      return s !== d.id && t !== d.id;
-    });
-    issueLinkEl.classed('highlighted', l => {
-      const s = typeof l.source === 'object' ? l.source.id : l.source;
-      const t = typeof l.target === 'object' ? l.target.id : l.target;
-      return s === d.id || t === d.id;
-    });
-    const connGoals = new Set();
-    if (myGoal) connGoals.add(myGoal);
-    goalEl.classed('dimmed', gg => !connGoals.has(gg.id));
-    ribbonEl.classed('dimmed', true);
-  }
-
-  function unhighlight() {
-    issueEl.classed('dimmed', false);
-    goalEl.classed('dimmed', false);
-    issueLinkEl.classed('dimmed', false).classed('highlighted', false);
-    ribbonEl.classed('dimmed', false).classed('highlighted', false);
-  }
-
-  // ── Info panels ──
-
-  function showGoalInfo(d) {
-    const info = document.getElementById('info');
-    info.style.display = 'block';
-    document.getElementById('info-title').innerHTML = `<span class="goal-title">${d.id}</span>: ${d.title}`;
-    let meta = `<b>Status:</b> ${d.status} | <b>Issues:</b> ${d.issues.length}`;
-    if (d.target) meta += `<br><b>Target:</b> ${d.target}`;
-    document.getElementById('info-meta').innerHTML = meta;
-
-    let html = '';
-    if (d.depends_on.length) {
-      html += `<div><b>Depends on:</b> ${d.depends_on.map(id => `<span class="goal-link" onclick="focusGoal('${id}')">${id}</span>`).join(', ')}</div>`;
-    }
-    const dependers = goals.filter(gg => gg.depends_on.includes(d.id));
-    if (dependers.length) {
-      html += `<div><b>Unblocks:</b> ${dependers.map(gg => `<span class="goal-link" onclick="focusGoal('${gg.id}')">${gg.id}</span>`).join(', ')}</div>`;
-    }
-    if (d.issues.length) {
-      html += '<div style="margin-top:8px"><b>Issues:</b><br>';
-      const sorted = d.issues.slice().sort((a, b) => {
-        const na = nodeMap.get(a), nb = nodeMap.get(b);
-        if (!na || !nb) return 0;
-        return (PRIO_ORDER[na.priority] || 3) - (PRIO_ORDER[nb.priority] || 3);
-      });
-      for (const id of sorted) {
-        const n = nodeMap.get(id);
-        if (n) {
-          const pColor = { critical: '#f85149', high: '#f0883e', medium: '#8b949e', low: '#484f58' }[n.priority] || '#8b949e';
-          html += `<span class="dep-link" onclick="focusNode('${id}')" style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.05);border-left:3px solid ${pColor};font-size:11px">#${id}</span>`;
+        // ── Goal depths (BFS) ──
+        const goalDepth = new Map();
+        const gQueue = [];
+        goals.forEach((gg) => {
+          if (gg.depends_on.filter((id) => goalMap.has(id)).length === 0) {
+            goalDepth.set(gg.id, 0);
+            gQueue.push(gg.id);
+          }
+        });
+        let qi = 0;
+        while (qi < gQueue.length) {
+          const id = gQueue[qi++];
+          const d = goalDepth.get(id);
+          goals.forEach((gg) => {
+            if (gg.depends_on.includes(id)) {
+              const nd = d + 1;
+              if (!goalDepth.has(gg.id) || goalDepth.get(gg.id) < nd) {
+                goalDepth.set(gg.id, nd);
+                gQueue.push(gg.id);
+              }
+            }
+          });
         }
-      }
-      html += '</div>';
-    }
-    document.getElementById('info-deps').innerHTML = html;
-  }
+        goals.forEach((gg) => {
+          if (!goalDepth.has(gg.id)) goalDepth.set(gg.id, 0);
+        });
 
-  function showIssueInfo(d) {
-    const info = document.getElementById('info');
-    info.style.display = 'block';
-    document.getElementById('info-title').textContent = `#${d.id}: ${d.title}`;
-    let meta = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.raw_status || d.status}`;
-    if (d.cluster && d.cluster !== 'Unclustered') meta += ` | <b>Cluster:</b> ${d.cluster}`;
-    if (d.goal) meta += ` | <b>Goal:</b> <span class="goal-link" onclick="focusGoal('${d.goal}')">${d.goal}</span>`;
-    if (d.compiler_errors) meta += ` | <b>CE:</b> ${d.compiler_errors}`;
-    if (d.test262_skip) meta += ` | <b>Skip:</b> ${d.test262_skip}`;
-    if (d.test262_fail) meta += ` | <b>Fail:</b> ${d.test262_fail}`;
-    document.getElementById('info-meta').innerHTML = meta;
-
-    const deps = d.depends_on || [];
-    const dependers = nodes.filter(n => n.depends_on && n.depends_on.includes(d.id));
-    let html = '';
-    if (deps.length) {
-      html += `<div><b>Depends on:</b> ${deps.map(id => `<span class="dep-link" onclick="focusNode('${id}')">#${id}</span>`).join(', ')}</div>`;
-    }
-    if (dependers.length) {
-      html += `<div><b>Unblocks:</b> ${dependers.map(n => `<span class="dep-link" onclick="focusNode('${n.id}')">#${n.id}</span>`).join(', ')}</div>`;
-    }
-    const files = d.files;
-    if (files && (Array.isArray(files) ? files.length : Object.keys(files).length)) {
-      html += '<div style="margin-top:6px"><b>Files:</b>';
-      if (Array.isArray(files)) {
-        html += '<br>' + files.map(f => `<code style="font-size:11px;color:#7ee787">${f}</code>`).join('<br>');
-      } else {
-        for (const [file, finfo] of Object.entries(files)) {
-          html += `<div style="margin-top:4px"><code style="font-size:11px;color:#7ee787">${file}</code>`;
-          if (finfo.new && finfo.new.length) html += `<br><span style="color:#3fb950;font-size:10px">+ ${finfo.new.join('<br>+ ')}</span>`;
-          if (finfo.breaking && finfo.breaking.length) html += `<br><span style="color:#f85149;font-size:10px">! ${finfo.breaking.join('<br>! ')}</span>`;
-          html += '</div>';
+        // ── Group issues by goal ──
+        const issuesByGoal = new Map();
+        goals.forEach((g) => issuesByGoal.set(g.id, []));
+        issuesByGoal.set("__none__", []);
+        nodes.forEach((n) => {
+          const gid = issueGoalMap.get(n.id) || "__none__";
+          if (issuesByGoal.has(gid)) issuesByGoal.get(gid).push(n);
+          else issuesByGoal.get("__none__").push(n);
+        });
+        for (const [, issues] of issuesByGoal) {
+          issues.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
         }
+
+        // ── Build tiers by depth ──
+        const maxDepth = d3.max(goals, (g) => goalDepth.get(g.id)) || 0;
+        const tiers = [];
+        for (let d = 0; d <= maxDepth; d++) {
+          tiers.push(goals.filter((g) => goalDepth.get(g.id) === d));
+        }
+
+        const BAND_W = GOAL_LINE_W + ISSUE_W;
+        const margin = { left: 80, top: 80 };
+
+        // Build dependency edge list once (goal deps don't change with filters)
+        const goalDeps = [];
+        goals.forEach((g) => {
+          g.depends_on.forEach((depId) => {
+            if (goalMap.has(depId)) {
+              goalDeps.push({ source: depId, target: g.id });
+            }
+          });
+        });
+
+        // Mutable outputs — updated by computeLayout() on every filter change.
+        let ribbons = [];
+
+        /**
+         * Recompute positions based on current filter state. Mutates n.x/n.y/n.visible
+         * on nodes, g.x/g.y/g.h on goals, and the shared ribbons array. Hidden issues
+         * get n.visible = false and no new position, so the layout is compact.
+         */
+        function computeLayout(statuses, priorities) {
+          const isVisible = (n) => statuses.has(n.status) && priorities.has(n.priority);
+
+          // Mark visibility + compute goal heights from *visible* issues only
+          goals.forEach((g) => {
+            const issues = issuesByGoal.get(g.id) || [];
+            const vis = issues.filter(isVisible);
+            const h =
+              vis.reduce((sum, n) => sum + (ISSUE_H[n.priority] || 8), 0) + Math.max(0, vis.length - 1) * ISSUE_GAP;
+            g.h = vis.length > 0 ? h : 24;
+            g.w = GOAL_LINE_W + ISSUE_W;
+          });
+
+          const tierHeights = tiers.map(
+            (tier) => tier.reduce((sum, g) => sum + g.h, 0) + Math.max(0, tier.length - 1) * GOAL_VERT_GAP,
+          );
+          const maxTierHeight = Math.max(...tierHeights, 200);
+
+          tiers.forEach((tier, ti) => {
+            const tierX = margin.left + ti * (BAND_W + TIER_GAP);
+            const tierH = tierHeights[ti];
+            let y = margin.top + (maxTierHeight - tierH) / 2;
+
+            tier.forEach((g) => {
+              g.x = tierX;
+              g.y = y;
+              g.tierIndex = ti;
+
+              const issues = issuesByGoal.get(g.id) || [];
+              let iy = y;
+              issues.forEach((n) => {
+                if (!isVisible(n)) {
+                  n.visible = false;
+                  return;
+                }
+                const ih = ISSUE_H[n.priority] || 8;
+                n.visible = true;
+                n.x = tierX + GOAL_LINE_W;
+                n.y = iy;
+                n.w = ISSUE_W;
+                n.h = ih;
+                iy += ih + ISSUE_GAP;
+              });
+
+              y += g.h + GOAL_VERT_GAP;
+            });
+          });
+
+          // Unassigned issues column
+          const unassigned = (issuesByGoal.get("__none__") || []).filter(isVisible);
+          if (unassigned.length > 0) {
+            const uX = margin.left + (maxDepth + 1) * (BAND_W + TIER_GAP);
+            let uy = margin.top;
+            (issuesByGoal.get("__none__") || []).forEach((n) => {
+              if (!isVisible(n)) {
+                n.visible = false;
+                return;
+              }
+              const ih = ISSUE_H[n.priority] || 8;
+              n.visible = true;
+              n.x = uX;
+              n.y = uy;
+              n.w = ISSUE_W;
+              n.h = ih;
+              uy += ih + ISSUE_GAP;
+            });
+          }
+
+          // Recompute Sankey ribbons for new goal heights/positions
+          goals.forEach((g) => {
+            g._rightUsed = 0;
+            g._leftUsed = 0;
+          });
+          const outTotals = new Map();
+          const inTotals = new Map();
+          goals.forEach((g) => {
+            outTotals.set(g.id, 0);
+            inTotals.set(g.id, 0);
+          });
+          goalDeps.forEach((dep) => {
+            const tgt = goalMap.get(dep.target);
+            const src = goalMap.get(dep.source);
+            outTotals.set(dep.source, outTotals.get(dep.source) + tgt.h);
+            inTotals.set(dep.target, inTotals.get(dep.target) + src.h);
+          });
+          ribbons = [];
+          goalDeps.forEach((dep) => {
+            const src = goalMap.get(dep.source);
+            const tgt = goalMap.get(dep.target);
+            const srcOutTotal = outTotals.get(dep.source) || 1;
+            const tgtInTotal = inTotals.get(dep.target) || 1;
+            const srcRibbonH = src.h * (tgt.h / srcOutTotal);
+            const tgtRibbonH = tgt.h * (src.h / tgtInTotal);
+            ribbons.push({
+              srcY0: src.y + src._rightUsed,
+              srcY1: src.y + src._rightUsed + srcRibbonH,
+              srcX: src.x + BAND_W,
+              tgtY0: tgt.y + tgt._leftUsed,
+              tgtY1: tgt.y + tgt._leftUsed + tgtRibbonH,
+              tgtX: tgt.x,
+              source: src,
+              target: tgt,
+            });
+            src._rightUsed += srcRibbonH;
+            tgt._leftUsed += tgtRibbonH;
+          });
+        }
+
+        // Initial layout — include ALL statuses/priorities so positions exist for every node.
+        // applyFilters() called at end of init() will recompute with the actual filter state.
+        const ALL_STATUSES = new Set(["ready", "blocked", "done", "backlog"]);
+        const ALL_PRIORITIES = new Set(["critical", "high", "medium", "low"]);
+        computeLayout(ALL_STATUSES, ALL_PRIORITIES);
+
+        // ── Resolve issue-to-issue links ──
+        links.forEach((l) => {
+          if (typeof l.source !== "object") l.source = nodeMap.get(l.source);
+          if (typeof l.target !== "object") l.target = nodeMap.get(l.target);
+        });
+
+        // ── Render ──
+        const width = window.innerWidth,
+          height = window.innerHeight;
+        const svg = d3.select("svg").attr("viewBox", [0, 0, width, height]);
+        const gRoot = svg.append("g");
+        svg.call(
+          d3
+            .zoom()
+            .scaleExtent([0.08, 5])
+            .on("zoom", (e) => gRoot.attr("transform", e.transform)),
+        );
+
+        // Layer 1: Sankey ribbons (goal-to-goal)
+        const ribbonEl = gRoot
+          .append("g")
+          .selectAll("path")
+          .data(ribbons)
+          .join("path")
+          .attr("class", "ribbon")
+          .attr("d", (r) => ribbonPath(r.srcY0, r.srcY1, r.srcX, r.tgtY0, r.tgtY1, r.tgtX))
+          .attr("fill", (r) => GOAL_STATUS_COLOR[r.source.status] || "#484f58")
+          .attr("fill-opacity", 0.1)
+          .attr("stroke", (r) => GOAL_STATUS_COLOR[r.source.status] || "#484f58")
+          .attr("stroke-width", 0.5)
+          .attr("stroke-opacity", 0.15);
+
+        // Layer 2: Issue-to-issue dependency curves
+        const issueLinkEl = gRoot
+          .append("g")
+          .selectAll("path")
+          .data(links.filter((l) => l.source && l.target))
+          .join("path")
+          .attr("class", "issue-link")
+          .attr("d", (l) => {
+            const s = l.source,
+              t = l.target;
+            if (!s || !t || s.x == null || t.x == null) return "";
+            // Connect from right-center of source to left-center of target
+            const sx = s.x + (s.w || ISSUE_W),
+              sy = s.y + (s.h || 8) / 2;
+            const tx = t.x,
+              ty = t.y + (t.h || 8) / 2;
+            // If same tier, use a vertical arc
+            if (Math.abs(sx - tx) < 5) {
+              const midX = sx + 30;
+              return `M${sx},${sy}Q${midX},${sy} ${midX},${(sy + ty) / 2}Q${midX},${ty} ${tx},${ty}`;
+            }
+            const cx1 = sx + (tx - sx) * 0.42;
+            const cx2 = sx + (tx - sx) * 0.58;
+            return `M${sx},${sy}C${cx1},${sy} ${cx2},${ty} ${tx},${ty}`;
+          })
+          .attr("stroke", (l) => ceColor(l.target))
+          .attr("stroke-width", 1);
+
+        // Layer 3: Goal bands
+        const goalEl = gRoot.append("g").selectAll("g").data(goals).join("g").attr("class", "goal-band");
+
+        // Thin colored bar on left edge of band
+        goalEl
+          .append("rect")
+          .attr("x", (d) => d.x)
+          .attr("y", (d) => d.y)
+          .attr("width", GOAL_LINE_W)
+          .attr("height", (d) => d.h)
+          .attr("fill", (d) => GOAL_STATUS_COLOR[d.status] || "#484f58")
+          .attr("fill-opacity", 0.7)
+          .attr("rx", 1);
+
+        // Subtle transparent overlay for hover target
+        goalEl
+          .append("rect")
+          .attr("x", (d) => d.x - 1)
+          .attr("y", (d) => d.y - 1)
+          .attr("width", (d) => d.w + 2)
+          .attr("height", (d) => d.h + 2)
+          .attr("fill", "transparent")
+          .attr("stroke", (d) => GOAL_STATUS_COLOR[d.status] || "#484f58")
+          .attr("stroke-width", 0.5)
+          .attr("stroke-opacity", 0.12)
+          .attr("rx", 2);
+
+        // Goal label above the band
+        goalEl
+          .append("text")
+          .attr("x", (d) => d.x + d.w / 2)
+          .attr("y", (d) => d.y - 8)
+          .attr("fill", (d) => GOAL_STATUS_COLOR[d.status] || "#8b949e")
+          .attr("font-size", "11px")
+          .attr("font-weight", 600)
+          .attr("text-anchor", "middle")
+          .attr("opacity", 0.75)
+          .text((d) => d.id);
+
+        // Sub-label below goal name
+        goalEl
+          .append("text")
+          .attr("x", (d) => d.x + d.w / 2)
+          .attr("y", (d) => d.y - 8 + 13)
+          .attr("fill", "#8b949e")
+          .attr("font-size", "9px")
+          .attr("text-anchor", "middle")
+          .attr("opacity", 0.5)
+          .text((d) => {
+            const issues = issuesByGoal.get(d.id) || [];
+            const target = d.target?.match(/~?\d+%/)?.[0] || "";
+            return `${issues.length} issues${target ? " | " + target : ""}`;
+          });
+
+        goalEl
+          .on("mouseover", (e, d) => highlightGoal(d))
+          .on("mouseout", () => unhighlight())
+          .on("click", (e, d) => showGoalInfo(d));
+
+        // Layer 4: Issue rows
+        const allIssues = nodes.filter((n) => n.x != null);
+        const issueEl = gRoot.append("g").selectAll("g").data(allIssues).join("g").attr("class", "issue-row");
+
+        // Issue rectangle (horizontal row)
+        issueEl
+          .append("rect")
+          .attr("x", (d) => d.x)
+          .attr("y", (d) => d.y)
+          .attr("width", (d) => d.w || ISSUE_W)
+          .attr("height", (d) => d.h || 8)
+          .attr("fill", (d) => ceColor(d))
+          .attr("rx", 1);
+
+        // Blocked indicator: red left line
+        issueEl
+          .filter((d) => d.status === "blocked")
+          .append("rect")
+          .attr("x", (d) => d.x)
+          .attr("y", (d) => d.y)
+          .attr("width", 2)
+          .attr("height", (d) => d.h || 8)
+          .attr("fill", "rgba(255,60,60,0.6)");
+
+        // Issue label (horizontal text inside row)
+        issueEl
+          .append("text")
+          .attr("x", (d) => d.x + 4)
+          .attr("y", (d) => d.y + (d.h || 8) / 2)
+          .attr("fill", (d) => {
+            const impact =
+              (d.compiler_errors || 0) + (d.test262_skip || 0) + (d.test262_fail || 0) + (d.test262_ce || 0);
+            return impact > 0 ? "#000" : "#c9d1d9";
+          })
+          .attr("font-size", (d) => ((d.h || 8) >= 14 ? "9px" : "7px"))
+          .attr("dominant-baseline", "central")
+          .attr("pointer-events", "none")
+          .text((d) => `#${d.id}`);
+
+        issueEl
+          .on("mouseover", (e, d) => highlightIssue(d))
+          .on("mouseout", () => unhighlight())
+          .on("click", (e, d) => showIssueInfo(d));
+
+        // ── Highlight ──
+
+        function highlightGoal(d) {
+          const connGoals = new Set([d.id]);
+          const connIssues = new Set(d.issues);
+          goals.forEach((gg) => {
+            if (gg.depends_on.includes(d.id)) connGoals.add(gg.id);
+          });
+          d.depends_on.forEach((id) => {
+            if (goalMap.has(id)) connGoals.add(id);
+          });
+
+          goalEl.classed("dimmed", (gg) => !connGoals.has(gg.id));
+          issueEl.classed("dimmed", (n) => !connIssues.has(n.id));
+          ribbonEl.classed("dimmed", (r) => r.source.id !== d.id && r.target.id !== d.id);
+          ribbonEl.classed("highlighted", (r) => r.source.id === d.id || r.target.id === d.id);
+          issueLinkEl.classed("dimmed", true);
+        }
+
+        function highlightIssue(d) {
+          const connected = new Set([d.id]);
+          links.forEach((l) => {
+            const s = typeof l.source === "object" ? l.source.id : l.source;
+            const t = typeof l.target === "object" ? l.target.id : l.target;
+            if (s === d.id) connected.add(t);
+            if (t === d.id) connected.add(s);
+          });
+          const myGoal = issueGoalMap.get(d.id);
+
+          issueEl.classed("dimmed", (n) => !connected.has(n.id));
+          issueLinkEl.classed("dimmed", (l) => {
+            const s = typeof l.source === "object" ? l.source.id : l.source;
+            const t = typeof l.target === "object" ? l.target.id : l.target;
+            return s !== d.id && t !== d.id;
+          });
+          issueLinkEl.classed("highlighted", (l) => {
+            const s = typeof l.source === "object" ? l.source.id : l.source;
+            const t = typeof l.target === "object" ? l.target.id : l.target;
+            return s === d.id || t === d.id;
+          });
+          const connGoals = new Set();
+          if (myGoal) connGoals.add(myGoal);
+          goalEl.classed("dimmed", (gg) => !connGoals.has(gg.id));
+          ribbonEl.classed("dimmed", true);
+        }
+
+        function unhighlight() {
+          issueEl.classed("dimmed", false);
+          goalEl.classed("dimmed", false);
+          issueLinkEl.classed("dimmed", false).classed("highlighted", false);
+          ribbonEl.classed("dimmed", false).classed("highlighted", false);
+        }
+
+        // ── Info panels ──
+
+        function showGoalInfo(d) {
+          const info = document.getElementById("info");
+          info.style.display = "block";
+          document.getElementById("info-title").innerHTML = `<span class="goal-title">${d.id}</span>: ${d.title}`;
+          let meta = `<b>Status:</b> ${d.status} | <b>Issues:</b> ${d.issues.length}`;
+          if (d.target) meta += `<br><b>Target:</b> ${d.target}`;
+          document.getElementById("info-meta").innerHTML = meta;
+
+          let html = "";
+          if (d.depends_on.length) {
+            html += `<div><b>Depends on:</b> ${d.depends_on.map((id) => `<span class="goal-link" onclick="focusGoal('${id}')">${id}</span>`).join(", ")}</div>`;
+          }
+          const dependers = goals.filter((gg) => gg.depends_on.includes(d.id));
+          if (dependers.length) {
+            html += `<div><b>Unblocks:</b> ${dependers.map((gg) => `<span class="goal-link" onclick="focusGoal('${gg.id}')">${gg.id}</span>`).join(", ")}</div>`;
+          }
+          if (d.issues.length) {
+            html += '<div style="margin-top:8px"><b>Issues:</b><br>';
+            const sorted = d.issues.slice().sort((a, b) => {
+              const na = nodeMap.get(a),
+                nb = nodeMap.get(b);
+              if (!na || !nb) return 0;
+              return (PRIO_ORDER[na.priority] || 3) - (PRIO_ORDER[nb.priority] || 3);
+            });
+            for (const id of sorted) {
+              const n = nodeMap.get(id);
+              if (n) {
+                const pColor =
+                  { critical: "#f85149", high: "#f0883e", medium: "#8b949e", low: "#484f58" }[n.priority] || "#8b949e";
+                html += `<span class="dep-link" onclick="focusNode('${id}')" style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.05);border-left:3px solid ${pColor};font-size:11px">#${id}</span>`;
+              }
+            }
+            html += "</div>";
+          }
+          document.getElementById("info-deps").innerHTML = html;
+        }
+
+        function showIssueInfo(d) {
+          const info = document.getElementById("info");
+          info.style.display = "block";
+          document.getElementById("info-title").textContent = `#${d.id}: ${d.title}`;
+          let meta = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.raw_status || d.status}`;
+          if (d.cluster && d.cluster !== "Unclustered") meta += ` | <b>Cluster:</b> ${d.cluster}`;
+          if (d.goal)
+            meta += ` | <b>Goal:</b> <span class="goal-link" onclick="focusGoal('${d.goal}')">${d.goal}</span>`;
+          if (d.compiler_errors) meta += ` | <b>CE:</b> ${d.compiler_errors}`;
+          if (d.test262_skip) meta += ` | <b>Skip:</b> ${d.test262_skip}`;
+          if (d.test262_fail) meta += ` | <b>Fail:</b> ${d.test262_fail}`;
+          document.getElementById("info-meta").innerHTML = meta;
+
+          const deps = d.depends_on || [];
+          const dependers = nodes.filter((n) => n.depends_on && n.depends_on.includes(d.id));
+          let html = "";
+          if (deps.length) {
+            html += `<div><b>Depends on:</b> ${deps.map((id) => `<span class="dep-link" onclick="focusNode('${id}')">#${id}</span>`).join(", ")}</div>`;
+          }
+          if (dependers.length) {
+            html += `<div><b>Unblocks:</b> ${dependers.map((n) => `<span class="dep-link" onclick="focusNode('${n.id}')">#${n.id}</span>`).join(", ")}</div>`;
+          }
+          const files = d.files;
+          if (files && (Array.isArray(files) ? files.length : Object.keys(files).length)) {
+            html += '<div style="margin-top:6px"><b>Files:</b>';
+            if (Array.isArray(files)) {
+              html += "<br>" + files.map((f) => `<code style="font-size:11px;color:#7ee787">${f}</code>`).join("<br>");
+            } else {
+              for (const [file, finfo] of Object.entries(files)) {
+                html += `<div style="margin-top:4px"><code style="font-size:11px;color:#7ee787">${file}</code>`;
+                if (finfo.new && finfo.new.length)
+                  html += `<br><span style="color:#3fb950;font-size:10px">+ ${finfo.new.join("<br>+ ")}</span>`;
+                if (finfo.breaking && finfo.breaking.length)
+                  html += `<br><span style="color:#f85149;font-size:10px">! ${finfo.breaking.join("<br>! ")}</span>`;
+                html += "</div>";
+              }
+            }
+            html += "</div>";
+          }
+          document.getElementById("info-deps").innerHTML = html;
+        }
+
+        window.focusNode = function (id) {
+          const n = nodes.find((n) => n.id === id);
+          if (n) {
+            highlightIssue(n);
+            showIssueInfo(n);
+          }
+        };
+
+        window.focusGoal = function (id) {
+          const gg = goals.find((g) => g.id === id);
+          if (gg) {
+            highlightGoal(gg);
+            showGoalInfo(gg);
+          }
+        };
+
+        // ── Filter controls ──
+        document.querySelectorAll("#controls input").forEach((cb) => {
+          cb.addEventListener("change", () => {
+            cb.parentElement.classList.toggle("active", cb.checked);
+            applyFilters();
+          });
+        });
+
+        function applyFilters() {
+          const statuses = new Set();
+          const priorities = new Set();
+          let showGoals = false;
+          document.querySelectorAll("#controls input:checked").forEach((cb) => {
+            const v = cb.value;
+            if (v === "show-goals") showGoals = true;
+            else if (v.startsWith("p-")) priorities.add(v.slice(2));
+            else statuses.add(v);
+          });
+
+          // Recompute layout from current filter state — closes gaps left by hidden issues.
+          computeLayout(statuses, priorities);
+
+          // Re-position issue rects, blocked bar, and labels; hide non-visible ones.
+          issueEl.style("display", (d) => (d.visible ? null : "none"));
+          issueEl
+            .selectAll("rect")
+            .attr("x", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return parent.x;
+            })
+            .attr("y", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return parent.y;
+            })
+            .attr("height", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return parent.h || 8;
+            });
+          issueEl
+            .selectAll("text")
+            .attr("x", (d, i, nodes) => d3.select(nodes[i].parentNode).datum().x + 4)
+            .attr("y", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return parent.y + (parent.h || 8) / 2;
+            });
+
+          // Re-position goal bands and recompute ribbons.
+          goalEl.style("display", showGoals ? null : "none");
+          goalEl
+            .selectAll("rect")
+            .attr("x", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return nodes[i].getAttribute("fill") === "transparent" ? parent.x - 1 : parent.x;
+            })
+            .attr("y", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return nodes[i].getAttribute("fill") === "transparent" ? parent.y - 1 : parent.y;
+            })
+            .attr("height", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return nodes[i].getAttribute("fill") === "transparent" ? parent.h + 2 : parent.h;
+            })
+            .attr("width", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return nodes[i].getAttribute("fill") === "transparent" ? parent.w + 2 : GOAL_LINE_W;
+            });
+          goalEl
+            .selectAll("text")
+            .attr(
+              "x",
+              (d, i, nodes) => d3.select(nodes[i].parentNode).datum().x + d3.select(nodes[i].parentNode).datum().w / 2,
+            )
+            .attr("y", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              const isSub = d3.select(nodes[i]).attr("font-size") === "9px";
+              return isSub ? parent.y - 8 + 13 : parent.y - 8;
+            });
+
+          // Re-bind ribbons (they change shape when goal heights change) and hide if goals hidden.
+          ribbonEl
+            .data(ribbons)
+            .attr("d", (r) => ribbonPath(r.srcY0, r.srcY1, r.srcX, r.tgtY0, r.tgtY1, r.tgtX))
+            .style("display", showGoals ? null : "none");
+
+          // Re-route issue-to-issue links (positions shifted).
+          issueLinkEl
+            .style("display", (l) => (l.source?.visible && l.target?.visible ? null : "none"))
+            .attr("d", (l) => {
+              const s = l.source,
+                t = l.target;
+              if (!s || !t || s.x == null || t.x == null) return "";
+              const sx = s.x + (s.w || ISSUE_W),
+                sy = s.y + (s.h || 8) / 2;
+              const tx = t.x,
+                ty = t.y + (t.h || 8) / 2;
+              if (Math.abs(sx - tx) < 5) {
+                const midX = sx + 30;
+                return `M${sx},${sy}Q${midX},${sy} ${midX},${(sy + ty) / 2}Q${midX},${ty} ${tx},${ty}`;
+              }
+              const cx1 = sx + (tx - sx) * 0.42;
+              const cx2 = sx + (tx - sx) * 0.58;
+              return `M${sx},${sy}C${cx1},${sy} ${cx2},${ty} ${tx},${ty}`;
+            });
+        }
+        applyFilters();
       }
-      html += '</div>';
-    }
-    document.getElementById('info-deps').innerHTML = html;
-  }
 
-  window.focusNode = function(id) {
-    const n = nodes.find(n => n.id === id);
-    if (n) { highlightIssue(n); showIssueInfo(n); }
-  };
-
-  window.focusGoal = function(id) {
-    const gg = goals.find(g => g.id === id);
-    if (gg) { highlightGoal(gg); showGoalInfo(gg); }
-  };
-
-  // ── Filter controls ──
-  document.querySelectorAll('#controls input').forEach(cb => {
-    cb.addEventListener('change', () => {
-      cb.parentElement.classList.toggle('active', cb.checked);
-      applyFilters();
-    });
-  });
-
-  function applyFilters() {
-    const statuses = new Set();
-    const priorities = new Set();
-    let showGoals = false;
-    document.querySelectorAll('#controls input:checked').forEach(cb => {
-      const v = cb.value;
-      if (v === 'show-goals') showGoals = true;
-      else if (v.startsWith('p-')) priorities.add(v.slice(2));
-      else statuses.add(v);
-    });
-    issueEl.style('display', d => (statuses.has(d.status) && priorities.has(d.priority)) ? null : 'none');
-    issueLinkEl.style('display', l => {
-      const s = l.source, t = l.target;
-      return (s && t && statuses.has(s.status) && priorities.has(s.priority) && statuses.has(t.status) && priorities.has(t.priority)) ? null : 'none';
-    });
-    goalEl.style('display', showGoals ? null : 'none');
-    ribbonEl.style('display', showGoals ? null : 'none');
-  }
-  applyFilters();
-}
-
-init();
-</script>
-</body>
+      init();
+    </script>
+  </body>
 </html>
