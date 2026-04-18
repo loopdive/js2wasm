@@ -136,8 +136,45 @@ export function destructureParamObjectExternref(
   }
   if (getIdx === undefined) return;
 
+  const excludedKeys: string[] = [];
+  for (const element of pattern.elements) {
+    if (!ts.isBindingElement(element) || element.dotDotDotToken) continue;
+    const pn = element.propertyName ?? element.name;
+    if (ts.isIdentifier(pn)) excludedKeys.push(pn.text);
+    else if (ts.isStringLiteral(pn)) excludedKeys.push(pn.text);
+    else if (ts.isNumericLiteral(pn)) excludedKeys.push(pn.text);
+  }
+
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
+
+    if (element.dotDotDotToken) {
+      if (!ts.isIdentifier(element.name)) continue;
+      const restName = element.name.text;
+      let restIdx = fctx.localMap.get(restName);
+      if (restIdx === undefined) {
+        restIdx = allocLocal(fctx, restName, { kind: "externref" });
+      }
+      let restObjIdx = ctx.funcMap.get("__extern_rest_object");
+      if (restObjIdx === undefined) {
+        const importsBefore = ctx.numImportFuncs;
+        const restObjType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        addImport(ctx, "env", "__extern_rest_object", { kind: "func", typeIdx: restObjType });
+        shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+        restObjIdx = ctx.funcMap.get("__extern_rest_object");
+        getIdx = ctx.funcMap.get("__extern_get");
+      }
+      if (restObjIdx === undefined) continue;
+      const excludedStr = excludedKeys.join(",");
+      addStringConstantGlobal(ctx, excludedStr);
+      const excludedStrIdx = ctx.stringGlobalMap.get(excludedStr);
+      if (excludedStrIdx === undefined) continue;
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "global.get", index: excludedStrIdx });
+      fctx.body.push({ op: "call", funcIdx: restObjIdx });
+      fctx.body.push({ op: "local.set", index: restIdx });
+      continue;
+    }
 
     const propNameNode = element.propertyName ?? element.name;
     let propNameText: string | undefined;
@@ -290,6 +327,12 @@ export function destructureParamObject(
         const typeName = ctx.anonTypeMap.get(tsType) ?? tsType.getSymbol()?.name ?? tsType.aliasSymbol?.name;
         structTypeIdx = typeName ? ctx.structMap.get(typeName) : undefined;
       }
+      // Patterns with a rest element (`{...x}`) cannot use the struct-ref fast
+      // path — struct.get only exposes known fields, but spec-compliant rest
+      // must enumerate every own property (including getters, accessors).
+      // Always route through __extern_rest_object for rest patterns.
+      const hasRestElement = pattern.elements.some((e) => ts.isBindingElement(e) && !!e.dotDotDotToken);
+      if (hasRestElement) structTypeIdx = undefined;
 
       if (structTypeIdx !== undefined) {
         // Use ref.test to check if the value is the expected struct (safe for primitives) (#852)
