@@ -787,9 +787,11 @@ export function destructureParamArray(
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue;
 
-    // Handle nested binding patterns
+    // Handle nested binding patterns (non-rest): [[x, y], {z}]
+    // Rest elements with nested patterns ([...[a,b]], [...{length}]) are handled below.
     if (
       ts.isBindingElement(element) &&
+      !element.dotDotDotToken &&
       (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))
     ) {
       const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, elemType);
@@ -876,11 +878,57 @@ export function destructureParamArray(
         fctx.body.push({ op: "local.set", index: restLocal });
       } else if (ts.isArrayBindingPattern(element.name)) {
         // Nested rest with array pattern: function([...[a, b]])
-        const nestedTmpLocal = allocLocal(fctx, `__rest_nested_${fctx.locals.length}`, paramType);
+        // The freshly-created struct is a non-null vec matching the outer vec type.
+        const nestedType: ValType = { kind: "ref", typeIdx: vecTypeIdx };
+        const nestedTmpLocal = allocLocal(fctx, `__rest_nested_${fctx.locals.length}`, nestedType);
         fctx.body.push({ op: "local.set", index: nestedTmpLocal });
-        destructureParamArray(ctx, fctx, nestedTmpLocal, element.name, paramType);
+        destructureParamArray(ctx, fctx, nestedTmpLocal, element.name, nestedType);
+      } else if (ts.isObjectBindingPattern(element.name)) {
+        // Nested rest with object pattern: function([...{length}]) or [...{0:v}]
+        // The rest array is array-like: destructure "length" from vec field 0
+        // and numeric properties via vec's data array. destructureParamObject
+        // on the vec type only knows "length" and "data" — numeric keys would
+        // be skipped. Emit property access inline to cover both shapes.
+        const nestedType: ValType = { kind: "ref", typeIdx: vecTypeIdx };
+        const nestedTmpLocal = allocLocal(fctx, `__rest_nested_${fctx.locals.length}`, nestedType);
+        fctx.body.push({ op: "local.set", index: nestedTmpLocal });
+        ensureBindingLocals(ctx, fctx, element.name);
+        for (const nested of element.name.elements) {
+          if (!ts.isBindingElement(nested)) continue;
+          if (nested.dotDotDotToken) continue;
+          if (!ts.isIdentifier(nested.name)) continue;
+          const propNode = nested.propertyName ?? nested.name;
+          let key: string | undefined;
+          if (ts.isIdentifier(propNode)) key = propNode.text;
+          else if (ts.isStringLiteral(propNode)) key = propNode.text;
+          else if (ts.isNumericLiteral(propNode)) key = propNode.text;
+          if (key === undefined) continue;
+          const localName = nested.name.text;
+          const localIdx = fctx.localMap.get(localName);
+          if (localIdx === undefined) continue;
+          const localType = getLocalType(fctx, localIdx);
+          if (!localType) continue;
+          if (key === "length") {
+            fctx.body.push({ op: "local.get", index: nestedTmpLocal });
+            fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+            coerceType(ctx, fctx, { kind: "i32" }, localType);
+            fctx.body.push({ op: "local.set", index: localIdx });
+            continue;
+          }
+          const numKey = Number(key);
+          if (Number.isInteger(numKey) && numKey >= 0 && String(numKey) === key) {
+            const arrDef = ctx.mod.types[arrTypeIdx];
+            const elemWasmType =
+              arrDef && arrDef.kind === "array" ? arrDef.element : ({ kind: "externref" } as ValType);
+            fctx.body.push({ op: "local.get", index: nestedTmpLocal });
+            fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+            fctx.body.push({ op: "i32.const", value: numKey });
+            emitBoundsCheckedArrayGetUndef(ctx, fctx, arrTypeIdx, elemWasmType);
+            coerceType(ctx, fctx, elemWasmType, localType);
+            fctx.body.push({ op: "local.set", index: localIdx });
+          }
+        }
       } else {
-        // Unsupported pattern — just drop the struct
         fctx.body.push({ op: "drop" });
       }
       continue;
