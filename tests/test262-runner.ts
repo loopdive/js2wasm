@@ -1216,6 +1216,7 @@ function buildPreamble(
   needsDoneForAsyncTest: boolean,
   needsTestTypedArray: boolean,
   needsAssertThrowsAsync: boolean,
+  needsTypedArrayBinding: boolean,
 ): string {
   let p = `let __fail: number = 0;
 let __assert_count: number = 1;
@@ -1448,6 +1449,15 @@ function testWithTypedArrayConstructors(fn: any): void {
     fn(constructors[i]);
   }
 }`;
+  }
+
+  if (needsTypedArrayBinding) {
+    // Substitute for the abstract %TypedArray% intrinsic — see note at detection
+    // site. Int8Array.prototype.X === %TypedArray%.prototype.X in practice for
+    // the proto methods these tests exercise.
+    p += `
+
+const TypedArray: any = Int8Array;`;
   }
 
   return p;
@@ -1691,6 +1701,16 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   const needsDoneForAsyncTest = needsAsyncTest && !needsDone;
   const needsTestTypedArray = includes.includes("testTypedArray.js") && /testWithTypedArrayConstructors/.test(body);
 
+  // test262's testTypedArray.js include defines `var TypedArray = Object.getPrototypeOf(Int8Array);`
+  // as the abstract %TypedArray% intrinsic. Our runtime's Object.getPrototypeOf(Int8Array) does not
+  // yield a usable abstract super — but Int8Array.prototype.X IS the same function as
+  // %TypedArray%.prototype.X for proto methods that matter in tests (every/forEach/copyWithin/…).
+  // So we inject `const TypedArray = Int8Array` whenever a test references `TypedArray` without
+  // declaring it locally. Caveat: tests that rely on TypedArray being abstract (e.g. `new TypedArray()`
+  // throwing) will regress — those are rare and live in TypedArrayConstructors/*, not /prototype/*.
+  const needsTypedArrayBinding =
+    /\bTypedArray\b/.test(body) && !/\b(?:var|let|const|function|class)\s+TypedArray\b/.test(body);
+
   // Build cache key as a bitmask string
   const cacheKey = [
     needsAssertThrows,
@@ -1711,6 +1731,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     needsDoneForAsyncTest,
     needsTestTypedArray,
     needsAssertThrowsAsync,
+    needsTypedArrayBinding,
   ]
     .map((b) => (b ? "1" : "0"))
     .join("");
@@ -1736,6 +1757,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
       needsDoneForAsyncTest,
       needsTestTypedArray,
       needsAssertThrowsAsync,
+      needsTypedArrayBinding,
     );
     preambleCache.set(cacheKey, preamble);
   }
