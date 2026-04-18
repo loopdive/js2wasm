@@ -115,6 +115,24 @@ export function buildDestructureNullThrow(ctx: CodegenContext): Instr[] {
 }
 
 /**
+ * Returns true when `expr` is a literal `null` or `undefined` — which per spec
+ * must throw TypeError when used as the source value for a destructuring pattern
+ * (RequireObjectCoercible / GetIterator).
+ *
+ * Used by parameter default-emission to statically reject `({pat} = null)` and
+ * `({pat} = undefined)` even when paramType is numeric (loses null/undef info).
+ */
+export function isNullOrUndefinedLiteral(expr: ts.Expression): boolean {
+  if (expr.kind === ts.SyntaxKind.NullKeyword) return true;
+  if (ts.isIdentifier(expr) && expr.text === "undefined") return true;
+  if (expr.kind === ts.SyntaxKind.VoidExpression) {
+    const v = expr as ts.VoidExpression;
+    return ts.isNumericLiteral(v.expression);
+  }
+  return false;
+}
+
+/**
  * Destructure a function parameter (externref) using __extern_get for property access.
  * This handles primitives, objects, and any externref value safely — no struct cast needed.
  * Used as fallback when the value is not the expected struct type (#852).
@@ -433,19 +451,19 @@ export function destructureParamObject(
     }
   }
 
-  // Close null guard — throw TypeError when null (JS spec: destructuring null/undefined is TypeError)
+  // Close null guard — throw TypeError when null (JS spec: destructuring null/undefined is TypeError).
+  // Emit even when destructInstrs is empty (empty `{}` pattern) so that spec-mandated
+  // RequireObjectCoercible still fires on null receiver.
   if (isNullable) {
     fctx.body = savedBody;
-    if (destructInstrs.length > 0) {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: buildDestructureNullThrow(ctx),
-        else: destructInstrs,
-      });
-    }
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: buildDestructureNullThrow(ctx),
+      else: destructInstrs,
+    });
   }
 }
 

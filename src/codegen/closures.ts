@@ -34,6 +34,11 @@ import {
   resolveWasmType,
 } from "./index.js";
 import {
+  buildDestructureNullThrow,
+  emitExternrefDestructureGuard,
+  isNullOrUndefinedLiteral,
+} from "./destructuring-params.js";
+import {
   coerceType,
   compileExpression,
   emitBoundsCheckedArrayGet,
@@ -629,10 +634,19 @@ export function emitArrowParamDefaults(
     const paramType = fctx.params[paramIdx]?.type;
     if (!paramType) continue;
 
+    // Per spec §14.3.3.1/§8.4.2: throw TypeError when destructuring null/undefined.
+    const dstrNullDefault =
+      (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) &&
+      isNullOrUndefinedLiteral(param.initializer);
+
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
-    compileExpression(ctx, fctx, param.initializer, paramType);
-    fctx.body.push({ op: "local.set", index: paramIdx });
+    if (dstrNullDefault) {
+      for (const ins of buildDestructureNullThrow(ctx)) fctx.body.push(ins);
+    } else {
+      compileExpression(ctx, fctx, param.initializer, paramType);
+      fctx.body.push({ op: "local.set", index: paramIdx });
+    }
     const thenInstrs = fctx.body;
     fctx.body = savedBody;
 
@@ -697,10 +711,19 @@ export function emitMethodParamDefaults(
     const paramType = fctx.params[paramIdx]?.type;
     if (!paramType) continue;
 
+    // Per spec §14.3.3.1/§8.4.2: throw TypeError when destructuring null/undefined.
+    const dstrNullDefault =
+      (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) &&
+      isNullOrUndefinedLiteral(param.initializer);
+
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
-    compileExpression(ctx, fctx, param.initializer, paramType);
-    fctx.body.push({ op: "local.set", index: paramIdx });
+    if (dstrNullDefault) {
+      for (const ins of buildDestructureNullThrow(ctx)) fctx.body.push(ins);
+    } else {
+      compileExpression(ctx, fctx, param.initializer, paramType);
+      fctx.body.push({ op: "local.set", index: paramIdx });
+    }
     const thenInstrs = fctx.body;
     fctx.body = savedBody;
 
@@ -1320,10 +1343,15 @@ export function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if (resolvedParamType.kind === "ref_null" && fpadInstrs.length > 0) {
+            if (resolvedParamType.kind === "ref_null") {
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
-              liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
+              liftedFctx.body.push({
+                op: "if",
+                blockType: { kind: "empty" },
+                then: buildDestructureNullThrow(ctx),
+                else: fpadInstrs,
+              });
             } else {
               liftedFctx.body.push(...fpadInstrs);
             }
@@ -1348,10 +1376,15 @@ export function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if (resolvedParamType.kind === "ref_null" && fpadInstrs.length > 0) {
+            if (resolvedParamType.kind === "ref_null") {
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
-              liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
+              liftedFctx.body.push({
+                op: "if",
+                blockType: { kind: "empty" },
+                then: buildDestructureNullThrow(ctx),
+                else: fpadInstrs,
+              });
             } else {
               liftedFctx.body.push(...fpadInstrs);
             }
@@ -1394,15 +1427,34 @@ export function compileArrowAsClosure(
             liftedFctx.body.push({ op: "local.set", index: localIdx });
           }
           liftedFctx.body = savedBodyFPOD;
-          if (paramType.kind === "ref_null" && fpodInstrs.length > 0) {
+          if (paramType.kind === "ref_null") {
             liftedFctx.body.push({ op: "local.get", index: paramIdx });
             liftedFctx.body.push({ op: "ref.is_null" } as Instr);
-            liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpodInstrs });
+            liftedFctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: buildDestructureNullThrow(ctx),
+              else: fpodInstrs,
+            });
           } else {
             liftedFctx.body.push(...fpodInstrs);
           }
           handled = allFound;
+        } else if (paramType.kind === "ref_null") {
+          // Non-struct ref_null type — still need guard when value is null
+          liftedFctx.body.push({ op: "local.get", index: paramIdx });
+          liftedFctx.body.push({ op: "ref.is_null" } as Instr);
+          liftedFctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: buildDestructureNullThrow(ctx),
+            else: [],
+          });
         }
+      } else if (paramType.kind === "externref") {
+        // Externref param with empty or non-struct-matching object pattern:
+        // still need to reject null/undefined per spec (RequireObjectCoercible).
+        emitExternrefDestructureGuard(ctx, liftedFctx, paramIdx);
       }
       if (!handled) {
         allocBindingLocals(param.name);

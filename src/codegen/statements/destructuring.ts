@@ -101,18 +101,34 @@ export function emitNullGuard(
   srcLocal: number,
   isNullable: boolean,
   emitFn: () => void,
+  srcKind?: ValType["kind"],
 ): void {
   const guardInstrs = collectInstrs(fctx, emitFn);
-  if (isNullable && guardInstrs.length > 0) {
-    // Per JS spec, destructuring null/undefined must throw TypeError
+  // Per spec §14.3.3.1/§8.4.2: destructuring null/undefined must throw TypeError
+  // even when the pattern is empty (no-binding) — so guard regardless of guardInstrs length.
+  if (isNullable) {
     const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, msg);
     const strIdx = ctx.stringGlobalMap.get(msg)!;
     const tagIdx = ensureExnTag(ctx);
     const throwInstrs: Instr[] = [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
-    fctx.body.push({ op: "local.get", index: srcLocal });
-    fctx.body.push({ op: "ref.is_null" } as Instr);
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: guardInstrs });
+    // For externref sources we also need to catch JS undefined (non-null externref
+    // wrapping the undefined value). Emit a unified boolean: ref.is_null || __extern_is_undefined
+    if (srcKind === "externref") {
+      const undefIdx = ensureExternIsUndefined(ctx, fctx);
+      fctx.body.push({ op: "local.get", index: srcLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      if (undefIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: srcLocal });
+        fctx.body.push({ op: "call", funcIdx: undefIdx });
+        fctx.body.push({ op: "i32.or" } as unknown as Instr);
+      }
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: guardInstrs });
+    } else {
+      fctx.body.push({ op: "local.get", index: srcLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: guardInstrs });
+    }
   } else {
     fctx.body.push(...guardInstrs);
   }
@@ -678,140 +694,147 @@ export function compileExternrefObjectDestructuringDecl(
 
   // Null guard: skip destructuring if source is null
   const isNullable = resultType.kind === "externref" || resultType.kind === "ref_null";
-  emitNullGuard(ctx, fctx, tmpLocal, isNullable, () => {
-    // Collect non-rest property names for __extern_rest_object exclusion
-    const excludedKeys: string[] = [];
-    for (const element of pattern.elements) {
-      if (!ts.isBindingElement(element) || element.dotDotDotToken) continue;
-      const pn = element.propertyName ?? element.name;
-      if (ts.isIdentifier(pn)) excludedKeys.push(pn.text);
-      else if (ts.isStringLiteral(pn)) excludedKeys.push(pn.text);
-      else if (ts.isNumericLiteral(pn)) excludedKeys.push(pn.text);
-    }
+  emitNullGuard(
+    ctx,
+    fctx,
+    tmpLocal,
+    isNullable,
+    () => {
+      // Collect non-rest property names for __extern_rest_object exclusion
+      const excludedKeys: string[] = [];
+      for (const element of pattern.elements) {
+        if (!ts.isBindingElement(element) || element.dotDotDotToken) continue;
+        const pn = element.propertyName ?? element.name;
+        if (ts.isIdentifier(pn)) excludedKeys.push(pn.text);
+        else if (ts.isStringLiteral(pn)) excludedKeys.push(pn.text);
+        else if (ts.isNumericLiteral(pn)) excludedKeys.push(pn.text);
+      }
 
-    for (const element of pattern.elements) {
-      if (!ts.isBindingElement(element)) continue;
+      for (const element of pattern.elements) {
+        if (!ts.isBindingElement(element)) continue;
 
-      // Handle rest element: const { a, ...rest } = externObj
-      if (element.dotDotDotToken) {
-        if (ts.isIdentifier(element.name)) {
-          const restName = element.name.text;
-          let restIdx = fctx.localMap.get(restName);
-          if (restIdx === undefined) {
-            restIdx = allocLocal(fctx, restName, { kind: "externref" });
-          }
-          // Use __extern_rest_object(obj, excludedKeysStr)
-          let restObjIdx = ctx.funcMap.get("__extern_rest_object");
-          if (restObjIdx === undefined) {
-            const importsBefore = ctx.numImportFuncs;
-            const restObjType = addFuncType(
-              ctx,
-              [{ kind: "externref" }, { kind: "externref" }],
-              [{ kind: "externref" }],
-            );
-            addImport(ctx, "env", "__extern_rest_object", { kind: "func", typeIdx: restObjType });
-            shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-            restObjIdx = ctx.funcMap.get("__extern_rest_object");
-            getIdx = ctx.funcMap.get("__extern_get");
-          }
-          if (restObjIdx !== undefined) {
-            const excludedStr = excludedKeys.join(",");
-            addStringConstantGlobal(ctx, excludedStr);
-            const excludedStrIdx = ctx.stringGlobalMap.get(excludedStr);
-            if (excludedStrIdx !== undefined) {
-              fctx.body.push({ op: "local.get", index: tmpLocal });
-              fctx.body.push({ op: "global.get", index: excludedStrIdx });
-              fctx.body.push({ op: "call", funcIdx: restObjIdx });
-              fctx.body.push({ op: "local.set", index: restIdx });
+        // Handle rest element: const { a, ...rest } = externObj
+        if (element.dotDotDotToken) {
+          if (ts.isIdentifier(element.name)) {
+            const restName = element.name.text;
+            let restIdx = fctx.localMap.get(restName);
+            if (restIdx === undefined) {
+              restIdx = allocLocal(fctx, restName, { kind: "externref" });
+            }
+            // Use __extern_rest_object(obj, excludedKeysStr)
+            let restObjIdx = ctx.funcMap.get("__extern_rest_object");
+            if (restObjIdx === undefined) {
+              const importsBefore = ctx.numImportFuncs;
+              const restObjType = addFuncType(
+                ctx,
+                [{ kind: "externref" }, { kind: "externref" }],
+                [{ kind: "externref" }],
+              );
+              addImport(ctx, "env", "__extern_rest_object", { kind: "func", typeIdx: restObjType });
+              shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+              restObjIdx = ctx.funcMap.get("__extern_rest_object");
+              getIdx = ctx.funcMap.get("__extern_get");
+            }
+            if (restObjIdx !== undefined) {
+              const excludedStr = excludedKeys.join(",");
+              addStringConstantGlobal(ctx, excludedStr);
+              const excludedStrIdx = ctx.stringGlobalMap.get(excludedStr);
+              if (excludedStrIdx !== undefined) {
+                fctx.body.push({ op: "local.get", index: tmpLocal });
+                fctx.body.push({ op: "global.get", index: excludedStrIdx });
+                fctx.body.push({ op: "call", funcIdx: restObjIdx });
+                fctx.body.push({ op: "local.set", index: restIdx });
+              }
             }
           }
+          continue;
         }
-        continue;
-      }
 
-      // Determine the property name to look up
-      const propNameNode = element.propertyName ?? element.name;
-      let propNameText: string | undefined;
-      if (ts.isIdentifier(propNameNode)) {
-        propNameText = propNameNode.text;
-      } else if (ts.isStringLiteral(propNameNode)) {
-        propNameText = propNameNode.text;
-      } else if (ts.isNumericLiteral(propNameNode)) {
-        propNameText = propNameNode.text;
-      }
-
-      if (!propNameText) continue;
-
-      // Emit: __extern_get(tmpLocal, "propName") -> externref
-      // Register the property name as a string constant global
-      addStringConstantGlobal(ctx, propNameText);
-      const strGlobalIdx = ctx.stringGlobalMap.get(propNameText);
-      if (strGlobalIdx === undefined) continue;
-
-      // Refresh getIdx in case addStringConstantGlobal shifted indices
-      getIdx = ctx.funcMap.get("__extern_get");
-      if (getIdx === undefined) continue;
-
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "global.get", index: strGlobalIdx });
-      fctx.body.push({ op: "call", funcIdx: getIdx });
-
-      const elemType: ValType = { kind: "externref" };
-
-      if (ts.isIdentifier(element.name)) {
-        const localName = element.name.text;
-        let localIdx = fctx.localMap.get(localName);
-        if (localIdx === undefined) {
-          localIdx = allocLocal(fctx, localName, elemType);
+        // Determine the property name to look up
+        const propNameNode = element.propertyName ?? element.name;
+        let propNameText: string | undefined;
+        if (ts.isIdentifier(propNameNode)) {
+          propNameText = propNameNode.text;
+        } else if (ts.isStringLiteral(propNameNode)) {
+          propNameText = propNameNode.text;
+        } else if (ts.isNumericLiteral(propNameNode)) {
+          propNameText = propNameNode.text;
         }
-        const localType = getLocalType(fctx, localIdx);
 
-        // Handle default value: check ref.is_null || __extern_is_undefined
-        if (element.initializer) {
-          const tmpElem = allocLocal(fctx, `__ext_obj_dflt_${fctx.locals.length}`, elemType);
-          fctx.body.push({ op: "local.tee", index: tmpElem });
-          emitExternrefDefaultCheck(ctx, fctx, tmpElem);
-          const thenInstrs = collectInstrs(fctx, () => {
-            compileExpression(ctx, fctx, element.initializer!, localType ?? elemType);
-            fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
-          });
-          const elseCoerce =
-            localType && !valTypesMatch(elemType, localType)
-              ? collectInstrs(fctx, () => {
-                  coerceType(ctx, fctx, elemType, localType!);
-                })
-              : [];
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-            else: [
-              { op: "local.get", index: tmpElem } as Instr,
-              ...elseCoerce,
-              { op: "local.set", index: localIdx! } as Instr,
-            ],
-          });
-        } else {
-          if (localType && !valTypesMatch(elemType, localType)) {
-            coerceType(ctx, fctx, elemType, localType);
+        if (!propNameText) continue;
+
+        // Emit: __extern_get(tmpLocal, "propName") -> externref
+        // Register the property name as a string constant global
+        addStringConstantGlobal(ctx, propNameText);
+        const strGlobalIdx = ctx.stringGlobalMap.get(propNameText);
+        if (strGlobalIdx === undefined) continue;
+
+        // Refresh getIdx in case addStringConstantGlobal shifted indices
+        getIdx = ctx.funcMap.get("__extern_get");
+        if (getIdx === undefined) continue;
+
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "global.get", index: strGlobalIdx });
+        fctx.body.push({ op: "call", funcIdx: getIdx });
+
+        const elemType: ValType = { kind: "externref" };
+
+        if (ts.isIdentifier(element.name)) {
+          const localName = element.name.text;
+          let localIdx = fctx.localMap.get(localName);
+          if (localIdx === undefined) {
+            localIdx = allocLocal(fctx, localName, elemType);
           }
-          fctx.body.push({ op: "local.set", index: localIdx });
-        }
-      } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
-        // Nested destructuring on externref — recursively destructure
-        const nestedLocal = allocLocal(fctx, `__ext_nested_${fctx.locals.length}`, elemType);
-        fctx.body.push({ op: "local.set", index: nestedLocal });
-        ensureBindingLocals(ctx, fctx, element.name);
-        if (ts.isObjectBindingPattern(element.name)) {
-          fctx.body.push({ op: "local.get", index: nestedLocal });
-          compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, elemType);
-        } else {
-          fctx.body.push({ op: "local.get", index: nestedLocal });
-          compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, elemType);
+          const localType = getLocalType(fctx, localIdx);
+
+          // Handle default value: check ref.is_null || __extern_is_undefined
+          if (element.initializer) {
+            const tmpElem = allocLocal(fctx, `__ext_obj_dflt_${fctx.locals.length}`, elemType);
+            fctx.body.push({ op: "local.tee", index: tmpElem });
+            emitExternrefDefaultCheck(ctx, fctx, tmpElem);
+            const thenInstrs = collectInstrs(fctx, () => {
+              compileExpression(ctx, fctx, element.initializer!, localType ?? elemType);
+              fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+            });
+            const elseCoerce =
+              localType && !valTypesMatch(elemType, localType)
+                ? collectInstrs(fctx, () => {
+                    coerceType(ctx, fctx, elemType, localType!);
+                  })
+                : [];
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: thenInstrs,
+              else: [
+                { op: "local.get", index: tmpElem } as Instr,
+                ...elseCoerce,
+                { op: "local.set", index: localIdx! } as Instr,
+              ],
+            });
+          } else {
+            if (localType && !valTypesMatch(elemType, localType)) {
+              coerceType(ctx, fctx, elemType, localType);
+            }
+            fctx.body.push({ op: "local.set", index: localIdx });
+          }
+        } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+          // Nested destructuring on externref — recursively destructure
+          const nestedLocal = allocLocal(fctx, `__ext_nested_${fctx.locals.length}`, elemType);
+          fctx.body.push({ op: "local.set", index: nestedLocal });
+          ensureBindingLocals(ctx, fctx, element.name);
+          if (ts.isObjectBindingPattern(element.name)) {
+            fctx.body.push({ op: "local.get", index: nestedLocal });
+            compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, elemType);
+          } else {
+            fctx.body.push({ op: "local.get", index: nestedLocal });
+            compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, elemType);
+          }
         }
       }
-    }
-  }); // end null guard
+    },
+    resultType.kind,
+  ); // end null guard
 
   // Sync destructured locals to module globals
   syncDestructuredLocalsToGlobals(ctx, fctx, pattern);
@@ -830,6 +853,27 @@ export function compileExternrefArrayDestructuringDecl(
   // Store externref in temp local
   const tmpLocal = allocLocal(fctx, `__ext_arr_destruct_${fctx.locals.length}`, resultType);
   fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Per spec §8.4.2 GetIterator: throw TypeError if value is null/undefined.
+  // Array destructuring requires GetIterator on the source — which aborts on null/undefined.
+  if (resultType.kind === "externref" || resultType.kind === "ref_null") {
+    const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    addStringConstantGlobal(ctx, msg);
+    const strIdx = ctx.stringGlobalMap.get(msg)!;
+    const tagIdx = ensureExnTag(ctx);
+    const throwInstrs: Instr[] = [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: [] });
+    if (resultType.kind === "externref") {
+      const undefIdx = ensureExternIsUndefined(ctx, fctx);
+      if (undefIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "call", funcIdx: undefIdx });
+        fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: [] });
+      }
+    }
+  }
 
   // Ensure __extern_get is available
   let getIdx = ctx.funcMap.get("__extern_get");

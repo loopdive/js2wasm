@@ -12,7 +12,12 @@ import { reportError } from "./context/errors.js";
 import { allocLocal, deduplicateLocals } from "./context/locals.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  buildDestructureNullThrow,
+  destructureParamArray,
+  destructureParamObject,
+  isNullOrUndefinedLiteral,
+} from "./destructuring-params.js";
 import {
   cacheStringLiterals,
   hasAsyncModifier,
@@ -203,14 +208,27 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
     const paramIdx = i;
     const paramType = params[i]!.type;
 
+    // Per spec §14.3.3.1/§8.4.2: destructuring null/undefined must throw TypeError.
+    // If the parameter uses a binding pattern and the default is a literal null/undefined,
+    // then when the default fires (arg omitted) we must throw — emit throw in the then-block
+    // instead of assigning the default. The destructuring step on explicit values still
+    // runs normally (and its own guard handles explicit null/undefined).
+    const dstrNullDefault =
+      (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) &&
+      isNullOrUndefinedLiteral(param.initializer);
+
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
-    const defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);
-    // Coerce if the default expression produced a different type than the param
-    if (defaultResultType && !valTypesMatch(defaultResultType, paramType)) {
-      coerceType(ctx, fctx, defaultResultType, paramType);
+    if (dstrNullDefault) {
+      for (const ins of buildDestructureNullThrow(ctx)) fctx.body.push(ins);
+    } else {
+      const defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);
+      // Coerce if the default expression produced a different type than the param
+      if (defaultResultType && !valTypesMatch(defaultResultType, paramType)) {
+        coerceType(ctx, fctx, defaultResultType, paramType);
+      }
+      fctx.body.push({ op: "local.set", index: paramIdx });
     }
-    fctx.body.push({ op: "local.set", index: paramIdx });
     const thenInstrs = fctx.body;
     popBody(fctx, savedBody);
 
