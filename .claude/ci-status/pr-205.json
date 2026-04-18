@@ -1,0 +1,15 @@
+{
+  "pr": 205,
+  "conclusion": "cancelled",
+  "head_branch": "issue-async-gen-return2",
+  "head_sha": "7356cb00778b6cc818b2d87e24b69b9429315ff8",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615557148",
+  "timestamp": "2026-04-18T23:45:58Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
