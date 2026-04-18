@@ -938,8 +938,45 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           const fullName = `${className}_${methodName}`;
           const funcIdx = ctx.funcMap.get(fullName);
           if (funcIdx !== undefined && expr.arguments.length > 0) {
-            // First argument is the thisArg (receiver)
-            compileExpression(ctx, fctx, expr.arguments[0]!);
+            // First argument is the thisArg (receiver).
+            // For class methods called via .call()/.apply() the receiver might
+            // not actually be an instance of the class (e.g. `method.call({})`).
+            // Without a brand check, the downstream ref.cast traps with
+            // uncatchable "illegal cast". Instead, emit a ref.test guard and
+            // throw a catchable TypeError on mismatch — matches the ES
+            // private-field brand-check semantics (#826, class/elements
+            // illegal_cast bucket).
+            const selfParamTypes = getFuncParamTypes(ctx, funcIdx);
+            const selfParamType = selfParamTypes?.[0];
+            const thisArgType = compileExpression(ctx, fctx, expr.arguments[0]!);
+            if (
+              thisArgType &&
+              selfParamType &&
+              (selfParamType.kind === "ref" || selfParamType.kind === "ref_null") &&
+              (thisArgType.kind === "externref" ||
+                thisArgType.kind === "anyref" ||
+                thisArgType.kind === "eqref" ||
+                ((thisArgType.kind === "ref" || thisArgType.kind === "ref_null") &&
+                  (thisArgType as { typeIdx: number }).typeIdx !== (selfParamType as { typeIdx: number }).typeIdx))
+            ) {
+              const selfTypeIdx = (selfParamType as { typeIdx: number }).typeIdx;
+              if (thisArgType.kind === "externref") {
+                fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
+              }
+              const thisTmpType: ValType = { kind: "anyref" };
+              const thisTmp = allocTempLocal(fctx, thisTmpType);
+              fctx.body.push({ op: "local.tee", index: thisTmp } as Instr);
+              fctx.body.push({ op: "ref.test", typeIdx: selfTypeIdx } as Instr);
+              fctx.body.push({ op: "i32.eqz" } as Instr);
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "empty" },
+                then: typeErrorThrowInstrs(ctx, expr),
+              } as Instr);
+              fctx.body.push({ op: "local.get", index: thisTmp } as Instr);
+              fctx.body.push({ op: "ref.cast", typeIdx: selfTypeIdx } as Instr);
+              releaseTempLocal(fctx, thisTmp);
+            }
 
             if (isCall) {
               // .call(thisArg, arg1, arg2, ...) — remaining args are positional
