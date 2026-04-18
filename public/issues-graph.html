@@ -182,12 +182,12 @@
         <input type="checkbox" value="blocked" checked />
         Blocked
       </label>
-      <label class="active">
-        <input type="checkbox" value="done" checked />
+      <label>
+        <input type="checkbox" value="done" />
         Done
       </label>
-      <label class="active">
-        <input type="checkbox" value="backlog" checked />
+      <label>
+        <input type="checkbox" value="backlog" />
         Backlog
       </label>
       <span class="sep">|</span>
@@ -362,17 +362,6 @@
           issues.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
         }
 
-        // ── Compute goal heights from member issues ──
-        goals.forEach((g) => {
-          const issues = issuesByGoal.get(g.id) || [];
-          const h =
-            issues.reduce((sum, n) => sum + (ISSUE_H[n.priority] || 8), 0) + Math.max(0, issues.length - 1) * ISSUE_GAP;
-          // Match exact issue stack height — empty goals get a 24px minimum for visibility,
-          // but goals with issues use exactly the issue stack height (no blank line below).
-          g.h = issues.length > 0 ? h : 24;
-          g.w = GOAL_LINE_W + ISSUE_W;
-        });
-
         // ── Build tiers by depth ──
         const maxDepth = d3.max(goals, (g) => goalDepth.get(g.id)) || 0;
         const tiers = [];
@@ -380,65 +369,10 @@
           tiers.push(goals.filter((g) => goalDepth.get(g.id) === d));
         }
 
-        // ── Position tiers (left to right: depth 0 at left) ──
         const BAND_W = GOAL_LINE_W + ISSUE_W;
         const margin = { left: 80, top: 80 };
 
-        // Compute total height per tier for centering
-        const tierHeights = tiers.map(
-          (tier) => tier.reduce((sum, g) => sum + g.h, 0) + Math.max(0, tier.length - 1) * GOAL_VERT_GAP,
-        );
-        const maxTierHeight = Math.max(...tierHeights, 200);
-
-        tiers.forEach((tier, ti) => {
-          const tierX = margin.left + ti * (BAND_W + TIER_GAP);
-          const tierH = tierHeights[ti];
-          // Center tier vertically relative to tallest tier
-          let y = margin.top + (maxTierHeight - tierH) / 2;
-
-          tier.forEach((g) => {
-            g.x = tierX;
-            g.y = y;
-            g.tierIndex = ti;
-
-            // Position issues as rows within this goal
-            const issues = issuesByGoal.get(g.id) || [];
-            let iy = y;
-            issues.forEach((n) => {
-              const ih = ISSUE_H[n.priority] || 8;
-              n.x = tierX + GOAL_LINE_W;
-              n.y = iy;
-              n.w = ISSUE_W;
-              n.h = ih;
-              iy += ih + ISSUE_GAP;
-            });
-
-            y += g.h + GOAL_VERT_GAP;
-          });
-        });
-
-        // Unassigned issues to the right of all tiers
-        const unassigned = issuesByGoal.get("__none__") || [];
-        if (unassigned.length > 0) {
-          const uX = margin.left + (maxDepth + 1) * (BAND_W + TIER_GAP);
-          let uy = margin.top;
-          unassigned.forEach((n) => {
-            const ih = ISSUE_H[n.priority] || 8;
-            n.x = uX;
-            n.y = uy;
-            n.w = ISSUE_W;
-            n.h = ih;
-            uy += ih + ISSUE_GAP;
-          });
-        }
-
-        // ── Compute Sankey ribbons for goal-to-goal dependencies ──
-        goals.forEach((g) => {
-          g._rightUsed = 0;
-          g._leftUsed = 0;
-        });
-
-        // Build dependency edge list: B depends on A → ribbon from A (source) to B (target)
+        // Build dependency edge list once (goal deps don't change with filters)
         const goalDeps = [];
         goals.forEach((g) => {
           g.depends_on.forEach((depId) => {
@@ -448,44 +382,127 @@
           });
         });
 
-        // Compute outgoing/incoming totals for proportional allocation
-        const outTotals = new Map();
-        const inTotals = new Map();
-        goals.forEach((g) => {
-          outTotals.set(g.id, 0);
-          inTotals.set(g.id, 0);
-        });
-        goalDeps.forEach((dep) => {
-          const tgt = goalMap.get(dep.target);
-          const src = goalMap.get(dep.source);
-          outTotals.set(dep.source, outTotals.get(dep.source) + tgt.h);
-          inTotals.set(dep.target, inTotals.get(dep.target) + src.h);
-        });
+        // Mutable outputs — updated by computeLayout() on every filter change.
+        let ribbons = [];
 
-        const ribbons = [];
-        goalDeps.forEach((dep) => {
-          const src = goalMap.get(dep.source);
-          const tgt = goalMap.get(dep.target);
+        /**
+         * Recompute positions based on current filter state. Mutates n.x/n.y/n.visible
+         * on nodes, g.x/g.y/g.h on goals, and the shared ribbons array. Hidden issues
+         * get n.visible = false and no new position, so the layout is compact.
+         */
+        function computeLayout(statuses, priorities) {
+          const isVisible = (n) => statuses.has(n.status) && priorities.has(n.priority);
 
-          const srcOutTotal = outTotals.get(dep.source) || 1;
-          const tgtInTotal = inTotals.get(dep.target) || 1;
-          const srcRibbonH = src.h * (tgt.h / srcOutTotal);
-          const tgtRibbonH = tgt.h * (src.h / tgtInTotal);
-
-          ribbons.push({
-            srcY0: src.y + src._rightUsed,
-            srcY1: src.y + src._rightUsed + srcRibbonH,
-            srcX: src.x + BAND_W,
-            tgtY0: tgt.y + tgt._leftUsed,
-            tgtY1: tgt.y + tgt._leftUsed + tgtRibbonH,
-            tgtX: tgt.x,
-            source: src,
-            target: tgt,
+          // Mark visibility + compute goal heights from *visible* issues only
+          goals.forEach((g) => {
+            const issues = issuesByGoal.get(g.id) || [];
+            const vis = issues.filter(isVisible);
+            const h =
+              vis.reduce((sum, n) => sum + (ISSUE_H[n.priority] || 8), 0) + Math.max(0, vis.length - 1) * ISSUE_GAP;
+            g.h = vis.length > 0 ? h : 24;
+            g.w = GOAL_LINE_W + ISSUE_W;
           });
 
-          src._rightUsed += srcRibbonH;
-          tgt._leftUsed += tgtRibbonH;
-        });
+          const tierHeights = tiers.map(
+            (tier) => tier.reduce((sum, g) => sum + g.h, 0) + Math.max(0, tier.length - 1) * GOAL_VERT_GAP,
+          );
+          const maxTierHeight = Math.max(...tierHeights, 200);
+
+          tiers.forEach((tier, ti) => {
+            const tierX = margin.left + ti * (BAND_W + TIER_GAP);
+            const tierH = tierHeights[ti];
+            let y = margin.top + (maxTierHeight - tierH) / 2;
+
+            tier.forEach((g) => {
+              g.x = tierX;
+              g.y = y;
+              g.tierIndex = ti;
+
+              const issues = issuesByGoal.get(g.id) || [];
+              let iy = y;
+              issues.forEach((n) => {
+                if (!isVisible(n)) {
+                  n.visible = false;
+                  return;
+                }
+                const ih = ISSUE_H[n.priority] || 8;
+                n.visible = true;
+                n.x = tierX + GOAL_LINE_W;
+                n.y = iy;
+                n.w = ISSUE_W;
+                n.h = ih;
+                iy += ih + ISSUE_GAP;
+              });
+
+              y += g.h + GOAL_VERT_GAP;
+            });
+          });
+
+          // Unassigned issues column
+          const unassigned = (issuesByGoal.get("__none__") || []).filter(isVisible);
+          if (unassigned.length > 0) {
+            const uX = margin.left + (maxDepth + 1) * (BAND_W + TIER_GAP);
+            let uy = margin.top;
+            (issuesByGoal.get("__none__") || []).forEach((n) => {
+              if (!isVisible(n)) {
+                n.visible = false;
+                return;
+              }
+              const ih = ISSUE_H[n.priority] || 8;
+              n.visible = true;
+              n.x = uX;
+              n.y = uy;
+              n.w = ISSUE_W;
+              n.h = ih;
+              uy += ih + ISSUE_GAP;
+            });
+          }
+
+          // Recompute Sankey ribbons for new goal heights/positions
+          goals.forEach((g) => {
+            g._rightUsed = 0;
+            g._leftUsed = 0;
+          });
+          const outTotals = new Map();
+          const inTotals = new Map();
+          goals.forEach((g) => {
+            outTotals.set(g.id, 0);
+            inTotals.set(g.id, 0);
+          });
+          goalDeps.forEach((dep) => {
+            const tgt = goalMap.get(dep.target);
+            const src = goalMap.get(dep.source);
+            outTotals.set(dep.source, outTotals.get(dep.source) + tgt.h);
+            inTotals.set(dep.target, inTotals.get(dep.target) + src.h);
+          });
+          ribbons = [];
+          goalDeps.forEach((dep) => {
+            const src = goalMap.get(dep.source);
+            const tgt = goalMap.get(dep.target);
+            const srcOutTotal = outTotals.get(dep.source) || 1;
+            const tgtInTotal = inTotals.get(dep.target) || 1;
+            const srcRibbonH = src.h * (tgt.h / srcOutTotal);
+            const tgtRibbonH = tgt.h * (src.h / tgtInTotal);
+            ribbons.push({
+              srcY0: src.y + src._rightUsed,
+              srcY1: src.y + src._rightUsed + srcRibbonH,
+              srcX: src.x + BAND_W,
+              tgtY0: tgt.y + tgt._leftUsed,
+              tgtY1: tgt.y + tgt._leftUsed + tgtRibbonH,
+              tgtX: tgt.x,
+              source: src,
+              target: tgt,
+            });
+            src._rightUsed += srcRibbonH;
+            tgt._leftUsed += tgtRibbonH;
+          });
+        }
+
+        // Initial layout — include ALL statuses/priorities so positions exist for every node.
+        // applyFilters() called at end of init() will recompute with the actual filter state.
+        const ALL_STATUSES = new Set(["ready", "blocked", "done", "backlog"]);
+        const ALL_PRIORITIES = new Set(["critical", "high", "medium", "low"]);
+        computeLayout(ALL_STATUSES, ALL_PRIORITIES);
 
         // ── Resolve issue-to-issue links ──
         links.forEach((l) => {
@@ -818,21 +835,91 @@
             else if (v.startsWith("p-")) priorities.add(v.slice(2));
             else statuses.add(v);
           });
-          issueEl.style("display", (d) => (statuses.has(d.status) && priorities.has(d.priority) ? null : "none"));
-          issueLinkEl.style("display", (l) => {
-            const s = l.source,
-              t = l.target;
-            return s &&
-              t &&
-              statuses.has(s.status) &&
-              priorities.has(s.priority) &&
-              statuses.has(t.status) &&
-              priorities.has(t.priority)
-              ? null
-              : "none";
-          });
+
+          // Recompute layout from current filter state — closes gaps left by hidden issues.
+          computeLayout(statuses, priorities);
+
+          // Re-position issue rects, blocked bar, and labels; hide non-visible ones.
+          issueEl.style("display", (d) => (d.visible ? null : "none"));
+          issueEl
+            .selectAll("rect")
+            .attr("x", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return parent.x;
+            })
+            .attr("y", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return parent.y;
+            })
+            .attr("height", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return parent.h || 8;
+            });
+          issueEl
+            .selectAll("text")
+            .attr("x", (d, i, nodes) => d3.select(nodes[i].parentNode).datum().x + 4)
+            .attr("y", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return parent.y + (parent.h || 8) / 2;
+            });
+
+          // Re-position goal bands and recompute ribbons.
           goalEl.style("display", showGoals ? null : "none");
-          ribbonEl.style("display", showGoals ? null : "none");
+          goalEl
+            .selectAll("rect")
+            .attr("x", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return nodes[i].getAttribute("fill") === "transparent" ? parent.x - 1 : parent.x;
+            })
+            .attr("y", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return nodes[i].getAttribute("fill") === "transparent" ? parent.y - 1 : parent.y;
+            })
+            .attr("height", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return nodes[i].getAttribute("fill") === "transparent" ? parent.h + 2 : parent.h;
+            })
+            .attr("width", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              return nodes[i].getAttribute("fill") === "transparent" ? parent.w + 2 : GOAL_LINE_W;
+            });
+          goalEl
+            .selectAll("text")
+            .attr(
+              "x",
+              (d, i, nodes) => d3.select(nodes[i].parentNode).datum().x + d3.select(nodes[i].parentNode).datum().w / 2,
+            )
+            .attr("y", (d, i, nodes) => {
+              const parent = d3.select(nodes[i].parentNode).datum();
+              const isSub = d3.select(nodes[i]).attr("font-size") === "9px";
+              return isSub ? parent.y - 8 + 13 : parent.y - 8;
+            });
+
+          // Re-bind ribbons (they change shape when goal heights change) and hide if goals hidden.
+          ribbonEl
+            .data(ribbons)
+            .attr("d", (r) => ribbonPath(r.srcY0, r.srcY1, r.srcX, r.tgtY0, r.tgtY1, r.tgtX))
+            .style("display", showGoals ? null : "none");
+
+          // Re-route issue-to-issue links (positions shifted).
+          issueLinkEl
+            .style("display", (l) => (l.source?.visible && l.target?.visible ? null : "none"))
+            .attr("d", (l) => {
+              const s = l.source,
+                t = l.target;
+              if (!s || !t || s.x == null || t.x == null) return "";
+              const sx = s.x + (s.w || ISSUE_W),
+                sy = s.y + (s.h || 8) / 2;
+              const tx = t.x,
+                ty = t.y + (t.h || 8) / 2;
+              if (Math.abs(sx - tx) < 5) {
+                const midX = sx + 30;
+                return `M${sx},${sy}Q${midX},${sy} ${midX},${(sy + ty) / 2}Q${midX},${ty} ${tx},${ty}`;
+              }
+              const cx1 = sx + (tx - sx) * 0.42;
+              const cx2 = sx + (tx - sx) * 0.58;
+              return `M${sx},${sy}C${cx1},${sy} ${cx2},${ty} ${tx},${ty}`;
+            });
         }
         applyFilters();
       }
