@@ -1,0 +1,15 @@
+{
+  "pr": 171,
+  "conclusion": "failure",
+  "head_branch": "issue-1004-string-concat-opt",
+  "head_sha": "302c2bcaeb90da150ea469a2089474f1aa6f5072",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608475056",
+  "timestamp": "2026-04-18T18:21:55Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
