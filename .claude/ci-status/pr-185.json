@@ -1,0 +1,15 @@
+{
+  "pr": 185,
+  "conclusion": "failure",
+  "head_branch": "issue-1094-runtime-audit",
+  "head_sha": "6caeae920cbd47db5fe0eb696fded1a6813f464a",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608486296",
+  "timestamp": "2026-04-18T18:51:50Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
