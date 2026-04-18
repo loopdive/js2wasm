@@ -366,7 +366,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
 | #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1127 | export default of HOF variable not exported — add.js blocked | high | ready |
+| #1127 | Class field initializers referencing enclosing locals silently emit ref.null | high | ready |
+| #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | ready |
 
 ### In Progress
 
