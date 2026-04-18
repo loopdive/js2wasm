@@ -15521,6 +15521,18 @@
     },
     {
       "id": "1119",
+      "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Ready",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1119",
       "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
       "priority": "high",
       "status": "ready",
@@ -26298,5 +26310,5 @@
       "issue": "487"
     }
   ],
-  "generated": "2026-04-16T13:51:32+02:00"
+  "generated": "2026-04-18T20:32:47+02:00"
 }
