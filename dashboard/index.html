@@ -456,13 +456,13 @@
     <div class="panel kanban" style="border-top: none">
       <div class="panel-head">
         <h2>Issue Board</h2>
-          <div class="panel-actions">
-            <div class="sprint-controls">
+        <div class="panel-actions">
+          <div class="sprint-controls">
             <label for="sprint-select">Sprint</label>
             <select id="sprint-select"></select>
-            </div>
-            <a href="../issues-graph.html">dependency graph</a>
           </div>
+          <a href="../issues-graph.html">dependency graph</a>
+        </div>
       </div>
       <div class="kanban-board" id="kanban-board">
         <div class="kanban-col">
@@ -676,7 +676,9 @@
       }
 
       function getCurrentUnfinishedSprintStart(issues, sprintOptions) {
-        const numeric = sprintOptions.filter((s) => Number.isFinite(s.sprintNumber)).sort((a, b) => a.sprintNumber - b.sprintNumber);
+        const numeric = sprintOptions
+          .filter((s) => Number.isFinite(s.sprintNumber))
+          .sort((a, b) => a.sprintNumber - b.sprintNumber);
         if (numeric.length === 0) return null;
         let idx = numeric.length - 1;
         while (idx >= 0 && !sprintHasUndoneWork(issues, numeric[idx])) idx--;
@@ -742,10 +744,8 @@
         // ── Metrics ──
         if (runs.length > 0) {
           const latest = runs[runs.length - 1];
-          // Use strict-mode pass rate (ES module compatible) when available, fall back to all tests
-          const strictPass = latest.strict_pass ?? latest.pass;
-          const strictTotal = latest.strict_total ?? latest.total;
-          const passRate = ((strictPass / strictTotal) * 100).toFixed(1);
+          // Use the full pass rate to match the landing page donut chart.
+          const passRate = ((latest.pass / latest.total) * 100).toFixed(1);
           document.getElementById("m-passrate").textContent = passRate + "%";
         }
 
@@ -907,15 +907,14 @@
                   ph.setAttribute("x2", sprintPos[n]);
                   ph.setAttribute("opacity", "1");
                 }
-                timelineEl.querySelectorAll("circle[data-sprint]").forEach((c) =>
-                  c.setAttribute("fill", c.dataset.sprint === n ? "#fbbf24" : "#fff"),
-                );
+                timelineEl
+                  .querySelectorAll("circle[data-sprint]")
+                  .forEach((c) => c.setAttribute("fill", c.dataset.sprint === n ? "#fbbf24" : "#fff"));
                 if (typeof setSprintByNumber === "function") setSprintByNumber(n);
               });
             }
           }
         }
-
       }
 
       // ── Run on load ──
