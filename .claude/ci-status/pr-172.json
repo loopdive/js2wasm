@@ -1,0 +1,15 @@
+{
+  "pr": 172,
+  "conclusion": "failure",
+  "head_branch": "issue-1017-yield-star-delegation",
+  "head_sha": "613f6fb44c4dd9f923c8f8df89f0092e36b7142b",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608480144",
+  "timestamp": "2026-04-18T18:26:31Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
