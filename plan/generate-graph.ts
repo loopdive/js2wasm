@@ -83,7 +83,7 @@ function getStableGeneratedAt(paths: string[]): string {
   const candidates = paths.filter((file) => fs.existsSync(file));
   if (!candidates.length) return "";
   try {
-    return git(["log", "-1", "--format=%cI", "--", ...candidates]);
+    return git(["log", "-1", "--no-merges", "--format=%aI", "--", ...candidates]);
   } catch {
     return "";
   }
@@ -212,7 +212,9 @@ function parseIdList(raw: unknown): string[] {
 function scanIssues(): IssueNode[] {
   const nodes: IssueNode[] = [];
   const trackedFiles = getTrackedMarkdownFiles("plan/issues");
-  for (const file of walk(ISSUES_DIR).filter(isIssueFile).filter((file) => !trackedFiles || trackedFiles.has(file))) {
+  for (const file of walk(ISSUES_DIR)
+    .filter(isIssueFile)
+    .filter((file) => !trackedFiles || trackedFiles.has(file))) {
     const content = fs.readFileSync(file, "utf8");
     const fm = parseFrontmatter(content);
     if (!fm.id && !fm.title && !fm.status) continue;
@@ -336,10 +338,7 @@ const data: GraphData = {
   goals: goals.sort((a, b) => a.id.localeCompare(b.id)),
   goalIssueLinks,
   goalDepLinks,
-  generated: getStableGeneratedAt([
-    ...walk(ISSUES_DIR),
-    ...walk(GOALS_DIR),
-  ]),
+  generated: getStableGeneratedAt([...walk(ISSUES_DIR), ...walk(GOALS_DIR)]),
 };
 
 fs.writeFileSync(OUTPUT, JSON.stringify(data, null, 2));
