@@ -1217,6 +1217,7 @@ function buildPreamble(
   needsTestTypedArray: boolean,
   needsAssertThrowsAsync: boolean,
   needsTypedArrayBinding: boolean,
+  needsIteratorBinding: boolean,
 ): string {
   let p = `let __fail: number = 0;
 let __assert_count: number = 1;
@@ -1458,6 +1459,19 @@ function testWithTypedArrayConstructors(fn: any): void {
     p += `
 
 const TypedArray: any = Int8Array;`;
+  }
+
+  if (needsIteratorBinding) {
+    // Shim for the %Iterator% constructor from the iterator-helpers proposal.
+    // Our runtime doesn't expose a global `Iterator`, but %IteratorPrototype%
+    // is reachable via [][Symbol.iterator]()'s proto chain. We build a
+    // minimal function whose .prototype === %IteratorPrototype% so tests
+    // that do `typeof Iterator === 'function'`, `Iterator.prototype.X`, or
+    // `class X extends Iterator {}` have a usable binding.
+    p += `
+
+function Iterator(this: any): void {}
+(Iterator as any).prototype = Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]()));`;
   }
 
   return p;
@@ -1711,6 +1725,14 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   const needsTypedArrayBinding =
     /\bTypedArray\b/.test(body) && !/\b(?:var|let|const|function|class)\s+TypedArray\b/.test(body);
 
+  // test262's iterator-helpers tests reference bare `Iterator` as the
+  // %Iterator% constructor. Our runtime lacks that global; inject a minimal
+  // shim whose .prototype === %IteratorPrototype% (reachable from
+  // [][Symbol.iterator]()'s proto chain). Passes `typeof Iterator ===
+  // 'function'` and satisfies `Iterator.prototype.X` lookups.
+  const needsIteratorBinding =
+    /\bIterator\b/.test(body) && !/\b(?:var|let|const|function|class)\s+Iterator\b/.test(body);
+
   // Build cache key as a bitmask string
   const cacheKey = [
     needsAssertThrows,
@@ -1732,6 +1754,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     needsTestTypedArray,
     needsAssertThrowsAsync,
     needsTypedArrayBinding,
+    needsIteratorBinding,
   ]
     .map((b) => (b ? "1" : "0"))
     .join("");
@@ -1758,6 +1781,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
       needsTestTypedArray,
       needsAssertThrowsAsync,
       needsTypedArrayBinding,
+      needsIteratorBinding,
     );
     preambleCache.set(cacheKey, preamble);
   }
