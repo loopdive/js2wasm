@@ -104,6 +104,26 @@
   ],
   "ready": [
     {
+      "id": "1134",
+      "title": "__any_eq loose equality missing cross-tag coercion — null==undefined, bool==number all return false",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1133",
+      "title": "__any_strict_eq tag-5 string comparison uses identity, not content — 'a' === 'a' returns false for any-typed strings",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
       "id": "1126",
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
@@ -166,6 +186,16 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1119",
+      "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Ready"
     },
     {
       "id": "1119",
