@@ -169,6 +169,16 @@
     },
     {
       "id": "1119",
+      "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Ready"
+    },
+    {
+      "id": "1119",
       "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
       "priority": "high",
       "feasibility": "hard",
@@ -310,16 +320,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1094",
-      "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "spec-completeness",
       "status": "ready",
       "sprint": "42"
     },
@@ -1610,6 +1610,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1094",
+      "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
       "status": "review",
       "sprint": "42"
     },
