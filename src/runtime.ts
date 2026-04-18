@@ -149,7 +149,7 @@ function _validatePropertyDescriptor(
 
 function _toPropertyDescriptorValidate(rawDesc: any, getField: (o: any, f: string) => any): PropertyDescriptor {
   if (rawDesc == null || (typeof rawDesc !== "object" && typeof rawDesc !== "function")) {
-    throw new TypeError("Property description must be an object: " + String(rawDesc));
+    throw new TypeError("TypeError: Property description must be an object: " + String(rawDesc));
   }
   const desc: PropertyDescriptor = {};
   const val = getField(rawDesc, "value");
@@ -161,13 +161,15 @@ function _toPropertyDescriptorValidate(rawDesc: any, getField: (o: any, f: strin
   const hasData = val !== undefined || wr !== undefined;
   const hasAccessor = getFn !== undefined || setFn !== undefined;
   if (hasData && hasAccessor) {
-    throw new TypeError("Invalid property descriptor. Cannot both specify accessors and a value or writable attribute");
+    throw new TypeError(
+      "TypeError: Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+    );
   }
   if (getFn !== undefined && typeof getFn !== "function") {
-    throw new TypeError("Getter must be a function: " + String(getFn));
+    throw new TypeError("TypeError: Getter must be a function: " + String(getFn));
   }
   if (setFn !== undefined && typeof setFn !== "function") {
-    throw new TypeError("Setter must be a function: " + String(setFn));
+    throw new TypeError("TypeError: Setter must be a function: " + String(setFn));
   }
   if (val !== undefined) desc.value = val;
   if (wr !== undefined) desc.writable = !!wr;
