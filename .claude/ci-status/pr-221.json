@@ -1,0 +1,15 @@
+{
+  "pr": 221,
+  "conclusion": "failure",
+  "head_branch": "issue-1135-dstr-iterable-fallback",
+  "head_sha": "cc86d4d4032d321ef3bc71b6fe67ea9c3f93abd0",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24612562543",
+  "timestamp": "2026-04-18T20:00:01Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
