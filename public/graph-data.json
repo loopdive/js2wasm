@@ -15632,6 +15632,20 @@
       "cluster": "performance"
     },
     {
+      "id": "1127",
+      "title": "export default of HOF variable not exported — add.js blocked",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "42",
+      "depends_on": [
+        "1074"
+      ],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -16280,6 +16294,10 @@
     {
       "source": "1124",
       "target": "1126"
+    },
+    {
+      "source": "1074",
+      "target": "1127"
     },
     {
       "source": "688",
@@ -16957,7 +16975,8 @@
         "compilable"
       ],
       "issues": [
-        "1123"
+        "1123",
+        "1127"
       ],
       "track": "supporting track"
     },
@@ -19838,6 +19857,10 @@
     {
       "goal": "correctness",
       "issue": "1123"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1127"
     },
     {
       "goal": "crash-free",
@@ -23447,6 +23470,10 @@
     },
     {
       "goal": "compilable",
+      "issue": "1127"
+    },
+    {
+      "goal": "compilable",
       "issue": "107"
     },
     {
@@ -26310,5 +26337,5 @@
       "issue": "487"
     }
   ],
-  "generated": "2026-04-18T20:32:47+02:00"
+  "generated": "2026-04-19T00:05:10+02:00"
 }
