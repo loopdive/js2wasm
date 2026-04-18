@@ -1,15 +1,15 @@
 {
   "pr": 217,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-strict-assign-undeclared",
-  "head_sha": "2c4051e171e79f06f54f4e369e22d4f021e831b4",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616027860",
-  "timestamp": "2026-04-18T23:46:19Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "fc237f431821b24bf3de3f07cf6a54f49497674d",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615065624",
+  "timestamp": "2026-04-18T23:58:54Z",
+  "pass": 22487,
+  "fail": 15373,
+  "compile_error": 3940,
+  "snapshot_delta": 37,
+  "net_per_test": 37,
+  "regressions": 2,
+  "improvements": 39
 }
