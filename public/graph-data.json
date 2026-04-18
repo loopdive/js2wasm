@@ -14117,7 +14117,7 @@
       "title": "Support eval via JS host import",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -14931,14 +14931,15 @@
       "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "42",
       "depends_on": [
         "1006"
       ],
       "files": [],
       "goal": "spec-completeness",
-      "cluster": "spec-completeness"
+      "cluster": "spec-completeness",
+      "compiler_errors": 23
     },
     {
       "id": "1074",
@@ -26310,5 +26311,5 @@
       "issue": "487"
     }
   ],
-  "generated": "2026-04-18T20:32:47+02:00"
+  "generated": "2026-04-19T00:30:14+02:00"
 }
