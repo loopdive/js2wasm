@@ -118,6 +118,10 @@ export interface FunctionContext {
   boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
   /** Whether this function is a class constructor (for new.target support) */
   isConstructor?: boolean;
+  /** Whether this constructor belongs to a class declared with `extends`. Spec §10.2.1.3
+   * step 13c requires a derived constructor that returns a non-object, non-undefined
+   * value to throw TypeError instead of silently coercing and null-dereffing. */
+  isDerivedConstructor?: boolean;
   /** Whether this function is a generator (function*) */
   isGenerator?: boolean;
   /** Set of variable names that are read-only bindings (e.g. named function expression name) */
