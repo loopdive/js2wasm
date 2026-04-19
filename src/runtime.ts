@@ -3198,6 +3198,70 @@ function wrapWithContainment(
   return fn;
 }
 
+/**
+ * Build a WASI polyfill for running WASI-compiled modules in JS environments.
+ * Routes fd_write(fd=1) to console.log, fd_write(fd=2) to console.error,
+ * and proc_exit to process.exit (Node) or throw (browser).
+ *
+ * Usage:
+ *   const wasi = buildWasiPolyfill();
+ *   const { instance } = await WebAssembly.instantiate(binary, { wasi_snapshot_preview1: wasi });
+ *   wasi.setMemory(instance.exports.memory as WebAssembly.Memory);
+ *   (instance.exports._start as Function)();
+ */
+export function buildWasiPolyfill(): {
+  fd_write: (fd: number, iovs: number, iovs_len: number, nwritten: number) => number;
+  proc_exit: (code: number) => void;
+  setMemory: (mem: WebAssembly.Memory) => void;
+} {
+  let memory: WebAssembly.Memory | undefined;
+  // Partial line buffer per fd for data not ending in newline
+  const lineBuffers: Record<number, string> = {};
+
+  return {
+    setMemory(mem: WebAssembly.Memory) {
+      memory = mem;
+    },
+
+    fd_write(fd: number, iovs: number, iovs_len: number, nwritten: number): number {
+      if (!memory) return -1; // EBADF-ish: memory not set
+
+      const view = new DataView(memory.buffer);
+      let totalWritten = 0;
+
+      for (let i = 0; i < iovs_len; i++) {
+        const ptr = view.getUint32(iovs + i * 8, true);
+        const len = view.getUint32(iovs + i * 8 + 4, true);
+        const bytes = new Uint8Array(memory.buffer, ptr, len);
+        const text = new TextDecoder().decode(bytes);
+
+        // Buffer partial lines; flush on newline
+        const buf = (lineBuffers[fd] || "") + text;
+        const lines = buf.split("\n");
+        // Last element is the incomplete line (or "" if text ended with \n)
+        lineBuffers[fd] = lines.pop()!;
+        const writer = fd === 2 ? console.error : console.log;
+        for (const line of lines) {
+          writer(line);
+        }
+
+        totalWritten += len;
+      }
+
+      // Write total bytes written
+      view.setUint32(nwritten, totalWritten, true);
+      return 0; // __WASI_ERRNO_SUCCESS
+    },
+
+    proc_exit(code: number): void {
+      if (typeof process !== "undefined" && typeof process.exit === "function") {
+        process.exit(code);
+      }
+      throw new Error(`WASI proc_exit(${code})`);
+    },
+  };
+}
+
 /** Build the WebAssembly import object from a closed manifest */
 export function buildImports(
   manifest: ImportDescriptor[],

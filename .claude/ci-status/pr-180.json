@@ -1,15 +1,15 @@
 {
   "pr": 180,
-  "conclusion": "cancelled",
+  "conclusion": "success",
   "head_branch": "issue-1075-commonjs-exports",
-  "head_sha": "aedd399d2863616f3d6fa988f305992a057a137b",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615254820",
-  "timestamp": "2026-04-18T23:17:00Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "68f2ab7e1b9f80c77b7d5afffb80ad5399e7d3e5",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616307879",
+  "timestamp": "2026-04-19T01:58:32Z",
+  "pass": 22481,
+  "fail": 15392,
+  "compile_error": 3930,
+  "snapshot_delta": 31,
+  "net_per_test": 31,
+  "regressions": 0,
+  "improvements": 31
 }

@@ -293,6 +293,150 @@ export function compileAssignment(ctx: CodegenContext, fctx: FunctionContext, ex
   return null;
 }
 
+/**
+ * Detect strict-mode context for a node (§10.2.1).
+ * A node is in strict mode if:
+ *   - Containing source file starts with `"use strict";` directive.
+ *   - Inside a class body (classes are always strict).
+ *   - Inside a function whose body begins with `"use strict";`.
+ */
+export function isStrictContext(node: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (ts.isSourceFile(current)) {
+      for (const stmt of current.statements) {
+        if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression)) {
+          if (stmt.expression.text === "use strict") return true;
+        } else {
+          break;
+        }
+      }
+      return false;
+    }
+    if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) return true;
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current)
+    ) {
+      if (current.body && ts.isBlock(current.body)) {
+        for (const stmt of current.body.statements) {
+          if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression)) {
+            if (stmt.expression.text === "use strict") return true;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+/**
+ * True if `id` is an identifier that cannot be resolved to any binding the
+ * compiler knows about. Mirrors the check in identifiers.ts:393 for reads
+ * but also excludes bindings that only exist in the codegen (locals, captures,
+ * globals, func imports).
+ */
+export function isUnresolvableIdent(ctx: CodegenContext, fctx: FunctionContext, id: ts.Identifier): boolean {
+  const name = id.text;
+  if (fctx.localMap.has(name)) return false;
+  if (fctx.boxedCaptures?.has(name)) return false;
+  if (ctx.capturedGlobals.has(name)) return false;
+  if (ctx.moduleGlobals.has(name)) return false;
+  if (ctx.funcMap.has(name)) return false;
+  // For shorthand property assignments `{x}` the checker returns the synthetic
+  // property symbol (SymbolFlags.Property = 4) even when `x` has no value
+  // binding in scope. The real value lookup is via getShorthandAssignmentValueSymbol.
+  if (id.parent && ts.isShorthandPropertyAssignment(id.parent) && id.parent.name === id) {
+    const valSym = (
+      ctx.checker as unknown as {
+        getShorthandAssignmentValueSymbol?: (n: ts.Node) => ts.Symbol | undefined;
+      }
+    ).getShorthandAssignmentValueSymbol?.(id.parent);
+    return !valSym;
+  }
+  const sym = ctx.checker.getSymbolAtLocation(id);
+  if (!sym) return true;
+  const decls = sym.declarations;
+  if (!decls || decls.length === 0) return true;
+  for (const d of decls) {
+    if (d !== id) return false;
+  }
+  return true;
+}
+
+export function findUnresolvableInObjectPattern(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ObjectLiteralExpression,
+): boolean {
+  for (const prop of target.properties) {
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      if (isUnresolvableIdent(ctx, fctx, prop.name)) return true;
+    } else if (ts.isPropertyAssignment(prop)) {
+      let targetExpr = prop.initializer;
+      if (ts.isBinaryExpression(targetExpr) && targetExpr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        targetExpr = targetExpr.left;
+      }
+      if (ts.isIdentifier(targetExpr) && isUnresolvableIdent(ctx, fctx, targetExpr)) return true;
+      if (ts.isObjectLiteralExpression(targetExpr) && findUnresolvableInObjectPattern(ctx, fctx, targetExpr))
+        return true;
+      if (ts.isArrayLiteralExpression(targetExpr) && findUnresolvableInArrayPattern(ctx, fctx, targetExpr)) return true;
+    } else if (ts.isSpreadAssignment(prop)) {
+      if (ts.isIdentifier(prop.expression) && isUnresolvableIdent(ctx, fctx, prop.expression)) return true;
+    }
+  }
+  return false;
+}
+
+export function findUnresolvableInArrayPattern(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ArrayLiteralExpression,
+): boolean {
+  for (const element of target.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isIdentifier(element) && isUnresolvableIdent(ctx, fctx, element)) return true;
+    if (
+      ts.isSpreadElement(element) &&
+      ts.isIdentifier(element.expression) &&
+      isUnresolvableIdent(ctx, fctx, element.expression)
+    ) {
+      return true;
+    }
+    if (
+      ts.isBinaryExpression(element) &&
+      element.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(element.left) &&
+      isUnresolvableIdent(ctx, fctx, element.left)
+    ) {
+      return true;
+    }
+    if (ts.isArrayLiteralExpression(element) && findUnresolvableInArrayPattern(ctx, fctx, element)) return true;
+    if (ts.isObjectLiteralExpression(element) && findUnresolvableInObjectPattern(ctx, fctx, element)) return true;
+  }
+  return false;
+}
+
+/**
+ * §6.2.4 PutValue step 5: if the LHS reference is unresolvable in strict mode,
+ * throw ReferenceError. The RHS value must already be on the stack (for
+ * observable evaluation of the Initializer per §13.15.5.2 step 1). We drop it
+ * and throw. The subsequent destructuring code is emitted but becomes
+ * unreachable — Wasm's type system accepts this via polymorphic stack after
+ * `throw`.
+ */
+function emitStrictPutValueThrow(ctx: CodegenContext, fctx: FunctionContext): void {
+  fctx.body.push({ op: "drop" });
+  const tagIdx = ensureExnTag(ctx);
+  fctx.body.push({ op: "ref.null.extern" } as Instr);
+  fctx.body.push({ op: "throw", tagIdx } as unknown as Instr);
+}
+
 function compileDestructuringAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -302,6 +446,15 @@ function compileDestructuringAssignment(
   // Compile the RHS — should produce a struct ref
   const resultType = compileExpression(ctx, fctx, value);
   if (!resultType) return null;
+
+  // §6.2.4 PutValue: strict-mode assignment to unresolvable reference throws.
+  if (isStrictContext(target) && findUnresolvableInObjectPattern(ctx, fctx, target)) {
+    emitStrictPutValueThrow(ctx, fctx);
+    // After throw the stack is polymorphic; push a sentinel matching resultType
+    // so downstream code that expects a value sees the declared return type.
+    fctx.body.push({ op: "ref.null.extern" } as Instr);
+    return { kind: "externref" };
+  }
 
   // Determine struct type from the RHS expression's type
   const rhsType = ctx.checker.getTypeAtLocation(value);
@@ -665,6 +818,13 @@ function compileArrayDestructuringAssignment(
   // Compile the RHS — should produce a struct ref (either tuple or vec)
   const resultType = compileExpression(ctx, fctx, value);
   if (!resultType) return null;
+
+  // §6.2.4 PutValue: strict-mode assignment to unresolvable reference throws.
+  if (isStrictContext(target) && findUnresolvableInArrayPattern(ctx, fctx, target)) {
+    emitStrictPutValueThrow(ctx, fctx);
+    fctx.body.push({ op: "ref.null.extern" } as Instr);
+    return { kind: "externref" };
+  }
 
   // Externref fallback: use __extern_get(obj, boxed_index) for each element
   if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
