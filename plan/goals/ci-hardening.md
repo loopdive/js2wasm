@@ -44,12 +44,12 @@ and hide real ones.
 | **967** | Array.prototype.some/every/map not resolving after #799 prototype chain (30 tests) | 38 | done | high |
 | **982** | Extract performance benchmark chart into a reusable web component | 40 | done | medium |
 | **1001** | Preallocate counted number[] push loops into dense WasmGC arrays | 42 | ready | medium |
-| **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 42 | ready | medium |
+| **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 42 | review | medium |
 | **1026** | String.prototype / Number.prototype / Boolean.prototype globals access | 40 | done | medium |
 | **1063** | createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee) | 41 | done | high |
 | **1064** | DataView bridge: subview metadata so bounds errors propagate | Backlog | in-progress | medium |
 | **1065** | Register `Array` as declared global so `x.constructor === Array` compares real refs | Backlog | done | medium |
-| **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | ready | medium |
+| **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | review | medium |
 | **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 42 | ready | critical |
 | **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 42 | ready | high |
 | **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 42 | ready | medium |
