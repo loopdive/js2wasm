@@ -1,0 +1,76 @@
+# Only dist/ + metadata files ship (enforced by package.json "files" field).
+# .npmignore is an extra safety net — if files field ever regresses, these
+# still get blocked from the tarball.
+
+# Source trees that shouldn't ship
+src/
+tests/
+test262/
+benchmarks/
+scripts/
+playground/
+components/
+dashboard/
+docs/
+blog/
+packages/js2wasm/
+runs/
+pages-dist/
+playground-dist/
+
+# Planning / agent infra
+plan/
+.claude/
+.github/
+.husky/
+.devcontainer/
+agent-sessions/
+
+# Config files
+tsconfig*.json
+vite.config*.ts
+vitest.config.ts
+biome.json
+*.tsbuildinfo
+.gitignore
+.gitmodules
+.git-commit-msg
+.file-registry.json
+.env*
+CODEOWNERS
+CONTRIBUTING.md
+CLA.md
+AGENTS.md
+CLAUDE.md
+CNAME
+index.html
+playground.png
+jsr.json
+
+# Node
+node_modules/
+.pnpm-store/
+
+# Dev scratch
+.tmp/
+.test262-cache/
+test262-out/
+output/
+tmp_*
+_tmp_*
+check-*.ts
+debug-*.ts
+run-*.ts
+probe-*.ts
+
+# Common build artifacts
+*.log
+*.wasm
+*.wat
+*.jsonl
+
+# Keep these (whitelisted by files field but make intent explicit):
+!dist/
+!README.md
+!LICENSE
+!CHANGELOG.md

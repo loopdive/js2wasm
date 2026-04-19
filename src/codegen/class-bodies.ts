@@ -701,6 +701,7 @@ export function compileClassBodies(
       labelMap: new Map(),
       savedBodies: [],
       isConstructor: true,
+      isDerivedConstructor: ctx.classParentMap.has(className),
     };
 
     // Re-resolve the constructor function type now that all class struct types
