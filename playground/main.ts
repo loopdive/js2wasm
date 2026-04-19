@@ -34,12 +34,40 @@ const rawEquivTestModules = import.meta.glob(
 );
 
 function isPagesPlaygroundPath(): boolean {
-  return /\/playground\/?$/.test(window.location.pathname);
+  return /\/playground(?:\/index\.html)?\/?$/.test(window.location.pathname);
 }
 
 function resolveSiteLink(path: string): string {
-  return isPagesPlaygroundPath() ? `../${path}` : `./${path}`;
+  const relativePath = !prefersStaticPlaygroundData && isPagesPlaygroundPath() ? `../${path}` : `./${path}`;
+  return new URL(relativePath, window.location.href).toString();
 }
+
+function getErrorLike(value: unknown): { name?: unknown; message?: unknown; stack?: unknown } | null {
+  return value && typeof value === "object" ? (value as { name?: unknown; message?: unknown; stack?: unknown }) : null;
+}
+
+function isMonacoClipboardCancellation(value: unknown): boolean {
+  const err = getErrorLike(value);
+  if (!err || err.name !== "Canceled" || err.message !== "Canceled") return false;
+  const stack = typeof err.stack === "string" ? err.stack : "";
+  return stack.includes("DeferredPromise.cancel") && stack.includes("handler");
+}
+
+function installBenignCancellationFilters(): void {
+  window.addEventListener("unhandledrejection", (event) => {
+    if (isMonacoClipboardCancellation(event.reason)) {
+      event.preventDefault();
+    }
+  });
+
+  const originalConsoleError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    if (args.some(isMonacoClipboardCancellation)) return;
+    originalConsoleError(...args);
+  };
+}
+
+installBenignCancellationFilters();
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -987,11 +1015,14 @@ async function openLocalImportedSource(specifier: string): Promise<boolean> {
 }
 
 // ─── Editor pool ─────────────────────────────────────────────────────────
+const MOBILE_LAYOUT_QUERY = "(max-width: 900px), (max-height: 720px)";
+
 const editorOpts: monaco.editor.IStandaloneEditorConstructionOptions = {
   theme: "cursor-dark",
   fontSize: 13,
   fontFamily: '"SF Mono", "Fira Code", monospace',
   minimap: { enabled: false },
+  lineNumbers: window.matchMedia(MOBILE_LAYOUT_QUERY).matches ? "off" : "on",
   tabSize: 2,
   automaticLayout: true,
   scrollBeyondLastLine: false,
@@ -1079,50 +1110,86 @@ rightEditorControlsSlotEl.className = "panel-tab-controls-slot right-editor-cont
 const rightEditorControlsEl = document.createElement("div");
 rightEditorControlsEl.className = "panel-tab-controls right-editor-controls";
 rightEditorControlsSlotEl.appendChild(rightEditorControlsEl);
-const mobileTopbarPrimaryEl = document.getElementById("mobile-topbar-primary") as HTMLElement | null;
-const mobileTopbarActionsEl = document.getElementById("mobile-topbar-actions") as HTMLElement | null;
+const bottomPanelControlsSlotEl = document.createElement("div");
+bottomPanelControlsSlotEl.className = "panel-tab-controls-slot bottom-panel-controls-slot";
+const bottomPanelControlsEl = document.createElement("div");
+bottomPanelControlsEl.className = "panel-tab-controls right-editor-controls";
+bottomPanelControlsSlotEl.appendChild(bottomPanelControlsEl);
 const mobileSidebarOverlayEl = document.getElementById("mobile-sidebar-overlay") as HTMLElement | null;
 const mobileSidebarCloseBtn = document.getElementById("mobile-sidebar-close") as HTMLButtonElement | null;
 const mobileSidebarContentEl = document.getElementById("mobile-sidebar-content") as HTMLElement | null;
 const layoutRootEl = document.getElementById("layout-root") as HTMLElement;
 let bottomPanelSplitEl: HTMLElement | null = null;
 
-const mobileLayoutMedia = window.matchMedia("(max-width: 900px), (max-height: 720px)");
+const mobileLayoutMedia = window.matchMedia(MOBILE_LAYOUT_QUERY);
 let mobileSidebarOpen = false;
 let mobileBottomCollapsed = false;
+
+function syncResponsiveEditorOptions(): void {
+  const mobile = mobileLayoutMedia.matches;
+  for (const slot of editorSlots) {
+    slot.editor.updateOptions({
+      lineNumbers: mobile ? "off" : "on",
+      lineNumbersMinChars: mobile ? 0 : 3,
+    });
+  }
+}
 
 function mountPanelTabControls(): void {
   if (!panelTabControlsEl) return;
   const controlsSlot = layoutRootEl.querySelector(".panel-tab-controls-slot") as HTMLElement | null;
   const sourceTabEl = layoutRootEl.querySelector('.panel-tab[data-tab="ts-source"]') as HTMLElement | null;
-  const sidebarVisible = layout.hasPanel("sidebar-left");
   const rightEditorTabBarEl = layoutRootEl.querySelector(
     '.layout-child[data-panel="editor-right"] .panel-tab-bar',
   ) as HTMLElement | null;
   if (mobileLayoutMedia.matches) {
+    const mobileEditorTabBarEl = layoutRootEl.querySelector(
+      '.layout-child[data-panel="editor-main"] .panel-tab-bar',
+    ) as HTMLElement | null;
+    const mobileOutputTabBarEl = layoutRootEl.querySelector(
+      '.layout-child[data-panel="output-main"] .panel-tab-bar',
+    ) as HTMLElement | null;
     if (controlsSlot && controlsSlot.firstElementChild !== panelTabControlsEl) {
       controlsSlot.appendChild(panelTabControlsEl);
     }
     if (controlsSlot) {
       controlsSlot.style.display = "";
     }
-    if (mobileTopbarPrimaryEl) {
-      if (runBtn.parentElement !== mobileTopbarPrimaryEl) {
-        mobileTopbarPrimaryEl.appendChild(runBtn);
+    if (runBtn.parentElement !== panelTabControlsEl) {
+      panelTabControlsEl.appendChild(runBtn);
+    }
+    if (mobileEditorTabBarEl) {
+      if (mobileEditorTabBarEl.lastElementChild !== rightEditorControlsSlotEl) {
+        mobileEditorTabBarEl.appendChild(rightEditorControlsSlotEl);
+      }
+      if (panelSidebarToggleBtn && rightEditorControlsEl.firstElementChild !== panelSidebarToggleBtn) {
+        rightEditorControlsEl.insertBefore(panelSidebarToggleBtn, rightEditorControlsEl.firstChild);
+      }
+      if (
+        panelBottomToggleBtn &&
+        mobileBottomCollapsed &&
+        panelBottomToggleBtn.parentElement !== rightEditorControlsEl
+      ) {
+        rightEditorControlsEl.appendChild(panelBottomToggleBtn);
       }
     }
-    if (mobileTopbarActionsEl) {
-      if (panelSidebarToggleBtn && panelSidebarToggleBtn.parentElement !== mobileTopbarActionsEl) {
-        mobileTopbarActionsEl.appendChild(panelSidebarToggleBtn);
+    if (mobileOutputTabBarEl && panelBottomToggleBtn && !mobileBottomCollapsed) {
+      if (mobileOutputTabBarEl.firstElementChild !== bottomPanelControlsSlotEl) {
+        mobileOutputTabBarEl.insertBefore(bottomPanelControlsSlotEl, mobileOutputTabBarEl.firstChild);
       }
-      if (panelBottomToggleBtn && panelBottomToggleBtn.parentElement !== mobileTopbarActionsEl) {
-        mobileTopbarActionsEl.appendChild(panelBottomToggleBtn);
+      if (panelBottomToggleBtn.parentElement !== bottomPanelControlsEl) {
+        bottomPanelControlsEl.appendChild(panelBottomToggleBtn);
       }
+    } else if (bottomPanelControlsSlotEl.parentElement) {
+      bottomPanelControlsSlotEl.parentElement.removeChild(bottomPanelControlsSlotEl);
     }
     if (sourceTabEl && timingSpan.parentElement === sourceTabEl) {
       sourceTabEl.removeChild(timingSpan);
     }
     return;
+  }
+  if (bottomPanelControlsSlotEl.parentElement) {
+    bottomPanelControlsSlotEl.parentElement.removeChild(bottomPanelControlsSlotEl);
   }
   if (!controlsSlot) {
     if (panelTabControlsEl.parentElement) {
@@ -1159,8 +1226,8 @@ function mountPanelTabControls(): void {
 function syncPrimaryActionsPlacement(): void {
   if (!toolbarLogoEl || !panelTabControlsEl) return;
   if (mobileLayoutMedia.matches) {
-    if (toolbarLogoEl.parentElement) {
-      toolbarLogoEl.parentElement.removeChild(toolbarLogoEl);
+    if (toolbarLogoEl.parentElement !== panelTabControlsEl) {
+      panelTabControlsEl.insertBefore(toolbarLogoEl, panelTabControlsEl.firstChild);
     }
     return;
   }
@@ -1210,16 +1277,14 @@ function closeMobileSidebarAfterSelection(): void {
 }
 
 function getBottomPanelSplitEl(): HTMLElement | null {
-  const splitEls = Array.from(layoutRootEl.querySelectorAll(".layout-split")) as HTMLElement[];
-  return (
-    splitEls.find((splitEl) => {
-      if (splitEl.style.flexDirection !== "column") return false;
-      return Boolean(
-        splitEl.querySelector('.layout-child[data-panel="output-left"]') &&
-        splitEl.querySelector('.layout-child[data-panel="output-right"]'),
-      );
-    }) ?? null
-  );
+  const rootSplitEl = layoutRootEl.querySelector(":scope > .layout-split") as HTMLElement | null;
+  if (!rootSplitEl) return null;
+  if (rootSplitEl.style.flexDirection === "column") {
+    return rootSplitEl;
+  }
+  const mainColumnHostEl = rootSplitEl.querySelector(":scope > .layout-child:last-child") as HTMLElement | null;
+  if (!mainColumnHostEl) return null;
+  return mainColumnHostEl.querySelector('.layout-child[data-panel="output-left"]') ? mainColumnHostEl : null;
 }
 
 function syncMobileBottomPanel(): void {
@@ -1329,7 +1394,7 @@ async function fetchJsonFromPaths<T>(paths: string[]): Promise<T | null> {
 
 function staticPlaygroundJsonPaths(fileName: string): string[] {
   return prefersStaticPlaygroundData
-    ? [`playground-data/${fileName}`]
+    ? [resolveSiteLink(`playground-data/${fileName}`)]
     : [`/playground-data/${fileName}`, `/playground/playground-data/${fileName}`, `playground-data/${fileName}`];
 }
 
@@ -1476,8 +1541,12 @@ function t262GetCategoryStats(
   return t262Report.categories.find((c) => c.name === catName) ?? null;
 }
 
-function normalizeT262ResultPath(file: string): string {
+function normalizeT262FilePath(file: string): string {
   return file.startsWith("test/") ? file.slice(5) : file;
+}
+
+function normalizeT262ResultPath(file: string): string {
+  return normalizeT262FilePath(file);
 }
 
 function t262StatusIcon(status: string): string {
@@ -1556,15 +1625,19 @@ const T262_MARKER_OWNER = "test262-selected-result";
 
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
-  const staticCategories = await fetchJsonFromPaths<T262CategorySummary[]>(
-    staticPlaygroundJsonPaths("test262-index-summary.json"),
-  );
-  const staticData = staticCategories ? { categories: staticCategories } : null;
-  const apiData = prefersStaticPlaygroundData
-    ? null
-    : await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary");
-  const preferred = prefersStaticPlaygroundData ? [staticData, apiData] : [apiData, staticData];
-  const resolved = preferred.find((entry) => (entry?.categories?.length ?? 0) > 0) ?? preferred.find(Boolean) ?? null;
+  const loadStaticIndex = async (): Promise<{ categories: T262CategorySummary[] } | null> => {
+    const categories = await fetchJsonFromPaths<T262CategorySummary[]>(
+      staticPlaygroundJsonPaths("test262-index-summary.json"),
+    );
+    return categories ? { categories } : null;
+  };
+  const loadApiIndex = async (): Promise<{ categories: T262CategorySummary[] } | null> => {
+    return await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary");
+  };
+  const primary = prefersStaticPlaygroundData ? await loadStaticIndex() : await loadApiIndex();
+  const fallback = primary || prefersStaticPlaygroundData ? null : await loadStaticIndex();
+  const resolved =
+    [primary, fallback].find((entry) => (entry?.categories?.length ?? 0) > 0) ?? primary ?? fallback ?? null;
   t262Index = resolved?.categories ?? [];
   return t262Index;
 }
@@ -1578,7 +1651,7 @@ async function t262LoadFiles(category: string): Promise<string[]> {
   if (!files || files.length === 0) {
     files = (await loadStaticT262Files())[category] ?? null;
   }
-  const resolved = files ?? [];
+  const resolved = [...new Set((files ?? []).map((file) => normalizeT262FilePath(file)))];
   t262FilesCache.set(category, resolved);
   return resolved;
 }
@@ -1589,11 +1662,10 @@ async function t262LoadFile(path: string): Promise<string> {
     if (apiData !== null) return apiData;
   }
   const normalizedPath = path.startsWith("test/") ? path : `test/${path}`;
-  for (const staticPath of [
-    `/test262/${normalizedPath}`,
-    `/playground/test262/${normalizedPath}`,
-    `test262/${normalizedPath}`,
-  ]) {
+  const staticPaths = prefersStaticPlaygroundData
+    ? [resolveSiteLink(`test262/${normalizedPath}`)]
+    : [`/test262/${normalizedPath}`, `/playground/test262/${normalizedPath}`, `test262/${normalizedPath}`];
+  for (const staticPath of staticPaths) {
     const staticData = await fetchText(staticPath);
     if (staticData !== null) return staticData;
   }
@@ -1620,14 +1692,11 @@ async function loadEquivIndex(): Promise<EquivTest[]> {
       data = staticTests.map((t, index) => ({ name: t.name, index }));
     }
   }
-  if ((!data || data.length === 0) && !prefersStaticPlaygroundData) {
+  if (!data || data.length === 0) {
     const bundledTests = await loadBundledEquivTests();
     if (bundledTests.length > 0) {
       data = bundledTests.map((t, index) => ({ name: t.name, index }));
     }
-  }
-  if ((!data || data.length === 0) && prefersStaticPlaygroundData) {
-    data = await fetchJson<EquivTest[]>("/api/equiv-index");
   }
   if (data && data.length > 0) {
     equivIndex = data;
@@ -1642,11 +1711,11 @@ async function loadEquivSource(idx: number): Promise<string> {
     if (apiData !== null) return apiData;
   }
   const localTests = prefersStaticPlaygroundData ? await loadStaticEquivTests() : await loadBundledEquivTests();
-  const source = localTests[idx]?.source;
+  let source = localTests[idx]?.source;
   if (source != null) return source;
   if (prefersStaticPlaygroundData) {
-    const apiData = await fetchText(`/api/equiv-source?index=${idx}`);
-    if (apiData !== null) return apiData;
+    source = (await loadBundledEquivTests())[idx]?.source;
+    if (source != null) return source;
   }
   return "";
 }
@@ -2799,6 +2868,7 @@ revealSourceTab();
 mountPanelTabControls();
 syncMobileBottomPanel();
 syncPrimaryActionsPlacement();
+syncResponsiveEditorOptions();
 
 function syncSidebarToggleButton(): void {
   const sidebarVisible = mobileLayoutMedia.matches ? mobileSidebarOpen : layout.hasPanel("sidebar-left");
@@ -2829,7 +2899,8 @@ const tabTooltips: Record<string, string> = {
   "modular-ts": "JavaScript (.js)",
 };
 
-async function gzipSize(data: Uint8Array): Promise<number> {
+async function gzipSize(data: Uint8Array): Promise<number | null> {
+  if (typeof CompressionStream !== "function") return null;
   const cs = new CompressionStream("gzip");
   const writer = cs.writable.getWriter();
   writer.write(data);
@@ -2865,9 +2936,12 @@ function updateTabSizes() {
 
     // Compute gzip size async
     const gzInput = file.binaryData ?? new TextEncoder().encode(file.model.getValue());
-    gzipSize(gzInput).then((gz) => {
-      updateTabLabel(tabId, baseTitle, `${fmtSize(gz)} gz`, tabTooltips[tabId]);
-    });
+    gzipSize(gzInput)
+      .then((gz) => {
+        if (gz === null) return;
+        updateTabLabel(tabId, baseTitle, `${fmtSize(gz)} gz`, tabTooltips[tabId]);
+      })
+      .catch(() => {});
   }
 }
 
@@ -3847,7 +3921,9 @@ function compileOnly() {
   // Auto-open mod.wat tab on first successful compile
   if (result.success && !hasCompiledOnce) {
     hasCompiledOnce = true;
-    openFileTab(watFile.path);
+    if (!mobileLayoutMedia.matches) {
+      openFileTab(watFile.path);
+    }
   }
 
   showOutputPanel(result.success ? "preview" : "errors");
@@ -4320,6 +4396,11 @@ document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "b") {
     event.preventDefault();
     toggleSidebar();
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "j") {
+    event.preventDefault();
+    toggleMobileBottomPanel();
   }
 });
 
@@ -4358,6 +4439,7 @@ mobileLayoutMedia.addEventListener("change", (event) => {
   syncMobileBottomPanel();
   syncSidebarToggleButton();
   syncPrimaryActionsPlacement();
+  syncResponsiveEditorOptions();
 });
 
 // Auto-compile and run on page load
