@@ -1493,4 +1493,4 @@ function compileMathCall(
   return undefined;
 }
 
-export { compileConsoleCall, compileDateMethodCall, compileMathCall };
+export { compileConsoleCall, compileDateMethodCall, compileMathCall, wasiAllocStringData };

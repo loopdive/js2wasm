@@ -327,11 +327,11 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | ready |
 | #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
+| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | ready |
 | #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
 | #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
-| #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | ready |
 | #1045 | DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame) | high | ready |
 | #1058 | Compile the TypeScript compiler itself to Wasm — self-hosting stress test | high | ready |
 | #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
@@ -360,6 +360,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #1008 | Add mobile-first layout support to the playground | medium | in-progress |
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
+| #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | in-progress |
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
 
 ### Review
@@ -368,7 +369,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #825 | Null dereference failures (2,295 runtime failures) | high | review |
 | #826 | Illegal cast failures (1,276 runtime failures) | high | review |
-| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | review |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | review |
 | #1006 | Support eval via JS host import | medium | review |
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | review |
