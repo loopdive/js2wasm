@@ -1834,7 +1834,12 @@ function evaluateStarlingMonkeyComponentize(
       };
     }
 
-    const coldStart = measureWasmtimeInvocation(cwasmPath, invokeExport, program.benchmark.coldArg, program.benchmark.coldRuns);
+    const coldStart = measureWasmtimeInvocation(
+      cwasmPath,
+      invokeExport,
+      program.benchmark.coldArg,
+      program.benchmark.coldRuns,
+    );
     if (coldStart.result !== baselineCold) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
