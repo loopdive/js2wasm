@@ -1,0 +1,15 @@
+{
+  "pr": 158,
+  "conclusion": "failure",
+  "head_branch": "issue-994-static-private-getter-timeout",
+  "head_sha": "a8d6e81e5ee3b475feb385d6a93972d3d97634ef",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629782943",
+  "timestamp": "2026-04-19T16:47:56Z",
+  "pass": 22783,
+  "fail": 14991,
+  "compile_error": 3886,
+  "snapshot_delta": 333,
+  "net_per_test": 333,
+  "regressions": 635,
+  "improvements": 968
+}
