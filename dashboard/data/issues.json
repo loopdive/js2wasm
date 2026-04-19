@@ -105,12 +105,20 @@
   "ready": [
     {
       "id": "1127",
-      "title": "export default of HOF variable not exported — add.js blocked",
+      "title": "new C() with var C = class {...} resolves to inner class ctor when outer has nested class field",
       "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1074"
-      ],
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Ready"
+    },
+    {
+      "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
       "goal": "correctness",
       "status": "ready",
       "sprint": "42"
