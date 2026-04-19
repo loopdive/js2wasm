@@ -899,6 +899,93 @@ export function compilePropertyAccess(
     return { kind: "externref" };
   }
 
+  // Handle BuiltIn.prop where BuiltIn is a known global constructor/namespace (String, Number,
+  // Boolean, Math, Object, Array, etc.) that would otherwise compile to ref.null.extern.
+  // Examples: String.prototype, Number.prototype, Boolean.prototype, Math.abs, Array.isArray.
+  // Use __get_builtin(name) to get the real JS object, then __extern_get(ref, prop).
+  // Skip if the name is shadowed by a local variable.
+  if (ts.isIdentifier(expr.expression)) {
+    const builtinName = expr.expression.text;
+    const BUILTIN_CTOR_NAMES = new Set([
+      "Object",
+      "Array",
+      "Function",
+      "Symbol",
+      "Proxy",
+      "Reflect",
+      "Math",
+      "BigInt",
+      "JSON",
+      "Date",
+      "RegExp",
+      "ArrayBuffer",
+      "SharedArrayBuffer",
+      "DataView",
+      "Promise",
+      "WeakMap",
+      "WeakSet",
+      "WeakRef",
+      "FinalizationRegistry",
+      "Atomics",
+      "Iterator",
+      "Map",
+      "Set",
+      "Error",
+      "TypeError",
+      "RangeError",
+      "SyntaxError",
+      "URIError",
+      "EvalError",
+      "ReferenceError",
+      "String",
+      "Number",
+      "Boolean",
+      "Int8Array",
+      "Uint8Array",
+      "Uint8ClampedArray",
+      "Int16Array",
+      "Uint16Array",
+      "Int32Array",
+      "Uint32Array",
+      "Float32Array",
+      "Float64Array",
+      "BigInt64Array",
+      "BigUint64Array",
+    ]);
+    const isShadowed = fctx.localMap.has(builtinName) || (fctx.boxedCaptures?.has(builtinName) ?? false);
+    if (BUILTIN_CTOR_NAMES.has(builtinName) && !isShadowed) {
+      const getBuiltinIdx = ensureLateImport(ctx, "__get_builtin", [{ kind: "externref" }], [{ kind: "externref" }]);
+      const getIdx = ensureLateImport(
+        ctx,
+        "__extern_get",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (getBuiltinIdx !== undefined && getIdx !== undefined) {
+        // Push builtin name string, call __get_builtin to get the real JS object
+        addStringConstantGlobal(ctx, builtinName);
+        const builtinStrIdx = ctx.stringGlobalMap.get(builtinName);
+        if (builtinStrIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: builtinStrIdx });
+        } else {
+          compileStringLiteral(ctx, fctx, builtinName);
+        }
+        fctx.body.push({ op: "call", funcIdx: getBuiltinIdx });
+        // Push property name string, call __extern_get to read the property
+        addStringConstantGlobal(ctx, propName);
+        const propStrIdx = ctx.stringGlobalMap.get(propName);
+        if (propStrIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: propStrIdx });
+        } else {
+          compileStringLiteral(ctx, fctx, propName);
+        }
+        fctx.body.push({ op: "call", funcIdx: getIdx });
+        return { kind: "externref" };
+      }
+    }
+  }
+
   // Check for enum member access: EnumName.Member
   if (ts.isIdentifier(expr.expression)) {
     const objName = expr.expression.text;
