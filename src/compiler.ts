@@ -429,10 +429,17 @@ export function compileMultiSource(
 
   const multiAst = analyzeMultiSource(files, entryFile, undefined, {
     allowJs: options.allowJs,
+    skipSemanticDiagnostics: options.skipSemanticDiagnostics,
   });
 
+  // When allowJs is set (e.g. compiling npm packages like lodash-es), only report
+  // diagnostics from the entry file — dependency files may have TS errors we can't
+  // control (missing globals, JSDoc param issues, etc.).
+  const isEntryDiag = (diag: { file?: { fileName: string } }) =>
+    !options.allowJs || !diag.file || diag.file === multiAst.entryFile;
+
   for (const diag of multiAst.diagnostics) {
-    if (diag.category === 1) {
+    if (diag.category === 1 && isEntryDiag(diag)) {
       const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0) : { line: 0, character: 0 };
       errors.push({
         message: typeof diag.messageText === "string" ? diag.messageText : diag.messageText.messageText,
@@ -444,10 +451,16 @@ export function compileMultiSource(
     }
   }
 
-  const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
-    (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
-  );
-  const hasHardTypeErrors = multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
+  // When allowJs is set, don't bail on TS diagnostics — JS packages with JSDoc
+  // annotations produce many false-positive errors (TS1016 optional params,
+  // TS2322 type mismatches, TS8017 signature-in-JS, etc.). Codegen handles it fine.
+  const hasSyntaxErrors =
+    !options.allowJs &&
+    multiAst.syntacticDiagnostics.some(
+      (d) => d.category === 1 && isEntryDiag(d) && multiAst.sourceFiles.some((sf) => d.file === sf),
+    );
+  const hasHardTypeErrors =
+    !options.allowJs && multiAst.diagnostics.some((d) => isHardTypeScriptDiagnostic(d) && isEntryDiag(d));
 
   if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {

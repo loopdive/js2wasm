@@ -120,6 +120,10 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // (e.g. host functions like `Array === Array`). (#1065)
   if (name === "__host_eq") return { type: "host_eq" };
 
+  // Host loose-equality for two externref operands (§7.2.15 Abstract Equality).
+  // Used for `any`-typed loose equality where null == undefined must be true. (#1134)
+  if (name === "__host_loose_eq") return { type: "host_loose_eq" };
+
   // Node builtin modules (#1044)
   if (name.startsWith("__node_")) return { type: "node_builtin", moduleName: name.slice(7) };
 
