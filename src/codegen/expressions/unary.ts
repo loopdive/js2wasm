@@ -476,28 +476,11 @@ function compilePrefixUnary(
         }
       }
       if (ctx.fast && operandType?.kind === "i32") {
-        // Check if operand is literal 0 — must produce -0 (IEEE 754 negative zero)
-        // Integer subtraction (0 - 0) gives 0, not -0, so use f64 path
-        // Unwrap parenthesized expressions to handle -(0)
-        let innerOperand: ts.Expression = expr.operand;
-        while (ts.isParenthesizedExpression(innerOperand)) {
-          innerOperand = innerOperand.expression;
-        }
-        if (ts.isNumericLiteral(innerOperand) && Number(innerOperand.text) === 0) {
-          // Pop the i32.const 0 already on stack, push f64.const -0 directly
-          fctx.body.pop();
-          fctx.body.push({ op: "f64.const", value: -0 });
-          return { kind: "f64" };
-        }
-        // For non-zero i32 values, integer negation is fine (no -0 concern)
-        const tmp = allocLocal(fctx, `__neg_${fctx.locals.length}`, {
-          kind: "i32",
-        });
-        fctx.body.push({ op: "local.set", index: tmp });
-        fctx.body.push({ op: "i32.const", value: 0 });
-        fctx.body.push({ op: "local.get", index: tmp });
-        fctx.body.push({ op: "i32.sub" });
-        return { kind: "i32" };
+        // i32 can't represent -0, so convert to f64 and use f64.neg.
+        // This ensures -(0) correctly produces IEEE 754 negative zero.
+        fctx.body.push({ op: "f64.convert_i32_s" });
+        fctx.body.push({ op: "f64.neg" });
+        return { kind: "f64" };
       }
       if (operandType?.kind === "i64") {
         // i64 negate: 0 - x
