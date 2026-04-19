@@ -1421,10 +1421,26 @@ export function compileObjectDefineProperties(
   // static path and fall through to the dynamic runtime so ToPropertyDescriptor (ECMA-262
   // 10.1) throws TypeError uniformly.
   const isStaticDescWellFormed = (descExpr: ts.Expression): boolean => {
-    if (!ts.isObjectLiteralExpression(descExpr)) {
-      // Non-object-literal initializer (identifier, call, etc.) is runtime-resolved —
-      // static path can't prove it's valid, delegate to runtime.
+    // Primitive literals (string, number, boolean, null) as the descriptor are
+    // spec-violating — ToPropertyDescriptor throws TypeError. Delegate to the
+    // dynamic runtime so the TypeError fires uniformly. `undefined` is also
+    // spec-violating but we still let static expand handle it (callees know).
+    if (
+      ts.isStringLiteral(descExpr) ||
+      ts.isNoSubstitutionTemplateLiteral(descExpr) ||
+      ts.isNumericLiteral(descExpr) ||
+      descExpr.kind === ts.SyntaxKind.TrueKeyword ||
+      descExpr.kind === ts.SyntaxKind.FalseKeyword ||
+      descExpr.kind === ts.SyntaxKind.NullKeyword
+    ) {
       return false;
+    }
+    if (!ts.isObjectLiteralExpression(descExpr)) {
+      // Identifier / call / property-access / etc — runtime-resolved but
+      // legitimately may be a valid object (as in `{property: Math}` or
+      // `{property: descObj}`). Expand statically; Object.defineProperty will
+      // handle validation at runtime via its own path.
+      return true;
     }
     let hasData = false;
     let hasAccessor = false;
