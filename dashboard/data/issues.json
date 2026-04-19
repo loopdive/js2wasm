@@ -667,16 +667,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "1008",
-      "title": "Add mobile-first layout support to the playground",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "Backlog"
-    },
-    {
       "id": "1006",
       "title": "Support eval via JS host import",
       "priority": "medium",
@@ -1595,6 +1585,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
+      "id": "1008",
+      "title": "Add mobile-first layout support to the playground",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "developer-experience",
       "status": "in-progress",
       "sprint": "42"
     },
