@@ -16,3 +16,4 @@ scripts/wasm-exec-worker.mjs
 dashboard/data.js
 dashboard/data/
 public/graph-data.json
+dashboard/data/
