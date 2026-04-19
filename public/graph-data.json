@@ -15521,6 +15521,18 @@
     },
     {
       "id": "1119",
+      "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Ready",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1119",
       "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
       "priority": "high",
       "status": "ready",
@@ -15618,6 +15630,31 @@
       "files": [],
       "goal": "performance",
       "cluster": "performance"
+    },
+    {
+      "id": "1127",
+      "title": "new C() with var C = class {...} resolves to inner class ctor when outer has nested class field",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Ready",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance",
+      "compiler_errors": 3
+    },
+    {
+      "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
     },
     {
       "id": "backlog",
@@ -16945,7 +16982,8 @@
         "compilable"
       ],
       "issues": [
-        "1123"
+        "1123",
+        "1127"
       ],
       "track": "supporting track"
     },
@@ -19826,6 +19864,10 @@
     {
       "goal": "correctness",
       "issue": "1123"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1127"
     },
     {
       "goal": "crash-free",
@@ -23435,6 +23477,10 @@
     },
     {
       "goal": "compilable",
+      "issue": "1127"
+    },
+    {
+      "goal": "compilable",
       "issue": "107"
     },
     {
@@ -26297,6 +26343,5 @@
       "goal": "iterator-protocol",
       "issue": "487"
     }
-  ],
-  "generated": "2026-04-16T13:51:32+02:00"
+  ]
 }
