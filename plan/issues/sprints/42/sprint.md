@@ -327,11 +327,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | ready |
 | #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | ready |
-| #992 | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | medium | ready |
 | #993 | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | high | ready |
-| #994 | Class static-private-getter test hits 30s compiler timeout | medium | ready |
-| #995 | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | low | ready |
-| #996 | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | low | ready |
 | #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
 | #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | ready |
 | #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
@@ -386,6 +382,10 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #990 | Remaining early-error gaps after detectEarlyErrors(): reserved words, module grammar, using, ASI | high | done |
+| #992 | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | medium | done |
+| #994 | Class static-private-getter test hits 30s compiler timeout | medium | done |
+| #995 | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | low | done |
+| #996 | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | low | done |
 | #1036 | DisposableStack/AsyncDisposableStack property-chain access produces Wasm null trap (94 FAIL) | medium | done |
 | #1037 | Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL) | medium | done |
 | #1038 | Function.prototype.bind not implemented (70 FAIL) | high | done |
