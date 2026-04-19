@@ -879,6 +879,12 @@ export function compileArrowAsClosure(
   } else {
     collectReferencedIdentifiers(body, referencedNames);
   }
+  // Also walk parameter default initializers — e.g. `function({...rest} = o)`
+  // references `o` in the default, which must be captured so it's resolvable
+  // inside the lifted closure.
+  for (const p of arrow.parameters) {
+    if (p.initializer) collectReferencedIdentifiers(p.initializer, referencedNames);
+  }
 
   // Transitively add captures needed by called nested functions.
   // E.g. if this closure calls g() and g has nestedFuncCaptures {first, second},
@@ -1737,6 +1743,9 @@ export function compileArrowAsCallback(
     }
   } else {
     collectReferencedIdentifiers(body, referencedNames);
+  }
+  for (const p of arrow.parameters) {
+    if (p.initializer) collectReferencedIdentifiers(p.initializer, referencedNames);
   }
 
   // Detect which captured variables are written inside the callback body (#859)

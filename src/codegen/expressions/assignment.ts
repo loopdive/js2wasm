@@ -47,14 +47,17 @@ import { resolveStructName } from "./misc.js";
  * Per spec §14.3.3.1 RequireObjectCoercible / §8.4.2 GetIterator.
  */
 function emitExternrefAssignDestructureGuard(ctx: CodegenContext, fctx: FunctionContext, srcLocal: number): void {
-  const throwInstrs = buildDestructureNullThrow(ctx, fctx);
-  // ref.is_null check (catches JS null when encoded as ref.null.extern)
+  // ref.is_null check (catches JS null when encoded as ref.null.extern).
+  // Build a fresh Instr[] for each if-then: sharing a single array across two
+  // branches causes walkInstructions (used by shiftLateImportIndices) to walk
+  // it twice when subsequent late imports shift funcIdx, producing a double
+  // shift that corrupts the throw_type_error call site.
   fctx.body.push({ op: "local.get", index: srcLocal });
   fctx.body.push({ op: "ref.is_null" } as Instr);
   fctx.body.push({
     op: "if",
     blockType: { kind: "empty" },
-    then: throwInstrs,
+    then: buildDestructureNullThrow(ctx, fctx),
     else: [],
   });
   // __extern_is_undefined check (catches JS undefined held as non-null externref)
@@ -66,7 +69,7 @@ function emitExternrefAssignDestructureGuard(ctx: CodegenContext, fctx: Function
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: throwInstrs,
+      then: buildDestructureNullThrow(ctx, fctx),
       else: [],
     });
   }

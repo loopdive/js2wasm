@@ -855,16 +855,24 @@ export function compileExternrefArrayDestructuringDecl(
   // Array destructuring requires GetIterator on the source — which aborts on null/undefined.
   // Skip for empty `[]` patterns (#225) — only fire when there are real element accesses.
   if ((resultType.kind === "externref" || resultType.kind === "ref_null") && pattern.elements.length > 0) {
-    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: [] });
+    // Build a fresh Instr[] for each if-then: sharing a single array across two
+    // branches causes walkInstructions (used by shiftLateImportIndices) to walk
+    // it twice when subsequent late imports shift funcIdx values, producing a
+    // double shift that corrupts the throw_type_error call site.
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx, fctx), else: [] });
     if (resultType.kind === "externref") {
       const undefIdx = ensureExternIsUndefined(ctx, fctx);
       if (undefIdx !== undefined) {
         fctx.body.push({ op: "local.get", index: tmpLocal });
         fctx.body.push({ op: "call", funcIdx: undefIdx });
-        fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: [] });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: buildDestructureNullThrow(ctx, fctx),
+          else: [],
+        });
       }
     }
   }
