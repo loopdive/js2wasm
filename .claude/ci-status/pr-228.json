@@ -1,0 +1,15 @@
+{
+  "pr": 228,
+  "conclusion": "failure",
+  "head_branch": "issue-array-index-call-coerce",
+  "head_sha": "e8d5e15c8c824feff1d7684669f25a349d661fb6",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24614528780",
+  "timestamp": "2026-04-18T21:52:50Z",
+  "pass": 22460,
+  "fail": 15400,
+  "compile_error": 3940,
+  "snapshot_delta": 10,
+  "net_per_test": 10,
+  "regressions": 1,
+  "improvements": 11
+}
