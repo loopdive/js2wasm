@@ -1,0 +1,15 @@
+{
+  "pr": 191,
+  "conclusion": "failure",
+  "head_branch": "issue-1093-phase3-objects",
+  "head_sha": "7c7073082a50881681e7241ae72fed958955de21",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608485010",
+  "timestamp": "2026-04-18T18:51:25Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

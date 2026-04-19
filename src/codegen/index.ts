@@ -42,6 +42,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
+import { registerAddStringImports } from "./shared.js";
 import { stackBalance } from "./stack-balance.js";
 
 // ── Extracted sub-modules ──────────────────────────────────────────────────
@@ -2564,6 +2565,10 @@ export function addStringImports(ctx: CodegenContext): void {
   }
 }
 
+// Register addStringImports so any-helpers.ts can call it via the delegate
+// (breaks circular dep: index.ts → any-helpers.ts → shared.ts ← index.ts)
+registerAddStringImports(addStringImports);
+
 /** Parse a RegExp literal text (e.g. "/\\d+/gi") into pattern and flags */
 export function parseRegExpLiteral(text: string): { pattern: string; flags: string } {
   // The text includes the leading '/' and trailing '/flags'.
@@ -3982,7 +3987,17 @@ export function isTupleType(type: ts.Type): boolean {
 export function getTupleElementTypes(ctx: CodegenContext, tsType: ts.Type): ValType[] {
   const typeRef = tsType as ts.TypeReference;
   const typeArgs = ctx.checker.getTypeArguments(typeRef);
-  return typeArgs.map((t) => resolveWasmType(ctx, t));
+  return typeArgs.map((t) => {
+    // In tuple element position, `undefined` must not map to i32: i32 can't
+    // distinguish "missing" from 0, which breaks destructuring default checks
+    // on hole/undefined elements (e.g. `[x=23] = [,]` — the param default is a
+    // hole-array tuple; the sNaN sentinel gets truncated to i32 0 and the inner
+    // default `x=23` never fires). Promote to f64 so the sNaN sentinel survives.
+    if ((t.flags & ts.TypeFlags.Undefined) !== 0) {
+      return { kind: "f64" };
+    }
+    return resolveWasmType(ctx, t);
+  });
 }
 
 /**
