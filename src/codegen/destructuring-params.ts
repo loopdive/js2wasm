@@ -787,8 +787,9 @@ export function destructureParamArray(
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue;
 
-    // Handle nested binding patterns (non-rest): [[x, y], {z}]
-    // Rest elements with nested patterns ([...[a,b]], [...{length}]) are handled below.
+    // Handle nested binding patterns
+    // Skip rest elements (dotDotDotToken) — those are handled below so the
+    // rest vec is built before recursing into the nested pattern (e.g. [...[...x]]).
     if (
       ts.isBindingElement(element) &&
       !element.dotDotDotToken &&

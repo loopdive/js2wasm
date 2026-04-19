@@ -735,7 +735,6 @@ function compileForOfDestructuring(
   } else if (ts.isArrayBindingPattern(pattern)) {
     // Array destructuring in for-of: for (var [a, b] of arr)
     // Element may be a vec struct (array wrapper) OR a tuple struct.
-
     // Handle externref elements: use __extern_get to extract indexed properties
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
       if (elemType.kind === "externref") {
@@ -877,8 +876,11 @@ function compileForOfDestructuring(
         if (ts.isOmittedExpression(element)) continue;
 
         // Handle nested binding patterns: for (const [{ a, b }] of arr)
+        // Skip rest elements (dotDotDotToken) — those are handled below so the
+        // rest vec is built before recursing into the nested pattern.
         if (
           ts.isBindingElement(element) &&
+          !element.dotDotDotToken &&
           (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))
         ) {
           const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, innerElemType);
@@ -940,6 +942,12 @@ function compileForOfDestructuring(
             restIdx = allocLocal(fctx, restName, restVecType);
           }
           fctx.body.push({ op: "local.set", index: restIdx });
+
+          // If the rest target is itself a binding pattern (e.g. [...[...x]]),
+          // recurse into it with the freshly built rest vec as the element.
+          if (ts.isArrayBindingPattern(element.name) || ts.isObjectBindingPattern(element.name)) {
+            compileForOfDestructuring(ctx, fctx, element.name, restIdx, restVecType, stmt);
+          }
           continue;
         }
 
