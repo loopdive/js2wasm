@@ -1,15 +1,15 @@
 {
   "pr": 192,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-1137-missing-methods",
-  "head_sha": "71e856c66a65211bf6fea623617e256f2b52569e",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24626233544",
-  "timestamp": "2026-04-19T12:11:38Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "250f69cbd1df4777ceffe9f481be17f0b2781094",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629804245",
+  "timestamp": "2026-04-19T16:44:31Z",
+  "pass": 22773,
+  "fail": 14984,
+  "compile_error": 3902,
+  "snapshot_delta": 323,
+  "net_per_test": 323,
+  "regressions": 684,
+  "improvements": 1007
 }
