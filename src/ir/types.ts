@@ -20,6 +20,8 @@ export interface WasmModule {
   stringPool: string[];
   /** Extern class metadata (for .d.ts and imports helper generation) */
   externClasses: ExternClassMeta[];
+  /** Node builtin module names detected from imports (#1044) */
+  nodeBuiltinModules: Set<string>;
   /** Map from import func name → string literal value (e.g. "__str_0" → "Hello") */
   stringLiteralValues: Map<string, string>;
   /** Set of function names that are async (for .d.ts generation) */
@@ -414,6 +416,7 @@ export function createEmptyModule(): WasmModule {
     tags: [],
     stringPool: [],
     externClasses: [],
+    nodeBuiltinModules: new Set(),
     stringLiteralValues: new Map(),
     asyncFunctions: new Set(),
     declaredFuncRefs: [],
