@@ -1,0 +1,15 @@
+{
+  "pr": 225,
+  "conclusion": "failure",
+  "head_branch": "issue-dstr-requireobjectcoercible",
+  "head_sha": "2df7cb53e8b2a58e432476fac46de6940db90939",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24623524037",
+  "timestamp": "2026-04-19T07:22:35Z",
+  "pass": 22510,
+  "fail": 15308,
+  "compile_error": 3982,
+  "snapshot_delta": 60,
+  "net_per_test": 60,
+  "regressions": 55,
+  "improvements": 115
+}
