@@ -24,6 +24,7 @@ import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/typ
 import {
   addFuncType,
   destructureParamArray,
+  destructureParamObject,
   ensureExnTag,
   ensureStructForType,
   getArrTypeIdxFromVec,
@@ -57,7 +58,6 @@ import {
   compileStatement,
 } from "./statements.js";
 import { coercionInstrs, defaultValueInstrs, emitGuardedRefCast } from "./type-coercion.js";
-import { ensureExternIsUndefinedImport } from "./expressions/late-imports.js";
 
 // ── Arrow function callbacks ──────────────────────────────────────────
 
@@ -580,14 +580,18 @@ function emitParamDefaultCheckInline(
   thenInstrs: Instr[],
 ): void {
   if (paramType.kind === "externref") {
-    // JS spec: defaults apply when arg is `undefined`, not when it's `null`.
-    // externref params wrap JS values; use __extern_is_undefined to distinguish.
-    const isUndefIdx = ensureExternIsUndefinedImport(ctx);
+    // JS default params fire when arg is `undefined` (not just wasm null). Callers
+    // padding missing args use `__get_undefined` which returns real JS undefined,
+    // so a plain `ref.is_null` would miss it and skip the default — triggering
+    // "Cannot destructure 'null' or 'undefined'" on the next guard. Use
+    // `__extern_is_undefined` which covers both wasm null and JS undefined.
     fctx.body.push({ op: "local.get", index: paramIdx });
+    const isUndefIdx = ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+    flushLateImportShiftsShared(ctx, fctx);
     if (isUndefIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx: isUndefIdx });
     } else {
-      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "ref.is_null" });
     }
     fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
   } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
@@ -644,6 +648,17 @@ export function emitArrowParamDefaults(
     const paramIdx = paramOffset + i;
     const paramType = fctx.params[paramIdx]?.type;
     if (!paramType) continue;
+
+    // Pre-ensure `__extern_is_undefined` before compiling the initializer so any
+    // late-import funcIdx shift happens while `fctx.body` is still authoritative.
+    // Without this, the initializer compiles into `thenInstrs`, which gets
+    // detached from `fctx` after the body swap below — any subsequent shift
+    // triggered by ensureLateImport inside emitParamDefaultCheckInline would
+    // miss `thenInstrs`, leaving stale funcIdx values in its `call` ops.
+    if (paramType.kind === "externref") {
+      ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShiftsShared(ctx, fctx);
+    }
 
     // Per spec §14.3.3.1/§8.4.2: throw TypeError when destructuring null/undefined.
     const dstrNullDefault =
@@ -721,6 +736,14 @@ export function emitMethodParamDefaults(
     const paramIdx = paramOffset + i;
     const paramType = fctx.params[paramIdx]?.type;
     if (!paramType) continue;
+
+    // Pre-ensure `__extern_is_undefined` before compiling the initializer — see
+    // rationale above in emitArrowParamDefaults. Without this, a late-import
+    // shift inside emitParamDefaultCheckInline misses the detached thenInstrs.
+    if (paramType.kind === "externref") {
+      ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShiftsShared(ctx, fctx);
+    }
 
     // Per spec §14.3.3.1/§8.4.2: throw TypeError when destructuring null/undefined.
     const dstrNullDefault =
@@ -1239,7 +1262,11 @@ export function compileArrowAsClosure(
 
   // Destructuring parameter initialization: for parameters with binding patterns
   // (e.g. function([x, y]) or function({a, b})), extract values from the parameter
-  // and assign them to local variables.
+  // and assign them to local variables. Delegate to the shared destructuring
+  // implementations (same as function declarations) so that default initializers,
+  // nested patterns, rest elements, and ReferenceError-on-unresolvable defaults
+  // all work uniformly across function declarations, function expressions, and
+  // arrow functions (#ref-error-A).
   for (let pi = 0; pi < arrow.parameters.length; pi++) {
     const param = arrow.parameters[pi]!;
     if (ts.isIdentifier(param.name)) continue; // simple param, already handled

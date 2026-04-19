@@ -1,0 +1,15 @@
+{
+  "pr": 157,
+  "conclusion": "failure",
+  "head_branch": "issue-1098-codegen-patch-audit",
+  "head_sha": "70112ffa47440d84f0894c5cc8814e2825d19720",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629867063",
+  "timestamp": "2026-04-19T16:56:40Z",
+  "pass": 22763,
+  "fail": 15010,
+  "compile_error": 3886,
+  "snapshot_delta": 313,
+  "net_per_test": 313,
+  "regressions": 635,
+  "improvements": 948
+}
