@@ -6,9 +6,11 @@
 // Phase 1 numeric/bool subset: a function is claimed when
 //   - all params are typed `number` or `boolean`;
 //   - return type is typed `number` or `boolean`;
-//   - body is exactly `return <expr>;`;
-//   - `<expr>` is composed only of literals, param references, and the
-//     supported unary / binary operators (see `isPhase1Expr`).
+//   - body is `(let|const) <name> = <expr>; ... return <expr>;` where
+//     the optional variable declarations must each bind a single simple
+//     identifier to an initializer expression;
+//   - every `<expr>` is composed only of literals, param / local references,
+//     and the supported unary / binary operators (see `isPhase1Expr`).
 //
 // Any function that deviates from this shape falls through to the legacy
 // path — the IR cannot handle it yet. Widening the selector in lockstep
@@ -44,23 +46,49 @@ function isPhase1Function(fn: ts.FunctionDeclaration): boolean {
   if (fn.modifiers && fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return false;
   if (!fn.type || !isPhase1TypeNode(fn.type)) return false;
 
-  const paramNames = new Set<string>();
+  const scope = new Set<string>();
   for (const p of fn.parameters) {
     if (!ts.isIdentifier(p.name)) return false;
     if (p.questionToken) return false;
     if (p.dotDotDotToken) return false;
     if (p.initializer) return false;
     if (!p.type || !isPhase1TypeNode(p.type)) return false;
-    paramNames.add(p.name.text);
+    if (scope.has(p.name.text)) return false;
+    scope.add(p.name.text);
   }
 
   const body = fn.body;
   if (!body) return false;
-  if (body.statements.length !== 1) return false;
-  const ret = body.statements[0];
-  if (!ts.isReturnStatement(ret)) return false;
-  if (!ret.expression) return false;
-  return isPhase1Expr(ret.expression, paramNames);
+  const stmts = body.statements;
+  if (stmts.length < 1) return false;
+
+  for (let i = 0; i < stmts.length - 1; i++) {
+    const s = stmts[i];
+    if (!ts.isVariableStatement(s)) return false;
+    if (!isPhase1VarDecl(s, scope)) return false;
+  }
+
+  const last = stmts[stmts.length - 1];
+  if (!ts.isReturnStatement(last)) return false;
+  if (!last.expression) return false;
+  return isPhase1Expr(last.expression, scope);
+}
+
+function isPhase1VarDecl(stmt: ts.VariableStatement, scope: Set<string>): boolean {
+  // `var` not supported — it has hoisting semantics we don't model yet.
+  const flags = stmt.declarationList.flags;
+  if (!(flags & ts.NodeFlags.Let) && !(flags & ts.NodeFlags.Const)) return false;
+  // No modifiers on the statement (no `export let …`).
+  if (stmt.modifiers && stmt.modifiers.length > 0) return false;
+  for (const d of stmt.declarationList.declarations) {
+    if (!ts.isIdentifier(d.name)) return false;
+    if (scope.has(d.name.text)) return false;
+    if (!d.initializer) return false;
+    if (d.type && !isPhase1TypeNode(d.type)) return false;
+    if (!isPhase1Expr(d.initializer, scope)) return false;
+    scope.add(d.name.text);
+  }
+  return true;
 }
 
 function isPhase1TypeNode(node: ts.TypeNode): boolean {
