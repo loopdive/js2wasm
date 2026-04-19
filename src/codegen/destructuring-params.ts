@@ -788,8 +788,11 @@ export function destructureParamArray(
     if (ts.isOmittedExpression(element)) continue;
 
     // Handle nested binding patterns
+    // Skip rest elements (dotDotDotToken) — those are handled below so the
+    // rest vec is built before recursing into the nested pattern (e.g. [...[...x]]).
     if (
       ts.isBindingElement(element) &&
+      !element.dotDotDotToken &&
       (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))
     ) {
       const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, elemType);

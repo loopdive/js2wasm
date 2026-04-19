@@ -14144,8 +14144,8 @@
       "title": "Add mobile-first layout support to the playground",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
-      "sprint": "Backlog",
+      "raw_status": "in-progress",
+      "sprint": "42",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -15177,7 +15177,7 @@
       "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -15521,6 +15521,18 @@
     },
     {
       "id": "1119",
+      "title": "SingleNameBinding fn-name-class cluster (71 null_deref)",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1119",
       "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
       "priority": "medium",
       "status": "backlog",
@@ -15586,7 +15598,7 @@
       "title": "Verify landing page claims and code examples against current compiler behavior",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -15630,6 +15642,79 @@
       "files": [],
       "goal": "performance",
       "cluster": "performance"
+    },
+    {
+      "id": "1127",
+      "title": "SameValue for DefineProperty f64 comparison uses f64.ne — wrong for NaN and ±0",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
+    },
+    {
+      "id": "1127",
+      "title": "Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]]",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Ready",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
+      "id": "1128",
+      "title": "OrdinaryToPrimitive returns undefined instead of throwing TypeError (§7.1.1.1 step 6)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [
+        "1090"
+      ],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
+    },
+    {
+      "id": "1129",
+      "title": "ToObject (§7.1.18) not implemented — no primitive auto-boxing",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
+    },
+    {
+      "id": "1135",
+      "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": "backlog",
@@ -15688,6 +15773,10 @@
     {
       "source": "944",
       "target": "1116"
+    },
+    {
+      "source": "1090",
+      "target": "1128"
     },
     {
       "source": "481",
@@ -16957,7 +17046,8 @@
         "compilable"
       ],
       "issues": [
-        "1123"
+        "1123",
+        "1127"
       ],
       "track": "supporting track"
     },
@@ -19838,6 +19928,10 @@
     {
       "goal": "correctness",
       "issue": "1123"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1127"
     },
     {
       "goal": "crash-free",
@@ -23444,6 +23538,10 @@
     {
       "goal": "compilable",
       "issue": "1123"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1127"
     },
     {
       "goal": "compilable",

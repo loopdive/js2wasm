@@ -42,6 +42,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
+import { registerAddStringImports } from "./shared.js";
 import { stackBalance } from "./stack-balance.js";
 
 // ── Extracted sub-modules ──────────────────────────────────────────────────
@@ -2563,6 +2564,10 @@ export function addStringImports(ctx: CodegenContext): void {
     }
   }
 }
+
+// Register addStringImports so any-helpers.ts can call it via the delegate
+// (breaks circular dep: index.ts → any-helpers.ts → shared.ts ← index.ts)
+registerAddStringImports(addStringImports);
 
 /** Parse a RegExp literal text (e.g. "/\\d+/gi") into pattern and flags */
 export function parseRegExpLiteral(text: string): { pattern: string; flags: string } {
