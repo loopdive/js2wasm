@@ -1,0 +1,15 @@
+{
+  "pr": 156,
+  "conclusion": "failure",
+  "head_branch": "issue-1086-memoize-body-uses-arguments",
+  "head_sha": "ac4a64b33a9bca9d555aea5b43f2a9142abcda66",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629781563",
+  "timestamp": "2026-04-19T16:55:56Z",
+  "pass": 22718,
+  "fail": 14974,
+  "compile_error": 3967,
+  "snapshot_delta": 268,
+  "net_per_test": 268,
+  "regressions": 678,
+  "improvements": 946
+}
