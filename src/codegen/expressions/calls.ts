@@ -64,6 +64,7 @@ import {
   compileDateMethodCall,
   compileMathCall,
   ensureDateDaysFromCivilHelper,
+  wasiAllocStringData,
 } from "./builtins.js";
 import {
   compileCallablePropertyCall,
@@ -4138,6 +4139,45 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     }
   }
 
+  // WASI mode: writeFileSync(path, data) → __wasi_write_file_sync(pathPtr, pathLen, dataPtr, dataLen)
+  if (
+    ctx.wasi &&
+    ts.isIdentifier(expr.expression) &&
+    ctx.wasiNodeFsFuncs.has(expr.expression.text) &&
+    expr.expression.text === "writeFileSync" &&
+    expr.arguments.length >= 2
+  ) {
+    const writeFileSyncIdx = ctx.funcMap.get("__wasi_write_file_sync");
+    if (writeFileSyncIdx !== undefined) {
+      const pathArg = expr.arguments[0]!;
+      const dataArg = expr.arguments[1]!;
+
+      // Handle path argument — must be a string literal for now (embedded in data segment)
+      if (ts.isStringLiteral(pathArg)) {
+        const pathData = wasiAllocStringData(ctx, pathArg.text);
+        fctx.body.push({ op: "i32.const", value: pathData.offset } as Instr);
+        fctx.body.push({ op: "i32.const", value: pathData.length } as Instr);
+      } else {
+        // Dynamic path: compile expression and use runtime string-to-linear-memory copy
+        // For now, use bump allocator to store the string data
+        compileWasiStringArgToLinearMemory(ctx, fctx, pathArg);
+      }
+
+      // Handle data argument — string literal or expression
+      if (ts.isStringLiteral(dataArg) || ts.isNoSubstitutionTemplateLiteral(dataArg)) {
+        const dataData = wasiAllocStringData(ctx, dataArg.text);
+        fctx.body.push({ op: "i32.const", value: dataData.offset } as Instr);
+        fctx.body.push({ op: "i32.const", value: dataData.length } as Instr);
+      } else {
+        // Dynamic data: compile and convert to linear memory
+        compileWasiStringArgToLinearMemory(ctx, fctx, dataArg);
+      }
+
+      fctx.body.push({ op: "call", funcIdx: writeFileSyncIdx });
+      return VOID_RESULT;
+    }
+  }
+
   // Handle global isNaN(n) / isFinite(n) — inline wasm
   if (ts.isIdentifier(expr.expression)) {
     const funcName = expr.expression.text;
@@ -6650,5 +6690,46 @@ function compileIIFE(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallEx
 
 /** Resolve the enclosing class name from a FunctionContext.
  *  Uses enclosingClassName if set (e.g. closures), otherwise parses ClassName from "ClassName_methodName". */
+
+/**
+ * Compile a string expression argument and write it to WASI linear memory via bump allocator.
+ * Pushes (ptr: i32, len: i32) onto the stack.
+ *
+ * For string literals, this is handled at the call site via wasiAllocStringData.
+ * This function handles dynamic string values (variables, expressions) by
+ * compiling a runtime copy from the WasmGC string to linear memory.
+ *
+ * Current limitation: only supports string literals assigned to variables at compile time.
+ * For truly dynamic strings, we'd need a runtime string-to-memory encoder.
+ * For now, emit unreachable for unsupported cases.
+ */
+function compileWasiStringArgToLinearMemory(ctx: CodegenContext, fctx: FunctionContext, expr: ts.Expression): void {
+  // If it's an identifier referencing a const/let with a string literal initializer,
+  // we can resolve it at compile time
+  if (ts.isIdentifier(expr)) {
+    const sym = ctx.checker.getSymbolAtLocation(expr);
+    if (sym?.valueDeclaration && ts.isVariableDeclaration(sym.valueDeclaration)) {
+      const init = sym.valueDeclaration.initializer;
+      if (init && (ts.isStringLiteral(init) || ts.isNoSubstitutionTemplateLiteral(init))) {
+        const data = wasiAllocStringData(ctx, init.text);
+        fctx.body.push({ op: "i32.const", value: data.offset } as Instr);
+        fctx.body.push({ op: "i32.const", value: data.length } as Instr);
+        return;
+      }
+    }
+  }
+
+  // Template literal with only a head (no substitutions)
+  if (ts.isNoSubstitutionTemplateLiteral(expr)) {
+    const data = wasiAllocStringData(ctx, expr.text);
+    fctx.body.push({ op: "i32.const", value: data.offset } as Instr);
+    fctx.body.push({ op: "i32.const", value: data.length } as Instr);
+    return;
+  }
+
+  // Fallback: unsupported dynamic string — trap at runtime
+  // TODO: implement runtime GC-string to linear-memory copy for dynamic strings
+  fctx.body.push({ op: "unreachable" } as Instr);
+}
 
 export { compileCallExpression, compileIIFE, compileOptionalCallExpression };

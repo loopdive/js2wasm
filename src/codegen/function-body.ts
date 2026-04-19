@@ -208,6 +208,16 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
     const paramIdx = i;
     const paramType = params[i]!.type;
 
+    // Pre-ensure `__extern_is_undefined` before the initializer is compiled so
+    // any late-import funcIdx shift happens while `fctx.body` (not the soon-to-
+    // be-detached `thenInstrs`) is authoritative. Otherwise, a shift triggered
+    // later by the check emission would miss `thenInstrs`, leaving stale
+    // funcIdx values in its `call` ops.
+    if (paramType.kind === "externref") {
+      ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+    }
+
     // Per spec §14.3.3.1/§8.4.2: destructuring null/undefined must throw TypeError.
     // If the parameter uses a binding pattern and the default is a literal null/undefined,
     // then when the default fires (arg omitted) we must throw — emit throw in the then-block
@@ -234,8 +244,19 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
 
     // Emit the null/zero check + conditional assignment
     if (paramType.kind === "externref") {
+      // JS default params fire when arg is `undefined` — not just wasm null.
+      // Callers padding missing args use `__get_undefined` which returns real
+      // JS undefined, so a plain `ref.is_null` would miss it and skip the
+      // default, later tripping the destructure "null or undefined" guard.
+      // Use `__extern_is_undefined` (true for both wasm null and JS undefined).
       fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
+      const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (isUndefIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+      } else {
+        fctx.body.push({ op: "ref.is_null" });
+      }
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },

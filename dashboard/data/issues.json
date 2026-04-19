@@ -588,6 +588,18 @@
       "sprint": "42"
     },
     {
+      "id": "1044",
+      "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1041"
+      ],
+      "goal": "async-model",
+      "status": "ready",
+      "sprint": "42"
+    },
+    {
       "id": "1043",
       "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
       "priority": "high",
@@ -1505,18 +1517,6 @@
       "goal": "test-infrastructure",
       "status": "in-progress",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1044",
-      "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1041"
-      ],
-      "goal": "async-model",
-      "status": "in-progress",
-      "sprint": "42"
     },
     {
       "id": "1022",

@@ -34,6 +34,8 @@ export interface CodegenOptions {
   wasi?: boolean;
   /** Node builtin modules detected during import preprocessing (#1044) */
   nodeBuiltins?: import("../../import-resolver.js").NodeBuiltinImport[];
+  /** Set of function names imported from node:fs (detected pre-preprocessing) */
+  wasiNodeFsFuncs?: Set<string>;
 }
 
 /** Info about an externally declared class. */
@@ -411,7 +413,11 @@ export interface CodegenContext {
   /** WASI import indices */
   wasiFdWriteIdx: number;
   wasiProcExitIdx: number;
+  wasiPathOpenIdx: number;
+  wasiFdCloseIdx: number;
   wasiBumpPtrGlobalIdx: number;
+  /** Set of node:fs functions used in WASI mode */
+  wasiNodeFsFuncs: Set<string>;
   /** Map from let/const module global variable name → TDZ flag global index */
   tdzGlobals: Map<string, number>;
   /** Set of let/const module global variable names */
