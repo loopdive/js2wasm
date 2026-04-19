@@ -1,0 +1,15 @@
+{
+  "pr": 174,
+  "conclusion": "failure",
+  "head_branch": "issue-1044-node-builtin-imports",
+  "head_sha": "e724db67c6f43deebbe2fea980776699c6106dda",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608482026",
+  "timestamp": "2026-04-18T18:33:08Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
