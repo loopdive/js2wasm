@@ -290,6 +290,12 @@ export interface CodegenContext {
   extrasArgvGlobalIdx: number;
   /** Vec struct type index for the extras argv global (matches externref vec type). */
   extrasArgvVecTypeIdx: number;
+  /**
+   * Absolute Wasm global index for the `__argc` (mut i32) module global.
+   * Set by the caller to communicate the actual call-site argument count
+   * to functions that use `arguments`. -1 = not yet created.
+   */
+  argcGlobalIdx: number;
   /** Map from struct name → set of closure type indices used for valueOf fields */
   valueOfClosureTypes: Map<string, number[]>;
   /** Tag index for the exception tag (-1 if not yet registered) */
