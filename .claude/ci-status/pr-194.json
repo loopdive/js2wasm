@@ -1,0 +1,15 @@
+{
+  "pr": 194,
+  "conclusion": "cancelled",
+  "head_branch": "issue-1025-binding-element-null-audit",
+  "head_sha": "85aa04092e8937055542072bad9eeb95409a4ab2",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24625240710",
+  "timestamp": "2026-04-19T10:31:00Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
