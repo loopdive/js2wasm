@@ -150,6 +150,8 @@ jobs:
           node scripts/build-test262-report.mjs \
             --input merged-reports/test262-results-merged.jsonl \
             --output merged-reports/test262-report-merged.json \
+            --baseline-sha "${{ github.sha }}" \
+            --baseline-generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             ${{ inputs.include_proposals && '--include-proposals' || '' }}
 
       - name: Fetch fresh baseline from origin/main
