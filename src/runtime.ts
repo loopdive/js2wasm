@@ -147,6 +147,53 @@ function _validatePropertyDescriptor(
   return resultFlags;
 }
 
+function _toPropertyDescriptorValidate(rawDesc: any, getField: (o: any, f: string) => any): PropertyDescriptor {
+  // Primitive rawDesc (number/string/boolean/symbol/bigint) violates
+  // ECMA-262 10.1 step 1 — throw TypeError. We intentionally allow null/undefined
+  // through as an empty descriptor because reads from WasmGC struct fields whose
+  // backing value is absent can surface null even when the source-level literal
+  // was a valid (if opaque-to-JS) object; throwing here would mask harmless
+  // struct storage gaps as spec violations. Callers that want strict spec
+  // behavior on null/undefined should filter before calling.
+  if (rawDesc != null && typeof rawDesc !== "object" && typeof rawDesc !== "function") {
+    throw new TypeError("TypeError: Property description must be an object: " + String(rawDesc));
+  }
+  const desc: PropertyDescriptor = {};
+  if (rawDesc == null) return desc;
+  const val = getField(rawDesc, "value");
+  const wr = getField(rawDesc, "writable");
+  const en = getField(rawDesc, "enumerable");
+  const conf = getField(rawDesc, "configurable");
+  const getFn = getField(rawDesc, "get");
+  const setFn = getField(rawDesc, "set");
+  // Treat null getter/setter as "field absent" — reading a WasmGC struct field
+  // whose accessor source read out to null (no value stored) is functionally
+  // identical to the field being missing. The spec only throws for present
+  // non-callable values, and our caller path uses null as the "unset" sentinel.
+  const hasGet = getFn !== undefined && getFn !== null;
+  const hasSet = setFn !== undefined && setFn !== null;
+  const hasData = val !== undefined || wr !== undefined;
+  const hasAccessor = hasGet || hasSet;
+  if (hasData && hasAccessor) {
+    throw new TypeError(
+      "TypeError: Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+    );
+  }
+  if (hasGet && typeof getFn !== "function") {
+    throw new TypeError("TypeError: Getter must be a function: " + String(getFn));
+  }
+  if (hasSet && typeof setFn !== "function") {
+    throw new TypeError("TypeError: Setter must be a function: " + String(setFn));
+  }
+  if (val !== undefined) desc.value = val;
+  if (wr !== undefined) desc.writable = !!wr;
+  if (en !== undefined) desc.enumerable = !!en;
+  if (conf !== undefined) desc.configurable = !!conf;
+  if (hasGet) desc.get = getFn;
+  if (hasSet) desc.set = setFn;
+  return desc;
+}
+
 /** Return true when `obj` is a WasmGC struct (opaque to JS). */
 function _isWasmStruct(obj: any): boolean {
   if (obj == null || typeof obj !== "object") return false;
@@ -1846,37 +1893,38 @@ function resolveImport(
             }
             return v;
           };
+          // If descsObj is a WasmGC struct, native Object.defineProperties sees it as empty
+          // and silently no-ops. Pre-validate descriptors here so bad shapes throw TypeError
+          // per ECMA-262 10.1 (ToPropertyDescriptor) before reaching native.
+          if (_isWasmStruct(descsObj)) {
+            const keys = getKeys(descsObj);
+            for (const key of keys) {
+              const rawDesc = getField(descsObj, key);
+              _toPropertyDescriptorValidate(rawDesc, getField);
+            }
+          }
           try {
             Object.defineProperties(obj, descsObj);
           } catch (e) {
             if (e instanceof TypeError) {
               const msg = (e as Error).message || "";
               if (msg.includes("opaque") || msg.includes("WebAssembly")) {
-                // Opaque obj or descsObj — apply via sidecar using safe key access
+                // Opaque obj or descsObj — validate all descriptors per ECMA-262 10.1
+                // ToPropertyDescriptor (throws TypeError on bad shape) before applying.
                 const sDescs = _getSidecarDescs(obj);
                 const keys = getKeys(descsObj);
+                const validated: { key: string; desc: PropertyDescriptor }[] = [];
                 for (const key of keys) {
                   const rawDesc = getField(descsObj, key);
-                  if (rawDesc && typeof rawDesc === "object") {
-                    const desc: PropertyDescriptor = {};
-                    const val = getField(rawDesc, "value");
-                    if (val !== undefined) desc.value = val;
-                    const wr = getField(rawDesc, "writable");
-                    if (wr !== undefined) desc.writable = !!wr;
-                    const en = getField(rawDesc, "enumerable");
-                    if (en !== undefined) desc.enumerable = !!en;
-                    const conf = getField(rawDesc, "configurable");
-                    if (conf !== undefined) desc.configurable = !!conf;
-                    const getFn = getField(rawDesc, "get");
-                    if (getFn !== undefined) desc.get = getFn;
-                    const setFn = getField(rawDesc, "set");
-                    if (setFn !== undefined) desc.set = setFn;
-                    const nKey = _normalizeDescKey(key);
-                    const existingVal2 = _sidecarGet(obj, key);
-                    const newFlags = _validatePropertyDescriptor(sDescs, nKey, desc, existingVal2);
-                    sDescs.set(nKey, newFlags);
-                    if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
-                  }
+                  const desc = _toPropertyDescriptorValidate(rawDesc, getField);
+                  validated.push({ key, desc });
+                }
+                for (const { key, desc } of validated) {
+                  const nKey = _normalizeDescKey(key);
+                  const existingVal2 = _sidecarGet(obj, key);
+                  const newFlags = _validatePropertyDescriptor(sDescs, nKey, desc, existingVal2);
+                  sDescs.set(nKey, newFlags);
+                  if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
                 }
               } else {
                 // Spec-mandated TypeError on real JS objects
