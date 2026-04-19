@@ -1222,37 +1222,59 @@ export function compileBinaryExpression(
           ...(isNeqOp ? [{ op: "i32.eqz" } as Instr] : []),
         ],
         else: (() => {
-          // Host `===` fallback FIRST — two host externrefs (e.g. functions
+          // Host equality fallback — two host externrefs (e.g. functions
           // like `Array === Array`) are not WasmGC eqrefs, so ref.eq cannot
-          // compare them. `__host_eq` calls JS `===` which handles reference
-          // identity for host values. If that returns false, still fall
-          // through to numeric unboxing for the boxed-number case. (#1065)
+          // compare them. For strict equality, `__host_eq` calls JS `===`.
+          // For loose equality, `__host_loose_eq` calls JS `==` which
+          // handles null==undefined and type coercion per §7.2.15. (#1065, #1134)
           addUnionImports(ctx);
           const unboxIdx = ctx.funcMap.get("__unbox_number")!;
-          const hostEqIdx = ensureLateImport(
-            ctx,
-            "__host_eq",
-            [{ kind: "externref" }, { kind: "externref" }],
-            [{ kind: "i32" }],
-          );
-          flushLateImportShifts(ctx, fctx);
-          return [
-            { op: "local.get", index: tmpLeft },
-            { op: "local.get", index: tmpRight },
-            { op: "call", funcIdx: hostEqIdx } as Instr,
-            {
-              op: "if",
-              blockType: { kind: "val", type: { kind: "i32" } },
-              then: [{ op: "i32.const", value: isNeqOp ? 0 : 1 } as Instr],
-              else: [
-                { op: "local.get", index: tmpLeft },
-                { op: "call", funcIdx: unboxIdx },
-                { op: "local.get", index: tmpRight },
-                { op: "call", funcIdx: unboxIdx },
-                { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
-              ] as Instr[],
-            } as Instr,
-          ] as Instr[];
+          if (isStrict) {
+            // Strict equality: __host_eq (JS ===) for reference identity.
+            // If that returns false, fall through to numeric unboxing for
+            // boxed numbers that differ in identity but have the same value. (#1065)
+            const hostEqIdx = ensureLateImport(
+              ctx,
+              "__host_eq",
+              [{ kind: "externref" }, { kind: "externref" }],
+              [{ kind: "i32" }],
+            );
+            flushLateImportShifts(ctx, fctx);
+            return [
+              { op: "local.get", index: tmpLeft },
+              { op: "local.get", index: tmpRight },
+              { op: "call", funcIdx: hostEqIdx } as Instr,
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [{ op: "i32.const", value: isNeqOp ? 0 : 1 } as Instr],
+                else: [
+                  { op: "local.get", index: tmpLeft },
+                  { op: "call", funcIdx: unboxIdx },
+                  { op: "local.get", index: tmpRight },
+                  { op: "call", funcIdx: unboxIdx },
+                  { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
+                ] as Instr[],
+              } as Instr,
+            ] as Instr[];
+          } else {
+            // Loose equality: __host_loose_eq (JS ==) handles all coercion
+            // rules including null==undefined per §7.2.15. The result is
+            // definitive — no numeric fallback needed. (#1134)
+            const hostLooseEqIdx = ensureLateImport(
+              ctx,
+              "__host_loose_eq",
+              [{ kind: "externref" }, { kind: "externref" }],
+              [{ kind: "i32" }],
+            );
+            flushLateImportShifts(ctx, fctx);
+            return [
+              { op: "local.get", index: tmpLeft },
+              { op: "local.get", index: tmpRight },
+              { op: "call", funcIdx: hostLooseEqIdx } as Instr,
+              ...(isNeqOp ? [{ op: "i32.eqz" } as Instr] : []),
+            ] as Instr[];
+          }
         })(),
       });
       releaseTempLocal(fctx, identityResult);

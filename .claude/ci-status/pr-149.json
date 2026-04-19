@@ -1,0 +1,15 @@
+{
+  "pr": 149,
+  "conclusion": "cancelled",
+  "head_branch": "issue-1074-esm-default-export",
+  "head_sha": "74d6038fd27914f8e0cea9dee9519cf6c2ea0791",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24547145759",
+  "timestamp": "2026-04-17T04:34:53Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
