@@ -1,0 +1,281 @@
+name: Emergency Baseline Refresh
+
+# Dedicated one-click emergency baseline refresh (#1078).
+# Runs test262 on current main unconditionally and promotes the result
+# to the committed baseline — no regression gate, no conditions.
+#
+# Usage: Actions → Emergency Baseline Refresh → Run workflow
+#   force_baseline_refresh: true
+#   confirm_force: "YES"
+#
+# Both inputs are required. The confirmation prevents accidental runs.
+# An audit commit records who triggered the refresh and pass/total numbers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_baseline_refresh:
+        description: "Force unconditional baseline promotion (ignores regressions)"
+        required: true
+        default: false
+        type: boolean
+      confirm_force:
+        description: 'Type "YES" to confirm emergency baseline refresh'
+        required: true
+        default: ""
+        type: string
+      compiler_pool_size:
+        description: "Compiler workers per shard runner"
+        required: false
+        default: "4"
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: emergency-baseline-refresh
+  cancel-in-progress: false
+
+jobs:
+  validate-inputs:
+    name: validate emergency inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check force_baseline_refresh is true
+        if: ${{ !inputs.force_baseline_refresh }}
+        run: |
+          echo "ERROR: force_baseline_refresh must be true for emergency baseline refresh."
+          echo "This workflow is only for disaster recovery — use the regular test262-sharded workflow for normal runs."
+          exit 1
+
+      - name: Check confirmation
+        if: inputs.confirm_force != 'YES'
+        run: |
+          echo "ERROR: You must type exactly 'YES' in the confirm_force field."
+          echo "This prevents accidental emergency baseline overwrites."
+          echo "Got: '${{ inputs.confirm_force }}'"
+          exit 1
+
+  test262-shard:
+    name: test262 shard ${{ matrix.chunk }}
+    needs: validate-inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+
+    env:
+      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
+      RUN_TIMESTAMP: ${{ github.run_id }}-chunk${{ matrix.chunk }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache test262 incremental cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            .test262-cache
+            benchmarks/results/test262-cache.json
+          key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-chunk-${{ matrix.chunk }}
+          restore-keys: |
+            test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-
+
+      - name: Build compiler bundles
+        run: |
+          pnpm run build:compiler-bundle
+          ./node_modules/.bin/esbuild src/runtime.ts --bundle --platform=node --format=esm \
+            --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen
+
+      - name: Run shard
+        run: |
+          mkdir -p vitest-blob
+          set +e
+          node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
+            --reporter=blob \
+            --outputFile=vitest-blob/blob-${{ matrix.chunk }}.json
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Vitest exited with unexpected code $exit_code"
+            exit "$exit_code"
+          fi
+
+      - name: Upload shard artifacts
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: emergency-shard-${{ matrix.chunk }}
+          path: |
+            benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
+          if-no-files-found: warn
+
+  merge-and-promote:
+    name: merge shards and promote baseline
+    needs: test262-shard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          submodules: recursive
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download shard artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: shard-artifacts
+          pattern: emergency-shard-*
+          merge-multiple: false
+
+      - name: Merge test262 JSONL results
+        run: |
+          mkdir -p merged-reports
+          find shard-artifacts -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > merged-reports/test262-results-merged.jsonl
+          test -s merged-reports/test262-results-merged.jsonl
+
+      - name: Build merged test262 report
+        run: |
+          node scripts/build-test262-report.mjs \
+            --input merged-reports/test262-results-merged.jsonl \
+            --output merged-reports/test262-report-merged.json
+
+      - name: Sanity check report
+        run: |
+          PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('merged-reports/test262-report-merged.json','utf8')).summary.pass)")
+          TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('merged-reports/test262-report-merged.json','utf8')).summary.total)")
+          echo "PASS=$PASS TOTAL=$TOTAL"
+          if [ "$PASS" -lt 1000 ] || [ "$TOTAL" -lt 40000 ]; then
+            echo "ABORT: report looks corrupt (pass=$PASS total=$TOTAL). Not promoting."
+            echo "Even emergency refreshes reject obviously corrupt data."
+            exit 1
+          fi
+          echo "pass=$PASS" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+        id: sanity
+
+      - name: Promote to baseline (unconditional)
+        run: |
+          mkdir -p benchmarks/results public/benchmarks/results
+          rm -f benchmarks/results/test262-current.jsonl \
+            benchmarks/results/test262-current.json \
+            benchmarks/results/test262-report.json \
+            benchmarks/results/test262-results.jsonl
+          cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+          cp merged-reports/test262-report-merged.json benchmarks/results/test262-current.json
+          cp merged-reports/test262-report-merged.json benchmarks/results/test262-report.json
+          cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
+          cp merged-reports/test262-report-merged.json public/benchmarks/results/test262-report.json
+          cp merged-reports/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
+
+      - name: Append to runs/index.json
+        run: |
+          node -e "
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('benchmarks/results/test262-current.json', 'utf8'));
+          const indexPath = 'benchmarks/results/runs/index.json';
+          const idx = fs.existsSync(indexPath) ? JSON.parse(fs.readFileSync(indexPath, 'utf8')) : [];
+          const entry = {
+            timestamp: new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').substring(0, 15),
+            pass: report.summary.pass,
+            fail: report.summary.fail,
+            ce: report.summary.compile_error || 0,
+            skip: report.summary.skip || 0,
+            total: report.summary.total,
+            strict_pass: (report.strict_summary || {}).pass || 0,
+            strict_total: (report.strict_summary || {}).total || 0,
+            gitHash: '${{ github.sha }}'.substring(0, 8),
+          };
+          const last = idx[idx.length - 1];
+          if (!last || last.pass !== entry.pass || last.total !== entry.total) {
+            idx.push(entry);
+            fs.writeFileSync(indexPath, JSON.stringify(idx, null, 2));
+            console.log('Appended to runs/index.json:', entry.pass, '/', entry.total);
+          } else {
+            console.log('Skipped duplicate entry');
+          }
+          "
+
+      - name: Commit FORCED baseline refresh (audit trail)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
+          if git diff --cached --quiet; then
+            echo "No baseline changes to commit."
+            exit 0
+          fi
+          PASS=${{ steps.sanity.outputs.pass }}
+          TOTAL=${{ steps.sanity.outputs.total }}
+          ACTOR="${{ github.actor }}"
+          git commit -m "chore(test262): FORCED baseline refresh by ${ACTOR} — ${PASS}/${TOTAL} pass [skip ci]"
+          if ! git pull --rebase origin main; then
+            git rebase --abort 2>/dev/null || true
+            git fetch origin main
+            git reset --hard origin/main
+            cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+            cp merged-reports/test262-report-merged.json benchmarks/results/test262-current.json
+            cp merged-reports/test262-report-merged.json benchmarks/results/test262-report.json
+            cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
+            cp merged-reports/test262-report-merged.json public/benchmarks/results/test262-report.json
+            cp merged-reports/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
+            git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
+            git commit -m "chore(test262): FORCED baseline refresh by ${ACTOR} — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
+          fi
+          git push
+
+      - name: Trigger Pages deploy
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run deploy-pages.yml --ref main || true
+
+      - name: Upload merged reports
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: emergency-merged-report
+          path: |
+            merged-reports/**
+          if-no-files-found: warn
