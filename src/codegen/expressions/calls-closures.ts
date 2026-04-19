@@ -234,17 +234,20 @@ export function compileGetterCallable(
       }
     }
 
-    fctx.body.push({ op: "call", funcIdx: candidateIdx });
+    // Re-lookup: receiver/arg compilation may have triggered late imports
+    // (e.g. emitUndefined for missing tuple elements) that shift function indices.
+    const finalCandidateIdx = ctx.funcMap.get(candidateName) ?? candidateIdx;
+    fctx.body.push({ op: "call", funcIdx: finalCandidateIdx });
 
     // Determine return type
     const sig = ctx.checker.getResolvedSignature(expr);
     if (sig) {
       const retType = ctx.checker.getReturnTypeOfSignature(sig);
       if (isEffectivelyVoidReturn(ctx, retType, candidateName)) return VOID_RESULT;
-      if (wasmFuncReturnsVoid(ctx, candidateIdx)) return VOID_RESULT;
-      return getWasmFuncReturnType(ctx, candidateIdx) ?? resolveWasmType(ctx, retType);
+      if (wasmFuncReturnsVoid(ctx, finalCandidateIdx)) return VOID_RESULT;
+      return getWasmFuncReturnType(ctx, finalCandidateIdx) ?? resolveWasmType(ctx, retType);
     }
-    return getWasmFuncReturnType(ctx, candidateIdx) ?? VOID_RESULT;
+    return getWasmFuncReturnType(ctx, finalCandidateIdx) ?? VOID_RESULT;
   }
 
   return undefined; // Couldn't resolve to a known method
