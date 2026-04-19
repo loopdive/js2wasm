@@ -352,8 +352,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | ready |
 | #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | ready |
-| #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | ready |
-| #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | ready |
 | #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
 | #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | ready |
 | #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
@@ -363,16 +361,17 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
 | #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
-| #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
 | #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1127 | export default of HOF variable not exported — add.js blocked | high | ready |
+| #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1008 | Add mobile-first layout support to the playground | medium | in-progress |
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
+| #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
 
 ### Review
 
@@ -380,7 +379,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #825 | Null dereference failures (2,295 runtime failures) | high | review |
 | #826 | Illegal cast failures (1,276 runtime failures) | high | review |
+| #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | review |
 | #1117 | Expected TypeError but got wrong error type (136 tests) | medium | review |
+| #1123 | Verify landing page claims and code examples against current compiler behavior | high | review |
 
 ### Done
 

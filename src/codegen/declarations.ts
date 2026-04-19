@@ -738,25 +738,28 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
 /** Run all post-walk finalization (register imports based on collected state) */
 export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorState): void {
   // ── collectConsoleImports finalize ──
-  const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
-  for (const method of CONSOLE_METHODS) {
-    const needed = state.consoleNeededByMethod.get(method);
-    if (!needed) continue;
-    if (needed.has("number")) {
-      const t = addFuncType(ctx, [{ kind: "f64" }], []);
-      addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("bool")) {
-      const t = addFuncType(ctx, [{ kind: "i32" }], []);
-      addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("string")) {
-      const t = addFuncType(ctx, [{ kind: "externref" }], []);
-      addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("externref")) {
-      const t = addFuncType(ctx, [{ kind: "externref" }], []);
-      addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
+  // In WASI mode, console.log/error use fd_write — skip JS host console imports
+  if (!ctx.wasi) {
+    const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
+    for (const method of CONSOLE_METHODS) {
+      const needed = state.consoleNeededByMethod.get(method);
+      if (!needed) continue;
+      if (needed.has("number")) {
+        const t = addFuncType(ctx, [{ kind: "f64" }], []);
+        addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("bool")) {
+        const t = addFuncType(ctx, [{ kind: "i32" }], []);
+        addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("string")) {
+        const t = addFuncType(ctx, [{ kind: "externref" }], []);
+        addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("externref")) {
+        const t = addFuncType(ctx, [{ kind: "externref" }], []);
+        addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
+      }
     }
   }
 
@@ -777,7 +780,8 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
-  if (state.primitiveNeeded.has("string_compare")) {
+  if (state.primitiveNeeded.has("string_compare") && !ctx.nativeStrings) {
+    // In native strings mode, __str_compare Wasm helper handles this — no host import needed
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
@@ -873,9 +877,12 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
       ctx.pendingMathMethods.add(method);
     }
   }
-  if (state.mathNeedsToUint32 && !ctx.funcMap.has("__toUint32")) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+  // ToUint32: defer emission until after all imports are registered (#1094).
+  // Registering as a defined function here would leave a stale funcMap index
+  // since subsequent imports added via addImport (e.g. __register_prototype)
+  // do not shift defined-function indices. emitToUint32Helper() runs later.
+  if (state.mathNeedsToUint32) {
+    ctx.needsToUint32 = true;
   }
 
   // ── collectParseImports finalize ──
@@ -1710,13 +1717,34 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       let params: ValType[];
       let results: ValType[];
 
+      // A binding-pattern parameter with a rest element and no type annotation
+      // (e.g. `function f([...r])` or `function f({...x})`) infers as `{}` or
+      // `{ [k: string]: any }` in TypeScript, which resolveWasmType maps to a
+      // degenerate struct (single-field cell or empty struct). Callers that
+      // pass an array/object to such a param fail the ref.test cast and
+      // receive ref.null — breaking destructuring inside the function. Force
+      // externref so the conversion paths in destructureParam{Array,Object}
+      // handle the incoming value correctly.
+      const restBindingOverridesToExternref = (p: ts.ParameterDeclaration): boolean => {
+        if (p.type || p.dotDotDotToken) return false;
+        if (ts.isArrayBindingPattern(p.name)) {
+          return p.name.elements.some((e) => !ts.isOmittedExpression(e) && !!e.dotDotDotToken);
+        }
+        if (ts.isObjectBindingPattern(p.name)) {
+          return p.name.elements.some((e) => !!e.dotDotDotToken);
+        }
+        return false;
+      };
+
       if (isGenerator) {
         // Generator functions: parameters are compiled normally, return is externref
         params = [];
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
           const paramType = ctx.checker.getTypeAtLocation(param);
-          let wasmType = resolveWasmType(ctx, paramType);
+          let wasmType: ValType = restBindingOverridesToExternref(param)
+            ? { kind: "externref" }
+            : resolveWasmType(ctx, paramType);
           // If the parameter has a default value and is a non-null ref type,
           // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
           if (param.initializer && wasmType.kind === "ref") {
@@ -1767,7 +1795,9 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
-            let wasmType = resolveWasmType(ctx, paramType);
+            let wasmType: ValType = restBindingOverridesToExternref(param)
+              ? { kind: "externref" }
+              : resolveWasmType(ctx, paramType);
             // If the parameter has a default value and is a non-null ref type,
             // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
             if (param.initializer && wasmType.kind === "ref") {
