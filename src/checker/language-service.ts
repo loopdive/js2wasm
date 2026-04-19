@@ -1,6 +1,7 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
-import type { TypedAST, AnalyzeOptions } from "./index.js";
-import { isKnownLibName, getLibSourceFile } from "./index.js";
+import type { AnalyzeOptions, TypedAST } from "./index.js";
+import { getLibSourceFile, isKnownLibName } from "./index.js";
 
 /**
  * Incremental compiler that reuses parsed lib SourceFiles across compilations.

@@ -1,0 +1,14 @@
+{
+  "pr": 105,
+  "conclusion": "failure",
+  "head_branch": "issue-1062-toNumber-if-mismatch",
+  "head_sha": "73cf7480b386197a58ec11216df19ee1dd6c8e80",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24289619548",
+  "timestamp": "2026-04-11T19:21:00Z",
+  "pass": 20624,
+  "fail": 16636,
+  "compile_error": 4561,
+  "delta": 80,
+  "regressions": 1,
+  "improvements": 81
+}

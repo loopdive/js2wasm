@@ -28,6 +28,35 @@ tmp_*.mts
 _tmp_*.ts
 tests/_tmp_*
 tests/test*_check*.ts
+
+# Dev scratch — ad-hoc probe/debug/repro scripts
+# Agents: put ALL ad-hoc files here, not at repo root or tests/
+.tmp/
+/check-*.ts
+/check-*.mts
+/debug-*.ts
+/debug-*.mts
+/run-*.ts
+/run-*.mts
+/run[0-9]*.ts
+/run-test*.mjs
+/test-*-debug.ts
+/test-*-main.ts
+/test-on-main*.ts
+/test-src*.ts
+/test-wat*.ts
+/test-throws-*.ts
+/test-full-wat-*.ts
+/test-disposable-*.ts
+/test-pr-*.ts
+tests/probe-*.test.ts
+tests/test-*-debug.test.ts
+tests/test-*-probe.test.ts
+tests/scope-close-*-debug.test.ts
+tests/regression-check.test.ts
+tests/test-type-mismatch.test.ts
+tests/test-pr*-regressions.test.ts
+tests/*-debug*.test.ts
 isolate-*.log
 tests/fixtures/*.wasm
 tests/fixtures/*.wat
@@ -37,6 +66,7 @@ tests/fixtures/*.imports.js
 benchmarks/results/test262-results-*.jsonl
 benchmarks/results/memory-monitor-*.jsonl
 .playwright-cli/
+vendor/
 benchmarks/results/test262-report.json
 # test262-current.{jsonl,json} is the stable filename committed by the
 # nightly workflow — keep it tracked so build-pages can use it.

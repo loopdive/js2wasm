@@ -7,7 +7,7 @@ type: feedback
 Never write ad-hoc scripts to do things the project already has scripts for. Use the existing code.
 
 - Report generation: `npx tsx scripts/run-test262.ts` (writes JSONL + report JSON)
-- Graph generation: `npx tsx plan/generate-graph.ts`
+- Graph generation: `node --experimental-strip-types plan/generate-graph.ts`
 - Tests: `npm test`
 - For reading/analyzing data: use the Read tool, Grep, or Bash with simple jq/wc/grep
 

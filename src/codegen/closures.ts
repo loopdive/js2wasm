@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Closure and arrow-function compilation for js2wasm.
  *
@@ -14,46 +15,44 @@
  */
 
 import ts from "typescript";
-import { reportError } from "./context/errors.js";
+import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { pushBody } from "./context/bodies.js";
+import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import {
-  resolveWasmType,
-  getArrTypeIdxFromVec,
-  getOrRegisterVecType,
   addFuncType,
-  nextModuleGlobalIdx,
-  ensureStructForType,
-  getOrRegisterRefCellType,
   destructureParamArray,
-  destructureParamObject,
   ensureExnTag,
-  addStringConstantGlobal,
+  ensureStructForType,
+  getArrTypeIdxFromVec,
+  getOrRegisterRefCellType,
+  getOrRegisterVecType,
   hoistLetConstWithTdz,
+  nextModuleGlobalIdx,
+  resolveWasmType,
 } from "./index.js";
-import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
-import type { Instr, ValType, FieldDef, StructTypeDef } from "../ir/types.js";
 import {
-  compileStatement,
-  compileExternrefObjectDestructuringDecl,
-  compileExternrefArrayDestructuringDecl,
-  collectInstrs,
-} from "./statements.js";
-import { defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
-import { ensureExternIsUndefinedImport } from "./expressions/late-imports.js";
-import {
-  compileExpression,
-  registerCompileArrowAsClosure,
-  valTypesMatch,
-  getLine,
-  getCol,
-  emitBoundsCheckedArrayGet,
-  resolveEnclosingClassName,
   coerceType,
+  compileExpression,
+  emitBoundsCheckedArrayGet,
   ensureLateImport as ensureLateImportShared,
   flushLateImportShifts as flushLateImportShiftsShared,
+  getCol,
+  getLine,
+  registerCompileArrowAsClosure,
+  resolveEnclosingClassName,
+  valTypesMatch,
 } from "./shared.js";
+import {
+  collectInstrs,
+  compileExternrefArrayDestructuringDecl,
+  compileExternrefObjectDestructuringDecl,
+  compileStatement,
+} from "./statements.js";
+import { coercionInstrs, defaultValueInstrs, emitGuardedRefCast } from "./type-coercion.js";
+import { ensureExternIsUndefinedImport } from "./expressions/late-imports.js";
 
 // ── Arrow function callbacks ──────────────────────────────────────────
 
@@ -1683,6 +1682,7 @@ export function compileArrowAsCallback(
   ctx: CodegenContext,
   fctx: FunctionContext,
   arrow: ts.ArrowFunction | ts.FunctionExpression,
+  options?: { needsThis?: boolean },
 ): ValType | null {
   const cbId = ctx.callbackCounter++;
   const cbName = `__cb_${cbId}`;
@@ -1764,8 +1764,11 @@ export function compileArrowAsCallback(
   //    Callback params that are ref/ref_null must be declared as externref
   //    because the JS host will pass them as externref. We convert them back
   //    to the expected struct ref type at the start of the body.
+  const needsThis = options?.needsThis === true;
   const cbResolvedParams: ValType[] = []; // original resolved types for coercion
-  const cbParams: ValType[] = [{ kind: "externref" }]; // captures param
+  const cbParams: ValType[] = [{ kind: "externref" }]; // captures param [0]
+  // When needsThis=true, inject 'this' as param [1] (externref receiver)
+  if (needsThis) cbParams.push({ kind: "externref" });
   for (const p of arrow.parameters) {
     const paramType = ctx.checker.getTypeAtLocation(p);
     const resolved = resolveWasmType(ctx, paramType);
@@ -1791,15 +1794,25 @@ export function compileArrowAsCallback(
   const cbResults: ValType[] = cbReturnType ? [cbReturnType] : [];
   const cbTypeIdx = addFuncType(ctx, cbParams, cbResults, `${cbName}_type`);
 
+  // arrowParamOffset: index of the first arrow parameter in cbParams/cbFctx.params
+  // = 1 (captures) + 1 (this, if needsThis)
+  const arrowParamOffset = needsThis ? 2 : 1;
+
+  const cbFctxParams: FunctionContext["params"] = [{ name: "__captures", type: { kind: "externref" } }];
+  if (needsThis) {
+    cbFctxParams.push({ name: "__this", type: { kind: "externref" } });
+  }
+  for (let i = 0; i < arrow.parameters.length; i++) {
+    const p = arrow.parameters[i]!;
+    cbFctxParams.push({
+      name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
+      type: cbParams[arrowParamOffset + i] ?? { kind: "f64" as const },
+    });
+  }
+
   const cbFctx: FunctionContext = {
     name: cbName,
-    params: [
-      { name: "__captures", type: { kind: "externref" } },
-      ...arrow.parameters.map((p, i) => ({
-        name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
-        type: cbParams[i + 1] ?? { kind: "f64" as const },
-      })),
-    ],
+    params: cbFctxParams,
     locals: [],
     localMap: new Map(),
     returnType: cbReturnType,
@@ -1812,9 +1825,13 @@ export function compileArrowAsCallback(
     enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
   };
 
-  // Register params as locals (param 0 = __captures, then arrow params)
+  // Register params as locals (param 0 = __captures, [1 = __this if needsThis], then arrow params)
   for (let i = 0; i < cbFctx.params.length; i++) {
     cbFctx.localMap.set(cbFctx.params[i]!.name, i);
+  }
+  // When needsThis=true, also register 'this' keyword → index 1 (__this param)
+  if (needsThis) {
+    cbFctx.localMap.set("this", 1);
   }
 
   // 4. Extract captures from struct into locals at start of __cb_N body
@@ -1872,7 +1889,7 @@ export function compileArrowAsCallback(
   for (let i = 0; i < cbResolvedParams.length; i++) {
     const resolved = cbResolvedParams[i]!;
     if (resolved.kind === "ref" || resolved.kind === "ref_null") {
-      const paramIdx = i + 1; // +1 for __captures
+      const paramIdx = arrowParamOffset + i; // offset past __captures [and __this if needsThis]
       const paramName = cbFctx.params[paramIdx]!.name;
       // Allocate a new local with the resolved (struct ref) type
       const convertedIdx = allocLocal(cbFctx, `__converted_${paramName}`, resolved);
@@ -1892,15 +1909,15 @@ export function compileArrowAsCallback(
   ctx.currentFunc = cbFctx;
 
   // Emit default-value initialization for simple params with defaults
-  emitArrowParamDefaults(ctx, cbFctx, arrow, 1 /* skip __captures */);
+  emitArrowParamDefaults(ctx, cbFctx, arrow, arrowParamOffset /* skip __captures [and __this] */);
 
   // Emit destructuring code for binding pattern parameters
   for (let i = 0; i < arrow.parameters.length; i++) {
     const param = arrow.parameters[i]!;
     if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
       const resolved = cbResolvedParams[i] ?? { kind: "f64" as const };
-      const paramName = cbFctx.params[1 + i]?.name ?? `__param${i}`;
-      const effectiveIdx = cbFctx.localMap.get(paramName) ?? 1 + i;
+      const paramName = cbFctx.params[arrowParamOffset + i]?.name ?? `__param${i}`;
+      const effectiveIdx = cbFctx.localMap.get(paramName) ?? arrowParamOffset + i;
       emitArrowParamDestructuring(ctx, cbFctx, param, effectiveIdx, resolved);
     }
   }
@@ -1964,10 +1981,11 @@ export function compileArrowAsCallback(
     desc: { kind: "func", index: cbFuncIdx },
   });
 
-  // 7. At creation site: push cbId + captures externref, call __make_callback
-  const makeCallbackIdx = ctx.funcMap.get("__make_callback");
+  // 7. At creation site: push cbId + captures externref, call __make_callback / __make_getter_callback
+  const makeCallbackName = needsThis ? "__make_getter_callback" : "__make_callback";
+  const makeCallbackIdx = ctx.funcMap.get(makeCallbackName);
   if (makeCallbackIdx === undefined) {
-    reportError(ctx, arrow, "Missing __make_callback import");
+    reportError(ctx, arrow, `Missing ${makeCallbackName} import`);
     return null;
   }
 
@@ -2000,8 +2018,11 @@ export function compileArrowAsCallback(
     fctx.body.push({ op: "struct.new", typeIdx: capStructTypeIdx });
     fctx.body.push({ op: "extern.convert_any" });
 
-    // Register writeback instructions for mutable captures (#859).
+    // Register writeback instructions for mutable captures (#859, #929).
     // After the host call returns, read ref cell values back into outer locals.
+    // For getter/setter callbacks (needsThis=true), the callback may be stored
+    // and invoked later by a different host call, so we use persistent writebacks
+    // that re-sync after every subsequent call expression.
     if (refCellLocals.length > 0) {
       const writebacks: Instr[] = [];
       for (const rc of refCellLocals) {
@@ -2010,8 +2031,14 @@ export function compileArrowAsCallback(
         writebacks.push({ op: "struct.get", typeIdx: rc.refCellTypeIdx, fieldIdx: 0 } as Instr);
         writebacks.push({ op: "local.set", index: rc.outerLocalIdx } as Instr);
       }
-      if (!fctx.pendingCallbackWritebacks) fctx.pendingCallbackWritebacks = [];
-      fctx.pendingCallbackWritebacks.push(...writebacks);
+      if (needsThis) {
+        // Persistent: re-emit after every call, since getter may be called by any host call
+        if (!fctx.persistentCallbackWritebacks) fctx.persistentCallbackWritebacks = [];
+        fctx.persistentCallbackWritebacks.push(...writebacks);
+      } else {
+        if (!fctx.pendingCallbackWritebacks) fctx.pendingCallbackWritebacks = [];
+        fctx.pendingCallbackWritebacks.push(...writebacks);
+      }
     }
   } else {
     fctx.body.push({ op: "ref.null.extern" });

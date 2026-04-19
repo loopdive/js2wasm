@@ -1,14 +1,15 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * AnyValue boxing/unboxing helpers and wrapper struct types for
  * Number, String, and Boolean object wrappers.
  *
  * Extracted from codegen/index.ts (#1013).
  */
+import type { Instr, StructTypeDef, ValType } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
-import type { Import, Instr, StructTypeDef, ValType } from "../ir/types.js";
-import { addFuncType } from "./registry/types.js";
-import { registerEnsureAnyHelpers } from "./shared.js";
 import { nativeStringType } from "./native-strings.js";
+import { addFuncType } from "./registry/types.js";
+import { addStringImportsDelegate, registerEnsureAnyHelpers } from "./shared.js";
 
 /**
  * Register the $AnyValue struct type for boxing `any` typed values.
@@ -177,9 +178,15 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   // Ensure the $AnyValue struct type is registered before emitting helpers
   ensureAnyValueType(ctx);
 
+  // Ensure wasm:js-string imports are available for string content comparison
+  addStringImportsDelegate(ctx);
+
   const anyTypeIdx = ctx.anyValueTypeIdx;
   const anyRef: ValType = { kind: "ref", typeIdx: anyTypeIdx };
   const anyRefNull: ValType = { kind: "ref_null", typeIdx: anyTypeIdx };
+
+  // String content comparison via wasm:js-string equals (tag 5)
+  const strEqualsIdx = ctx.jsStringImports.get("equals") ?? -1;
 
   // Helper to register a helper function
   function addHelper(
@@ -804,10 +811,30 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                               { op: "ref.eq" },
                             ],
                             else: [
-                              // null/undefined (tag < 2): both same tag → equal
+                              // tag 5 (string): compare content via wasm:js-string equals
                               { op: "local.get", index: 2 },
-                              { op: "i32.const", value: 2 },
-                              { op: "i32.lt_s" },
+                              { op: "i32.const", value: 5 },
+                              { op: "i32.eq" },
+                              {
+                                op: "if",
+                                blockType: { kind: "val", type: { kind: "i32" } },
+                                then:
+                                  strEqualsIdx >= 0
+                                    ? [
+                                        { op: "local.get", index: 0 },
+                                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+                                        { op: "local.get", index: 1 },
+                                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+                                        { op: "call", funcIdx: strEqualsIdx },
+                                      ]
+                                    : [{ op: "i32.const", value: 0 }],
+                                else: [
+                                  // null/undefined (tag < 2): both same tag → equal
+                                  { op: "local.get", index: 2 },
+                                  { op: "i32.const", value: 2 },
+                                  { op: "i32.lt_s" },
+                                ],
+                              },
                             ],
                           },
                         ],
@@ -922,12 +949,30 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                               { op: "ref.eq" },
                             ],
                             else: [
-                              // null/undefined (tag < 2): both same tag → equal
-                              // string (tag 5): different AnyValue boxes → not same ref
-                              // (string content equality is handled by string-specific codepaths)
+                              // tag 5 (string): compare content via wasm:js-string equals
                               { op: "local.get", index: 2 },
-                              { op: "i32.const", value: 2 },
-                              { op: "i32.lt_s" },
+                              { op: "i32.const", value: 5 },
+                              { op: "i32.eq" },
+                              {
+                                op: "if",
+                                blockType: { kind: "val", type: { kind: "i32" } },
+                                then:
+                                  strEqualsIdx >= 0
+                                    ? [
+                                        { op: "local.get", index: 0 },
+                                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+                                        { op: "local.get", index: 1 },
+                                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+                                        { op: "call", funcIdx: strEqualsIdx },
+                                      ]
+                                    : [{ op: "i32.const", value: 0 }],
+                                else: [
+                                  // null/undefined (tag < 2): both same tag → equal
+                                  { op: "local.get", index: 2 },
+                                  { op: "i32.const", value: 2 },
+                                  { op: "i32.lt_s" },
+                                ],
+                              },
                             ],
                           },
                         ],

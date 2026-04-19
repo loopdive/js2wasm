@@ -1,0 +1,15 @@
+{
+  "pr": 122,
+  "conclusion": "failure",
+  "head_branch": "issue-1018-gopd-null",
+  "head_sha": "4f5558f8266dddd79ace4b41699f4d5b24e38fdc",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24303058558",
+  "timestamp": "2026-04-12T09:04:52Z",
+  "pass": 2263,
+  "fail": 1884,
+  "compile_error": 37684,
+  "snapshot_delta": -19922,
+  "net_per_test": -19922,
+  "regressions": 19934,
+  "improvements": 12
+}

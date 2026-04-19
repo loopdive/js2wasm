@@ -1,0 +1,14 @@
+{
+  "pr": 110,
+  "conclusion": "failure",
+  "head_branch": "issue-1063-lodash-closure-ref",
+  "head_sha": "ff55acacc8103f93abc54c4ee406f8996a565f49",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24289834229",
+  "timestamp": "2026-04-11T19:32:28Z",
+  "pass": 20636,
+  "fail": 16624,
+  "compile_error": 4561,
+  "delta": 92,
+  "regressions": 1,
+  "improvements": 93
+}

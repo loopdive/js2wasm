@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Property access and element access codegen.
  *
@@ -7,22 +8,24 @@
  */
 
 import ts from "typescript";
+import { isExternalDeclaredClass, isIteratorResultType, isStringType } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, ValType } from "../ir/types.js";
+import { emitBoundsCheckedArrayGet } from "./array-methods.js";
+import { popBody } from "./context/bodies.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
-import { popBody, pushBody } from "./context/bodies.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
+import { patchStructNewForAddedField } from "./expressions/late-imports.js";
+import { addUnionImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
-import { resolveWasmType, addUnionImports } from "./index.js";
-import { isStringType, isExternalDeclaredClass, isIteratorResultType } from "../checker/type-mapper.js";
-import type { Instr, ValType, FieldDef } from "../ir/types.js";
-import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import {
   coerceType,
   compileExpression,
   compileStringLiteral,
-  compileSuperPropertyAccess,
   compileSuperElementAccess,
+  compileSuperPropertyAccess,
   ensureLateImport,
   flushLateImportShifts,
   getCol,
@@ -31,8 +34,7 @@ import {
   resolveThisStructName,
   valTypesMatch,
 } from "./shared.js";
-import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
-import { patchStructNewForAddedField } from "./expressions/late-imports.js";
+import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 // Well-known Symbol IDs (inlined from literals.ts to avoid circular deps)
 const WELL_KNOWN_SYMBOLS: Record<string, number> = {
   iterator: 1,
@@ -47,11 +49,26 @@ const WELL_KNOWN_SYMBOLS: Record<string, number> = {
   split: 10,
   unscopables: 11,
   asyncIterator: 12,
+  dispose: 13,
+  asyncDispose: 14,
 };
+
+/**
+ * ES spec IsAnonymousFunctionDefinition: returns true when the expression is
+ * an anonymous FunctionExpression / ArrowFunction / ClassExpression (with
+ * optional parentheses around it). Used by NamedEvaluation to decide whether
+ * a binding name is assigned to the function's .name. (#1049)
+ */
+function isAnonymousFunctionDefinition(expr: ts.Expression): boolean {
+  while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
+  if (ts.isFunctionExpression(expr) && !expr.name) return true;
+  if (ts.isArrowFunction(expr)) return true;
+  if (ts.isClassExpression(expr) && !expr.name) return true;
+  return false;
+}
 function getWellKnownSymbolId(name: string): number | undefined {
   return WELL_KNOWN_SYMBOLS[name];
 }
-import { emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./array-methods.js";
 
 // ── Struct name resolution (moved from expressions/misc.ts) ──────────
 
@@ -688,7 +705,7 @@ export function compileOptionalPropertyAccess(
       // len is field 0 of $AnyString — works for both FlatString and ConsString
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
     } else {
-      const funcIdx = ctx.funcMap.get("length");
+      const funcIdx = ctx.jsStringImports.get("length");
       if (funcIdx !== undefined) fctx.body.push({ op: "call", funcIdx });
     }
     elseResultType = { kind: "i32" };
@@ -1075,6 +1092,22 @@ export function compilePropertyAccess(
       if (funcName === "") {
         if (ts.isIdentifier(expr.expression)) {
           // Direct variable access: f.name => infer "f"
+          // BUT: per ES spec (NamedEvaluation / IsAnonymousFunctionDefinition),
+          // if the binding initializer is a "covered" form like `(0, function(){})`
+          // (comma expression, call, etc.), the function's .name is NOT set to
+          // the binding name. Only direct FunctionExpression/ArrowFunction/
+          // ClassExpression (optionally parenthesized) qualifies. (#1049)
+          const sym = ctx.checker.getSymbolAtLocation(expr.expression);
+          const decl = sym?.valueDeclaration;
+          let initExpr: ts.Expression | undefined;
+          if (decl && (ts.isBindingElement(decl) || ts.isVariableDeclaration(decl)) && decl.initializer) {
+            initExpr = decl.initializer;
+          }
+          if (initExpr !== undefined && !isAnonymousFunctionDefinition(initExpr)) {
+            // Covered form — .name is "" (or whatever the inner fn already has)
+            addStringConstantGlobal(ctx, "");
+            return compileStringLiteral(ctx, fctx, "");
+          }
           funcName = expr.expression.text;
         } else if (ts.isPropertyAccessExpression(expr.expression)) {
           // Property access: obj.method.name => infer "method"
@@ -1364,7 +1397,7 @@ export function compilePropertyAccess(
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
       return { kind: "i32" };
     }
-    const funcIdx = ctx.funcMap.get("length");
+    const funcIdx = ctx.jsStringImports.get("length");
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "i32" };

@@ -1,0 +1,14 @@
+{
+  "pr": 89,
+  "conclusion": "success",
+  "head_branch": "issue-1051-private-static-methods",
+  "head_sha": "6804a4d750fa1ad22e2f2326b978a75555e15582",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24286221159",
+  "timestamp": "2026-04-11T16:09:20Z",
+  "pass": 21794,
+  "fail": 18675,
+  "compile_error": 1344,
+  "delta": 214,
+  "regressions": 0,
+  "improvements": 214
+}

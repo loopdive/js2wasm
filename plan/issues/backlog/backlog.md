@@ -20,22 +20,22 @@ Issues where the compiler emits invalid Wasm (type errors, missing args, bad cas
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [984](../ready/984.md) | Medium | Regression: compileExpression receives undefined AST nodes in class/private generator paths | **154 CE** | Ready |
-| [997](../ready/997.md) | High | BigInt ToPrimitive/wrapped-value helper emits i64 into externref __call_fn_0 wrapper | **55 CE** | Ready |
-| [998](../ready/998.md) | High | Class static-private method line-terminator variants still emit argless call/return_call in constructors | **121 CE** | Ready |
-| [999](../ready/999.md) | High | for-of / for-await-of destructuring still emits f64↔externref and struct field mismatches | **75 CE** | Ready |
-| [986](../ready/986.md) | Medium | Internal compiler crash: BigInt serialization in statement/object emit paths | **37 CE** | Ready |
-| [987](../ready/987.md) | Medium | Object-literal spread/object-shape fallbacks still fail in generator and spread call sites | **40 CE** | Ready |
-| [991](../ready/991.md) | High | Iterator helper generator-reentrancy tests hit 30s compiler timeout | **3 CT** | Ready |
-| [992](../ready/992.md) | Medium | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | **1 CT** | Ready |
-| [993](../ready/993.md) | High | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | **3 CT** | Ready |
-| [994](../ready/994.md) | Medium | Class static-private-getter test hits 30s compiler timeout | **1 CT** | Ready |
-| [995](../ready/995.md) | Low | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | **1 CT** | Ready |
-| [996](../ready/996.md) | Low | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | **1 CT** | Ready |
-| [990](../ready/990.md) | **HIGH** | Remaining early-error gaps after detectEarlyErrors(): reserved words, module grammar, using, ASI | **327 FAIL** | Ready |
-| [926](../ready/926.md) | Low | Fixture tests not supported in unified mode | **172 CE** | Ready |
-| [684](../ready/684.md) | High | Any-typed variable inference from usage | Many CE | Ready |
-| [685](../ready/685.md) | Medium | Interprocedural return type flow | Perf + correctness | Ready |
+| [984](../sprints/40/984.md) | Medium | Regression: compileExpression receives undefined AST nodes in class/private generator paths | **154 CE** | Ready |
+| [997](../sprints/41/997.md) | High | BigInt ToPrimitive/wrapped-value helper emits i64 into externref __call_fn_0 wrapper | **55 CE** | Ready |
+| [998](../sprints/40/998.md) | High | Class static-private method line-terminator variants still emit argless call/return_call in constructors | **121 CE** | Ready |
+| [999](../sprints/40/999.md) | High | for-of / for-await-of destructuring still emits f64↔externref and struct field mismatches | **75 CE** | Ready |
+| [986](../sprints/40/986.md) | Medium | Internal compiler crash: BigInt serialization in statement/object emit paths | **37 CE** | Ready |
+| [987](../sprints/40/987.md) | Medium | Object-literal spread/object-shape fallbacks still fail in generator and spread call sites | **40 CE** | Ready |
+| [991](../sprints/42/991.md) | High | Iterator helper generator-reentrancy tests hit 30s compiler timeout | **3 CT** | Ready |
+| [992](../sprints/42/992.md) | Medium | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | **1 CT** | Ready |
+| [993](../sprints/42/993.md) | High | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | **3 CT** | Ready |
+| [994](../sprints/42/994.md) | Medium | Class static-private-getter test hits 30s compiler timeout | **1 CT** | Ready |
+| [995](../sprints/42/995.md) | Low | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | **1 CT** | Ready |
+| [996](../sprints/42/996.md) | Low | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | **1 CT** | Ready |
+| [990](../sprints/42/990.md) | **HIGH** | Remaining early-error gaps after detectEarlyErrors(): reserved words, module grammar, using, ASI | **327 FAIL** | Ready |
+| [926](926.md) | Low | Fixture tests not supported in unified mode | **172 CE** | Ready |
+| [684](684.md) | High | Any-typed variable inference from usage | Many CE | Ready |
+| [685](685.md) | Medium | Interprocedural return type flow | Perf + correctness | Ready |
 
 ## 2. Runtime Semantics -- Assertions, Type Errors, Destructuring, Iterators
 
@@ -43,17 +43,17 @@ Issues where compiled Wasm runs but produces wrong values or wrong error types.
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [846](../ready/846.md) | **CRITICAL** | assert.throws not thrown for invalid built-in args | **2,799 FAIL** | Ready |
-| [820](../ready/820.md) | **CRITICAL** | Nullish TypeError / null-pointer / illegal-cast umbrella | **6,993 FAIL** | Ready |
-| [779](../ready/779.md) | **CRITICAL** | Assert failures: wrong values (umbrella/analysis) | **8,674 FAIL** | Ready |
-| [825](../ready/825.md) | High | Null dereference failures (sub-issue of #820) | **2,295 FAIL** | Ready |
-| [826](../ready/826.md) | High | Illegal cast failures (sub-issue of #820) | **1,276 FAIL** | Ready |
-| [786](../ready/786.md) | Medium | Multi-assertion failures (returned N > 2) | **2,142 FAIL** | In-progress |
-| [859](../ready/859.md) | High | Map.forEach callback captures are immutable snapshots (runtime hang) | **1 hang** | Ready |
-| [860](../ready/860.md) | Medium | Promise executor and property-assigned fns not compiled as host callbacks | **1 hang** | Ready |
-| [983](../ready/983.md) | High | WasmGC objects leak to JS host as opaque values | **1,087 FAIL** | Ready |
-| [821](../ready/821.md) | High | BindingElement null guard over-triggering | 537 FAIL | Review |
-| [929](../ready/929.md) | Medium | Object.defineProperty called on non-object | **88 FAIL** | Ready |
+| [846](846.md) | **CRITICAL** | assert.throws not thrown for invalid built-in args | **2,799 FAIL** | Ready |
+| [820](820.md) | **CRITICAL** | Nullish TypeError / null-pointer / illegal-cast umbrella | **6,993 FAIL** | Ready |
+| [779](779.md) | **CRITICAL** | Assert failures: wrong values (umbrella/analysis) | **8,674 FAIL** | Ready |
+| [825](../sprints/42/825.md) | High | Null dereference failures (sub-issue of #820) | **2,295 FAIL** | Ready |
+| [826](../sprints/42/826.md) | High | Illegal cast failures (sub-issue of #820) | **1,276 FAIL** | Ready |
+| [786](786.md) | Medium | Multi-assertion failures (returned N > 2) | **2,142 FAIL** | In-progress |
+| [859](859.md) | High | Map.forEach callback captures are immutable snapshots (runtime hang) | **1 hang** | Ready |
+| [860](860.md) | Medium | Promise executor and property-assigned fns not compiled as host callbacks | **1 hang** | Ready |
+| [983](983.md) | High | WasmGC objects leak to JS host as opaque values | **1,087 FAIL** | Ready |
+| [821](821.md) | High | BindingElement null guard over-triggering | 537 FAIL | Review |
+| [929](929.md) | Medium | Object.defineProperty called on non-object | **88 FAIL** | Ready |
 
 ## 3. Built-in Methods -- Array, Set, Map, Math, Error, RegExp
 
@@ -61,113 +61,155 @@ Issues where built-in method implementations are missing, incomplete, or incorre
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [739](../ready/739.md) | Medium | Object.defineProperty correctness | 262 FAIL | Ready |
+| [739](739.md) | Medium | Object.defineProperty correctness | 262 FAIL | Ready |
 
 ## 4. Class Features -- Computed Props, Super, Private Fields, Accessors
 
 No standalone open issues remain in this category right now. Active class-related
-work is tracked under compiler/runtime buckets such as [#984](../ready/984.md)
-and [#998](../ready/998.md); [#848](../done/848.md) is already complete.
+work is tracked under compiler/runtime buckets such as [#984](../sprints/40/984.md)
+and [#998](../sprints/40/998.md); [#848](../sprints/30/848.md) is already complete.
 
 ## 5. Iterator / Generator / Async Model
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [854](../ready/854.md) | High | Iterator protocol: null next/return/throw methods | **126 FAIL** | Ready |
-| [735](../blocked/735.md) | Medium | Async iteration correctness | 329 FAIL | Blocked |
-| [680](../ready/680.md) | High | Pure Wasm generators (state machines) | Eliminates 10 host imports | Ready |
-| [681](../ready/681.md) | High | Pure Wasm iterators (struct-based) | Eliminates 5 host imports | Ready |
+| [854](../sprints/42/854.md) | High | Iterator protocol: null next/return/throw methods | **126 FAIL** | Ready |
+| [735](735.md) | Medium | Async iteration correctness | 329 FAIL | Blocked |
+| [680](680.md) | High | Pure Wasm generators (state machines) | Eliminates 10 host imports | Ready |
+| [681](681.md) | High | Pure Wasm iterators (struct-based) | Eliminates 5 host imports | Ready |
 
 ## 6. Property Model / Prototype Chain
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [802](../ready/802.md) | Low | Dynamic prototype support (conditional __proto__) | property-model | Ready |
+| [802](802.md) | Low | Dynamic prototype support (conditional __proto__) | property-model | Ready |
 
 ## 7. Test Infrastructure
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [824](../ready/824.md) | High | Timeout umbrella / timeout reporting cleanup | Historical `548 CE` stale bucket | Ready |
-| [1000](../ready/1000.md) | High | Normalize issue frontmatter and repopulate historical sprint issue assignments | Planning / dashboard correctness | Ready |
-| [1003](../ready/1003.md) | High | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Ready |
-| [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX | Ready |
-| [699](../ready/699.md) | High | Shared compiler pool for test262 | Perf | Ready |
-| [832](../ready/832.md) | Medium | Upgrade to TypeScript 6.x for Unicode 16.0 identifiers | 82 skip | Ready |
-| [833](../ready/833.md) | Low | Consider sloppy mode support for legacy octal escapes | 16 skip | Ready |
+| [824](824.md) | High | Timeout umbrella / timeout reporting cleanup | Historical `548 CE` stale bucket | Ready |
+| [1000](../sprints/42/1000.md) | High | Normalize issue frontmatter and repopulate historical sprint issue assignments | Planning / dashboard correctness | Ready |
+| [1003](../sprints/42/1003.md) | High | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | Planning / dashboard correctness | Ready |
+| [687](687.md) | High | Live-streaming report with run selector | Developer UX | Ready |
+| [699](699.md) | High | Shared compiler pool for test262 | Perf | Ready |
+| [832](832.md) | Medium | Upgrade to TypeScript 6.x for Unicode 16.0 identifiers | 82 skip | Ready |
+| [833](833.md) | Low | Consider sloppy mode support for legacy octal escapes | 16 skip | Ready |
 
 ## 8. Proposals and Standards -- Temporal, SharedArrayBuffer, BigInt Arrays, Set Methods, Disposable
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [661](../ready/661.md) | Medium | Temporal API via polyfill | 1,128 tests | Ready |
-| [674](../ready/674.md) | Low | SharedArrayBuffer / Atomics | 493 tests | Ready |
-| [837](../ready/837.md) | Low | Map/WeakMap upsert (getOrInsert/getOrInsertComputed) | ~110 skip | Ready |
-| [838](../ready/838.md) | Low | BigInt64Array / BigUint64Array typed arrays | 19 skip + 25 CE | Ready |
-| [988](../ready/988.md) | Low | FinalizationRegistry constructor unsupported in official-scope tests | **23 CE** | Ready |
-| [830](../ready/830.md) | Low | DisposableStack extern class missing | **39 FAIL** | Ready |
-| [671](../backlog/671.md) | Low | with statement support | 272 tests | Backlog |
+| [661](661.md) | Medium | Temporal API via polyfill | 1,128 tests | Ready |
+| [674](674.md) | Low | SharedArrayBuffer / Atomics | 493 tests | Ready |
+| [837](837.md) | Low | Map/WeakMap upsert (getOrInsert/getOrInsertComputed) | ~110 skip | Ready |
+| [838](838.md) | Low | BigInt64Array / BigUint64Array typed arrays | 19 skip + 25 CE | Ready |
+| [988](../sprints/40/988.md) | Low | FinalizationRegistry constructor unsupported in official-scope tests | **23 CE** | Ready |
+| [830](../sprints/40/830.md) | Low | DisposableStack extern class missing | **39 FAIL** | Ready |
+| [1036](../sprints/42/1036.md) | Medium | DisposableStack/AsyncDisposableStack property-chain access → Wasm null trap | **94 FAIL** | Ready |
+| [1037](../sprints/42/1037.md) | Medium | Symbol.dispose / Symbol.asyncDispose not accessible | **30 FAIL** | Ready |
+| [1038](../sprints/42/1038.md) | High | Function.prototype.bind not implemented | **70 FAIL** | Ready |
+| [671](671.md) | Low | with statement support | 272 tests | Backlog |
 
 ## 9. Architecture / Refactoring
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [688](../ready/688.md) | Low | Refactor into smaller modules per feature | Maintainability | Ready |
-| [741](../ready/741.md) | Medium | Extract string/any helpers from index.ts | Maintainability | Ready |
-| [788](../ready/788.md) | Medium | Modularize src/ into focused subfolder structure | Maintainability | Ready |
-| [803](../ready/803.md) | Medium | Extract call dispatch -> calls.ts | Maintainability | Ready (sub of #688) |
-| [804](../ready/804.md) | Medium | Extract new expressions -> new-expression.ts | Maintainability | Ready (sub of #688) |
-| [805](../ready/805.md) | Medium | Extract assignment/destructuring -> assignments.ts | Maintainability | Ready (sub of #688) |
-| [806](../ready/806.md) | Medium | Extract increment/decrement -> unary-update.ts | Maintainability | Ready (sub of #688) |
-| [807](../ready/807.md) | Medium | Extract Date/Math/console -> builtins.ts | Maintainability | Ready (sub of #688) |
-| [808](../ready/808.md) | Medium | Extract string/import infra -> imports.ts | Maintainability | Ready (sub of #688) |
-| [809](../ready/809.md) | Medium | Extract native string helpers -> native-strings.ts | Maintainability | Ready (sub of #688) |
-| [810](../ready/810.md) | Medium | Extract class compilation -> class-codegen.ts | Maintainability | Ready (sub of #688) |
-| [811](../ready/811.md) | Medium | Extract fixup passes -> fixups.ts | Maintainability | Ready (sub of #688) |
-| [652](../ready/652.md) | Low | Compile-time ARC / static lifetime analysis | Research | Ready |
-| [682](../ready/682.md) | Medium | RegExp standalone engine / embedded backend for non-JS targets | No host in WASI | Ready |
-| [1002](../ready/1002.md) | Medium | RegExp js-host mode completion | Remaining host-wrapper and Symbol protocol correctness | Ready |
+| [1094](../sprints/42/1094.md) | High | Shrink runtime.ts host boundary — compile-away JS semantics | Standalone/WASI readiness | Ready |
+| [1095](../sprints/42/1095.md) | Medium | Eliminate `as unknown as Instr` casts (273 sites) — extend Instr union | Type safety / IR correctness | Ready |
+| [1096](../sprints/42/1096.md) | Medium | Isolate environment adapters — remove top-level await from core | Embedding / determinism | Ready |
+| [1097](../sprints/42/1097.md) | Low | Remove stale import-helper generator in output.ts | Dead code cleanup | Ready |
+| [1098](../sprints/42/1098.md) | Medium | Audit and reduce patch-layer accumulation in codegen (155 workarounds) | Code quality / interaction risk | Ready |
+| [688](688.md) | Low | Refactor into smaller modules per feature | Maintainability | Ready |
+| [741](741.md) | Medium | Extract string/any helpers from index.ts | Maintainability | Ready |
+| [788](../sprints/39/788.md) | Medium | Modularize src/ into focused subfolder structure | Maintainability | Ready |
+| [803](803.md) | Medium | Extract call dispatch -> calls.ts | Maintainability | Ready (sub of #688) |
+| [804](804.md) | Medium | Extract new expressions -> new-expression.ts | Maintainability | Ready (sub of #688) |
+| [805](805.md) | Medium | Extract assignment/destructuring -> assignments.ts | Maintainability | Ready (sub of #688) |
+| [806](806.md) | Medium | Extract increment/decrement -> unary-update.ts | Maintainability | Ready (sub of #688) |
+| [807](807.md) | Medium | Extract Date/Math/console -> builtins.ts | Maintainability | Ready (sub of #688) |
+| [808](808.md) | Medium | Extract string/import infra -> imports.ts | Maintainability | Ready (sub of #688) |
+| [809](809.md) | Medium | Extract native string helpers -> native-strings.ts | Maintainability | Ready (sub of #688) |
+| [810](810.md) | Medium | Extract class compilation -> class-codegen.ts | Maintainability | Ready (sub of #688) |
+| [811](../sprints/39/811.md) | Medium | Extract fixup passes -> fixups.ts | Maintainability | Ready (sub of #688) |
+| [652](652.md) | Low | Compile-time ARC / static lifetime analysis | Research | Ready |
+| [682](682.md) | Medium | RegExp standalone engine / embedded backend for non-JS targets | No host in WASI | Ready |
+| [1002](1002.md) | Medium | RegExp js-host mode completion | Remaining host-wrapper and Symbol protocol correctness | Ready |
 
 ## 10. Performance Optimization
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [743](../ready/743.md) | Critical | Whole-program type mapper | High pass impact | Ready |
-| [773](../ready/773.md) | Critical | Monomorphize functions with call-site types | High pass impact | Ready |
-| [745](../ready/745.md) | High | Tagged union types for WasmGC | Type precision | Ready |
-| [744](../blocked/744.md) | High | Monomorphize: specialized function copies | Perf | Blocked by #743 |
-| [746](../blocked/746.md) | Medium | Hidden class optimization | Perf | Blocked |
-| [747](../blocked/747.md) | Medium | Escape analysis / stack allocation | Perf | Blocked |
-| [699](../ready/699.md) | High | Shared compiler pool for test262 | Test perf | Ready |
-| [700](../blocked/700.md) | High | Reuse ts.CompilerHost across compilations | 25% speedup | Blocked by #699 |
-| [1001](../ready/1001.md) | Medium | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark | Ready |
-| [1004](../ready/1004.md) | Medium | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark | Ready |
-| [1005](../ready/1005.md) | Medium | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Startup benchmarking | Ready |
-| [1007](../ready/1007.md) | Medium | Re-run historical test262 checkpoints with the current harness for comparable conformance history | Historical benchmark normalization | Ready |
-| [1008](../ready/1008.md) | Medium | Add mobile-first layout support to the playground | Playground mobile UX | Ready |
-| [1009](../ready/1009.md) | Medium | Investigate report-page benchmark outliers where Wasm is much slower than JS | Report benchmark analysis | Ready |
-| [991](../ready/991.md) | High | Iterator helper generator-reentrancy tests hit 30s compiler timeout | ~90s worker time/run | Ready |
-| [993](../ready/993.md) | High | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | ~90s worker time/run | Ready |
-| [992](../ready/992.md) | Medium | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | 30s worker time/run | Ready |
-| [994](../ready/994.md) | Medium | Class static-private-getter test hits 30s compiler timeout | 30s worker time/run | Ready |
-| [995](../ready/995.md) | Low | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | 30s worker time/run | Ready |
-| [996](../ready/996.md) | Low | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 30s worker time/run | Ready |
+| [743](743.md) | Critical | Whole-program type mapper | High pass impact | Ready |
+| [773](../sprints/42/773.md) | Critical | Monomorphize functions with call-site types | High pass impact | Ready |
+| [745](745.md) | High | Tagged union types for WasmGC | Type precision | Ready |
+| [744](../sprints/42/744.md) | High | Monomorphize: specialized function copies | Perf | Ready |
+| [746](746.md) | Medium | Hidden class optimization | Perf | Blocked |
+| [747](747.md) | Medium | Escape analysis / stack allocation | Perf | Blocked |
+| [699](699.md) | High | Shared compiler pool for test262 | Test perf | Ready |
+| [700](700.md) | High | Reuse ts.CompilerHost across compilations | 25% speedup | Blocked by #699 |
+| [1001](../sprints/42/1001.md) | Medium | Preallocate counted `number[]` push loops into dense WasmGC arrays | Landing-page perf / array benchmark | Ready |
+| [1004](../sprints/42/1004.md) | Medium | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | Landing-page perf / string benchmark | Ready |
+| [1005](../sprints/42/1005.md) | Medium | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | Startup benchmarking | Ready |
+| [888](888.md) | High | Benchmark js2wasm vs StarlingMonkey vs native Node.js on Wasmtime cold start, size, and runtime | Competitive positioning / deployment tradeoffs | Ready |
+| [1007](1007.md) | Medium | Re-run historical test262 checkpoints with the current harness for comparable conformance history | Historical benchmark normalization | Ready |
+| [1008](1008.md) | Medium | Add mobile-first layout support to the playground | Playground mobile UX | Ready |
+| [1009](1009.md) | Medium | Investigate report-page benchmark outliers where Wasm is much slower than JS | Report benchmark analysis | Ready |
+| [991](../sprints/42/991.md) | High | Iterator helper generator-reentrancy tests hit 30s compiler timeout | ~90s worker time/run | Ready |
+| [993](../sprints/42/993.md) | High | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | ~90s worker time/run | Ready |
+| [992](../sprints/42/992.md) | Medium | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | 30s worker time/run | Ready |
+| [994](../sprints/42/994.md) | Medium | Class static-private-getter test hits 30s compiler timeout | 30s worker time/run | Ready |
+| [995](../sprints/42/995.md) | Low | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | 30s worker time/run | Ready |
+| [996](../sprints/42/996.md) | Low | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 30s worker time/run | Ready |
+
+## 10b. Standalone Execution & Wasm-native APIs
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [1099](../sprints/42/1099.md) | High | Standalone execution demo — FizzBuzz on Wasmtime, zero JS host | Production/infra credibility | Ready (depends on #1094) |
+| [1035](../sprints/42/1035.md) | High | WASI hello-fs: console.log + node:fs → WASI fd_write | Standalone FS proof | Ready |
+| [1100](1100.md) | Medium | Wasm-native Proxy: meta-object protocol without JS host | Standalone Proxy | Ready |
+| [1101](1101.md) | Low | Wasm-native WeakRef / FinalizationRegistry via WasmGC | Standalone weak refs | Ready |
+| [1102](1102.md) | Medium | Wasm-native eval: ahead-of-time compilation strategy | Standalone eval | Ready |
+| [1103](1103.md) | High | Wasm-native Map, Set, WeakMap, WeakSet using WasmGC | Standalone collections | Ready |
+| [1104](1104.md) | Medium | Wasm-native Error construction and stack traces | Standalone errors | Ready |
+| [1105](1105.md) | High | Wasm-native String method implementations | Standalone string ops | Ready |
 
 ## 11. Platform Support
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [639](../ready/639.md) | Critical | Full Component Model adapter (canonical ABI) | Unlocks Fastly, Fermyon | Ready |
-| [640](../ready/640.md) | High | WASI HTTP handler | Unlocks serverless edge | Ready |
-| [644](../ready/644.md) | Critical | Integrate report into playground | Developer experience | Ready |
-| [641](../ready/641.md) | Medium | Shopify Functions template | Best adoption opportunity | Ready |
-| [642](../ready/642.md) | Low | Deno/Cloudflare loader plugins | Developer experience | Ready |
+| [639](639.md) | Critical | Full Component Model adapter (canonical ABI) | Unlocks Fastly, Fermyon | Ready |
+| [640](640.md) | High | WASI HTTP handler | Unlocks serverless edge | Ready |
+| [644](644.md) | Critical | Integrate report into playground | Developer experience | Ready |
+| [641](641.md) | Medium | Shopify Functions template | Best adoption opportunity | Ready |
+| [642](642.md) | Low | Deno/Cloudflare loader plugins | Developer experience | Ready |
+
+---
+
+## Harvest 2026-04-11 (post Sprint 40) — newly filed
+
+Filed by `harvester-post-sprint-40-merge` from post-Sprint-40 test262 baseline (21,190 pass / 19,298 fail). See [harvest summary](../../architecture/harvest-2026-04-11-post-sprint-40.md).
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [1047](../sprints/42/1047.md) | High | Private class elements leak onto prototype (hasOwnProperty) | **246 FAIL** | Ready |
+| [1049](1049.md) | Medium | Destructuring default init fn-name-cover: wrong `.name` | **176 FAIL** | Ready |
+| [1053](../sprints/41/1053.md) | Medium | `arguments.length` wrong for trailing-comma class method calls | **133 FAIL** | Ready |
+| [1054](../sprints/40/1054.md) | Medium | Derived class indirect-eval supercall does not throw SyntaxError | **122 FAIL** | Ready |
+| [1050](1050.md) | Medium | annexB: Extension not observed when binding would early-error | **110 FAIL** | Ready |
+| [1056](../sprints/41/1056.md) | Low | DataView `set*` instance methods missing | **89 FAIL** | Ready |
+| [1051](1051.md) | Low | Private static class methods return wrong value | **88 FAIL** | Ready |
+| [1052](1052.md) | Low | Array dstr ignores overridden `Array.prototype[Symbol.iterator]` | **80 FAIL** | Ready |
+| [1055](1055.md) | Low | RegExp pattern modifiers: SyntaxError not thrown | **77 FAIL** | Ready |
+| [1048](1048.md) | Low | async-generator dstr: illegal cast in `__closure_N` | **75 FAIL** | Ready |
+| [1057](../sprints/42/1057.md) | Low | `String.prototype.split` result `constructor !== Array` | **68 FAIL** | Ready |
 
 ---
 
 ## Completed (760+ total)
 
-See `plan/issues/done/log.md` for the full completion log.
+See `plan/log/issues-log.md` for the full completion log.
 
 **Session 2026-03-19/20**: 97 issues. Pass: 9,270 -> 13,226 (+43%). CE: 14,950 -> 6,894 (-54%).
 **Session 2026-03-25**: Pass: 14,720 -> 18,437 (+25%). CE: 4,443 -> 1,657 (-63%).

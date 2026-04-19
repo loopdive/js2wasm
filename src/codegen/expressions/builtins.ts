@@ -1,38 +1,19 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Host built-in compilation: console, Date, Math, and WASI output.
  */
 import ts from "typescript";
-import { isStringType, isNumberType, isBooleanType, isVoidType } from "../../checker/type-mapper.js";
+import { isBooleanType, isNumberType, isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import {
-  addFuncType,
-  addImport,
-  addStringConstantGlobal,
-  addStringImports,
-  addUnionImports,
-  ensureAnyHelpers,
-  ensureExnTag,
-  getArrTypeIdxFromVec,
-  getOrRegisterVecType,
-  localGlobalIdx,
-  nativeStringType,
-  resolveWasmType,
-} from "../index.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
-import { reportError } from "../context/errors.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { compileExpression, coerceType, VOID_RESULT } from "../shared.js";
+import { flushLateImportShifts } from "../expressions/late-imports.js";
+import { addFuncType } from "../index.js";
+import { ensureNativeStringExternBridge } from "../native-strings.js";
 import type { InnerResult } from "../shared.js";
-import {
-  coerceType as coerceTypeImpl,
-  defaultValueInstrs,
-  emitGuardedRefCast,
-  pushDefaultValue,
-} from "../type-coercion.js";
-import { compileStringLiteral, compileNativeStringMethodCall, emitBoolToString } from "../string-ops.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
-import { emitThrowString, getFuncParamTypes, isEffectivelyVoidReturn, getWasmFuncReturnType } from "./helpers.js";
-import { tryStaticToNumber, isStaticNaN } from "./misc.js";
+import { compileExpression, VOID_RESULT } from "../shared.js";
+import { compileStringLiteral } from "../string-ops.js";
+import { isStaticNaN, tryStaticToNumber } from "./misc.js";
 
 // ── Builtins ─────────────────────────────────────────────────────────
 
@@ -54,6 +35,8 @@ function compileConsoleCall(
     if (isStringType(argType)) {
       // Fast mode: flatten + marshal native string to externref before passing to host
       if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+        ensureNativeStringExternBridge(ctx);
+        flushLateImportShifts(ctx, fctx);
         const strFlattenIdx = ctx.nativeStrHelpers.get("__str_flatten");
         if (strFlattenIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: strFlattenIdx });

@@ -1,31 +1,24 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * String operations extracted from expressions.ts.
  * Handles string literals, templates, tagged templates, string binary ops,
  * and native string method calls.
  */
 import ts from "typescript";
-import { reportError } from "./context/errors.js";
-import { pushBody } from "./context/bodies.js";
-import { allocLocal } from "./context/locals.js";
-import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
-import { addStringConstantGlobal, ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
-import { getArrTypeIdxFromVec, getOrRegisterTemplateVecType, getOrRegisterVecType } from "./registry/types.js";
-import { resolveWasmType, addUnionImports, nativeStringType, flatStringType, addStringImports } from "./index.js";
 import { isBooleanType, isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
-import {
-  compileExpression,
-  VOID_RESULT,
-  getLine,
-  getCol,
-  ensureLateImport,
-  flushLateImportShifts,
-  registerCompileStringLiteral,
-} from "./shared.js";
 import { compileNumericBinaryOp } from "./binary-ops.js";
+import { pushBody } from "./context/bodies.js";
+import { reportError } from "./context/errors.js";
+import { allocLocal } from "./context/locals.js";
+import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { getFuncParamTypes } from "./expressions/helpers.js";
-import { emitNullCheckThrow } from "./property-access.js";
-import { pushDefaultValue, pushParamSentinel, emitGuardedRefCast, coerceType } from "./type-coercion.js";
+import { addStringImports, addUnionImports, flatStringType, nativeStringType, resolveWasmType } from "./index.js";
+import { ensureNativeStringExternBridge } from "./native-strings.js";
+import { addStringConstantGlobal, ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
+import { getArrTypeIdxFromVec, getOrRegisterTemplateVecType, getOrRegisterVecType } from "./registry/types.js";
+import { compileExpression, ensureLateImport, flushLateImportShifts, registerCompileStringLiteral } from "./shared.js";
+import { coerceType, emitGuardedRefCast, pushDefaultValue, pushParamSentinel } from "./type-coercion.js";
 
 // ── Guarded funcref cast (ref.test before ref.cast to avoid illegal cast traps) ──
 function emitGuardedFuncRefCast(fctx: FunctionContext, funcTypeIdx: number): void {
@@ -116,7 +109,7 @@ export function compileTemplateExpression(
   // Ensure string imports (concat, etc.) are available — template literals need concat
   addStringImports(ctx);
 
-  const concatIdx = ctx.funcMap.get("concat");
+  const concatIdx = ctx.jsStringImports.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) return null;
 
@@ -176,6 +169,8 @@ export function compileNativeTemplateExpression(
 ): ValType | null {
   const concatIdx = ctx.nativeStrHelpers.get("__str_concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
+  ensureNativeStringExternBridge(ctx);
+  flushLateImportShifts(ctx, fctx);
   const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
   if (concatIdx === undefined) return null;
 
@@ -752,7 +747,7 @@ function compileBatchedConcat(ctx: CodegenContext, fctx: FunctionContext, operan
     fctx.body.push({ op: "call", funcIdx });
   } else {
     // Fallback: pairwise concat (shouldn't happen in js-string mode)
-    const concatIdx = ctx.funcMap.get("concat");
+    const concatIdx = ctx.jsStringImports.get("concat");
     if (concatIdx !== undefined) {
       for (let i = 1; i < arity; i++) {
         fctx.body.push({ op: "call", funcIdx: concatIdx });
@@ -1001,6 +996,22 @@ export function compileStringBinaryOp(
     // Struct ref → externref for concat (e.g. object toString → "[object Object]")
     fctx.body.push({ op: "extern.convert_any" });
   }
+  // For equality/inequality ops: String wrapper objects (new String("x")) are externrefs
+  // but NOT wasm:js-string strings — the `equals` builtin would throw a WebAssembly trap.
+  // Unwrap to primitive string via __unbox_string before comparison.
+  const isEqOrNeq =
+    op === ts.SyntaxKind.EqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+  const isLeftStringWrapper =
+    (leftTsType.flags & ts.TypeFlags.Object) !== 0 && leftTsType.getSymbol()?.name === "String";
+  if (isEqOrNeq && isLeftStringWrapper && leftType?.kind === "externref") {
+    const unboxIdx = ensureLateImport(ctx, "__unbox_string", [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    const finalUnboxIdx = ctx.funcMap.get("__unbox_string") ?? unboxIdx;
+    if (finalUnboxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: finalUnboxIdx });
+  }
   const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
   const rightType = compileExpression(ctx, fctx, expr.right);
   if (op === ts.SyntaxKind.PlusToken && !rightType) {
@@ -1042,11 +1053,20 @@ export function compileStringBinaryOp(
     // Struct ref → externref for concat
     fctx.body.push({ op: "extern.convert_any" });
   }
+  // Unwrap right-side String wrapper for equality/inequality (same as left above)
+  const isRightStringWrapper =
+    (rightTsType.flags & ts.TypeFlags.Object) !== 0 && rightTsType.getSymbol()?.name === "String";
+  if (isEqOrNeq && isRightStringWrapper && rightType?.kind === "externref") {
+    const unboxIdx2 = ensureLateImport(ctx, "__unbox_string", [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    const finalUnboxIdx2 = ctx.funcMap.get("__unbox_string") ?? unboxIdx2;
+    if (finalUnboxIdx2 !== undefined) fctx.body.push({ op: "call", funcIdx: finalUnboxIdx2 });
+  }
 
   switch (op) {
     case ts.SyntaxKind.PlusToken: {
       // String concatenation
-      const funcIdx = ctx.funcMap.get("concat");
+      const funcIdx = ctx.jsStringImports.get("concat");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "externref" };
@@ -1055,7 +1075,7 @@ export function compileStringBinaryOp(
     }
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
     case ts.SyntaxKind.EqualsEqualsToken: {
-      const funcIdx = ctx.funcMap.get("equals");
+      const funcIdx = ctx.jsStringImports.get("equals");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "i32" };
@@ -1064,7 +1084,7 @@ export function compileStringBinaryOp(
     }
     case ts.SyntaxKind.ExclamationEqualsEqualsToken:
     case ts.SyntaxKind.ExclamationEqualsToken: {
-      const funcIdx = ctx.funcMap.get("equals");
+      const funcIdx = ctx.jsStringImports.get("equals");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         fctx.body.push({ op: "i32.eqz" }); // negate
@@ -1678,6 +1698,8 @@ export function compileNativeStringMethodCall(
   const importName = `string_${method}`;
   const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx !== undefined) {
+    ensureNativeStringExternBridge(ctx);
+    flushLateImportShifts(ctx, fctx);
     // Marshal receiver: flatten + native string -> externref
     compileExpression(ctx, fctx, propAccess.expression);
     emitFlatten();

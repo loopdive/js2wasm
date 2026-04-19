@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Peephole optimization pass for Wasm function bodies.
  *
@@ -49,7 +50,7 @@
  *        ...
  *      )
  */
-import type { Instr, WasmModule, ValType } from "../ir/types.js";
+import type { Instr, ValType, WasmModule } from "../ir/types.js";
 
 /**
  * Remove redundant ref.as_non_null after ref.cast in a single instruction list.

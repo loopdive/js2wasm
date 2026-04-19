@@ -1,85 +1,29 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Unary operator compilation: prefix/postfix unary, increment/decrement.
  */
 import ts from "typescript";
+import type { Instr, ValType } from "../../ir/types.js";
+import { emitBoundsCheckedArrayGet } from "../array-methods.js";
+import { emitToInt32 } from "../binary-ops.js";
+import { reportError } from "../context/errors.js";
+import { allocLocal, getLocalType } from "../context/locals.js";
+import type { CodegenContext, FunctionContext } from "../context/types.js";
 import {
-  isExternalDeclaredClass,
-  isHeterogeneousUnion,
-  isNumberType,
-  isStringType,
-  isBooleanType,
-  isVoidType,
-} from "../../checker/type-mapper.js";
-import type { FieldDef, Instr, ValType } from "../../ir/types.js";
-import {
-  addFuncType,
-  addImport,
-  addStringConstantGlobal,
-  addStringImports,
   addUnionImports,
   ensureAnyHelpers,
-  ensureExnTag,
   ensureI32Condition,
   ensureStructForType,
   getArrTypeIdxFromVec,
-  getOrRegisterRefCellType,
-  getOrRegisterVecType,
   isAnyValue,
   localGlobalIdx,
-  nativeStringType,
-  resolveWasmType,
 } from "../index.js";
-import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
-import { popBody, pushBody } from "../context/bodies.js";
-import { reportError } from "../context/errors.js";
-import type { ClosureInfo, CodegenContext, FunctionContext, RestParamInfo } from "../context/types.js";
-import { compileExpression, coerceType, valTypesMatch, VOID_RESULT, resolveThisStructName } from "../shared.js";
-import type { InnerResult } from "../shared.js";
-import {
-  defaultValueInstrs,
-  emitGuardedRefCast,
-  emitGuardedFuncRefCast,
-  emitSafeExternrefToF64,
-  pushDefaultValue,
-  pushParamSentinel,
-} from "../type-coercion.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./late-imports.js";
-import {
-  compileNativeStringMethodCall,
-  compileStringLiteral,
-  compileTaggedTemplateExpression,
-  compileTemplateExpression,
-  emitBoolToString,
-} from "../string-ops.js";
-import { compileBinaryExpression, emitModulo, emitToInt32 } from "../binary-ops.js";
-import {
-  compileElementAccess,
-  compilePropertyAccess,
-  emitBoundsGuardedArraySet,
-  emitNullCheckThrow,
-  emitNullGuardedStructGet,
-  isProvablyNonNull,
-  typeErrorThrowInstrs,
-} from "../property-access.js";
-import {
-  compileObjectDefineProperty,
-  compileObjectDefineProperties,
-  compileObjectKeysOrValues,
-  compilePropertyIntrospection,
-} from "../object-ops.js";
-import {
-  compileArrayConstructorCall,
-  compileArrayLiteral,
-  compileObjectLiteral,
-  compileSymbolCall,
-  resolveComputedKeyExpression,
-} from "../literals.js";
-import { findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
+import { emitBoundsGuardedArraySet } from "../property-access.js";
+import { coerceType, compileExpression } from "../shared.js";
+import { defaultValueInstrs, emitSafeExternrefToF64 } from "../type-coercion.js";
 import { emitThrowString, getFuncParamTypes } from "./helpers.js";
-import { compilePropertyAssignment, compileElementAssignment, compileExternSetFallback } from "./assignment.js";
 import { emitMappedArgParamSync } from "./logical-ops.js";
 import { resolveStructName, tryStaticToNumber } from "./misc.js";
-import { emitBoundsCheckedArrayGet } from "../array-methods.js";
 
 function unwrapParens(node: ts.Expression): ts.Expression {
   while (ts.isParenthesizedExpression(node)) {
@@ -532,28 +476,11 @@ function compilePrefixUnary(
         }
       }
       if (ctx.fast && operandType?.kind === "i32") {
-        // Check if operand is literal 0 — must produce -0 (IEEE 754 negative zero)
-        // Integer subtraction (0 - 0) gives 0, not -0, so use f64 path
-        // Unwrap parenthesized expressions to handle -(0)
-        let innerOperand: ts.Expression = expr.operand;
-        while (ts.isParenthesizedExpression(innerOperand)) {
-          innerOperand = innerOperand.expression;
-        }
-        if (ts.isNumericLiteral(innerOperand) && Number(innerOperand.text) === 0) {
-          // Pop the i32.const 0 already on stack, push f64.const -0 directly
-          fctx.body.pop();
-          fctx.body.push({ op: "f64.const", value: -0 });
-          return { kind: "f64" };
-        }
-        // For non-zero i32 values, integer negation is fine (no -0 concern)
-        const tmp = allocLocal(fctx, `__neg_${fctx.locals.length}`, {
-          kind: "i32",
-        });
-        fctx.body.push({ op: "local.set", index: tmp });
-        fctx.body.push({ op: "i32.const", value: 0 });
-        fctx.body.push({ op: "local.get", index: tmp });
-        fctx.body.push({ op: "i32.sub" });
-        return { kind: "i32" };
+        // i32 can't represent -0, so convert to f64 and use f64.neg.
+        // This ensures -(0) correctly produces IEEE 754 negative zero.
+        fctx.body.push({ op: "f64.convert_i32_s" });
+        fctx.body.push({ op: "f64.neg" });
+        return { kind: "f64" };
       }
       if (operandType?.kind === "i64") {
         // i64 negate: 0 - x
@@ -1681,4 +1608,4 @@ function compilePostfixIncrementElement(
 
 /** Look up parameter types for a function by its index */
 
-export { compilePrefixUnary, compilePostfixUnary, compileMemberIncDec };
+export { compileMemberIncDec, compilePostfixUnary, compilePrefixUnary };

@@ -110,6 +110,9 @@ class T262Donut extends HTMLElement {
       placed.push({ ...s, radius, lp });
     }
 
+    // Label positions are expressed as deltas from the orbit's actual center
+    // (left:50%) so they track the donut when the orbit container is narrower
+    // than its 380px design width (i.e. on mobile, min(100%, 380px)).
     const makeOrbitStat = (stat) => {
       const { value, label, color, angle, radius, id, lp } = stat;
       const ls = orbitPoint(angle, 126);
@@ -117,9 +120,13 @@ class T262Donut extends HTMLElement {
       const dy = lp.y - ls.y;
       const lineLen = Math.max(Math.sqrt(dx * dx + dy * dy) - 34, 0);
       const dataAttr = id ? ` data-stat="${id}"` : "";
+      const labelDx = lp.x - centerX;
+      const labelDy = lp.y - centerY;
+      const lineDx = ls.x - centerX;
+      const lineDy = ls.y - centerY;
       return `
-        <div class="orbit-connector" style="left:${ls.x}px;top:${ls.y}px;width:${lineLen}px;transform:rotate(${angle - 90}deg)"></div>
-        <div class="orbit-stat" style="left:${lp.x}px;top:${lp.y}px">
+        <div class="orbit-connector" style="left:50%;top:50%;width:${lineLen}px;transform:translate(${lineDx}px,${lineDy}px) rotate(${angle - 90}deg)"></div>
+        <div class="orbit-stat" style="left:50%;top:50%;transform:translate(calc(-50% + ${labelDx}px), calc(-50% + ${labelDy}px))">
           <div class="orbit-value"${dataAttr} style="color:${color}">${id === "pass" ? "0" : Number(value).toLocaleString()}</div>
           <div class="orbit-label">${label}</div>
         </div>`;
@@ -143,6 +150,8 @@ class T262Donut extends HTMLElement {
       <style>
         :host {
           display: block;
+          max-width: 100%;
+          overflow-x: clip;
           --_pass: var(--t262-pass, #3fb950);
           --_fail: var(--t262-fail, #f85149);
           --_ce: var(--t262-ce, #d29922);
@@ -276,10 +285,26 @@ class T262Donut extends HTMLElement {
           color: var(--_text-muted);
         }
         .legend {
-          display: grid;
+          display: none;
           grid-template-columns: 1fr 1fr;
           gap: 8px 16px;
           margin-top: 24px;
+        }
+        /* Narrow viewports: orbit labels don't fit; rely on the legend below.
+           The donut itself is 250px and fits comfortably in ~360px viewports. */
+        @media (max-width: 440px) {
+          .gauge-orbit {
+            height: 280px;
+          }
+          .orbit-connector,
+          .orbit-stat {
+            display: none;
+          }
+          .legend {
+            display: grid;
+            margin-top: 30px;
+            gap: 8px 10px;
+          }
         }
         .legend-item {
           display: flex;
@@ -315,6 +340,9 @@ class T262Donut extends HTMLElement {
           </div>
           <div class="pass-tick"></div>
         </div>
+      </div>
+      <div class="legend">
+        ${legendHTML}
       </div>
     `;
 

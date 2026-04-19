@@ -1,0 +1,15 @@
+{
+  "pr": 209,
+  "conclusion": "failure",
+  "head_branch": "issue-825-class-dstr-fn-name",
+  "head_sha": "2d2ee8ecdea01db98c72b9bb67c831df956ca0e5",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608413690",
+  "timestamp": "2026-04-18T18:56:56Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

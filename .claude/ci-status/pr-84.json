@@ -1,0 +1,14 @@
+{
+  "pr": 84,
+  "conclusion": "failure",
+  "head_branch": "issue-830-disposable-stack-extern",
+  "head_sha": "8372f9b7a6c9e98be12052de951c7288e1ba9173",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24284724392",
+  "timestamp": "2026-04-11T14:44:23Z",
+  "pass": 21556,
+  "fail": 18871,
+  "compile_error": 1386,
+  "delta": 366,
+  "regressions": 3,
+  "improvements": 369
+}

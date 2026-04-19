@@ -1,18 +1,23 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Control flow statement lowering: return, if, switch, break, continue, labeled.
  */
 import ts from "typescript";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { popBody, pushBody } from "../context/bodies.js";
-import { reportError } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { addStringImports, ensureI32Condition, ensureNativeStringHelpers, resolveWasmType } from "../index.js";
-import { isAnyValue, ensureAnyHelpers } from "../shared.js";
-import { collectInstrs, adjustRethrowDepth } from "./shared.js";
-import { compileStatement } from "../shared.js";
+import {
+  coerceType,
+  compileExpression,
+  compileStatement,
+  ensureAnyHelpers,
+  isAnyValue,
+  valTypesMatch,
+} from "../shared.js";
+import { adjustRethrowDepth } from "./shared.js";
 
 function canTailCall(ctx: CodegenContext, fctx: FunctionContext, calleeIdx: number): boolean {
   let calleeTypeIdx: number | undefined;
@@ -451,7 +456,7 @@ export function compileSwitchStatement(ctx: CodegenContext, fctx: FunctionContex
     } else {
       // Non-fast mode: externref string comparison via wasm:js-string equals
       addStringImports(ctx);
-      strEqFuncIdx = ctx.funcMap.get("equals");
+      strEqFuncIdx = ctx.jsStringImports.get("equals");
       wasmType = { kind: "externref" };
     }
   } else if (wasmType.kind === "externref") {

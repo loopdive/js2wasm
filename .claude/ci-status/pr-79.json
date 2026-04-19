@@ -1,0 +1,14 @@
+{
+  "pr": 79,
+  "conclusion": "failure",
+  "head_branch": "issue-1038-function-bind",
+  "head_sha": "c9740239dfa6803a5315e6d1c439843c78c75732",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24283147903",
+  "timestamp": "2026-04-11T13:13:33Z",
+  "pass": 21323,
+  "fail": 19088,
+  "compile_error": 1398,
+  "delta": 133,
+  "regressions": 18,
+  "improvements": 151
+}

@@ -158,7 +158,7 @@ The solution to context window drift is surprisingly analog: **put critical rule
 
 We built four checklists:
 
-### Pre-Commit Checklist (`plan/pre-commit-checklist.md`)
+### Pre-Commit Checklist (`plan/method/pre-commit-checklist.md`)
 
 Read before every `git add` and `git commit`:
 
@@ -175,7 +175,7 @@ Red flags (stop and ask tech lead):
 - `git branch` shows `main` instead of your issue branch
 ```
 
-### Pre-Completion Checklist (`plan/pre-completion-checklist.md`)
+### Pre-Completion Checklist (`plan/method/pre-completion-checklist.md`)
 
 Read before signaling task completion. This is the big one:
 
@@ -191,7 +191,7 @@ Read before signaling task completion. This is the big one:
 9. Signal completion with commit hash
 ```
 
-### Pre-Merge Checklist (`plan/pre-merge-checklist.md`)
+### Pre-Merge Checklist (`plan/method/pre-merge-checklist.md`)
 
 Read by the tech lead before every merge to main:
 
@@ -204,11 +204,11 @@ Read by the tech lead before every merge to main:
 6. Broadcast "main updated, rebase before next commit"
 ```
 
-### Session Start Checklist (`plan/session-start-checklist.md`)
+### Session Start Checklist (`plan/method/session-start-checklist.md`)
 
 Read at the beginning of every session — handles orphaned worktrees, zombie processes, and stale state from previous sessions.
 
-The developer agent definition (`developer.md`) contains a single, emphatic instruction at step 7 of the workflow: **"STOP — Read `plan/pre-completion-checklist.md` now."** Not "remember to rebase." Not "follow the merge protocol." Just: stop, read this file, do what it says. The file contains the current truth. The agent's fading memory of spawn instructions does not.
+The developer agent definition (`developer.md`) contains a single, emphatic instruction at step 7 of the workflow: **"STOP — Read `plan/method/pre-completion-checklist.md` now."** Not "remember to rebase." Not "follow the merge protocol." Just: stop, read this file, do what it says. The file contains the current truth. The agent's fading memory of spawn instructions does not.
 
 ## The merge protocol evolution
 
@@ -231,7 +231,7 @@ Key properties of the ff-only protocol:
 
 When multiple agents edit the same codebase, they will eventually touch the same file. Our codegen lives primarily in three files: `expressions.ts`, `statements.ts`, and `index.ts`. Every developer agent wants to be in there.
 
-We handle this with a low-tech lock table in `plan/file-locks.md`:
+We handle this with a low-tech lock table in `plan/method/file-locks.md`:
 
 ```markdown
 | Agent | File           | Function              | Issue |

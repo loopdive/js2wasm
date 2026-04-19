@@ -51,7 +51,7 @@ Record results in sprint doc.
 
 ## Step 5: Update sprint doc
 
-Edit `plan/sprints/sprint-{N}.md`:
+Edit `plan/issues/sprints/{N}/sprint.md`:
 - Fill in final test262 numbers
 - Calculate delta from baseline
 - Note any deferred tasks
@@ -60,7 +60,25 @@ Edit `plan/sprints/sprint-{N}.md`:
 
 Append entry to `plan/diary.md` with sprint summary.
 
-## Step 7: Update session memory
+## Step 7: Run test262 error harvest
+
+Before closing the sprint, run the `harvest-errors` skill to cluster any new failure patterns that surfaced during the sprint and file issues for them. This keeps the next sprint's backlog populated with concrete, actionable work instead of requiring manual triage.
+
+```
+Invoke the harvest-errors skill (or spawn a dedicated harvester agent)
+```
+
+The harvester:
+- Clusters failures in `benchmarks/results/test262-current.jsonl` by normalized error pattern
+- Cross-references with existing issues in `plan/issues/`
+- Files new issue files in `plan/issues/` for unaddressed buckets above the threshold (default: >50 occurrences)
+- Reports a summary table
+
+Commit any newly-filed issues before Step 8.
+
+**Why here and not at sprint kickoff:** after the sprint's merges have landed, the failure distribution has shifted — running harvest at wrap-up captures the *current* gaps, not stale pre-sprint ones. The next sprint's planning session (PO) can then slice the fresh issue list by theme. See memory: `feedback_harvest_at_sprint_end.md`.
+
+## Step 8: Update session memory
 
 Update `/home/node/.claude/projects/-workspace/memory/project_next_session.md` with:
 - Final git hash
@@ -71,7 +89,7 @@ Update `/home/node/.claude/projects/-workspace/memory/project_next_session.md` w
 ## Step 8: Commit everything
 
 ```bash
-git add plan/sprints/ plan/diary.md plan/dependency-graph.md
+git add plan/sprints/ plan/diary.md plan/log/dependency-graph.md
 git commit -m "chore: sprint-{N} wrap-up — [pass count] pass ([rate]%)"
 ```
 
