@@ -667,16 +667,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "1025",
-      "title": "BindingElement array-pattern default guards still use ref.is_null",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "",
-      "status": "ready",
-      "sprint": "Sprint-41"
-    },
-    {
       "id": "1011",
       "title": "Offline-first benchmarks with Playwright DOM measurement and Run Live button",
       "priority": "medium",
