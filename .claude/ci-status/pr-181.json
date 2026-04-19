@@ -1,0 +1,15 @@
+{
+  "pr": 181,
+  "conclusion": "failure",
+  "head_branch": "issue-1128-toprimitive-typeerror",
+  "head_sha": "6f1e6681f210ac7d9870aa7cd84f0f08881c702a",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608488500",
+  "timestamp": "2026-04-18T18:52:14Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

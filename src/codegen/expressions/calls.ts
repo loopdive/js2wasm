@@ -50,7 +50,7 @@ import { emitNullCheckThrow, typeErrorThrowInstrs } from "../property-access.js"
 import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch, VOID_RESULT } from "../shared.js";
 import { compileStatement, hoistFunctionDeclarations } from "../statements.js";
-import { emitSetExtrasArgv } from "../statements/nested-declarations.js";
+import { emitSetExtrasArgv, ensureArgcGlobal } from "../statements/nested-declarations.js";
 import { compileNativeStringMethodCall, compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import {
   defaultValueInstrs,
@@ -169,6 +169,23 @@ function usesArguments(node: ts.Node): boolean {
 }
 
 /**
+ * Emit `global.set __argc` with the actual call-site argument count.
+ * This communicates how many args were really passed so the callee can
+ * build a correctly-sized `arguments` object (per ES spec, arguments.length
+ * equals the number of args passed, not the number of formal params).
+ * Only emitted when the callee is known to use `arguments`.
+ */
+function emitSetArgc(ctx: CodegenContext, fctx: FunctionContext, actualArgCount: number, paramCount: number): void {
+  const argcGlobalIdx = ensureArgcGlobal(ctx);
+  // Set __argc = min(actualArgCount, paramCount) — the count of formal param
+  // slots actually filled. Overflow args are in __extras_argv and tracked by
+  // extrasLen, so totalLen = argc + extrasLen gives the correct arguments.length.
+  const argc = Math.min(actualArgCount, paramCount);
+  fctx.body.push({ op: "i32.const", value: argc });
+  fctx.body.push({ op: "global.set", index: argcGlobalIdx } as Instr);
+}
+
+/**
  * Flatten call-site arguments, expanding spread elements on array literals
  * into individual expressions. Returns the flat list of expressions.
  * For spread on non-literal arrays, returns null (cannot flatten at compile time).
@@ -262,6 +279,23 @@ function compileOptionalDirectCall(ctx: CodegenContext, fctx: FunctionContext, e
   });
 
   return resultType;
+}
+
+function isEvalCallExpression(expr: ts.CallExpression): boolean {
+  if (expr.questionDotToken) return false;
+  let callee: ts.Expression = expr.expression;
+  while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
+  if (ts.isIdentifier(callee) && callee.text === "eval") return true;
+  // Indirect form: (0, eval)(src) — a comma expression whose right side is `eval`.
+  if (
+    ts.isBinaryExpression(callee) &&
+    callee.operatorToken.kind === ts.SyntaxKind.CommaToken &&
+    ts.isIdentifier(callee.right) &&
+    callee.right.text === "eval"
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -460,6 +494,40 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // Optional chaining on direct call: fn?.()
   if (expr.questionDotToken && ts.isIdentifier(expr.expression)) {
     return compileOptionalDirectCall(ctx, fctx, expr);
+  }
+
+  // eval(...) — route to __extern_eval JS-host import (#1006).
+  // Covers direct `eval(src)` and indirect `(0, eval)(src)` / `(0,eval)(src)`.
+  // In standalone/WASI mode the host import is unavailable and will trap at
+  // instantiation time — callers that need eval must use a JS host.
+  if (isEvalCallExpression(expr)) {
+    let evalIdx = ctx.funcMap.get("__extern_eval");
+    if (evalIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const evalType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__extern_eval", { kind: "func", typeIdx: evalType });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      evalIdx = ctx.funcMap.get("__extern_eval");
+    }
+    if (evalIdx === undefined) {
+      fctx.body.push({ op: "unreachable" });
+      return null;
+    }
+    if (expr.arguments.length === 0) {
+      fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+      return { kind: "externref" };
+    }
+    const srcArg = expr.arguments[0]!;
+    const srcType = compileExpression(ctx, fctx, srcArg);
+    if (srcType && srcType.kind !== "externref") {
+      coerceType(ctx, fctx, srcType, { kind: "externref" });
+    }
+    for (let ai = 1; ai < expr.arguments.length; ai++) {
+      const extraType = compileExpression(ctx, fctx, expr.arguments[ai]!);
+      if (extraType) fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "call", funcIdx: evalIdx });
+    return { kind: "externref" };
   }
 
   // Dynamic import() — delegate to __dynamic_import host import.
@@ -949,8 +1017,45 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           const fullName = `${className}_${methodName}`;
           const funcIdx = ctx.funcMap.get(fullName);
           if (funcIdx !== undefined && expr.arguments.length > 0) {
-            // First argument is the thisArg (receiver)
-            compileExpression(ctx, fctx, expr.arguments[0]!);
+            // First argument is the thisArg (receiver).
+            // For class methods called via .call()/.apply() the receiver might
+            // not actually be an instance of the class (e.g. `method.call({})`).
+            // Without a brand check, the downstream ref.cast traps with
+            // uncatchable "illegal cast". Instead, emit a ref.test guard and
+            // throw a catchable TypeError on mismatch — matches the ES
+            // private-field brand-check semantics (#826, class/elements
+            // illegal_cast bucket).
+            const selfParamTypes = getFuncParamTypes(ctx, funcIdx);
+            const selfParamType = selfParamTypes?.[0];
+            const thisArgType = compileExpression(ctx, fctx, expr.arguments[0]!);
+            if (
+              thisArgType &&
+              selfParamType &&
+              (selfParamType.kind === "ref" || selfParamType.kind === "ref_null") &&
+              (thisArgType.kind === "externref" ||
+                thisArgType.kind === "anyref" ||
+                thisArgType.kind === "eqref" ||
+                ((thisArgType.kind === "ref" || thisArgType.kind === "ref_null") &&
+                  (thisArgType as { typeIdx: number }).typeIdx !== (selfParamType as { typeIdx: number }).typeIdx))
+            ) {
+              const selfTypeIdx = (selfParamType as { typeIdx: number }).typeIdx;
+              if (thisArgType.kind === "externref") {
+                fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
+              }
+              const thisTmpType: ValType = { kind: "anyref" };
+              const thisTmp = allocTempLocal(fctx, thisTmpType);
+              fctx.body.push({ op: "local.tee", index: thisTmp } as Instr);
+              fctx.body.push({ op: "ref.test", typeIdx: selfTypeIdx } as Instr);
+              fctx.body.push({ op: "i32.eqz" } as Instr);
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "empty" },
+                then: typeErrorThrowInstrs(ctx, expr),
+              } as Instr);
+              fctx.body.push({ op: "local.get", index: thisTmp } as Instr);
+              fctx.body.push({ op: "ref.cast", typeIdx: selfTypeIdx } as Instr);
+              releaseTempLocal(fctx, thisTmp);
+            }
 
             if (isCall) {
               // .call(thisArg, arg1, arg2, ...) — remaining args are positional
@@ -2788,6 +2893,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsEarly) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, staticParamCount);
+          }
           // Re-lookup funcIdx: argument compilation may trigger addUnionImports
           const finalStaticIdx = ctx.funcMap.get(fullName) ?? funcIdx;
           fctx.body.push({ op: "call", funcIdx: finalStaticIdx });
@@ -3156,6 +3265,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsStatic) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, paramCount);
+          }
           const finalMethodIdx = ctx.funcMap.get(fullName) ?? resolvedStaticIdx;
           fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
           const sig = ctx.checker.getResolvedSignature(expr);
@@ -3235,6 +3348,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsNg) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, ngParamCount);
+          }
           const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
           fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
           const elseInstrs = fctx.body;
@@ -3289,6 +3406,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
             pushDefaultValue(fctx, paramTypes[i]!, ctx);
           }
+        }
+        // Set __argc before the call so the callee knows the actual arg count
+        if (calleeReadsArgsNn) {
+          emitSetArgc(ctx, fctx, expr.arguments.length, methodParamCount);
         }
         // Re-lookup funcIdx: argument compilation may trigger addUnionImports
         const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -3371,6 +3492,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                 pushDefaultValue(fctx, paramTypes[i]!, ctx);
               }
             }
+            // Set __argc before the call so the callee knows the actual arg count
+            if (calleeReadsArgsSm) {
+              emitSetArgc(ctx, fctx, expr.arguments.length, smMethodParamCount);
+            }
             const finalStructMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
             fctx.body.push({ op: "call", funcIdx: finalStructMethodIdx });
             const elseInstrs = fctx.body;
@@ -3427,6 +3552,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             for (let i = Math.min(expr.arguments.length, nnMethodParamCount) + 1; i < paramTypes.length; i++) {
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
+          }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsNns) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, nnMethodParamCount);
           }
           // Re-lookup funcIdx: argument compilation may trigger addUnionImports
           const finalStructMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -4656,6 +4785,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         for (let i = totalPushed; i < paramTypes.length; i++) {
           pushDefaultValue(fctx, paramTypes[i]!, ctx);
         }
+      }
+      // Set __argc before the call so the callee knows the actual arg count
+      if (calleeReadsArgsDirect) {
+        emitSetArgc(ctx, fctx, expr.arguments.length, paramCount);
       }
     }
 

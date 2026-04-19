@@ -1,0 +1,15 @@
+{
+  "pr": 190,
+  "conclusion": "failure",
+  "head_branch": "issue-1136-array-flat",
+  "head_sha": "cb1d14fe13f184b546b3f5316fb0841acda8e25c",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608491021",
+  "timestamp": "2026-04-18T18:53:34Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
