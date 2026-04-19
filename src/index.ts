@@ -20,6 +20,7 @@ export type ImportIntent =
   | { type: "date_now" }
   | { type: "declared_global"; name: string }
   | { type: "host_eq" }
+  | { type: "host_loose_eq" }
   | { type: "dynamic_import" }
   | { type: "proxy_create" };
 

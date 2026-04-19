@@ -2,14 +2,14 @@
   "pr": 216,
   "conclusion": "failure",
   "head_branch": "issue-dstr-default-unresolvable",
-  "head_sha": "d0b794ae32c250d34b97a93559c9ba2988cbe1ad",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616743078",
-  "timestamp": "2026-04-19T01:57:21Z",
-  "pass": 22695,
-  "fail": 15159,
-  "compile_error": 3946,
-  "snapshot_delta": 245,
-  "net_per_test": 245,
+  "head_sha": "ce97b6efe45051972e799a82752f30d401850c18",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24614914712",
+  "timestamp": "2026-04-18T22:27:46Z",
+  "pass": 22664,
+  "fail": 15172,
+  "compile_error": 3964,
+  "snapshot_delta": 214,
+  "net_per_test": 214,
   "regressions": 118,
-  "improvements": 363
+  "improvements": 332
 }
