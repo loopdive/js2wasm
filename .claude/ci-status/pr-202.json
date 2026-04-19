@@ -1,0 +1,15 @@
+{
+  "pr": 202,
+  "conclusion": "failure",
+  "head_branch": "issue-async-gen-dstr-illegal-cast",
+  "head_sha": "182a6458e3ef87eb344f1b9d99b33530bf6e8573",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24624874248",
+  "timestamp": "2026-04-19T12:04:10Z",
+  "pass": 22468,
+  "fail": 15571,
+  "compile_error": 3764,
+  "snapshot_delta": 18,
+  "net_per_test": 18,
+  "regressions": 262,
+  "improvements": 280
+}
