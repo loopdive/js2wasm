@@ -4032,7 +4032,17 @@ export function isTupleType(type: ts.Type): boolean {
 export function getTupleElementTypes(ctx: CodegenContext, tsType: ts.Type): ValType[] {
   const typeRef = tsType as ts.TypeReference;
   const typeArgs = ctx.checker.getTypeArguments(typeRef);
-  return typeArgs.map((t) => resolveWasmType(ctx, t));
+  return typeArgs.map((t) => {
+    // In tuple element position, `undefined` must not map to i32: i32 can't
+    // distinguish "missing" from 0, which breaks destructuring default checks
+    // on hole/undefined elements (e.g. `[x=23] = [,]` — the param default is a
+    // hole-array tuple; the sNaN sentinel gets truncated to i32 0 and the inner
+    // default `x=23` never fires). Promote to f64 so the sNaN sentinel survives.
+    if ((t.flags & ts.TypeFlags.Undefined) !== 0) {
+      return { kind: "f64" };
+    }
+    return resolveWasmType(ctx, t);
+  });
 }
 
 /**
