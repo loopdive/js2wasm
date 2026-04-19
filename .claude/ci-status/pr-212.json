@@ -1,0 +1,15 @@
+{
+  "pr": 212,
+  "conclusion": "cancelled",
+  "head_branch": "issue-cluster-b-class-dstr",
+  "head_sha": "bbc6076c7934ccbe7d49661063aa7d5850343043",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24626225140",
+  "timestamp": "2026-04-19T12:18:19Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

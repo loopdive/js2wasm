@@ -104,6 +104,88 @@
   ],
   "ready": [
     {
+      "id": "1135",
+      "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1134",
+      "title": "__any_eq loose equality missing cross-tag coercion — null==undefined, bool==number all return false",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1133",
+      "title": "__any_strict_eq tag-5 string comparison uses identity, not content — 'a' === 'a' returns false for any-typed strings",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1129",
+      "title": "ToObject (§7.1.18) not implemented — no primitive auto-boxing",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1128",
+      "title": "OrdinaryToPrimitive returns undefined instead of throwing TypeError (§7.1.1.1 step 6)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1090"
+      ],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1127",
+      "title": "SameValue for DefineProperty f64 comparison uses f64.ne — wrong for NaN and ±0",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1127",
+      "title": "Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]]",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Ready"
+    },
+    {
+      "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "ready",
+      "sprint": "42"
+    },
+    {
       "id": "1126",
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
@@ -122,16 +204,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "benchmarking",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1123",
-      "title": "Verify landing page claims and code examples against current compiler behavior",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "correctness",
       "status": "ready",
       "sprint": "42"
     },
@@ -166,6 +238,26 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1119",
+      "title": "SingleNameBinding fn-name-class cluster (71 null_deref)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1119",
+      "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Ready"
     },
     {
       "id": "1119",
@@ -314,26 +406,6 @@
       "sprint": "42"
     },
     {
-      "id": "1094",
-      "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1093",
-      "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
       "id": "1089",
       "title": "codegen: support dynamic import() expressions — 429 test262 tests skipped",
       "priority": "medium",
@@ -442,28 +514,6 @@
         "1074"
       ],
       "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1073",
-      "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1006"
-      ],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1067",
-      "title": "Dependency graph as a web component adopting the landing page color scheme",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
       "status": "ready",
       "sprint": "42"
     },
@@ -637,36 +687,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "1008",
-      "title": "Add mobile-first layout support to the playground",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "Backlog"
-    },
-    {
-      "id": "1006",
-      "title": "Support eval via JS host import",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1005",
-      "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
       "id": "1004",
       "title": "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation",
       "priority": "medium",
@@ -715,66 +735,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "996",
-      "title": "Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "error-model",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "995",
-      "title": "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "iterator-protocol",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "994",
-      "title": "Class static-private-getter test hits 30s compiler timeout",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "993",
-      "title": "Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "992",
-      "title": "Iterator.prototype.take limit-less-than-total hits 30s compiler timeout",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "iterator-protocol",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "991",
-      "title": "Iterator helper generator-reentrancy tests hit 30s compiler timeout",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "error-model",
       "status": "ready",
       "sprint": "42"
     },
@@ -1509,6 +1469,16 @@
   ],
   "inprogress": [
     {
+      "id": "1093",
+      "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
       "id": "1064",
       "title": "DataView bridge: subview metadata so bounds errors propagate",
       "priority": "medium",
@@ -1569,6 +1539,16 @@
       "sprint": "42"
     },
     {
+      "id": "1008",
+      "title": "Add mobile-first layout support to the playground",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
       "id": "1007",
       "title": "Re-run historical test262 checkpoints with the current harness for comparable conformance history",
       "priority": "medium",
@@ -1604,8 +1584,50 @@
   ],
   "review": [
     {
+      "id": "1123",
+      "title": "Verify landing page claims and code examples against current compiler behavior",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
       "id": "1117",
       "title": "Expected TypeError but got wrong error type (136 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1094",
+      "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1073",
+      "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1006"
+      ],
+      "goal": "spec-completeness",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1067",
+      "title": "Dependency graph as a web component adopting the landing page color scheme",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -1622,6 +1644,26 @@
       "goal": "async-model",
       "status": "review",
       "sprint": "Backlog"
+    },
+    {
+      "id": "1006",
+      "title": "Support eval via JS host import",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1005",
+      "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "review",
+      "sprint": "42"
     },
     {
       "id": "929",
@@ -2270,6 +2312,66 @@
       "goal": "core-semantics",
       "status": "done",
       "sprint": "41"
+    },
+    {
+      "id": "996",
+      "title": "Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "error-model",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "995",
+      "title": "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "iterator-protocol",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "994",
+      "title": "Class static-private-getter test hits 30s compiler timeout",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "993",
+      "title": "Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "992",
+      "title": "Iterator.prototype.take limit-less-than-total hits 30s compiler timeout",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "iterator-protocol",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "991",
+      "title": "Iterator helper generator-reentrancy tests hit 30s compiler timeout",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "error-model",
+      "status": "done",
+      "sprint": "42"
     },
     {
       "id": "990",
