@@ -230,6 +230,16 @@
       "sprint": "42"
     },
     {
+      "id": "1120",
+      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "42"
+    },
+    {
       "id": "1119",
       "title": "SingleNameBinding fn-name-class cluster (71 null_deref)",
       "priority": "medium",
@@ -1458,16 +1468,6 @@
     }
   ],
   "inprogress": [
-    {
-      "id": "1120",
-      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "in-progress",
-      "sprint": "42"
-    },
     {
       "id": "1093",
       "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
