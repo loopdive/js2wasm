@@ -8,6 +8,8 @@ function parseArgs(argv) {
     input: "",
     output: "",
     includeProposals: false,
+    baselineSha: "",
+    baselineGeneratedAt: "",
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -18,6 +20,10 @@ function parseArgs(argv) {
       args.output = argv[++i] || "";
     } else if (arg === "--include-proposals") {
       args.includeProposals = true;
+    } else if (arg === "--baseline-sha") {
+      args.baselineSha = argv[++i] || "";
+    } else if (arg === "--baseline-generated-at") {
+      args.baselineGeneratedAt = argv[++i] || "";
     }
   }
 
@@ -116,6 +122,8 @@ async function main() {
 
   const report = {
     timestamp: new Date().toISOString(),
+    baseline_generated_at: args.baselineGeneratedAt || new Date().toISOString(),
+    baseline_sha: args.baselineSha || "",
     mode: {
       include_proposals: args.includeProposals ? 1 : 0,
       label: args.includeProposals ? "full test262" : "official test262 (default scope)",
