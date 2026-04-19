@@ -32,6 +32,8 @@ export interface CodegenOptions {
   nativeStrings?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
+  /** Node builtin modules detected during import preprocessing (#1044) */
+  nodeBuiltins?: import("../../import-resolver.js").NodeBuiltinImport[];
   /** Set of function names imported from node:fs (detected pre-preprocessing) */
   wasiNodeFsFuncs?: Set<string>;
 }
@@ -432,6 +434,8 @@ export interface CodegenContext {
   funcConstructorMap: Map<string, { structTypeIdx: number; ctorFuncName: string }>;
   /** Per-compilation recursion guard for ensureStructForType (prevents infinite loops on circular types) */
   ensureStructPending: Set<ts.Type>;
+  /** Node builtin modules registered as externref globals (#1044) */
+  nodeBuiltinGlobals: Map<string, number>; // localName → funcIdx
 }
 
 export type { SourcePos };

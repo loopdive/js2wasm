@@ -92,7 +92,8 @@ export function compileSource(
   // Before preprocessing strips import declarations, detect node:fs imports
   // for WASI mode (preprocessing replaces them with declare stubs).
   const wasiNodeFsFuncs = options.target === "wasi" ? detectNodeFsImports(source) : undefined;
-  const processedSource = preprocessImports(rewriteEvalSuperCall(source));
+  const preprocessed = preprocessImports(rewriteEvalSuperCall(source));
+  const processedSource = preprocessed.source;
 
   // Step 1: Parse and type-check
   let isJsMode = options.allowJs === true || (options.fileName?.endsWith(".js") ?? false);
@@ -277,6 +278,7 @@ export function compileSource(
         fast: options.fast,
         nativeStrings: options.nativeStrings,
         wasi: options.target === "wasi",
+        nodeBuiltins: preprocessed.nodeBuiltins,
         wasiNodeFsFuncs,
       });
       mod = result.module;

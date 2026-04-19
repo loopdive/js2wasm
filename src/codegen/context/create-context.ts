@@ -133,6 +133,7 @@ export function createCodegenContext(
     shapePropFlags: new Map(),
     funcConstructorMap: new Map(),
     ensureStructPending: new Set(),
+    nodeBuiltinGlobals: new Map(),
   };
 
   getOrRegisterVecType(ctx, "externref", { kind: "externref" });
