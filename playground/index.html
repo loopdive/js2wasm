@@ -182,7 +182,7 @@
         padding: 0;
         border: none;
         border-radius: 6px;
-        background: rgba(255, 255, 255, 0.04);
+        background: transparent;
         box-shadow: none;
         color: #d9d9d9;
         cursor: pointer;
@@ -200,11 +200,11 @@
         fill: currentColor;
       }
       .panel-tab-toggle:hover {
-        background: rgba(255, 255, 255, 0.07);
+        background: transparent;
       }
       .panel-tab-toggle.active {
         color: #ffffff;
-        background: rgba(255, 255, 255, 0.09);
+        background: transparent;
       }
       .right-editor-controls-slot {
         position: sticky;
@@ -229,30 +229,32 @@
         display: none;
       }
 
-      .mobile-header {
-        display: none;
-      }
       .mobile-sidebar-overlay {
         display: none;
       }
-      .layout-split.bottom-collapsible {
+      .layout-split.bottom-collapsible,
+      .layout-child.bottom-collapsible {
         overflow: hidden;
       }
-      .layout-split.bottom-collapsible > .layout-child:last-child {
+      .layout-split.bottom-collapsible > .layout-child:last-child,
+      .layout-child.bottom-collapsible > .layout-child:last-child {
         opacity: 1;
         transform: scaleY(1) translateY(0);
         transform-origin: top center;
       }
-      .layout-split.bottom-collapsed > .layout-child:first-child {
+      .layout-split.bottom-collapsed > .layout-child:first-child,
+      .layout-child.bottom-collapsed > .layout-child:first-child {
         flex: 1 1 100% !important;
       }
-      .layout-split.bottom-collapsed > .layout-divider-v {
+      .layout-split.bottom-collapsed > .layout-divider-v,
+      .layout-child.bottom-collapsed > .layout-divider-v {
         height: 0 !important;
         min-height: 0 !important;
         opacity: 0;
         pointer-events: none;
       }
-      .layout-split.bottom-collapsed > .layout-child:last-child {
+      .layout-split.bottom-collapsed > .layout-child:last-child,
+      .layout-child.bottom-collapsed > .layout-child:last-child {
         flex: 0 0 0 !important;
         min-height: 0 !important;
         max-height: 0 !important;
@@ -265,7 +267,9 @@
 
       @media (max-width: 900px), (max-height: 720px) {
         .layout-split.bottom-collapsible > .layout-child,
-        .layout-split.bottom-collapsible > .layout-divider-v {
+        .layout-split.bottom-collapsible > .layout-divider-v,
+        .layout-child.bottom-collapsible > .layout-child,
+        .layout-child.bottom-collapsible > .layout-divider-v {
           transition:
             flex 0.36s cubic-bezier(0.22, 1, 0.36, 1),
             flex-basis 0.36s cubic-bezier(0.22, 1, 0.36, 1),
@@ -278,92 +282,20 @@
         body {
           height: 100dvh;
         }
-        .mobile-header {
-          position: fixed;
-          inset: 0 0 auto 0;
-          z-index: 1200;
-          isolation: isolate;
-          height: 64px;
-          padding: 0 20px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          background: rgba(6, 10, 20, 0.92);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
-        }
-        .mobile-header-logo {
-          display: inline-flex;
-          align-items: center;
-          text-decoration: none;
-        }
-        .mobile-header-main {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          min-width: 0;
-          flex: 1 1 auto;
-        }
-        .mobile-header-actions {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          min-width: 0;
-        }
-        .mobile-header-actions-right {
-          margin-left: auto;
-        }
-        .mobile-header-logo img {
-          height: 34px;
-          width: auto;
-          display: block;
-          filter: grayscale(1) contrast(2.4) brightness(1.35);
-        }
-        .mobile-header-action-btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 54px;
-          height: 54px;
-          padding: 0 18px;
-          border-radius: 14px;
-          border: none;
-          background: rgba(255, 255, 255, 0.04);
-          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-          color: rgba(255, 255, 255, 0.82);
-          cursor: pointer;
-          font: inherit;
-          font-size: 0.78rem;
-          line-height: 1;
-          white-space: nowrap;
-        }
-        .mobile-header-action-btn:disabled {
-          opacity: 0.35;
-          cursor: not-allowed;
-        }
-        .mobile-header-action-btn .tb-icon {
-          font-size: 1.22rem;
-          line-height: 1;
-        }
-        .mobile-header-actions .panel-tab-toggle svg {
-          width: 22px;
-          height: 22px;
-        }
-        .mobile-header-timing {
-          color: #7c7c7c;
-          font-size: 0.72rem;
-          line-height: 1;
-          white-space: nowrap;
-        }
         .main-area {
           padding-top: 0 !important;
-          margin-top: 64px;
-          height: calc(100dvh - 64px);
+          margin-top: 0;
+          height: 100dvh;
+        }
+        .layout-divider-h {
+          width: 10px;
+        }
+        .layout-divider-v {
+          height: 10px;
         }
         .mobile-sidebar-overlay {
           position: fixed;
-          top: 64px;
+          top: 0;
           left: 0;
           right: 0;
           bottom: 0;
@@ -385,7 +317,7 @@
         }
         .mobile-sidebar-close {
           position: fixed;
-          top: 68px;
+          top: 10px;
           right: 10px;
           z-index: 3;
           width: 32px;
@@ -405,13 +337,66 @@
           background: transparent;
         }
         .panel-tab {
-          min-height: 34px;
-          padding: 0 10px;
-          font-size: 11px;
+          min-height: 50px;
+          width: fit-content;
+          flex: 0 0 auto;
+          padding: 0 16px;
+          font-size: 13px;
         }
         .panel-tab-bar {
-          min-height: 34px;
-          height: 34px;
+          min-height: 50px;
+          height: 50px;
+        }
+        .panel-tab .panel-tab-meta {
+          display: none;
+        }
+        .panel-tab-controls-slot:not(.right-editor-controls-slot) {
+          position: sticky;
+          left: 0;
+          z-index: 2;
+          background: var(--panel-header-bg);
+          box-shadow: 12px 0 16px -16px rgba(0, 0, 0, 0.9);
+        }
+        .panel-tab-controls {
+          gap: 8px;
+        }
+        .panel-tab-controls > .toolbar-logo img {
+          height: 28px;
+        }
+        .panel-tab-controls > .toolbar-btn {
+          height: 40px;
+          padding: 0 16px;
+          border-radius: 8px;
+          background: transparent;
+        }
+        .panel-tab-controls > .toolbar-btn .tb-icon.lg {
+          font-size: 1.25rem;
+        }
+        .panel-tab-controls > .toolbar-btn .tb-label {
+          font-size: 13px;
+        }
+        .panel-tab-toggle {
+          width: 38px;
+          height: 38px;
+          background: transparent;
+        }
+        .panel-tab-toggle.active {
+          background: transparent;
+        }
+        .panel-tab-toggle svg {
+          width: 24px;
+          height: 24px;
+        }
+        .right-editor-controls-slot {
+          position: sticky;
+          left: auto;
+          right: 0;
+          margin-left: auto;
+          z-index: 3;
+          background: var(--panel-header-bg);
+          border-left: 1px solid var(--separator-color);
+          border-right: none;
+          box-shadow: -12px 0 16px -16px rgba(0, 0, 0, 0.9);
         }
         .t262-cat-header {
           font-size: 12px;
@@ -509,6 +494,7 @@
         border-bottom: 1px solid var(--separator-color);
         flex-shrink: 0;
         overflow-x: auto;
+        overscroll-behavior-x: contain;
         background: var(--panel-header-bg);
       }
       .panel-tab-controls-slot {
@@ -531,13 +517,18 @@
         gap: 6px;
         min-height: var(--panel-tab-height);
         padding: 0 14px;
+        position: relative;
         cursor: grab;
+        touch-action: none;
         font-size: 12px;
         color: var(--muted-text);
         border-right: 1px solid var(--separator-color);
         white-space: nowrap;
         flex-shrink: 0;
         user-select: none;
+      }
+      .panel-tab.has-close.active {
+        padding-right: 36px;
       }
       .panel-tab:hover {
         color: #bbb;
@@ -558,14 +549,18 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        position: absolute;
+        top: 50%;
+        right: 10px;
+        transform: translateY(-50%);
         border-radius: 3px;
         opacity: 0;
         cursor: pointer;
-        margin-left: auto;
+        pointer-events: none;
       }
-      .panel-tab:hover .close-btn,
-      .panel-tab.active .close-btn {
+      .panel-tab.has-close.active .close-btn {
         opacity: 0.5;
+        pointer-events: auto;
       }
       .panel-tab .close-btn:hover {
         opacity: 1;
@@ -932,13 +927,13 @@
       }
       .t262-search {
         width: 100%;
-        background: #202020;
+        background: #1b1b1b;
         background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%237f7f7f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>');
         background-repeat: no-repeat;
         background-position: 12px center;
         background-size: 15px 15px;
-        border: 1px solid #343434;
-        border-radius: 7px;
+        border: 1px solid #2c2c2c;
+        border-radius: 3px;
         color: #d7d7d7;
         padding: 10px 14px 10px 36px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1327,15 +1322,6 @@
       <button class="toolbar-btn" id="download-wasm" disabled>
         <span class="tb-icon">&#11015;</span><span class="tb-label">download</span>
       </button>
-    </div>
-    <div class="mobile-header">
-      <div class="mobile-header-main">
-        <a class="mobile-header-logo" href="../" aria-label="js2 home">
-          <img src="/js2logo.svg" alt="JS2 logo" />
-        </a>
-        <div class="mobile-header-actions" id="mobile-topbar-primary"></div>
-        <div class="mobile-header-actions mobile-header-actions-right" id="mobile-topbar-actions"></div>
-      </div>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>
