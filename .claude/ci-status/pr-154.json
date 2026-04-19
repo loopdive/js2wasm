@@ -1,15 +1,15 @@
 {
   "pr": 154,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-1068-await-label-fix",
-  "head_sha": "68601aa54724d369a40e3e2645a6d894d9a453a2",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629770308",
-  "timestamp": "2026-04-19T16:16:58Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "fb7f46a655fb24b3da0a2786746dea672faf13c9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629634474",
+  "timestamp": "2026-04-19T16:48:18Z",
+  "pass": 22763,
+  "fail": 15010,
+  "compile_error": 3886,
+  "snapshot_delta": 313,
+  "net_per_test": 313,
+  "regressions": 635,
+  "improvements": 948
 }
