@@ -14144,8 +14144,8 @@
       "title": "Add mobile-first layout support to the playground",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
-      "sprint": "Backlog",
+      "raw_status": "in-progress",
+      "sprint": "42",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -15521,6 +15521,18 @@
     },
     {
       "id": "1119",
+      "title": "SingleNameBinding fn-name-class cluster (71 null_deref)",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1119",
       "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
       "priority": "medium",
       "status": "backlog",
@@ -15633,16 +15645,15 @@
     },
     {
       "id": "1127",
-      "title": "new C() with var C = class {...} resolves to inner class ctor when outer has nested class field",
-      "priority": "high",
+      "title": "Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]]",
+      "priority": "medium",
       "status": "backlog",
       "raw_status": "backlog",
       "sprint": "Ready",
       "depends_on": [],
       "files": [],
       "goal": "conformance",
-      "cluster": "conformance",
-      "compiler_errors": 3
+      "cluster": "conformance"
     },
     {
       "id": "1127",
@@ -15655,6 +15666,17 @@
       "files": [],
       "goal": "correctness",
       "cluster": "correctness"
+    },
+    {
+      "id": "1135",
+      "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": "backlog",
