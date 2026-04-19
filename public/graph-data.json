@@ -14569,7 +14569,7 @@
       "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [
         "1041"
@@ -26298,5 +26298,5 @@
       "issue": "487"
     }
   ],
-  "generated": "2026-04-16T13:51:32+02:00"
+  "generated": "2026-04-17T07:37:44+02:00"
 }

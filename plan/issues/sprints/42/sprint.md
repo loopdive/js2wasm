@@ -340,7 +340,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1006 | Support eval via JS host import | medium | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
-| #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | ready |
 | #1045 | DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame) | high | ready |
 | #1058 | Compile the TypeScript compiler itself to Wasm — self-hosting stress test | high | ready |
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | ready |
@@ -372,6 +371,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
+| #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | in-progress |
 
 ### Review
 
