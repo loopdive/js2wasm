@@ -283,6 +283,7 @@ export type { WitGeneratorOptions } from "./wit-generator.js";
 export {
   buildImports,
   buildStringConstants,
+  buildWasiPolyfill,
   checkPolicy,
   compileAndInstantiate,
   instantiateWasm,
