@@ -1067,11 +1067,14 @@ export function compilePropertyAccess(
     const lengthSigs =
       callSigs && callSigs.length > 0 ? callSigs : constructSigs2 && constructSigs2.length > 0 ? constructSigs2 : null;
     if (lengthSigs && lengthSigs.length > 0) {
-      // Use the first call/construct signature's parameter count (excluding rest params)
+      // ES spec: Function.length = number of required params before first
+      // optional/default/rest. TS forbids required-after-optional, so filtering
+      // out optional/default/rest is equivalent to iterating until the first one.
       const sig = lengthSigs[0]!;
       const paramCount = sig.parameters.filter((p: any) => {
         const decl = p.valueDeclaration;
-        return !decl || !ts.isParameter(decl) || !decl.dotDotDotToken;
+        if (!decl || !ts.isParameter(decl)) return true;
+        return !decl.dotDotDotToken && !decl.questionToken && !decl.initializer;
       }).length;
       fctx.body.push({ op: "f64.const", value: paramCount });
       return { kind: "f64" };
