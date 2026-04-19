@@ -1,0 +1,15 @@
+{
+  "pr": 227,
+  "conclusion": "failure",
+  "head_branch": "issue-private-access-brand-check",
+  "head_sha": "d061d697b8f57c60e6a9ce692aa41ff475d5b4c6",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24614240955",
+  "timestamp": "2026-04-18T21:41:42Z",
+  "pass": 22469,
+  "fail": 15373,
+  "compile_error": 3958,
+  "snapshot_delta": 19,
+  "net_per_test": 19,
+  "regressions": 1,
+  "improvements": 20
+}
