@@ -24,8 +24,11 @@ STATE_DIR="$HOME/.claude"
 LAST_ACT_FILE="$STATE_DIR/last-user-activity"
 LAST_NOTIFY_FILE="$STATE_DIR/last-notification"
 PENDING_DIR="$STATE_DIR/pending-notify"
-NTFY_URL="http://host.docker.internal:8090/loopdive-claude"
-NTFY_TITLE="ts2wasm"
+# NTFY_URL: defaults to a local docker-host endpoint; override via env to use any ntfy server.
+# Set NTFY_URL=disabled to suppress notifications entirely (e.g. CI or public contributors).
+NTFY_URL="${NTFY_URL:-http://host.docker.internal:8090/loopdive-claude}"
+NTFY_TITLE="${NTFY_TITLE:-ts2wasm}"
+[ "$NTFY_URL" = "disabled" ] && exit 0
 IDLE_THRESHOLD=300   # 5 minutes
 DELAY_SECONDS=300    # 5 minutes
 

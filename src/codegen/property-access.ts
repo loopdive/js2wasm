@@ -1108,6 +1108,17 @@ export function compilePropertyAccess(
       // __type, __function, __class, __object are anonymous type names from TS checker
       if (funcName === "__type" || funcName === "__function" || funcName === "__class" || funcName === "__object")
         funcName = "";
+      // Built-in globals declared as `declare var X: XConstructor` expose the
+      // interface name ("ArrayConstructor") as the type symbol, but the JS
+      // runtime `.name` is the declared identifier ("Array"). Strip the
+      // "Constructor" suffix when it matches the identifier text.
+      if (
+        funcName.endsWith("Constructor") &&
+        ts.isIdentifier(expr.expression) &&
+        expr.expression.text + "Constructor" === funcName
+      ) {
+        funcName = expr.expression.text;
+      }
       // If the symbol name is empty (anonymous function), infer from context:
       if (funcName === "") {
         if (ts.isIdentifier(expr.expression)) {
