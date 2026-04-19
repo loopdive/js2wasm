@@ -1222,32 +1222,32 @@ let __assert_count: number = 1;
 
 class Test262Error {
   message: string;
-  constructor(msg: string) {
+  constructor(msg: string = "") {
     this.message = msg;
   }
 }
 
-function isSameValue(a: number, b: number): number {
+function isSameValue(a: any, b: any): number {
   if (a === b) { return 1; }
   if (a !== a && b !== b) { return 1; }
   return 0;
 }
 
-function assert_sameValue(actual: number, expected: number): void {
+function assert_sameValue(actual: any, expected: any): void {
   __assert_count = __assert_count + 1;
   if (!isSameValue(actual, expected)) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_notSameValue(actual: number, expected: number): void {
+function assert_notSameValue(actual: any, expected: any): void {
   __assert_count = __assert_count + 1;
   if (isSameValue(actual, expected)) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_true(value: number): void {
+function assert_true(value: any): void {
   __assert_count = __assert_count + 1;
   if (!value) {
     if (!__fail) __fail = __assert_count;
@@ -1289,14 +1289,14 @@ function assert_throwsAsync(fn: () => any): void {
   if (needsStrAssert) {
     p += `
 
-function assert_sameValue_str(actual: string, expected: string): void {
+function assert_sameValue_str(actual: any, expected: string): void {
   __assert_count = __assert_count + 1;
   if (actual !== expected) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_notSameValue_str(actual: string, expected: string): void {
+function assert_notSameValue_str(actual: any, expected: string): void {
   __assert_count = __assert_count + 1;
   if (actual === expected) {
     if (!__fail) __fail = __assert_count;
@@ -1307,14 +1307,14 @@ function assert_notSameValue_str(actual: string, expected: string): void {
   if (needsBoolAssert) {
     p += `
 
-function assert_sameValue_bool(actual: boolean, expected: boolean): void {
+function assert_sameValue_bool(actual: any, expected: boolean): void {
   __assert_count = __assert_count + 1;
   if (actual !== expected) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_notSameValue_bool(actual: boolean, expected: boolean): void {
+function assert_notSameValue_bool(actual: any, expected: boolean): void {
   __assert_count = __assert_count + 1;
   if (actual === expected) {
     if (!__fail) __fail = __assert_count;
@@ -1744,20 +1744,29 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // explicitly declared. In sloppy-mode JS these become implicit globals; since
   // we wrap in strict module scope we need explicit declarations.
   // Detect patterns: { prop: ident } = and { prop: ident, ... } =
+  //
+  // EXCEPTION: onlyStrict tests that explicitly test PutValue on unresolvable
+  // references (§6.2.4 step 5) must NOT be patched — the ReferenceError is the
+  // behavior being tested. Detected via `assert.throws(ReferenceError, ...)`
+  // wrapping the destructuring assignment.
   const implicitVars = new Set<string>();
+  const testsUnresolvablePutValue =
+    meta?.flags?.includes("onlyStrict") === true && /assert(?:\.|_)throws\s*\(\s*ReferenceError\b/.test(source);
   // Find all declared vars/let/const
   const declaredVars = new Set<string>();
   for (const m of body.matchAll(/\b(?:var|let|const)\s+([a-zA-Z_$][\w$]*)/g)) {
     declaredVars.add(m[1]!);
   }
-  // Find variables used as targets in object destructuring assignments
-  // Pattern: { anyProp: ident } = or { anyProp: ident, ... } =
-  for (const m of body.matchAll(/\{\s*(?:[\w\\u]+\s*:\s*(\w+)\s*,?\s*)+\}\s*=/g)) {
-    // Re-scan for all prop:ident pairs within the match
-    for (const inner of m[0].matchAll(/[\w\\u]+\s*:\s*(\w+)/g)) {
-      const v = inner[1]!;
-      if (!declaredVars.has(v) && v !== "__fail") {
-        implicitVars.add(v);
+  if (!testsUnresolvablePutValue) {
+    // Find variables used as targets in object destructuring assignments
+    // Pattern: { anyProp: ident } = or { anyProp: ident, ... } =
+    for (const m of body.matchAll(/\{\s*(?:[\w\\u]+\s*:\s*(\w+)\s*,?\s*)+\}\s*=/g)) {
+      // Re-scan for all prop:ident pairs within the match
+      for (const inner of m[0].matchAll(/[\w\\u]+\s*:\s*(\w+)/g)) {
+        const v = inner[1]!;
+        if (!declaredVars.has(v) && v !== "__fail") {
+          implicitVars.add(v);
+        }
       }
     }
   }

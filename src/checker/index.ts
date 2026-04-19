@@ -544,7 +544,9 @@ export function analyzeMultiSource(
   const program = ts.createProgram(rootNames, compilerOptions, compilerHost);
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
-  const semanticDiagnostics = program.getSemanticDiagnostics();
+  const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
+    ? ([] as ts.Diagnostic[])
+    : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   const entrySourceFile = program.getSourceFile(normalizedEntry)!;
