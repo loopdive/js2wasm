@@ -1,0 +1,15 @@
+{
+  "pr": 176,
+  "conclusion": "failure",
+  "head_branch": "issue-1035-wasi-fs",
+  "head_sha": "5f4dc2eb93d9143831c2bacbfab3cdc9e6f023d0",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608481427",
+  "timestamp": "2026-04-18T18:34:08Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
