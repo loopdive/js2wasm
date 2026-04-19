@@ -730,23 +730,51 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
             op: "if",
             blockType: { kind: "val", type: { kind: "i32" } },
             then: [
-              // Cross-tag numeric equality: if one is i32(2) and other is f64(3), compare as f64
+              // Cross-tag loose equality (§7.2.15):
+              // 1. null == undefined (tags 0+1): both tags < 2 → true
               { op: "local.get", index: 2 },
+              { op: "i32.const", value: 2 },
+              { op: "i32.lt_s" },
               { op: "local.get", index: 3 },
-              { op: "i32.add" },
-              { op: "i32.const", value: 5 }, // 2+3 = 5
-              { op: "i32.eq" },
+              { op: "i32.const", value: 2 },
+              { op: "i32.lt_s" },
+              { op: "i32.and" },
               {
                 op: "if",
                 blockType: { kind: "val", type: { kind: "i32" } },
-                then: [
-                  { op: "local.get", index: 0 },
-                  { op: "call", funcIdx: toF64Idx },
-                  { op: "local.get", index: 1 },
-                  { op: "call", funcIdx: toF64Idx },
-                  { op: "f64.eq" },
+                then: [{ op: "i32.const", value: 1 }],
+                else: [
+                  // 2. Both tags are numeric-coercible (tags 2,3,4 = i32,f64,bool)?
+                  //    §7.2.15 steps 4-5, 8-9: coerce to number and compare
+                  //    Check: both tags are in {2,3,4} → tag >= 2 && tag <= 4
+                  { op: "local.get", index: 2 },
+                  { op: "i32.const", value: 2 },
+                  { op: "i32.ge_s" },
+                  { op: "local.get", index: 2 },
+                  { op: "i32.const", value: 4 },
+                  { op: "i32.le_s" },
+                  { op: "i32.and" },
+                  { op: "local.get", index: 3 },
+                  { op: "i32.const", value: 2 },
+                  { op: "i32.ge_s" },
+                  { op: "local.get", index: 3 },
+                  { op: "i32.const", value: 4 },
+                  { op: "i32.le_s" },
+                  { op: "i32.and" },
+                  { op: "i32.and" },
+                  {
+                    op: "if",
+                    blockType: { kind: "val", type: { kind: "i32" } },
+                    then: [
+                      { op: "local.get", index: 0 },
+                      { op: "call", funcIdx: toF64Idx },
+                      { op: "local.get", index: 1 },
+                      { op: "call", funcIdx: toF64Idx },
+                      { op: "f64.eq" },
+                    ],
+                    else: [{ op: "i32.const", value: 0 }],
+                  },
                 ],
-                else: [{ op: "i32.const", value: 0 }],
               },
             ],
             else: [
