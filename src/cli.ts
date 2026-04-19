@@ -1,10 +1,18 @@
 #!/usr/bin/env node
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
+import { createRequire } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { compile } from "./index.js";
 
 const args = process.argv.slice(2);
+
+if (args.includes("--version") || args.includes("-v")) {
+  const require = createRequire(import.meta.url);
+  const pkg = require("../package.json");
+  console.log(pkg.version);
+  process.exit(0);
+}
 
 if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
   console.log(`Usage: js2wasm <input.ts> [options]
@@ -20,6 +28,7 @@ Options:
   --wit             Generate WIT interface file for Component Model
   -O, --optimize    Run Binaryen wasm-opt optimizer (default: -O3)
   -O1..-O4          Set optimization level (1-4)
+  -v, --version     Print version and exit
   -h, --help        Show this help
 
 Output files:

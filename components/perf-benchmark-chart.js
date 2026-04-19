@@ -522,7 +522,7 @@ class PerfBenchmarkChart extends HTMLElement {
           return measured;
         });
       } else if (mode === "absolute-lower-better") {
-        const rows = Array.isArray(json) ? json : json?.benchmarks ?? [];
+        const rows = Array.isArray(json) ? json : (json?.benchmarks ?? []);
         if (!Array.isArray(rows) || rows.length === 0) {
           this.style.display = "none";
           return;
