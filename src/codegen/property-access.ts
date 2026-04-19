@@ -952,15 +952,9 @@ export function compilePropertyAccess(
       "BigInt64Array",
       "BigUint64Array",
     ]);
-    const isShadowed =
-      fctx.localMap.has(builtinName) || (fctx.boxedCaptures?.has(builtinName) ?? false);
+    const isShadowed = fctx.localMap.has(builtinName) || (fctx.boxedCaptures?.has(builtinName) ?? false);
     if (BUILTIN_CTOR_NAMES.has(builtinName) && !isShadowed) {
-      const getBuiltinIdx = ensureLateImport(
-        ctx,
-        "__get_builtin",
-        [{ kind: "externref" }],
-        [{ kind: "externref" }],
-      );
+      const getBuiltinIdx = ensureLateImport(ctx, "__get_builtin", [{ kind: "externref" }], [{ kind: "externref" }]);
       const getIdx = ensureLateImport(
         ctx,
         "__extern_get",
