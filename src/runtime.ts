@@ -1582,6 +1582,72 @@ function resolveImport(
           if (_isWasmStruct(obj)) return _wasmNonExtensibleObjs.has(obj) ? 0 : 1;
           return Object.isExtensible(obj) ? 1 : 0;
         };
+      // Object.keys/values/entries host imports — handle WasmGC structs via
+      // exported getters so opaque struct fields are visible at runtime.
+      // Emitted by compileObjectKeysOrValues when the argument is not a
+      // known struct type (e.g. any, externref, spread result).
+      if (name === "__object_keys")
+        return (obj: any) => {
+          if (obj == null) return [];
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports);
+            if (fieldNames) {
+              const descs = _wasmPropDescs.get(obj);
+              return fieldNames.filter((k) => {
+                if (!descs) return true;
+                const flags = descs.get(k);
+                return flags === undefined || !!(flags & _SC_ENUMERABLE);
+              });
+            }
+          }
+          return Object.keys(obj);
+        };
+      if (name === "__object_values")
+        return (obj: any) => {
+          if (obj == null) return [];
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports);
+            if (fieldNames) {
+              const descs = _wasmPropDescs.get(obj);
+              return fieldNames
+                .filter((k) => {
+                  if (!descs) return true;
+                  const flags = descs.get(k);
+                  return flags === undefined || !!(flags & _SC_ENUMERABLE);
+                })
+                .map((key) => {
+                  const getter = exports?.[`__sget_${key}`];
+                  return typeof getter === "function" ? getter(obj) : undefined;
+                });
+            }
+          }
+          return Object.values(obj);
+        };
+      if (name === "__object_entries")
+        return (obj: any) => {
+          if (obj == null) return [];
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports);
+            if (fieldNames) {
+              const descs = _wasmPropDescs.get(obj);
+              return fieldNames
+                .filter((k) => {
+                  if (!descs) return true;
+                  const flags = descs.get(k);
+                  return flags === undefined || !!(flags & _SC_ENUMERABLE);
+                })
+                .map((key) => {
+                  const getter = exports?.[`__sget_${key}`];
+                  const val = typeof getter === "function" ? getter(obj) : undefined;
+                  return [key, val];
+                });
+            }
+          }
+          return Object.entries(obj);
+        };
       if (name === "__extern_slice")
         return (arr: any, start: number) => {
           if (Array.isArray(arr)) return arr.slice(start);

@@ -364,6 +364,8 @@ export interface CodegenContext {
   widenedVarStructMap: Map<string, string>;
   /** Math methods that need inline Wasm implementations */
   pendingMathMethods: Set<string>;
+  /** True if Math.clz32 or Math.imul is used — requires ToUint32 Wasm helper */
+  needsToUint32: boolean;
   /** Map from class name → class AST declaration node */
   classDeclarationMap: Map<string, ts.ClassDeclaration | ts.ClassExpression>;
   /** Cache for function type deduplication: signature key → type index */

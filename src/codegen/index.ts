@@ -253,6 +253,10 @@ export function generateModule(
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
     }
 
+    // Emit __toUint32 Wasm helper after all imports registered (bypasses bug
+    // where direct addImport calls do not shift defined-function indices).
+    emitToUint32Helper(ctx);
+
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
 
@@ -1831,6 +1835,9 @@ export function generateMultiModule(
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
     }
 
+    // Emit __toUint32 Wasm helper after all imports registered.
+    emitToUint32Helper(ctx);
+
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
 
@@ -2915,40 +2922,48 @@ function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
     }
   }
 
-  // ToUint32: compile-away as Wasm helper function — no host import needed (#1094)
-  // Implements ES spec §7.1.7: NaN/±Infinity → 0, otherwise trunc(x) modulo 2^32.
-  // Uses f64 modular arithmetic to handle values > 2^63 correctly (where i64.trunc_sat saturates).
-  if (needsToUint32 && !ctx.funcMap.has("__toUint32")) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-    ctx.funcMap.set("__toUint32", funcIdx);
-    const body: Instr[] = [
-      // NaN check: x !== x
-      { op: "local.get", index: 0 },
-      { op: "local.get", index: 0 },
-      { op: "f64.ne" },
-      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
-      // ±Infinity check: |x| === Infinity
-      { op: "local.get", index: 0 },
-      { op: "f64.abs" },
-      { op: "f64.const", value: Infinity },
-      { op: "f64.eq" },
-      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
-      // Normal case: use f64 modular arithmetic for values that may exceed i64 range.
-      // fmod(trunc(x), 2^32) gives the correct modular result, then i64.trunc_sat → i32.wrap.
-      // For values within i64 range, i64.trunc_sat + i32.wrap is already correct (modulo 2^32).
-      { op: "local.get", index: 0 },
-      { op: "i64.trunc_sat_f64_s" } as unknown as Instr,
-      { op: "i32.wrap_i64" },
-    ];
-    ctx.mod.functions.push({
-      name: "__toUint32",
-      typeIdx,
-      locals: [],
-      body,
-      exported: false,
-    });
+  // ToUint32: defer until after all imports are added; see emitToUint32Helper.
+  if (needsToUint32) {
+    ctx.needsToUint32 = true;
   }
+}
+
+/**
+ * Emit the __toUint32 Wasm helper function. Must be called AFTER all imports
+ * that are added directly via addImport (bypassing ensureLateImport's shift
+ * mechanism) have been registered, and BEFORE any user function body that
+ * calls Math.clz32 or Math.imul is compiled. Emitting earlier leaves a stale
+ * funcMap entry because addImport does not shift defined-function indices.
+ *
+ * Implements ES §7.1.7: NaN/±Infinity → 0, otherwise trunc(x) modulo 2^32.
+ */
+export function emitToUint32Helper(ctx: CodegenContext): void {
+  if (!ctx.needsToUint32) return;
+  if (ctx.funcMap.has("__toUint32")) return;
+  const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__toUint32", funcIdx);
+  const body: Instr[] = [
+    { op: "local.get", index: 0 },
+    { op: "local.get", index: 0 },
+    { op: "f64.ne" },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+    { op: "local.get", index: 0 },
+    { op: "f64.abs" },
+    { op: "f64.const", value: Infinity },
+    { op: "f64.eq" },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+    { op: "local.get", index: 0 },
+    { op: "i64.trunc_sat_f64_s" } as unknown as Instr,
+    { op: "i32.wrap_i64" },
+  ];
+  ctx.mod.functions.push({
+    name: "__toUint32",
+    typeIdx,
+    locals: [],
+    body,
+    exported: false,
+  });
 }
 
 /** Scan source for parseInt / parseFloat / Number() / unary + on strings and register host imports */

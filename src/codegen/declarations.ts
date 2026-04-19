@@ -874,32 +874,12 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
       ctx.pendingMathMethods.add(method);
     }
   }
-  // ToUint32: emit Wasm helper function — no host import (#1094)
-  if (state.mathNeedsToUint32 && !ctx.funcMap.has("__toUint32")) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-    ctx.funcMap.set("__toUint32", funcIdx);
-    const body: Instr[] = [
-      { op: "local.get", index: 0 },
-      { op: "local.get", index: 0 },
-      { op: "f64.ne" },
-      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
-      { op: "local.get", index: 0 },
-      { op: "f64.abs" },
-      { op: "f64.const", value: Infinity },
-      { op: "f64.eq" },
-      { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
-      { op: "local.get", index: 0 },
-      { op: "i64.trunc_sat_f64_s" } as unknown as Instr,
-      { op: "i32.wrap_i64" },
-    ];
-    ctx.mod.functions.push({
-      name: "__toUint32",
-      typeIdx,
-      locals: [],
-      body,
-      exported: false,
-    });
+  // ToUint32: defer emission until after all imports are registered (#1094).
+  // Registering as a defined function here would leave a stale funcMap index
+  // since subsequent imports added via addImport (e.g. __register_prototype)
+  // do not shift defined-function indices. emitToUint32Helper() runs later.
+  if (state.mathNeedsToUint32) {
+    ctx.needsToUint32 = true;
   }
 
   // ── collectParseImports finalize ──
