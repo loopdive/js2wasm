@@ -99,10 +99,7 @@ function componentizeWithCli(options) {
       .map((part) => part?.trim())
       .filter(Boolean)
       .join("\n");
-    throw new Error(
-      details ||
-        `ComponentizeJS CLI failed. Set COMPONENTIZE_JS_BIN if the binary is not on PATH.`,
-    );
+    throw new Error(details || `ComponentizeJS CLI failed. Set COMPONENTIZE_JS_BIN if the binary is not on PATH.`);
   }
 }
 
