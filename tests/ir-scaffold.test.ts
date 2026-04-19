@@ -68,11 +68,14 @@ describe("ir scaffold — phase 1", () => {
       export function compound(a: number, b: number): number { return (a + b) * 2; }
       export function withLocal(): number { const y = 1; return y; }
       export function withLet(a: number): number { let tmp = a + 1; return tmp * 2; }
+      export function withIfElse(a: number): number { if (a > 0) return a; else return 0; }
+      export function withIfElseBlocks(a: number): number { if (a > 0) { return a; } else { return 0; } }
       export function nonNumeric(): string { return "s"; }
       export function objectParam(o: object): number { return 1; }
       export function stringParam(s: string): number { return 1; }
       export function withVar(): number { var y = 1; return y; }
-      export function withIf(a: number): number { if (a > 0) return a; return 0; }
+      export function withIfNoElse(a: number): number { if (a > 0) return a; return 0; }
+      export function withWhile(a: number): number { while (a > 0) return a; return 0; }
     `;
     const ast = analyzeSource(source);
     const sel = planIrCompilation(ast.sourceFile, { experimentalIR: true });
@@ -80,6 +83,8 @@ describe("ir scaffold — phase 1", () => {
       "compound",
       "trivial",
       "withBoolParam",
+      "withIfElse",
+      "withIfElseBlocks",
       "withLet",
       "withLocal",
       "withParam",

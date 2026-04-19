@@ -6,11 +6,18 @@
 // Phase 1 numeric/bool subset: a function is claimed when
 //   - all params are typed `number` or `boolean`;
 //   - return type is typed `number` or `boolean`;
-//   - body is `(let|const) <name> = <expr>; ... return <expr>;` where
-//     the optional variable declarations must each bind a single simple
-//     identifier to an initializer expression;
+//   - the function body is a "tail":
+//       - zero or more `(let|const) <name> = <expr>;` declarations followed by
+//       - either `return <expr>;` OR `if (<expr>) <tail> else <tail>`
+//         where both arms are themselves valid tails;
 //   - every `<expr>` is composed only of literals, param / local references,
-//     and the supported unary / binary operators (see `isPhase1Expr`).
+//     and the supported unary / binary / conditional operators
+//     (see `isPhase1Expr`).
+//
+// The selector is strict: every arm of an `if`/`else` must END in return, so
+// the function always exits through a terminator. No early-return-plus-
+// fallthrough (`if (c) return a; doMoreStuff(); return b;`) — that needs
+// more CFG analysis and comes in a later wedge.
 //
 // Any function that deviates from this shape falls through to the legacy
 // path — the IR cannot handle it yet. Widening the selector in lockstep
@@ -59,19 +66,39 @@ function isPhase1Function(fn: ts.FunctionDeclaration): boolean {
 
   const body = fn.body;
   if (!body) return false;
-  const stmts = body.statements;
-  if (stmts.length < 1) return false;
+  return isPhase1StatementList(body.statements, scope);
+}
 
+function isPhase1StatementList(stmts: ReadonlyArray<ts.Statement>, scope: Set<string>): boolean {
+  if (stmts.length < 1) return false;
   for (let i = 0; i < stmts.length - 1; i++) {
     const s = stmts[i];
     if (!ts.isVariableStatement(s)) return false;
     if (!isPhase1VarDecl(s, scope)) return false;
   }
+  return isPhase1Tail(stmts[stmts.length - 1], scope);
+}
 
-  const last = stmts[stmts.length - 1];
-  if (!ts.isReturnStatement(last)) return false;
-  if (!last.expression) return false;
-  return isPhase1Expr(last.expression, scope);
+function isPhase1Tail(stmt: ts.Statement, scope: Set<string>): boolean {
+  if (ts.isReturnStatement(stmt)) {
+    if (!stmt.expression) return false;
+    return isPhase1Expr(stmt.expression, scope);
+  }
+  if (ts.isBlock(stmt)) {
+    // Fork scope: variables declared inside the block don't leak out. We
+    // don't need to restore after because callers that forked already did.
+    return isPhase1StatementList(stmt.statements, new Set(scope));
+  }
+  if (ts.isIfStatement(stmt)) {
+    if (!stmt.elseStatement) return false; // must have both arms
+    if (!isPhase1Expr(stmt.expression, scope)) return false;
+    // Fork scope for each arm — declarations in one arm don't leak to the
+    // other and can't leak past the if (both arms must return).
+    if (!isPhase1Tail(stmt.thenStatement, new Set(scope))) return false;
+    if (!isPhase1Tail(stmt.elseStatement, new Set(scope))) return false;
+    return true;
+  }
+  return false;
 }
 
 function isPhase1VarDecl(stmt: ts.VariableStatement, scope: Set<string>): boolean {

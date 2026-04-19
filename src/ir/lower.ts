@@ -8,26 +8,40 @@
 // no-op for any function emitted via this path — that is the central payoff
 // of the symbolic-ref design (spec #1131 §1.2).
 //
-// Emission strategy (Phase 1):
-//   - Tree-walk from the terminator. For each SSA value referenced by the
-//     terminator (and, recursively, by each defining instruction), emit the
-//     Wasm sub-sequence that materializes it on the value stack.
-//   - Param SSA values lower to `local.get paramIdx`.
-//   - Const SSA values lower to the matching `<type>.const` op.
-//   - Derived SSA values (binary / unary / call / …) recursively emit their
-//     operands, then the op.
-//   - Multi-use SSA values: a pre-pass counts how many times each value is
-//     referenced (transitively from the terminator). Values used more than
-//     once get a Wasm local; the first emission is `<tree> local.tee $i`
-//     (leaves the value on the stack AND stores it), subsequent emissions
-//     are `local.get $i`. This preserves byte-identity with legacy for the
-//     single-use case and handles `let x = …; return x + x;` correctly.
+// Emission strategy
+// =================
 //
-// Phase 1 also only handles a single-block function with a `return`
-// terminator. Branches, loops, and try/catch come in Phase 2.
+// The emitter reconstructs structured Wasm control flow from the IR's basic
+// blocks. Phase 1's control-flow shape is narrow: the entry block either
+// ends in `return` (straight-line function) or in `br_if` to two
+// tail-shaped arms that each terminate with `return` (or, recursively, with
+// another nested if/else). No joins, no back-edges, no fall-through from
+// structured blocks. This maps 1:1 onto Wasm's structured `if/else/end`
+// without building a dominator tree.
+//
+// Per-block emission strategy:
+//   - Walk `block.instrs` in order. For each instruction whose result is
+//     used in a *different* block, emit the defining subtree followed by
+//     `local.set` — this materializes the value so successor blocks can
+//     read it via `local.get`. (Params are already in locals, so they
+//     never need this.)
+//   - Skip emission for intra-block single-use and multi-use values — those
+//     are handled at the use site: single-use via inline tree emission,
+//     multi-use via `tree + local.tee` on first use and `local.get` after.
+//   - Lower the terminator:
+//       * `return` → emit each value, then a Wasm `return` op.
+//       * `br_if`  → emit the condition, then a Wasm structured `if/else`
+//                    containing the recursively-emitted then/else blocks.
+//
+// After the entry block emission, we append a `return` op (for a
+// return-terminated function) or `unreachable` (for a br_if-terminated
+// function). The latter satisfies Wasm's stack-type validator at function
+// end — both arms of the structured if always `return`, so fallthrough is
+// unreachable at runtime, but structurally we still need an op whose type
+// is polymorphic.
 
-import type { IrFuncRef, IrFunction, IrGlobalRef, IrInstr, IrType, IrTypeRef, IrValueId } from "./nodes.js";
-import type { FuncTypeDef, Instr, LocalDef, ValType, WasmFunction } from "./types.js";
+import type { IrBlock, IrFuncRef, IrFunction, IrGlobalRef, IrInstr, IrType, IrTypeRef, IrValueId } from "./nodes.js";
+import type { BlockType, FuncTypeDef, Instr, LocalDef, ValType, WasmFunction } from "./types.js";
 
 export interface IrLowerResolver {
   resolveFunc(ref: IrFuncRef): number;
@@ -41,139 +55,226 @@ export interface IrLowerResult {
 }
 
 export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolver): IrLowerResult {
-  if (func.blocks.length !== 1) {
-    throw new Error(
-      `ir/lower: Phase 1 supports only single-block functions (got ${func.blocks.length} in ${func.name})`,
-    );
+  if (func.blocks.length === 0) {
+    throw new Error(`ir/lower: function ${func.name} has no blocks`);
   }
-  const block = func.blocks[0];
-  if (block.terminator.kind !== "return") {
-    throw new Error(
-      `ir/lower: Phase 1 supports only 'return'-terminated blocks (got ${block.terminator.kind} in ${func.name})`,
-    );
-  }
-  if (block.blockArgs.length !== 0) {
+  if (func.blocks[0].blockArgs.length !== 0) {
     throw new Error(`ir/lower: Phase 1 entry block must not declare block args (${func.name})`);
   }
 
-  // Map each SSA value to its source: param index or defining instruction.
+  // --- index maps ---------------------------------------------------------
+
   const paramIdx = new Map<IrValueId, number>();
   func.params.forEach((p, idx) => paramIdx.set(p.value, idx));
+
   const defBy = new Map<IrValueId, IrInstr>();
-  for (const instr of block.instrs) {
-    if (instr.result !== null) {
-      if (defBy.has(instr.result)) {
-        throw new Error(`ir/lower: duplicate SSA def for ${instr.result} in ${func.name}`);
+  const defBlockOf = new Map<IrValueId, number>();
+  for (const block of func.blocks) {
+    for (const instr of block.instrs) {
+      if (instr.result !== null) {
+        if (defBy.has(instr.result)) {
+          throw new Error(`ir/lower: duplicate SSA def for ${instr.result} in ${func.name}`);
+        }
+        defBy.set(instr.result, instr);
+        defBlockOf.set(instr.result, block.id as number);
       }
-      defBy.set(instr.result, instr);
     }
   }
 
-  // Use-count pre-pass: count how many times each SSA value is referenced,
-  // transitively from the terminator. Values with count > 1 are materialized
-  // to a Wasm local on first use and `local.get`'d on subsequent uses.
-  const useCount = new Map<IrValueId, number>();
-  const walkCount = (v: IrValueId): void => {
-    const prev = useCount.get(v) ?? 0;
-    useCount.set(v, prev + 1);
-    if (prev > 0) return; // already expanded — do not double-count subtree uses
-    if (paramIdx.has(v)) return;
-    const d = defBy.get(v);
-    if (!d) return; // will surface as an error during emission
-    for (const u of collectIrUses(d)) walkCount(u);
+  // --- use counting -------------------------------------------------------
+  //
+  // For each SSA value, count how many times it is referenced from each
+  // block (instructions + terminator). A value is:
+  //   - "cross-block" if any block other than its def block references it.
+  //   - "multi-use"   if its total reference count exceeds 1.
+  // Both classes need a dedicated Wasm local. Cross-block values are
+  // materialized eagerly at def time (local.set); intra-block-only
+  // multi-use values are materialized lazily at first use (local.tee).
+
+  const usesPerBlock = new Map<IrValueId, Map<number, number>>();
+  const totalUses = new Map<IrValueId, number>();
+  const recordUse = (v: IrValueId, blockId: number): void => {
+    totalUses.set(v, (totalUses.get(v) ?? 0) + 1);
+    let m = usesPerBlock.get(v);
+    if (!m) {
+      m = new Map();
+      usesPerBlock.set(v, m);
+    }
+    m.set(blockId, (m.get(blockId) ?? 0) + 1);
   };
-  if (block.terminator.kind === "return") {
-    for (const v of block.terminator.values) walkCount(v);
+  for (const block of func.blocks) {
+    const blockId = block.id as number;
+    for (const instr of block.instrs) {
+      for (const u of collectIrUses(instr)) recordUse(u, blockId);
+    }
+    for (const u of collectTerminatorUses(block)) recordUse(u, blockId);
   }
 
-  const body: Instr[] = [];
+  const crossBlock = new Set<IrValueId>();
+  const needsLocal = new Set<IrValueId>();
+  for (const [v, m] of usesPerBlock) {
+    if (paramIdx.has(v)) continue;
+    const total = totalUses.get(v) ?? 0;
+    if (total > 1) needsLocal.add(v);
+    const defBlk = defBlockOf.get(v);
+    if (defBlk === undefined) continue; // should not happen after duplicate-def check
+    for (const b of m.keys()) {
+      if (b !== defBlk) {
+        crossBlock.add(v);
+        needsLocal.add(v);
+        break;
+      }
+    }
+  }
+
+  // --- local allocation ---------------------------------------------------
+  // Stable order: scan blocks then instrs. Every `needsLocal` value gets one
+  // Wasm local slot, placed after the function's parameter slots.
   const locals: LocalDef[] = [];
   const localIdx = new Map<IrValueId, number>();
+  for (const block of func.blocks) {
+    for (const instr of block.instrs) {
+      if (instr.result !== null && needsLocal.has(instr.result)) {
+        if (!instr.resultType) {
+          throw new Error(`ir/lower: local-bound SSA value ${instr.result} has no resultType in ${func.name}`);
+        }
+        const idx = func.params.length + locals.length;
+        locals.push({ name: `$ir${instr.result}`, type: instr.resultType });
+        localIdx.set(instr.result, idx);
+      }
+    }
+  }
+
+  // --- emission -----------------------------------------------------------
+
   const materialized = new Set<IrValueId>();
 
-  const allocLocal = (v: IrValueId, type: IrType): number => {
-    const existing = localIdx.get(v);
-    if (existing !== undefined) return existing;
-    const idx = func.params.length + locals.length;
-    locals.push({ name: `$ir${v}`, type });
-    localIdx.set(v, idx);
-    return idx;
-  };
-
-  const emitValue = (v: IrValueId): void => {
+  const emitValue = (v: IrValueId, out: Instr[]): void => {
     const pi = paramIdx.get(v);
     if (pi !== undefined) {
-      body.push({ op: "local.get", index: pi });
+      out.push({ op: "local.get", index: pi });
+      return;
+    }
+    if (materialized.has(v)) {
+      out.push({ op: "local.get", index: localIdx.get(v)! });
       return;
     }
     const d = defBy.get(v);
     if (!d) throw new Error(`ir/lower: undefined SSA value ${v} in ${func.name}`);
-    const count = useCount.get(v) ?? 1;
-    if (count > 1) {
-      if (materialized.has(v)) {
-        body.push({ op: "local.get", index: localIdx.get(v)! });
-        return;
-      }
-      if (!d.resultType) {
-        throw new Error(`ir/lower: multi-use SSA value ${v} has no resultType in ${func.name}`);
-      }
-      const idx = allocLocal(v, d.resultType);
-      emitInstr(d);
-      body.push({ op: "local.tee", index: idx });
+    if (needsLocal.has(v)) {
+      // Intra-block multi-use only reaches here (cross-block values are
+      // pre-materialized by `emitBlockBody` before the terminator). Use the
+      // tee pattern: first use emits the tree and leaves the value on the
+      // stack while also storing it; later uses become `local.get`.
+      emitInstrTree(d, out);
+      out.push({ op: "local.tee", index: localIdx.get(v)! });
       materialized.add(v);
       return;
     }
-    emitInstr(d);
+    emitInstrTree(d, out);
   };
 
-  const emitInstr = (instr: IrInstr): void => {
+  const emitInstrTree = (instr: IrInstr, out: Instr[]): void => {
     switch (instr.kind) {
       case "const":
-        emitConst(instr, body, func.name);
+        emitConst(instr, out, func.name);
         return;
       case "call": {
-        for (const a of instr.args) emitValue(a);
-        body.push({ op: "call", funcIdx: resolver.resolveFunc(instr.target) });
+        for (const a of instr.args) emitValue(a, out);
+        out.push({ op: "call", funcIdx: resolver.resolveFunc(instr.target) });
         return;
       }
       case "global.get":
-        body.push({ op: "global.get", index: resolver.resolveGlobal(instr.target) });
+        out.push({ op: "global.get", index: resolver.resolveGlobal(instr.target) });
         return;
       case "global.set":
-        emitValue(instr.value);
-        body.push({ op: "global.set", index: resolver.resolveGlobal(instr.target) });
+        emitValue(instr.value, out);
+        out.push({ op: "global.set", index: resolver.resolveGlobal(instr.target) });
         return;
       case "binary":
-        emitValue(instr.lhs);
-        emitValue(instr.rhs);
-        body.push({ op: instr.op } as unknown as Instr);
+        emitValue(instr.lhs, out);
+        emitValue(instr.rhs, out);
+        out.push({ op: instr.op } as unknown as Instr);
         return;
       case "unary":
-        emitValue(instr.rand);
-        body.push({ op: instr.op } as unknown as Instr);
+        emitValue(instr.rand, out);
+        out.push({ op: instr.op } as unknown as Instr);
         return;
       case "select":
         // Wasm `select` pops [val1, val2, cond] and pushes val1 if cond != 0
-        // else val2. So for `cond ? whenTrue : whenFalse` we push whenTrue,
-        // whenFalse, cond, select.
-        emitValue(instr.whenTrue);
-        emitValue(instr.whenFalse);
-        emitValue(instr.condition);
-        body.push({ op: "select" });
+        // else val2 — so `cond ? whenTrue : whenFalse` pushes whenTrue,
+        // whenFalse, cond, then `select`.
+        emitValue(instr.whenTrue, out);
+        emitValue(instr.whenFalse, out);
+        emitValue(instr.condition, out);
+        out.push({ op: "select" });
         return;
       case "raw.wasm":
-        for (const op of instr.ops) body.push(op);
+        for (const op of instr.ops) out.push(op);
         return;
     }
   };
 
-  // Lower the return terminator: emit each returned value in order, then `return`.
-  if (block.terminator.kind === "return") {
-    for (const v of block.terminator.values) emitValue(v);
-  }
-  body.push({ op: "return" });
+  const emitBlockBody = (block: IrBlock, out: Instr[]): void => {
+    for (const instr of block.instrs) {
+      if (instr.result === null) {
+        // Void-producing instrs (global.set, raw.wasm with no result).
+        emitInstrTree(instr, out);
+        continue;
+      }
+      if (crossBlock.has(instr.result)) {
+        // Pre-materialize for successor blocks.
+        emitInstrTree(instr, out);
+        out.push({ op: "local.set", index: localIdx.get(instr.result)! });
+        materialized.add(instr.result);
+      }
+      // Intra-block-only: single-use inlines at use site, multi-use uses
+      // the lazy-tee pattern at first reference. Skip emission here.
+    }
 
-  // Synthesize the Wasm function signature + type.
+    const t = block.terminator;
+    switch (t.kind) {
+      case "return":
+        for (const v of t.values) emitValue(v, out);
+        out.push({ op: "return" });
+        return;
+      case "br_if": {
+        if (t.ifTrue.args.length !== 0 || t.ifFalse.args.length !== 0) {
+          throw new Error(`ir/lower: Phase 1 br_if does not support branch args (${func.name})`);
+        }
+        const thenBlock = func.blocks[t.ifTrue.target as number];
+        const elseBlock = func.blocks[t.ifFalse.target as number];
+        if (!thenBlock || !elseBlock) {
+          throw new Error(`ir/lower: br_if target missing in ${func.name}`);
+        }
+        emitValue(t.condition, out);
+        const thenOps: Instr[] = [];
+        const elseOps: Instr[] = [];
+        emitBlockBody(thenBlock, thenOps);
+        emitBlockBody(elseBlock, elseOps);
+        const blockType: BlockType = { kind: "empty" };
+        out.push({ op: "if", blockType, then: thenOps, else: elseOps });
+        return;
+      }
+      case "br":
+        throw new Error(`ir/lower: Phase 1 does not support 'br' terminators (${func.name})`);
+      case "unreachable":
+        out.push({ op: "unreachable" });
+        return;
+    }
+  };
+
+  const body: Instr[] = [];
+  emitBlockBody(func.blocks[0], body);
+  // A br_if-terminated entry leaves fallthrough after the structured `if`.
+  // Wasm's validator requires the function body to end with an op that
+  // produces the return-type-shape on stack — `unreachable` is polymorphic
+  // and satisfies that contract without emitting a real value.
+  const last = body[body.length - 1];
+  if (!last || last.op !== "return") {
+    body.push({ op: "unreachable" });
+  }
+
   const paramTypes: ValType[] = func.params.map((p) => p.type);
   const resultTypes: ValType[] = func.resultTypes.map((t) => t);
   const typeIdx = resolver.internFuncType({ kind: "func", params: paramTypes, results: resultTypes });
@@ -206,6 +307,20 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
     case "select":
       return [instr.condition, instr.whenTrue, instr.whenFalse];
     case "raw.wasm":
+      return [];
+  }
+}
+
+function collectTerminatorUses(block: IrBlock): readonly IrValueId[] {
+  const t = block.terminator;
+  switch (t.kind) {
+    case "return":
+      return t.values;
+    case "br":
+      return t.branch.args;
+    case "br_if":
+      return [t.condition, ...t.ifTrue.args, ...t.ifFalse.args];
+    case "unreachable":
       return [];
   }
 }
