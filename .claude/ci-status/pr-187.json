@@ -1,0 +1,15 @@
+{
+  "pr": 187,
+  "conclusion": "failure",
+  "head_branch": "issue-865-wasi-polyfill",
+  "head_sha": "77a515ce0a1949a876e6f5d4c4018974f5384adf",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616311649",
+  "timestamp": "2026-04-19T01:56:18Z",
+  "pass": 22480,
+  "fail": 15380,
+  "compile_error": 3940,
+  "snapshot_delta": 30,
+  "net_per_test": 30,
+  "regressions": 1,
+  "improvements": 31
+}

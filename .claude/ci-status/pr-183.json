@@ -1,0 +1,15 @@
+{
+  "pr": 183,
+  "conclusion": "failure",
+  "head_branch": "issue-1073-eval-scope-injection",
+  "head_sha": "0a904fea4ac4784b18db37b8a7cdd73e0ebc3b13",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616309829",
+  "timestamp": "2026-04-19T01:52:08Z",
+  "pass": 22694,
+  "fail": 15165,
+  "compile_error": 3941,
+  "snapshot_delta": 244,
+  "net_per_test": 244,
+  "regressions": 54,
+  "improvements": 298
+}
