@@ -14144,8 +14144,8 @@
       "title": "Add mobile-first layout support to the playground",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
-      "sprint": "Backlog",
+      "raw_status": "in-progress",
+      "sprint": "42",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -14325,6 +14325,17 @@
       "files": [],
       "goal": "core-semantics",
       "cluster": "core-semantics"
+    },
+    {
+      "id": "1025",
+      "title": "BindingElement array-pattern default guards still use ref.is_null",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Sprint-41",
+      "depends_on": [],
+      "files": [],
+      "cluster": "sprint-Sprint-41"
     },
     {
       "id": "1025",
@@ -15655,6 +15666,17 @@
       "files": [],
       "goal": "correctness",
       "cluster": "correctness"
+    },
+    {
+      "id": "1135",
+      "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": "backlog",
