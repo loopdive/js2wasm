@@ -1029,6 +1029,33 @@ export function compilePropertyAccess(
         const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         return globalDef?.type ?? { kind: "externref" };
       }
+      // Static getter access: `this.#f` or `this.g` where the property is a
+      // static accessor. Invoke the getter with a dummy `this` — static
+      // getters don't read `this` since the backing store is a module global.
+      // Without this handler the generic path below compiles `this` →
+      // emitUndefined → externref and tries to cast to the class struct,
+      // which traps uncatchably (PR #203 follow-up for class/elements TRAP
+      // bucket).
+      const accessorKey = `${enclosingClass}_${propName}`;
+      if (ctx.staticAccessorSet.has(accessorKey)) {
+        const getterName = `${enclosingClass}_get_${propName}`;
+        const funcIdx = ctx.funcMap.get(getterName);
+        if (funcIdx !== undefined) {
+          const retType = emitGetterCallWithDummy(ctx, fctx, enclosingClass, getterName, funcIdx);
+          if (retType) return retType;
+        }
+      }
+      // Static method accessed as value: `this.#m` or `this.m` where `m` is a
+      // static method. Return `ref.null.extern` as a non-callable placeholder
+      // (same as ClassName.method path at line 992) — avoids generic
+      // fallthrough cast of undefined.
+      if (ctx.staticMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
+      }
     }
   }
 
