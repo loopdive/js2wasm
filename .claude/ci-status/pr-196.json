@@ -2,14 +2,14 @@
   "pr": 196,
   "conclusion": "failure",
   "head_branch": "issue-1016-iterator-class-dstr",
-  "head_sha": "ba42010d5360c233bc94648808cfadf0685aa421",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616676880",
-  "timestamp": "2026-04-19T01:57:10Z",
-  "pass": 22480,
-  "fail": 15380,
-  "compile_error": 3940,
-  "snapshot_delta": 30,
-  "net_per_test": 30,
+  "head_sha": "3c72c553a878b70eb3b30a4864ef5da4d7e87cc6",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24614915379",
+  "timestamp": "2026-04-18T23:27:15Z",
+  "pass": 22449,
+  "fail": 15393,
+  "compile_error": 3958,
+  "snapshot_delta": -1,
+  "net_per_test": -1,
   "regressions": 1,
-  "improvements": 31
+  "improvements": 0
 }
