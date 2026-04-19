@@ -1445,253 +1445,389 @@ export function compileObjectDefineProperties(
     return { kind: "externref" };
   }
 
-  // Static path: descriptors is an object literal — expand to individual defineProperty calls
+  // Static path: descriptors is an object literal — expand to individual defineProperty calls.
+  // Pre-check: if any inner descriptor is demonstrably malformed (primitive literal, or an
+  // object literal mixing data and accessor fields, or non-function get/set), abort the
+  // static path and fall through to the dynamic runtime so ToPropertyDescriptor (ECMA-262
+  // 10.1) throws TypeError uniformly.
+  const isStaticDescWellFormed = (descExpr: ts.Expression): boolean => {
+    // Primitive literals (string, number, boolean, null) as the descriptor are
+    // spec-violating — ToPropertyDescriptor throws TypeError. Delegate to the
+    // dynamic runtime so the TypeError fires uniformly. `undefined` is also
+    // spec-violating but we still let static expand handle it (callees know).
+    if (
+      ts.isStringLiteral(descExpr) ||
+      ts.isNoSubstitutionTemplateLiteral(descExpr) ||
+      ts.isNumericLiteral(descExpr) ||
+      descExpr.kind === ts.SyntaxKind.TrueKeyword ||
+      descExpr.kind === ts.SyntaxKind.FalseKeyword ||
+      descExpr.kind === ts.SyntaxKind.NullKeyword
+    ) {
+      return false;
+    }
+    if (!ts.isObjectLiteralExpression(descExpr)) {
+      // Identifier / call / property-access / etc — runtime-resolved but
+      // legitimately may be a valid object (as in `{property: Math}` or
+      // `{property: descObj}`). Expand statically; Object.defineProperty will
+      // handle validation at runtime via its own path.
+      return true;
+    }
+    let hasData = false;
+    let hasAccessor = false;
+    for (const dp of descExpr.properties) {
+      if (ts.isMethodDeclaration(dp) && dp.name && ts.isIdentifier(dp.name)) {
+        if (dp.name.text === "get" || dp.name.text === "set") hasAccessor = true;
+        continue;
+      }
+      if (!ts.isPropertyAssignment(dp) || !ts.isIdentifier(dp.name)) continue;
+      const k = dp.name.text;
+      if (k === "value" || k === "writable") hasData = true;
+      if (k === "get" || k === "set") {
+        hasAccessor = true;
+        const init = dp.initializer;
+        const isFn = ts.isFunctionExpression(init) || ts.isArrowFunction(init);
+        const isIdLike =
+          ts.isIdentifier(init) || ts.isPropertyAccessExpression(init) || ts.isElementAccessExpression(init);
+        const isUndefOrNull =
+          init.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(init) && init.text === "undefined");
+        if (!isFn && !isIdLike && !isUndefOrNull) return false;
+      }
+    }
+    if (hasData && hasAccessor) return false;
+    return true;
+  };
   if (ts.isObjectLiteralExpression(descsArg)) {
-    // Compile obj and save to local
-    const objType = compileExpression(ctx, fctx, objArg);
-    if (!objType) return null;
-    const objLocal = allocLocal(fctx, `__defprops_obj_${fctx.locals.length}`, objType);
-    fctx.body.push({ op: "local.set", index: objLocal });
-
+    let allWellFormed = true;
     for (const prop of descsArg.properties) {
       if (!ts.isPropertyAssignment(prop)) continue;
-      const propName = ts.isIdentifier(prop.name)
-        ? prop.name.text
-        : ts.isStringLiteral(prop.name)
-          ? prop.name.text
-          : undefined;
-      if (propName === undefined) continue;
-
-      // Synthesize: Object.defineProperty(obj, propName, descriptor)
-      const syntheticPropAccess = ts.factory.createPropertyAccessExpression(
-        ts.factory.createIdentifier("Object"),
-        "defineProperty",
-      );
-      const syntheticCall = ts.factory.createCallExpression(syntheticPropAccess, undefined, [
-        ts.factory.createIdentifier(`__defprops_obj_placeholder_${objLocal}`),
-        ts.factory.createStringLiteral(propName),
-        prop.initializer,
-      ]);
-      ts.setTextRange(syntheticCall, expr);
-      (syntheticCall as any).parent = expr.parent;
-
-      // Instead of recursing through compileCallExpression (which would need
-      // the synthetic identifier to resolve), directly call compileObjectDefineProperty
-      // with the obj already on stack via local.get.
-
-      // Build a mini call that reuses our saved obj local:
-      // We need to compile the descriptor value per property.
-      // The simplest approach: push obj local, then delegate to the externref
-      // defineProperty path for each property.
-      const descExpr = prop.initializer;
-
-      // Parse the individual descriptor
-      let valueExpr: ts.Expression | undefined;
-      let descWritable: boolean | undefined;
-      let descEnumerable: boolean | undefined;
-      let descConfigurable: boolean | undefined;
-      let dpGetNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
-      let dpSetNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
-      let dpGetExpr: ts.Expression | undefined;
-      let dpSetExpr: ts.Expression | undefined;
-
-      if (ts.isObjectLiteralExpression(descExpr)) {
-        for (const dp of descExpr.properties) {
-          if (ts.isPropertyAssignment(dp) && ts.isIdentifier(dp.name)) {
-            if (dp.name.text === "value") valueExpr = dp.initializer;
-            if (dp.name.text === "writable") {
-              if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descWritable = true;
-              else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descWritable = false;
-            }
-            if (dp.name.text === "enumerable") {
-              if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descEnumerable = true;
-              else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descEnumerable = false;
-            }
-            if (dp.name.text === "configurable") {
-              if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descConfigurable = true;
-              else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descConfigurable = false;
-            }
-            // Accessor: get/set with inline function
-            if (dp.name.text === "get") {
-              if (ts.isFunctionExpression(dp.initializer) || ts.isArrowFunction(dp.initializer)) {
-                dpGetNode = dp.initializer;
-              } else if (
-                !(
-                  ts.isIdentifier(dp.initializer) &&
-                  (dp.initializer.text === "undefined" || dp.initializer.text === "null")
-                ) &&
-                dp.initializer.kind !== ts.SyntaxKind.NullKeyword
-              ) {
-                dpGetExpr = dp.initializer;
-              }
-            }
-            if (dp.name.text === "set") {
-              if (ts.isFunctionExpression(dp.initializer) || ts.isArrowFunction(dp.initializer)) {
-                dpSetNode = dp.initializer;
-              } else if (
-                !(
-                  ts.isIdentifier(dp.initializer) &&
-                  (dp.initializer.text === "undefined" || dp.initializer.text === "null")
-                ) &&
-                dp.initializer.kind !== ts.SyntaxKind.NullKeyword
-              ) {
-                dpSetExpr = dp.initializer;
-              }
-            }
-          }
-          if (ts.isMethodDeclaration(dp) && dp.name && ts.isIdentifier(dp.name)) {
-            if (dp.name.text === "get") dpGetNode = dp;
-            if (dp.name.text === "set") dpSetNode = dp;
-          }
-        }
+      if (!isStaticDescWellFormed(prop.initializer)) {
+        allWellFormed = false;
+        break;
       }
+    }
+    if (!allWellFormed) {
+      // Fall through to dynamic runtime — __defineProperties validates and throws TypeError.
+    } else {
+      // Compile obj and save to local
+      const objType = compileExpression(ctx, fctx, objArg);
+      if (!objType) return null;
+      const objLocal = allocLocal(fctx, `__defprops_obj_${fctx.locals.length}`, objType);
+      fctx.body.push({ op: "local.set", index: objLocal });
 
-      // Try struct path: if obj is a known struct and propName matches a field
-      const objTsType = ctx.checker.getTypeAtLocation(objArg);
-      const structName =
-        resolveStructName(ctx, objTsType) ||
-        (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
-      const structTypeIdx = structName ? ctx.structMap.get(structName) : undefined;
-      const fields = structName ? ctx.structFields.get(structName) : undefined;
-      const fieldIdx = fields && propName ? fields.findIndex((f) => f.name === propName) : -1;
+      for (const prop of descsArg.properties) {
+        if (!ts.isPropertyAssignment(prop)) continue;
+        const propName = ts.isIdentifier(prop.name)
+          ? prop.name.text
+          : ts.isStringLiteral(prop.name)
+            ? prop.name.text
+            : undefined;
+        if (propName === undefined) continue;
 
-      if (structTypeIdx !== undefined && fields && fieldIdx >= 0 && valueExpr) {
-        // Struct path: emit struct.set directly
-        const fieldType = fields[fieldIdx]!.type;
+        // Synthesize: Object.defineProperty(obj, propName, descriptor)
+        const syntheticPropAccess = ts.factory.createPropertyAccessExpression(
+          ts.factory.createIdentifier("Object"),
+          "defineProperty",
+        );
+        const syntheticCall = ts.factory.createCallExpression(syntheticPropAccess, undefined, [
+          ts.factory.createIdentifier(`__defprops_obj_placeholder_${objLocal}`),
+          ts.factory.createStringLiteral(propName),
+          prop.initializer,
+        ]);
+        ts.setTextRange(syntheticCall, expr);
+        (syntheticCall as any).parent = expr.parent;
 
-        // ── Compile-time flag checking for struct path (#856) ──
-        let priorExistingFlags: number | undefined;
-        if (ts.isIdentifier(objArg)) {
-          const isAccessor = false;
-          const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
-          const key = `${objArg.text}:${propName}`;
-          priorExistingFlags = ctx.definedPropertyFlags.get(key);
+        // Instead of recursing through compileCallExpression (which would need
+        // the synthetic identifier to resolve), directly call compileObjectDefineProperty
+        // with the obj already on stack via local.get.
 
-          const existingFlags = ctx.definedPropertyFlags.get(key);
-          if (existingFlags !== undefined) {
-            const isExistingConfigurable = !!(existingFlags & PROP_FLAG_CONFIGURABLE);
-            if (!isExistingConfigurable) {
-              // Non-configurable: check for violations
-              if (newFlags & PROP_FLAG_CONFIGURABLE) {
-                emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
+        // Build a mini call that reuses our saved obj local:
+        // We need to compile the descriptor value per property.
+        // The simplest approach: push obj local, then delegate to the externref
+        // defineProperty path for each property.
+        const descExpr = prop.initializer;
+
+        // Parse the individual descriptor
+        let valueExpr: ts.Expression | undefined;
+        let descWritable: boolean | undefined;
+        let descEnumerable: boolean | undefined;
+        let descConfigurable: boolean | undefined;
+        let dpGetNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
+        let dpSetNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
+        let dpGetExpr: ts.Expression | undefined;
+        let dpSetExpr: ts.Expression | undefined;
+
+        if (ts.isObjectLiteralExpression(descExpr)) {
+          for (const dp of descExpr.properties) {
+            if (ts.isPropertyAssignment(dp) && ts.isIdentifier(dp.name)) {
+              if (dp.name.text === "value") valueExpr = dp.initializer;
+              if (dp.name.text === "writable") {
+                if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descWritable = true;
+                else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descWritable = false;
               }
-              const existingEnumerable = existingFlags & PROP_FLAG_ENUMERABLE;
-              const newEnumerable = newFlags & PROP_FLAG_ENUMERABLE;
-              if (existingEnumerable !== newEnumerable) {
-                emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
+              if (dp.name.text === "enumerable") {
+                if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descEnumerable = true;
+                else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descEnumerable = false;
               }
-              // Data property writable checks
-              if (!(existingFlags & PROP_FLAG_ACCESSOR) && !isAccessor) {
-                if (!(existingFlags & PROP_FLAG_WRITABLE)) {
-                  if (newFlags & PROP_FLAG_WRITABLE) {
-                    emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
-                  }
+              if (dp.name.text === "configurable") {
+                if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descConfigurable = true;
+                else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descConfigurable = false;
+              }
+              // Accessor: get/set with inline function
+              if (dp.name.text === "get") {
+                if (ts.isFunctionExpression(dp.initializer) || ts.isArrowFunction(dp.initializer)) {
+                  dpGetNode = dp.initializer;
+                } else if (
+                  !(
+                    ts.isIdentifier(dp.initializer) &&
+                    (dp.initializer.text === "undefined" || dp.initializer.text === "null")
+                  ) &&
+                  dp.initializer.kind !== ts.SyntaxKind.NullKeyword
+                ) {
+                  dpGetExpr = dp.initializer;
                 }
               }
-              // Cannot change data<->accessor on non-configurable
-              if (isAccessor && !(existingFlags & PROP_FLAG_ACCESSOR)) {
-                emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
+              if (dp.name.text === "set") {
+                if (ts.isFunctionExpression(dp.initializer) || ts.isArrowFunction(dp.initializer)) {
+                  dpSetNode = dp.initializer;
+                } else if (
+                  !(
+                    ts.isIdentifier(dp.initializer) &&
+                    (dp.initializer.text === "undefined" || dp.initializer.text === "null")
+                  ) &&
+                  dp.initializer.kind !== ts.SyntaxKind.NullKeyword
+                ) {
+                  dpSetExpr = dp.initializer;
+                }
               }
-              if (!isAccessor && existingFlags & PROP_FLAG_ACCESSOR) {
-                emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
-              }
+            }
+            if (ts.isMethodDeclaration(dp) && dp.name && ts.isIdentifier(dp.name)) {
+              if (dp.name.text === "get") dpGetNode = dp;
+              if (dp.name.text === "set") dpSetNode = dp;
             }
           }
         }
 
-        // Check if this property is non-writable non-configurable (needs runtime value comparison)
-        const needsValueCompare =
-          priorExistingFlags !== undefined &&
-          !(priorExistingFlags & PROP_FLAG_CONFIGURABLE) &&
-          !(priorExistingFlags & PROP_FLAG_WRITABLE) &&
-          !(priorExistingFlags & PROP_FLAG_ACCESSOR);
+        // Try struct path: if obj is a known struct and propName matches a field
+        const objTsType = ctx.checker.getTypeAtLocation(objArg);
+        const structName =
+          resolveStructName(ctx, objTsType) ||
+          (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+        const structTypeIdx = structName ? ctx.structMap.get(structName) : undefined;
+        const fields = structName ? ctx.structFields.get(structName) : undefined;
+        const fieldIdx = fields && propName ? fields.findIndex((f) => f.name === propName) : -1;
 
-        fctx.body.push({ op: "local.get", index: objLocal });
+        if (structTypeIdx !== undefined && fields && fieldIdx >= 0 && valueExpr) {
+          // Struct path: emit struct.set directly
+          const fieldType = fields[fieldIdx]!.type;
 
-        // Cast if needed — guard with ref.test to avoid illegal cast traps (#778)
-        let needsGuard = false;
-        if (objType.kind === "externref") {
-          fctx.body.push({ op: "any.convert_extern" } as Instr);
-          needsGuard = true;
-        } else if (
-          (objType.kind === "ref_null" || objType.kind === "ref") &&
-          "typeIdx" in objType &&
-          objType.typeIdx !== structTypeIdx
-        ) {
-          needsGuard = true;
-        }
+          // ── Compile-time flag checking for struct path (#856) ──
+          let priorExistingFlags: number | undefined;
+          if (ts.isIdentifier(objArg)) {
+            const isAccessor = false;
+            const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+            const key = `${objArg.text}:${propName}`;
+            priorExistingFlags = ctx.definedPropertyFlags.get(key);
 
-        if (needsValueCompare) {
-          // Non-writable non-configurable: compare old and new values
-          if (needsGuard) {
-            // Save as anyref for guarded access
+            const existingFlags = ctx.definedPropertyFlags.get(key);
+            if (existingFlags !== undefined) {
+              const isExistingConfigurable = !!(existingFlags & PROP_FLAG_CONFIGURABLE);
+              if (!isExistingConfigurable) {
+                // Non-configurable: check for violations
+                if (newFlags & PROP_FLAG_CONFIGURABLE) {
+                  emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
+                }
+                const existingEnumerable = existingFlags & PROP_FLAG_ENUMERABLE;
+                const newEnumerable = newFlags & PROP_FLAG_ENUMERABLE;
+                if (existingEnumerable !== newEnumerable) {
+                  emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
+                }
+                // Data property writable checks
+                if (!(existingFlags & PROP_FLAG_ACCESSOR) && !isAccessor) {
+                  if (!(existingFlags & PROP_FLAG_WRITABLE)) {
+                    if (newFlags & PROP_FLAG_WRITABLE) {
+                      emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
+                    }
+                  }
+                }
+                // Cannot change data<->accessor on non-configurable
+                if (isAccessor && !(existingFlags & PROP_FLAG_ACCESSOR)) {
+                  emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
+                }
+                if (!isAccessor && existingFlags & PROP_FLAG_ACCESSOR) {
+                  emitThrowString(ctx, fctx, "TypeError: Cannot redefine property");
+                }
+              }
+            }
+          }
+
+          // Check if this property is non-writable non-configurable (needs runtime value comparison)
+          const needsValueCompare =
+            priorExistingFlags !== undefined &&
+            !(priorExistingFlags & PROP_FLAG_CONFIGURABLE) &&
+            !(priorExistingFlags & PROP_FLAG_WRITABLE) &&
+            !(priorExistingFlags & PROP_FLAG_ACCESSOR);
+
+          fctx.body.push({ op: "local.get", index: objLocal });
+
+          // Cast if needed — guard with ref.test to avoid illegal cast traps (#778)
+          let needsGuard = false;
+          if (objType.kind === "externref") {
+            fctx.body.push({ op: "any.convert_extern" } as Instr);
+            needsGuard = true;
+          } else if (
+            (objType.kind === "ref_null" || objType.kind === "ref") &&
+            "typeIdx" in objType &&
+            objType.typeIdx !== structTypeIdx
+          ) {
+            needsGuard = true;
+          }
+
+          if (needsValueCompare) {
+            // Non-writable non-configurable: compare old and new values
+            if (needsGuard) {
+              // Save as anyref for guarded access
+              const defpTmp = allocLocal(fctx, `__defp_tmp_${fctx.locals.length}`, { kind: "anyref" });
+              fctx.body.push({ op: "local.set", index: defpTmp } as Instr);
+
+              // Save old value
+              const oldValLocal = allocLocal(fctx, `__defps_oldval_${fctx.locals.length}`, fieldType);
+              fctx.body.push({ op: "local.get", index: defpTmp } as Instr);
+              fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
+              if (fieldType.kind === "f64") {
+                fctx.body.push({
+                  op: "if",
+                  blockType: { kind: "val", type: { kind: "f64" } as ValType },
+                  then: [
+                    { op: "local.get", index: defpTmp } as Instr,
+                    { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+                    { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
+                  ],
+                  else: [{ op: "f64.const", value: 0 } as Instr],
+                } as Instr);
+              } else if (fieldType.kind === "i32") {
+                fctx.body.push({
+                  op: "if",
+                  blockType: { kind: "val", type: { kind: "i32" } as ValType },
+                  then: [
+                    { op: "local.get", index: defpTmp } as Instr,
+                    { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+                    { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
+                  ],
+                  else: [{ op: "i32.const", value: 0 } as Instr],
+                } as Instr);
+              }
+              fctx.body.push({ op: "local.set", index: oldValLocal } as Instr);
+
+              // Compile new value
+              const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
+              if (valType) {
+                const newValLocal = allocLocal(fctx, `__defps_newval_${fctx.locals.length}`, fieldType);
+                if (valType.kind !== fieldType.kind) {
+                  coerceType(ctx, fctx, valType, fieldType);
+                }
+                fctx.body.push({ op: "local.set", index: newValLocal } as Instr);
+
+                // Compare values — throw if different
+                const tagIdx = ensureExnTag(ctx);
+                const errMsg = "TypeError: Cannot redefine property";
+                addStringConstantGlobal(ctx, errMsg);
+                const errMsgGlobal = ctx.stringGlobalMap.get(errMsg)!;
+                if (fieldType.kind === "f64") {
+                  fctx.body.push({ op: "local.get", index: oldValLocal });
+                  fctx.body.push({ op: "local.get", index: newValLocal });
+                  fctx.body.push({ op: "f64.ne" });
+                  fctx.body.push({
+                    op: "if",
+                    blockType: { kind: "empty" },
+                    then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
+                  } as unknown as Instr);
+                } else if (fieldType.kind === "i32") {
+                  fctx.body.push({ op: "local.get", index: oldValLocal });
+                  fctx.body.push({ op: "local.get", index: newValLocal });
+                  fctx.body.push({ op: "i32.ne" });
+                  fctx.body.push({
+                    op: "if",
+                    blockType: { kind: "empty" },
+                    then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
+                  } as unknown as Instr);
+                }
+
+                // Do the struct.set if values match
+                fctx.body.push({ op: "local.get", index: defpTmp } as Instr);
+                fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
+                fctx.body.push({
+                  op: "if",
+                  blockType: { kind: "empty" },
+                  then: [
+                    { op: "local.get", index: defpTmp } as Instr,
+                    { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+                    { op: "local.get", index: newValLocal } as Instr,
+                    { op: "struct.set", typeIdx: structTypeIdx, fieldIdx } as Instr,
+                  ],
+                  else: [],
+                } as Instr);
+              }
+            } else {
+              // Non-guarded: direct struct access
+              const oldValLocal = allocLocal(fctx, `__defps_oldval_${fctx.locals.length}`, fieldType);
+              fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+              fctx.body.push({ op: "local.set", index: oldValLocal });
+
+              const newValLocal = allocLocal(fctx, `__defps_newval_${fctx.locals.length}`, fieldType);
+              const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
+              if (valType) {
+                if (valType.kind !== fieldType.kind) {
+                  coerceType(ctx, fctx, valType, fieldType);
+                }
+                fctx.body.push({ op: "local.set", index: newValLocal });
+
+                const tagIdx = ensureExnTag(ctx);
+                const errMsg = "TypeError: Cannot redefine property";
+                addStringConstantGlobal(ctx, errMsg);
+                const errMsgGlobal = ctx.stringGlobalMap.get(errMsg)!;
+                if (fieldType.kind === "f64") {
+                  fctx.body.push({ op: "local.get", index: oldValLocal });
+                  fctx.body.push({ op: "local.get", index: newValLocal });
+                  fctx.body.push({ op: "f64.ne" });
+                  fctx.body.push({
+                    op: "if",
+                    blockType: { kind: "empty" },
+                    then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
+                  } as unknown as Instr);
+                } else if (fieldType.kind === "i32") {
+                  fctx.body.push({ op: "local.get", index: oldValLocal });
+                  fctx.body.push({ op: "local.get", index: newValLocal });
+                  fctx.body.push({ op: "i32.ne" });
+                  fctx.body.push({
+                    op: "if",
+                    blockType: { kind: "empty" },
+                    then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
+                  } as unknown as Instr);
+                }
+
+                // Do the struct.set
+                fctx.body.push({ op: "local.get", index: objLocal });
+                fctx.body.push({ op: "local.get", index: newValLocal });
+                fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+              } else {
+                fctx.body.push({ op: "drop" });
+              }
+            }
+          } else if (needsGuard) {
+            // Save obj as anyref, compile value, then guard the struct.set
             const defpTmp = allocLocal(fctx, `__defp_tmp_${fctx.locals.length}`, { kind: "anyref" });
             fctx.body.push({ op: "local.set", index: defpTmp } as Instr);
 
-            // Save old value
-            const oldValLocal = allocLocal(fctx, `__defps_oldval_${fctx.locals.length}`, fieldType);
-            fctx.body.push({ op: "local.get", index: defpTmp } as Instr);
-            fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
-            if (fieldType.kind === "f64") {
-              fctx.body.push({
-                op: "if",
-                blockType: { kind: "val", type: { kind: "f64" } as ValType },
-                then: [
-                  { op: "local.get", index: defpTmp } as Instr,
-                  { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
-                  { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
-                ],
-                else: [{ op: "f64.const", value: 0 } as Instr],
-              } as Instr);
-            } else if (fieldType.kind === "i32") {
-              fctx.body.push({
-                op: "if",
-                blockType: { kind: "val", type: { kind: "i32" } as ValType },
-                then: [
-                  { op: "local.get", index: defpTmp } as Instr,
-                  { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
-                  { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
-                ],
-                else: [{ op: "i32.const", value: 0 } as Instr],
-              } as Instr);
-            }
-            fctx.body.push({ op: "local.set", index: oldValLocal } as Instr);
-
-            // Compile new value
+            // Compile the value expression first (outside the guard)
             const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
             if (valType) {
-              const newValLocal = allocLocal(fctx, `__defps_newval_${fctx.locals.length}`, fieldType);
+              const valLocal = allocLocal(fctx, `__defp_val_${fctx.locals.length}`, fieldType);
               if (valType.kind !== fieldType.kind) {
                 coerceType(ctx, fctx, valType, fieldType);
               }
-              fctx.body.push({ op: "local.set", index: newValLocal } as Instr);
+              fctx.body.push({ op: "local.set", index: valLocal } as Instr);
 
-              // Compare values — throw if different
-              const tagIdx = ensureExnTag(ctx);
-              const errMsg = "TypeError: Cannot redefine property";
-              addStringConstantGlobal(ctx, errMsg);
-              const errMsgGlobal = ctx.stringGlobalMap.get(errMsg)!;
-              if (fieldType.kind === "f64") {
-                fctx.body.push({ op: "local.get", index: oldValLocal });
-                fctx.body.push({ op: "local.get", index: newValLocal });
-                fctx.body.push({ op: "f64.ne" });
-                fctx.body.push({
-                  op: "if",
-                  blockType: { kind: "empty" },
-                  then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
-                } as unknown as Instr);
-              } else if (fieldType.kind === "i32") {
-                fctx.body.push({ op: "local.get", index: oldValLocal });
-                fctx.body.push({ op: "local.get", index: newValLocal });
-                fctx.body.push({ op: "i32.ne" });
-                fctx.body.push({
-                  op: "if",
-                  blockType: { kind: "empty" },
-                  then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
-                } as unknown as Instr);
-              }
-
-              // Do the struct.set if values match
+              // Now guard the struct.set with ref.test
               fctx.body.push({ op: "local.get", index: defpTmp } as Instr);
               fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
               fctx.body.push({
@@ -1700,242 +1836,178 @@ export function compileObjectDefineProperties(
                 then: [
                   { op: "local.get", index: defpTmp } as Instr,
                   { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
-                  { op: "local.get", index: newValLocal } as Instr,
+                  { op: "local.get", index: valLocal } as Instr,
                   { op: "struct.set", typeIdx: structTypeIdx, fieldIdx } as Instr,
                 ],
                 else: [],
               } as Instr);
             }
           } else {
-            // Non-guarded: direct struct access
-            const oldValLocal = allocLocal(fctx, `__defps_oldval_${fctx.locals.length}`, fieldType);
-            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-            fctx.body.push({ op: "local.set", index: oldValLocal });
-
-            const newValLocal = allocLocal(fctx, `__defps_newval_${fctx.locals.length}`, fieldType);
             const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
             if (valType) {
               if (valType.kind !== fieldType.kind) {
                 coerceType(ctx, fctx, valType, fieldType);
               }
-              fctx.body.push({ op: "local.set", index: newValLocal });
-
-              const tagIdx = ensureExnTag(ctx);
-              const errMsg = "TypeError: Cannot redefine property";
-              addStringConstantGlobal(ctx, errMsg);
-              const errMsgGlobal = ctx.stringGlobalMap.get(errMsg)!;
-              if (fieldType.kind === "f64") {
-                fctx.body.push({ op: "local.get", index: oldValLocal });
-                fctx.body.push({ op: "local.get", index: newValLocal });
-                fctx.body.push({ op: "f64.ne" });
-                fctx.body.push({
-                  op: "if",
-                  blockType: { kind: "empty" },
-                  then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
-                } as unknown as Instr);
-              } else if (fieldType.kind === "i32") {
-                fctx.body.push({ op: "local.get", index: oldValLocal });
-                fctx.body.push({ op: "local.get", index: newValLocal });
-                fctx.body.push({ op: "i32.ne" });
-                fctx.body.push({
-                  op: "if",
-                  blockType: { kind: "empty" },
-                  then: [{ op: "global.get", index: errMsgGlobal } as Instr, { op: "throw", tagIdx } as Instr],
-                } as unknown as Instr);
-              }
-
-              // Do the struct.set
-              fctx.body.push({ op: "local.get", index: objLocal });
-              fctx.body.push({ op: "local.get", index: newValLocal });
               fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
             } else {
+              // No value produced — drop the obj ref
               fctx.body.push({ op: "drop" });
             }
           }
-        } else if (needsGuard) {
-          // Save obj as anyref, compile value, then guard the struct.set
-          const defpTmp = allocLocal(fctx, `__defp_tmp_${fctx.locals.length}`, { kind: "anyref" });
-          fctx.body.push({ op: "local.set", index: defpTmp } as Instr);
 
-          // Compile the value expression first (outside the guard)
-          const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
-          if (valType) {
-            const valLocal = allocLocal(fctx, `__defp_val_${fctx.locals.length}`, fieldType);
-            if (valType.kind !== fieldType.kind) {
-              coerceType(ctx, fctx, valType, fieldType);
-            }
-            fctx.body.push({ op: "local.set", index: valLocal } as Instr);
-
-            // Now guard the struct.set with ref.test
-            fctx.body.push({ op: "local.get", index: defpTmp } as Instr);
-            fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
-            fctx.body.push({
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [
-                { op: "local.get", index: defpTmp } as Instr,
-                { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
-                { op: "local.get", index: valLocal } as Instr,
-                { op: "struct.set", typeIdx: structTypeIdx, fieldIdx } as Instr,
-              ],
-              else: [],
-            } as Instr);
-          }
-        } else {
-          const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
-          if (valType) {
-            if (valType.kind !== fieldType.kind) {
-              coerceType(ctx, fctx, valType, fieldType);
-            }
-            fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
-          } else {
-            // No value produced — drop the obj ref
-            fctx.body.push({ op: "drop" });
-          }
-        }
-
-        // Update compile-time flags
-        if (ts.isIdentifier(objArg)) {
-          const isAccessor = false;
-          const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
-          const key = `${objArg.text}:${propName}`;
-          ctx.definedPropertyFlags.set(key, newFlags);
-        }
-
-        // Update shapePropFlags
-        const userFields = fields
-          .map((f, idx) => ({ field: f, fieldIdx: idx }))
-          .filter((e) => !e.field.name.startsWith("__"));
-        const userFieldIdx = userFields.findIndex((e) => e.fieldIdx === fieldIdx);
-        if (userFieldIdx >= 0) {
-          const flagsArr = ctx.shapePropFlags.get(structTypeIdx);
-          if (flagsArr && userFieldIdx < flagsArr.length) {
+          // Update compile-time flags
+          if (ts.isIdentifier(objArg)) {
             const isAccessor = false;
             const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
-            flagsArr[userFieldIdx] = newFlags & 0x07; // Only store WEC bits
+            const key = `${objArg.text}:${propName}`;
+            ctx.definedPropertyFlags.set(key, newFlags);
           }
+
+          // Update shapePropFlags
+          const userFields = fields
+            .map((f, idx) => ({ field: f, fieldIdx: idx }))
+            .filter((e) => !e.field.name.startsWith("__"));
+          const userFieldIdx = userFields.findIndex((e) => e.fieldIdx === fieldIdx);
+          if (userFieldIdx >= 0) {
+            const flagsArr = ctx.shapePropFlags.get(structTypeIdx);
+            if (flagsArr && userFieldIdx < flagsArr.length) {
+              const isAccessor = false;
+              const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+              flagsArr[userFieldIdx] = newFlags & 0x07; // Only store WEC bits
+            }
+          }
+
+          continue; // Next property
         }
 
-        continue; // Next property
+        // Externref fallback
+        const dpIsAccessor = !!(dpGetNode || dpSetNode || dpGetExpr || dpSetExpr);
+        // Use extern.convert_any directly (not coerceType) to avoid __make_iterable
+        // for vec structs, which would create a new JS array with different identity (#856/#1092).
+        fctx.body.push({ op: "local.get", index: objLocal });
+        if (objType.kind === "ref" || objType.kind === "ref_null") {
+          fctx.body.push({ op: "extern.convert_any" } as Instr);
+        } else if (objType.kind !== "externref") {
+          coerceType(ctx, fctx, objType, { kind: "externref" });
+        }
+        const objExtLocal = allocLocal(fctx, `__defprops_ext_${fctx.locals.length}`, { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: objExtLocal });
+
+        if (dpIsAccessor) {
+          // Accessor descriptor: emit __defineProperty_accessor
+          const dpRuntimeFlags = computeRuntimeFlags(undefined, descEnumerable, descConfigurable, false);
+          fctx.body.push({ op: "local.get", index: objExtLocal });
+          compileExpression(ctx, fctx, ts.factory.createStringLiteral(propName), { kind: "externref" });
+
+          // Compile getter callback
+          if (dpGetNode) {
+            if (!compileArrowAsCallback(ctx, fctx, dpGetNode as unknown as ts.FunctionExpression, { needsThis: true }))
+              fctx.body.push({ op: "ref.null.extern" });
+          } else if (dpGetExpr) {
+            const gFuncNode = resolveExprToFuncNode(ctx, dpGetExpr);
+            if (gFuncNode) {
+              if (
+                !compileArrowAsCallback(ctx, fctx, gFuncNode as unknown as ts.FunctionExpression, { needsThis: true })
+              )
+                fctx.body.push({ op: "ref.null.extern" });
+            } else {
+              fctx.body.push({ op: "ref.null.extern" });
+            }
+          } else {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+
+          // Compile setter callback
+          if (dpSetNode) {
+            if (!compileArrowAsCallback(ctx, fctx, dpSetNode as unknown as ts.FunctionExpression, { needsThis: true }))
+              fctx.body.push({ op: "ref.null.extern" });
+          } else if (dpSetExpr) {
+            const sFuncNode = resolveExprToFuncNode(ctx, dpSetExpr);
+            if (sFuncNode) {
+              if (
+                !compileArrowAsCallback(ctx, fctx, sFuncNode as unknown as ts.FunctionExpression, { needsThis: true })
+              )
+                fctx.body.push({ op: "ref.null.extern" });
+            } else {
+              fctx.body.push({ op: "ref.null.extern" });
+            }
+          } else {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+
+          fctx.body.push({ op: "f64.const", value: dpRuntimeFlags });
+          const accIdx = ensureLateImport(
+            ctx,
+            "__defineProperty_accessor",
+            [
+              { kind: "externref" },
+              { kind: "externref" },
+              { kind: "externref" },
+              { kind: "externref" },
+              { kind: "f64" },
+            ],
+            [{ kind: "externref" }],
+          );
+          flushLateImportShifts(ctx, fctx);
+          if (accIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: accIdx });
+            fctx.body.push({ op: "drop" });
+          }
+
+          if (ts.isIdentifier(objArg)) {
+            const isAccessor = true;
+            const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+            const key = `${objArg.text}:${propName}`;
+            ctx.definedPropertyFlags.set(key, newFlags);
+          }
+        } else {
+          // Value/flags descriptor: emit __defineProperty_value
+          // Push prop name as string
+          fctx.body.push({ op: "local.get", index: objExtLocal });
+          compileExpression(ctx, fctx, ts.factory.createStringLiteral(propName), { kind: "externref" });
+
+          // Compile value or push null
+          if (valueExpr) {
+            const vt = compileExpression(ctx, fctx, valueExpr, { kind: "externref" });
+            if (vt && vt.kind !== "externref") {
+              coerceType(ctx, fctx, vt, { kind: "externref" });
+            } else if (!vt) {
+              fctx.body.push({ op: "ref.null.extern" });
+            }
+          } else {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+
+          // Runtime flags
+          const runtimeFlags = computeRuntimeFlags(descWritable, descEnumerable, descConfigurable, !!valueExpr);
+          fctx.body.push({ op: "f64.const", value: runtimeFlags });
+
+          const funcIdx = ensureLateImport(
+            ctx,
+            "__defineProperty_value",
+            [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
+            [{ kind: "externref" }],
+          );
+          flushLateImportShifts(ctx, fctx);
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx });
+            fctx.body.push({ op: "drop" }); // drop returned obj (we use our local)
+          }
+
+          // Update compile-time flags for externref path
+          if (ts.isIdentifier(objArg)) {
+            const isAccessor = false;
+            const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+            const key = `${objArg.text}:${propName}`;
+            ctx.definedPropertyFlags.set(key, newFlags);
+          }
+        }
       }
 
-      // Externref fallback
-      const dpIsAccessor = !!(dpGetNode || dpSetNode || dpGetExpr || dpSetExpr);
-      // Use extern.convert_any directly (not coerceType) to avoid __make_iterable
-      // for vec structs, which would create a new JS array with different identity (#856/#1092).
+      // Return obj
       fctx.body.push({ op: "local.get", index: objLocal });
-      if (objType.kind === "ref" || objType.kind === "ref_null") {
-        fctx.body.push({ op: "extern.convert_any" } as Instr);
-      } else if (objType.kind !== "externref") {
-        coerceType(ctx, fctx, objType, { kind: "externref" });
-      }
-      const objExtLocal = allocLocal(fctx, `__defprops_ext_${fctx.locals.length}`, { kind: "externref" });
-      fctx.body.push({ op: "local.set", index: objExtLocal });
-
-      if (dpIsAccessor) {
-        // Accessor descriptor: emit __defineProperty_accessor
-        const dpRuntimeFlags = computeRuntimeFlags(undefined, descEnumerable, descConfigurable, false);
-        fctx.body.push({ op: "local.get", index: objExtLocal });
-        compileExpression(ctx, fctx, ts.factory.createStringLiteral(propName), { kind: "externref" });
-
-        // Compile getter callback
-        if (dpGetNode) {
-          if (!compileArrowAsCallback(ctx, fctx, dpGetNode as unknown as ts.FunctionExpression, { needsThis: true }))
-            fctx.body.push({ op: "ref.null.extern" });
-        } else if (dpGetExpr) {
-          const gFuncNode = resolveExprToFuncNode(ctx, dpGetExpr);
-          if (gFuncNode) {
-            if (!compileArrowAsCallback(ctx, fctx, gFuncNode as unknown as ts.FunctionExpression, { needsThis: true }))
-              fctx.body.push({ op: "ref.null.extern" });
-          } else {
-            fctx.body.push({ op: "ref.null.extern" });
-          }
-        } else {
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-
-        // Compile setter callback
-        if (dpSetNode) {
-          if (!compileArrowAsCallback(ctx, fctx, dpSetNode as unknown as ts.FunctionExpression, { needsThis: true }))
-            fctx.body.push({ op: "ref.null.extern" });
-        } else if (dpSetExpr) {
-          const sFuncNode = resolveExprToFuncNode(ctx, dpSetExpr);
-          if (sFuncNode) {
-            if (!compileArrowAsCallback(ctx, fctx, sFuncNode as unknown as ts.FunctionExpression, { needsThis: true }))
-              fctx.body.push({ op: "ref.null.extern" });
-          } else {
-            fctx.body.push({ op: "ref.null.extern" });
-          }
-        } else {
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-
-        fctx.body.push({ op: "f64.const", value: dpRuntimeFlags });
-        const accIdx = ensureLateImport(
-          ctx,
-          "__defineProperty_accessor",
-          [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
-          [{ kind: "externref" }],
-        );
-        flushLateImportShifts(ctx, fctx);
-        if (accIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: accIdx });
-          fctx.body.push({ op: "drop" });
-        }
-
-        if (ts.isIdentifier(objArg)) {
-          const isAccessor = true;
-          const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
-          const key = `${objArg.text}:${propName}`;
-          ctx.definedPropertyFlags.set(key, newFlags);
-        }
-      } else {
-        // Value/flags descriptor: emit __defineProperty_value
-        // Push prop name as string
-        fctx.body.push({ op: "local.get", index: objExtLocal });
-        compileExpression(ctx, fctx, ts.factory.createStringLiteral(propName), { kind: "externref" });
-
-        // Compile value or push null
-        if (valueExpr) {
-          const vt = compileExpression(ctx, fctx, valueExpr, { kind: "externref" });
-          if (vt && vt.kind !== "externref") {
-            coerceType(ctx, fctx, vt, { kind: "externref" });
-          } else if (!vt) {
-            fctx.body.push({ op: "ref.null.extern" });
-          }
-        } else {
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-
-        // Runtime flags
-        const runtimeFlags = computeRuntimeFlags(descWritable, descEnumerable, descConfigurable, !!valueExpr);
-        fctx.body.push({ op: "f64.const", value: runtimeFlags });
-
-        const funcIdx = ensureLateImport(
-          ctx,
-          "__defineProperty_value",
-          [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
-          [{ kind: "externref" }],
-        );
-        flushLateImportShifts(ctx, fctx);
-        if (funcIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx });
-          fctx.body.push({ op: "drop" }); // drop returned obj (we use our local)
-        }
-
-        // Update compile-time flags for externref path
-        if (ts.isIdentifier(objArg)) {
-          const isAccessor = false;
-          const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
-          const key = `${objArg.text}:${propName}`;
-          ctx.definedPropertyFlags.set(key, newFlags);
-        }
-      }
+      return objType;
     }
-
-    // Return obj
-    fctx.body.push({ op: "local.get", index: objLocal });
-    return objType;
   }
 
   // Dynamic fallback: delegate to __defineProperties host import
