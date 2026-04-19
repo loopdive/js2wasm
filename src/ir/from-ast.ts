@@ -4,16 +4,26 @@
 //
 // Phase 1 numeric/bool subset. The selector in `select.ts` restricts us to
 // functions whose params are number/boolean, whose return type is
-// number/boolean, and whose body is `(let|const <id> = <expr>;)* return <expr>;`.
+// number/boolean, and whose body is a "tail":
+//   - zero or more `(let|const) <id> = <expr>;` declarations, followed by
+//   - either `return <expr>;` OR `if (<expr>) <tail> else <tail>`,
+//   - where each if-arm is itself a valid tail (terminates via return).
+//
 // `<expr>` may be:
 //   - NumericLiteral / TrueKeyword / FalseKeyword
 //   - Identifier referring to a parameter or a previously-declared local
 //   - BinaryExpression with an arithmetic / comparison / logical operator
 //   - PrefixUnaryExpression with `-`, `+`, `!`
+//   - ConditionalExpression (`a ? b : c`)
 //   - ParenthesizedExpression (unwrap)
 //
 // Everything else throws — the selector must keep those functions on the
 // legacy path.
+//
+// Control flow is represented as basic blocks with `br_if` terminators. The
+// entry block holds the pre-branch `let`/`const` decls; each if-arm is its
+// own block (fork scope so declarations don't leak). Arms always terminate
+// with `return` — Phase 1 doesn't model join blocks yet.
 
 import ts from "typescript";
 
@@ -58,33 +68,84 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     throw new Error(`ir/from-ast: Phase 1 expects at least 1 statement in ${name}`);
   }
 
-  const cx: LowerCtx = { builder, scope, funcName: name };
+  const cx: LowerCtx = { builder, scope, funcName: name, returnType };
+  lowerStatementList(stmts, cx);
 
+  return builder.finish();
+}
+
+function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void {
+  if (stmts.length < 1) {
+    throw new Error(`ir/from-ast: empty statement list in ${cx.funcName}`);
+  }
   for (let i = 0; i < stmts.length - 1; i++) {
     const s = stmts[i];
     if (!ts.isVariableStatement(s)) {
       throw new Error(
-        `ir/from-ast: Phase 1 expects a VariableStatement before the return (got ${ts.SyntaxKind[s.kind]} in ${name})`,
+        `ir/from-ast: Phase 1 expects a VariableStatement before the tail (got ${ts.SyntaxKind[s.kind]} in ${cx.funcName})`,
       );
     }
     lowerVarDecl(s, cx);
   }
+  lowerTail(stmts[stmts.length - 1], cx);
+}
 
-  const last = stmts[stmts.length - 1];
-  if (!ts.isReturnStatement(last) || !last.expression) {
-    throw new Error(`ir/from-ast: Phase 1 expects a trailing return with expression in ${name}`);
+/**
+ * Lower a "tail" statement — one that must end in a return on every path.
+ * Phase 1 tails are: `return <expr>;`, a `Block { ... }` whose own tail is a
+ * tail, or `if (<cond>) <tail> else <tail>`.
+ */
+function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
+  if (ts.isReturnStatement(stmt)) {
+    if (!stmt.expression) {
+      throw new Error(`ir/from-ast: Phase 1 return must have an expression in ${cx.funcName}`);
+    }
+    const v = lowerExpr(stmt.expression, cx, cx.returnType);
+    cx.builder.terminate({ kind: "return", values: [v] });
+    return;
   }
+  if (ts.isBlock(stmt)) {
+    // Fork scope — declarations inside the block stay local to this arm.
+    const childCx: LowerCtx = { ...cx, scope: new Map(cx.scope) };
+    lowerStatementList(stmt.statements, childCx);
+    return;
+  }
+  if (ts.isIfStatement(stmt)) {
+    if (!stmt.elseStatement) {
+      throw new Error(`ir/from-ast: Phase 1 if must have an else arm in ${cx.funcName}`);
+    }
+    const cond = lowerExpr(stmt.expression, cx, { kind: "i32" });
+    const condType = cx.builder.typeOf(cond);
+    if (condType.kind !== "i32") {
+      throw new Error(`ir/from-ast: if condition must be bool in ${cx.funcName}`);
+    }
+    // Reserve block IDs for both arms BEFORE terminating the current block.
+    // The else ID must be fixed when we emit br_if, even though it opens after
+    // any nested blocks the then-arm allocates.
+    const thenId = cx.builder.reserveBlockId();
+    const elseId = cx.builder.reserveBlockId();
+    cx.builder.terminate({
+      kind: "br_if",
+      condition: cond,
+      ifTrue: { target: thenId, args: [] },
+      ifFalse: { target: elseId, args: [] },
+    });
 
-  const returned = lowerExpr(last.expression, cx, returnType);
-  builder.terminate({ kind: "return", values: [returned] });
+    cx.builder.openReservedBlock(thenId);
+    lowerTail(stmt.thenStatement, { ...cx, scope: new Map(cx.scope) });
 
-  return builder.finish();
+    cx.builder.openReservedBlock(elseId);
+    lowerTail(stmt.elseStatement, { ...cx, scope: new Map(cx.scope) });
+    return;
+  }
+  throw new Error(`ir/from-ast: unsupported tail statement ${ts.SyntaxKind[stmt.kind]} in ${cx.funcName}`);
 }
 
 interface LowerCtx {
   readonly builder: IrFunctionBuilder;
   readonly scope: Map<string, { value: IrValueId; type: IrType }>;
   readonly funcName: string;
+  readonly returnType: IrType;
 }
 
 function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {

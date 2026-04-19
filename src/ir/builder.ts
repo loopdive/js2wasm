@@ -39,6 +39,11 @@ export class IrFunctionBuilder {
   private readonly finished: IrBlock[] = [];
   private readonly valueTypes = new Map<IrValueId, IrType>();
   private current: OpenBlock | null = null;
+  // Block IDs are assigned from a monotonic counter rather than from
+  // `finished.length`, so forward references (br_if with a not-yet-opened
+  // target) can reserve an ID before its defining block exists.
+  private nextBlockId = 0;
+  private readonly reserved = new Set<IrBlockId>();
 
   constructor(
     private readonly name: string,
@@ -64,15 +69,44 @@ export class IrFunctionBuilder {
     if (this.current !== null) {
       throw new Error(`IrFunctionBuilder: previous block not terminated (func ${this.name})`);
     }
-    const id = asBlockId(this.finished.length);
+    const id = asBlockId(this.nextBlockId++);
+    this.current = this.makeOpen(id, blockArgTypes);
+    return id;
+  }
+
+  /**
+   * Allocate a block ID without opening it — for forward references in a
+   * terminator that must branch to a block we haven't emitted yet. The caller
+   * MUST later activate it with `openReservedBlock(id)` before `finish()`.
+   */
+  reserveBlockId(): IrBlockId {
+    const id = asBlockId(this.nextBlockId++);
+    this.reserved.add(id);
+    return id;
+  }
+
+  /**
+   * Activate a previously reserved block ID as the current open block.
+   */
+  openReservedBlock(id: IrBlockId, blockArgTypes: readonly IrType[] = []): void {
+    if (this.current !== null) {
+      throw new Error(`IrFunctionBuilder: previous block not terminated (func ${this.name})`);
+    }
+    if (!this.reserved.has(id)) {
+      throw new Error(`IrFunctionBuilder: block ${id as number} was not reserved (func ${this.name})`);
+    }
+    this.reserved.delete(id);
+    this.current = this.makeOpen(id, blockArgTypes);
+  }
+
+  private makeOpen(id: IrBlockId, blockArgTypes: readonly IrType[]): OpenBlock {
     const blockArgs: IrValueId[] = [];
     for (const ty of blockArgTypes) {
       const v = this.allocator.fresh();
       this.valueTypes.set(v, ty);
       blockArgs.push(v);
     }
-    this.current = { id, blockArgs, blockArgTypes: [...blockArgTypes], instrs: [] };
-    return id;
+    return { id, blockArgs, blockArgTypes: [...blockArgTypes], instrs: [] };
   }
 
   blockArg(slot: number): IrValueId {
@@ -168,14 +202,22 @@ export class IrFunctionBuilder {
     if (this.current !== null) {
       throw new Error(`IrFunctionBuilder: finish() while block ${this.current.id} still open (func ${this.name})`);
     }
+    if (this.reserved.size > 0) {
+      const ids = [...this.reserved].map((b) => b as number).join(",");
+      throw new Error(`IrFunctionBuilder: reserved block(s) [${ids}] never opened (func ${this.name})`);
+    }
     if (this.finished.length === 0) {
       throw new Error(`IrFunctionBuilder: function ${this.name} has no blocks`);
     }
+    // Blocks may have been pushed out-of-order (a forward-referenced block is
+    // opened after blocks allocated during its predecessor's lowering). The
+    // verifier and the lowerer both expect `blocks[i].id === i`.
+    const sorted = [...this.finished].sort((a, b) => (a.id as number) - (b.id as number));
     return {
       name: this.name,
       params: this.params,
       resultTypes: [...this.resultTypes],
-      blocks: this.finished,
+      blocks: sorted,
       exported: this.exported,
       valueCount: this.allocator.count,
     };
