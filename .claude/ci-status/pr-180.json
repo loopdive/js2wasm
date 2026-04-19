@@ -1,0 +1,15 @@
+{
+  "pr": 180,
+  "conclusion": "cancelled",
+  "head_branch": "issue-1075-commonjs-exports",
+  "head_sha": "aedd399d2863616f3d6fa988f305992a057a137b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615254820",
+  "timestamp": "2026-04-18T23:17:00Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
