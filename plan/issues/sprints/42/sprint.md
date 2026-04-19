@@ -384,12 +384,12 @@ _Issues confirmed merged to main during Sprint 42 but not in the auto-generated 
 | #1134 | Loose equality `null==undefined`, `bool==number` for externref | loose-eq PR | +conformance |
 | #1136 | `Array.prototype.flat()` and `flatMap()` | #190 | ES2019 methods |
 | #1137 | ES2023 array methods: `toReversed`, `toSorted`, `toSpliced`, `with` | #192 | 18/89 test262 |
-| — | Destructuring: unresolvable defaults throw `ReferenceError` (+115 test262) | #216 | No issue file |
-| — | Destructuring: `TypeError` on null/undefined source | #225 | No issue file |
-| — | Array methods `.call()` with array-like receiver | #223 | No issue file |
-| — | `Object.defineProperties`: descriptor shape validation per ECMA-262 | #226 | No issue file |
-| — | Brand-check `thisArg` on class method `.call()`/`.apply()` | #227 | No issue file |
-| — | Array callback arg push gate on `paramTypes.length` | #228 | No issue file |
-| — | Static class elements: `this.#priv` access in static methods | #204 | Sub-issue of #994 |
-| — | Async-gen: undefined tuple elements promote to f64 | #205 | Async-gen fix |
-| — | For-of nested rest binding patterns (#825 cluster) | #209 | Sub-issue of #825 |
+| #1138 | Destructuring: unresolvable defaults throw `ReferenceError` (+115 test262) | #216 | |
+| #1139 | Destructuring: `TypeError` on null/undefined source (RequireObjectCoercible) | #225 | |
+| #1140 | Array methods `.call()` with array-like receiver | #223 | |
+| #1141 | `Object.defineProperties`: descriptor shape validation per ECMA-262 §10.1 | #226 | |
+| #1142 | Brand-check `thisArg` on class method `.call()`/`.apply()` | #227 | |
+| #1143 | Array callback arg push not gated on `paramTypes.length` | #228 | |
+| #1144 | Static class elements: `this.#priv` access in static methods | #204 | |
+| #1145 | Async-gen: undefined tuple elements promote to f64, corrupting sNaN | #205 | |
+| #1146 | For-of nested rest binding patterns (#825 ary-rest-rest cluster) | #209 | Sub-issue of #825 |
