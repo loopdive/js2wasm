@@ -333,7 +333,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #995 | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | low | ready |
 | #996 | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | low | ready |
 | #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
-| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | ready |
 | #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
 | #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | ready |
@@ -379,6 +378,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #825 | Null dereference failures (2,295 runtime failures) | high | review |
 | #826 | Illegal cast failures (1,276 runtime failures) | high | review |
+| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | review |
 | #1117 | Expected TypeError but got wrong error type (136 tests) | medium | review |
 
 ### Done

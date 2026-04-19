@@ -43,7 +43,7 @@ and hide real ones.
 | **962** | illegal cast regressions after sprint 38 merges (433 tests) | 38 | done | high |
 | **967** | Array.prototype.some/every/map not resolving after #799 prototype chain (30 tests) | 38 | done | high |
 | **982** | Extract performance benchmark chart into a reusable web component | 40 | done | medium |
-| **1001** | Preallocate counted number[] push loops into dense WasmGC arrays | 42 | ready | medium |
+| **1001** | Preallocate counted number[] push loops into dense WasmGC arrays | 42 | review | medium |
 | **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 42 | ready | medium |
 | **1026** | String.prototype / Number.prototype / Boolean.prototype globals access | 40 | done | medium |
 | **1063** | createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee) | 41 | done | high |
