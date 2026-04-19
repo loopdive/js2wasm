@@ -14,5 +14,5 @@ scripts/wasm-exec-worker.mjs
 # Auto-generated planning artifacts — minified by build-planning-artifacts.mjs.
 # Pretty-printing breaks CI "Check planning artifacts are committed" gate.
 dashboard/data.js
-public/graph-data.json
 dashboard/data/
+public/graph-data.json

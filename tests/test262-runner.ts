@@ -1772,20 +1772,29 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // explicitly declared. In sloppy-mode JS these become implicit globals; since
   // we wrap in strict module scope we need explicit declarations.
   // Detect patterns: { prop: ident } = and { prop: ident, ... } =
+  //
+  // EXCEPTION: onlyStrict tests that explicitly test PutValue on unresolvable
+  // references (§6.2.4 step 5) must NOT be patched — the ReferenceError is the
+  // behavior being tested. Detected via `assert.throws(ReferenceError, ...)`
+  // wrapping the destructuring assignment.
   const implicitVars = new Set<string>();
+  const testsUnresolvablePutValue =
+    meta?.flags?.includes("onlyStrict") === true && /assert(?:\.|_)throws\s*\(\s*ReferenceError\b/.test(source);
   // Find all declared vars/let/const
   const declaredVars = new Set<string>();
   for (const m of body.matchAll(/\b(?:var|let|const)\s+([a-zA-Z_$][\w$]*)/g)) {
     declaredVars.add(m[1]!);
   }
-  // Find variables used as targets in object destructuring assignments
-  // Pattern: { anyProp: ident } = or { anyProp: ident, ... } =
-  for (const m of body.matchAll(/\{\s*(?:[\w\\u]+\s*:\s*(\w+)\s*,?\s*)+\}\s*=/g)) {
-    // Re-scan for all prop:ident pairs within the match
-    for (const inner of m[0].matchAll(/[\w\\u]+\s*:\s*(\w+)/g)) {
-      const v = inner[1]!;
-      if (!declaredVars.has(v) && v !== "__fail") {
-        implicitVars.add(v);
+  if (!testsUnresolvablePutValue) {
+    // Find variables used as targets in object destructuring assignments
+    // Pattern: { anyProp: ident } = or { anyProp: ident, ... } =
+    for (const m of body.matchAll(/\{\s*(?:[\w\\u]+\s*:\s*(\w+)\s*,?\s*)+\}\s*=/g)) {
+      // Re-scan for all prop:ident pairs within the match
+      for (const inner of m[0].matchAll(/[\w\\u]+\s*:\s*(\w+)/g)) {
+        const v = inner[1]!;
+        if (!declaredVars.has(v) && v !== "__fail") {
+          implicitVars.add(v);
+        }
       }
     }
   }
