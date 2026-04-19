@@ -4026,21 +4026,36 @@ async function runOnly() {
   }
 
   if (!hasMain && hasTopLevel) {
-    // Top-level statements exist but no main() — recompile with a synthesized
-    // main() so the playground has an entry point to call.
+    // Top-level statements exist but no main().
+    // The compiler now emits _start for module-init-only programs (#907),
+    // so no synthesized main() is needed. For programs with other exports,
+    // the __init_done guard triggers init on first export call — fall back
+    // to synthesized main() only if neither _start nor guard is available.
     const source = inputFile.model.getValue();
     if (!hasTopLevelMainDeclaration(source)) {
-      const runtimeSource = `${source}\n\nexport function main(): void {}\n`;
-      const runtimeResult = buildCompileResultForEditorSource(runtimeSource);
-      if (!runtimeResult.success) {
-        errorsPre.textContent = runtimeResult.errors
-          .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
-          .join("\n");
-        showOutputPanel("errors");
-        return;
+      // result was already compiled as-is; _start will be in exports if
+      // there are no user-exported functions. If there ARE exports but no
+      // main, the guard handles init — but we still need an entry point,
+      // so synthesize main() as before.
+      // Check: does the binary have _start? We can't peek at Wasm exports
+      // before instantiation, so use a simple heuristic: if hasMain is
+      // false and the source has no `export` keywords, _start is emitted.
+      const hasExportKeyword = /\bexport\b/.test(source);
+      if (hasExportKeyword) {
+        // Has exports but no main() — guard handles init, synthesize main
+        const runtimeSource = `${source}\n\nexport function main(): void {}\n`;
+        const runtimeResult = buildCompileResultForEditorSource(runtimeSource);
+        if (!runtimeResult.success) {
+          errorsPre.textContent = runtimeResult.errors
+            .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
+            .join("\n");
+          showOutputPanel("errors");
+          return;
+        }
+        result = runtimeResult;
+        synthesizedMain = true;
       }
-      result = runtimeResult;
-      synthesizedMain = true;
+      // else: no exports → _start is emitted, use result as-is
     }
   }
 
@@ -4072,8 +4087,12 @@ async function runOnly() {
       }
       const returnValue = wasmExports.main();
       if (returnValue !== undefined) logs.push(`→ ${returnValue}`);
+    } else if (typeof wasmExports._start === "function") {
+      // Module-init-only program: _start is the direct init entry (#907)
+      wasmExports._start();
+      logs.push("Executed top-level statements via _start().");
     } else {
-      logs.push("No exported main() found in Wasm module.");
+      logs.push("No exported main() or _start() found in Wasm module.");
     }
 
     consolePre.textContent = logs.join("\n");
