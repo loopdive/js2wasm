@@ -351,7 +351,18 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
 
   // ── collectParseImports ──
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-    const name = node.expression.text;
+    let name = node.expression.text;
+    // Resolve aliases like `var freeParseInt = parseInt; freeParseInt(...)` (#1109)
+    if (name !== "parseInt" && name !== "parseFloat") {
+      const sym = ctx.checker.getSymbolAtLocation(node.expression);
+      const decl = sym?.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer && ts.isIdentifier(decl.initializer)) {
+        const initName = decl.initializer.text;
+        if (initName === "parseInt" || initName === "parseFloat") {
+          name = initName;
+        }
+      }
+    }
     if (name === "parseInt" || name === "parseFloat") {
       state.parseNeeded.add(name);
     }
@@ -887,6 +898,8 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
 
   // ── collectParseImports finalize ──
   for (const name of state.parseNeeded) {
+    // Skip if already registered (e.g. by collectExternDeclarations from lib.d.ts) (#1109)
+    if (ctx.funcMap.has(name)) continue;
     if (name === "parseInt") {
       const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", name, { kind: "func", typeIdx });
@@ -898,6 +911,7 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
 
   // ── collectURIImports finalize ──
   for (const name of state.uriNeeded) {
+    if (ctx.funcMap.has(name)) continue;
     const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", name, { kind: "func", typeIdx });
   }
@@ -2786,48 +2800,69 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         shiftLocalIndices(compiledInitFctx.body, existingLocals);
       }
     } else {
-      // No main() function — create a standalone __module_init and inject
-      // a guarded call at the start of every exported function.
+      // No main() function — create a standalone __module_init.
+      // Strategy depends on whether there are user-exported functions (#907):
+      //   - No exports: export __module_init directly as _start (no guard needed)
+      //   - Has exports: inject guarded call via __init_done into each export
 
-      // Add a guard global: __init_done (i32, initially 0)
-      const guardGlobalIdx = nextModuleGlobalIdx(ctx);
-      ctx.mod.globals.push({
-        name: "__init_done",
-        type: { kind: "i32" },
-        mutable: true,
-        init: [{ op: "i32.const", value: 0 }],
-      });
+      const hasExportedFunctions = ctx.mod.functions.some((f) => f.exported && f.name !== "__module_init");
 
-      // Create the __module_init function
-      const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
-      const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-      ctx.mod.functions.push({
-        name: "__module_init",
-        typeIdx: initTypeIdx,
-        locals: compiledInitFctx.locals,
-        body: compiledInitFctx.body,
-        exported: false,
-      });
+      if (!hasExportedFunctions) {
+        // Module-init-only program: export __module_init as _start.
+        // No __init_done guard needed — the caller invokes _start once.
+        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
+        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.mod.functions.push({
+          name: "_start",
+          typeIdx: initTypeIdx,
+          locals: compiledInitFctx.locals,
+          body: compiledInitFctx.body,
+          exported: true,
+        });
+        ctx.mod.exports.push({
+          name: "_start",
+          desc: { kind: "func", index: initFuncIdx },
+        });
+      } else {
+        // Has exports but no main() — use __init_done guard for lazy init.
+        const guardGlobalIdx = nextModuleGlobalIdx(ctx);
+        ctx.mod.globals.push({
+          name: "__init_done",
+          type: { kind: "i32" },
+          mutable: true,
+          init: [{ op: "i32.const", value: 0 }],
+        });
 
-      // Inject guarded call at the start of every exported function.
-      // Each function gets its own deep copy of the guard preamble instructions
-      // to avoid shared-object bugs during dead-import elimination's index remapping.
-      for (const func of ctx.mod.functions) {
-        if (func.exported && func.name !== "__module_init") {
-          const guardPreamble: Instr[] = [
-            { op: "global.get", index: guardGlobalIdx },
-            { op: "i32.eqz" },
-            {
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [
-                { op: "i32.const", value: 1 } as Instr,
-                { op: "global.set", index: guardGlobalIdx } as Instr,
-                { op: "call", funcIdx: initFuncIdx } as Instr,
-              ],
-            } as Instr,
-          ];
-          func.body = [...guardPreamble, ...func.body];
+        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
+        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.mod.functions.push({
+          name: "__module_init",
+          typeIdx: initTypeIdx,
+          locals: compiledInitFctx.locals,
+          body: compiledInitFctx.body,
+          exported: false,
+        });
+
+        // Inject guarded call at the start of every exported function.
+        // Each function gets its own deep copy of the guard preamble instructions
+        // to avoid shared-object bugs during dead-import elimination's index remapping.
+        for (const func of ctx.mod.functions) {
+          if (func.exported && func.name !== "__module_init") {
+            const guardPreamble: Instr[] = [
+              { op: "global.get", index: guardGlobalIdx },
+              { op: "i32.eqz" },
+              {
+                op: "if",
+                blockType: { kind: "empty" },
+                then: [
+                  { op: "i32.const", value: 1 } as Instr,
+                  { op: "global.set", index: guardGlobalIdx } as Instr,
+                  { op: "call", funcIdx: initFuncIdx } as Instr,
+                ],
+              } as Instr,
+            ];
+            func.body = [...guardPreamble, ...func.body];
+          }
         }
       }
     }
