@@ -1,0 +1,15 @@
+{
+  "pr": 188,
+  "conclusion": "failure",
+  "head_branch": "issue-1133-any-strict-eq-string",
+  "head_sha": "e6345dc6bd8460162d6fd6cb8b723d7e617e9ff5",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608489938",
+  "timestamp": "2026-04-18T18:52:39Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

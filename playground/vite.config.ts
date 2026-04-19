@@ -8,8 +8,7 @@ import { compilerBundlePlugin } from "./vite-plugin-compiler-bundle.js";
 const projectRoot = resolve(import.meta.dirname, "..");
 const dashboardPluginPath = resolve(import.meta.dirname, "vite-plugin-dashboard.ts");
 const hasDashboardData =
-  existsSync(resolve(projectRoot, "dashboard", "index.html")) &&
-  existsSync(resolve(projectRoot, "plan", "issues"));
+  existsSync(resolve(projectRoot, "dashboard", "index.html")) && existsSync(resolve(projectRoot, "plan", "issues"));
 
 export default defineConfig(async () => {
   const plugins = [compilerBundlePlugin(), test262Plugin()];

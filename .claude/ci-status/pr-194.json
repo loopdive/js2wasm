@@ -1,0 +1,15 @@
+{
+  "pr": 194,
+  "conclusion": "failure",
+  "head_branch": "issue-1025-binding-element-null-audit",
+  "head_sha": "11369efb14f0ccec72ec833638a8b27e40e4491f",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24624859944",
+  "timestamp": "2026-04-19T11:28:26Z",
+  "pass": 22421,
+  "fail": 15088,
+  "compile_error": 4291,
+  "snapshot_delta": -29,
+  "net_per_test": -29,
+  "regressions": 120,
+  "improvements": 91
+}
