@@ -22,6 +22,8 @@ import {
   compileStatement,
   emitArgumentsObject,
   emitBoundsCheckedArrayGet,
+  ensureLateImport,
+  flushLateImportShifts,
   resolveComputedKeyExpression,
   valTypesMatch,
 } from "./shared.js";
@@ -779,10 +781,19 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
+        // Emit the null/zero check + conditional assignment.
+        // externref: use `__extern_is_undefined` — callers padding missing args
+        // use `__get_undefined` which returns real JS undefined, so a plain
+        // `ref.is_null` would miss it and skip the default.
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "ref.is_null" });
+          const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+          if (isUndefIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          } else {
+            fctx.body.push({ op: "ref.is_null" });
+          }
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
@@ -1019,10 +1030,17 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
+        // Emit the null/zero check + conditional assignment.
+        // externref: see constructor site above for the `__extern_is_undefined` rationale.
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "ref.is_null" });
+          const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+          if (isUndefIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          } else {
+            fctx.body.push({ op: "ref.is_null" });
+          }
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
@@ -1328,10 +1346,17 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
+        // Emit the null/zero check + conditional assignment.
+        // externref: see constructor site above for the `__extern_is_undefined` rationale.
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "ref.is_null" });
+          const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+          if (isUndefIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          } else {
+            fctx.body.push({ op: "ref.is_null" });
+          }
           fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
         } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });

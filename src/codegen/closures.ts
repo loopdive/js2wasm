@@ -566,14 +566,26 @@ export function emitArrowParamDestructuring(
  * Emit the sentinel check + conditional default assignment for a parameter.
  */
 function emitParamDefaultCheckInline(
+  ctx: CodegenContext,
   fctx: FunctionContext,
   paramIdx: number,
   paramType: ValType,
   thenInstrs: Instr[],
 ): void {
   if (paramType.kind === "externref") {
+    // JS default params fire when arg is `undefined` (not just wasm null). Callers
+    // padding missing args use `__get_undefined` which returns real JS undefined,
+    // so a plain `ref.is_null` would miss it and skip the default — triggering
+    // "Cannot destructure 'null' or 'undefined'" on the next guard. Use
+    // `__extern_is_undefined` which covers both wasm null and JS undefined.
     fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "ref.is_null" });
+    const isUndefIdx = ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+    flushLateImportShiftsShared(ctx, fctx);
+    if (isUndefIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+    } else {
+      fctx.body.push({ op: "ref.is_null" });
+    }
     fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
   } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
     fctx.body.push({ op: "local.get", index: paramIdx });
@@ -638,7 +650,7 @@ export function emitArrowParamDefaults(
     fctx.body = savedBody;
 
     // Emit the null/zero check + conditional assignment
-    emitParamDefaultCheckInline(fctx, paramIdx, paramType, thenInstrs);
+    emitParamDefaultCheckInline(ctx, fctx, paramIdx, paramType, thenInstrs);
     // Mark param as initialized after the if
     if (tdzFlags) {
       fctx.body.push({ op: "i32.const", value: 1 });
@@ -705,7 +717,7 @@ export function emitMethodParamDefaults(
     const thenInstrs = fctx.body;
     fctx.body = savedBody;
 
-    emitParamDefaultCheckInline(fctx, paramIdx, paramType, thenInstrs);
+    emitParamDefaultCheckInline(ctx, fctx, paramIdx, paramType, thenInstrs);
     if (tdzFlags) {
       fctx.body.push({ op: "i32.const", value: 1 });
       fctx.body.push({ op: "local.set", index: tdzFlags[i]! });
