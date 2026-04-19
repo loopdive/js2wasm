@@ -11,7 +11,12 @@ import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, deduplicateLocals } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  buildDestructureNullThrow,
+  destructureParamArray,
+  destructureParamObject,
+  isNullOrUndefinedLiteral,
+} from "./destructuring-params.js";
 import { bodyUsesArguments } from "./function-body.js";
 import { cacheStringLiterals, hasAbstractModifier, hasStaticModifier, resolveWasmType } from "./index.js";
 import { ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
@@ -701,6 +706,7 @@ export function compileClassBodies(
       labelMap: new Map(),
       savedBodies: [],
       isConstructor: true,
+      isDerivedConstructor: ctx.classParentMap.has(className),
     };
 
     // Re-resolve the constructor function type now that all class struct types
@@ -1009,13 +1015,24 @@ export function compileClassBodies(
         const paramLocalIdx = isStatic ? pi : pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
 
+        // Per spec §14.3.3.1/§8.4.2: throw TypeError when destructuring null/undefined.
+        // Literal null/undefined default on a binding pattern means: when default fires,
+        // destructuring that value must throw.
+        const dstrNullDefault =
+          (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) &&
+          isNullOrUndefinedLiteral(param.initializer);
+
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
-        const methDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
-        if (methDfltType && !valTypesMatch(methDfltType, paramType)) {
-          coerceType(ctx, fctx, methDfltType, paramType);
+        if (dstrNullDefault) {
+          for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
+        } else {
+          const methDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
+          if (methDfltType && !valTypesMatch(methDfltType, paramType)) {
+            coerceType(ctx, fctx, methDfltType, paramType);
+          }
+          fctx.body.push({ op: "local.set", index: paramLocalIdx });
         }
-        fctx.body.push({ op: "local.set", index: paramLocalIdx });
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 

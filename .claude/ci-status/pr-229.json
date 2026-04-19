@@ -1,0 +1,15 @@
+{
+  "pr": 229,
+  "conclusion": "failure",
+  "head_branch": "issue-donotevaluate-harness",
+  "head_sha": "da275589925baa5cca14b1f4c8ac081e872226c8",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24614671149",
+  "timestamp": "2026-04-18T21:58:43Z",
+  "pass": 22449,
+  "fail": 15393,
+  "compile_error": 3958,
+  "snapshot_delta": -1,
+  "net_per_test": -1,
+  "regressions": 1,
+  "improvements": 0
+}
