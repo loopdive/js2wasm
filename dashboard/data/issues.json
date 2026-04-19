@@ -772,6 +772,18 @@
       "sprint": "Backlog"
     },
     {
+      "id": "907",
+      "title": "Replace __init_done runtime guards with start/init entry semantics",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "900"
+      ],
+      "goal": "developer-experience",
+      "status": "ready",
+      "sprint": "42"
+    },
+    {
       "id": "906",
       "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
       "priority": "high",
@@ -1662,18 +1674,6 @@
       "goal": "test-infrastructure",
       "status": "review",
       "sprint": "Backlog"
-    },
-    {
-      "id": "907",
-      "title": "Replace __init_done runtime guards with start/init entry semantics",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "900"
-      ],
-      "goal": "developer-experience",
-      "status": "review",
-      "sprint": "42"
     },
     {
       "id": "871",

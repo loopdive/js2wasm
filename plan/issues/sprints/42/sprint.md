@@ -325,6 +325,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
 | #862 | Empty error message failures: iterator/destructuring step-err tests (212 FAIL) | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
+| #907 | Replace __init_done runtime guards with start/init entry semantics | high | ready |
 | #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
 | #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | ready |
 | #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
@@ -368,7 +369,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #825 | Null dereference failures (2,295 runtime failures) | high | review |
 | #826 | Illegal cast failures (1,276 runtime failures) | high | review |
-| #907 | Replace __init_done runtime guards with start/init entry semantics | high | review |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | review |
 | #1006 | Support eval via JS host import | medium | review |
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | review |
