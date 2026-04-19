@@ -24,7 +24,7 @@ import {
   VOID_RESULT,
 } from "./shared.js";
 import { ensureTimsortHelper } from "./timsort.js";
-import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
+import { coerceType, coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 
 type ArrayMethodAccess = ts.PropertyAccessExpression | ts.ElementAccessExpression;
 
@@ -1347,12 +1347,17 @@ function compileArrayPrototypeEvery(
     { op: "i32.ge_s" },
     { op: "br_if", depth: 1 }, // break out of block
 
-    // Call closure(element, index, array): push closure ref, then args
+    // Call closure(element, index, array): push closure ref, then args.
+    // Gate elem/index/array on numParams — 0-param callback must not receive them.
     { op: "local.get", index: closureTmp },
-    { op: "local.get", index: dataTmp },
-    { op: "local.get", index: iTmp },
-    { op: getOp, typeIdx: arrTypeIdx } as Instr,
-    ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType, fctx),
+    ...(numParams >= 1
+      ? [
+          { op: "local.get", index: dataTmp } as Instr,
+          { op: "local.get", index: iTmp } as Instr,
+          { op: getOp, typeIdx: arrTypeIdx } as Instr,
+          ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType, fctx),
+        ]
+      : []),
     // Push index (2nd user param) if callback expects it
     ...(numParams >= 2
       ? [
@@ -1473,10 +1478,14 @@ function compileArrayPrototypeSome(
     { op: "i32.ge_s" },
     { op: "br_if", depth: 1 },
     { op: "local.get", index: closureTmp },
-    { op: "local.get", index: dataTmp },
-    { op: "local.get", index: iTmp },
-    { op: getOp, typeIdx: arrTypeIdx } as Instr,
-    ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType, fctx),
+    ...(numParams >= 1
+      ? [
+          { op: "local.get", index: dataTmp } as Instr,
+          { op: "local.get", index: iTmp } as Instr,
+          { op: getOp, typeIdx: arrTypeIdx } as Instr,
+          ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType, fctx),
+        ]
+      : []),
     // Push index (2nd user param) if callback expects it
     ...(numParams >= 2
       ? [
@@ -1586,10 +1595,14 @@ function compileArrayPrototypeForEach(
     { op: "i32.ge_s" },
     { op: "br_if", depth: 1 },
     { op: "local.get", index: closureTmp },
-    { op: "local.get", index: dataTmp },
-    { op: "local.get", index: iTmp },
-    { op: getOp, typeIdx: arrTypeIdx } as Instr,
-    ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType, fctx),
+    ...(numParams >= 1
+      ? [
+          { op: "local.get", index: dataTmp } as Instr,
+          { op: "local.get", index: iTmp } as Instr,
+          { op: getOp, typeIdx: arrTypeIdx } as Instr,
+          ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType, fctx),
+        ]
+      : []),
     // Push index (2nd user param) if callback expects it
     ...(numParams >= 2
       ? [
@@ -1659,6 +1672,8 @@ const ARRAY_METHODS = new Set([
   "entries",
   "keys",
   "values",
+  "flat",
+  "flatMap",
 ]);
 
 /**
@@ -1817,6 +1832,12 @@ export function compileArrayMethodCall(
     case "keys":
     case "values":
       result = compileArrayIteratorMethod(ctx, fctx, methodAccess, methodName);
+      break;
+    case "flat":
+      result = compileArrayFlat(ctx, fctx, methodAccess, callExpr);
+      break;
+    case "flatMap":
+      result = compileArrayFlatMap(ctx, fctx, methodAccess, callExpr);
       break;
     default:
       result = undefined;
@@ -3257,15 +3278,21 @@ function buildClosureCallInstrs(
 
   return [
     { op: "local.get", index: closureTmp } as Instr,
-    // Element value
-    ...(elemSource.kind === "local"
-      ? [{ op: "local.get", index: elemSource.index } as Instr]
-      : [
-          { op: "local.get", index: loop.dataTmp } as Instr,
-          { op: "local.get", index: loop.iTmp } as Instr,
-          { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
-        ]),
-    ...elemCoerce,
+    // Element value (1st user param) — only pushed if callback declares ≥1 param.
+    // A 0-arg callback (e.g. `function() {}`) compiles to a funcref that takes only
+    // the closure env, so pushing elem here produces a call_ref signature mismatch.
+    ...(numParams >= 1
+      ? [
+          ...(elemSource.kind === "local"
+            ? [{ op: "local.get", index: elemSource.index } as Instr]
+            : [
+                { op: "local.get", index: loop.dataTmp } as Instr,
+                { op: "local.get", index: loop.iTmp } as Instr,
+                { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
+              ]),
+          ...elemCoerce,
+        ]
+      : []),
     // Index (2nd user param)
     ...(numParams >= 2
       ? [
@@ -3661,12 +3688,17 @@ function compileArrayReduce(
     const elemCoerce = ci.paramTypes[1] ? coercionInstrs(ctx, elemType, ci.paramTypes[1], fctx) : [];
     callInstrs = [
       { op: "local.get", index: setup.closureTmp } as Instr,
-      { op: "local.get", index: accTmp } as Instr,
-      ...accCoerce,
-      { op: "local.get", index: loop.dataTmp } as Instr,
-      { op: "local.get", index: loop.iTmp } as Instr,
-      { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
-      ...elemCoerce,
+      // Accumulator (1st user param) — gate on numParams >= 1.
+      ...(numParams >= 1 ? [{ op: "local.get", index: accTmp } as Instr, ...accCoerce] : []),
+      // Element (2nd user param) — gate on numParams >= 2.
+      ...(numParams >= 2
+        ? [
+            { op: "local.get", index: loop.dataTmp } as Instr,
+            { op: "local.get", index: loop.iTmp } as Instr,
+            { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
+            ...elemCoerce,
+          ]
+        : []),
       ...(numParams >= 3
         ? [
             { op: "local.get", index: loop.iTmp } as Instr,
@@ -3799,12 +3831,15 @@ function compileArrayReduceRight(
     const elemCoerce = ci.paramTypes[1] ? coercionInstrs(ctx, elemType, ci.paramTypes[1], fctx) : [];
     callInstrs = [
       { op: "local.get", index: setup.closureTmp } as Instr,
-      { op: "local.get", index: accTmp } as Instr,
-      ...accCoerce,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...elemCoerce,
+      ...(numParams >= 1 ? [{ op: "local.get", index: accTmp } as Instr, ...accCoerce] : []),
+      ...(numParams >= 2
+        ? [
+            { op: "local.get", index: dataTmp } as Instr,
+            { op: "local.get", index: iTmp } as Instr,
+            { op: getOp, typeIdx: arrTypeIdx } as Instr,
+            ...elemCoerce,
+          ]
+        : []),
       ...(numParams >= 3
         ? [
             { op: "local.get", index: iTmp } as Instr,
@@ -4589,6 +4624,100 @@ function compileArrayLastIndexOf(
     return { kind: "i32" };
   }
   return { kind: "f64" };
+}
+
+/**
+ * Compile arr.flat(depth?) — delegates to __array_flat host import (#1136).
+ * Converts WasmGC vec receiver to externref, passes depth arg, returns externref.
+ */
+function compileArrayFlat(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+): ValType | null {
+  // __array_flat(receiver: externref, depth: externref) -> externref
+  const flatIdx = ensureLateImport(
+    ctx,
+    "__array_flat",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (flatIdx === undefined) return null;
+
+  // Compile receiver as externref
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+
+  // Compile depth argument (or push undefined)
+  if (callExpr.arguments.length > 0) {
+    const depthType = compileExpression(ctx, fctx, callExpr.arguments[0]!);
+    if (depthType && depthType.kind !== "externref") {
+      coerceType(ctx, fctx, depthType, { kind: "externref" });
+    } else if (!depthType) {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  fctx.body.push({ op: "call", funcIdx: flatIdx });
+  return { kind: "externref" };
+}
+
+/**
+ * Compile arr.flatMap(callback, thisArg?) — delegates to __array_flatMap host import (#1136).
+ * Converts WasmGC vec receiver to externref, passes callback and optional thisArg, returns externref.
+ */
+function compileArrayFlatMap(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+): ValType | null {
+  if (callExpr.arguments.length < 1) return null; // flatMap requires a callback
+
+  // __array_flatMap(receiver: externref, fn: externref, thisArg: externref) -> externref
+  const flatMapIdx = ensureLateImport(
+    ctx,
+    "__array_flatMap",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (flatMapIdx === undefined) return null;
+
+  // Compile receiver as externref
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+
+  // Compile callback as externref
+  const cbType = compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  if (cbType && cbType.kind !== "externref") {
+    coerceType(ctx, fctx, cbType, { kind: "externref" });
+  } else if (!cbType) {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  // Compile thisArg (or push undefined)
+  if (callExpr.arguments.length > 1) {
+    const thisArgType = compileExpression(ctx, fctx, callExpr.arguments[1]!);
+    if (thisArgType && thisArgType.kind !== "externref") {
+      coerceType(ctx, fctx, thisArgType, { kind: "externref" });
+    } else if (!thisArgType) {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  fctx.body.push({ op: "call", funcIdx: flatMapIdx });
+  return { kind: "externref" };
 }
 
 // Register the emitBoundsCheckedArrayGet delegate so closures.ts (and any

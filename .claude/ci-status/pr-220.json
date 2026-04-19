@@ -1,0 +1,15 @@
+{
+  "pr": 220,
+  "conclusion": "failure",
+  "head_branch": "issue-setexports-rest-throw",
+  "head_sha": "9101ca4a34c89b5edba4eae24dafc8d2430dc300",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24612322313",
+  "timestamp": "2026-04-18T19:46:32Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
