@@ -1,0 +1,15 @@
+{
+  "pr": 213,
+  "conclusion": "failure",
+  "head_branch": "issue-iterator-harness-binding",
+  "head_sha": "cfdc9079a3ea9147292984051d98efac8bc1d14c",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24609267430",
+  "timestamp": "2026-04-18T18:54:41Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

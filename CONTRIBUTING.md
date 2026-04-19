@@ -45,6 +45,34 @@ PRs may also be validated through CI workflows that compare the branch against t
 - Do not mix unrelated cleanup into a compiler change.
 - Preserve the current compiler architecture and repo conventions unless the change explicitly aims to refactor them.
 
+## Agent-Assisted Contributions
+
+This project develops in the open with an agentic workflow. You can use it too.
+
+If you have [Claude Code](https://docs.claude.com/claude-code), you can contribute at agent speed:
+
+1. Browse `plan/issues/sprints/` — each issue file is a real implementation spec with root-cause analysis, spec citations, and target files already identified. The `status:` frontmatter field tracks state (`ready`, `in-progress`, `blocked`, `done`).
+2. Claim one in your fork (update the `status` frontmatter or just start working).
+3. Spawn a developer agent pointed at the issue. It will read `.claude/agents/developer.md` for role, apply `.claude/hooks/pre-git-commit.sh` safety checks (code-word `CHECKLIST-FOXTROT` required in commit messages), push a branch, and open a PR against this repo.
+4. Human review + merge as usual.
+
+You do **not** need agents to contribute. Regular PRs from any contributor are welcome via the standard flow below. The agent path is a force multiplier, not a requirement.
+
+**Where to find issues:**
+
+- `plan/issues/sprints/<N>/*.md` — active issues organized by sprint. Filter by frontmatter `status: ready` to find unblocked items.
+- `plan/issues/backlog/` — longer-term items that need more investigation first.
+- `plan/issues/wont-fix/` — decided against implementing (for context only).
+- `plan/log/dependency-graph.md` — current priorities and what's blocked on what.
+- [The dashboard](https://js2wasm.loopdive.com/dashboard/) provides a filtered UI view of ready-to-pick issues.
+
+**Protected paths** (changes to these go through CODEOWNERS review):
+
+- `plan/` — the roadmap and implementation specs
+- `.claude/` — agent coordination, hooks, memory
+
+Changes under those paths are welcome but need maintainer approval to keep direction coherent.
+
 ## Contributor License Agreement (CLA)
 
 Contributions to this repository require agreement to the Loopdive contributor terms.
