@@ -1,0 +1,15 @@
+{
+  "pr": 217,
+  "conclusion": "failure",
+  "head_branch": "issue-strict-assign-undeclared",
+  "head_sha": "1083a33f08a58a42ca60a8b7ae6f7bbe7fcbab5b",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24611421015",
+  "timestamp": "2026-04-18T19:02:21Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
