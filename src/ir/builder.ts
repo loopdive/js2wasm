@@ -139,6 +139,13 @@ export class IrFunctionBuilder {
     return result;
   }
 
+  emitSelect(condition: IrValueId, whenTrue: IrValueId, whenFalse: IrValueId, resultType: IrType): IrValueId {
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({ kind: "select", condition, whenTrue, whenFalse, result, resultType });
+    return result;
+  }
+
   /**
    * Phase 1 escape hatch — emit raw backend ops with a stated stack delta.
    * Verifier requires stackDelta to match the effective push count.

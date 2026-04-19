@@ -195,6 +195,19 @@ export interface IrInstrUnary extends IrInstrBase {
 }
 
 /**
+ * Conditional expression — lowers to Wasm `select`. Both arms are evaluated;
+ * this is safe for pure Phase 1 expressions (no calls, no side effects).
+ * Branching control flow (for statements with side effects) comes in Phase 2
+ * via `br_if` terminators.
+ */
+export interface IrInstrSelect extends IrInstrBase {
+  readonly kind: "select";
+  readonly condition: IrValueId;
+  readonly whenTrue: IrValueId;
+  readonly whenFalse: IrValueId;
+}
+
+/**
  * Escape hatch: a raw backend instruction sequence with no SSA structure.
  * Phase 1 uses this as a bridge so we can describe any function without
  * re-encoding the whole Wasm opcode set in IR. Phase 2 will narrow uses.
@@ -215,6 +228,7 @@ export type IrInstr =
   | IrInstrGlobalSet
   | IrInstrBinary
   | IrInstrUnary
+  | IrInstrSelect
   | IrInstrRawWasm;
 
 // ---------------------------------------------------------------------------

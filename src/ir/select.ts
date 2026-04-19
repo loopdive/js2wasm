@@ -108,6 +108,13 @@ function isPhase1Expr(expr: ts.Expression, paramNames: ReadonlySet<string>): boo
     if (!isPhase1BinaryOp(expr.operatorToken.kind)) return false;
     return isPhase1Expr(expr.left, paramNames) && isPhase1Expr(expr.right, paramNames);
   }
+  if (ts.isConditionalExpression(expr)) {
+    return (
+      isPhase1Expr(expr.condition, paramNames) &&
+      isPhase1Expr(expr.whenTrue, paramNames) &&
+      isPhase1Expr(expr.whenFalse, paramNames)
+    );
+  }
   return false;
 }
 

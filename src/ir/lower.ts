@@ -152,6 +152,15 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         emitValue(instr.rand);
         body.push({ op: instr.op } as unknown as Instr);
         return;
+      case "select":
+        // Wasm `select` pops [val1, val2, cond] and pushes val1 if cond != 0
+        // else val2. So for `cond ? whenTrue : whenFalse` we push whenTrue,
+        // whenFalse, cond, select.
+        emitValue(instr.whenTrue);
+        emitValue(instr.whenFalse);
+        emitValue(instr.condition);
+        body.push({ op: "select" });
+        return;
       case "raw.wasm":
         for (const op of instr.ops) body.push(op);
         return;
@@ -194,6 +203,8 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.lhs, instr.rhs];
     case "unary":
       return [instr.rand];
+    case "select":
+      return [instr.condition, instr.whenTrue, instr.whenFalse];
     case "raw.wasm":
       return [];
   }
