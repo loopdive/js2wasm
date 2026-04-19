@@ -429,10 +429,35 @@ function _toPrimitive(
 /**
  * Simplified ToPrimitive for contexts without callbackState (e.g. jsString.concat).
  * Only checks sidecar properties, not Wasm exports.
+ * Per §7.1.1.1 step 6, throws TypeError if no conversion is possible (#1128).
+ *
+ * For WasmGC structs where JS property access fails, falls back to "[object Object]"
+ * because we can't dispatch through Wasm exports without callbackState.
+ * For regular JS objects, uses V8's native valueOf/toString which throws TypeError
+ * per spec if neither produces a primitive.
  */
 function _toPrimitiveSync(v: any, hint: "number" | "string" | "default"): any {
   if (v == null || typeof v !== "object") return v;
-  return _toPrimitive(v, hint) ?? "[object Object]";
+  const prim = _toPrimitive(v, hint);
+  if (prim !== undefined) return prim;
+  // WasmGC structs: JS property access fails on opaque structs, but they may
+  // have compiled valueOf/toString that _toPrimitive couldn't dispatch without
+  // callbackState. Fall back to "[object Object]" (same as V8's default toString).
+  if (_isWasmStruct(v)) return "[object Object]";
+  // Regular JS objects: try V8's native property access per OrdinaryToPrimitive §7.1.1.1
+  const methodNames = hint === "string" ? ["toString", "valueOf"] : ["valueOf", "toString"];
+  for (const mName of methodNames) {
+    try {
+      const fn = v[mName];
+      if (typeof fn === "function") {
+        const r = fn.call(v);
+        if (r == null || typeof r !== "object") return r;
+      }
+    } catch {
+      /* property access may throw */
+    }
+  }
+  throw new TypeError("Cannot convert object to primitive value");
 }
 
 /**
@@ -1211,11 +1236,13 @@ function resolveImport(
     case "string_method": {
       const method = intent.method;
       return (s: any, ...a: any[]) => {
-        // Coerce wasmGC struct args via ToPrimitive before passing to JS host (#983)
+        // Coerce wasmGC struct args via ToPrimitive before passing to JS host (#983, #1128)
         const coerce = (v: any): any => {
           if (v != null && typeof v === "object" && _isWasmStruct(v)) {
             const prim = _toPrimitive(v, "string", callbackState);
-            return prim === undefined ? "[object Object]" : prim;
+            if (prim !== undefined) return prim;
+            // Fall through to host ToPrimitive — throws TypeError if no conversion (#1128)
+            return _hostToPrimitive(v, "string", callbackState);
           }
           return v;
         };
@@ -1330,7 +1357,13 @@ function resolveImport(
               out += a;
             } else if (typeof a === "object" && _isWasmStruct(a)) {
               const prim = _toPrimitive(a, "default", callbackState);
-              out += prim === undefined ? "[object Object]" : String(prim);
+              if (prim !== undefined) {
+                out += String(prim);
+              } else {
+                // Fall through to host ToPrimitive — throws TypeError if no conversion (#1128)
+                const prim2 = _hostToPrimitive(a, "default", callbackState);
+                out += String(prim2);
+              }
             } else {
               out += String(a);
             }
@@ -1517,7 +1550,13 @@ function resolveImport(
           if (typeof v === "object" && _isWasmStruct(v)) {
             const prim = _toPrimitive(v, "string", callbackState);
             if (prim !== undefined) return String(prim);
-            return "[object Object]";
+            // Fall through to host ToPrimitive — throws TypeError if no conversion (#1128)
+            try {
+              const prim2 = _hostToPrimitive(v, "string", callbackState);
+              return String(prim2);
+            } catch {
+              return "[object Object]";
+            }
           }
           if (typeof v.toString === "function") return v.toString();
           if (typeof v === "object") {
@@ -2324,7 +2363,14 @@ function resolveImport(
         return (obj: any) => {
           if (_isWasmStruct(obj)) {
             const prim = _toPrimitive(obj, "string", callbackState);
-            return prim === undefined ? "[object Object]" : String(prim);
+            if (prim !== undefined) return String(prim);
+            // Fall through to host ToPrimitive (#1128)
+            try {
+              const prim2 = _hostToPrimitive(obj, "string", callbackState);
+              return String(prim2);
+            } catch {
+              return "[object Object]";
+            }
           }
           return Object.prototype.toLocaleString.call(obj);
         };
