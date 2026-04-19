@@ -1,15 +1,15 @@
 {
   "pr": 196,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-1016-iterator-class-dstr",
-  "head_sha": "2f28b68967aa7f158e59cb6ee24442d0c4ef471e",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616297949",
-  "timestamp": "2026-04-19T01:03:17Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "14f1103e5059c9dc0cd43f62367f90a8a2499cba",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615554280",
+  "timestamp": "2026-04-19T01:34:35Z",
+  "pass": 22480,
+  "fail": 15380,
+  "compile_error": 3940,
+  "snapshot_delta": 30,
+  "net_per_test": 30,
+  "regressions": 1,
+  "improvements": 31
 }
