@@ -1,0 +1,15 @@
+{
+  "pr": 178,
+  "conclusion": "failure",
+  "head_branch": "issue-1123-landing-page-audit",
+  "head_sha": "07319d80a74d9c39fcbbf1f7ab90a2d4aa613288",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608487618",
+  "timestamp": "2026-04-18T18:51:55Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

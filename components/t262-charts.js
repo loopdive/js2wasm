@@ -302,6 +302,8 @@ class T262Donut extends HTMLElement {
           }
           .legend {
             display: grid;
+            margin-top: 30px;
+            gap: 8px 10px;
           }
         }
         .legend-item {
