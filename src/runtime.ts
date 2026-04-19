@@ -3,6 +3,36 @@ import { compileSource } from "./compiler.js";
 import type { ImportDescriptor, ImportIntent, ImportPolicy } from "./index.js";
 
 /**
+ * Portable require() for loading Node.js builtin modules (#1044).
+ * Works in both CJS (require is global) and ESM (createRequire from node:module).
+ * Returns undefined in non-Node environments (browsers).
+ */
+let _nodeRequire: ((id: string) => any) | null | undefined;
+function _getNodeRequire(): ((id: string) => any) | undefined {
+  if (_nodeRequire !== undefined) return _nodeRequire ?? undefined;
+  // CJS context
+  if (typeof require === "function") {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _nodeRequire = require;
+    return _nodeRequire;
+  }
+  // ESM context in Node.js: use process.getBuiltinModule (Node 22.3+)
+  // to synchronously access createRequire without a static `import` of node:module
+  try {
+    const nodeModule = (globalThis.process as any)?.getBuiltinModule?.("module");
+    if (nodeModule?.createRequire) {
+      const baseUrl = `file://${globalThis.process.cwd()}/index.js`;
+      _nodeRequire = nodeModule.createRequire(baseUrl);
+      return _nodeRequire!;
+    }
+  } catch {
+    // Not Node.js or getBuiltinModule not available
+  }
+  _nodeRequire = null;
+  return undefined;
+}
+
+/**
  * Sidecar property store for WasmGC structs.
  *
  * WasmGC structs are opaque to JS — property get returns undefined, and
@@ -678,6 +708,40 @@ const _symbolIdToKeys: Map<number, { wasm: string; sym: symbol }> = new Map([
   [14, { wasm: "@@asyncDispose", sym: _asyncDisposeSym }],
 ]);
 
+/**
+ * Resolve a class from a namespace path (#1044).
+ * For Node builtins like `import * as http from 'http'`, resolves `http.Server`
+ * by trying: deps override → require(root)[className].
+ */
+function _resolveNamespacedClass(
+  namespacePath: string[],
+  className: string,
+  deps?: Record<string, any>,
+): Function | undefined {
+  // Check if deps provides the namespace root
+  const root = namespacePath[0];
+  let ns = deps?.[root];
+  if (ns == null) {
+    // Try require() for Node builtins (works in both CJS and ESM via createRequire)
+    const req = _getNodeRequire();
+    if (req) {
+      try {
+        ns = req(root);
+      } catch {
+        // Not available
+      }
+    }
+  }
+  if (ns == null) return undefined;
+  // Walk the namespace path beyond the root (e.g. for nested namespaces)
+  for (let i = 1; i < namespacePath.length; i++) {
+    ns = ns?.[namespacePath[i]];
+    if (ns == null) return undefined;
+  }
+  const Ctor = ns[className];
+  return typeof Ctor === "function" ? Ctor : undefined;
+}
+
 /** Safe property get: works on both JS objects and WasmGC structs. */
 function _safeGet(obj: any, key: any): any {
   if (obj == null) return undefined;
@@ -1204,7 +1268,11 @@ function resolveImport(
             ? { NumberFormat: Intl.NumberFormat }
             : {}),
         };
-        const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
+        let Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
+        // #1044 — Resolve via namespace path (e.g. require('http').Server)
+        if (!Ctor && intent.namespacePath && intent.namespacePath.length > 0) {
+          Ctor = _resolveNamespacedClass(intent.namespacePath, intent.className, deps);
+        }
         if (!Ctor)
           return (...args: any[]) => {
             throw new Error(`No dependency provided for extern class "${intent.className}"`);
@@ -3018,6 +3086,23 @@ function resolveImport(
       // compare against the real host Array constructor. (#1065)
       const ambient = (globalThis as any)[intent.name];
       if (ambient !== undefined) return () => ambient;
+      return () => {};
+    }
+    case "node_builtin": {
+      // #1044 — Return the Node.js builtin module as an externref.
+      // First check deps override, then try _getNodeRequire().
+      const modName = intent.moduleName;
+      const depVal = deps?.[modName];
+      if (depVal !== undefined) return () => depVal;
+      const req = _getNodeRequire();
+      if (req) {
+        try {
+          const mod = req(modName);
+          return () => mod;
+        } catch {
+          return () => {};
+        }
+      }
       return () => {};
     }
     case "proxy_create":
