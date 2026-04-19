@@ -1,0 +1,15 @@
+{
+  "pr": 193,
+  "conclusion": "cancelled",
+  "head_branch": "issue-1131-null-deref-assert-throws",
+  "head_sha": "8520c04efb674cc49cee4410c4cf8eb021c47a7d",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24626227569",
+  "timestamp": "2026-04-19T12:07:00Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

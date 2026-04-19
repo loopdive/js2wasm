@@ -1,0 +1,15 @@
+{
+  "pr": 195,
+  "conclusion": "failure",
+  "head_branch": "issue-1026-builtin-prototype",
+  "head_sha": "d9cd1b2836489c4d89cac20c32a930c1cc3cdd2c",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24624868091",
+  "timestamp": "2026-04-19T11:35:35Z",
+  "pass": 22670,
+  "fail": 15185,
+  "compile_error": 3945,
+  "snapshot_delta": 220,
+  "net_per_test": 220,
+  "regressions": 6,
+  "improvements": 226
+}
