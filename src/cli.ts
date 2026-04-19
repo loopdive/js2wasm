@@ -1,10 +1,18 @@
 #!/usr/bin/env node
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
+import { createRequire } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { compile } from "./index.js";
 
 const args = process.argv.slice(2);
+
+if (args.includes("--version") || args.includes("-v")) {
+  const require = createRequire(import.meta.url);
+  const pkg = require("../package.json");
+  console.log(pkg.version);
+  process.exit(0);
+}
 
 if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
   console.log(`Usage: js2wasm <input.ts> [options]
@@ -20,7 +28,7 @@ Options:
   --wit             Generate WIT interface file for Component Model
   -O, --optimize    Run Binaryen wasm-opt optimizer (default: -O3)
   -O1..-O4          Set optimization level (1-4)
-  --define K=V      Define compile-time constant (e.g. --define process.env.NODE_ENV="production")
+  -v, --version     Print version and exit
   -h, --help        Show this help
 
 Output files:
@@ -40,7 +48,6 @@ let watOnly = false;
 let optimize: boolean | 1 | 2 | 3 | 4 = false;
 let target: "gc" | "linear" | "wasi" | undefined;
 let emitWit = false;
-const defines: Record<string, string> = {};
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
@@ -66,17 +73,6 @@ for (let i = 0; i < args.length; i++) {
     optimize = true;
   } else if (/^-O[1-4]$/.test(arg)) {
     optimize = parseInt(arg.slice(2)) as 1 | 2 | 3 | 4;
-  } else if (arg === "--define") {
-    const def = args[++i];
-    if (def) {
-      const eqIdx = def.indexOf("=");
-      if (eqIdx > 0) {
-        defines[def.slice(0, eqIdx)] = def.slice(eqIdx + 1);
-      } else {
-        console.error(`Invalid --define syntax: ${def} (expected KEY=VALUE)`);
-        process.exit(1);
-      }
-    }
   } else if (!arg.startsWith("-")) {
     inputPath = arg;
   } else {
@@ -99,7 +95,6 @@ const result = compile(source, {
   ...(optimize ? { optimize } : {}),
   ...(target ? { target } : {}),
   ...(emitWit ? { wit: true } : {}),
-  ...(Object.keys(defines).length > 0 ? { define: defines } : {}),
 });
 
 if (!result.success) {
