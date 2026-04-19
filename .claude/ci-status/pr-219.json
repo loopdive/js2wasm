@@ -1,0 +1,15 @@
+{
+  "pr": 219,
+  "conclusion": "failure",
+  "head_branch": "issue-nested-array-rest",
+  "head_sha": "bf0219d9d6d9975ea7ef6499a5d78a0fec51ee14",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24624737434",
+  "timestamp": "2026-04-19T08:44:16Z",
+  "pass": 22568,
+  "fail": 15471,
+  "compile_error": 3764,
+  "snapshot_delta": 118,
+  "net_per_test": 118,
+  "regressions": 262,
+  "improvements": 380
+}
