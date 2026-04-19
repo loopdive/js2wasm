@@ -12,7 +12,12 @@ import { reportError } from "./context/errors.js";
 import { allocLocal, deduplicateLocals } from "./context/locals.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  buildDestructureNullThrow,
+  destructureParamArray,
+  destructureParamObject,
+  isNullOrUndefinedLiteral,
+} from "./destructuring-params.js";
 import {
   cacheStringLiterals,
   hasAsyncModifier,
@@ -31,7 +36,8 @@ import {
   hoistFunctionDeclarations,
   valTypesMatch,
 } from "./shared.js";
-import { bodyUsesArguments, emitArgumentsVecBody } from "./statements/nested-declarations.js";
+import { emitArgumentsVecBody } from "./statements/nested-declarations.js";
+import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 export { bodyUsesArguments };
 
 /** Maximum number of instructions for a function body to be considered inlinable */
@@ -203,21 +209,55 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
     const paramIdx = i;
     const paramType = params[i]!.type;
 
+    // Pre-ensure `__extern_is_undefined` before the initializer is compiled so
+    // any late-import funcIdx shift happens while `fctx.body` (not the soon-to-
+    // be-detached `thenInstrs`) is authoritative. Otherwise, a shift triggered
+    // later by the check emission would miss `thenInstrs`, leaving stale
+    // funcIdx values in its `call` ops.
+    if (paramType.kind === "externref") {
+      ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+    }
+
+    // Per spec §14.3.3.1/§8.4.2: destructuring null/undefined must throw TypeError.
+    // If the parameter uses a binding pattern and the default is a literal null/undefined,
+    // then when the default fires (arg omitted) we must throw — emit throw in the then-block
+    // instead of assigning the default. The destructuring step on explicit values still
+    // runs normally (and its own guard handles explicit null/undefined).
+    const dstrNullDefault =
+      (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) &&
+      isNullOrUndefinedLiteral(param.initializer);
+
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
-    const defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);
-    // Coerce if the default expression produced a different type than the param
-    if (defaultResultType && !valTypesMatch(defaultResultType, paramType)) {
-      coerceType(ctx, fctx, defaultResultType, paramType);
+    if (dstrNullDefault) {
+      for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
+    } else {
+      const defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);
+      // Coerce if the default expression produced a different type than the param
+      if (defaultResultType && !valTypesMatch(defaultResultType, paramType)) {
+        coerceType(ctx, fctx, defaultResultType, paramType);
+      }
+      fctx.body.push({ op: "local.set", index: paramIdx });
     }
-    fctx.body.push({ op: "local.set", index: paramIdx });
     const thenInstrs = fctx.body;
     popBody(fctx, savedBody);
 
     // Emit the null/zero check + conditional assignment
     if (paramType.kind === "externref") {
+      // JS default params fire when arg is `undefined` — not just wasm null.
+      // Callers padding missing args use `__get_undefined` which returns real
+      // JS undefined, so a plain `ref.is_null` would miss it and skip the
+      // default, later tripping the destructure "null or undefined" guard.
+      // Use `__extern_is_undefined` (true for both wasm null and JS undefined).
       fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
+      const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (isUndefIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+      } else {
+        fctx.body.push({ op: "ref.is_null" });
+      }
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },

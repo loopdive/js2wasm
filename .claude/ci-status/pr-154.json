@@ -1,0 +1,15 @@
+{
+  "pr": 154,
+  "conclusion": "failure",
+  "head_branch": "issue-1068-await-label-fix",
+  "head_sha": "fb7f46a655fb24b3da0a2786746dea672faf13c9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629634474",
+  "timestamp": "2026-04-19T16:48:18Z",
+  "pass": 22763,
+  "fail": 15010,
+  "compile_error": 3886,
+  "snapshot_delta": 313,
+  "net_per_test": 313,
+  "regressions": 635,
+  "improvements": 948
+}

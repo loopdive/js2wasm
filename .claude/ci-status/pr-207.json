@@ -1,0 +1,15 @@
+{
+  "pr": 207,
+  "conclusion": "failure",
+  "head_branch": "issue-super-class-brand-check",
+  "head_sha": "f771edaefc7ff3aca8740822072ab7aa2b91141e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24625994922",
+  "timestamp": "2026-04-19T13:43:44Z",
+  "pass": 22448,
+  "fail": 15501,
+  "compile_error": 3854,
+  "snapshot_delta": -2,
+  "net_per_test": -2,
+  "regressions": 457,
+  "improvements": 455
+}
