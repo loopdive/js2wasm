@@ -1,15 +1,15 @@
 {
   "pr": 144,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-854-iterator-null-methods",
-  "head_sha": "95809e257d9e4c4502599acf7e95931c14ba1e1b",
-  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24546970405",
-  "timestamp": "2026-04-17T04:35:12Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "75bc517607b844622a080f12e309bcefd161554d",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629887654",
+  "timestamp": "2026-04-19T16:56:58Z",
+  "pass": 22228,
+  "fail": 15647,
+  "compile_error": 3784,
+  "snapshot_delta": -222,
+  "net_per_test": -222,
+  "regressions": 810,
+  "improvements": 588
 }

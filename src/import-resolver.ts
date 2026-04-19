@@ -12,6 +12,71 @@ interface NestedNamespaceInfo {
   methods: Map<string, number>; // method name → max arg count
 }
 
+/** Recognized Node.js builtin module specifiers (#1044). */
+export const NODE_BUILTIN_MODULES = new Set([
+  "http",
+  "https",
+  "http2",
+  "url",
+  "querystring",
+  "stream",
+  "stream/web",
+  "events",
+  "buffer",
+  "zlib",
+  "util",
+  "path",
+  "process",
+  "net",
+  "tls",
+  "fs",
+  "crypto",
+  "os",
+  "child_process",
+  "assert",
+  "dns",
+  "dgram",
+  "cluster",
+  "readline",
+  "string_decoder",
+  "timers",
+  "tty",
+  "vm",
+  "worker_threads",
+  "perf_hooks",
+  "async_hooks",
+  "diagnostics_channel",
+  "console",
+]);
+
+/** Returns true if `spec` is a recognized Node.js builtin (with or without `node:` prefix). */
+export function isNodeBuiltin(spec: string): boolean {
+  return NODE_BUILTIN_MODULES.has(spec.replace(/^node:/, ""));
+}
+
+/** Normalizes a module specifier by stripping the `node:` prefix if present. */
+export function normalizeNodeBuiltin(spec: string): string {
+  return spec.replace(/^node:/, "");
+}
+
+/** Info about a Node builtin import discovered during preprocessing. */
+export interface NodeBuiltinImport {
+  /** The local binding name (e.g., `http` from `import http from 'node:http'`). */
+  localName: string;
+  /** The normalized module name (e.g., `http`). */
+  moduleName: string;
+  /** Named bindings imported (e.g., `['createServer', 'get']` from `import { createServer, get } from 'http'`). */
+  namedBindings?: string[];
+}
+
+/** Result of `preprocessImports`. */
+export interface PreprocessResult {
+  /** The transformed source code with import stubs. */
+  source: string;
+  /** Node builtin modules detected during preprocessing. */
+  nodeBuiltins: NodeBuiltinImport[];
+}
+
 /**
  * Pre-process source code to replace import statements with auto-generated
  * declare blocks based on usage analysis.
@@ -21,32 +86,38 @@ interface NestedNamespaceInfo {
  * - `import X from "mod"` → `declare const X: any;`
  * - `import { a, b } from "mod"` → `declare function a(...): any;` or `declare const a: any;`
  */
-export function preprocessImports(source: string): string {
+export function preprocessImports(source: string): PreprocessResult {
   const sf = ts.createSourceFile("__preprocess__.ts", source, ts.ScriptTarget.Latest, true);
 
   // Step 1: Find all imports
-  const nsImports = new Map<string, { start: number; end: number }>();
+  const nsImports = new Map<string, { start: number; end: number; moduleSpec: string }>();
   const otherImports: {
     start: number;
     end: number;
     defaultName?: string;
     namedBindings?: string[];
+    moduleSpec: string;
   }[] = [];
+  const nodeBuiltins: NodeBuiltinImport[] = [];
 
   for (const stmt of sf.statements) {
     if (!ts.isImportDeclaration(stmt)) continue;
 
+    const moduleSpec = ts.isStringLiteral(stmt.moduleSpecifier) ? stmt.moduleSpecifier.text : "";
     const clause = stmt.importClause;
     if (!clause) {
       // Side-effect import: `import "mod"` — just remove
-      otherImports.push({ start: stmt.getStart(sf), end: stmt.end });
+      otherImports.push({ start: stmt.getStart(sf), end: stmt.end, moduleSpec });
       continue;
     }
 
     if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
       // import * as X from "mod"
       const name = clause.namedBindings.name.text;
-      nsImports.set(name, { start: stmt.getStart(sf), end: stmt.end });
+      nsImports.set(name, { start: stmt.getStart(sf), end: stmt.end, moduleSpec });
+      if (isNodeBuiltin(moduleSpec)) {
+        nodeBuiltins.push({ localName: name, moduleName: normalizeNodeBuiltin(moduleSpec) });
+      }
       continue;
     }
 
@@ -63,10 +134,18 @@ export function preprocessImports(source: string): string {
       end: stmt.end,
       defaultName,
       namedBindings: namedBindings.length > 0 ? namedBindings : undefined,
+      moduleSpec,
     });
+    if (isNodeBuiltin(moduleSpec)) {
+      nodeBuiltins.push({
+        localName: defaultName || namedBindings[0] || normalizeNodeBuiltin(moduleSpec),
+        moduleName: normalizeNodeBuiltin(moduleSpec),
+        namedBindings: namedBindings.length > 0 ? namedBindings : undefined,
+      });
+    }
   }
 
-  if (nsImports.size === 0 && otherImports.length === 0) return source;
+  if (nsImports.size === 0 && otherImports.length === 0) return { source, nodeBuiltins };
 
   // Collect names already defined in the source (functions, variables, classes)
   // to avoid generating conflicting declare stubs
@@ -342,5 +421,5 @@ export function preprocessImports(source: string): string {
     result = result.substring(0, r.start) + r.text + result.substring(r.end);
   }
 
-  return result;
+  return { source: result, nodeBuiltins };
 }
