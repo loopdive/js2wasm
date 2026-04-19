@@ -534,6 +534,19 @@ export function destructureParamArray(
         { op: "local.set", index: resultLocal } as Instr,
       ];
 
+      // Pre-register fallback host imports BEFORE building convertInstrs, so that
+      // any function index shifts from late imports are visible to boxToExternref
+      // calls inside the vec-type conversion loop below. (#825)
+      const fbLenFn = ensureLateImport(ctx, "__extern_length", [{ kind: "externref" }], [{ kind: "f64" }]);
+      flushLateImportShifts(ctx, fctx);
+      const fbGetIdxFn = ensureLateImport(
+        ctx,
+        "__extern_get_idx",
+        [{ kind: "externref" }, { kind: "f64" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+
       // Else: try each other known vec type and convert element-by-element
       const convertInstrs: Instr[] = [];
       for (const [key, vecIdx] of ctx.vecTypeMap) {
@@ -613,6 +626,80 @@ export function destructureParamArray(
         convertInstrs.push({ op: "local.get", index: anyTmp } as Instr);
         convertInstrs.push({ op: "ref.test", typeIdx: vecIdx });
         convertInstrs.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs, else: [] } as Instr);
+      }
+
+      // Fallback: if no Wasm vec type matched, the externref is a plain JS array/iterable.
+      // Use __extern_length + __extern_get_idx host imports to build a vec_externref. (#825)
+      // (imports pre-registered above to avoid stale funcIdx in convertInstrs)
+      if (fbLenFn !== undefined && fbGetIdxFn !== undefined) {
+        const fbLenTmp = allocLocal(fctx, `__dparam_fb_len_${fctx.locals.length}`, { kind: "i32" });
+        const fbArrTmp = allocLocal(fctx, `__dparam_fb_arr_${fctx.locals.length}`, {
+          kind: "ref",
+          typeIdx: extArrTypeIdx,
+        });
+        const fbIdxTmp = allocLocal(fctx, `__dparam_fb_idx_${fctx.locals.length}`, { kind: "i32" });
+
+        const fallbackInstrs: Instr[] = [
+          // len = i32(__extern_length(param))
+          { op: "local.get", index: paramIdx } as Instr,
+          { op: "call", funcIdx: fbLenFn } as Instr,
+          { op: "i32.trunc_sat_f64_s" } as unknown as Instr,
+          { op: "local.set", index: fbLenTmp } as Instr,
+          // arr = array.new_default(len)
+          { op: "local.get", index: fbLenTmp } as Instr,
+          { op: "array.new_default", typeIdx: extArrTypeIdx },
+          { op: "local.set", index: fbArrTmp } as Instr,
+          // idx = 0
+          { op: "i32.const", value: 0 } as Instr,
+          { op: "local.set", index: fbIdxTmp } as Instr,
+          // loop: copy elements
+          {
+            op: "block",
+            blockType: { kind: "empty" },
+            body: [
+              {
+                op: "loop",
+                blockType: { kind: "empty" },
+                body: [
+                  // if idx >= len, break
+                  { op: "local.get", index: fbIdxTmp } as Instr,
+                  { op: "local.get", index: fbLenTmp } as Instr,
+                  { op: "i32.ge_s" } as Instr,
+                  { op: "br_if", depth: 1 } as Instr,
+                  // arr[idx] = __extern_get_idx(param, f64(idx))
+                  { op: "local.get", index: fbArrTmp } as Instr,
+                  { op: "local.get", index: fbIdxTmp } as Instr,
+                  { op: "local.get", index: paramIdx } as Instr,
+                  { op: "local.get", index: fbIdxTmp } as Instr,
+                  { op: "f64.convert_i32_s" } as Instr,
+                  { op: "call", funcIdx: fbGetIdxFn } as Instr,
+                  { op: "array.set", typeIdx: extArrTypeIdx } as Instr,
+                  // idx++
+                  { op: "local.get", index: fbIdxTmp } as Instr,
+                  { op: "i32.const", value: 1 } as Instr,
+                  { op: "i32.add" } as Instr,
+                  { op: "local.set", index: fbIdxTmp } as Instr,
+                  { op: "br", depth: 0 } as Instr,
+                ],
+              } as Instr,
+            ],
+          } as Instr,
+          // Build vec_externref: struct.new(len, arr)
+          { op: "local.get", index: fbLenTmp } as Instr,
+          { op: "local.get", index: fbArrTmp } as Instr,
+          { op: "struct.new", typeIdx: extVecIdx },
+          { op: "local.set", index: resultLocal } as Instr,
+        ];
+
+        // Only run fallback if resultLocal is still null (no vec type matched)
+        convertInstrs.push({ op: "local.get", index: resultLocal } as Instr);
+        convertInstrs.push({ op: "ref.is_null" } as Instr);
+        convertInstrs.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: fallbackInstrs,
+          else: [],
+        } as Instr);
       }
 
       fctx.body.push({
