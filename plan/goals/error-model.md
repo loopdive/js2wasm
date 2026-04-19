@@ -77,7 +77,7 @@ makes the error paths spec-compliant.
 | **906** | Compile away TDZ tracking for definite-assignment top-level numeric locals | 42 | ready | high |
 | **913** | Split compiler.ts into validation, orchestration, and output modules | 39 | done | medium |
 | **947** | Calendar WAT analysis: 6 codegen inefficiencies found in the default playground example | 37 | done | medium |
-| **991** | Iterator helper generator-reentrancy tests hit 30s compiler timeout | 42 | ready | high |
+| **991** | Iterator helper generator-reentrancy tests hit 30s compiler timeout | 42 | done | high |
 | **996** | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 42 | done | low |
 | **1021** | Destructuring: use __extern_is_undefined instead of ref.is_null for defaults (~2,000+ FAIL) | 40 | done | critical |
 | **1022** | Array built-in method 'object is not a function' (640 FAIL) | Backlog | in-progress | critical |
