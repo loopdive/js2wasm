@@ -1,15 +1,15 @@
 {
   "pr": 187,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-865-wasi-polyfill",
-  "head_sha": "7ac81b1fb3395702c89b94acd8319fd9add4e5e8",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615561769",
-  "timestamp": "2026-04-19T00:33:39Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "262a37dd224d6ff02a25ba76091762c67ac3f526",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615407426",
+  "timestamp": "2026-04-19T01:22:46Z",
+  "pass": 22480,
+  "fail": 15380,
+  "compile_error": 3940,
+  "snapshot_delta": 30,
+  "net_per_test": 30,
+  "regressions": 1,
+  "improvements": 31
 }
