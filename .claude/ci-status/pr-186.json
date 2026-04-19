@@ -1,15 +1,15 @@
 {
   "pr": 186,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-1093-phase2-comparisons",
-  "head_sha": "827959f3b0b8e252ed21ba872a7daf47dc1ebde1",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615561176",
-  "timestamp": "2026-04-19T00:31:25Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "56b22741f4141f011d08f817c42a3a84c63ecefb",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615397096",
+  "timestamp": "2026-04-19T01:20:56Z",
+  "pass": 22480,
+  "fail": 15380,
+  "compile_error": 3940,
+  "snapshot_delta": 30,
+  "net_per_test": 30,
+  "regressions": 1,
+  "improvements": 31
 }
