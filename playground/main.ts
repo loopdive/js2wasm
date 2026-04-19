@@ -1626,10 +1626,16 @@ const T262_MARKER_OWNER = "test262-selected-result";
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
   const loadStaticIndex = async (): Promise<{ categories: T262CategorySummary[] } | null> => {
-    const categories = await fetchJsonFromPaths<T262CategorySummary[]>(
+    const staticIndex = await fetchJsonFromPaths<{ categories: T262CategorySummary[] } | T262CategorySummary[]>(
       staticPlaygroundJsonPaths("test262-index-summary.json"),
     );
-    return categories ? { categories } : null;
+    if (Array.isArray(staticIndex)) {
+      return { categories: staticIndex };
+    }
+    if (staticIndex && Array.isArray(staticIndex.categories)) {
+      return { categories: staticIndex.categories };
+    }
+    return null;
   };
   const loadApiIndex = async (): Promise<{ categories: T262CategorySummary[] } | null> => {
     return await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary");

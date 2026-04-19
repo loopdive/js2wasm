@@ -104,10 +104,52 @@
   ],
   "ready": [
     {
-      "id": "1127",
-      "title": "new C() with var C = class {...} resolves to inner class ctor when outer has nested class field",
+      "id": "1135",
+      "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
       "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1129",
+      "title": "ToObject (§7.1.18) not implemented — no primitive auto-boxing",
+      "priority": "low",
       "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1128",
+      "title": "OrdinaryToPrimitive returns undefined instead of throwing TypeError (§7.1.1.1 step 6)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1090"
+      ],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1127",
+      "title": "SameValue for DefineProperty f64 comparison uses f64.ne — wrong for NaN and ±0",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1127",
+      "title": "Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]]",
+      "priority": "medium",
+      "feasibility": "medium",
       "depends_on": [],
       "goal": "conformance",
       "status": "open",
@@ -146,16 +188,6 @@
       "sprint": "42"
     },
     {
-      "id": "1123",
-      "title": "Verify landing page claims and code examples against current compiler behavior",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "correctness",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
       "id": "1122",
       "title": "Keep standalone recursive numeric benchmark stable across non-run entry exports",
       "priority": "high",
@@ -186,6 +218,16 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1119",
+      "title": "SingleNameBinding fn-name-class cluster (71 null_deref)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Backlog"
     },
     {
       "id": "1119",
@@ -350,16 +392,6 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1093",
-      "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "async-model",
       "status": "ready",
       "sprint": "42"
     },
@@ -663,16 +695,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "Backlog"
-    },
-    {
-      "id": "1008",
-      "title": "Add mobile-first layout support to the playground",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "developer-experience",
       "status": "ready",
       "sprint": "Backlog"
     },
@@ -1539,6 +1561,16 @@
   ],
   "inprogress": [
     {
+      "id": "1093",
+      "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
       "id": "1064",
       "title": "DataView bridge: subview metadata so bounds errors propagate",
       "priority": "medium",
@@ -1599,6 +1631,16 @@
       "sprint": "42"
     },
     {
+      "id": "1008",
+      "title": "Add mobile-first layout support to the playground",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
       "id": "1007",
       "title": "Re-run historical test262 checkpoints with the current harness for comparable conformance history",
       "priority": "medium",
@@ -1633,6 +1675,16 @@
     }
   ],
   "review": [
+    {
+      "id": "1123",
+      "title": "Verify landing page claims and code examples against current compiler behavior",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "review",
+      "sprint": "42"
+    },
     {
       "id": "1117",
       "title": "Expected TypeError but got wrong error type (136 tests)",
