@@ -1,0 +1,15 @@
+{
+  "pr": 202,
+  "conclusion": "cancelled",
+  "head_branch": "issue-async-gen-dstr-illegal-cast",
+  "head_sha": "cb5cdbfe9b59b2a03e4a09bfd8d325bb88de8016",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24625144658",
+  "timestamp": "2026-04-19T10:57:02Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
