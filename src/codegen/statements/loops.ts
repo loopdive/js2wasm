@@ -9,6 +9,11 @@ import { popBody, pushBody } from "../context/bodies.js";
 import { reportError, reportErrorNoNode } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
+import {
+  findUnresolvableInArrayPattern,
+  findUnresolvableInObjectPattern,
+  isStrictContext,
+} from "../expressions/assignment.js";
 import { emitCoercedLocalSet } from "../expressions/helpers.js";
 import { shiftLateImportIndices } from "../expressions/late-imports.js";
 import {
@@ -978,6 +983,18 @@ function compileForOfAssignDestructuring(
   arrTypeIdx: number,
   stmt: ts.ForOfStatement,
 ): void {
+  // §6.2.4 PutValue: strict-mode assignment to unresolvable reference throws
+  // ReferenceError. For for-of destructuring assignment, the throw happens each
+  // iteration at the point of first unresolvable PutValue.
+  const hasUnresolvable = ts.isObjectLiteralExpression(expr)
+    ? findUnresolvableInObjectPattern(ctx, fctx, expr)
+    : findUnresolvableInArrayPattern(ctx, fctx, expr);
+  if (hasUnresolvable && isStrictContext(stmt)) {
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "ref.null.extern" } as Instr);
+    fctx.body.push({ op: "throw", tagIdx } as unknown as Instr);
+    return;
+  }
   if (ts.isObjectLiteralExpression(expr)) {
     // for ({a, b} of arr) — elem is a struct ref, extract fields
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
