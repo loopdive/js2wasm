@@ -66,14 +66,24 @@ describe("ir scaffold — phase 1", () => {
       export function withParam(x: number): number { return x; }
       export function withBoolParam(b: boolean): boolean { return !b; }
       export function compound(a: number, b: number): number { return (a + b) * 2; }
-      export function twoStmts(): number { const y = 1; return y; }
+      export function withLocal(): number { const y = 1; return y; }
+      export function withLet(a: number): number { let tmp = a + 1; return tmp * 2; }
       export function nonNumeric(): string { return "s"; }
       export function objectParam(o: object): number { return 1; }
       export function stringParam(s: string): number { return 1; }
+      export function withVar(): number { var y = 1; return y; }
+      export function withIf(a: number): number { if (a > 0) return a; return 0; }
     `;
     const ast = analyzeSource(source);
     const sel = planIrCompilation(ast.sourceFile, { experimentalIR: true });
-    expect([...sel.funcs].sort()).toEqual(["compound", "trivial", "withBoolParam", "withParam"]);
+    expect([...sel.funcs].sort()).toEqual([
+      "compound",
+      "trivial",
+      "withBoolParam",
+      "withLet",
+      "withLocal",
+      "withParam",
+    ]);
   });
 
   it("verifier rejects a duplicate SSA def", () => {

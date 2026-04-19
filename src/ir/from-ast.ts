@@ -4,9 +4,10 @@
 //
 // Phase 1 numeric/bool subset. The selector in `select.ts` restricts us to
 // functions whose params are number/boolean, whose return type is
-// number/boolean, and whose body is `return <expr>;`. `<expr>` may be:
+// number/boolean, and whose body is `(let|const <id> = <expr>;)* return <expr>;`.
+// `<expr>` may be:
 //   - NumericLiteral / TrueKeyword / FalseKeyword
-//   - Identifier referring to a parameter
+//   - Identifier referring to a parameter or a previously-declared local
 //   - BinaryExpression with an arithmetic / comparison / logical operator
 //   - PrefixUnaryExpression with `-`, `+`, `!`
 //   - ParenthesizedExpression (unwrap)
@@ -42,25 +43,39 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
 
   const builder = new IrFunctionBuilder(name, [returnType], options.exported ?? false);
 
-  // Register params in the builder and build a local name → IrValueId map
-  // for Identifier lookups.
-  const paramIdMap = new Map<string, { value: IrValueId; type: IrType }>();
+  // Single scope map for both params and let/const locals. Phase 1 forbids
+  // shadowing (enforced by the selector) so there is no nesting to track.
+  const scope = new Map<string, { value: IrValueId; type: IrType }>();
   for (const p of params) {
     const v = builder.addParam(p.name, p.type);
-    paramIdMap.set(p.name, { value: v, type: p.type });
+    scope.set(p.name, { value: v, type: p.type });
   }
 
   builder.openBlock();
 
-  if (fn.body.statements.length !== 1) {
-    throw new Error(`ir/from-ast: Phase 1 expects 1 statement in ${name}, got ${fn.body.statements.length}`);
-  }
-  const stmt = fn.body.statements[0];
-  if (!ts.isReturnStatement(stmt) || !stmt.expression) {
-    throw new Error(`ir/from-ast: Phase 1 expects a return statement with expression in ${name}`);
+  const stmts = fn.body.statements;
+  if (stmts.length < 1) {
+    throw new Error(`ir/from-ast: Phase 1 expects at least 1 statement in ${name}`);
   }
 
-  const returned = lowerExpr(stmt.expression, { builder, params: paramIdMap, funcName: name }, returnType);
+  const cx: LowerCtx = { builder, scope, funcName: name };
+
+  for (let i = 0; i < stmts.length - 1; i++) {
+    const s = stmts[i];
+    if (!ts.isVariableStatement(s)) {
+      throw new Error(
+        `ir/from-ast: Phase 1 expects a VariableStatement before the return (got ${ts.SyntaxKind[s.kind]} in ${name})`,
+      );
+    }
+    lowerVarDecl(s, cx);
+  }
+
+  const last = stmts[stmts.length - 1];
+  if (!ts.isReturnStatement(last) || !last.expression) {
+    throw new Error(`ir/from-ast: Phase 1 expects a trailing return with expression in ${name}`);
+  }
+
+  const returned = lowerExpr(last.expression, cx, returnType);
   builder.terminate({ kind: "return", values: [returned] });
 
   return builder.finish();
@@ -68,8 +83,33 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
 
 interface LowerCtx {
   readonly builder: IrFunctionBuilder;
-  readonly params: ReadonlyMap<string, { value: IrValueId; type: IrType }>;
+  readonly scope: Map<string, { value: IrValueId; type: IrType }>;
   readonly funcName: string;
+}
+
+function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
+  for (const d of stmt.declarationList.declarations) {
+    if (!ts.isIdentifier(d.name)) {
+      throw new Error(`ir/from-ast: destructuring declarations not supported in Phase 1 (${cx.funcName})`);
+    }
+    const name = d.name.text;
+    if (cx.scope.has(name)) {
+      throw new Error(`ir/from-ast: redeclaration of '${name}' in ${cx.funcName}`);
+    }
+    if (!d.initializer) {
+      throw new Error(`ir/from-ast: Phase 1 requires an initializer for '${name}' in ${cx.funcName}`);
+    }
+    const annotated = d.type ? typeNodeToIr(d.type, `local ${name} of ${cx.funcName}`) : undefined;
+    const hint = annotated ?? { kind: "f64" as const };
+    const value = lowerExpr(d.initializer, cx, hint);
+    const inferred = cx.builder.typeOf(value);
+    if (annotated && annotated.kind !== inferred.kind) {
+      throw new Error(
+        `ir/from-ast: local '${name}' annotated as ${annotated.kind} but initializer is ${inferred.kind} in ${cx.funcName}`,
+      );
+    }
+    cx.scope.set(name, { value, type: inferred });
+  }
 }
 
 function typeNodeToIr(node: ts.TypeNode | undefined, where: string): IrType {
@@ -98,8 +138,8 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
     return cx.builder.emitConst({ kind: "bool", value: false }, { kind: "i32" });
   }
   if (ts.isIdentifier(expr)) {
-    const p = cx.params.get(expr.text);
-    if (!p) throw new Error(`ir/from-ast: identifier "${expr.text}" is not a param in ${cx.funcName}`);
+    const p = cx.scope.get(expr.text);
+    if (!p) throw new Error(`ir/from-ast: identifier "${expr.text}" is not in scope in ${cx.funcName}`);
     return p.value;
   }
   if (ts.isPrefixUnaryExpression(expr)) {

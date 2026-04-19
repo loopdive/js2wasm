@@ -16,14 +16,17 @@
 //   - Const SSA values lower to the matching `<type>.const` op.
 //   - Derived SSA values (binary / unary / call / …) recursively emit their
 //     operands, then the op.
-//   - Single-use invariant: Phase 1 assumes each non-param SSA value is
-//     consumed exactly once. Multi-use support (with `local.set` + `local.get`)
-//     is a Phase 2 concern.
+//   - Multi-use SSA values: a pre-pass counts how many times each value is
+//     referenced (transitively from the terminator). Values used more than
+//     once get a Wasm local; the first emission is `<tree> local.tee $i`
+//     (leaves the value on the stack AND stores it), subsequent emissions
+//     are `local.get $i`. This preserves byte-identity with legacy for the
+//     single-use case and handles `let x = …; return x + x;` correctly.
 //
 // Phase 1 also only handles a single-block function with a `return`
 // terminator. Branches, loops, and try/catch come in Phase 2.
 
-import type { IrFuncRef, IrFunction, IrGlobalRef, IrInstr, IrTypeRef, IrValueId } from "./nodes.js";
+import type { IrFuncRef, IrFunction, IrGlobalRef, IrInstr, IrType, IrTypeRef, IrValueId } from "./nodes.js";
 import type { FuncTypeDef, Instr, LocalDef, ValType, WasmFunction } from "./types.js";
 
 export interface IrLowerResolver {
@@ -66,7 +69,36 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
     }
   }
 
+  // Use-count pre-pass: count how many times each SSA value is referenced,
+  // transitively from the terminator. Values with count > 1 are materialized
+  // to a Wasm local on first use and `local.get`'d on subsequent uses.
+  const useCount = new Map<IrValueId, number>();
+  const walkCount = (v: IrValueId): void => {
+    const prev = useCount.get(v) ?? 0;
+    useCount.set(v, prev + 1);
+    if (prev > 0) return; // already expanded — do not double-count subtree uses
+    if (paramIdx.has(v)) return;
+    const d = defBy.get(v);
+    if (!d) return; // will surface as an error during emission
+    for (const u of collectIrUses(d)) walkCount(u);
+  };
+  if (block.terminator.kind === "return") {
+    for (const v of block.terminator.values) walkCount(v);
+  }
+
   const body: Instr[] = [];
+  const locals: LocalDef[] = [];
+  const localIdx = new Map<IrValueId, number>();
+  const materialized = new Set<IrValueId>();
+
+  const allocLocal = (v: IrValueId, type: IrType): number => {
+    const existing = localIdx.get(v);
+    if (existing !== undefined) return existing;
+    const idx = func.params.length + locals.length;
+    locals.push({ name: `$ir${v}`, type });
+    localIdx.set(v, idx);
+    return idx;
+  };
 
   const emitValue = (v: IrValueId): void => {
     const pi = paramIdx.get(v);
@@ -76,6 +108,21 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
     }
     const d = defBy.get(v);
     if (!d) throw new Error(`ir/lower: undefined SSA value ${v} in ${func.name}`);
+    const count = useCount.get(v) ?? 1;
+    if (count > 1) {
+      if (materialized.has(v)) {
+        body.push({ op: "local.get", index: localIdx.get(v)! });
+        return;
+      }
+      if (!d.resultType) {
+        throw new Error(`ir/lower: multi-use SSA value ${v} has no resultType in ${func.name}`);
+      }
+      const idx = allocLocal(v, d.resultType);
+      emitInstr(d);
+      body.push({ op: "local.tee", index: idx });
+      materialized.add(v);
+      return;
+    }
     emitInstr(d);
   };
 
@@ -122,8 +169,6 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
   const resultTypes: ValType[] = func.resultTypes.map((t) => t);
   const typeIdx = resolver.internFuncType({ kind: "func", params: paramTypes, results: resultTypes });
 
-  const locals: LocalDef[] = [];
-
   return {
     func: {
       name: func.name,
@@ -133,6 +178,25 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       exported: func.exported,
     },
   };
+}
+
+function collectIrUses(instr: IrInstr): readonly IrValueId[] {
+  switch (instr.kind) {
+    case "const":
+      return [];
+    case "call":
+      return instr.args;
+    case "global.get":
+      return [];
+    case "global.set":
+      return [instr.value];
+    case "binary":
+      return [instr.lhs, instr.rhs];
+    case "unary":
+      return [instr.rand];
+    case "raw.wasm":
+      return [];
+  }
 }
 
 function emitConst(instr: Extract<IrInstr, { kind: "const" }>, out: Instr[], funcName: string): void {
