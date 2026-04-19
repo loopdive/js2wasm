@@ -830,10 +830,6 @@ interface FileEntry {
   binaryData?: Uint8Array;
 }
 
-const STORAGE_KEY = "js2wasm_source";
-const LEGACY_STORAGE_KEY = "ts2wasm_source";
-const saved = sessionStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(LEGACY_STORAGE_KEY);
-
 function canonicalizeBenchmarkHelperImports(source: string, pathHint?: string | null): string {
   const replacement = pathHint === "examples/benchmarks.ts" ? "./benchmarks/helpers.ts" : "./helpers.ts";
   return source.replace(
@@ -869,7 +865,7 @@ const files: FileEntry[] = [
     "typescript",
     false,
     "input",
-    canonicalizeBenchmarkHelperImports(saved ?? DEFAULT_SOURCE, null),
+    canonicalizeBenchmarkHelperImports(DEFAULT_SOURCE, null),
   ),
   createFileEntry("output/example.wat", "wat", true, "output", ""),
   createFileEntry("output/example.wasm", "text", true, "output", ""),
@@ -891,7 +887,6 @@ function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
   inputModelChangeDisposable = model.onDidChangeContent(() => {
     if (t262Loading) return;
     clearT262FailureAnnotations();
-    sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
     lastResult = null;
     runBtn.disabled = false;
     benchBtn.disabled = true;
@@ -927,7 +922,7 @@ function setInputSourceModel(virtualPath: string, source: string): void {
     if (layout.getActiveTabForPanel(slot.panelId) !== "ts-source") continue;
     slot.editor.setModel(model);
   }
-  updateTabLabel("ts-source", inputFile.displayName, tabTooltips["ts-source"]);
+  updateTabLabel("ts-source", inputFile.displayName, undefined, tabTooltips["ts-source"]);
   queueSidebarRefresh();
 }
 
@@ -979,11 +974,10 @@ async function openLocalImportedSource(specifier: string): Promise<boolean> {
     if (content == null) return false;
     t262Loading = true;
     clearT262FailureAnnotations();
-    sessionStorage.removeItem(STORAGE_KEY);
     setInputSourceModel(resolvedPath, content);
     revealSourceTab();
     t262SetActive(resolvedPath);
-    updateTabLabel("ts-source", resolvedPath.split("/").pop() ?? "example.ts", tabTooltips["ts-source"]);
+    updateTabLabel("ts-source", resolvedPath.split("/").pop() ?? "example.ts", undefined, tabTooltips["ts-source"]);
     t262Loading = false;
     return true;
   } catch {
@@ -1076,90 +1070,117 @@ const timingSpan = document.getElementById("timing") as HTMLSpanElement;
 const runBtn = document.getElementById("run") as HTMLButtonElement;
 const downloadWasmBtn = document.getElementById("download-wasm") as HTMLButtonElement;
 const benchBtn = document.getElementById("bench") as HTMLButtonElement;
-const resetLayoutBtn = document.getElementById("reset-layout") as HTMLButtonElement;
-const mobileSidebarToggleBtn = document.getElementById("mobile-sidebar-toggle") as HTMLButtonElement | null;
-const mobileBottomToggleBtn = document.getElementById("mobile-bottom-toggle") as HTMLButtonElement | null;
-const desktopSidebarToggleBtn = document.getElementById("desktop-sidebar-toggle") as HTMLButtonElement | null;
-const desktopBottomToggleBtn = document.getElementById("desktop-bottom-toggle") as HTMLButtonElement | null;
-const desktopMenuToggleBtn = document.getElementById("desktop-menu-toggle") as HTMLButtonElement | null;
-const desktopNavPopoverEl = document.getElementById("desktop-nav-popover") as HTMLElement | null;
-const mobileMenuToggleBtn = document.getElementById("mobile-menu-toggle") as HTMLButtonElement | null;
-const mobileRunBtn = document.getElementById("mobile-run") as HTMLButtonElement | null;
-const mobileTimingSpan = document.getElementById("mobile-timing") as HTMLSpanElement | null;
+const toolbarLogoEl = document.getElementById("sidebar-logo") as HTMLAnchorElement | null;
+const panelTabControlsEl = document.getElementById("panel-tab-controls") as HTMLElement | null;
+const panelSidebarToggleBtn = document.getElementById("panel-sidebar-toggle") as HTMLButtonElement | null;
+const panelBottomToggleBtn = document.getElementById("panel-bottom-toggle") as HTMLButtonElement | null;
+const rightEditorControlsSlotEl = document.createElement("div");
+rightEditorControlsSlotEl.className = "panel-tab-controls-slot right-editor-controls-slot";
+const rightEditorControlsEl = document.createElement("div");
+rightEditorControlsEl.className = "panel-tab-controls right-editor-controls";
+rightEditorControlsSlotEl.appendChild(rightEditorControlsEl);
+const mobileTopbarPrimaryEl = document.getElementById("mobile-topbar-primary") as HTMLElement | null;
+const mobileTopbarActionsEl = document.getElementById("mobile-topbar-actions") as HTMLElement | null;
 const mobileSidebarOverlayEl = document.getElementById("mobile-sidebar-overlay") as HTMLElement | null;
+const mobileSidebarCloseBtn = document.getElementById("mobile-sidebar-close") as HTMLButtonElement | null;
 const mobileSidebarContentEl = document.getElementById("mobile-sidebar-content") as HTMLElement | null;
-const toolbarEl = document.querySelector(".toolbar") as HTMLElement;
 const layoutRootEl = document.getElementById("layout-root") as HTMLElement;
 let bottomPanelSplitEl: HTMLElement | null = null;
 
 const mobileLayoutMedia = window.matchMedia("(max-width: 900px), (max-height: 720px)");
-let mobileMenuOpen = false;
-let desktopMenuOpen = false;
 let mobileSidebarOpen = false;
 let mobileBottomCollapsed = false;
 
-function syncDesktopToolbarLayout(): void {
-  const desktopMode = !mobileLayoutMedia.matches;
-  let sidebarWidth = 0;
-  let hasDesktopSidebar = false;
-
-  if (desktopMode && layout.hasPanel("sidebar-left")) {
-    const rootSplit = layoutRootEl.querySelector(":scope > .layout-split") as HTMLElement | null;
-    const sidebarChild = rootSplit?.querySelector(":scope > .layout-child:first-child") as HTMLElement | null;
-    const sidebarPanel = sidebarChild?.querySelector(
-      ':scope > .layout-panel[data-panel="sidebar-left"]',
-    ) as HTMLElement | null;
-    if (rootSplit?.style.flexDirection === "row" && sidebarChild && sidebarPanel) {
-      sidebarWidth = Math.round(sidebarChild.getBoundingClientRect().width);
-      hasDesktopSidebar = sidebarWidth > 0;
+function mountPanelTabControls(): void {
+  if (!panelTabControlsEl) return;
+  const controlsSlot = layoutRootEl.querySelector(".panel-tab-controls-slot") as HTMLElement | null;
+  const sourceTabEl = layoutRootEl.querySelector('.panel-tab[data-tab="ts-source"]') as HTMLElement | null;
+  const sidebarVisible = layout.hasPanel("sidebar-left");
+  const rightEditorTabBarEl = layoutRootEl.querySelector(
+    '.layout-child[data-panel="editor-right"] .panel-tab-bar',
+  ) as HTMLElement | null;
+  if (mobileLayoutMedia.matches) {
+    if (controlsSlot && controlsSlot.firstElementChild !== panelTabControlsEl) {
+      controlsSlot.appendChild(panelTabControlsEl);
+    }
+    if (controlsSlot) {
+      controlsSlot.style.display = "";
+    }
+    if (mobileTopbarPrimaryEl) {
+      if (runBtn.parentElement !== mobileTopbarPrimaryEl) {
+        mobileTopbarPrimaryEl.appendChild(runBtn);
+      }
+    }
+    if (mobileTopbarActionsEl) {
+      if (panelSidebarToggleBtn && panelSidebarToggleBtn.parentElement !== mobileTopbarActionsEl) {
+        mobileTopbarActionsEl.appendChild(panelSidebarToggleBtn);
+      }
+      if (panelBottomToggleBtn && panelBottomToggleBtn.parentElement !== mobileTopbarActionsEl) {
+        mobileTopbarActionsEl.appendChild(panelBottomToggleBtn);
+      }
+    }
+    if (sourceTabEl && timingSpan.parentElement === sourceTabEl) {
+      sourceTabEl.removeChild(timingSpan);
+    }
+    return;
+  }
+  if (!controlsSlot) {
+    if (panelTabControlsEl.parentElement) {
+      panelTabControlsEl.parentElement.removeChild(panelTabControlsEl);
+    }
+    if (sourceTabEl && timingSpan.parentElement === sourceTabEl) {
+      sourceTabEl.removeChild(timingSpan);
+    }
+    return;
+  }
+  if (controlsSlot.firstElementChild !== panelTabControlsEl) {
+    controlsSlot.appendChild(panelTabControlsEl);
+  }
+  controlsSlot.style.display = "";
+  if (runBtn.parentElement !== panelTabControlsEl) {
+    panelTabControlsEl.appendChild(runBtn);
+  }
+  if (rightEditorTabBarEl) {
+    if (rightEditorTabBarEl.lastElementChild !== rightEditorControlsSlotEl) {
+      rightEditorTabBarEl.appendChild(rightEditorControlsSlotEl);
+    }
+    if (panelSidebarToggleBtn && rightEditorControlsEl.firstElementChild !== panelSidebarToggleBtn) {
+      rightEditorControlsEl.insertBefore(panelSidebarToggleBtn, rightEditorControlsEl.firstChild);
+    }
+    if (panelBottomToggleBtn && panelBottomToggleBtn.parentElement !== rightEditorControlsEl) {
+      rightEditorControlsEl.appendChild(panelBottomToggleBtn);
     }
   }
-
-  document.body.classList.toggle("desktop-sidebar-visible", hasDesktopSidebar);
-  document.body.style.setProperty("--desktop-sidebar-offset", hasDesktopSidebar ? `${sidebarWidth}px` : "0px");
-}
-
-function syncMobileMenu(): void {
-  toolbarEl.classList.toggle("mobile-open", mobileMenuOpen);
-  if (mobileMenuToggleBtn) {
-    mobileMenuToggleBtn.classList.toggle("open", mobileMenuOpen);
-    mobileMenuToggleBtn.setAttribute("aria-expanded", mobileMenuOpen ? "true" : "false");
+  if (sourceTabEl && timingSpan.parentElement !== sourceTabEl) {
+    sourceTabEl.appendChild(timingSpan);
   }
 }
 
-function syncDesktopMenu(): void {
-  desktopNavPopoverEl?.classList.toggle("open", desktopMenuOpen);
-  desktopMenuToggleBtn?.classList.toggle("open", desktopMenuOpen);
-  desktopMenuToggleBtn?.setAttribute("aria-expanded", desktopMenuOpen ? "true" : "false");
-}
-
-function closeDesktopMenu(): void {
-  if (!desktopMenuOpen) return;
-  desktopMenuOpen = false;
-  syncDesktopMenu();
-}
-
-function toggleDesktopMenu(): void {
-  desktopMenuOpen = !desktopMenuOpen;
-  syncDesktopMenu();
-}
-
-function closeMobileMenu(): void {
-  if (!mobileMenuOpen) return;
-  mobileMenuOpen = false;
-  syncMobileMenu();
-}
-
-function toggleMobileMenu(): void {
-  mobileMenuOpen = !mobileMenuOpen;
-  syncMobileMenu();
+function syncPrimaryActionsPlacement(): void {
+  if (!toolbarLogoEl || !panelTabControlsEl) return;
+  if (mobileLayoutMedia.matches) {
+    if (toolbarLogoEl.parentElement) {
+      toolbarLogoEl.parentElement.removeChild(toolbarLogoEl);
+    }
+    return;
+  }
+  const sidebarVisible = mobileLayoutMedia.matches ? mobileSidebarOpen : layout.hasPanel("sidebar-left");
+  if (sidebarVisible) {
+    if (toolbarLogoEl.parentElement !== test262SidebarBrandEl) {
+      test262SidebarBrandEl.insertBefore(toolbarLogoEl, test262SidebarBrandEl.firstChild);
+    }
+    return;
+  }
+  if (toolbarLogoEl.parentElement !== panelTabControlsEl) {
+    panelTabControlsEl.insertBefore(toolbarLogoEl, panelTabControlsEl.firstChild);
+  }
 }
 
 function syncMobileSidebar(): void {
   if (!mobileSidebarOverlayEl || !mobileSidebarContentEl) return;
   mobileSidebarOverlayEl.classList.toggle("open", mobileSidebarOpen);
-  mobileSidebarToggleBtn?.classList.toggle("active", mobileSidebarOpen);
-  mobileSidebarToggleBtn?.setAttribute("aria-pressed", mobileSidebarOpen ? "true" : "false");
+  panelSidebarToggleBtn?.classList.toggle("active", mobileSidebarOpen);
+  panelSidebarToggleBtn?.setAttribute("aria-pressed", mobileSidebarOpen ? "true" : "false");
   if (mobileSidebarOpen) {
     if (!mobileSidebarContentEl.contains(test262Panel)) {
       mobileSidebarContentEl.appendChild(test262Panel);
@@ -1182,15 +1203,23 @@ function toggleMobileSidebar(): void {
   syncMobileSidebar();
 }
 
+function closeMobileSidebarAfterSelection(): void {
+  if (!mobileLayoutMedia.matches) return;
+  closeMobileSidebar();
+  syncSidebarToggleButton();
+}
+
 function getBottomPanelSplitEl(): HTMLElement | null {
-  const rootSplit = layoutRootEl.querySelector(":scope > .layout-split") as HTMLElement | null;
-  if (!rootSplit) return null;
-  if (rootSplit.style.flexDirection === "column") return rootSplit;
-  const nestedSplit = rootSplit.querySelector(
-    ":scope > .layout-child:last-child > .layout-split",
-  ) as HTMLElement | null;
-  if (nestedSplit?.style.flexDirection === "column") return nestedSplit;
-  return null;
+  const splitEls = Array.from(layoutRootEl.querySelectorAll(".layout-split")) as HTMLElement[];
+  return (
+    splitEls.find((splitEl) => {
+      if (splitEl.style.flexDirection !== "column") return false;
+      return Boolean(
+        splitEl.querySelector('.layout-child[data-panel="output-left"]') &&
+        splitEl.querySelector('.layout-child[data-panel="output-right"]'),
+      );
+    }) ?? null
+  );
 }
 
 function syncMobileBottomPanel(): void {
@@ -1201,24 +1230,14 @@ function syncMobileBottomPanel(): void {
   bottomPanelSplitEl = nextSplitEl;
   bottomPanelSplitEl?.classList.add("bottom-collapsible");
   bottomPanelSplitEl?.classList.toggle("bottom-collapsed", mobileBottomCollapsed);
-  mobileBottomToggleBtn?.classList.toggle("active", !mobileBottomCollapsed);
-  mobileBottomToggleBtn?.setAttribute("aria-pressed", (!mobileBottomCollapsed).toString());
-  desktopBottomToggleBtn?.classList.toggle("active", !mobileBottomCollapsed);
-  desktopBottomToggleBtn?.setAttribute("aria-pressed", (!mobileBottomCollapsed).toString());
+  panelBottomToggleBtn?.classList.toggle("active", !mobileBottomCollapsed);
+  panelBottomToggleBtn?.setAttribute("aria-pressed", (!mobileBottomCollapsed).toString());
 }
 
 function toggleMobileBottomPanel(): void {
   mobileBottomCollapsed = !mobileBottomCollapsed;
   syncMobileBottomPanel();
   layout.onLayoutChanged?.();
-}
-
-function syncMobileHeaderActions(): void {
-  if (mobileRunBtn) mobileRunBtn.disabled = runBtn.disabled;
-  if (mobileTimingSpan) {
-    const desktopText = timingSpan.textContent ?? "";
-    mobileTimingSpan.textContent = desktopText.replace(/^compiled in\s+/, "");
-  }
 }
 
 // Session storage for input
@@ -1244,17 +1263,20 @@ const test262Panel = document.createElement("div");
 test262Panel.id = "test262-panel";
 test262Panel.innerHTML = `
   <div class="t262-browser">
-    <div class="t262-search-wrap">
-      <input class="t262-search" type="text" placeholder="Filter tests..." />
+    <div class="t262-sidebar-topbar">
+      <div class="t262-sidebar-brand">
+        <div class="t262-sidebar-title">Playground</div>
+      </div>
+      <div class="t262-sidebar-topbar-actions"></div>
     </div>
     <div class="t262-list"></div>
-    <div class="t262-footer">
-      <div class="t262-footer-action"></div>
+    <div class="t262-search-wrap">
+      <input class="t262-search" type="text" placeholder="File filter" />
     </div>
   </div>
 `;
-const test262FooterActionEl = test262Panel.querySelector(".t262-footer-action") as HTMLElement;
-test262FooterActionEl.appendChild(resetLayoutBtn);
+const test262SidebarTopbarActionsEl = test262Panel.querySelector(".t262-sidebar-topbar-actions") as HTMLElement;
+const test262SidebarBrandEl = test262Panel.querySelector(".t262-sidebar-brand") as HTMLElement;
 
 interface T262Category {
   name: string;
@@ -1534,9 +1556,10 @@ const T262_MARKER_OWNER = "test262-selected-result";
 
 async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
-  const staticData = await fetchJson<{ categories: T262CategorySummary[] }>(
-    "playground-data/test262-index-summary.json",
+  const staticCategories = await fetchJsonFromPaths<T262CategorySummary[]>(
+    staticPlaygroundJsonPaths("test262-index-summary.json"),
   );
+  const staticData = staticCategories ? { categories: staticCategories } : null;
   const apiData = prefersStaticPlaygroundData
     ? null
     : await fetchJson<{ categories: T262CategorySummary[] }>("/api/test262-index-summary");
@@ -1823,15 +1846,15 @@ function syncT262FailureAnnotations() {
 async function t262LoadAndShow(filePath: string, fileResult: T262FileResult | null = null) {
   const content = await t262LoadFile(filePath);
   t262Loading = true;
-  sessionStorage.removeItem(STORAGE_KEY);
   setInputSourceModel(filePath, content);
   revealSourceTab();
   t262SetActive(filePath);
   activeT262FileResult = fileResult;
   const fname = t262FileName(filePath);
-  updateTabLabel("ts-source", fname, tabTooltips["ts-source"]);
+  updateTabLabel("ts-source", fname, undefined, tabTooltips["ts-source"]);
   compileOnly();
   t262Loading = false;
+  closeMobileSidebarAfterSelection();
 }
 
 // Build a recursive tree from category paths
@@ -2117,13 +2140,13 @@ async function t262Render() {
       const content = await loadBundledExampleSource(ex.path);
       if (content == null) return;
       t262Loading = true;
-      sessionStorage.removeItem(STORAGE_KEY);
       setInputSourceModel(ex.path, content);
       revealSourceTab();
       t262SetActive(ex.path);
-      updateTabLabel("ts-source", ex.name, tabTooltips["ts-source"]);
-      compileOnly();
+      updateTabLabel("ts-source", ex.name, undefined, tabTooltips["ts-source"]);
+      await compileAndRun();
       t262Loading = false;
+      closeMobileSidebarAfterSelection();
     });
     parent.appendChild(entry);
   }
@@ -2133,13 +2156,13 @@ async function t262Render() {
     if (rawContent == null) return;
     const content = normalizeBenchmarkHelperImport(rawContent, bench.path);
     t262Loading = true;
-    sessionStorage.removeItem(STORAGE_KEY);
     setInputSourceModel(bench.path, content);
     revealSourceTab();
     t262SetActive(bench.path);
-    updateTabLabel("ts-source", bench.name, tabTooltips["ts-source"]);
-    compileOnly();
+    updateTabLabel("ts-source", bench.name, undefined, tabTooltips["ts-source"]);
+    await compileAndRun();
     t262Loading = false;
+    closeMobileSidebarAfterSelection();
   }
 
   function appendOutputFolder(parent: HTMLElement, paddingLeft = "22px") {
@@ -2176,6 +2199,7 @@ async function t262Render() {
       fileEl.dataset.path = entry.tabId;
       fileEl.addEventListener("click", () => {
         showOutputPanel(entry.tabId);
+        closeMobileSidebarAfterSelection();
       });
       outputFilesEl.appendChild(fileEl);
     }
@@ -2541,13 +2565,13 @@ async function t262Render() {
           fileEl.addEventListener("click", async () => {
             const source = await loadEquivSource(t.index);
             t262Loading = true;
-            sessionStorage.removeItem(STORAGE_KEY);
             setInputSourceModel("input/example.ts", source);
             revealSourceTab();
             t262SetActive(path);
-            updateTabLabel("ts-source", t.name, tabTooltips["ts-source"]);
-            compileOnly();
+            updateTabLabel("ts-source", t.name, undefined, tabTooltips["ts-source"]);
+            await compileAndRun();
             t262Loading = false;
+            closeMobileSidebarAfterSelection();
           });
           filesEl.appendChild(fileEl);
         }
@@ -2756,9 +2780,11 @@ layout.onLayoutChanged = () => {
   for (const slot of editorSlots) {
     if (slot.panelId) slot.editor.layout();
   }
+  mountPanelTabControls();
+  updateTabSizes();
   syncMobileBottomPanel();
   syncSidebarToggleButton();
-  syncDesktopToolbarLayout();
+  syncPrimaryActionsPlacement();
 };
 
 // Load saved layout or use default
@@ -2770,20 +2796,19 @@ function loadResponsiveLayout(): void {
 
 loadResponsiveLayout();
 revealSourceTab();
+mountPanelTabControls();
 syncMobileBottomPanel();
-syncDesktopToolbarLayout();
-syncMobileHeaderActions();
+syncPrimaryActionsPlacement();
 
 function syncSidebarToggleButton(): void {
-  mobileSidebarToggleBtn?.setAttribute("aria-pressed", mobileSidebarOpen ? "true" : "false");
-  const desktopSidebarVisible = layout.hasPanel("sidebar-left");
-  desktopSidebarToggleBtn?.classList.toggle("active", desktopSidebarVisible);
-  desktopSidebarToggleBtn?.setAttribute("aria-pressed", desktopSidebarVisible ? "true" : "false");
+  const sidebarVisible = mobileLayoutMedia.matches ? mobileSidebarOpen : layout.hasPanel("sidebar-left");
+  panelSidebarToggleBtn?.classList.toggle("active", sidebarVisible);
+  panelSidebarToggleBtn?.setAttribute("aria-pressed", sidebarVisible ? "true" : "false");
+  panelSidebarToggleBtn?.setAttribute("aria-label", sidebarVisible ? "Hide file browser" : "Show file browser");
 }
 
 function toggleSidebar(): void {
   if (mobileLayoutMedia.matches) {
-    closeMobileMenu();
     toggleMobileSidebar();
   } else {
     layout.toggleSidebar();
@@ -2826,31 +2851,47 @@ function updateTabSizes() {
     const baseTitle = file.displayName || tabId;
 
     if (tabId === "wat-output") {
-      updateTabLabel(tabId, baseTitle, tabTooltips[tabId]);
+      updateTabLabel(tabId, baseTitle, undefined, tabTooltips[tabId]);
       continue;
     }
 
     const raw = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
     if (raw === 0) {
-      updateTabLabel(tabId, baseTitle, tabTooltips[tabId]);
+      updateTabLabel(tabId, baseTitle, undefined, tabTooltips[tabId]);
       continue;
     }
 
-    updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)})`, tabTooltips[tabId]);
+    updateTabLabel(tabId, baseTitle, undefined, tabTooltips[tabId]);
 
     // Compute gzip size async
     const gzInput = file.binaryData ?? new TextEncoder().encode(file.model.getValue());
     gzipSize(gzInput).then((gz) => {
-      updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)} / ${fmtSize(gz)} gz)`, tabTooltips[tabId]);
+      updateTabLabel(tabId, baseTitle, `${fmtSize(gz)} gz`, tabTooltips[tabId]);
     });
   }
 }
 
-function updateTabLabel(tabId: string, text: string, tooltip?: string) {
+function updateTabLabel(tabId: string, text: string, meta?: string, tooltip?: string) {
   const el = layout.getTabElement(tabId);
   if (el) {
     const label = el.querySelector(".panel-tab-label");
     if (label) label.textContent = text;
+    let metaEl = el.querySelector(".panel-tab-meta") as HTMLElement | null;
+    const closeBtn = el.querySelector(".close-btn");
+    if (meta) {
+      if (!metaEl) {
+        metaEl = document.createElement("span");
+        metaEl.className = "panel-tab-meta";
+        if (closeBtn) {
+          el.insertBefore(metaEl, closeBtn);
+        } else {
+          el.appendChild(metaEl);
+        }
+      }
+      metaEl.textContent = meta;
+    } else {
+      metaEl?.remove();
+    }
     if (tooltip) {
       el.title = tooltip;
       if (label instanceof HTMLElement) label.title = tooltip;
@@ -3798,7 +3839,7 @@ function compileOnly() {
     errorsPre.textContent = result.errors.map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`).join("\n");
   }
 
-  timingSpan.textContent = `compiled in ${compileTime.toFixed(1)}ms${result.success ? "" : " (failed)"}`;
+  timingSpan.textContent = `${compileTime.toFixed(1)}ms${result.success ? "" : " (failed)"}`;
   runBtn.disabled = false;
   benchBtn.disabled = !result.success;
   downloadWasmBtn.disabled = !result.success;
@@ -4040,11 +4081,10 @@ async function runBenchmark() {
       return;
     }
     t262Loading = true;
-    sessionStorage.removeItem(STORAGE_KEY);
     setInputSourceModel("examples/benchmarks.ts", normalizeBenchmarkHelperImport(content, "examples/benchmarks.ts"));
     revealSourceTab();
     t262SetActive("examples/benchmarks.ts");
-    updateTabLabel("ts-source", "benchmarks.ts", tabTooltips["ts-source"]);
+    updateTabLabel("ts-source", "benchmarks.ts", undefined, tabTooltips["ts-source"]);
 
     lastResult = null;
     t262Loading = false;
@@ -4268,25 +4308,14 @@ async function runBenchmark() {
 runBtn.addEventListener("click", () => {
   void compileAndRun();
 });
+runBtn.addEventListener("mousedown", (event) => {
+  event.stopPropagation();
+});
+runBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
 benchBtn.addEventListener("click", runBenchmark);
 downloadWasmBtn.addEventListener("click", downloadWasm);
-resetLayoutBtn.addEventListener("click", () => {
-  clearSavedLayout();
-  sessionStorage.removeItem(STORAGE_KEY);
-  t262ActivePath = null;
-  t262Loading = true;
-  setInputSourceModel("examples/dom/calendar.ts", DEFAULT_SOURCE);
-  revealSourceTab();
-  t262Loading = false;
-  updateTabLabel("ts-source", "calendar.ts", tabTooltips["ts-source"]);
-  layout.resetLayout();
-  clearSavedLayout();
-  closeMobileSidebar();
-  closeMobileMenu();
-  compileOnly();
-  syncSidebarToggleButton();
-});
-
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "b") {
     event.preventDefault();
@@ -4294,105 +4323,42 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-if (mobileMenuToggleBtn) {
-  desktopMenuToggleBtn?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleDesktopMenu();
-  });
-
-  mobileMenuToggleBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleMobileMenu();
-  });
-
-  mobileSidebarToggleBtn?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    closeMobileMenu();
-    toggleMobileSidebar();
-    syncSidebarToggleButton();
-  });
-
-  desktopSidebarToggleBtn?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleSidebar();
-  });
-
-  mobileBottomToggleBtn?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    closeMobileMenu();
-    toggleMobileBottomPanel();
-  });
-
-  desktopBottomToggleBtn?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    closeMobileMenu();
-    toggleMobileBottomPanel();
-  });
-
-  mobileRunBtn?.addEventListener("click", () => {
-    if (!runBtn.disabled) runBtn.click();
-  });
-
-  document.addEventListener("click", (event) => {
-    const target = event.target as Node | null;
-    if (!target) return;
-    if (mobileLayoutMedia.matches && mobileMenuOpen) {
-      if (!toolbarEl.contains(target) && !mobileMenuToggleBtn.contains(target)) {
-        closeMobileMenu();
-      }
-    }
-    if (!mobileLayoutMedia.matches && desktopMenuOpen) {
-      if (!desktopNavPopoverEl?.contains(target) && !desktopMenuToggleBtn?.contains(target)) {
-        closeDesktopMenu();
-      }
-    }
-  });
-
-  mobileSidebarOverlayEl?.addEventListener("click", (event) => {
-    if (event.target === mobileSidebarOverlayEl) {
-      closeMobileSidebar();
-      syncSidebarToggleButton();
-    }
-  });
-
-  toolbarEl.querySelectorAll("button, a").forEach((entry) => {
-    if (entry === mobileMenuToggleBtn) return;
-    entry.addEventListener("click", () => {
-      if (mobileLayoutMedia.matches) closeMobileMenu();
-    });
-  });
-
-  mobileLayoutMedia.addEventListener("change", (event) => {
-    if (!event.matches) {
-      closeMobileMenu();
-      closeMobileSidebar();
-      mobileBottomCollapsed = false;
-    } else {
-      closeDesktopMenu();
-    }
-    loadResponsiveLayout();
-    revealSourceTab();
-    syncMobileSidebar();
-    syncMobileBottomPanel();
-    syncSidebarToggleButton();
-    syncDesktopToolbarLayout();
-  });
-
-  window.addEventListener("resize", syncDesktopToolbarLayout);
-}
-
-new MutationObserver(() => syncMobileHeaderActions()).observe(timingSpan, {
-  characterData: true,
-  childList: true,
-  subtree: true,
+panelSidebarToggleBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleSidebar();
 });
 
-for (const button of [runBtn]) {
-  new MutationObserver(() => syncMobileHeaderActions()).observe(button, {
-    attributes: true,
-    attributeFilter: ["disabled"],
-  });
-}
+panelBottomToggleBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleMobileBottomPanel();
+});
+
+mobileSidebarCloseBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  closeMobileSidebar();
+  syncSidebarToggleButton();
+});
+
+mobileSidebarOverlayEl?.addEventListener("click", (event) => {
+  if (event.target === mobileSidebarOverlayEl) {
+    closeMobileSidebar();
+    syncSidebarToggleButton();
+  }
+});
+
+mobileLayoutMedia.addEventListener("change", (event) => {
+  if (!event.matches) {
+    closeMobileSidebar();
+    mobileBottomCollapsed = false;
+  }
+  loadResponsiveLayout();
+  revealSourceTab();
+  mountPanelTabControls();
+  syncMobileSidebar();
+  syncMobileBottomPanel();
+  syncSidebarToggleButton();
+  syncPrimaryActionsPlacement();
+});
 
 // Auto-compile and run on page load
 compileOnly();
