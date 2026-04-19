@@ -1,0 +1,15 @@
+{
+  "pr": 206,
+  "conclusion": "cancelled",
+  "head_branch": "issue-privatefieldset-brand",
+  "head_sha": "f3d2616a3d74671dae0eca7907a7d21dbbe44376",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24607531030",
+  "timestamp": "2026-04-19T09:05:05Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
