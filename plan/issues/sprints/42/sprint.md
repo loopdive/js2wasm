@@ -346,7 +346,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | ready |
 | #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
 | #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | ready |
-| #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
 | #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
@@ -364,6 +363,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1008 | Add mobile-first layout support to the playground | medium | in-progress |
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
+| #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | in-progress |
 
 ### Review
 
