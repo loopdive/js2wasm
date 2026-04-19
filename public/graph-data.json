@@ -14859,7 +14859,7 @@
       "title": "Dependency graph as a web component adopting the landing page color scheme",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "42",
       "depends_on": [],
       "files": [],
