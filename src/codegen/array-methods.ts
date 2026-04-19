@@ -24,7 +24,7 @@ import {
   VOID_RESULT,
 } from "./shared.js";
 import { ensureTimsortHelper } from "./timsort.js";
-import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
+import { coerceType, coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 
 type ArrayMethodAccess = ts.PropertyAccessExpression | ts.ElementAccessExpression;
 
@@ -1721,6 +1721,8 @@ const ARRAY_METHODS = new Set([
   "entries",
   "keys",
   "values",
+  "flat",
+  "flatMap",
 ]);
 
 /**
@@ -1879,6 +1881,12 @@ export function compileArrayMethodCall(
     case "keys":
     case "values":
       result = compileArrayIteratorMethod(ctx, fctx, methodAccess, methodName);
+      break;
+    case "flat":
+      result = compileArrayFlat(ctx, fctx, methodAccess, callExpr);
+      break;
+    case "flatMap":
+      result = compileArrayFlatMap(ctx, fctx, methodAccess, callExpr);
       break;
     default:
       result = undefined;
@@ -4665,6 +4673,100 @@ function compileArrayLastIndexOf(
     return { kind: "i32" };
   }
   return { kind: "f64" };
+}
+
+/**
+ * Compile arr.flat(depth?) — delegates to __array_flat host import (#1136).
+ * Converts WasmGC vec receiver to externref, passes depth arg, returns externref.
+ */
+function compileArrayFlat(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+): ValType | null {
+  // __array_flat(receiver: externref, depth: externref) -> externref
+  const flatIdx = ensureLateImport(
+    ctx,
+    "__array_flat",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (flatIdx === undefined) return null;
+
+  // Compile receiver as externref
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+
+  // Compile depth argument (or push undefined)
+  if (callExpr.arguments.length > 0) {
+    const depthType = compileExpression(ctx, fctx, callExpr.arguments[0]!);
+    if (depthType && depthType.kind !== "externref") {
+      coerceType(ctx, fctx, depthType, { kind: "externref" });
+    } else if (!depthType) {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  fctx.body.push({ op: "call", funcIdx: flatIdx });
+  return { kind: "externref" };
+}
+
+/**
+ * Compile arr.flatMap(callback, thisArg?) — delegates to __array_flatMap host import (#1136).
+ * Converts WasmGC vec receiver to externref, passes callback and optional thisArg, returns externref.
+ */
+function compileArrayFlatMap(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+): ValType | null {
+  if (callExpr.arguments.length < 1) return null; // flatMap requires a callback
+
+  // __array_flatMap(receiver: externref, fn: externref, thisArg: externref) -> externref
+  const flatMapIdx = ensureLateImport(
+    ctx,
+    "__array_flatMap",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (flatMapIdx === undefined) return null;
+
+  // Compile receiver as externref
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+
+  // Compile callback as externref
+  const cbType = compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  if (cbType && cbType.kind !== "externref") {
+    coerceType(ctx, fctx, cbType, { kind: "externref" });
+  } else if (!cbType) {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  // Compile thisArg (or push undefined)
+  if (callExpr.arguments.length > 1) {
+    const thisArgType = compileExpression(ctx, fctx, callExpr.arguments[1]!);
+    if (thisArgType && thisArgType.kind !== "externref") {
+      coerceType(ctx, fctx, thisArgType, { kind: "externref" });
+    } else if (!thisArgType) {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  fctx.body.push({ op: "call", funcIdx: flatMapIdx });
+  return { kind: "externref" };
 }
 
 // Register the emitBoundsCheckedArrayGet delegate so closures.ts (and any
