@@ -1,0 +1,125 @@
+name: Mirror to Public Repo
+
+# Mirrors PR branches to loopdive/js2wasm (public) so CI runs there for free.
+# Strips .claude/ and plan/ — keeps those private.
+# Reports public CI result back to the private PR as a commit status.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  statuses: write
+
+concurrency:
+  group: mirror-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PUBLIC_REPO: loopdive/js2wasm
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Strip private directories
+        run: |
+          rm -rf .claude plan
+
+      - name: Push to public repo
+        id: push
+        env:
+          TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git config user.email "ci-mirror@loopdive.com"
+          git config user.name "CI Mirror"
+          git add -A
+          # Only commit if there are staged changes (i.e. .claude/ or plan/ existed)
+          git diff --cached --quiet || git commit -m "chore(mirror): strip private dirs [skip ci]"
+          PUBLIC_SHA=$(git rev-parse HEAD)
+          echo "public_sha=$PUBLIC_SHA" >> $GITHUB_OUTPUT
+
+          git remote add public "https://x-access-token:${TOKEN}@github.com/${PUBLIC_REPO}.git"
+          git push public "HEAD:refs/heads/${BRANCH}" --force
+          echo "Pushed to $PUBLIC_REPO branch $BRANCH at $PUBLIC_SHA"
+
+      - name: Set pending status on private PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api repos/${{ github.repository }}/statuses/$SHA \
+            -f state=pending \
+            -f context="ci/public-mirror" \
+            -f description="Waiting for public CI..." \
+            -f target_url="https://github.com/${{ env.PUBLIC_REPO }}/actions"
+
+  wait-and-report:
+    needs: mirror
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Wait for public CI and report back
+        env:
+          TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLIC_REPO: loopdive/js2wasm
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          PRIVATE_SHA: ${{ github.event.pull_request.head.sha }}
+          PRIVATE_REPO: ${{ github.repository }}
+        run: |
+          echo "Polling public CI for branch: $BRANCH"
+          for i in $(seq 1 120); do
+            sleep 60
+            # Get latest run for this branch on public repo
+            RUN=$(curl -s -H "Authorization: token $TOKEN" \
+              "https://api.github.com/repos/$PUBLIC_REPO/actions/runs?branch=$BRANCH&per_page=1" \
+              | jq '.workflow_runs[0] | {id, status, conclusion}')
+            STATUS=$(echo "$RUN" | jq -r '.status')
+            CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
+            RUN_ID=$(echo "$RUN" | jq -r '.id')
+            echo "  [${i}m] status=$STATUS conclusion=$CONCLUSION run=$RUN_ID"
+
+            if [ "$STATUS" = "completed" ]; then
+              if [ "$CONCLUSION" = "success" ]; then
+                STATE=success
+                DESC="Public CI passed"
+              elif [ "$CONCLUSION" = "failure" ]; then
+                STATE=failure
+                DESC="Public CI failed"
+              elif [ "$CONCLUSION" = "cancelled" ]; then
+                STATE=error
+                DESC="Public CI cancelled"
+              else
+                STATE=error
+                DESC="Public CI: $CONCLUSION"
+              fi
+
+              gh api "repos/$PRIVATE_REPO/statuses/$PRIVATE_SHA" \
+                -f state=$STATE \
+                -f context="ci/public-mirror" \
+                -f description="$DESC" \
+                -f target_url="https://github.com/$PUBLIC_REPO/actions/runs/$RUN_ID"
+              echo "Reported $STATE to private PR"
+              exit 0
+            fi
+          done
+
+          # Timed out after 2h
+          gh api "repos/$PRIVATE_REPO/statuses/$PRIVATE_SHA" \
+            -f state=error \
+            -f context="ci/public-mirror" \
+            -f description="Timed out waiting for public CI" \
+            -f target_url="https://github.com/$PUBLIC_REPO/actions"
+          exit 1
