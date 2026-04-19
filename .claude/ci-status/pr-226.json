@@ -2,14 +2,14 @@
   "pr": 226,
   "conclusion": "failure",
   "head_branch": "issue-defineproperty-validate",
-  "head_sha": "809bb714104d3a5bbdf825d2695cd2993ccc06eb",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24614191282",
-  "timestamp": "2026-04-18T21:36:11Z",
-  "pass": 22461,
-  "fail": 15377,
-  "compile_error": 3962,
-  "snapshot_delta": 11,
-  "net_per_test": 11,
+  "head_sha": "e133a25d978e768c4d1aa2b8ee9484d232768f9f",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616685432",
+  "timestamp": "2026-04-19T01:57:29Z",
+  "pass": 22492,
+  "fail": 15364,
+  "compile_error": 3944,
+  "snapshot_delta": 42,
+  "net_per_test": 42,
   "regressions": 13,
-  "improvements": 24
+  "improvements": 55
 }
