@@ -1402,6 +1402,155 @@ function resolveImport(
           return JSON.stringify(plain, rep as any, sp);
         };
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
+      if (name === "__extern_eval")
+        return (src: any) => {
+          // Spec: if input is not a string, return it unchanged.
+          if (typeof src !== "string") return src;
+          // Indirect eval — runs in global scope. Direct-eval scope access
+          // is unreachable through a host import boundary; #1006 scopes this
+          // explicitly to JS-host mode, standalone mode traps on instantiation.
+          //
+          // #1073: Prepend JS-side shims for test262 harness identifiers that
+          // wrapTest text-rewrites into eval'd strings. Without these, the
+          // eval'd code raises ReferenceError for wasm-compiled identifiers
+          // like assert_sameValue, assert_throws, etc.
+          const harnessIds = [
+            "assert_sameValue",
+            "assert_notSameValue",
+            "assert_true",
+            "assert_throws",
+            "assert_throwsAsync",
+            "isSameValue",
+            "assert_sameValue_str",
+            "assert_notSameValue_str",
+            "assert_sameValue_bool",
+            "assert_notSameValue_bool",
+            "assert_compareArray",
+            "compareArray",
+            "__fail",
+            "__assert_count",
+            "fnGlobalObject",
+            "verifyProperty",
+            "verifyEnumerable",
+            "verifyNotEnumerable",
+            "verifyWritable",
+            "verifyNotWritable",
+            "verifyConfigurable",
+            "verifyNotConfigurable",
+            "Test262Error",
+            "$DONE",
+          ];
+          // Strip TypeScript annotations that wrapTest injects (e.g. `as number`,
+          // `as any`) — the eval'd code runs as plain JS and rejects TS syntax.
+          const jsSrc = src.replace(/\bas\s+number\b/g, "").replace(/\bas\s+any\b/g, "");
+          const needsShim = harnessIds.some((id) => jsSrc.includes(id));
+          if (!needsShim) return (0, eval)(jsSrc);
+
+          // Build a JS-side harness that mirrors the wasm-compiled preamble.
+          // State (__fail, __assert_count) is local to this eval — if an
+          // assertion fails, we throw so the outer wasm try/catch observes it.
+          //
+          // Test262Error extends Error so `String(e)` and `e.message` yield a
+          // readable string when the throw propagates back through the wasm
+          // boundary; a plain constructor serializes to "[object Object]".
+          // We also provide `assert` as an object with dot-notation methods,
+          // so any harness call that slips through wrapTest's rewrites (e.g.
+          // inside backslash-continued string literals, template literals, or
+          // nested eval) still resolves instead of raising ReferenceError.
+          const shim = `\
+var __fail = 0, __assert_count = 1;
+function Test262Error(msg) {
+  var e = new Error(msg || '');
+  e.name = 'Test262Error';
+  if (Object.setPrototypeOf) Object.setPrototypeOf(e, Test262Error.prototype);
+  return e;
+}
+Test262Error.prototype = Object.create(Error.prototype);
+Test262Error.prototype.constructor = Test262Error;
+Test262Error.prototype.name = 'Test262Error';
+Test262Error.prototype.toString = function() { return 'Test262Error: ' + (this.message || ''); };
+function isSameValue(a, b) {
+  if (a === b) { if (a !== 0) return true; return 1/a === 1/b; }
+  return a !== a && b !== b;
+}
+function assert_sameValue(a, b) {
+  __assert_count++;
+  if (!isSameValue(a, b)) { if (!__fail) __fail = __assert_count; }
+}
+function assert_notSameValue(a, b) {
+  __assert_count++;
+  if (isSameValue(a, b)) { if (!__fail) __fail = __assert_count; }
+}
+function assert_true(v) {
+  __assert_count++;
+  if (!v) { if (!__fail) __fail = __assert_count; }
+}
+function assert_throws(fn) {
+  __assert_count++;
+  try { fn(); } catch(e) { return; }
+  if (!__fail) __fail = __assert_count;
+}
+function assert_throwsAsync(fn) {
+  __assert_count++;
+  try { fn(); } catch(e) { return; }
+  if (!__fail) __fail = __assert_count;
+}
+function assert_sameValue_str(a, b) {
+  __assert_count++;
+  if (a !== b) { if (!__fail) __fail = __assert_count; }
+}
+function assert_notSameValue_str(a, b) {
+  __assert_count++;
+  if (a === b) { if (!__fail) __fail = __assert_count; }
+}
+function assert_sameValue_bool(a, b) {
+  __assert_count++;
+  if (a !== b) { if (!__fail) __fail = __assert_count; }
+}
+function assert_notSameValue_bool(a, b) {
+  __assert_count++;
+  if (a === b) { if (!__fail) __fail = __assert_count; }
+}
+function compareArray(a, b) {
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) { if (a[i] !== b[i]) return false; }
+  return true;
+}
+function assert_compareArray(a, b) {
+  __assert_count++;
+  if (!compareArray(a, b)) { if (!__fail) __fail = __assert_count; }
+}
+function fnGlobalObject() { return globalThis; }
+function verifyProperty() {}
+function verifyEnumerable() {}
+function verifyNotEnumerable() {}
+function verifyWritable() {}
+function verifyNotWritable() {}
+function verifyConfigurable() {}
+function verifyNotConfigurable() {}
+function $DONE(err) {
+  __assert_count++;
+  if (err) { if (!__fail) __fail = __assert_count; }
+}
+var assert = function(v, msg) {
+  __assert_count++;
+  if (!v) { if (!__fail) __fail = __assert_count; }
+};
+assert.sameValue = assert_sameValue;
+assert.notSameValue = assert_notSameValue;
+assert.throws = function(ErrorType, fn) {
+  __assert_count++;
+  try { fn(); } catch(e) { return; }
+  if (!__fail) __fail = __assert_count;
+};
+assert.throwsAsync = assert.throws;
+assert.compareArray = assert_compareArray;
+assert._isSameValue = isSameValue;
+`;
+          const wrapped =
+            shim + jsSrc + `;\nif (__fail) throw new Test262Error('eval harness assertion ' + __fail + ' failed');`;
+          return (0, eval)(wrapped);
+        };
       if (name === "__extern_get")
         return (obj: any, key: any) => {
           const val = _safeGet(obj, key);
