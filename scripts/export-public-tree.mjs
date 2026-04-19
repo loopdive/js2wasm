@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");

@@ -44,7 +44,7 @@ function getStableGeneratedAt(paths) {
   const candidates = paths.filter((p) => existsSync(p));
   if (!candidates.length) return "";
   try {
-    return git(["log", "-1", "--format=%cI", "--", ...candidates]);
+    return git(["log", "-1", "--no-merges", "--format=%aI", "--", ...candidates]);
   } catch {
     return "";
   }
