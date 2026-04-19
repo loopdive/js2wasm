@@ -12794,7 +12794,7 @@
       "title": "Replace __init_done runtime guards with start/init entry semantics",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "42",
       "depends_on": [
         "900"
@@ -14569,7 +14569,7 @@
       "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [
         "1041"
