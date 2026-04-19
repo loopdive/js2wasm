@@ -780,7 +780,8 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
-  if (state.primitiveNeeded.has("string_compare")) {
+  if (state.primitiveNeeded.has("string_compare") && !ctx.nativeStrings) {
+    // In native strings mode, __str_compare Wasm helper handles this — no host import needed
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
@@ -876,9 +877,12 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
       ctx.pendingMathMethods.add(method);
     }
   }
-  if (state.mathNeedsToUint32 && !ctx.funcMap.has("__toUint32")) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+  // ToUint32: defer emission until after all imports are registered (#1094).
+  // Registering as a defined function here would leave a stale funcMap index
+  // since subsequent imports added via addImport (e.g. __register_prototype)
+  // do not shift defined-function indices. emitToUint32Helper() runs later.
+  if (state.mathNeedsToUint32) {
+    ctx.needsToUint32 = true;
   }
 
   // ── collectParseImports finalize ──
