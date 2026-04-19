@@ -1386,7 +1386,16 @@ function resolveImport(
         return (obj: any) => {
           if (obj == null) return 0;
           // Helper: coerce length value to number (#1090) — handles nested WasmGC
-          // structs with valueOf/toString that need ToPrimitive dispatch
+          // structs with valueOf/toString that need ToPrimitive dispatch.
+          // Applies ToLength: NaN → 0, negative → 0, clamp to [0, 2^31-1]
+          // so callers using i32.trunc_sat_f64_s see a sane non-negative length.
+          const toLength = (n: number): number => {
+            if (Number.isNaN(n)) return 0;
+            if (!Number.isFinite(n)) return n > 0 ? 0x7fffffff : 0;
+            const i = Math.trunc(n);
+            if (i <= 0) return 0;
+            return Math.min(i, 0x7fffffff);
+          };
           const coerceLen = (v: any): number => {
             if (v == null) return 0;
             if (typeof v === "number") return v;
@@ -1408,12 +1417,12 @@ function resolveImport(
           // Reading .length on an opaque wasmGC struct throws — check sidecar first (#983)
           if (_isWasmStruct(obj)) {
             const sc = _sidecarGet(obj, "length");
-            if (sc !== undefined) return coerceLen(sc);
+            if (sc !== undefined) return toLength(coerceLen(sc));
             const exports = callbackState?.getExports();
             const getter = exports?.[`__sget_length`];
             if (typeof getter === "function") {
               try {
-                return coerceLen(getter(obj));
+                return toLength(coerceLen(getter(obj)));
               } catch {
                 /* not a field */
               }
@@ -1421,13 +1430,13 @@ function resolveImport(
             return 0;
           }
           const len = obj.length;
-          if (len !== undefined) return coerceLen(len);
+          if (len !== undefined) return toLength(coerceLen(len));
           const sc = _sidecarGet(obj, "length");
-          if (sc !== undefined) return coerceLen(sc);
+          if (sc !== undefined) return toLength(coerceLen(sc));
           // Try struct getter export for WasmGC structs with a 'length' field
           const exports = callbackState?.getExports();
           const getter = exports?.__sget_length;
-          if (typeof getter === "function") return coerceLen(getter(obj)) ?? 0;
+          if (typeof getter === "function") return toLength(coerceLen(getter(obj))) ?? 0;
           return 0;
         };
       // __extern_get_idx: numeric index access bypassing the well-known symbol ID
@@ -1454,6 +1463,50 @@ function resolveImport(
           const getter = exports?.[`__sget_${strKey}`];
           if (typeof getter === "function") return getter(obj);
           return undefined;
+        };
+      // __extern_has_idx: HasProperty(O, ToString(idx)) for array-like callback
+      // loops. Spec §23.1.3.X uses HasProperty to skip holes (e.g. Array.prototype
+      // .filter.call({length:"2",1:11}, cb) must not visit index 0).
+      //
+      // Mirrors __extern_get_idx's lookup paths. _safeSet re-maps numeric keys
+      // 1-14 onto well-known symbol sidecar entries, so checking plain `idx in obj`
+      // misses index values in that range — must also consult the symbol-keyed
+      // sidecar and the wasm struct getter exports.
+      if (name === "__extern_has_idx")
+        return (obj: any, idx: number): number => {
+          if (obj == null) return 0;
+          const strKey = String(idx);
+          try {
+            if (idx in obj) return 1;
+          } catch {
+            /* opaque struct */
+          }
+          try {
+            if (strKey in obj) return 1;
+          } catch {
+            /* opaque struct */
+          }
+          if (_sidecarGet(obj, idx) !== undefined) return 1;
+          if (_sidecarGet(obj, strKey) !== undefined) return 1;
+          // _safeSet routes numeric keys 1-14 onto Symbol.<wellKnown> sidecar
+          // entries. Reverse that mapping so index 1-14 values remain visible.
+          if (idx >= 1 && idx <= 14) {
+            const symKeys = _symbolIdToKeys.get(idx);
+            if (symKeys) {
+              if (_sidecarGet(obj, symKeys.sym) !== undefined) return 1;
+              if (_sidecarGet(obj, symKeys.wasm) !== undefined) return 1;
+            }
+          }
+          const exports = callbackState?.getExports();
+          if (typeof exports?.[`__sget_${strKey}`] === "function") {
+            try {
+              const v = exports[`__sget_${strKey}`](obj);
+              if (v != null) return 1;
+            } catch {
+              /* not a field on this variant */
+            }
+          }
+          return 0;
         };
       if (name === "__extern_toString")
         return (v: any) => {
