@@ -6,6 +6,7 @@
  */
 import ts from "typescript";
 import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
+import { bodyUsesArguments } from "../helpers/body-uses-arguments.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import {
   collectReferencedIdentifiers,
@@ -694,30 +695,6 @@ function getCol(node: ts.Node): number {
   } catch {
     return 0;
   }
-}
-
-/**
- * Check if a node tree references the `arguments` identifier.
- * Skips nested function declarations and function expressions (which have
- * their own `arguments` binding), but traverses into arrow functions
- * because arrows inherit the enclosing function's `arguments`.
- */
-export function bodyUsesArguments(node: ts.Node): boolean {
-  // Iterative DFS to avoid stack overflow on deeply nested ASTs (CI cgroup limits)
-  const stack: ts.Node[] = [node];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    if (ts.isIdentifier(current) && current.text === "arguments") return true;
-    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) {
-      continue;
-    }
-    // Arrow functions do NOT have their own `arguments` — they inherit
-    // the enclosing function's, so we must traverse into them.
-    current.forEachChild((child) => {
-      stack.push(child);
-    });
-  }
-  return false;
 }
 
 /**
