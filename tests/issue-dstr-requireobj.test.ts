@@ -11,11 +11,11 @@ describe("dstr null/undefined RequireObjectCoercible", () => {
     return (instance.exports as any).test?.();
   }
 
-  it("object destructure from null literal throws TypeError", async () => {
+  it("object destructure with binding from null literal throws TypeError", async () => {
     const ret = await run(`
       export function test(): number {
         try {
-          const {} = (null as any);
+          const { a } = (null as any);
           return 0;
         } catch (e: any) {
           return 1;
@@ -25,11 +25,11 @@ describe("dstr null/undefined RequireObjectCoercible", () => {
     expect(ret).toBe(1);
   });
 
-  it("object destructure from undefined literal throws TypeError", async () => {
+  it("object destructure with binding from undefined literal throws TypeError", async () => {
     const ret = await run(`
       export function test(): number {
         try {
-          const {} = (undefined as any);
+          const { a } = (undefined as any);
           return 0;
         } catch (e: any) {
           return 1;
@@ -37,6 +37,20 @@ describe("dstr null/undefined RequireObjectCoercible", () => {
       }
     `);
     expect(ret).toBe(1);
+  });
+
+  it("empty object pattern from null does NOT throw (no property accesses)", async () => {
+    const ret = await run(`
+      export function test(): number {
+        try {
+          const {} = (null as any);
+          return 42;
+        } catch (e: any) {
+          return 1;
+        }
+      }
+    `);
+    expect(ret).toBe(42);
   });
 
   it("array destructure from null throws TypeError", async () => {

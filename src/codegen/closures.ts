@@ -642,7 +642,7 @@ export function emitArrowParamDefaults(
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
     if (dstrNullDefault) {
-      for (const ins of buildDestructureNullThrow(ctx)) fctx.body.push(ins);
+      for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
     } else {
       compileExpression(ctx, fctx, param.initializer, paramType);
       fctx.body.push({ op: "local.set", index: paramIdx });
@@ -719,7 +719,7 @@ export function emitMethodParamDefaults(
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
     if (dstrNullDefault) {
-      for (const ins of buildDestructureNullThrow(ctx)) fctx.body.push(ins);
+      for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
     } else {
       compileExpression(ctx, fctx, param.initializer, paramType);
       fctx.body.push({ op: "local.set", index: paramIdx });
@@ -1343,13 +1343,13 @@ export function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if (resolvedParamType.kind === "ref_null") {
+            if (resolvedParamType.kind === "ref_null" && param.name.elements.length > 0) {
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
               liftedFctx.body.push({
                 op: "if",
                 blockType: { kind: "empty" },
-                then: buildDestructureNullThrow(ctx),
+                then: buildDestructureNullThrow(ctx, liftedFctx),
                 else: fpadInstrs,
               });
             } else {
@@ -1376,13 +1376,13 @@ export function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if (resolvedParamType.kind === "ref_null") {
+            if (resolvedParamType.kind === "ref_null" && param.name.elements.length > 0) {
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
               liftedFctx.body.push({
                 op: "if",
                 blockType: { kind: "empty" },
-                then: buildDestructureNullThrow(ctx),
+                then: buildDestructureNullThrow(ctx, liftedFctx),
                 else: fpadInstrs,
               });
             } else {
@@ -1427,33 +1427,33 @@ export function compileArrowAsClosure(
             liftedFctx.body.push({ op: "local.set", index: localIdx });
           }
           liftedFctx.body = savedBodyFPOD;
-          if (paramType.kind === "ref_null") {
+          if (paramType.kind === "ref_null" && param.name.elements.length > 0) {
             liftedFctx.body.push({ op: "local.get", index: paramIdx });
             liftedFctx.body.push({ op: "ref.is_null" } as Instr);
             liftedFctx.body.push({
               op: "if",
               blockType: { kind: "empty" },
-              then: buildDestructureNullThrow(ctx),
+              then: buildDestructureNullThrow(ctx, liftedFctx),
               else: fpodInstrs,
             });
           } else {
             liftedFctx.body.push(...fpodInstrs);
           }
           handled = allFound;
-        } else if (paramType.kind === "ref_null") {
+        } else if (paramType.kind === "ref_null" && param.name.elements.length > 0) {
           // Non-struct ref_null type — still need guard when value is null
           liftedFctx.body.push({ op: "local.get", index: paramIdx });
           liftedFctx.body.push({ op: "ref.is_null" } as Instr);
           liftedFctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
-            then: buildDestructureNullThrow(ctx),
+            then: buildDestructureNullThrow(ctx, liftedFctx),
             else: [],
           });
         }
-      } else if (paramType.kind === "externref") {
-        // Externref param with empty or non-struct-matching object pattern:
-        // still need to reject null/undefined per spec (RequireObjectCoercible).
+      } else if (paramType.kind === "externref" && param.name.elements.length > 0) {
+        // Externref param with non-empty non-struct-matching object pattern:
+        // reject null/undefined per spec (RequireObjectCoercible).
         emitExternrefDestructureGuard(ctx, liftedFctx, paramIdx);
       }
       if (!handled) {

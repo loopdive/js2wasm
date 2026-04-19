@@ -1024,7 +1024,7 @@ export function compileClassBodies(
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
         if (dstrNullDefault) {
-          for (const ins of buildDestructureNullThrow(ctx)) fctx.body.push(ins);
+          for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
         } else {
           const methDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
           if (methDfltType && !valTypesMatch(methDfltType, paramType)) {

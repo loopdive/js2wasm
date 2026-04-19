@@ -1419,6 +1419,10 @@ function resolveImport(
         };
       if (name === "__extern_is_undefined") return (v: any) => (v === undefined ? 1 : 0);
       if (name === "__get_undefined") return () => undefined;
+      if (name === "__throw_type_error")
+        return (msg: any) => {
+          throw new TypeError(msg == null ? "" : String(msg));
+        };
       // __to_primitive: full ToPrimitive per ECMA-262 §7.1.1 (#1090)
       // Takes (externref obj, externref hint_string) → externref primitive
       // Throws TypeError if conversion fails or Symbol.toPrimitive is non-callable

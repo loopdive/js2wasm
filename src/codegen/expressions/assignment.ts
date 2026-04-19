@@ -24,6 +24,7 @@ import {
   localGlobalIdx,
   resolveWasmType,
 } from "../index.js";
+import { buildDestructureNullThrow } from "../destructuring-params.js";
 import { resolveComputedKeyExpression } from "../literals.js";
 import { emitNullGuardedStructGet, isProvablyNonNull } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
@@ -46,17 +47,14 @@ import { resolveStructName } from "./misc.js";
  * Per spec §14.3.3.1 RequireObjectCoercible / §8.4.2 GetIterator.
  */
 function emitExternrefAssignDestructureGuard(ctx: CodegenContext, fctx: FunctionContext, srcLocal: number): void {
-  const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
-  addStringConstantGlobal(ctx, typeErrMsg);
-  const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
-  const tagIdx = ensureExnTag(ctx);
+  const throwInstrs = buildDestructureNullThrow(ctx, fctx);
   // ref.is_null check (catches JS null when encoded as ref.null.extern)
   fctx.body.push({ op: "local.get", index: srcLocal });
   fctx.body.push({ op: "ref.is_null" } as Instr);
   fctx.body.push({
     op: "if",
     blockType: { kind: "empty" },
-    then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx }],
+    then: throwInstrs,
     else: [],
   });
   // __extern_is_undefined check (catches JS undefined held as non-null externref)
@@ -68,7 +66,7 @@ function emitExternrefAssignDestructureGuard(ctx: CodegenContext, fctx: Function
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx }],
+      then: throwInstrs,
       else: [],
     });
   }
@@ -330,20 +328,18 @@ function compileDestructuringAssignment(
   // patterns the bindings stay at their defaults (mimics JS behaviour for
   // destructuring primitives — the properties simply do not exist). (#379)
   if (!typeName || !ctx.structMap.has(typeName) || !ctx.structFields.get(typeName)) {
-    // Null/undefined check — throw TypeError (#783)
-    // In JS, `{...} = null` and `{...} = undefined` always throw TypeError
-    if (resultType.kind === "externref" || resultType.kind === "ref_null") {
-      const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
-      addStringConstantGlobal(ctx, typeErrMsg);
-      const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
-      const tagIdx = ensureExnTag(ctx);
+    // Null/undefined check — throw TypeError (#783).
+    // In JS, `{...} = null` and `{...} = undefined` always throw TypeError.
+    // Skip for empty `{} = val` patterns (#225) — only fire on real property accesses.
+    if ((resultType.kind === "externref" || resultType.kind === "ref_null") && target.properties.length > 0) {
+      const throwInstrs = buildDestructureNullThrow(ctx, fctx);
       const tmpNullChk = allocLocal(fctx, `__destruct_null_chk_${fctx.locals.length}`, resultType);
       fctx.body.push({ op: "local.tee", index: tmpNullChk });
       fctx.body.push({ op: "ref.is_null" } as Instr);
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },
-        then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx }],
+        then: throwInstrs,
         else: [],
       });
       // Restore value on stack
@@ -638,19 +634,17 @@ function compileDestructuringAssignment(
     }
   }
 
-  // Close null guard — throw TypeError if null/undefined (#783)
+  // Close null guard — throw TypeError if null/undefined (#783).
+  // Skip for empty `{} = val` patterns (#225).
   fctx.body = savedBodyDA;
-  if (isNullableDA) {
-    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
-    addStringConstantGlobal(ctx, typeErrMsg);
-    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
-    const tagIdx = ensureExnTag(ctx);
+  if (isNullableDA && target.properties.length > 0) {
+    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx }],
+      then: throwInstrs,
       else: destructInstrsDA,
     });
   } else {
@@ -939,19 +933,17 @@ function compileArrayDestructuringAssignment(
     // else: unsupported element target — skip
   }
 
-  // Close null guard — throw TypeError if null/undefined (#783)
+  // Close null guard — throw TypeError if null/undefined (#783).
+  // Skip for empty `[] = val` patterns (#225).
   fctx.body = savedBodyADA;
-  if (isNullableADA) {
-    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
-    addStringConstantGlobal(ctx, typeErrMsg);
-    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
-    const tagIdx = ensureExnTag(ctx);
+  if (isNullableADA && target.elements.length > 0) {
+    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx }],
+      then: throwInstrs,
       else: arrDestructInstrsADA,
     });
   } else {
@@ -977,18 +969,16 @@ function compileExternrefArrayDestructuringAssignment(
   const tmpLocal = allocLocal(fctx, `__ext_arr_destruct_${fctx.locals.length}`, resultType);
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
-  // Null check — throw TypeError for null/undefined (#783)
-  if (resultType.kind === "externref") {
-    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
-    addStringConstantGlobal(ctx, typeErrMsg);
-    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
-    const tagIdx = ensureExnTag(ctx);
+  // Null check — throw TypeError for null/undefined (#783).
+  // Skip for empty `[] = val` patterns (#225).
+  if (resultType.kind === "externref" && target.elements.length > 0) {
+    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx }],
+      then: throwInstrs,
       else: [],
     });
   }
@@ -1334,19 +1324,17 @@ function emitObjectDestructureFromLocal(
     }
   }
 
-  // Close null guard — throw TypeError if null/undefined (#730)
+  // Close null guard — throw TypeError if null/undefined (#730).
+  // Skip for empty `{} = val` nested patterns (#225).
   fctx.body = savedBodyODFL;
-  if (srcType.kind === "ref_null") {
-    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
-    addStringConstantGlobal(ctx, typeErrMsg);
-    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
-    const tagIdx = ensureExnTag(ctx);
+  if (srcType.kind === "ref_null" && pattern.properties.length > 0) {
+    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx }],
+      then: throwInstrs,
       else: odflInstrs,
     });
   } else {
@@ -1407,19 +1395,17 @@ function emitArrayDestructureFromLocal(
     }
   }
 
-  // Close null guard — throw TypeError if null/undefined (#730)
+  // Close null guard — throw TypeError if null/undefined (#730).
+  // Skip for empty `[] = val` nested patterns (#225).
   fctx.body = savedBodyADFL;
-  if (srcType.kind === "ref_null") {
-    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
-    addStringConstantGlobal(ctx, typeErrMsg);
-    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
-    const tagIdx = ensureExnTag(ctx);
+  if (srcType.kind === "ref_null" && pattern.elements.length > 0) {
+    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx }],
+      then: throwInstrs,
       else: adflInstrs,
     });
   } else {

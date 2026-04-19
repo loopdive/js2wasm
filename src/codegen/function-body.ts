@@ -220,7 +220,7 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
     if (dstrNullDefault) {
-      for (const ins of buildDestructureNullThrow(ctx)) fctx.body.push(ins);
+      for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
     } else {
       const defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);
       // Coerce if the default expression produced a different type than the param
