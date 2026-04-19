@@ -765,6 +765,7 @@ export function compileObjectDefineProperty(
     // ── Compile-time flag checking for struct path ──
     // Save existing flags BEFORE updating (needed for value comparison below)
     let priorExistingFlags: number | undefined;
+    const isKnownExistingField = structTypeIdx !== undefined && fields && fieldIdx >= 0;
     if (propName) {
       const varName = ts.isIdentifier(objArg) ? objArg.text : undefined;
       if (varName) {
@@ -773,8 +774,10 @@ export function compileObjectDefineProperty(
         const key = `${varName}:${propName}`;
         priorExistingFlags = ctx.definedPropertyFlags.get(key);
 
-        // Check non-extensibility
-        if (ctx.nonExtensibleVars.has(varName) && !ctx.definedPropertyFlags.has(key)) {
+        // Check non-extensibility — but only for genuinely new properties.
+        // If the property is a known struct field (fieldIdx >= 0), it already
+        // exists on the object, so redefining it is not "adding a new property".
+        if (ctx.nonExtensibleVars.has(varName) && !ctx.definedPropertyFlags.has(key) && !isKnownExistingField) {
           emitThrowString(ctx, fctx, "TypeError: Cannot define property, object is not extensible");
         }
 
@@ -840,12 +843,17 @@ export function compileObjectDefineProperty(
     }
 
     // Check if this property is non-writable non-configurable (needs runtime value comparison)
-    // Uses priorExistingFlags captured BEFORE the current call updated the map
+    // Uses priorExistingFlags captured BEFORE the current call updated the map.
+    // Also: if the object is frozen, ALL data properties are non-writable non-configurable,
+    // even if they weren't explicitly set via defineProperty (i.e. original struct fields).
+    const varName2 = ts.isIdentifier(objArg) ? objArg.text : undefined;
+    const isFrozenProperty = varName2 !== undefined && ctx.frozenVars.has(varName2) && isKnownExistingField;
     const needsValueCompare =
-      priorExistingFlags !== undefined &&
-      !(priorExistingFlags & PROP_FLAG_CONFIGURABLE) &&
-      !(priorExistingFlags & PROP_FLAG_WRITABLE) &&
-      !(priorExistingFlags & PROP_FLAG_ACCESSOR);
+      isFrozenProperty ||
+      (priorExistingFlags !== undefined &&
+        !(priorExistingFlags & PROP_FLAG_CONFIGURABLE) &&
+        !(priorExistingFlags & PROP_FLAG_WRITABLE) &&
+        !(priorExistingFlags & PROP_FLAG_ACCESSOR));
 
     // Emit struct.set: push obj, then value, then struct.set
     const fieldType = fields![fieldIdx]!.type;
@@ -877,15 +885,37 @@ export function compileObjectDefineProperty(
       const errMsgGlobal = ctx.stringGlobalMap.get(errMsg)!;
 
       if (fieldType.kind === "f64") {
-        // f64 comparison: values not equal → throw
-        // Note: f64.ne treats NaN != NaN (not SameValue), but sufficient for typical test262 cases
+        // f64 comparison using SameValue semantics (ECMA-262 §7.2.10):
+        //   SameValue(x, y) = (x == y && copysign(1,x) == copysign(1,y)) || (x != x && y != y)
+        // This correctly handles: SameValue(NaN, NaN) = true, SameValue(+0, -0) = false
         const compareBody: Instr[] = [
           { op: "global.get", index: errMsgGlobal } as Instr,
           { op: "throw", tagIdx } as Instr,
         ];
+        // Part 1: (old == new) && (copysign(1,old) == copysign(1,new))
         fctx.body.push({ op: "local.get", index: oldValLocal });
         fctx.body.push({ op: "local.get", index: newValLocal });
+        fctx.body.push({ op: "f64.eq" });
+        fctx.body.push({ op: "local.get", index: oldValLocal });
+        fctx.body.push({ op: "f64.const", value: 1.0 });
+        fctx.body.push({ op: "f64.copysign" } as unknown as Instr);
+        fctx.body.push({ op: "local.get", index: newValLocal });
+        fctx.body.push({ op: "f64.const", value: 1.0 });
+        fctx.body.push({ op: "f64.copysign" } as unknown as Instr);
+        fctx.body.push({ op: "f64.eq" });
+        fctx.body.push({ op: "i32.and" });
+        // Part 2: (old != old) && (new != new)  — both NaN
+        fctx.body.push({ op: "local.get", index: oldValLocal });
+        fctx.body.push({ op: "local.get", index: oldValLocal });
         fctx.body.push({ op: "f64.ne" });
+        fctx.body.push({ op: "local.get", index: newValLocal });
+        fctx.body.push({ op: "local.get", index: newValLocal });
+        fctx.body.push({ op: "f64.ne" });
+        fctx.body.push({ op: "i32.and" });
+        // SameValue = part1 || part2
+        fctx.body.push({ op: "i32.or" });
+        // If NOT SameValue → throw TypeError
+        fctx.body.push({ op: "i32.eqz" });
         fctx.body.push({
           op: "if",
           blockType: { kind: "empty" },
