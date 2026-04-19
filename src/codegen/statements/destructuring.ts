@@ -107,7 +107,7 @@ export function emitNullGuard(
   // Per spec §14.3.3.1/§8.4.2: destructuring null/undefined must throw TypeError
   // even when the pattern is empty (no-binding) — so guard regardless of guardInstrs length.
   if (isNullable) {
-    const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    const msg = "Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, msg);
     const strIdx = ctx.stringGlobalMap.get(msg)!;
     const tagIdx = ensureExnTag(ctx);
@@ -857,7 +857,7 @@ export function compileExternrefArrayDestructuringDecl(
   // Per spec §8.4.2 GetIterator: throw TypeError if value is null/undefined.
   // Array destructuring requires GetIterator on the source — which aborts on null/undefined.
   if (resultType.kind === "externref" || resultType.kind === "ref_null") {
-    const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    const msg = "Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, msg);
     const strIdx = ctx.stringGlobalMap.get(msg)!;
     const tagIdx = ensureExnTag(ctx);

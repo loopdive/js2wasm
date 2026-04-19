@@ -107,7 +107,7 @@ function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
 }
 
 export function buildDestructureNullThrow(ctx: CodegenContext): Instr[] {
-  const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
+  const msg = "Cannot destructure 'null' or 'undefined'";
   addStringConstantGlobal(ctx, msg);
   const strIdx = ctx.stringGlobalMap.get(msg)!;
   const tagIdx = ensureExnTag(ctx);

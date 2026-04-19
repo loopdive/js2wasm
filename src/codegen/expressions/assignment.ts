@@ -46,7 +46,7 @@ import { resolveStructName } from "./misc.js";
  * Per spec §14.3.3.1 RequireObjectCoercible / §8.4.2 GetIterator.
  */
 function emitExternrefAssignDestructureGuard(ctx: CodegenContext, fctx: FunctionContext, srcLocal: number): void {
-  const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+  const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
   addStringConstantGlobal(ctx, typeErrMsg);
   const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
   const tagIdx = ensureExnTag(ctx);
@@ -333,7 +333,7 @@ function compileDestructuringAssignment(
     // Null/undefined check — throw TypeError (#783)
     // In JS, `{...} = null` and `{...} = undefined` always throw TypeError
     if (resultType.kind === "externref" || resultType.kind === "ref_null") {
-      const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+      const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
       addStringConstantGlobal(ctx, typeErrMsg);
       const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
       const tagIdx = ensureExnTag(ctx);
@@ -641,7 +641,7 @@ function compileDestructuringAssignment(
   // Close null guard — throw TypeError if null/undefined (#783)
   fctx.body = savedBodyDA;
   if (isNullableDA) {
-    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
     const tagIdx = ensureExnTag(ctx);
@@ -942,7 +942,7 @@ function compileArrayDestructuringAssignment(
   // Close null guard — throw TypeError if null/undefined (#783)
   fctx.body = savedBodyADA;
   if (isNullableADA) {
-    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
     const tagIdx = ensureExnTag(ctx);
@@ -979,7 +979,7 @@ function compileExternrefArrayDestructuringAssignment(
 
   // Null check — throw TypeError for null/undefined (#783)
   if (resultType.kind === "externref") {
-    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
     const tagIdx = ensureExnTag(ctx);
@@ -1337,7 +1337,7 @@ function emitObjectDestructureFromLocal(
   // Close null guard — throw TypeError if null/undefined (#730)
   fctx.body = savedBodyODFL;
   if (srcType.kind === "ref_null") {
-    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
     const tagIdx = ensureExnTag(ctx);
@@ -1410,7 +1410,7 @@ function emitArrayDestructureFromLocal(
   // Close null guard — throw TypeError if null/undefined (#730)
   fctx.body = savedBodyADFL;
   if (srcType.kind === "ref_null") {
-    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    const typeErrMsg = "Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
     const tagIdx = ensureExnTag(ctx);
