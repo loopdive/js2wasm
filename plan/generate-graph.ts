@@ -48,7 +48,6 @@ interface GraphData {
   goals: GoalNode[];
   goalIssueLinks: { goal: string; issue: string }[];
   goalDepLinks: { goal: string; issue: string }[];
-  generated: string;
 }
 
 const ROOT = path.resolve(import.meta.dirname!, "..");
@@ -83,7 +82,7 @@ function getStableGeneratedAt(paths: string[]): string {
   const candidates = paths.filter((file) => fs.existsSync(file));
   if (!candidates.length) return "";
   try {
-    return git(["log", "-1", "--format=%cI", "--", ...candidates]);
+    return git(["log", "-1", "--no-merges", "--format=%aI", "--", ...candidates]);
   } catch {
     return "";
   }
@@ -338,7 +337,6 @@ const data: GraphData = {
   goals: goals.sort((a, b) => a.id.localeCompare(b.id)),
   goalIssueLinks,
   goalDepLinks,
-  generated: getStableGeneratedAt([...walk(ISSUES_DIR), ...walk(GOALS_DIR)]),
 };
 
 fs.writeFileSync(OUTPUT, JSON.stringify(data, null, 2));
