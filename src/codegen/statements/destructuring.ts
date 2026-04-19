@@ -11,7 +11,8 @@ import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { shiftLateImportIndices } from "../expressions/late-imports.js";
 import { ensureNativeStringHelpers, ensureStructForType, nativeStringType, resolveWasmType } from "../index.js";
 import { resolveComputedKeyExpression } from "../literals.js";
-import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "../registry/imports.js";
+import { buildDestructureNullThrow } from "../destructuring-params.js";
+import { addImport, addStringConstantGlobal, localGlobalIdx } from "../registry/imports.js";
 import { addFuncType, getArrTypeIdxFromVec } from "../registry/types.js";
 import {
   coerceType,
@@ -104,14 +105,10 @@ export function emitNullGuard(
   srcKind?: ValType["kind"],
 ): void {
   const guardInstrs = collectInstrs(fctx, emitFn);
-  // Per spec §14.3.3.1/§8.4.2: destructuring null/undefined must throw TypeError
-  // even when the pattern is empty (no-binding) — so guard regardless of guardInstrs length.
-  if (isNullable) {
-    const msg = "Cannot destructure 'null' or 'undefined'";
-    addStringConstantGlobal(ctx, msg);
-    const strIdx = ctx.stringGlobalMap.get(msg)!;
-    const tagIdx = ensureExnTag(ctx);
-    const throwInstrs: Instr[] = [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+  // Per spec §14.3.3.1/§8.4.2: destructuring null/undefined must throw TypeError.
+  // Skip guard for empty patterns (#225) — only fire when there are real property accesses.
+  if (isNullable && guardInstrs.length > 0) {
+    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     // For externref sources we also need to catch JS undefined (non-null externref
     // wrapping the undefined value). Emit a unified boolean: ref.is_null || __extern_is_undefined
     if (srcKind === "externref") {
@@ -856,12 +853,9 @@ export function compileExternrefArrayDestructuringDecl(
 
   // Per spec §8.4.2 GetIterator: throw TypeError if value is null/undefined.
   // Array destructuring requires GetIterator on the source — which aborts on null/undefined.
-  if (resultType.kind === "externref" || resultType.kind === "ref_null") {
-    const msg = "Cannot destructure 'null' or 'undefined'";
-    addStringConstantGlobal(ctx, msg);
-    const strIdx = ctx.stringGlobalMap.get(msg)!;
-    const tagIdx = ensureExnTag(ctx);
-    const throwInstrs: Instr[] = [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+  // Skip for empty `[]` patterns (#225) — only fire when there are real element accesses.
+  if ((resultType.kind === "externref" || resultType.kind === "ref_null") && pattern.elements.length > 0) {
+    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: [] });
