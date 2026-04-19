@@ -203,6 +203,16 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
     const paramIdx = i;
     const paramType = params[i]!.type;
 
+    // Pre-ensure `__extern_is_undefined` before the initializer is compiled so
+    // any late-import funcIdx shift happens while `fctx.body` (not the soon-to-
+    // be-detached `thenInstrs`) is authoritative. Otherwise, a shift triggered
+    // later by the check emission would miss `thenInstrs`, leaving stale
+    // funcIdx values in its `call` ops.
+    if (paramType.kind === "externref") {
+      ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+    }
+
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
     const defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);

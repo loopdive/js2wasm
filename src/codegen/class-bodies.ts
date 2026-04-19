@@ -771,6 +771,17 @@ export function compileClassBodies(
         const paramIdx = i;
         const paramType = params[i]!.type;
 
+        // Pre-ensure `__extern_is_undefined` before compiling the initializer so
+        // any late-import funcIdx shift happens while `fctx.body` is authoritative.
+        // Without this, the initializer compiles into `thenInstrs`, which gets
+        // detached from `fctx` after popBody below — any subsequent shift
+        // triggered by ensureLateImport in the check emission would miss
+        // `thenInstrs`, leaving stale funcIdx values in its `call` ops.
+        if (paramType.kind === "externref") {
+          ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+        }
+
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
         const ctorDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
@@ -788,7 +799,6 @@ export function compileClassBodies(
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramIdx });
           const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
-          flushLateImportShifts(ctx, fctx);
           if (isUndefIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: isUndefIdx });
           } else {
@@ -1020,6 +1030,14 @@ export function compileClassBodies(
         const paramLocalIdx = isStatic ? pi : pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
 
+        // Pre-ensure `__extern_is_undefined` before compiling the initializer so
+        // any late-import shift happens while `fctx.body` is authoritative. See
+        // constructor site above for the full rationale.
+        if (paramType.kind === "externref") {
+          ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+        }
+
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
         const methDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
@@ -1035,7 +1053,6 @@ export function compileClassBodies(
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
           const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
-          flushLateImportShifts(ctx, fctx);
           if (isUndefIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: isUndefIdx });
           } else {
@@ -1336,6 +1353,13 @@ export function compileClassBodies(
         const paramLocalIdx = pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
 
+        // Pre-ensure `__extern_is_undefined` before compiling the initializer —
+        // see constructor site above for the rationale.
+        if (paramType.kind === "externref") {
+          ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+        }
+
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
         const getSetDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
@@ -1351,7 +1375,6 @@ export function compileClassBodies(
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
           const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
-          flushLateImportShifts(ctx, fctx);
           if (isUndefIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: isUndefIdx });
           } else {

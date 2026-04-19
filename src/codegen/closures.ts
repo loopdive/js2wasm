@@ -642,6 +642,17 @@ export function emitArrowParamDefaults(
     const paramType = fctx.params[paramIdx]?.type;
     if (!paramType) continue;
 
+    // Pre-ensure `__extern_is_undefined` before compiling the initializer so any
+    // late-import funcIdx shift happens while `fctx.body` is still authoritative.
+    // Without this, the initializer compiles into `thenInstrs`, which gets
+    // detached from `fctx` after the body swap below — any subsequent shift
+    // triggered by ensureLateImport inside emitParamDefaultCheckInline would
+    // miss `thenInstrs`, leaving stale funcIdx values in its `call` ops.
+    if (paramType.kind === "externref") {
+      ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShiftsShared(ctx, fctx);
+    }
+
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
     compileExpression(ctx, fctx, param.initializer, paramType);
@@ -709,6 +720,14 @@ export function emitMethodParamDefaults(
     const paramIdx = paramOffset + i;
     const paramType = fctx.params[paramIdx]?.type;
     if (!paramType) continue;
+
+    // Pre-ensure `__extern_is_undefined` before compiling the initializer — see
+    // rationale above in emitArrowParamDefaults. Without this, a late-import
+    // shift inside emitParamDefaultCheckInline misses the detached thenInstrs.
+    if (paramType.kind === "externref") {
+      ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShiftsShared(ctx, fctx);
+    }
 
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
