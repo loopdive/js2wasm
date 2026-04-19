@@ -445,6 +445,10 @@
           <span class="value" id="m-ready">—</span>
           <span class="label">ready</span>
         </div>
+        <div class="metric-card" id="baseline-age-card" style="display: none">
+          <span class="value" id="m-baseline-age">—</span>
+          <span class="label">baseline age</span>
+        </div>
       </div>
       <div
         id="sprint-timeline"
@@ -748,6 +752,29 @@
           const passRate = ((latest.pass / latest.total) * 100).toFixed(1);
           document.getElementById("m-passrate").textContent = passRate + "%";
         }
+
+        // ── Baseline age badge ──
+        try {
+          const reportData = await loadJSON("../benchmarks/results/test262-current.json");
+          if (reportData && reportData.baseline_generated_at) {
+            const genTime = new Date(reportData.baseline_generated_at).getTime();
+            const ageMs = Date.now() - genTime;
+            const ageHours = ageMs / (1000 * 60 * 60);
+            const card = document.getElementById("baseline-age-card");
+            const ageEl = document.getElementById("m-baseline-age");
+            if (card && ageEl) {
+              let ageText;
+              if (ageHours < 1) ageText = Math.round(ageHours * 60) + "m";
+              else if (ageHours < 48) ageText = ageHours.toFixed(1) + "h";
+              else ageText = (ageHours / 24).toFixed(1) + "d";
+              if (reportData.baseline_sha) ageText += " (" + reportData.baseline_sha.slice(0, 7) + ")";
+              ageEl.textContent = ageText;
+              if (ageHours > 24) ageEl.style.color = "var(--red)";
+              else if (ageHours > 6) ageEl.style.color = "var(--orange)";
+              card.style.display = "";
+            }
+          }
+        } catch {}
 
         // Current sprint number (latest tag)
         try {

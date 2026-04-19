@@ -1,0 +1,15 @@
+{
+  "name": "@loopdive/js2",
+  "version": "0.1.0",
+  "description": "Direct AOT compilation from JavaScript and TypeScript to WebAssembly GC",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts",
+    "./optimize": "./src/optimize.ts"
+  },
+  "publish": {
+    "include": ["src/**/*.ts", "README.md", "LICENSE", "jsr.json"],
+    "exclude": ["src/**/*.test.ts"]
+  }
+}
