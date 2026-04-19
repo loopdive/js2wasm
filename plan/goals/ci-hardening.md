@@ -51,7 +51,7 @@ and hide real ones.
 | **1065** | Register `Array` as declared global so `x.constructor === Array` compares real refs | Backlog | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | ready | medium |
 | **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 42 | ready | critical |
-| **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 42 | ready | high |
+| **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 42 | review | high |
 | **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 42 | ready | medium |
 | **1079** | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | 42 | ready | medium |
 | **1080** | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | 42 | ready | critical |
