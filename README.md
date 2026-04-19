@@ -4,7 +4,7 @@ Direct AOT compilation from JavaScript and TypeScript to WebAssembly GC.
 
 `js2wasm` compiles source code into WasmGC binaries without embedding a JavaScript interpreter or shipping a bundled runtime. That removes the multi-megabyte runtime tax common in interpreter-in-Wasm stacks and keeps the output aligned with Wasm-native deployment models.
 
-`js2wasm` is the core compiler product of **Loopdive GmbH** and is being prepared for a community-first launch under **Apache License 2.0 with LLVM Exceptions**.
+`js2wasm` is the core compiler product of **Loopdive GmbH**, released under **Apache License 2.0 with LLVM Exceptions** — and developed fully in the open, including its agentic engineering workflow. The repository contains the compiler source, the complete planning surface (`plan/`), and the agent coordination infrastructure (`.claude/`) that a small team uses to ship fixes in parallel.
 
 ## Value Proposition
 
@@ -159,6 +159,20 @@ The project is optimized for:
 - continuous spec-aligned compiler iteration
 - rapid backlog triage from conformance data
 - keeping product direction, engineering execution, and QA tightly coupled
+
+### Open Agentic Development
+
+The workflow is not hidden behind a consultancy. It is **in this repository**:
+
+- `plan/issues/` — architect-written implementation specs for every open and completed work item
+- `plan/log/dependency-graph.md` — current priorities and what's blocked on what
+- `plan/issues/sprints/` — sprint plans and retrospectives
+- `.claude/agents/` — agent role definitions (product owner, architect, developer, scrum master)
+- `.claude/hooks/` — safety scripts (pre-commit gates, path checks)
+- `.claude/skills/` — reusable workflow protocols (test-and-merge, self-merge, harvest-errors)
+- `.claude/memory/` — accumulated feedback and learnings shared across sessions
+
+Anyone with a [Claude Code](https://docs.claude.com/claude-code) subscription can clone the repo, spawn a `developer` agent from `.claude/agents/developer.md`, point it at a `status: ready` issue under `plan/issues/sprints/`, and contribute a real fix through the same pipeline the core team uses. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the agentic contribution path.
 
 ## Licensing
 
