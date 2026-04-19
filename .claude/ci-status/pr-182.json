@@ -1,0 +1,15 @@
+{
+  "pr": 182,
+  "conclusion": "failure",
+  "head_branch": "issue-1127-samevalue-f64",
+  "head_sha": "d0bb75ac310b6c9dfdfb98033be8977223115ad8",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608487852",
+  "timestamp": "2026-04-18T18:53:05Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
