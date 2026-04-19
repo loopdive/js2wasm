@@ -1522,6 +1522,30 @@ export function applyShapeInference(ctx: CodegenContext, checker: ts.TypeChecker
 }
 
 export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isEntryFile = true): void {
+  function getAssignmentRootIdentifier(expr: ts.Expression): string | undefined {
+    let current: ts.Expression = expr;
+    while (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isTypeAssertionExpression(current)
+    ) {
+      current = current.expression;
+    }
+    while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+      current = current.expression;
+      while (
+        ts.isParenthesizedExpression(current) ||
+        ts.isAsExpression(current) ||
+        ts.isNonNullExpression(current) ||
+        ts.isTypeAssertionExpression(current)
+      ) {
+        current = current.expression;
+      }
+    }
+    return ts.isIdentifier(current) ? current.text : undefined;
+  }
+
   // First: collect enum declarations (so enum values are available)
   collectEnumDeclarations(ctx, sourceFile);
 
@@ -2324,15 +2348,7 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
     if (!isAssignOp) continue;
     // Check if the left side references a known module global
-    let targetName: string | undefined;
-    if (ts.isIdentifier(expr.left)) {
-      // Simple assignment: f = ...
-      targetName = expr.left.text;
-    } else if (ts.isPropertyAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
-      targetName = expr.left.expression.text;
-    } else if (ts.isElementAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
-      targetName = expr.left.expression.text;
-    }
+    const targetName = getAssignmentRootIdentifier(expr.left);
     if (targetName && ctx.moduleGlobals.has(targetName)) {
       ctx.moduleInitStatements.push(stmt);
     }
