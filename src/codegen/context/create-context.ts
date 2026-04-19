@@ -120,7 +120,10 @@ export function createCodegenContext(
     wasi: options?.wasi ?? false,
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,
+    wasiPathOpenIdx: -1,
+    wasiFdCloseIdx: -1,
     wasiBumpPtrGlobalIdx: -1,
+    wasiNodeFsFuncs: options?.wasiNodeFsFuncs ?? new Set(),
     tdzGlobals: new Map(),
     tdzLetConstNames: new Set(),
     definedPropertyFlags: new Map(),
@@ -130,6 +133,7 @@ export function createCodegenContext(
     shapePropFlags: new Map(),
     funcConstructorMap: new Map(),
     ensureStructPending: new Set(),
+    nodeBuiltinGlobals: new Map(),
   };
 
   getOrRegisterVecType(ctx, "externref", { kind: "externref" });
