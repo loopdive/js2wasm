@@ -1,0 +1,15 @@
+{
+  "pr": 190,
+  "conclusion": "failure",
+  "head_branch": "issue-1136-array-flat",
+  "head_sha": "321478d78785dc67c4faa634f1b19a94de8e7213",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24624887063",
+  "timestamp": "2026-04-19T11:42:13Z",
+  "pass": 22540,
+  "fail": 15320,
+  "compile_error": 3940,
+  "snapshot_delta": 90,
+  "net_per_test": 90,
+  "regressions": 2,
+  "improvements": 92
+}

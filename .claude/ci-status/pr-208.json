@@ -1,0 +1,15 @@
+{
+  "pr": 208,
+  "conclusion": "cancelled",
+  "head_branch": "issue-static-method-brand-check",
+  "head_sha": "f72aa8e8d05d7a4265b60b2f9f617965a074f4dd",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24626223771",
+  "timestamp": "2026-04-19T12:11:09Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
