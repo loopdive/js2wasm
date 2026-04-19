@@ -4178,9 +4178,21 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     }
   }
 
-  // Handle global isNaN(n) / isFinite(n) — inline wasm
+  // Handle global isNaN(n) / isFinite(n) / parseInt / parseFloat — inline wasm
   if (ts.isIdentifier(expr.expression)) {
-    const funcName = expr.expression.text;
+    // Resolve aliases like `var freeParseInt = parseInt; freeParseInt(...)` (#1109)
+    let funcName = expr.expression.text;
+    const _knownGlobalFuncs = new Set(["parseInt", "parseFloat", "isNaN", "isFinite"]);
+    if (!_knownGlobalFuncs.has(funcName)) {
+      const sym = ctx.checker.getSymbolAtLocation(expr.expression);
+      const decl = sym?.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer && ts.isIdentifier(decl.initializer)) {
+        const initName = decl.initializer.text;
+        if (_knownGlobalFuncs.has(initName)) {
+          funcName = initName;
+        }
+      }
+    }
 
     if (funcName === "isNaN" && expr.arguments.length >= 1) {
       // isNaN(n) → n !== n

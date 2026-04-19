@@ -351,7 +351,18 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
 
   // ── collectParseImports ──
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-    const name = node.expression.text;
+    let name = node.expression.text;
+    // Resolve aliases like `var freeParseInt = parseInt; freeParseInt(...)` (#1109)
+    if (name !== "parseInt" && name !== "parseFloat") {
+      const sym = ctx.checker.getSymbolAtLocation(node.expression);
+      const decl = sym?.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer && ts.isIdentifier(decl.initializer)) {
+        const initName = decl.initializer.text;
+        if (initName === "parseInt" || initName === "parseFloat") {
+          name = initName;
+        }
+      }
+    }
     if (name === "parseInt" || name === "parseFloat") {
       state.parseNeeded.add(name);
     }
@@ -887,6 +898,8 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
 
   // ── collectParseImports finalize ──
   for (const name of state.parseNeeded) {
+    // Skip if already registered (e.g. by collectExternDeclarations from lib.d.ts) (#1109)
+    if (ctx.funcMap.has(name)) continue;
     if (name === "parseInt") {
       const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", name, { kind: "func", typeIdx });
@@ -898,6 +911,7 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
 
   // ── collectURIImports finalize ──
   for (const name of state.uriNeeded) {
+    if (ctx.funcMap.has(name)) continue;
     const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", name, { kind: "func", typeIdx });
   }

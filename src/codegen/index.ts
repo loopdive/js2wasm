@@ -2620,7 +2620,12 @@ export function addStringImports(ctx: CodegenContext): void {
         exp.desc.index += delta;
       }
     }
+    // Track ALL instruction arrays (top-level AND nested) to prevent
+    // double-shifting when fctx.body is a nested block reachable from savedBodies (#1109).
+    const shifted = new Set<Instr[]>();
     function shiftFuncIndices(instrs: Instr[]): void {
+      if (shifted.has(instrs)) return;
+      shifted.add(instrs);
       for (const instr of instrs) {
         if ((instr.op === "call" || instr.op === "return_call") && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
@@ -2628,64 +2633,35 @@ export function addStringImports(ctx: CodegenContext): void {
         if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
         }
-        if ("body" in instr && Array.isArray((instr as any).body)) {
-          shiftFuncIndices((instr as any).body);
-        }
-        if ("then" in instr && Array.isArray((instr as any).then)) {
-          shiftFuncIndices((instr as any).then);
-        }
-        if ("else" in instr && Array.isArray((instr as any).else)) {
-          shiftFuncIndices((instr as any).else);
-        }
-        if ("catches" in instr && Array.isArray((instr as any).catches)) {
-          for (const c of (instr as any).catches) {
+        const a = instr as any;
+        if (a.body && Array.isArray(a.body)) shiftFuncIndices(a.body);
+        if (a.then && Array.isArray(a.then)) shiftFuncIndices(a.then);
+        if (a.else && Array.isArray(a.else)) shiftFuncIndices(a.else);
+        if (a.catches && Array.isArray(a.catches)) {
+          for (const c of a.catches) {
             if (Array.isArray(c.body)) shiftFuncIndices(c.body);
           }
         }
-        if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
-          shiftFuncIndices((instr as any).catchAll);
-        }
+        if (a.catchAll && Array.isArray(a.catchAll)) shiftFuncIndices(a.catchAll);
       }
     }
-    // Use a single Set to track shifted bodies and prevent double-shifting
-    const shifted = new Set<Instr[]>();
     for (const func of ctx.mod.functions) {
-      if (!shifted.has(func.body)) {
-        shiftFuncIndices(func.body);
-        shifted.add(func.body);
-      }
+      shiftFuncIndices(func.body);
     }
     if (ctx.currentFunc) {
-      if (!shifted.has(ctx.currentFunc.body)) {
-        shiftFuncIndices(ctx.currentFunc.body);
-        shifted.add(ctx.currentFunc.body);
-      }
+      shiftFuncIndices(ctx.currentFunc.body);
       for (const sb of ctx.currentFunc.savedBodies) {
-        if (!shifted.has(sb)) {
-          shiftFuncIndices(sb);
-          shifted.add(sb);
-        }
+        shiftFuncIndices(sb);
       }
     }
-    // Shift parent function contexts on the funcStack (nested closure compilation)
     for (const parentFctx of ctx.funcStack) {
-      if (!shifted.has(parentFctx.body)) {
-        shiftFuncIndices(parentFctx.body);
-        shifted.add(parentFctx.body);
-      }
+      shiftFuncIndices(parentFctx.body);
       for (const sb of parentFctx.savedBodies) {
-        if (!shifted.has(sb)) {
-          shiftFuncIndices(sb);
-          shifted.add(sb);
-        }
+        shiftFuncIndices(sb);
       }
     }
-    // Shift parent function bodies on parentBodiesStack (same shifted set)
     for (const pb of ctx.parentBodiesStack) {
-      if (!shifted.has(pb)) {
-        shiftFuncIndices(pb);
-        shifted.add(pb);
-      }
+      shiftFuncIndices(pb);
     }
     for (const elem of ctx.mod.elements) {
       if (elem.funcIndices) {
@@ -3912,8 +3888,12 @@ export function addUnionImports(ctx: CodegenContext): void {
         exp.desc.index += delta;
       }
     }
-    // Update call instructions in already-compiled function bodies (recursive)
+    // Track ALL instruction arrays (top-level AND nested) to prevent
+    // double-shifting when fctx.body is a nested block reachable from savedBodies (#1109).
+    const shifted = new Set<Instr[]>();
     function shiftFuncIndices(instrs: Instr[]): void {
+      if (shifted.has(instrs)) return;
+      shifted.add(instrs);
       for (const instr of instrs) {
         if ((instr.op === "call" || instr.op === "return_call") && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
@@ -3921,84 +3901,38 @@ export function addUnionImports(ctx: CodegenContext): void {
         if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
         }
-        // Recurse into nested instruction arrays
-        if ("body" in instr && Array.isArray((instr as any).body)) {
-          shiftFuncIndices((instr as any).body);
-        }
-        if ("then" in instr && Array.isArray((instr as any).then)) {
-          shiftFuncIndices((instr as any).then);
-        }
-        if ("else" in instr && Array.isArray((instr as any).else)) {
-          shiftFuncIndices((instr as any).else);
-        }
-        if ("catches" in instr && Array.isArray((instr as any).catches)) {
-          for (const c of (instr as any).catches) {
+        const a = instr as any;
+        if (a.body && Array.isArray(a.body)) shiftFuncIndices(a.body);
+        if (a.then && Array.isArray(a.then)) shiftFuncIndices(a.then);
+        if (a.else && Array.isArray(a.else)) shiftFuncIndices(a.else);
+        if (a.catches && Array.isArray(a.catches)) {
+          for (const c of a.catches) {
             if (Array.isArray(c.body)) shiftFuncIndices(c.body);
           }
         }
-        if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
-          shiftFuncIndices((instr as any).catchAll);
-        }
+        if (a.catchAll && Array.isArray(a.catchAll)) shiftFuncIndices(a.catchAll);
       }
     }
-    // Track which body arrays have been shifted to prevent double-shifting.
-    // Using a single Set from the start avoids reliance on reference equality
-    // (e.g. sb === curBody, ctx.mod.functions.some(f => f.body === sb)) which
-    // can miss shared references and cause double-shifts.
-    const shifted = new Set<Instr[]>();
     for (const func of ctx.mod.functions) {
-      if (!shifted.has(func.body)) {
-        shiftFuncIndices(func.body);
-        shifted.add(func.body);
-      }
+      shiftFuncIndices(func.body);
     }
-    // Also shift indices in the currently-being-compiled function body,
-    // which may differ from func.body (fctx.body starts as [] and is
-    // assigned to func.body only after compilation completes).
     if (ctx.currentFunc) {
-      if (!shifted.has(ctx.currentFunc.body)) {
-        shiftFuncIndices(ctx.currentFunc.body);
-        shifted.add(ctx.currentFunc.body);
-      }
-      // Also shift any saved body arrays (from savedBody swap pattern).
+      shiftFuncIndices(ctx.currentFunc.body);
       for (const sb of ctx.currentFunc.savedBodies) {
-        if (shifted.has(sb)) continue;
         shiftFuncIndices(sb);
-        shifted.add(sb);
       }
     }
-    // Shift parent function contexts saved on the funcStack during nested
-    // closure compilation. These are in-flight function bodies that are NOT
-    // in ctx.mod.functions and NOT ctx.currentFunc, so they would otherwise
-    // be missed by the index shift.
     for (const parentFctx of ctx.funcStack) {
-      if (!shifted.has(parentFctx.body)) {
-        shiftFuncIndices(parentFctx.body);
-        shifted.add(parentFctx.body);
-      }
+      shiftFuncIndices(parentFctx.body);
       for (const sb of parentFctx.savedBodies) {
-        if (!shifted.has(sb)) {
-          shiftFuncIndices(sb);
-          shifted.add(sb);
-        }
+        shiftFuncIndices(sb);
       }
     }
-    // Shift parent function bodies still being compiled. When a closure
-    // triggers addUnionImports, the enclosing function's body is neither
-    // in mod.functions nor ctx.currentFunc.
-    // Use the same `shifted` set to avoid double-shifting bodies already
-    // handled by the mod.functions, currentFunc, or funcStack loops above.
     for (const pb of ctx.parentBodiesStack) {
-      if (!shifted.has(pb)) {
-        shiftFuncIndices(pb);
-        shifted.add(pb);
-      }
+      shiftFuncIndices(pb);
     }
-    // Shift the pending init body (module-level init function compiled before
-    // top-level functions, but not yet added to ctx.mod.functions).
-    if (ctx.pendingInitBody && !shifted.has(ctx.pendingInitBody)) {
+    if (ctx.pendingInitBody) {
       shiftFuncIndices(ctx.pendingInitBody);
-      shifted.add(ctx.pendingInitBody);
     }
     // Update table elements
     for (const elem of ctx.mod.elements) {
