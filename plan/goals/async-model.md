@@ -93,7 +93,7 @@ promise infrastructure.
 | **1042** | async/await state-machine lowering (AwaitExpression is currently a no-op) | Backlog | ready | high |
 | **1044** | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | 42 | ready | high |
 | **1089** | codegen: support dynamic import() expressions — 429 test262 tests skipped | backlog | ready | medium |
-| **1093** | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | 42 | ready | high |
+| **1093** | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | 42 | in-progress | high |
 | **1116** | Promise resolution and async error handling (210 tests) | Backlog | ready | critical |
 | **1119** | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | 42 | ready | high |
 

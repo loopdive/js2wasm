@@ -1,0 +1,15 @@
+{
+  "pr": 213,
+  "conclusion": "cancelled",
+  "head_branch": "issue-iterator-harness-binding",
+  "head_sha": "8c99f1071072b199cfd442a4989eb30f4a9b3904",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24626225717",
+  "timestamp": "2026-04-19T12:18:40Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
