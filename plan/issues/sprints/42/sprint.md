@@ -372,6 +372,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1008 | Add mobile-first layout support to the playground | medium | in-progress |
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
 
 ### Review
