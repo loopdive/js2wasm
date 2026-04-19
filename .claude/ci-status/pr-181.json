@@ -2,14 +2,14 @@
   "pr": 181,
   "conclusion": "failure",
   "head_branch": "issue-1128-toprimitive-typeerror",
-  "head_sha": "20af95d12eea5ceae3fc4bc5a1d8dd06419e2fd8",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24616308200",
-  "timestamp": "2026-04-19T02:00:16Z",
-  "pass": 22477,
-  "fail": 15383,
+  "head_sha": "c6040cf02c7e3f563120f973bc0f2c402a9966c9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24624569928",
+  "timestamp": "2026-04-19T08:21:13Z",
+  "pass": 22486,
+  "fail": 15374,
   "compile_error": 3940,
-  "snapshot_delta": 27,
-  "net_per_test": 27,
-  "regressions": 5,
-  "improvements": 32
+  "snapshot_delta": 36,
+  "net_per_test": 36,
+  "regressions": 6,
+  "improvements": 42
 }
