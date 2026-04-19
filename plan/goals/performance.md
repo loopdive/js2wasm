@@ -48,7 +48,7 @@ eliminating the externref roundtrip.
 | **980** | Auto-generate module size + load time benchmarks for landing page | 40 | done | medium |
 | **985** | Follow-up to #931: source-anchored locations for compiler catch paths | 39 | done | medium |
 | **1059** | Parallel tsc — stress test the inter-module coordination primitive | Backlog | ready | low |
-| **1120** | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | 42 | ready | high |
+| **1120** | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | 42 | in-progress | high |
 | **1121** | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | 42 | ready | high |
 | **1122** | Keep standalone recursive numeric benchmark stable across non-run entry exports | 42 | ready | high |
 | **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | 42 | ready | high |
