@@ -1,0 +1,54 @@
+{
+  "name": "js2wasm",
+  "version": "0.1.0",
+  "description": "Direct AOT compilation from JavaScript and TypeScript to WebAssembly GC (unscoped proxy for @loopdive/js2)",
+  "keywords": [
+    "webassembly",
+    "wasm",
+    "wasm-gc",
+    "compiler",
+    "typescript",
+    "aot",
+    "javascript"
+  ],
+  "homepage": "https://js2.loopdive.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/loopdive/js2.git",
+    "directory": "packages/js2wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/loopdive/js2/issues"
+  },
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "bin": {
+    "js2": "./cli.js",
+    "js2wasm": "./cli.js"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "cli.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@loopdive/js2": "0.1.0"
+  },
+  "author": "Thomas Tränkler <git@thomas.traenkler.com>",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
