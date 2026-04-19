@@ -32,6 +32,8 @@ export interface CodegenOptions {
   nativeStrings?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
+  /** Set of function names imported from node:fs (detected pre-preprocessing) */
+  wasiNodeFsFuncs?: Set<string>;
 }
 
 /** Info about an externally declared class. */
@@ -409,7 +411,11 @@ export interface CodegenContext {
   /** WASI import indices */
   wasiFdWriteIdx: number;
   wasiProcExitIdx: number;
+  wasiPathOpenIdx: number;
+  wasiFdCloseIdx: number;
   wasiBumpPtrGlobalIdx: number;
+  /** Set of node:fs functions used in WASI mode */
+  wasiNodeFsFuncs: Set<string>;
   /** Map from let/const module global variable name → TDZ flag global index */
   tdzGlobals: Map<string, number>;
   /** Set of let/const module global variable names */

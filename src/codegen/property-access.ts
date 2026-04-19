@@ -899,6 +899,93 @@ export function compilePropertyAccess(
     return { kind: "externref" };
   }
 
+  // Handle BuiltIn.prop where BuiltIn is a known global constructor/namespace (String, Number,
+  // Boolean, Math, Object, Array, etc.) that would otherwise compile to ref.null.extern.
+  // Examples: String.prototype, Number.prototype, Boolean.prototype, Math.abs, Array.isArray.
+  // Use __get_builtin(name) to get the real JS object, then __extern_get(ref, prop).
+  // Skip if the name is shadowed by a local variable.
+  if (ts.isIdentifier(expr.expression)) {
+    const builtinName = expr.expression.text;
+    const BUILTIN_CTOR_NAMES = new Set([
+      "Object",
+      "Array",
+      "Function",
+      "Symbol",
+      "Proxy",
+      "Reflect",
+      "Math",
+      "BigInt",
+      "JSON",
+      "Date",
+      "RegExp",
+      "ArrayBuffer",
+      "SharedArrayBuffer",
+      "DataView",
+      "Promise",
+      "WeakMap",
+      "WeakSet",
+      "WeakRef",
+      "FinalizationRegistry",
+      "Atomics",
+      "Iterator",
+      "Map",
+      "Set",
+      "Error",
+      "TypeError",
+      "RangeError",
+      "SyntaxError",
+      "URIError",
+      "EvalError",
+      "ReferenceError",
+      "String",
+      "Number",
+      "Boolean",
+      "Int8Array",
+      "Uint8Array",
+      "Uint8ClampedArray",
+      "Int16Array",
+      "Uint16Array",
+      "Int32Array",
+      "Uint32Array",
+      "Float32Array",
+      "Float64Array",
+      "BigInt64Array",
+      "BigUint64Array",
+    ]);
+    const isShadowed = fctx.localMap.has(builtinName) || (fctx.boxedCaptures?.has(builtinName) ?? false);
+    if (BUILTIN_CTOR_NAMES.has(builtinName) && !isShadowed) {
+      const getBuiltinIdx = ensureLateImport(ctx, "__get_builtin", [{ kind: "externref" }], [{ kind: "externref" }]);
+      const getIdx = ensureLateImport(
+        ctx,
+        "__extern_get",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (getBuiltinIdx !== undefined && getIdx !== undefined) {
+        // Push builtin name string, call __get_builtin to get the real JS object
+        addStringConstantGlobal(ctx, builtinName);
+        const builtinStrIdx = ctx.stringGlobalMap.get(builtinName);
+        if (builtinStrIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: builtinStrIdx });
+        } else {
+          compileStringLiteral(ctx, fctx, builtinName);
+        }
+        fctx.body.push({ op: "call", funcIdx: getBuiltinIdx });
+        // Push property name string, call __extern_get to read the property
+        addStringConstantGlobal(ctx, propName);
+        const propStrIdx = ctx.stringGlobalMap.get(propName);
+        if (propStrIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: propStrIdx });
+        } else {
+          compileStringLiteral(ctx, fctx, propName);
+        }
+        fctx.body.push({ op: "call", funcIdx: getIdx });
+        return { kind: "externref" };
+      }
+    }
+  }
+
   // Check for enum member access: EnumName.Member
   if (ts.isIdentifier(expr.expression)) {
     const objName = expr.expression.text;
@@ -942,14 +1029,31 @@ export function compilePropertyAccess(
         const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         return globalDef?.type ?? { kind: "externref" };
       }
-      // Static accessor via `this` in a static method: this.#getter / this.#setter
+      // Static getter access: `this.#f` or `this.g` where the property is a
+      // static accessor. Invoke the getter with a dummy `this` — static
+      // getters don't read `this` since the backing store is a module global.
+      // Without this handler the generic path below compiles `this` →
+      // emitUndefined → externref and tries to cast to the class struct,
+      // which traps uncatchably (PR #203 follow-up for class/elements TRAP
+      // bucket).
       const accessorKey = `${enclosingClass}_${propName}`;
-      if (ctx.classAccessorSet.has(accessorKey)) {
+      if (ctx.staticAccessorSet.has(accessorKey)) {
         const getterName = `${enclosingClass}_get_${propName}`;
-        const getterIdx = ctx.funcMap.get(getterName);
-        if (getterIdx !== undefined) {
-          const retType = emitGetterCallWithDummy(ctx, fctx, enclosingClass, getterName, getterIdx);
-          return retType ?? { kind: "externref" };
+        const funcIdx = ctx.funcMap.get(getterName);
+        if (funcIdx !== undefined) {
+          const retType = emitGetterCallWithDummy(ctx, fctx, enclosingClass, getterName, funcIdx);
+          if (retType) return retType;
+        }
+      }
+      // Static method accessed as value: `this.#m` or `this.m` where `m` is a
+      // static method. Return `ref.null.extern` as a non-callable placeholder
+      // (same as ClassName.method path at line 992) — avoids generic
+      // fallthrough cast of undefined.
+      if (ctx.staticMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
         }
       }
     }
