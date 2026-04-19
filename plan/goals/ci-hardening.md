@@ -49,7 +49,7 @@ and hide real ones.
 | **1063** | createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee) | 41 | done | high |
 | **1064** | DataView bridge: subview metadata so bounds errors propagate | Backlog | in-progress | medium |
 | **1065** | Register `Array` as declared global so `x.constructor === Array` compares real refs | Backlog | done | medium |
-| **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | ready | medium |
+| **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | review | medium |
 | **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 42 | ready | critical |
 | **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 42 | review | high |
 | **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 42 | ready | medium |
