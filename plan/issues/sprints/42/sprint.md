@@ -332,7 +332,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
-| #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | ready |
 | #1045 | DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame) | high | ready |
 | #1058 | Compile the TypeScript compiler itself to Wasm — self-hosting stress test | high | ready |
 | #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
@@ -360,6 +359,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #1008 | Add mobile-first layout support to the playground | medium | in-progress |
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
+| #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | in-progress |
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | in-progress |
 
