@@ -1,0 +1,19 @@
+# CODEOWNERS for js2wasm
+#
+# Changes under protected paths require review from a maintainer.
+# External PRs touching these paths will be routed to @loopdive for approval.
+
+# Roadmap, issues, sprint planning, and all strategic direction
+/plan/                       @loopdive
+
+# Agent coordination, hooks, memory, skills — the "how" of the workflow
+/.claude/                    @loopdive
+
+# CI workflows — reviewers needed to keep gates consistent
+/.github/workflows/          @loopdive
+
+# License, CLA, and contributor terms
+/LICENSE                     @loopdive
+/CLA.md                      @loopdive
+/CONTRIBUTING.md             @loopdive
+/CODEOWNERS                  @loopdive
