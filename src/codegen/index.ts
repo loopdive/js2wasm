@@ -254,6 +254,10 @@ export function generateModule(
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
     }
 
+    // Emit __toUint32 Wasm helper after all imports registered (bypasses bug
+    // where direct addImport calls do not shift defined-function indices).
+    emitToUint32Helper(ctx);
+
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
 
@@ -1832,6 +1836,9 @@ export function generateMultiModule(
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
     }
 
+    // Emit __toUint32 Wasm helper after all imports registered.
+    emitToUint32Helper(ctx);
+
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
 
@@ -2242,7 +2249,8 @@ function collectPrimitiveMethodImports(ctx: CodegenContext, sourceFile: ts.Sourc
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
-  if (needed.has("string_compare")) {
+  if (needed.has("string_compare") && !ctx.nativeStrings) {
+    // In native strings mode, __str_compare Wasm helper handles this — no host import needed
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
@@ -2919,11 +2927,48 @@ function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
     }
   }
 
-  // Register __toUint32 host import: (f64) → i32
-  if (needsToUint32 && !ctx.funcMap.has("__toUint32")) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+  // ToUint32: defer until after all imports are added; see emitToUint32Helper.
+  if (needsToUint32) {
+    ctx.needsToUint32 = true;
   }
+}
+
+/**
+ * Emit the __toUint32 Wasm helper function. Must be called AFTER all imports
+ * that are added directly via addImport (bypassing ensureLateImport's shift
+ * mechanism) have been registered, and BEFORE any user function body that
+ * calls Math.clz32 or Math.imul is compiled. Emitting earlier leaves a stale
+ * funcMap entry because addImport does not shift defined-function indices.
+ *
+ * Implements ES §7.1.7: NaN/±Infinity → 0, otherwise trunc(x) modulo 2^32.
+ */
+export function emitToUint32Helper(ctx: CodegenContext): void {
+  if (!ctx.needsToUint32) return;
+  if (ctx.funcMap.has("__toUint32")) return;
+  const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__toUint32", funcIdx);
+  const body: Instr[] = [
+    { op: "local.get", index: 0 },
+    { op: "local.get", index: 0 },
+    { op: "f64.ne" },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+    { op: "local.get", index: 0 },
+    { op: "f64.abs" },
+    { op: "f64.const", value: Infinity },
+    { op: "f64.eq" },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+    { op: "local.get", index: 0 },
+    { op: "i64.trunc_sat_f64_s" } as unknown as Instr,
+    { op: "i32.wrap_i64" },
+  ];
+  ctx.mod.functions.push({
+    name: "__toUint32",
+    typeIdx,
+    locals: [],
+    body,
+    exported: false,
+  });
 }
 
 /** Scan source for parseInt / parseFloat / Number() / unary + on strings and register host imports */
