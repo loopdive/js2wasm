@@ -29,17 +29,25 @@ export interface LeafNode {
 
 export type DropZone = "center" | "top" | "bottom" | "left" | "right";
 
-const LAYOUT_KEY = "js2wasm_layout_v2";
-const LEGACY_LAYOUT_KEY = "ts2wasm_layout_v2";
+interface TouchTabDragState {
+  pointerId: number;
+  tabId: string;
+  panelId: string;
+  tabEl: HTMLElement;
+  startX: number;
+  startY: number;
+  started: boolean;
+}
+
 const MIN_PANEL_SIZE = 80; // px
+const MOBILE_LAYOUT_QUERY = "(max-width: 900px), (max-height: 720px)";
+
+function prefersMobileLayout(): boolean {
+  return typeof window !== "undefined" && window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
+}
 
 export function clearSavedLayout(): void {
-  try {
-    localStorage.removeItem(LAYOUT_KEY);
-    localStorage.removeItem(LEGACY_LAYOUT_KEY);
-  } catch {
-    /* ignore */
-  }
+  /* persistence disabled */
 }
 
 // ─── Default layout ──────────────────────────────────────────────────────
@@ -75,11 +83,33 @@ export function getDefaultLayout(): LayoutNode {
             direction: "horizontal",
             ratio: 0.5,
             children: [
-              { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console"], activeTab: "preview" },
+              { type: "leaf", id: "output-left", tabs: ["preview", "console", "errors"], activeTab: "preview" },
               { type: "leaf", id: "output-right", tabs: ["treemap"], activeTab: "treemap" },
             ],
           },
         ],
+      },
+    ],
+  };
+}
+
+export function getMobileDefaultLayout(): LayoutNode {
+  return {
+    type: "split",
+    direction: "vertical",
+    ratio: 0.56,
+    children: [
+      {
+        type: "leaf",
+        id: "editor-main",
+        tabs: ["ts-source", "wat-output", "wasm-hex", "modular-ts"],
+        activeTab: "ts-source",
+      },
+      {
+        type: "leaf",
+        id: "output-main",
+        tabs: ["preview", "console", "errors", "treemap"],
+        activeTab: "preview",
       },
     ],
   };
@@ -103,6 +133,9 @@ export class LayoutManager {
   private dropOverlay: HTMLElement | null = null;
   private dropZone: DropZone | null = null;
   private dropTargetPanelId: string | null = null;
+  private touchTabDrag: TouchTabDragState | null = null;
+  private touchDragGhost: HTMLElement | null = null;
+  private suppressTabClickId: string | null = null;
 
   // Callbacks
   onMount: ((panelId: string, tabId: string, contentEl: HTMLElement) => void) | null = null;
@@ -111,7 +144,7 @@ export class LayoutManager {
 
   constructor(container: HTMLElement) {
     this.container = container;
-    this.root = getDefaultLayout();
+    this.root = prefersMobileLayout() ? getMobileDefaultLayout() : getDefaultLayout();
   }
 
   registerTab(item: TabItem): void {
@@ -119,7 +152,7 @@ export class LayoutManager {
   }
 
   init(root?: LayoutNode): void {
-    this.root = root ?? getDefaultLayout();
+    this.root = root ?? (prefersMobileLayout() ? getMobileDefaultLayout() : getDefaultLayout());
     // Ensure panelCounter won't collide with IDs from a loaded layout
     this.forEachLeaf(this.root, (leaf) => {
       const m = leaf.id.match(/^panel-(\d+)$/);
@@ -261,6 +294,12 @@ export class LayoutManager {
     const tabBar = document.createElement("div");
     tabBar.className = "panel-tab-bar";
     if (!hideTabBar) {
+      if (leaf.tabs.includes("ts-source")) {
+        const controlsSlot = document.createElement("div");
+        controlsSlot.className = "panel-tab-controls-slot";
+        controlsSlot.dataset.controlsFor = leaf.id;
+        tabBar.appendChild(controlsSlot);
+      }
       for (const tabId of leaf.tabs) {
         const tab = this.tabs.get(tabId);
         if (!tab) continue;
@@ -274,6 +313,7 @@ export class LayoutManager {
         tabEl.appendChild(label);
 
         if (!tab.permanent) {
+          tabEl.classList.add("has-close");
           const closeBtn = document.createElement("span");
           closeBtn.className = "close-btn";
           closeBtn.textContent = "\u00d7";
@@ -294,7 +334,15 @@ export class LayoutManager {
         tabEl.addEventListener("mouseup", () => {
           tabEl.draggable = false;
         });
-        tabEl.addEventListener("click", () => this.switchTab(leaf.id, tabId));
+        tabEl.addEventListener("click", (e) => {
+          if (this.suppressTabClickId === tabId) {
+            this.suppressTabClickId = null;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          this.switchTab(leaf.id, tabId);
+        });
         this.setupTabDrag(tabEl, tabId, leaf.id);
         tabBar.appendChild(tabEl);
       }
@@ -356,14 +404,18 @@ export class LayoutManager {
   // ─── Divider resize ──────────────────────────────────────────────────
 
   private setupDivider(divider: HTMLElement, node: SplitNode, splitEl: HTMLElement, child1: HTMLElement): void {
-    divider.addEventListener("mousedown", (e) => {
+    divider.style.touchAction = "none";
+    divider.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       e.preventDefault();
       divider.classList.add("active");
 
       const isH = node.direction === "horizontal";
-      const rect = splitEl.getBoundingClientRect();
 
-      const onMove = (ev: MouseEvent) => {
+      const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
+        ev.preventDefault();
+        const rect = splitEl.getBoundingClientRect();
         const pos = isH ? ev.clientX - rect.left : ev.clientY - rect.top;
         const total = isH ? rect.width : rect.height;
         const ratio = Math.max(MIN_PANEL_SIZE / total, Math.min(1 - MIN_PANEL_SIZE / total, pos / total));
@@ -376,12 +428,14 @@ export class LayoutManager {
       const onUp = () => {
         divider.classList.remove("active");
         this.saveLayout();
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
       };
 
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     });
 
     // Double-click to reset to 50%
@@ -417,6 +471,119 @@ export class LayoutManager {
       this.dragTabId = null;
       this.dragSourcePanelId = null;
       this.clearDropOverlay();
+    });
+
+    tabEl.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      if ((e.target as HTMLElement).closest(".close-btn")) return;
+
+      e.preventDefault();
+      tabEl.setPointerCapture(e.pointerId);
+
+      this.touchTabDrag = {
+        pointerId: e.pointerId,
+        tabId,
+        panelId,
+        tabEl,
+        startX: e.clientX,
+        startY: e.clientY,
+        started: false,
+      };
+
+      const onMove = (ev: PointerEvent) => {
+        if (!this.touchTabDrag || ev.pointerId !== this.touchTabDrag.pointerId) return;
+
+        if (!this.touchTabDrag.started) {
+          const dx = ev.clientX - this.touchTabDrag.startX;
+          const dy = ev.clientY - this.touchTabDrag.startY;
+          if (Math.hypot(dx, dy) < 10) return;
+
+          this.touchTabDrag.started = true;
+          this.dragTabId = tabId;
+          this.dragSourcePanelId = panelId;
+          tabEl.classList.add("dragging");
+          this.touchDragGhost = document.createElement("div");
+          this.touchDragGhost.className = "drag-ghost";
+          this.touchDragGhost.style.position = "fixed";
+          this.touchDragGhost.style.pointerEvents = "none";
+          this.touchDragGhost.style.zIndex = "1000";
+          this.touchDragGhost.textContent = this.tabs.get(tabId)?.title ?? tabId;
+          document.body.appendChild(this.touchDragGhost);
+        }
+
+        ev.preventDefault();
+        if (this.touchDragGhost) {
+          this.touchDragGhost.style.left = `${ev.clientX + 12}px`;
+          this.touchDragGhost.style.top = `${ev.clientY + 12}px`;
+        }
+
+        const panelEl = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest(
+          "[data-panel]",
+        ) as HTMLElement | null;
+        if (!panelEl || !panelEl.dataset.panel) {
+          this.clearDropOverlay();
+          this.dropZone = null;
+          this.dropTargetPanelId = null;
+          return;
+        }
+
+        const zone = this.detectDropZone(panelEl, ev.clientX, ev.clientY);
+        if (zone !== this.dropZone || panelEl.dataset.panel !== this.dropTargetPanelId) {
+          this.dropZone = zone;
+          this.dropTargetPanelId = panelEl.dataset.panel;
+          this.showDropOverlay(panelEl, zone);
+        }
+      };
+
+      const finish = (ev: PointerEvent, cancelled: boolean) => {
+        if (!this.touchTabDrag || ev.pointerId !== this.touchTabDrag.pointerId) return;
+
+        const started = this.touchTabDrag.started;
+
+        if (tabEl.hasPointerCapture(ev.pointerId)) {
+          tabEl.releasePointerCapture(ev.pointerId);
+        }
+
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onCancel);
+
+        if (started) {
+          tabEl.classList.remove("dragging");
+          this.touchDragGhost?.remove();
+          this.touchDragGhost = null;
+
+          const draggedTabId = this.dragTabId;
+          const sourcePanel = this.dragSourcePanelId;
+          const zone = this.dropZone;
+          const targetPanelId = this.dropTargetPanelId;
+
+          this.clearDropOverlay();
+          this.dragTabId = null;
+          this.dragSourcePanelId = null;
+          this.dropZone = null;
+          this.dropTargetPanelId = null;
+
+          if (!cancelled && draggedTabId && sourcePanel && zone && targetPanelId) {
+            if (!(sourcePanel === targetPanelId && zone === "center")) {
+              const leaf = this.findLeafById(this.root, sourcePanel);
+              if (!(sourcePanel === targetPanelId && leaf && leaf.tabs.length <= 1)) {
+                this.moveTab(draggedTabId, sourcePanel, targetPanelId, zone);
+              }
+            }
+          }
+          this.suppressTabClickId = tabId;
+        }
+
+        this.touchTabDrag = null;
+      };
+
+      const onUp = (ev: PointerEvent) => finish(ev, false);
+      const onCancel = (ev: PointerEvent) => finish(ev, true);
+
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onCancel);
     });
   }
 
@@ -619,7 +786,7 @@ export class LayoutManager {
   }
 
   resetLayout(): void {
-    this.root = getDefaultLayout();
+    this.root = prefersMobileLayout() ? getMobileDefaultLayout() : getDefaultLayout();
     this.render();
     this.saveLayout();
   }
@@ -634,10 +801,11 @@ export class LayoutManager {
         tabs: ["test262"],
         activeTab: "test262",
       };
+      const mobile = prefersMobileLayout();
       this.root = {
         type: "split",
-        direction: "horizontal",
-        ratio: 0.18,
+        direction: mobile ? "vertical" : "horizontal",
+        ratio: mobile ? 0.36 : 0.18,
         children: [sidebarLeaf, this.root],
       };
     }
@@ -673,34 +841,12 @@ export class LayoutManager {
   // ─── Persistence ─────────────────────────────────────────────────────
 
   saveLayout(): void {
-    try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify(this.serializeNode(this.root)));
-    } catch {
-      /* quota exceeded */
-    }
+    /* persistence disabled */
   }
 
   static loadLayout(allTabIds: Set<string>): LayoutNode | null {
-    try {
-      const raw = localStorage.getItem(LAYOUT_KEY) ?? localStorage.getItem(LEGACY_LAYOUT_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      // Validate: all tab IDs in the layout must exist in allTabIds
-      const layoutTabs = new Set<string>();
-      collectTabIds(parsed, layoutTabs);
-      if (layoutTabs.size === 0) return null;
-      // Every tab in layout must be known
-      for (const id of layoutTabs) {
-        if (!allTabIds.has(id)) return null;
-      }
-      // Every known tab must be in layout
-      for (const id of allTabIds) {
-        if (!layoutTabs.has(id)) return null;
-      }
-      return parsed as LayoutNode;
-    } catch {
-      return null;
-    }
+    void allTabIds;
+    return null;
   }
 
   private serializeNode(node: LayoutNode): any {
