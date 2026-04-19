@@ -26432,10 +26432,5 @@
       "goal": "iterator-protocol",
       "issue": "487"
     }
-<<<<<<< HEAD
-  ],
-  "generated": "2026-04-16T13:55:05+02:00"
-=======
   ]
->>>>>>> origin/main
 }
