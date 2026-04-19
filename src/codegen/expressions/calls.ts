@@ -4518,10 +4518,17 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
 
-          // Pad missing arguments with defaults and save to locals
+          // Pad missing arguments with defaults and save to locals.
+          // For non-nullable ref params, widen the padding slot to nullable so
+          // pushDefaultValue emits a plain ref.null (without ref.as_non_null,
+          // which would trap at runtime). The callee wrapper signature accepts
+          // nullable refs, so this is assignment-compatible. (#1131)
           for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
-            pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!, ctx);
-            const argLocal = allocLocal(fctx, `__carg_${fctx.locals.length}`, matchedClosureInfo.paramTypes[i]!);
+            const paramType = matchedClosureInfo.paramTypes[i]!;
+            const padType: ValType =
+              paramType.kind === "ref" ? { kind: "ref_null", typeIdx: paramType.typeIdx } : paramType;
+            pushDefaultValue(fctx, padType, ctx);
+            const argLocal = allocLocal(fctx, `__carg_${fctx.locals.length}`, padType);
             fctx.body.push({ op: "local.set", index: argLocal });
             argLocals.push(argLocal);
           }
