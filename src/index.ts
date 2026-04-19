@@ -131,6 +131,12 @@ export interface CompileOptions {
    *  Requires either the 'binaryen' npm package or wasm-opt on PATH.
    *  Set to true for -O3 defaults, or pass a number (1-4) for a specific level. */
   optimize?: boolean | 1 | 2 | 3 | 4;
+  /**
+   * Experimental: route a narrow set of functions through the middle-end IR
+   * (see `src/ir/`). Defaults to off. Ship as off until the IR reaches
+   * parity with the legacy direct-emission path.
+   */
+  experimentalIR?: boolean;
 }
 
 import * as path from "path";
