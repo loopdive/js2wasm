@@ -15706,30 +15706,6 @@
       "cluster": "spec-conformance"
     },
     {
-      "id": "1133",
-      "title": "__any_strict_eq tag-5 string comparison uses identity, not content — 'a' === 'a' returns false for any-typed strings",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "spec-conformance",
-      "cluster": "spec-conformance"
-    },
-    {
-      "id": "1134",
-      "title": "__any_eq loose equality missing cross-tag coercion — null==undefined, bool==number all return false",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "spec-conformance",
-      "cluster": "spec-conformance"
-    },
-    {
       "id": "1135",
       "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
       "priority": "high",

@@ -1,15 +1,15 @@
 {
   "pr": 211,
-  "conclusion": "failure",
+  "conclusion": "cancelled",
   "head_branch": "issue-typedarray-harness-binding",
   "head_sha": "4b95177a76ad97248b25e4836f73b35b7d3a3ba7",
-  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24608773537",
-  "timestamp": "2026-04-18T18:54:12Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24608773537",
+  "timestamp": "2026-04-19T09:10:00Z",
+  "pass": 22682,
+  "fail": 15155,
+  "compile_error": 3963,
+  "snapshot_delta": 232,
+  "net_per_test": 232,
+  "regressions": 5,
+  "improvements": 237
 }
