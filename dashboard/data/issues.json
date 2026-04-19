@@ -376,6 +376,16 @@
       "sprint": "42"
     },
     {
+      "id": "1098",
+      "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "ready",
+      "sprint": "42"
+    },
+    {
       "id": "1096",
       "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
       "priority": "medium",
@@ -1458,16 +1468,6 @@
     }
   ],
   "inprogress": [
-    {
-      "id": "1098",
-      "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "in-progress",
-      "sprint": "42"
-    },
     {
       "id": "1093",
       "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
