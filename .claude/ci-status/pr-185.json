@@ -1,15 +1,15 @@
 {
   "pr": 185,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-1094-runtime-audit",
-  "head_sha": "848e760e34bd0b565f9cb72b60668914654947d4",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615560554",
-  "timestamp": "2026-04-19T00:28:45Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "bc155d9e2d01396a8368d6009d7d7cad4e19eb5a",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615383937",
+  "timestamp": "2026-04-19T01:19:05Z",
+  "pass": 22464,
+  "fail": 15390,
+  "compile_error": 3946,
+  "snapshot_delta": 14,
+  "net_per_test": 14,
+  "regressions": 19,
+  "improvements": 33
 }
