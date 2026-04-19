@@ -1420,11 +1420,15 @@ function resolveImport(
       // __extern_has_idx: HasProperty(O, ToString(idx)) for array-like callback
       // loops. Spec §23.1.3.X uses HasProperty to skip holes (e.g. Array.prototype
       // .filter.call({length:"2",1:11}, cb) must not visit index 0).
+      //
+      // Mirrors __extern_get_idx's lookup paths. _safeSet re-maps numeric keys
+      // 1-14 onto well-known symbol sidecar entries, so checking plain `idx in obj`
+      // misses index values in that range — must also consult the symbol-keyed
+      // sidecar and the wasm struct getter exports.
       if (name === "__extern_has_idx")
         return (obj: any, idx: number): number => {
           if (obj == null) return 0;
           const strKey = String(idx);
-          // `in` walks the prototype chain (HasProperty semantics, unlike hasOwnProperty)
           try {
             if (idx in obj) return 1;
           } catch {
@@ -1437,6 +1441,15 @@ function resolveImport(
           }
           if (_sidecarGet(obj, idx) !== undefined) return 1;
           if (_sidecarGet(obj, strKey) !== undefined) return 1;
+          // _safeSet routes numeric keys 1-14 onto Symbol.<wellKnown> sidecar
+          // entries. Reverse that mapping so index 1-14 values remain visible.
+          if (idx >= 1 && idx <= 14) {
+            const symKeys = _symbolIdToKeys.get(idx);
+            if (symKeys) {
+              if (_sidecarGet(obj, symKeys.sym) !== undefined) return 1;
+              if (_sidecarGet(obj, symKeys.wasm) !== undefined) return 1;
+            }
+          }
           const exports = callbackState?.getExports();
           if (typeof exports?.[`__sget_${strKey}`] === "function") {
             try {

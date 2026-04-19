@@ -367,6 +367,23 @@ export function compileArrayLikePrototypeCall(
     return undefined;
   }
 
+  // Bail out when the receiver resolves to a concrete WasmGC struct (a real Array
+  // vector, a tuple, an instance class, etc.). This path is intended for externref /
+  // anyref array-like objects (`{length, [i]}`, `arguments`, Proxy targets). A real
+  // wasm array must not go through __extern_length / __extern_get_idx — those host
+  // helpers can't read wasm struct fields, producing wrong lengths (0 / NaN) and
+  // wrong element values. The legacy __proto_method_call bridge and the direct
+  // compileArrayMethodCall path already handle real-array receivers correctly.
+  {
+    const recvTsType = ctx.checker.getTypeAtLocation(receiverArg);
+    if (recvTsType) {
+      const recvWasmType = resolveWasmType(ctx, recvTsType);
+      if (recvWasmType.kind === "ref" || recvWasmType.kind === "ref_null") {
+        return undefined;
+      }
+    }
+  }
+
   // Bail out if the call site is inside `assert_throws(...)` (test262 rewrites `assert.throws`
   // to this helper). The Wasm-native loop calls __extern_length / __extern_get_idx directly
   // and does not currently propagate host-side JS exceptions to the surrounding try/catch,
