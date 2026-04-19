@@ -104,15 +104,20 @@ export function emitNullGuard(
   emitFn: () => void,
   srcKind?: ValType["kind"],
 ): void {
+  // Pre-register late imports BEFORE collecting guardInstrs. collectInstrs
+  // pops savedBodies on return, leaving guardInstrs orphaned — any late-import
+  // shift fired after that (e.g. from buildDestructureNullThrow /
+  // ensureExternIsUndefined) would miss funcIdx values inside guardInstrs,
+  // corrupting nested default-initializer calls.
+  const throwInstrs = isNullable ? buildDestructureNullThrow(ctx, fctx) : null;
+  const undefIdx = isNullable && srcKind === "externref" ? ensureExternIsUndefined(ctx, fctx) : undefined;
   const guardInstrs = collectInstrs(fctx, emitFn);
   // Per spec §14.3.3.1/§8.4.2: destructuring null/undefined must throw TypeError.
   // Skip guard for empty patterns (#225) — only fire when there are real property accesses.
-  if (isNullable && guardInstrs.length > 0) {
-    const throwInstrs = buildDestructureNullThrow(ctx, fctx);
+  if (isNullable && guardInstrs.length > 0 && throwInstrs) {
     // For externref sources we also need to catch JS undefined (non-null externref
     // wrapping the undefined value). Emit a unified boolean: ref.is_null || __extern_is_undefined
     if (srcKind === "externref") {
-      const undefIdx = ensureExternIsUndefined(ctx, fctx);
       fctx.body.push({ op: "local.get", index: srcLocal });
       fctx.body.push({ op: "ref.is_null" } as Instr);
       if (undefIdx !== undefined) {
