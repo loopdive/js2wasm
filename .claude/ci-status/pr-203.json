@@ -1,0 +1,15 @@
+{
+  "pr": 203,
+  "conclusion": "failure",
+  "head_branch": "issue-class-elements-illegal-cast",
+  "head_sha": "4415cc7b43e0b3b780f49b313dbbf5c679c30b07",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24627636084",
+  "timestamp": "2026-04-19T16:48:35Z",
+  "pass": 22720,
+  "fail": 15062,
+  "compile_error": 3877,
+  "snapshot_delta": 270,
+  "net_per_test": 270,
+  "regressions": 614,
+  "improvements": 884
+}
