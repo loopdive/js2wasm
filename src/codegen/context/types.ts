@@ -32,6 +32,12 @@ export interface CodegenOptions {
   nativeStrings?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
+  /**
+   * Experimental: route a narrow set of functions through the middle-end IR
+   * (see `src/ir/`). Defaults to off. Leave off in production until the IR
+   * reaches parity with the legacy direct-emission path.
+   */
+  experimentalIR?: boolean;
 }
 
 /** Info about an externally declared class. */

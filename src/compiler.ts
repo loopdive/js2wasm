@@ -249,6 +249,7 @@ export function compileSource(
         fast: options.fast,
         nativeStrings: options.nativeStrings,
         wasi: options.target === "wasi",
+        experimentalIR: options.experimentalIR,
       });
       mod = result.module;
       // Propagate codegen errors with source locations
