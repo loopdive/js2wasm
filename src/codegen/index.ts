@@ -26,6 +26,7 @@ import type {
   FunctionContext,
   OptionalParamInfo,
 } from "./context/types.js";
+import type { NodeBuiltinImport } from "../import-resolver.js";
 import { eliminateDeadImports } from "./dead-elimination.js";
 import { emitUndefined } from "./expressions/late-imports.js";
 import {
@@ -229,6 +230,11 @@ export function generateModule(
     // Register built-in collection types as extern classes if not already collected from lib files
     registerBuiltinExternClasses(ctx);
 
+    // #1044 — Register Node builtin modules as externref host imports
+    if (options?.nodeBuiltins && options.nodeBuiltins.length > 0) {
+      registerNodeBuiltinImports(ctx, options.nodeBuiltins);
+    }
+
     // Pre-pass: detect empty object literals that get properties assigned later
     // Must run before import collectors so that widened types are known
     collectEmptyObjectWidening(ctx, ast.checker, ast.sourceFile);
@@ -255,6 +261,10 @@ export function generateModule(
     if (ctx.pendingMathMethods.size > 0) {
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
     }
+
+    // Emit __toUint32 Wasm helper after all imports registered (bypasses bug
+    // where direct addImport calls do not shift defined-function indices).
+    emitToUint32Helper(ctx);
 
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
@@ -399,16 +409,29 @@ export function generateModule(
   return { module: mod, errors: ctx.errors };
 }
 
-/** Add a _start export for WASI — wraps main() or __module_init */
+/** Add a _start export for WASI — wraps __module_init or a no-arg main() (#1122) */
 function addWasiStartExport(ctx: CodegenContext): void {
-  // Find main or __module_init by name in the functions array
-  let targetIdx = ctx.funcMap.get("main");
+  // Prefer __module_init — it's always () -> void and handles all top-level code
+  let targetIdx: number | undefined;
+  for (let i = 0; i < ctx.mod.functions.length; i++) {
+    if (ctx.mod.functions[i]!.name === "__module_init") {
+      targetIdx = ctx.numImportFuncs + i;
+      break;
+    }
+  }
+
+  // Fall back to main only if __module_init doesn't exist AND main is () -> void
   if (targetIdx === undefined) {
-    // Search functions array for __module_init
-    for (let i = 0; i < ctx.mod.functions.length; i++) {
-      if (ctx.mod.functions[i]!.name === "__module_init") {
-        targetIdx = ctx.numImportFuncs + i;
-        break;
+    const mainIdx = ctx.funcMap.get("main");
+    if (mainIdx !== undefined) {
+      // Check that the function takes no parameters and returns no values
+      const funcArrayIdx = mainIdx - ctx.numImportFuncs;
+      if (funcArrayIdx >= 0 && funcArrayIdx < ctx.mod.functions.length) {
+        const func = ctx.mod.functions[funcArrayIdx]!;
+        const funcType = ctx.mod.types[func.typeIdx];
+        if (funcType && funcType.kind === "func" && funcType.params.length === 0 && funcType.results.length === 0) {
+          targetIdx = mainIdx;
+        }
       }
     }
   }
@@ -417,12 +440,13 @@ function addWasiStartExport(ctx: CodegenContext): void {
     // Create _start wrapper that calls the target function
     const startTypeIdx = addFuncType(ctx, [], [], "$wasi_start_type");
     const startFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    const body: Instr[] = [{ op: "call", funcIdx: targetIdx }];
 
     ctx.mod.functions.push({
       name: "_start",
       typeIdx: startTypeIdx,
       locals: [],
-      body: [{ op: "call", funcIdx: targetIdx }],
+      body,
       exported: true,
     });
 
@@ -1847,6 +1871,9 @@ export function generateMultiModule(
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
     }
 
+    // Emit __toUint32 Wasm helper after all imports registered.
+    emitToUint32Helper(ctx);
+
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
 
@@ -2031,7 +2058,7 @@ function collectConsoleImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
   }
 }
 
-/** Register WASI imports: fd_write, proc_exit, linear memory, bump pointer global */
+/** Register WASI imports: fd_write, proc_exit, path_open, fd_close, linear memory, bump pointer global */
 function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   // Add linear memory (1 page = 64KB) for string data + iovec structs
   ctx.mod.memories.push({ min: 1 });
@@ -2049,9 +2076,13 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
   });
   ctx.wasiBumpPtrGlobalIdx = bumpGlobalIdx;
 
-  // Check if source uses console.log/warn/error
+  // Check if source uses console.log/warn/error, process.exit, or node:fs functions
   let needsFdWrite = false;
   let needsProcExit = false;
+
+  // ctx.wasiNodeFsFuncs is populated from the original source before import preprocessing
+  // (see detectNodeFsImports in compiler.ts)
+  const needsPathOpen = ctx.wasiNodeFsFuncs.has("writeFileSync");
 
   function visit(node: ts.Node) {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -2075,6 +2106,9 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
   }
   ts.forEachChild(sourceFile, visit);
 
+  // writeFileSync also needs fd_write for the actual file data write
+  if (needsPathOpen) needsFdWrite = true;
+
   // fd_write(fd: i32, iovs: i32, iovs_len: i32, nwritten: i32) -> i32
   if (needsFdWrite) {
     const fdWriteType = addFuncType(
@@ -2094,10 +2128,43 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
     ctx.wasiProcExitIdx = ctx.funcMap.get("proc_exit")!;
   }
 
+  // path_open(fd: i32, dirflags: i32, path: i32, path_len: i32, oflags: i32,
+  //           rights_base: i64, rights_inheriting: i64, fdflags: i32, fd_out: i32) -> i32
+  if (needsPathOpen) {
+    const pathOpenType = addFuncType(
+      ctx,
+      [
+        { kind: "i32" }, // fd (dirfd)
+        { kind: "i32" }, // dirflags
+        { kind: "i32" }, // path ptr
+        { kind: "i32" }, // path len
+        { kind: "i32" }, // oflags
+        { kind: "i64" }, // rights_base
+        { kind: "i64" }, // rights_inheriting
+        { kind: "i32" }, // fdflags
+        { kind: "i32" }, // fd_out ptr
+      ],
+      [{ kind: "i32" }],
+      "$wasi_path_open",
+    );
+    addImport(ctx, "wasi_snapshot_preview1", "path_open", { kind: "func", typeIdx: pathOpenType });
+    ctx.wasiPathOpenIdx = ctx.funcMap.get("path_open")!;
+
+    // fd_close(fd: i32) -> i32
+    const fdCloseType = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "i32" }], "$wasi_fd_close");
+    addImport(ctx, "wasi_snapshot_preview1", "fd_close", { kind: "func", typeIdx: fdCloseType });
+    ctx.wasiFdCloseIdx = ctx.funcMap.get("fd_close")!;
+  }
+
   // Register a helper function: __wasi_write_string(strPtr: i32, strLen: i32) -> void
   // This writes to stdout (fd=1) using fd_write
   if (needsFdWrite) {
     emitWasiWriteStringHelper(ctx);
+  }
+
+  // Register __wasi_write_file_sync(pathPtr, pathLen, dataPtr, dataLen) helper
+  if (needsPathOpen) {
+    emitWasiWriteFileSyncHelper(ctx);
   }
 }
 
@@ -2132,6 +2199,81 @@ function emitWasiWriteStringHelper(ctx: CodegenContext): void {
     name: "__wasi_write_string",
     typeIdx: funcTypeIdx,
     locals: [],
+    body,
+    exported: false,
+  });
+}
+
+/**
+ * Emit __wasi_write_file_sync(pathPtr: i32, pathLen: i32, dataPtr: i32, dataLen: i32) helper.
+ * Opens a file via path_open, writes data via fd_write, then closes via fd_close.
+ *
+ * WASI path_open signature:
+ *   path_open(dirfd, dirflags, path, path_len, oflags, rights_base, rights_inheriting, fdflags, fd_out) -> errno
+ *
+ * Memory layout (scratch area 0-1023):
+ *   [0..3]   = iovec.buf (ptr to data)
+ *   [4..7]   = iovec.buf_len
+ *   [8..11]  = nwritten (output from fd_write)
+ *   [12..15] = opened fd (output from path_open)
+ */
+function emitWasiWriteFileSyncHelper(ctx: CodegenContext): void {
+  // params: pathPtr(0), pathLen(1), dataPtr(2), dataLen(3)
+  // locals: openedFd(4)
+  const funcTypeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }, { kind: "i32" }, { kind: "i32" }], []);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__wasi_write_file_sync", funcIdx);
+
+  const body: Instr[] = [
+    // 1. Call path_open to open the file for writing
+    //    path_open(dirfd=3, dirflags=0, path, path_len,
+    //              oflags=O_CREAT|O_TRUNC(=9), rights_base=FD_WRITE(=64),
+    //              rights_inheriting=0, fdflags=0, fd_out=12)
+
+    { op: "i32.const", value: 3 } as Instr, // dirfd = 3 (first preopen)
+    { op: "i32.const", value: 0 } as Instr, // dirflags = 0
+    { op: "local.get", index: 0 } as Instr, // path ptr
+    { op: "local.get", index: 1 } as Instr, // path len
+    { op: "i32.const", value: 9 } as Instr, // oflags = O_CREAT(1) | O_TRUNC(8) = 9
+    { op: "i64.const", value: 64n } as unknown as Instr, // rights_base = RIGHT_FD_WRITE(64)
+    { op: "i64.const", value: 0n } as unknown as Instr, // rights_inheriting = 0
+    { op: "i32.const", value: 0 } as Instr, // fdflags = 0
+    { op: "i32.const", value: 12 } as Instr, // fd_out ptr at memory[12]
+    { op: "call", funcIdx: ctx.wasiPathOpenIdx } as Instr,
+    { op: "drop" } as Instr, // drop errno
+
+    // 2. Load the opened fd from memory[12]
+    { op: "i32.const", value: 12 } as Instr,
+    { op: "i32.load", align: 2, offset: 0 } as Instr,
+    { op: "local.set", index: 4 } as Instr, // store in local openedFd
+
+    // 3. Set up iovec for fd_write: iovec at memory[0]
+    //    iovec.buf = dataPtr, iovec.buf_len = dataLen
+    { op: "i32.const", value: 0 } as Instr,
+    { op: "local.get", index: 2 } as Instr, // dataPtr
+    { op: "i32.store", align: 2, offset: 0 } as Instr,
+    { op: "i32.const", value: 4 } as Instr,
+    { op: "local.get", index: 3 } as Instr, // dataLen
+    { op: "i32.store", align: 2, offset: 0 } as Instr,
+
+    // 4. Call fd_write(openedFd, iovs=0, iovs_len=1, nwritten=8)
+    { op: "local.get", index: 4 } as Instr, // fd = openedFd
+    { op: "i32.const", value: 0 } as Instr, // iovs pointer
+    { op: "i32.const", value: 1 } as Instr, // iovs_len = 1
+    { op: "i32.const", value: 8 } as Instr, // nwritten pointer
+    { op: "call", funcIdx: ctx.wasiFdWriteIdx } as Instr,
+    { op: "drop" } as Instr, // drop errno
+
+    // 5. Call fd_close(openedFd)
+    { op: "local.get", index: 4 } as Instr, // fd = openedFd
+    { op: "call", funcIdx: ctx.wasiFdCloseIdx } as Instr,
+    { op: "drop" } as Instr, // drop errno
+  ];
+
+  ctx.mod.functions.push({
+    name: "__wasi_write_file_sync",
+    typeIdx: funcTypeIdx,
+    locals: [{ name: "openedFd", type: { kind: "i32" } }],
     body,
     exported: false,
   });
@@ -2257,7 +2399,8 @@ function collectPrimitiveMethodImports(ctx: CodegenContext, sourceFile: ts.Sourc
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
-  if (needed.has("string_compare")) {
+  if (needed.has("string_compare") && !ctx.nativeStrings) {
+    // In native strings mode, __str_compare Wasm helper handles this — no host import needed
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
@@ -2498,7 +2641,12 @@ export function addStringImports(ctx: CodegenContext): void {
         exp.desc.index += delta;
       }
     }
+    // Track ALL instruction arrays (top-level AND nested) to prevent
+    // double-shifting when fctx.body is a nested block reachable from savedBodies (#1109).
+    const shifted = new Set<Instr[]>();
     function shiftFuncIndices(instrs: Instr[]): void {
+      if (shifted.has(instrs)) return;
+      shifted.add(instrs);
       for (const instr of instrs) {
         if ((instr.op === "call" || instr.op === "return_call") && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
@@ -2506,64 +2654,35 @@ export function addStringImports(ctx: CodegenContext): void {
         if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
         }
-        if ("body" in instr && Array.isArray((instr as any).body)) {
-          shiftFuncIndices((instr as any).body);
-        }
-        if ("then" in instr && Array.isArray((instr as any).then)) {
-          shiftFuncIndices((instr as any).then);
-        }
-        if ("else" in instr && Array.isArray((instr as any).else)) {
-          shiftFuncIndices((instr as any).else);
-        }
-        if ("catches" in instr && Array.isArray((instr as any).catches)) {
-          for (const c of (instr as any).catches) {
+        const a = instr as any;
+        if (a.body && Array.isArray(a.body)) shiftFuncIndices(a.body);
+        if (a.then && Array.isArray(a.then)) shiftFuncIndices(a.then);
+        if (a.else && Array.isArray(a.else)) shiftFuncIndices(a.else);
+        if (a.catches && Array.isArray(a.catches)) {
+          for (const c of a.catches) {
             if (Array.isArray(c.body)) shiftFuncIndices(c.body);
           }
         }
-        if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
-          shiftFuncIndices((instr as any).catchAll);
-        }
+        if (a.catchAll && Array.isArray(a.catchAll)) shiftFuncIndices(a.catchAll);
       }
     }
-    // Use a single Set to track shifted bodies and prevent double-shifting
-    const shifted = new Set<Instr[]>();
     for (const func of ctx.mod.functions) {
-      if (!shifted.has(func.body)) {
-        shiftFuncIndices(func.body);
-        shifted.add(func.body);
-      }
+      shiftFuncIndices(func.body);
     }
     if (ctx.currentFunc) {
-      if (!shifted.has(ctx.currentFunc.body)) {
-        shiftFuncIndices(ctx.currentFunc.body);
-        shifted.add(ctx.currentFunc.body);
-      }
+      shiftFuncIndices(ctx.currentFunc.body);
       for (const sb of ctx.currentFunc.savedBodies) {
-        if (!shifted.has(sb)) {
-          shiftFuncIndices(sb);
-          shifted.add(sb);
-        }
+        shiftFuncIndices(sb);
       }
     }
-    // Shift parent function contexts on the funcStack (nested closure compilation)
     for (const parentFctx of ctx.funcStack) {
-      if (!shifted.has(parentFctx.body)) {
-        shiftFuncIndices(parentFctx.body);
-        shifted.add(parentFctx.body);
-      }
+      shiftFuncIndices(parentFctx.body);
       for (const sb of parentFctx.savedBodies) {
-        if (!shifted.has(sb)) {
-          shiftFuncIndices(sb);
-          shifted.add(sb);
-        }
+        shiftFuncIndices(sb);
       }
     }
-    // Shift parent function bodies on parentBodiesStack (same shifted set)
     for (const pb of ctx.parentBodiesStack) {
-      if (!shifted.has(pb)) {
-        shiftFuncIndices(pb);
-        shifted.add(pb);
-      }
+      shiftFuncIndices(pb);
     }
     for (const elem of ctx.mod.elements) {
       if (elem.funcIndices) {
@@ -2934,11 +3053,48 @@ function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
     }
   }
 
-  // Register __toUint32 host import: (f64) → i32
-  if (needsToUint32 && !ctx.funcMap.has("__toUint32")) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+  // ToUint32: defer until after all imports are added; see emitToUint32Helper.
+  if (needsToUint32) {
+    ctx.needsToUint32 = true;
   }
+}
+
+/**
+ * Emit the __toUint32 Wasm helper function. Must be called AFTER all imports
+ * that are added directly via addImport (bypassing ensureLateImport's shift
+ * mechanism) have been registered, and BEFORE any user function body that
+ * calls Math.clz32 or Math.imul is compiled. Emitting earlier leaves a stale
+ * funcMap entry because addImport does not shift defined-function indices.
+ *
+ * Implements ES §7.1.7: NaN/±Infinity → 0, otherwise trunc(x) modulo 2^32.
+ */
+export function emitToUint32Helper(ctx: CodegenContext): void {
+  if (!ctx.needsToUint32) return;
+  if (ctx.funcMap.has("__toUint32")) return;
+  const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__toUint32", funcIdx);
+  const body: Instr[] = [
+    { op: "local.get", index: 0 },
+    { op: "local.get", index: 0 },
+    { op: "f64.ne" },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+    { op: "local.get", index: 0 },
+    { op: "f64.abs" },
+    { op: "f64.const", value: Infinity },
+    { op: "f64.eq" },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+    { op: "local.get", index: 0 },
+    { op: "i64.trunc_sat_f64_s" } as unknown as Instr,
+    { op: "i32.wrap_i64" },
+  ];
+  ctx.mod.functions.push({
+    name: "__toUint32",
+    typeIdx,
+    locals: [],
+    body,
+    exported: false,
+  });
 }
 
 /** Scan source for parseInt / parseFloat / Number() / unary + on strings and register host imports */
@@ -3753,8 +3909,12 @@ export function addUnionImports(ctx: CodegenContext): void {
         exp.desc.index += delta;
       }
     }
-    // Update call instructions in already-compiled function bodies (recursive)
+    // Track ALL instruction arrays (top-level AND nested) to prevent
+    // double-shifting when fctx.body is a nested block reachable from savedBodies (#1109).
+    const shifted = new Set<Instr[]>();
     function shiftFuncIndices(instrs: Instr[]): void {
+      if (shifted.has(instrs)) return;
+      shifted.add(instrs);
       for (const instr of instrs) {
         if ((instr.op === "call" || instr.op === "return_call") && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
@@ -3762,84 +3922,38 @@ export function addUnionImports(ctx: CodegenContext): void {
         if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
         }
-        // Recurse into nested instruction arrays
-        if ("body" in instr && Array.isArray((instr as any).body)) {
-          shiftFuncIndices((instr as any).body);
-        }
-        if ("then" in instr && Array.isArray((instr as any).then)) {
-          shiftFuncIndices((instr as any).then);
-        }
-        if ("else" in instr && Array.isArray((instr as any).else)) {
-          shiftFuncIndices((instr as any).else);
-        }
-        if ("catches" in instr && Array.isArray((instr as any).catches)) {
-          for (const c of (instr as any).catches) {
+        const a = instr as any;
+        if (a.body && Array.isArray(a.body)) shiftFuncIndices(a.body);
+        if (a.then && Array.isArray(a.then)) shiftFuncIndices(a.then);
+        if (a.else && Array.isArray(a.else)) shiftFuncIndices(a.else);
+        if (a.catches && Array.isArray(a.catches)) {
+          for (const c of a.catches) {
             if (Array.isArray(c.body)) shiftFuncIndices(c.body);
           }
         }
-        if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
-          shiftFuncIndices((instr as any).catchAll);
-        }
+        if (a.catchAll && Array.isArray(a.catchAll)) shiftFuncIndices(a.catchAll);
       }
     }
-    // Track which body arrays have been shifted to prevent double-shifting.
-    // Using a single Set from the start avoids reliance on reference equality
-    // (e.g. sb === curBody, ctx.mod.functions.some(f => f.body === sb)) which
-    // can miss shared references and cause double-shifts.
-    const shifted = new Set<Instr[]>();
     for (const func of ctx.mod.functions) {
-      if (!shifted.has(func.body)) {
-        shiftFuncIndices(func.body);
-        shifted.add(func.body);
-      }
+      shiftFuncIndices(func.body);
     }
-    // Also shift indices in the currently-being-compiled function body,
-    // which may differ from func.body (fctx.body starts as [] and is
-    // assigned to func.body only after compilation completes).
     if (ctx.currentFunc) {
-      if (!shifted.has(ctx.currentFunc.body)) {
-        shiftFuncIndices(ctx.currentFunc.body);
-        shifted.add(ctx.currentFunc.body);
-      }
-      // Also shift any saved body arrays (from savedBody swap pattern).
+      shiftFuncIndices(ctx.currentFunc.body);
       for (const sb of ctx.currentFunc.savedBodies) {
-        if (shifted.has(sb)) continue;
         shiftFuncIndices(sb);
-        shifted.add(sb);
       }
     }
-    // Shift parent function contexts saved on the funcStack during nested
-    // closure compilation. These are in-flight function bodies that are NOT
-    // in ctx.mod.functions and NOT ctx.currentFunc, so they would otherwise
-    // be missed by the index shift.
     for (const parentFctx of ctx.funcStack) {
-      if (!shifted.has(parentFctx.body)) {
-        shiftFuncIndices(parentFctx.body);
-        shifted.add(parentFctx.body);
-      }
+      shiftFuncIndices(parentFctx.body);
       for (const sb of parentFctx.savedBodies) {
-        if (!shifted.has(sb)) {
-          shiftFuncIndices(sb);
-          shifted.add(sb);
-        }
+        shiftFuncIndices(sb);
       }
     }
-    // Shift parent function bodies still being compiled. When a closure
-    // triggers addUnionImports, the enclosing function's body is neither
-    // in mod.functions nor ctx.currentFunc.
-    // Use the same `shifted` set to avoid double-shifting bodies already
-    // handled by the mod.functions, currentFunc, or funcStack loops above.
     for (const pb of ctx.parentBodiesStack) {
-      if (!shifted.has(pb)) {
-        shiftFuncIndices(pb);
-        shifted.add(pb);
-      }
+      shiftFuncIndices(pb);
     }
-    // Shift the pending init body (module-level init function compiled before
-    // top-level functions, but not yet added to ctx.mod.functions).
-    if (ctx.pendingInitBody && !shifted.has(ctx.pendingInitBody)) {
+    if (ctx.pendingInitBody) {
       shiftFuncIndices(ctx.pendingInitBody);
-      shifted.add(ctx.pendingInitBody);
     }
     // Update table elements
     for (const elem of ctx.mod.elements) {
@@ -4002,7 +4116,17 @@ export function isTupleType(type: ts.Type): boolean {
 export function getTupleElementTypes(ctx: CodegenContext, tsType: ts.Type): ValType[] {
   const typeRef = tsType as ts.TypeReference;
   const typeArgs = ctx.checker.getTypeArguments(typeRef);
-  return typeArgs.map((t) => resolveWasmType(ctx, t));
+  return typeArgs.map((t) => {
+    // In tuple element position, `undefined` must not map to i32: i32 can't
+    // distinguish "missing" from 0, which breaks destructuring default checks
+    // on hole/undefined elements (e.g. `[x=23] = [,]` — the param default is a
+    // hole-array tuple; the sNaN sentinel gets truncated to i32 0 and the inner
+    // default `x=23` never fires). Promote to f64 so the sNaN sentinel survives.
+    if ((t.flags & ts.TypeFlags.Undefined) !== 0) {
+      return { kind: "f64" };
+    }
+    return resolveWasmType(ctx, t);
+  });
 }
 
 /**
@@ -4665,8 +4789,10 @@ function collectExternDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFil
     // can pass arguments correctly (missing args get padded with default values).
     // These are generated by preprocessImports for named imports from unresolved
     // external modules, e.g. `import { foo } from "./x.js"` → `declare function foo(a0, a1): any`.
+    // In WASI mode, skip node:fs functions — they're handled by WASI syscall helpers.
     if (ts.isFunctionDeclaration(stmt) && stmt.name && hasDeclareModifier(stmt) && !stmt.body) {
       const name = stmt.name.text;
+      if (ctx.wasi && ctx.wasiNodeFsFuncs.has(name)) continue;
       if (!ctx.funcMap.has(name)) {
         const sig = ctx.checker.getSignatureFromDeclaration(stmt);
         if (sig) {
@@ -5254,6 +5380,46 @@ function collectDeclaredGlobals(ctx: CodegenContext, libFile: ts.SourceFile, use
     const funcIdx = ctx.funcMap.get(importName);
     if (funcIdx !== undefined) {
       ctx.declaredGlobals.set(name, { type: { kind: "externref" }, funcIdx });
+    }
+  }
+}
+
+/**
+ * Register Node.js builtin module imports as externref host imports (#1044).
+ *
+ * For each detected `import * as X from 'node:http'` (or named/default import),
+ * we register a function import `__node_<module>` that returns the module object
+ * as externref. The local binding name is added to `declaredGlobals` so that
+ * identifier resolution in expressions picks it up via the existing extern path.
+ *
+ * In WASI mode, emit a compile error instead (Node builtins not available).
+ */
+function registerNodeBuiltinImports(ctx: CodegenContext, builtins: NodeBuiltinImport[]): void {
+  for (const builtin of builtins) {
+    if (ctx.wasi) {
+      ctx.errors.push({
+        message: `Node builtin module '${builtin.moduleName}' is not available in WASI target. Use compile-time syscall path for node:fs (#1035).`,
+        line: 1,
+        column: 1,
+        severity: "error",
+      });
+      continue;
+    }
+
+    // Track this module as a Node builtin so the import manifest/runtime can resolve it
+    ctx.mod.nodeBuiltinModules.add(builtin.moduleName);
+
+    const importName = `__node_${builtin.moduleName}`;
+    // Skip if already registered (e.g. duplicate imports)
+    if (ctx.funcMap.has(importName)) continue;
+
+    const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+    addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx !== undefined) {
+      // Register as a declared global so identifier resolution picks it up
+      ctx.declaredGlobals.set(builtin.localName, { type: { kind: "externref" }, funcIdx });
+      ctx.nodeBuiltinGlobals.set(builtin.localName, funcIdx);
     }
   }
 }

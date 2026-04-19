@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
+import ts from "typescript";
 import {
   analyzeFiles,
   analyzeMultiSource,
@@ -44,6 +45,29 @@ function isHardTypeScriptDiagnostic(diag: { category: number; code: number }): b
 }
 
 /**
+ * Detect named imports from node:fs / fs before import preprocessing strips them.
+ * Returns a Set of function names imported from the fs module.
+ */
+function detectNodeFsImports(source: string): Set<string> {
+  const result = new Set<string>();
+  const sf = ts.createSourceFile("__detect_fs__.ts", source, ts.ScriptTarget.Latest, true);
+  for (const stmt of sf.statements) {
+    if (ts.isImportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
+      const mod = stmt.moduleSpecifier.text;
+      if (mod === "node:fs" || mod === "fs") {
+        const clause = stmt.importClause;
+        if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+          for (const spec of clause.namedBindings.elements) {
+            result.add(spec.name.text);
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * Orchestrates the full compilation pipeline:
  * TS Source → tsc Parser+Checker → Codegen → Binary + WAT
  */
@@ -64,7 +88,12 @@ export function compileSource(
   // Step 0: Pre-process imports (replace import * as X with declare namespace)
   // #1054: rewrite eval("...super()...") to a throwing IIFE so early-error
   // rules for PerformEval fire at runtime.
-  const processedSource = preprocessImports(rewriteEvalSuperCall(source));
+  //
+  // Before preprocessing strips import declarations, detect node:fs imports
+  // for WASI mode (preprocessing replaces them with declare stubs).
+  const wasiNodeFsFuncs = options.target === "wasi" ? detectNodeFsImports(source) : undefined;
+  const preprocessed = preprocessImports(rewriteEvalSuperCall(source));
+  const processedSource = preprocessed.source;
 
   // Step 1: Parse and type-check
   let isJsMode = options.allowJs === true || (options.fileName?.endsWith(".js") ?? false);
@@ -250,6 +279,8 @@ export function compileSource(
         nativeStrings: options.nativeStrings,
         wasi: options.target === "wasi",
         experimentalIR: options.experimentalIR,
+        nodeBuiltins: preprocessed.nodeBuiltins,
+        wasiNodeFsFuncs,
       });
       mod = result.module;
       // Propagate codegen errors with source locations
@@ -428,10 +459,17 @@ export function compileMultiSource(
 
   const multiAst = analyzeMultiSource(files, entryFile, undefined, {
     allowJs: options.allowJs,
+    skipSemanticDiagnostics: options.skipSemanticDiagnostics,
   });
 
+  // When allowJs is set (e.g. compiling npm packages like lodash-es), only report
+  // diagnostics from the entry file — dependency files may have TS errors we can't
+  // control (missing globals, JSDoc param issues, etc.).
+  const isEntryDiag = (diag: { file?: { fileName: string } }) =>
+    !options.allowJs || !diag.file || diag.file === multiAst.entryFile;
+
   for (const diag of multiAst.diagnostics) {
-    if (diag.category === 1) {
+    if (diag.category === 1 && isEntryDiag(diag)) {
       const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0) : { line: 0, character: 0 };
       errors.push({
         message: typeof diag.messageText === "string" ? diag.messageText : diag.messageText.messageText,
@@ -443,10 +481,16 @@ export function compileMultiSource(
     }
   }
 
-  const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
-    (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
-  );
-  const hasHardTypeErrors = multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
+  // When allowJs is set, don't bail on TS diagnostics — JS packages with JSDoc
+  // annotations produce many false-positive errors (TS1016 optional params,
+  // TS2322 type mismatches, TS8017 signature-in-JS, etc.). Codegen handles it fine.
+  const hasSyntaxErrors =
+    !options.allowJs &&
+    multiAst.syntacticDiagnostics.some(
+      (d) => d.category === 1 && isEntryDiag(d) && multiAst.sourceFiles.some((sf) => d.file === sf),
+    );
+  const hasHardTypeErrors =
+    !options.allowJs && multiAst.diagnostics.some((d) => isHardTypeScriptDiagnostic(d) && isEntryDiag(d));
 
   if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
