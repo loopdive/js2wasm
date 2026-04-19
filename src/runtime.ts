@@ -1343,9 +1343,26 @@ function resolveImport(
           // Build a JS-side harness that mirrors the wasm-compiled preamble.
           // State (__fail, __assert_count) is local to this eval — if an
           // assertion fails, we throw so the outer wasm try/catch observes it.
+          //
+          // Test262Error extends Error so `String(e)` and `e.message` yield a
+          // readable string when the throw propagates back through the wasm
+          // boundary; a plain constructor serializes to "[object Object]".
+          // We also provide `assert` as an object with dot-notation methods,
+          // so any harness call that slips through wrapTest's rewrites (e.g.
+          // inside backslash-continued string literals, template literals, or
+          // nested eval) still resolves instead of raising ReferenceError.
           const shim = `\
 var __fail = 0, __assert_count = 1;
-function Test262Error(msg) { this.message = msg; }
+function Test262Error(msg) {
+  var e = new Error(msg || '');
+  e.name = 'Test262Error';
+  if (Object.setPrototypeOf) Object.setPrototypeOf(e, Test262Error.prototype);
+  return e;
+}
+Test262Error.prototype = Object.create(Error.prototype);
+Test262Error.prototype.constructor = Test262Error;
+Test262Error.prototype.name = 'Test262Error';
+Test262Error.prototype.toString = function() { return 'Test262Error: ' + (this.message || ''); };
 function isSameValue(a, b) {
   if (a === b) { if (a !== 0) return true; return 1/a === 1/b; }
   return a !== a && b !== b;
@@ -1409,6 +1426,20 @@ function $DONE(err) {
   __assert_count++;
   if (err) { if (!__fail) __fail = __assert_count; }
 }
+var assert = function(v, msg) {
+  __assert_count++;
+  if (!v) { if (!__fail) __fail = __assert_count; }
+};
+assert.sameValue = assert_sameValue;
+assert.notSameValue = assert_notSameValue;
+assert.throws = function(ErrorType, fn) {
+  __assert_count++;
+  try { fn(); } catch(e) { return; }
+  if (!__fail) __fail = __assert_count;
+};
+assert.throwsAsync = assert.throws;
+assert.compareArray = assert_compareArray;
+assert._isSameValue = isSameValue;
 `;
           const wrapped =
             shim + jsSrc + `;\nif (__fail) throw new Test262Error('eval harness assertion ' + __fail + ' failed');`;
