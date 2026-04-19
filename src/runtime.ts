@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
+import { compileSource } from "./compiler.js";
 import type { ImportDescriptor, ImportIntent, ImportPolicy } from "./index.js";
-import { wrapWithContainment } from "./runtime-containment.js";
 
 /**
  * Sidecar property store for WasmGC structs.
@@ -1098,6 +1098,34 @@ export const jsString = {
   charCodeAt: (s: string, i: number): number => s.charCodeAt(i),
 };
 
+const JS_STRINGS_NATIVE_BUILTIN = true;
+
+/** Convert a WasmGC vec struct (or JS array) to a plain JS array.
+ *  Used by array method host imports that need a real JS array. */
+function _toJsArray(arr: any, exports: Record<string, Function> | undefined): any[] {
+  if (arr == null) return [];
+  if (Array.isArray(arr)) return arr;
+  if (exports) {
+    const vecLen = exports.__vec_len;
+    const vecGet = exports.__vec_get;
+    if (typeof vecLen === "function" && typeof vecGet === "function") {
+      try {
+        const len = vecLen(arr) as number;
+        if (typeof len === "number" && len >= 0) {
+          const result: any[] = new Array(len);
+          for (let i = 0; i < len; i++) {
+            result[i] = vecGet(arr, i);
+          }
+          return result;
+        }
+      } catch {
+        // Not a vec — fall through
+      }
+    }
+  }
+  return [arr]; // Fallback: wrap single value
+}
+
 function resolveImport(
   intent: ImportIntent,
   deps?: Record<string, any>,
@@ -1584,8 +1612,6 @@ function resolveImport(
         };
       // Object.keys/values/entries host imports — handle WasmGC structs via
       // exported getters so opaque struct fields are visible at runtime.
-      // Emitted by compileObjectKeysOrValues when the argument is not a
-      // known struct type (e.g. any, externref, spread result).
       if (name === "__object_keys")
         return (obj: any) => {
           if (obj == null) return [];
@@ -2148,6 +2174,59 @@ function resolveImport(
           mapFn != null ? Array.from(iterable, mapFn) : Array.from(iterable);
       // Array.of(...items) — creates array from arguments (#965)
       if (name === "__array_of") return (items: any[]): any[] => items;
+      // Object.prototype methods for extern class dispatch (#799 WI2)
+      if (name === "Object_hasOwnProperty")
+        return (obj: any, key: any) => (Object.prototype.hasOwnProperty.call(obj, key) ? 1 : 0);
+      if (name === "Object_isPrototypeOf")
+        return (obj: any, candidate: any) => {
+          try {
+            return Object.prototype.isPrototypeOf.call(obj, candidate) ? 1 : 0;
+          } catch {
+            return 0;
+          }
+        };
+      if (name === "Object_propertyIsEnumerable")
+        return (obj: any, key: any) => {
+          if (_isWasmStruct(obj)) {
+            const descs = _wasmPropDescs.get(obj);
+            if (descs) {
+              const flags = descs.get(String(key));
+              if (flags !== undefined) return flags & _SC_ENUMERABLE ? 1 : 0;
+            }
+            const sc = _wasmStructProps.get(obj);
+            if (sc && String(key) in sc) return 1;
+            // #1047 — registered class prototype: only allowlisted methods
+            const protoMethods = _prototypeMethodNames.get(obj);
+            if (protoMethods !== undefined) {
+              return protoMethods.includes(String(key)) ? 1 : 0;
+            }
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+            return fieldNames.includes(String(key)) ? 1 : 0;
+          }
+          return Object.prototype.propertyIsEnumerable.call(obj, key) ? 1 : 0;
+        };
+      if (name === "Object_toString")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) return "[object Object]";
+          return Object.prototype.toString.call(obj);
+        };
+      if (name === "Object_valueOf")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) {
+            const prim = _toPrimitive(obj, "default", callbackState);
+            return prim === undefined ? obj : prim;
+          }
+          return Object.prototype.valueOf.call(obj);
+        };
+      if (name === "Object_toLocaleString")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) {
+            const prim = _toPrimitive(obj, "string", callbackState);
+            return prim === undefined ? "[object Object]" : String(prim);
+          }
+          return Object.prototype.toLocaleString.call(obj);
+        };
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
       // hasOwnProperty runtime check for externref/any receivers
       if (name === "__hasOwnProperty")
@@ -2763,6 +2842,21 @@ function resolveImport(
           }
           return jsArr.concat(...args);
         };
+      // Array.prototype.flat(depth?) — flatten nested arrays (#1136)
+      // Converts WasmGC vec to JS array, then calls native flat()
+      if (name === "__array_flat")
+        return (arr: any, depth: any) => {
+          const exports = callbackState?.getExports();
+          const jsArr = _toJsArray(arr, exports);
+          return jsArr.flat(depth === undefined ? undefined : depth);
+        };
+      // Array.prototype.flatMap(callback, thisArg?) — map then flatten (#1136)
+      if (name === "__array_flatMap")
+        return (arr: any, fn: Function, thisArg: any) => {
+          const exports = callbackState?.getExports();
+          const jsArr = _toJsArray(arr, exports);
+          return thisArg !== undefined ? jsArr.flatMap(fn as any, thisArg) : jsArr.flatMap(fn as any);
+        };
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
@@ -2810,7 +2904,9 @@ function resolveImport(
       if (name === "String_fromCodePoint") return (code: number) => String.fromCodePoint(code);
       // String comparison (lexicographic ordering)
       if (name === "string_compare") return (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-      // __toUint32 removed — compiled to Wasm helper function (#1094)
+      // ToUint32 for Math.clz32/imul — spec-correct conversion
+      // (x >>> 0) applies the ToUint32 abstract operation per ES spec
+      if (name === "__toUint32") return (x: number) => x >>> 0;
       // Native string marshaling (fast mode)
       if (name === "__str_extern_len") return (s: string) => s.length;
       if (name === "__str_from_mem") {
@@ -3012,6 +3108,197 @@ export function checkPolicy(manifest: ImportDescriptor[], policy: ImportPolicy):
   return violations;
 }
 
+/** Wrap an extern_class import function with DOM containment logic.
+ *  Restricts DOM access to the subtree rooted at `domRoot`. */
+function wrapWithContainment(
+  fn: Function,
+  intent: ImportIntent & { type: "extern_class" },
+  domRoot: Element | ShadowRoot,
+): Function {
+  const { className, action, member } = intent;
+
+  // Traversal properties that could escape containment
+  const traversalProps = new Set(["parentElement", "parentNode", "offsetParent"]);
+
+  // Dangerous properties — block entirely (return null)
+  const blockedProps = new Set(["ownerDocument", "baseURI", "getRootNode"]);
+
+  // Mutation methods that need containment check
+  const mutationMethods = new Set([
+    "appendChild",
+    "removeChild",
+    "insertBefore",
+    "replaceChild",
+    "remove",
+    "append",
+    "prepend",
+    "after",
+    "before",
+    "replaceWith",
+    "insertAdjacentElement",
+    "insertAdjacentHTML",
+    "insertAdjacentText",
+  ]);
+
+  // Helper: check if domRoot contains an element (duck-typed for mock objects)
+  function isContained(el: any): boolean {
+    if (el === domRoot) return true;
+    if (typeof (domRoot as any).contains === "function") {
+      return (domRoot as any).contains(el);
+    }
+    return true; // If domRoot doesn't support contains, pass through
+  }
+
+  // Helper: check if a value is a DOM node
+  function isNodeLike(v: any): boolean {
+    if (v == null || typeof v !== "object") return false;
+    // Prefer instanceof Node when available (browser environment)
+    if (typeof Node !== "undefined") return v instanceof Node;
+    // Fallback: check for nodeType (a number), the most reliable DOM indicator
+    return typeof v.nodeType === "number";
+  }
+
+  // For "new" action — constructor (e.g. new Document)
+  if (action === "new" && className === "Document") {
+    return () => domRoot;
+  }
+
+  // For get actions
+  if (action === "get" && member) {
+    if (blockedProps.has(member)) {
+      return (_self: any) => null;
+    }
+    if (traversalProps.has(member)) {
+      return (self: any) => {
+        const result = self[member];
+        if (result == null) return result;
+        if (isNodeLike(result) && !isContained(result)) return null;
+        return result;
+      };
+    }
+    // Safe property — containment check on self
+    return (self: any) => {
+      if (self !== domRoot && isNodeLike(self) && !isContained(self)) {
+        throw new Error(`DOM containment violation: accessing "${member}" on element outside container`);
+      }
+      return self[member];
+    };
+  }
+
+  // For set actions
+  if (action === "set" && member) {
+    return (self: any, v: any) => {
+      if (self !== domRoot && isNodeLike(self) && !isContained(self)) {
+        throw new Error(`DOM containment violation: setting "${member}" on element outside container`);
+      }
+      self[member] = v;
+    };
+  }
+
+  // For method actions
+  if (action === "method" && member) {
+    // Document query methods — redirect to domRoot
+    if (
+      (className === "Document" || className === "document") &&
+      (member === "querySelector" ||
+        member === "querySelectorAll" ||
+        member === "getElementById" ||
+        member === "getElementsByClassName" ||
+        member === "getElementsByTagName")
+    ) {
+      return (_self: any, ...args: any[]) => (domRoot as any)[member](...args);
+    }
+    // createElement is safe — just creates a detached element
+    if ((className === "Document" || className === "document") && member === "createElement") {
+      return fn;
+    }
+
+    if (mutationMethods.has(member)) {
+      return (self: any, ...args: any[]) => {
+        if (self !== domRoot && isNodeLike(self) && !isContained(self)) {
+          throw new Error(`DOM containment violation: calling "${member}" on element outside container`);
+        }
+        return self[member](...args);
+      };
+    }
+
+    // Other methods — containment check on self
+    return (self: any, ...args: any[]) => {
+      if (self !== domRoot && isNodeLike(self) && !isContained(self)) {
+        throw new Error(`DOM containment violation: calling "${member}" on element outside container`);
+      }
+      return self[member](...args);
+    };
+  }
+
+  // Default: return original
+  return fn;
+}
+
+/**
+ * Build a WASI polyfill for running WASI-compiled modules in JS environments.
+ * Routes fd_write(fd=1) to console.log, fd_write(fd=2) to console.error,
+ * and proc_exit to process.exit (Node) or throw (browser).
+ *
+ * Usage:
+ *   const wasi = buildWasiPolyfill();
+ *   const { instance } = await WebAssembly.instantiate(binary, { wasi_snapshot_preview1: wasi });
+ *   wasi.setMemory(instance.exports.memory as WebAssembly.Memory);
+ *   (instance.exports._start as Function)();
+ */
+export function buildWasiPolyfill(): {
+  fd_write: (fd: number, iovs: number, iovs_len: number, nwritten: number) => number;
+  proc_exit: (code: number) => void;
+  setMemory: (mem: WebAssembly.Memory) => void;
+} {
+  let memory: WebAssembly.Memory | undefined;
+  // Partial line buffer per fd for data not ending in newline
+  const lineBuffers: Record<number, string> = {};
+
+  return {
+    setMemory(mem: WebAssembly.Memory) {
+      memory = mem;
+    },
+
+    fd_write(fd: number, iovs: number, iovs_len: number, nwritten: number): number {
+      if (!memory) return -1; // EBADF-ish: memory not set
+
+      const view = new DataView(memory.buffer);
+      let totalWritten = 0;
+
+      for (let i = 0; i < iovs_len; i++) {
+        const ptr = view.getUint32(iovs + i * 8, true);
+        const len = view.getUint32(iovs + i * 8 + 4, true);
+        const bytes = new Uint8Array(memory.buffer, ptr, len);
+        const text = new TextDecoder().decode(bytes);
+
+        // Buffer partial lines; flush on newline
+        const buf = (lineBuffers[fd] || "") + text;
+        const lines = buf.split("\n");
+        // Last element is the incomplete line (or "" if text ended with \n)
+        lineBuffers[fd] = lines.pop()!;
+        const writer = fd === 2 ? console.error : console.log;
+        for (const line of lines) {
+          writer(line);
+        }
+
+        totalWritten += len;
+      }
+
+      // Write total bytes written
+      view.setUint32(nwritten, totalWritten, true);
+      return 0; // __WASI_ERRNO_SUCCESS
+    },
+
+    proc_exit(code: number): void {
+      if (typeof process !== "undefined" && typeof process.exit === "function") {
+        process.exit(code);
+      }
+      throw new Error(`WASI proc_exit(${code})`);
+    },
+  };
+}
+
 /** Build the WebAssembly import object from a closed manifest */
 export function buildImports(
   manifest: ImportDescriptor[],
@@ -3105,69 +3392,89 @@ export function buildImports(
   return result;
 }
 
-// Instantiation helpers extracted to runtime-instantiate.ts (#1094)
-export { instantiateWasm, instantiateWasmStreaming, compileAndInstantiate } from "./runtime-instantiate.js";
+/** Instantiate a Wasm module, trying native wasm:js-string builtins first
+ *  (Chrome 130+, Firefox 135+), falling back to the JS polyfill.
+ *  Uses importedStringConstants to provide string literals as globals. */
+export async function instantiateWasm(
+  binary: ArrayBuffer | ArrayBufferView,
+  env: Record<string, Function>,
+  stringConstants?: Record<string, WebAssembly.Global>,
+): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
+  const sc = stringConstants ?? {};
+  const bytes = binary as BufferSource;
+  if (JS_STRINGS_NATIVE_BUILTIN) {
+    try {
+      const { instance } = await (WebAssembly.instantiate as Function)(
+        bytes,
+        { env, string_constants: sc },
+        { builtins: ["js-string"], importedStringConstants: "string_constants" },
+      );
+      return { instance, nativeBuiltins: true };
+    } catch {
+      // Fall through to the JS polyfill path.
+    }
+  }
+  const { instance } = await WebAssembly.instantiate(bytes, {
+    env,
+    "wasm:js-string": jsString,
+    string_constants: sc,
+  } as WebAssembly.Imports);
+  return { instance, nativeBuiltins: false };
+}
 
-/**
- * Build a WASI polyfill for running WASI-compiled modules in JS environments.
- * Routes fd_write(fd=1) to console.log, fd_write(fd=2) to console.error,
- * and proc_exit to process.exit (Node) or throw (browser).
- *
- * Usage:
- *   const wasi = buildWasiPolyfill();
- *   const { instance } = await WebAssembly.instantiate(binary, { wasi_snapshot_preview1: wasi });
- *   wasi.setMemory(instance.exports.memory as WebAssembly.Memory);
- *   (instance.exports._start as Function)();
- */
-export function buildWasiPolyfill(): {
-  fd_write: (fd: number, iovs: number, iovs_len: number, nwritten: number) => number;
-  proc_exit: (code: number) => void;
-  setMemory: (mem: WebAssembly.Memory) => void;
-} {
-  let memory: WebAssembly.Memory | undefined;
-  // Partial line buffer per fd for data not ending in newline
-  const lineBuffers: Record<number, string> = {};
+/** Instantiate a precompiled Wasm module from a Response/URL using streaming compilation
+ *  when available, falling back to byte instantiation if needed.
+ *  Shared runtime helpers stay outside the module-specific payload. */
+export async function instantiateWasmStreaming(
+  source: Response | Promise<Response> | RequestInfo | URL,
+  env: Record<string, Function>,
+  stringConstants?: Record<string, WebAssembly.Global>,
+): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
+  const sc = stringConstants ?? {};
+  const response = source instanceof Response ? source : source instanceof Promise ? await source : await fetch(source);
+  const byteFallback = response.clone();
 
-  return {
-    setMemory(mem: WebAssembly.Memory) {
-      memory = mem;
-    },
-
-    fd_write(fd: number, iovs: number, iovs_len: number, nwritten: number): number {
-      if (!memory) return -1; // EBADF-ish: memory not set
-
-      const view = new DataView(memory.buffer);
-      let totalWritten = 0;
-
-      for (let i = 0; i < iovs_len; i++) {
-        const ptr = view.getUint32(iovs + i * 8, true);
-        const len = view.getUint32(iovs + i * 8 + 4, true);
-        const bytes = new Uint8Array(memory.buffer, ptr, len);
-        const text = new TextDecoder().decode(bytes);
-
-        // Buffer partial lines; flush on newline
-        const buf = (lineBuffers[fd] || "") + text;
-        const lines = buf.split("\n");
-        // Last element is the incomplete line (or "" if text ended with \n)
-        lineBuffers[fd] = lines.pop()!;
-        const writer = fd === 2 ? console.error : console.log;
-        for (const line of lines) {
-          writer(line);
-        }
-
-        totalWritten += len;
+  if (typeof WebAssembly.instantiateStreaming === "function") {
+    if (JS_STRINGS_NATIVE_BUILTIN) {
+      try {
+        const { instance } = await (WebAssembly.instantiateStreaming as Function)(
+          response,
+          { env, string_constants: sc },
+          { builtins: ["js-string"], importedStringConstants: "string_constants" },
+        );
+        return { instance, nativeBuiltins: true };
+      } catch {
+        // Fall back to clone and try non-streaming below.
       }
-
-      // Write total bytes written
-      view.setUint32(nwritten, totalWritten, true);
-      return 0; // __WASI_ERRNO_SUCCESS
-    },
-
-    proc_exit(code: number): void {
-      if (typeof process !== "undefined" && typeof process.exit === "function") {
-        process.exit(code);
+    } else {
+      try {
+        const { instance } = await WebAssembly.instantiateStreaming(response, {
+          env,
+          "wasm:js-string": jsString,
+          string_constants: sc,
+        } as WebAssembly.Imports);
+        return { instance, nativeBuiltins: false };
+      } catch {
+        // Fall back to byte instantiation below.
       }
-      throw new Error(`WASI proc_exit(${code})`);
-    },
-  };
+    }
+  }
+
+  const bytes = new Uint8Array(await byteFallback.arrayBuffer());
+  return instantiateWasm(bytes, env, sc);
+}
+
+/** Compile TypeScript source and instantiate the Wasm module. */
+export async function compileAndInstantiate(source: string, deps?: Record<string, any>): Promise<WebAssembly.Exports> {
+  const result = compileSource(source);
+  if (!result.success) {
+    throw new Error(result.errors.map((e) => e.message).join("\n"));
+  }
+  const imports = buildImports(result.imports, deps, result.stringPool);
+  const binary = new Uint8Array(result.binary);
+  const { instance } = await instantiateWasm(binary, imports.env, imports.string_constants);
+  if (imports.setExports) {
+    imports.setExports(instance.exports as Record<string, Function>);
+  }
+  return instance.exports;
 }
