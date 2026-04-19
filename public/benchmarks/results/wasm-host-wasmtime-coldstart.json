@@ -1,20 +1,3 @@
-[
-  {
-    "name": "JS²",
-    "jsUs": 302.867834,
-    "wasmUs": 20.197042,
-    "label": "20.2 ms"
-  },
-  {
-    "name": "JS interpreter",
-    "jsUs": 302.867834,
-    "wasmUs": 20.591959,
-    "label": "20.6 ms"
-  },
-  {
-    "name": "JS engine",
-    "jsUs": 302.867834,
-    "wasmUs": 160.556333,
-    "label": "160.6 ms"
-  }
-]
+version https://git-lfs.github.com/spec/v1
+oid sha256:28321b4c92bd68775b87cfca5b9f9b90fa46296ee31da4a324f5167f3c336fa4
+size 323
