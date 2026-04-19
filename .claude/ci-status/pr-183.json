@@ -1,15 +1,15 @@
 {
   "pr": 183,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-1073-eval-scope-injection",
-  "head_sha": "865e13451a0411ea0cc2177656cbfa1a37e852ab",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615559725",
-  "timestamp": "2026-04-19T00:12:57Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "cb802062f15a6ac5788a1b27a18f649406cda537",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24615358148",
+  "timestamp": "2026-04-19T01:17:00Z",
+  "pass": 22696,
+  "fail": 15163,
+  "compile_error": 3941,
+  "snapshot_delta": 246,
+  "net_per_test": 246,
+  "regressions": 54,
+  "improvements": 300
 }
