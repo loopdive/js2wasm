@@ -1,0 +1,15 @@
+{
+  "pr": 224,
+  "conclusion": "failure",
+  "head_branch": "issue-1127-nested-rest-decode",
+  "head_sha": "deb74bcf874712f8f815536a4f584577955e3155",
+  "run_url": "https://github.com/loopdive/js2wasm-private/actions/runs/24613112314",
+  "timestamp": "2026-04-18T20:35:59Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
