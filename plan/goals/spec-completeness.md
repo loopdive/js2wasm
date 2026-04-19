@@ -84,15 +84,15 @@ pass rate goes from "good" to "excellent."
 | **945** | __vec_get: extern.convert_any fails on integer-typed array elements (780 CE) | 37 | done | high |
 | **965** | Prototype chain null access on static methods (71 tests) and broken Array methods (28 tests) | 38 | done | high |
 | **988** | FinalizationRegistry constructor unsupported in official-scope tests (23 CE) | 40 | done | low |
-| **1006** | Support eval via JS host import | 42 | review | medium |
+| **1006** | Support eval via JS host import | 42 | ready | medium |
 | **1020** | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | Backlog | backlog | medium |
 | **1028** | TypedArray.prototype.toLocaleString null/undefined in element toLocaleString path | 40 | done | medium |
 | **1037** | Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL) | 42 | done | medium |
 | **1047** | Instance fields leak onto prototype via _wrapForHost struct-field enumeration | 42 | done | high |
 | **1050** | annexB: Extension not observed when variable binding would produce early error | Backlog | in-progress | medium |
 | **1054** | Derived class indirect-eval supercall does not throw SyntaxError | 40 | done | medium |
-| **1073** | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | 42 | review | high |
-| **1094** | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | 42 | ready | high |
+| **1073** | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | 42 | ready | high |
+| **1094** | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | 42 | review | high |
 | **1100** | Wasm-native Proxy: meta-object protocol without JS host | Backlog | ready | medium |
 | **1101** | Wasm-native WeakRef and FinalizationRegistry via WasmGC weak references | Backlog | ready | low |
 | **1102** | Wasm-native eval: ahead-of-time compilation strategy for eval() and Function() | Backlog | ready | medium |

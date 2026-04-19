@@ -337,12 +337,14 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
 | #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | ready |
+| #1006 | Support eval via JS host import | medium | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
 | #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | ready |
 | #1045 | DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame) | high | ready |
 | #1058 | Compile the TypeScript compiler itself to Wasm — self-hosting stress test | high | ready |
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | ready |
+| #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | ready |
 | #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
 | #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | ready |
 | #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | ready |
@@ -350,7 +352,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | ready |
 | #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | ready |
-| #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | ready |
 | #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
 | #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | ready |
 | #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
@@ -378,8 +379,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #825 | Null dereference failures (2,295 runtime failures) | high | review |
 | #826 | Illegal cast failures (1,276 runtime failures) | high | review |
-| #1006 | Support eval via JS host import | medium | review |
-| #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | review |
+| #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | review |
 | #1117 | Expected TypeError but got wrong error type (136 tests) | medium | review |
 | #1123 | Verify landing page claims and code examples against current compiler behavior | high | review |
 
