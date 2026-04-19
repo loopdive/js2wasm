@@ -92,7 +92,7 @@ pass rate goes from "good" to "excellent."
 | **1050** | annexB: Extension not observed when variable binding would produce early error | Backlog | in-progress | medium |
 | **1054** | Derived class indirect-eval supercall does not throw SyntaxError | 40 | done | medium |
 | **1073** | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | 42 | ready | high |
-| **1094** | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | 42 | ready | high |
+| **1094** | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | 42 | review | high |
 | **1100** | Wasm-native Proxy: meta-object protocol without JS host | Backlog | ready | medium |
 | **1101** | Wasm-native WeakRef and FinalizationRegistry via WasmGC weak references | Backlog | ready | low |
 | **1102** | Wasm-native eval: ahead-of-time compilation strategy for eval() and Function() | Backlog | ready | medium |

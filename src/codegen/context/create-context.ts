@@ -100,6 +100,7 @@ export function createCodegenContext(
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
+    needsToUint32: false,
     classDeclarationMap: new Map(),
     wrapperNumberTypeIdx: -1,
     wrapperStringTypeIdx: -1,
