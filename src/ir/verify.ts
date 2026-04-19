@@ -134,6 +134,8 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       return [instr.lhs, instr.rhs];
     case "unary":
       return [instr.rand];
+    case "select":
+      return [instr.condition, instr.whenTrue, instr.whenFalse];
     case "raw.wasm":
       return [];
   }

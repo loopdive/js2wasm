@@ -148,7 +148,28 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   if (ts.isBinaryExpression(expr)) {
     return lowerBinary(expr, cx);
   }
+  if (ts.isConditionalExpression(expr)) {
+    return lowerConditional(expr, cx);
+  }
   throw new Error(`ir/from-ast: unsupported expression kind ${ts.SyntaxKind[expr.kind]} in ${cx.funcName}`);
+}
+
+function lowerConditional(expr: ts.ConditionalExpression, cx: LowerCtx): IrValueId {
+  const cond = lowerExpr(expr.condition, cx, { kind: "i32" });
+  const condType = cx.builder.typeOf(cond);
+  if (condType.kind !== "i32") {
+    throw new Error(`ir/from-ast: ternary condition must be bool in ${cx.funcName}`);
+  }
+  const whenTrue = lowerExpr(expr.whenTrue, cx, { kind: "f64" });
+  const whenFalse = lowerExpr(expr.whenFalse, cx, { kind: "f64" });
+  const ttype = cx.builder.typeOf(whenTrue);
+  const ftype = cx.builder.typeOf(whenFalse);
+  if (ttype.kind !== ftype.kind) {
+    throw new Error(
+      `ir/from-ast: ternary branches have different types (${ttype.kind} vs ${ftype.kind}) in ${cx.funcName}`,
+    );
+  }
+  return cx.builder.emitSelect(cond, whenTrue, whenFalse, ttype);
 }
 
 function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, cx: LowerCtx): IrValueId {
