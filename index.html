@@ -3090,6 +3090,17 @@ console.log(instance.exports.run()); // &rarr; 55</pre
 
       <hr class="divider" />
 
+      <section class="section-pad" id="dep-graph">
+        <h2>Dependency graph.</h2>
+        <p style="color: var(--fg-soft); max-width: 640px; margin-bottom: 24px">
+          Interactive view of issue dependencies. Hover a node to see details, click to highlight its prerequisite and
+          dependent chains.
+        </p>
+        <dep-graph src="./public/graph-data.json"></dep-graph>
+      </section>
+
+      <hr class="divider" />
+
       <section class="section-pad cta" id="roadmap">
         <h2>Project roadmap.</h2>
         <p>
@@ -3135,6 +3146,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
     <script type="module" src="./components/t262-charts.js"></script>
     <script type="module" src="./components/perf-benchmark-chart.js"></script>
     <script src="./components/trend-chart.js"></script>
+    <script src="./components/dep-graph.js"></script>
 
     <script>
       (function mountPuzzleBackground() {
