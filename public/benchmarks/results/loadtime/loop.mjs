@@ -1,9 +1,9 @@
-function bench_loop() {
+export function bench_loop() {
   let s = 0;
   for (let i = 0; i < 1000000; i++) s = s + i;
   return s;
 }
-function main() {
+export function main() {
   const host = document.body;
   host.innerHTML = "";
   host.style.cssText = "margin:0;background:#111;color:#ddd;" + "font-family:system-ui,sans-serif;overflow-y:auto";
@@ -11,12 +11,12 @@ function main() {
   addBenchCard(wrap, "Loop: sum 1..1M", "Tight numeric loop, no allocations", bench_loop);
   host.appendChild(wrap);
 }
-function el(tag, css) {
+export function el(tag, css) {
   const e = document.createElement(tag);
   e.style.cssText = css;
   return e;
 }
-function bcrd(title, desc, parent) {
+export function bcrd(title, desc, parent) {
   const card = el(
     "div",
     "padding:0.75rem;background:#1a1a35;" +
@@ -35,7 +35,7 @@ function bcrd(title, desc, parent) {
   parent.appendChild(card);
   return card;
 }
-function addBenchCard(wrap, title, desc, fn) {
+export function addBenchCard(wrap, title, desc, fn) {
   const card = bcrd(title, desc, wrap);
   card.addEventListener("click", () => {
     const t0 = performance.now();
