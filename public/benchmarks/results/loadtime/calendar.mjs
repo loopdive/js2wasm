@@ -188,7 +188,7 @@ function updFoot() {
     if (totalEl !== null) totalEl.textContent = "";
   }
 }
-function main() {
+export function main() {
   const host = document.body;
   host.innerHTML = "";
   host.style.cssText = "margin:0;background:#111;color:#ddd;" + "font-family:system-ui,sans-serif;overflow:hidden";
