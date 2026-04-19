@@ -50,7 +50,7 @@ import { emitNullCheckThrow, typeErrorThrowInstrs } from "../property-access.js"
 import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch, VOID_RESULT } from "../shared.js";
 import { compileStatement, hoistFunctionDeclarations } from "../statements.js";
-import { emitSetExtrasArgv } from "../statements/nested-declarations.js";
+import { emitSetExtrasArgv, ensureArgcGlobal } from "../statements/nested-declarations.js";
 import { compileNativeStringMethodCall, compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import {
   defaultValueInstrs,
@@ -92,6 +92,23 @@ function usesArguments(node: ts.Node): boolean {
     return false;
   }
   return ts.forEachChild(node, usesArguments) ?? false;
+}
+
+/**
+ * Emit `global.set __argc` with the actual call-site argument count.
+ * This communicates how many args were really passed so the callee can
+ * build a correctly-sized `arguments` object (per ES spec, arguments.length
+ * equals the number of args passed, not the number of formal params).
+ * Only emitted when the callee is known to use `arguments`.
+ */
+function emitSetArgc(ctx: CodegenContext, fctx: FunctionContext, actualArgCount: number, paramCount: number): void {
+  const argcGlobalIdx = ensureArgcGlobal(ctx);
+  // Set __argc = min(actualArgCount, paramCount) — the count of formal param
+  // slots actually filled. Overflow args are in __extras_argv and tracked by
+  // extrasLen, so totalLen = argc + extrasLen gives the correct arguments.length.
+  const argc = Math.min(actualArgCount, paramCount);
+  fctx.body.push({ op: "i32.const", value: argc });
+  fctx.body.push({ op: "global.set", index: argcGlobalIdx } as Instr);
 }
 
 /**
@@ -2863,6 +2880,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsEarly) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, staticParamCount);
+          }
           // Re-lookup funcIdx: argument compilation may trigger addUnionImports
           const finalStaticIdx = ctx.funcMap.get(fullName) ?? funcIdx;
           fctx.body.push({ op: "call", funcIdx: finalStaticIdx });
@@ -3231,6 +3252,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsStatic) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, paramCount);
+          }
           const finalMethodIdx = ctx.funcMap.get(fullName) ?? resolvedStaticIdx;
           fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
           const sig = ctx.checker.getResolvedSignature(expr);
@@ -3310,6 +3335,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsNg) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, ngParamCount);
+          }
           const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
           fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
           const elseInstrs = fctx.body;
@@ -3364,6 +3393,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
             pushDefaultValue(fctx, paramTypes[i]!, ctx);
           }
+        }
+        // Set __argc before the call so the callee knows the actual arg count
+        if (calleeReadsArgsNn) {
+          emitSetArgc(ctx, fctx, expr.arguments.length, methodParamCount);
         }
         // Re-lookup funcIdx: argument compilation may trigger addUnionImports
         const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -3446,6 +3479,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                 pushDefaultValue(fctx, paramTypes[i]!, ctx);
               }
             }
+            // Set __argc before the call so the callee knows the actual arg count
+            if (calleeReadsArgsSm) {
+              emitSetArgc(ctx, fctx, expr.arguments.length, smMethodParamCount);
+            }
             const finalStructMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
             fctx.body.push({ op: "call", funcIdx: finalStructMethodIdx });
             const elseInstrs = fctx.body;
@@ -3502,6 +3539,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             for (let i = Math.min(expr.arguments.length, nnMethodParamCount) + 1; i < paramTypes.length; i++) {
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
+          }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsNns) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, nnMethodParamCount);
           }
           // Re-lookup funcIdx: argument compilation may trigger addUnionImports
           const finalStructMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -4783,6 +4824,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         for (let i = totalPushed; i < paramTypes.length; i++) {
           pushDefaultValue(fctx, paramTypes[i]!, ctx);
         }
+      }
+      // Set __argc before the call so the callee knows the actual arg count
+      if (calleeReadsArgsDirect) {
+        emitSetArgc(ctx, fctx, expr.arguments.length, paramCount);
       }
     }
 
