@@ -1,20 +1,21 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
-import type { TypedAST, MultiTypedAST } from "../checker/index.js";
+import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import type { FuncTypeDef, Instr, ValType, WasmModule } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
-import type { LinearContext, LinearFuncContext, CollectionKind } from "./context.js";
+import type { CollectionKind, LinearContext, LinearFuncContext } from "./context.js";
 import { addLocal } from "./context.js";
-import { computeClassLayout } from "./layout.js";
 import type { ClassLayout } from "./layout.js";
+import { computeClassLayout } from "./layout.js";
 import {
-  addRuntime,
-  addUint8ArrayRuntime,
   addArrayRuntime,
-  addStringRuntime,
   addMapRuntime,
-  addSetRuntime,
   addNumericMapRuntime,
   addNumericSetRuntime,
+  addRuntime,
+  addSetRuntime,
+  addStringRuntime,
+  addUint8ArrayRuntime,
 } from "./runtime.js";
 
 /** Type tag for class instances in linear memory */

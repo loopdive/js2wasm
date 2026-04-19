@@ -1,0 +1,157 @@
+name: CI Status Feed
+
+# Writes a per-PR CI status file to .claude/ci-status/pr-{N}.json on main
+# whenever the Test262 Sharded workflow completes for a PR. Devs running in
+# worktrees watch this directory via a FileChanged hook and receive the
+# completion signal without needing SendMessage comms to stay alive.
+#
+# Why this exists: if the team-lead ↔ dev SendMessage channel breaks (OOM,
+# session restart, etc.), devs still receive authoritative "your PR passed/
+# failed CI" signals directly from the repo. This decouples CI notifications
+# from the comms layer.
+
+on:
+  workflow_run:
+    workflows: ["Test262 Sharded"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  write-status:
+    runs-on: ubuntu-latest
+    # Only act on runs triggered by pull_request — not main-push baseline refreshes
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download merged report artifact from triggering run
+        uses: actions/download-artifact@v4
+        with:
+          name: test262-merged-report
+          path: /tmp/merged-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Resolve PR number
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The workflow_run event provides pull_requests on its payload.
+          pr_num=$(jq -r '.workflow_run.pull_requests[0].number // empty' < "$GITHUB_EVENT_PATH")
+          if [ -z "$pr_num" ]; then
+            # Fallback: look up by head branch
+            head_branch="${{ github.event.workflow_run.head_branch }}"
+            pr_num=$(gh pr list --state all --head "$head_branch" --json number --jq '.[0].number' || echo "")
+          fi
+          if [ -z "$pr_num" ]; then
+            echo "No PR number resolvable — skipping status write"
+            echo "pr=" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr=$pr_num" >> "$GITHUB_OUTPUT"
+            echo "Resolved PR: $pr_num"
+          fi
+
+      - name: Write status file
+        if: ${{ steps.pr.outputs.pr != '' }}
+        env:
+          PR: ${{ steps.pr.outputs.pr }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -u
+          mkdir -p .claude/ci-status
+          out=".claude/ci-status/pr-$PR.json"
+
+          # Parse the merged report if present
+          pass=null
+          fail=null
+          ce=null
+          snapshot_delta=null
+          net_per_test=null
+          regressions=null
+          improvements=null
+          if [ -f /tmp/merged-report/test262-report-merged.json ]; then
+            pass=$(jq '.summary.pass' /tmp/merged-report/test262-report-merged.json)
+            fail=$(jq '.summary.fail' /tmp/merged-report/test262-report-merged.json)
+            ce=$(jq '.summary.compile_error' /tmp/merged-report/test262-report-merged.json)
+          fi
+
+          # snapshot_delta: absolute pass count vs the committed baseline on main.
+          # This is NOT a per-test regression count — it conflates the PR's real
+          # effect with any drift between the baseline file and actual main state.
+          # Kept for dashboards/history only. Do NOT use as a merge gate.
+          if [ "$pass" != "null" ] && [ -f benchmarks/results/test262-current.json ]; then
+            baseline=$(jq '.summary.pass' benchmarks/results/test262-current.json)
+            snapshot_delta=$((pass - baseline))
+          fi
+
+          # Regression / improvement counts from the regressions txt if present
+          if [ -f /tmp/merged-report/test262-regressions.txt ]; then
+            regressions=$(grep -oE 'Regressions \(pass → other\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            improvements=$(grep -oE 'Improvements \(other → pass\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+          fi
+
+          # net_per_test: improvements − regressions (per-test, from diff-test262.ts).
+          # This IS the merge gate — it measures what the PR actually did to the
+          # baseline it was tested against, not an absolute snapshot difference.
+          # See #1082 for why the distinction matters.
+          if [ "$improvements" != "null" ] && [ "$regressions" != "null" ]; then
+            net_per_test=$((improvements - regressions))
+          fi
+
+          # Write JSON using jq so nothing is broken by shell quoting
+          jq -n \
+            --arg pr "$PR" \
+            --arg conclusion "$CONCLUSION" \
+            --arg head_branch "$HEAD_BRANCH" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg run_url "$RUN_URL" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson pass "${pass:-null}" \
+            --argjson fail "${fail:-null}" \
+            --argjson ce "${ce:-null}" \
+            --argjson snapshot_delta "${snapshot_delta:-null}" \
+            --argjson net_per_test "${net_per_test:-null}" \
+            --argjson regressions "${regressions:-null}" \
+            --argjson improvements "${improvements:-null}" \
+            '{
+              pr: ($pr|tonumber),
+              conclusion: $conclusion,
+              head_branch: $head_branch,
+              head_sha: $head_sha,
+              run_url: $run_url,
+              timestamp: $timestamp,
+              pass: $pass,
+              fail: $fail,
+              compile_error: $ce,
+              snapshot_delta: $snapshot_delta,
+              net_per_test: $net_per_test,
+              regressions: $regressions,
+              improvements: $improvements
+            }' > "$out"
+          cat "$out"
+
+      - name: Commit and push
+        if: ${{ steps.pr.outputs.pr != '' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .claude/ci-status/pr-${{ steps.pr.outputs.pr }}.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(ci-status): feed PR #${{ steps.pr.outputs.pr }} result — ${{ github.event.workflow_run.conclusion }} [skip ci]"
+          git pull --rebase origin main || true
+          git push

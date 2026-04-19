@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Pure Wasm implementations of Math transcendental functions.
  *
@@ -10,9 +11,9 @@
  * with arithmetic range reduction. Precision target: within 4 ULP of
  * IEEE 754 for the common range.
  */
+import type { Instr, ValType } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
 import { addFuncType } from "./registry/types.js";
-import type { Instr, ValType } from "../ir/types.js";
 
 // ─── Instruction shorthand helpers ──────────────────────────────────
 const f64c = (v: number): Instr => ({ op: "f64.const", value: v }) as Instr;

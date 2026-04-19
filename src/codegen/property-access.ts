@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Property access and element access codegen.
  *
@@ -7,22 +8,24 @@
  */
 
 import ts from "typescript";
+import { isExternalDeclaredClass, isIteratorResultType, isStringType } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, ValType } from "../ir/types.js";
+import { emitBoundsCheckedArrayGet } from "./array-methods.js";
+import { popBody } from "./context/bodies.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
-import { popBody, pushBody } from "./context/bodies.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
+import { patchStructNewForAddedField } from "./expressions/late-imports.js";
+import { addUnionImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
-import { resolveWasmType, addUnionImports } from "./index.js";
-import { isStringType, isExternalDeclaredClass, isIteratorResultType } from "../checker/type-mapper.js";
-import type { Instr, ValType, FieldDef } from "../ir/types.js";
-import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import {
   coerceType,
   compileExpression,
   compileStringLiteral,
-  compileSuperPropertyAccess,
   compileSuperElementAccess,
+  compileSuperPropertyAccess,
   ensureLateImport,
   flushLateImportShifts,
   getCol,
@@ -31,8 +34,7 @@ import {
   resolveThisStructName,
   valTypesMatch,
 } from "./shared.js";
-import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
-import { patchStructNewForAddedField } from "./expressions/late-imports.js";
+import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 // Well-known Symbol IDs (inlined from literals.ts to avoid circular deps)
 const WELL_KNOWN_SYMBOLS: Record<string, number> = {
   iterator: 1,
@@ -47,11 +49,26 @@ const WELL_KNOWN_SYMBOLS: Record<string, number> = {
   split: 10,
   unscopables: 11,
   asyncIterator: 12,
+  dispose: 13,
+  asyncDispose: 14,
 };
+
+/**
+ * ES spec IsAnonymousFunctionDefinition: returns true when the expression is
+ * an anonymous FunctionExpression / ArrowFunction / ClassExpression (with
+ * optional parentheses around it). Used by NamedEvaluation to decide whether
+ * a binding name is assigned to the function's .name. (#1049)
+ */
+function isAnonymousFunctionDefinition(expr: ts.Expression): boolean {
+  while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
+  if (ts.isFunctionExpression(expr) && !expr.name) return true;
+  if (ts.isArrowFunction(expr)) return true;
+  if (ts.isClassExpression(expr) && !expr.name) return true;
+  return false;
+}
 function getWellKnownSymbolId(name: string): number | undefined {
   return WELL_KNOWN_SYMBOLS[name];
 }
-import { emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./array-methods.js";
 
 // ── Struct name resolution (moved from expressions/misc.ts) ──────────
 
@@ -688,7 +705,7 @@ export function compileOptionalPropertyAccess(
       // len is field 0 of $AnyString — works for both FlatString and ConsString
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
     } else {
-      const funcIdx = ctx.funcMap.get("length");
+      const funcIdx = ctx.jsStringImports.get("length");
       if (funcIdx !== undefined) fctx.body.push({ op: "call", funcIdx });
     }
     elseResultType = { kind: "i32" };
@@ -1164,10 +1181,37 @@ export function compilePropertyAccess(
       // __type, __function, __class, __object are anonymous type names from TS checker
       if (funcName === "__type" || funcName === "__function" || funcName === "__class" || funcName === "__object")
         funcName = "";
+      // Built-in globals declared as `declare var X: XConstructor` expose the
+      // interface name ("ArrayConstructor") as the type symbol, but the JS
+      // runtime `.name` is the declared identifier ("Array"). Strip the
+      // "Constructor" suffix when it matches the identifier text.
+      if (
+        funcName.endsWith("Constructor") &&
+        ts.isIdentifier(expr.expression) &&
+        expr.expression.text + "Constructor" === funcName
+      ) {
+        funcName = expr.expression.text;
+      }
       // If the symbol name is empty (anonymous function), infer from context:
       if (funcName === "") {
         if (ts.isIdentifier(expr.expression)) {
           // Direct variable access: f.name => infer "f"
+          // BUT: per ES spec (NamedEvaluation / IsAnonymousFunctionDefinition),
+          // if the binding initializer is a "covered" form like `(0, function(){})`
+          // (comma expression, call, etc.), the function's .name is NOT set to
+          // the binding name. Only direct FunctionExpression/ArrowFunction/
+          // ClassExpression (optionally parenthesized) qualifies. (#1049)
+          const sym = ctx.checker.getSymbolAtLocation(expr.expression);
+          const decl = sym?.valueDeclaration;
+          let initExpr: ts.Expression | undefined;
+          if (decl && (ts.isBindingElement(decl) || ts.isVariableDeclaration(decl)) && decl.initializer) {
+            initExpr = decl.initializer;
+          }
+          if (initExpr !== undefined && !isAnonymousFunctionDefinition(initExpr)) {
+            // Covered form — .name is "" (or whatever the inner fn already has)
+            addStringConstantGlobal(ctx, "");
+            return compileStringLiteral(ctx, fctx, "");
+          }
           funcName = expr.expression.text;
         } else if (ts.isPropertyAccessExpression(expr.expression)) {
           // Property access: obj.method.name => infer "method"
@@ -1206,15 +1250,12 @@ export function compilePropertyAccess(
           localIdx < fctx.params.length
             ? fctx.params[localIdx]!.type
             : fctx.locals[localIdx - fctx.params.length]?.type;
-        if (localType?.kind === "externref") {
-          const funcIdx = ctx.funcMap.get("__extern_length");
-          if (funcIdx !== undefined) {
-            fctx.body.push({ op: "local.get", index: localIdx });
-            fctx.body.push({ op: "call", funcIdx });
-            return { kind: "f64" };
-          }
-        }
         // Vec struct ref local (e.g. `arguments` object) — struct.get field 0 (length)
+        // Note: for externref locals (e.g. `obj: any` in filter callbacks), we fall through
+        // to the generic externref path below (line ~1731) which uses multi-struct dispatch
+        // (ref.test → ref.cast → struct.get) to read the WasmGC struct field directly.
+        // Calling __extern_length on an externref-wrapped WasmGC struct returns 0 because
+        // obj.length is undefined on opaque externref objects in V8.
         if ((localType?.kind === "ref" || localType?.kind === "ref_null") && localType.typeIdx !== undefined) {
           const vecTypeIdx = (localType as { typeIdx: number }).typeIdx;
           const typeDef = ctx.mod.types[vecTypeIdx];
@@ -1237,9 +1278,56 @@ export function compilePropertyAccess(
       const typeDef = ctx.mod.types[vecTypeIdx];
       if (typeDef?.kind === "struct" && typeDef.fields[1]?.name === "data") {
         const exprResult = compileExpression(ctx, fctx, expr.expression);
+        // If the compiled expression returned externref (e.g. `x as any[]`), the TS type
+        // annotation doesn't guarantee the runtime struct type. Use multi-struct dispatch:
+        // try ref.test for the expected vec type first (struct.get field 0 gives the length),
+        // falling back to __extern_length for genuine host objects (real JS arrays).
+        // This avoids: (1) unguarded struct.get on externref (Wasm validation error), and
+        // (2) __extern_length returning 0 for WasmGC structs (obj.length is undefined on
+        // externref-wrapped WasmGC objects in V8).
+        if (exprResult?.kind === "externref") {
+          const extTmpIdx = allocLocal(fctx, `__len_ext_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: extTmpIdx });
+          const anyTmpIdx = allocLocal(fctx, `__len_any_${fctx.locals.length}`, { kind: "anyref" });
+          fctx.body.push({ op: "local.get", index: extTmpIdx });
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+          fctx.body.push({ op: "local.set", index: anyTmpIdx });
+          const lenType = ctx.fast ? { kind: "i32" as const } : { kind: "f64" as const };
+          const lenTmp2 = allocLocal(fctx, `__len_val_${fctx.locals.length}`, lenType);
+          const lengthFuncIdx = ensureLateImport(ctx, "__extern_length", [{ kind: "externref" }], [{ kind: "f64" }]);
+          flushLateImportShifts(ctx, fctx);
+          const fallbackInstrs2: Instr[] =
+            lengthFuncIdx !== undefined
+              ? [
+                  { op: "local.get", index: extTmpIdx } as Instr,
+                  { op: "call", funcIdx: lengthFuncIdx } as Instr,
+                  ...(ctx.fast ? [{ op: "i32.trunc_sat_f64_s" } as unknown as Instr] : []),
+                  { op: "local.set", index: lenTmp2 } as Instr,
+                ]
+              : [
+                  { op: ctx.fast ? "i32.const" : "f64.const", value: 0 } as Instr,
+                  { op: "local.set", index: lenTmp2 } as Instr,
+                ];
+          fctx.body.push({ op: "local.get", index: anyTmpIdx });
+          fctx.body.push({ op: "ref.test", typeIdx: vecTypeIdx });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "local.get", index: anyTmpIdx } as Instr,
+              { op: "ref.cast", typeIdx: vecTypeIdx } as Instr,
+              { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 } as Instr,
+              ...(ctx.fast ? [] : [{ op: "f64.convert_i32_s" } as Instr]),
+              { op: "local.set", index: lenTmp2 } as Instr,
+            ],
+            else: fallbackInstrs2,
+          });
+          fctx.body.push({ op: "local.get", index: lenTmp2 });
+          return lenType;
+        }
         // Guard: the TS type might not match the runtime struct type.
         // If the compiled expression returned a different ref type, use ref.test
-        // to verify before struct.get, falling back to __extern_length or 0.
+        // to verify before struct.get, falling back to 0.
         if (
           exprResult &&
           (exprResult.kind === "ref" || exprResult.kind === "ref_null") &&
@@ -1413,7 +1501,7 @@ export function compilePropertyAccess(
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
       return { kind: "i32" };
     }
-    const funcIdx = ctx.funcMap.get("length");
+    const funcIdx = ctx.jsStringImports.get("length");
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "i32" };

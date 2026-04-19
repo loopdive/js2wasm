@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Shared backend context and metadata types.
  *
@@ -163,6 +164,14 @@ export interface FunctionContext {
    */
   pendingCallbackWritebacks?: Instr[];
   /**
+   * Persistent writeback instructions for getter/setter callbacks (#929).
+   * Unlike pendingCallbackWritebacks (one-shot), these are re-emitted after
+   * every call expression so that mutations from deferred callback invocations
+   * (e.g. Object.defineProperty getter called later by Object.defineProperties)
+   * are reflected in the outer scope's local variables.
+   */
+  persistentCallbackWritebacks?: Instr[];
+  /**
    * Mapped arguments info for non-strict functions with simple parameters (#849).
    */
   mappedArgsInfo?: {
@@ -189,6 +198,9 @@ export interface CodegenContext {
   structFields: Map<string, FieldDef[]>;
   /** Number of imported functions */
   numImportFuncs: number;
+  /** wasm:js-string import indices — separate from funcMap to prevent
+   *  user-defined functions from shadowing them (#1072). */
+  jsStringImports: Map<string, number>;
   /** Current function context (set during function compilation) */
   currentFunc: FunctionContext | null;
   /** Stack of parent function contexts saved during nested closure compilation. */
@@ -264,6 +276,20 @@ export interface CodegenContext {
   genericResolved: Map<string, { params: ValType[]; results: ValType[] }>;
   /** Rest parameter info per function (functions with ...rest syntax) */
   funcRestParams: Map<string, RestParamInfo>;
+  /**
+   * Functions whose body reads `arguments`. Used by callers to decide
+   * whether to populate the `__extras_argv` module global with extra
+   * runtime args beyond the formal param count (#1053).
+   */
+  funcUsesArguments: Set<string>;
+  /**
+   * Module global index for the runtime extras argv vec (#1053).
+   * Lazily registered on first use; -1 if not yet created.
+   * Type: (mut (ref null $vec_externref))
+   */
+  extrasArgvGlobalIdx: number;
+  /** Vec struct type index for the extras argv global (matches externref vec type). */
+  extrasArgvVecTypeIdx: number;
   /** Map from struct name → set of closure type indices used for valueOf fields */
   valueOfClosureTypes: Map<string, number[]>;
   /** Tag index for the exception tag (-1 if not yet registered) */
@@ -278,6 +304,9 @@ export interface CodegenContext {
   generatorYieldType: Map<string, ValType>;
   /** Map from module-level variable name → global index in mod.globals */
   moduleGlobals: Map<string, number>;
+  /** Deferred `export default <variable>` where variable is a module global (#1108).
+   *  Resolved after all collectDeclarations calls when global indices are final. */
+  deferredDefaultGlobalExport?: string;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
   /** Nested function capture info. */
@@ -309,6 +338,8 @@ export interface CodegenContext {
   consStrTypeIdx: number;
   /** Whether native string helper functions have been emitted */
   nativeStrHelpersEmitted: boolean;
+  /** Whether native string host bridge helpers have been emitted */
+  nativeStrExternBridgeEmitted: boolean;
   /** Map from native string helper name → function index */
   nativeStrHelpers: Map<string, number>;
   /** Map from value type kind → ref cell struct type index */
@@ -357,6 +388,10 @@ export interface CodegenContext {
   pendingLateImportShift: { importsBefore: number } | null;
   /** Map from class name → global index of the prototype externref singleton */
   protoGlobals: Map<string, number>;
+  /** Map from class name → own method names (instance methods, for prototype allowlist; see #1047) */
+  classMethodNames: Map<string, string[]>;
+  /** Map from class name → global idx of the method-name CSV string constant (see #1047) */
+  classMethodsCsvGlobal: Map<string, number>;
   /** Whether targeting WASI */
   wasi: boolean;
   /** WASI import indices */

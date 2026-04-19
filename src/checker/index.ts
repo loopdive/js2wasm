@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
 
 function isBrowserLikeRuntime(): boolean {
@@ -195,6 +196,8 @@ function getLibSource(name: string): string | undefined {
       "lib.es2024.collection.d.ts",
       // ESNext — Set methods (union, intersection, difference, etc.)
       "lib.esnext.collection.d.ts",
+      // ESNext — DisposableStack / AsyncDisposableStack (#1036)
+      "lib.esnext.disposable.d.ts",
       // DOM (decorators loaded via /// <reference> in lib.es5.d.ts)
       "lib.dom.d.ts",
     ];
@@ -338,9 +341,40 @@ export interface MultiTypedAST {
   syntacticDiagnostics: readonly ts.Diagnostic[];
 }
 
+/** Script-file extensions we recognize in the multi-source pipeline. */
+const KNOWN_SCRIPT_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"] as const;
+
+function stripKnownExt(name: string): string {
+  for (const ext of KNOWN_SCRIPT_EXTS) {
+    if (name.endsWith(ext)) return name.slice(0, -ext.length);
+  }
+  return name;
+}
+
+function hasKnownExt(name: string): boolean {
+  return KNOWN_SCRIPT_EXTS.some((ext) => name.endsWith(ext));
+}
+
+function scriptKindFor(name: string): ts.ScriptKind {
+  if (name.endsWith(".tsx")) return ts.ScriptKind.TSX;
+  if (name.endsWith(".jsx")) return ts.ScriptKind.JSX;
+  if (name.endsWith(".js") || name.endsWith(".mjs") || name.endsWith(".cjs")) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}
+
+function tsExtensionFor(name: string): ts.Extension {
+  if (name.endsWith(".tsx")) return ts.Extension.Tsx;
+  if (name.endsWith(".jsx")) return ts.Extension.Jsx;
+  if (name.endsWith(".js")) return ts.Extension.Js;
+  if (name.endsWith(".mjs")) return ts.Extension.Mjs;
+  if (name.endsWith(".cjs")) return ts.Extension.Cjs;
+  return ts.Extension.Ts;
+}
+
 /**
  * Normalize a file path to a canonical form used as key in our in-memory file map.
- * Strips leading "./", resolves ".." segments, and ensures ".ts" extension.
+ * Strips leading "./", resolves ".." segments, preserves any known script extension,
+ * and defaults to ".ts" when no extension is present.
  */
 function normalizeFileName(name: string): string {
   let normalized = name.startsWith("./") ? name.slice(2) : name;
@@ -358,13 +392,42 @@ function normalizeFileName(name: string): string {
     }
   }
   normalized = resolved.join("/");
-  // Replace .js extension with .ts, or append .ts if no extension
-  if (normalized.endsWith(".js")) {
-    normalized = `${normalized.slice(0, -3)}.ts`;
-  } else if (!normalized.endsWith(".ts")) {
+  // Preserve explicit script extensions (.js/.mjs/.cjs/.jsx/.tsx/.ts); otherwise default to .ts
+  if (!hasKnownExt(normalized)) {
     normalized = `${normalized}.ts`;
   }
   return normalized;
+}
+
+/**
+ * Locate a file in the normalizedFiles map, probing for alternate extensions.
+ * Accepts e.g. "a" (user wrote `import "./a"`) and finds "a.js" / "a.ts" / "a/index.js".
+ */
+function probeFileKey(resolved: string, files: Map<string, string>): string | undefined {
+  if (files.has(resolved)) return resolved;
+  // Swap the trailing extension (e.g. normalized "a.ts" but file is "a.js")
+  if (hasKnownExt(resolved)) {
+    const stem = stripKnownExt(resolved);
+    for (const ext of KNOWN_SCRIPT_EXTS) {
+      const cand = stem + ext;
+      if (cand !== resolved && files.has(cand)) return cand;
+    }
+    // Also try <stem>/index.<ext>
+    for (const ext of KNOWN_SCRIPT_EXTS) {
+      const cand = `${stem}/index${ext}`;
+      if (files.has(cand)) return cand;
+    }
+  } else {
+    for (const ext of KNOWN_SCRIPT_EXTS) {
+      const cand = resolved + ext;
+      if (files.has(cand)) return cand;
+    }
+    for (const ext of KNOWN_SCRIPT_EXTS) {
+      const cand = `${resolved}/index${ext}`;
+      if (files.has(cand)) return cand;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -377,6 +440,8 @@ export function analyzeMultiSource(
   entryFile: string,
   /** Optional mapping from bare specifiers to file keys (e.g. { "lodash": "lodash/index.ts" }) */
   specifierMap?: Record<string, string>,
+  /** Compiler options (allowJs, skipSemanticDiagnostics, ...) */
+  analyzeOptions?: AnalyzeOptions,
 ): MultiTypedAST {
   const normalizedFiles = new Map<string, string>();
   for (const [name, content] of Object.entries(files)) {
@@ -389,12 +454,14 @@ export function analyzeMultiSource(
   // Explicit specifierMap entries take priority, then we auto-derive
   // mappings from file keys (e.g. "utils.ts" -> bare specifier "utils").
   const bareSpecifierLookup = new Map<string, string>();
-  // Auto-derive: for each file key, register its basename without extension
-  // and the full key without extension as potential bare specifiers.
   for (const normalized of normalizedFiles.keys()) {
     // "foo/bar.ts" -> bare specifiers "foo/bar" and "bar"
-    const withoutExt = normalized.replace(/\.ts$/, "");
+    const withoutExt = stripKnownExt(normalized);
     bareSpecifierLookup.set(withoutExt, normalized);
+    // Also register the exact extension form so `import "foo/bar.js"` works.
+    if (!bareSpecifierLookup.has(normalized)) {
+      bareSpecifierLookup.set(normalized, normalized);
+    }
     const basename = withoutExt.split("/").pop()!;
     if (basename && !bareSpecifierLookup.has(basename)) {
       bareSpecifierLookup.set(basename, normalized);
@@ -418,7 +485,7 @@ export function analyzeMultiSource(
     getSourceFile(name, languageVersion) {
       const userContent = normalizedFiles.get(name);
       if (userContent !== undefined) {
-        return ts.createSourceFile(name, userContent, languageVersion, true, ts.ScriptKind.TS);
+        return ts.createSourceFile(name, userContent, languageVersion, true, scriptKindFor(name));
       }
       const libSf = getLibSourceFile(name, languageVersion);
       if (libSf) return libSf;
@@ -446,12 +513,13 @@ export function analyzeMultiSource(
           // Bare specifier: check the lookup map first, then fall back to normalizeFileName
           resolved = bareSpecifierLookup.get(moduleName) ?? normalizeFileName(moduleName);
         }
-        if (normalizedFiles.has(resolved)) {
+        const key = probeFileKey(resolved, normalizedFiles) ?? resolved;
+        if (normalizedFiles.has(key)) {
           return {
             resolvedModule: {
-              resolvedFileName: resolved,
+              resolvedFileName: key,
               isExternalLibraryImport: false,
-              extension: ts.Extension.Ts,
+              extension: tsExtensionFor(key),
             },
           };
         }
@@ -460,21 +528,25 @@ export function analyzeMultiSource(
     },
   };
 
-  const program = ts.createProgram(
-    rootNames,
-    {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.Bundler,
-      strict: true,
-      noImplicitAny: false,
-      noEmit: true,
-    },
-    compilerHost,
-  );
+  const compilerOptions: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    strict: true,
+    noImplicitAny: false,
+    noEmit: true,
+  };
+  if (analyzeOptions?.allowJs) {
+    compilerOptions.allowJs = true;
+    compilerOptions.checkJs = true;
+  }
+
+  const program = ts.createProgram(rootNames, compilerOptions, compilerHost);
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
-  const semanticDiagnostics = program.getSemanticDiagnostics();
+  const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
+    ? ([] as ts.Diagnostic[])
+    : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   const entrySourceFile = program.getSourceFile(normalizedEntry)!;

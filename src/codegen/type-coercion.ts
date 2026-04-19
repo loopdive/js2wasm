@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Type coercion utilities for Wasm codegen.
  *
@@ -5,13 +6,13 @@
  * Contains: coerceType, pushDefaultValue, defaultValueInstrs, coercionInstrs.
  */
 
+import type { ArrayTypeDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
+import { addUnionImports, ensureAnyHelpers, isAnyValue } from "./index.js";
 import { addStringConstantGlobal } from "./registry/imports.js";
 import { getArrTypeIdxFromVec } from "./registry/types.js";
-import { addUnionImports, isAnyValue, ensureAnyHelpers } from "./index.js";
-import { registerCoerceType, ensureLateImport, flushLateImportShifts } from "./shared.js";
-import type { Instr, ValType, StructTypeDef, ArrayTypeDef } from "../ir/types.js";
+import { ensureLateImport, flushLateImportShifts, registerCoerceType } from "./shared.js";
 
 /**
  * Emit a guarded ref.cast: use ref.test to check if the cast will succeed.
@@ -81,6 +82,51 @@ function pushStringHint(ctx: CodegenContext, fctx: FunctionContext, hint: string
   if (globalIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: globalIdx });
   }
+}
+
+/**
+ * Emit instructions to call the __to_primitive host import (#1090).
+ * Expects a struct ref on the stack. Converts it to externref, pushes
+ * the hint string, calls __to_primitive, and converts the result to
+ * the target type (f64 or externref).
+ *
+ * @param targetKind - "f64" to unbox the result to f64, "externref" to leave as externref
+ * @param hint - ToPrimitive hint ("number", "string", or "default")
+ */
+function emitToPrimitiveHostCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  targetKind: "f64" | "externref",
+  hint: "number" | "string" | "default",
+): void {
+  // Convert struct ref → externref
+  fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  // Push hint string
+  pushStringHint(ctx, fctx, hint);
+  // Call __to_primitive(externref, externref) → externref
+  const toPrimIdx = ensureLateImport(
+    ctx,
+    "__to_primitive",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (toPrimIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx: toPrimIdx });
+  }
+  // Convert result to target type
+  if (targetKind === "f64") {
+    addUnionImports(ctx);
+    const unboxIdx = ctx.funcMap.get("__unbox_number");
+    if (unboxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    } else {
+      // Can't unbox — push NaN
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+    }
+  }
+  // For externref target, result is already externref
 }
 
 /**
@@ -1213,7 +1259,10 @@ export function coerceType(
     fctx.body.push({ op: "extern.convert_any" });
     // Vec structs (arrays) need Symbol.iterator to be iterable by JS APIs (#854).
     // After extern.convert_any, call __make_iterable to attach Symbol.iterator via sidecar.
-    if (getArrTypeIdxFromVec(ctx, typeIdx) >= 0) {
+    // Skip i32_byte vec structs (ArrayBuffer/DataView backing) — neither is
+    // iterable in JS and converting them to a JS array loses the wasmGC
+    // struct identity that DataView method dispatch depends on (#1056).
+    if (getArrTypeIdxFromVec(ctx, typeIdx) >= 0 && ctx.vecTypeMap.get("i32_byte") !== typeIdx) {
       const makeIterIdx = ensureLateImport(ctx, "__make_iterable", [{ kind: "externref" }], [{ kind: "externref" }]);
       if (makeIterIdx !== undefined) {
         flushLateImportShifts(ctx, fctx);
@@ -1423,17 +1472,22 @@ export function coerceType(
             cleanup();
             return;
           }
-          // No toString either — ToNumber({}) = NaN per spec
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
+          // No compile-time toString either — fall through to host ToPrimitive (#1090)
+          // Sidecar may have dynamically-set valueOf/toString/Symbol.toPrimitive
+          {
+            const hint = toPrimitiveHint ?? "number";
+            emitToPrimitiveHostCall(ctx, fctx, "f64", hint);
+          }
           cleanup();
           return;
         }
         const valueOfField = fields[fieldIdx];
         if (!valueOfField) {
-          // Field index valid from findIndex but entry missing — treat as NaN
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
+          // Field index valid from findIndex but entry missing — fall through to host (#1090)
+          {
+            const hint = toPrimitiveHint ?? "number";
+            emitToPrimitiveHostCall(ctx, fctx, "f64", hint);
+          }
           cleanup();
           return;
         }
@@ -1626,8 +1680,11 @@ export function coerceType(
             cleanup();
             return;
           }
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
+          // Fall through to host ToPrimitive (#1090)
+          {
+            const hint = toPrimitiveHint ?? "number";
+            emitToPrimitiveHostCall(ctx, fctx, "f64", hint);
+          }
           cleanup();
           return;
         }

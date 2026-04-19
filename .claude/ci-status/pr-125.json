@@ -1,0 +1,15 @@
+{
+  "pr": 125,
+  "conclusion": "failure",
+  "head_branch": "issue-1092-wrong-error-type",
+  "head_sha": "0407fe65ea4b7244b1aa4f7271570f578663f265",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24303731026",
+  "timestamp": "2026-04-12T09:49:08Z",
+  "pass": 12943,
+  "fail": 9041,
+  "compile_error": 19825,
+  "snapshot_delta": -9242,
+  "net_per_test": -9242,
+  "regressions": 9415,
+  "improvements": 173
+}

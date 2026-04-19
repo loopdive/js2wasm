@@ -13,7 +13,7 @@ Describe the failure pattern: error message, test category, approximate count.
 
 1. Find the next available issue number:
 ```bash
-ls plan/issues/ready/ plan/issues/blocked/ plan/issues/backlog/ plan/issues/done/ 2>/dev/null | grep -oP '\d+' | sort -n | tail -1
+find plan/issues -maxdepth 1 -type f | grep -oE '[0-9]+[a-z]?(-[^/]+)?\.md$' | grep -oE '^[0-9]+' | sort -n | tail -1
 ```
 Add 1.
 
@@ -71,6 +71,14 @@ Error: `{exact error}`
 ```
 Root cause: {why the compiler produces wrong output}
 
+## ECMAScript spec reference
+
+{Link to the relevant spec section(s) at https://tc39.es/ecma262/}
+Example: [§7.1.1 ToPrimitive](https://tc39.es/ecma262/#sec-toprimitive)
+
+If multiple sections apply, list each with a one-line note on which
+step or sub-algorithm is relevant to this issue.
+
 ## Root cause in compiler
 
 {Which codegen function/file produces this pattern}
@@ -90,6 +98,6 @@ Required metadata rules:
 - `updated` must be bumped whenever the issue meaningfully changes
 - `es_edition` should capture the relevant language edition, or `multi` / `n/a`
 - `language_feature` should be a stable machine-readable feature or subsystem slug
-- `task_type` must be one of `bug`, `feature`, `test`, `refactor`, `planning`
+- `task_type` must be one of `bugfix`, `feature`, `test`, `refactor`, `planning`
 
 5. Add to dependency graph and backlog.

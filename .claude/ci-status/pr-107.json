@@ -1,0 +1,14 @@
+{
+  "pr": 107,
+  "conclusion": "failure",
+  "head_branch": "issue-1064-dataview-errors",
+  "head_sha": "5b72a9a723cdb813f44dc66165891b8fe718e116",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24289257161",
+  "timestamp": "2026-04-11T18:59:52Z",
+  "pass": 22188,
+  "fail": 18307,
+  "compile_error": 1325,
+  "delta": 438,
+  "regressions": 12,
+  "improvements": 450
+}

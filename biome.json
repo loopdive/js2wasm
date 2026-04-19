@@ -5,7 +5,7 @@
   },
   "files": {
     "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
-    "ignore": ["**/node_modules/**", "**/dist/**", "test262/**"]
+    "ignore": ["**/node_modules/**", "**/dist/**", "**/vendor/**", "test262/**"]
   },
   "linter": {
     "enabled": true,

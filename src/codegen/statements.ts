@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Statement lowering dispatcher.
  *
@@ -14,46 +15,46 @@
  *   - statements/shared.ts         — utilities shared across all sub-modules
  */
 import ts from "typescript";
-import { compileExpression, registerCompileStatement } from "./shared.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { saveBlockScopedShadows, restoreBlockScopedShadows } from "./statements/shared.js";
+import { compileExpression, registerCompileStatement } from "./shared.js";
+import { restoreBlockScopedShadows, saveBlockScopedShadows } from "./statements/shared.js";
 
 // Sub-module imports — statement-family functions
-import { compileVariableStatement } from "./statements/variables.js";
 import {
-  compileReturnStatement,
-  compileIfStatement,
-  compileSwitchStatement,
-  compileLabeledStatement,
   compileBreakStatement,
   compileContinueStatement,
+  compileIfStatement,
+  compileLabeledStatement,
+  compileReturnStatement,
+  compileSwitchStatement,
 } from "./statements/control-flow.js";
-import {
-  compileWhileStatement,
-  compileForStatement,
-  compileDoWhileStatement,
-  compileForOfStatement,
-  compileForInStatement,
-} from "./statements/loops.js";
 import { compileThrowStatement, compileTryStatement } from "./statements/exceptions.js";
-import { compileNestedFunctionDeclaration, compileNestedClassDeclaration } from "./statements/nested-declarations.js";
+import {
+  compileDoWhileStatement,
+  compileForInStatement,
+  compileForOfStatement,
+  compileForStatement,
+  compileWhileStatement,
+} from "./statements/loops.js";
+import { compileNestedClassDeclaration, compileNestedFunctionDeclaration } from "./statements/nested-declarations.js";
+import { compileVariableStatement } from "./statements/variables.js";
 
 // ---------------------------------------------------------------------------
 // Re-exports — preserve the existing public API surface
 // ---------------------------------------------------------------------------
-export { collectInstrs } from "./statements/shared.js";
-export { emitTdzCheck } from "./statements/tdz.js";
 export {
-  ensureBindingLocals,
+  compileExternrefArrayDestructuringDecl,
+  compileExternrefObjectDestructuringDecl,
+  emitDefaultValueCheck,
   emitExternrefDefaultCheck,
   emitNestedBindingDefault,
-  emitDefaultValueCheck,
-  compileExternrefObjectDestructuringDecl,
-  compileExternrefArrayDestructuringDecl,
+  ensureBindingLocals,
 } from "./statements/destructuring.js";
-export { hoistFunctionDeclarations, bodyUsesArguments, emitArgumentsObject } from "./statements/nested-declarations.js";
+export { bodyUsesArguments, emitArgumentsObject, hoistFunctionDeclarations } from "./statements/nested-declarations.js";
+export { collectInstrs } from "./statements/shared.js";
+export { emitTdzCheck } from "./statements/tdz.js";
 
 // ---------------------------------------------------------------------------
 // Dispatcher helpers

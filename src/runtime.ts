@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import { compileSource } from "./compiler.js";
 import type { ImportDescriptor, ImportIntent, ImportPolicy } from "./index.js";
 
@@ -27,6 +28,13 @@ const _wasmStructProps = new WeakMap<object, Record<string | symbol, any>>();
  */
 const _wasmPropDescs = new WeakMap<object, Map<string | symbol, number>>();
 
+/**
+ * Sidecar accessor storage for WasmGC structs.
+ * Stores get/set functions for accessor properties (including Symbol-keyed ones).
+ * Separate from _wasmStructProps because template literals can't stringify Symbols.
+ */
+const _wasmStructAccessors = new WeakMap<object, Map<string | symbol, { get?: Function; set?: Function }>>();
+
 /** Tracks WasmGC struct objects that have been frozen via Object.freeze. */
 const _wasmFrozenObjs = new WeakSet<object>();
 /** Tracks WasmGC struct objects that have been sealed via Object.seal. */
@@ -34,11 +42,35 @@ const _wasmSealedObjs = new WeakSet<object>();
 /** Tracks WasmGC struct objects that are non-extensible (freeze/seal/preventExtensions). */
 const _wasmNonExtensibleObjs = new WeakSet<object>();
 
+/**
+ * DataView subview metadata (#1064).
+ *
+ * The compiler emits `new DataView(buffer, byteOffset, byteLength)` as the raw
+ * i32_byte vec struct — it never stores the user-specified view window. The
+ * runtime bridge in `__extern_method_call` rebuilds a real JS DataView from
+ * the struct's bytes, so without this sidecar it only ever sees the full
+ * buffer and `sample.getUint16(1)` on a 2-byte subview silently reads 2 bytes
+ * from the 12-byte buffer instead of throwing RangeError.
+ *
+ * Keyed on the vec struct. Written by `__dv_register_view` at DataView
+ * construction. Read by the `__extern_method_call` DataView fallback below.
+ * Sharing one buffer across multiple interleaved DataViews is a known
+ * limitation — the latest registration wins.
+ */
+const _dvViewMeta = new WeakMap<object, { offset: number; length: number }>();
+
 const _SC_WRITABLE = 1;
 const _SC_ENUMERABLE = 2;
 const _SC_CONFIGURABLE = 4;
 const _SC_DEFINED = 8;
 const _SC_ACCESSOR = 16;
+
+/** Normalize property key for descriptor Map lookups — JS treats numeric keys
+ * like 0 and "0" as the same property, but Map uses ===. (#1092) */
+function _normalizeDescKey(key: any): string | symbol {
+  if (typeof key === "symbol") return key;
+  return String(key);
+}
 
 function _getSidecarDescs(obj: object): Map<string | symbol, number> {
   if (!_canBeWeakKey(obj)) return new Map();
@@ -62,7 +94,7 @@ function _validatePropertyDescriptor(
   desc: PropertyDescriptor,
   existingValue?: any,
 ): number {
-  const existing = descs.get(prop);
+  const existing = descs.get(_normalizeDescKey(prop));
   // Compute new flags — for Object.defineProperty, unspecified attributes default to false
   let newFlags = _SC_DEFINED;
   if (desc.writable) newFlags |= _SC_WRITABLE;
@@ -190,15 +222,60 @@ function _toPrimitive(
   hint: "number" | "string" | "default",
   callbackState?: { getExports: () => Record<string, Function> | undefined },
 ): any {
-  // 1. Check Symbol.toPrimitive (sidecar only)
-  const scToPrim = _sidecarGet(obj, Symbol.toPrimitive);
-  if (typeof scToPrim === "function") {
-    try {
-      const prim = scToPrim.call(obj, hint);
+  // Unwrap host proxy to raw WasmGC struct for sidecar lookups (#1090).
+  // Proxies are created by _wrapForHost and _hostProxyReverse maps them back.
+  const raw = _hostProxyReverse.get(obj) ?? obj;
+  // 1. Check Symbol.toPrimitive (sidecar and real symbol)
+  // Note: user-thrown errors from sidecar methods must propagate per spec
+  // (#983) — tests rely on `assert.throws` seeing the original throw.
+  const scToPrim = _sidecarGet(raw, Symbol.toPrimitive);
+  if (scToPrim !== undefined && scToPrim !== null) {
+    if (typeof scToPrim === "function") {
+      const prim = scToPrim.call(raw, hint);
       if (prim == null || typeof prim !== "object") return prim;
-    } catch {
-      /* ignore */
+      throw new TypeError("Cannot convert object to primitive value");
     }
+    // WasmGC closure struct — dispatch via __call_fn_1 (Symbol.toPrimitive takes hint arg) (#1090)
+    if (typeof scToPrim === "object" && _isWasmStruct(scToPrim)) {
+      const exps = callbackState?.getExports();
+      // Try 1-arg caller first (toPrimitive(hint))
+      const callFn1 = exps?.["__call_fn_1"];
+      if (typeof callFn1 === "function") {
+        try {
+          const prim = callFn1(scToPrim, hint);
+          if (prim == null || typeof prim !== "object") return prim;
+          throw new TypeError("Cannot convert object to primitive value");
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
+      // Try 0-arg caller (closure might ignore hint)
+      const callFn0 = exps?.["__call_fn_0"];
+      if (typeof callFn0 === "function") {
+        try {
+          const prim = callFn0(scToPrim);
+          if (prim == null || typeof prim !== "object") return prim;
+          throw new TypeError("Cannot convert object to primitive value");
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
+      // Try __call_@@toPrimitive (struct method dispatch)
+      const callTP = exps?.["__call_@@toPrimitive"];
+      if (typeof callTP === "function") {
+        try {
+          const prim = callTP(raw);
+          if (prim == null || typeof prim !== "object") return prim;
+          throw new TypeError("Cannot convert object to primitive value");
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
+      // Closure is a WasmGC struct but not dispatchable — treated as callable
+      // (it was compiled from a function expression). Fall through to valueOf/toString.
+    }
+    // §7.1.1 step 2d: non-callable @@toPrimitive → TypeError (#1090)
+    throw new TypeError("Cannot convert object to primitive value");
   }
 
   const exports = callbackState?.getExports();
@@ -206,42 +283,80 @@ function _toPrimitive(
   // Helper: try valueOf or toString from sidecar then Wasm exports
   const tryMethod = (name: string): any => {
     // Sidecar property (set via __extern_set)
-    const scFn = _sidecarGet(obj, name);
+    // User-thrown errors propagate — spec requires assert.throws to observe them.
+    const scFn = _sidecarGet(raw, name);
     if (typeof scFn === "function") {
-      try {
-        const prim = scFn.call(obj);
-        if (prim == null || typeof prim !== "object") return prim;
-      } catch {
-        /* ignore */
+      const prim = scFn.call(raw);
+      if (prim == null || typeof prim !== "object") return prim;
+      // Returned an object — not a valid primitive, try next method
+      return undefined;
+    }
+    // Sidecar value is a WasmGC closure struct — dispatch via generic callers (#1090)
+    if (scFn != null && typeof scFn === "object" && _isWasmStruct(scFn) && exports) {
+      // Try zero-arg caller (valueOf/toString are typically zero-arg)
+      const callFn0 = exports["__call_fn_0"];
+      if (typeof callFn0 === "function") {
+        try {
+          const prim = callFn0(scFn);
+          if (prim == null || typeof prim !== "object") return prim;
+          return undefined; // returned an object — not valid
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
+      }
+      // Fall back to struct method dispatch
+      const callFn = exports[`__call_${name}`];
+      if (typeof callFn === "function") {
+        try {
+          const prim = callFn(raw);
+          if (prim == null || typeof prim !== "object") return prim;
+          return undefined;
+        } catch (e: any) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+        }
       }
     }
     // Wasm-exported struct field getter (__sget_valueOf, __sget_toString)
+    // Only Wasm RuntimeError (type-mismatch trap) is swallowed; user-thrown
+    // errors from the invoked closure body must propagate (#983).
     if (exports) {
       const sget = exports[`__sget_${name}`];
       if (typeof sget === "function") {
+        let field: any;
         try {
-          const field = sget(obj);
-          if (typeof field === "function") {
-            const prim = field.call(obj);
-            if (prim == null || typeof prim !== "object") return prim;
-          } else if (field != null && typeof field !== "object") {
-            return field;
-          }
-          // field is an object — possibly a WasmGC closure struct.
-          // Try __call_<name> export which dispatches via ref.test/call (#866).
-          if (field != null && typeof field === "object") {
-            const callFn = exports[`__call_${name}`];
-            if (typeof callFn === "function") {
-              try {
-                const prim = callFn(obj);
-                if (prim == null || typeof prim !== "object") return prim;
-              } catch {
-                /* call dispatch failed */
-              }
+          field = sget(raw);
+        } catch (e: any) {
+          if (e instanceof WebAssembly.RuntimeError) return undefined;
+          throw e;
+        }
+        if (typeof field === "function") {
+          const prim = field.call(raw);
+          if (prim == null || typeof prim !== "object") return prim;
+        } else if (field != null && typeof field !== "object") {
+          return field;
+        }
+        if (field != null && typeof field === "object" && _isWasmStruct(field)) {
+          // Try named caller first (e.g. __call_valueOf)
+          const callFn = exports[`__call_${name}`];
+          if (typeof callFn === "function") {
+            try {
+              const prim = callFn(raw);
+              if (prim == null || typeof prim !== "object") return prim;
+            } catch (e: any) {
+              if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+              /* ref.test/call dispatch failed — try generic caller */
             }
           }
-        } catch {
-          /* struct field access failed */
+          // Generic closure caller fallback (#1090) — handles any WasmGC closure struct
+          const callFn0 = exports["__call_fn_0"];
+          if (typeof callFn0 === "function") {
+            try {
+              const prim = callFn0(field);
+              if (prim == null || typeof prim !== "object") return prim;
+            } catch (e: any) {
+              if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+            }
+          }
         }
       }
     }
@@ -271,6 +386,155 @@ function _toPrimitive(
 function _toPrimitiveSync(v: any, hint: "number" | "string" | "default"): any {
   if (v == null || typeof v !== "object") return v;
   return _toPrimitive(v, hint) ?? "[object Object]";
+}
+
+/**
+ * Full ToPrimitive for proxied WasmGC structs and plain JS objects (#1090).
+ * Unlike _toPrimitive (which only checks sidecar + Wasm exports), this function
+ * also checks real JS properties on the object/proxy. This handles the case where
+ * Symbol.toPrimitive/valueOf/toString are WasmGC closures that the proxy wraps
+ * as callable JS functions, or where V8's native property access finds them.
+ *
+ * Throws TypeError if no conversion is possible (per ECMA-262 §7.1.1).
+ */
+function _hostToPrimitive(
+  obj: any,
+  hint: "number" | "string" | "default",
+  callbackState?: { getExports: () => Record<string, Function> | undefined },
+): any {
+  if (obj == null || typeof obj !== "object") return obj;
+
+  // Check Symbol.toPrimitive via real JS property access (goes through proxy if applicable)
+  const raw = _hostProxyReverse.get(obj) ?? obj;
+  const exotic = obj[Symbol.toPrimitive];
+  if (exotic !== undefined && exotic !== null) {
+    if (typeof exotic === "function") {
+      const result = exotic.call(obj, hint);
+      if (result == null || typeof result !== "object") return result;
+      throw new TypeError("Cannot convert object to primitive value");
+    }
+    // WasmGC closure struct — dispatch via __call_fn_1 (#1090)
+    if (typeof exotic === "object" && _isWasmStruct(exotic) && callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn1 = exports["__call_fn_1"];
+        if (typeof callFn1 === "function") {
+          const result = callFn1(exotic, hint);
+          if (result == null || typeof result !== "object") return result;
+          throw new TypeError("Cannot convert object to primitive value");
+        }
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          const result = callFn0(exotic);
+          if (result == null || typeof result !== "object") return result;
+          throw new TypeError("Cannot convert object to primitive value");
+        }
+      }
+    }
+    throw new TypeError("Cannot convert object to primitive value");
+  }
+
+  // Also check sidecar (for unwrapped WasmGC structs not behind a proxy)
+  const scExotic = _sidecarGet(raw, Symbol.toPrimitive);
+  if (scExotic !== undefined && scExotic !== null) {
+    if (typeof scExotic === "function") {
+      const result = scExotic.call(raw, hint);
+      if (result == null || typeof result !== "object") return result;
+      throw new TypeError("Cannot convert object to primitive value");
+    }
+    // WasmGC closure struct — dispatch via __call_fn_1 (#1090)
+    if (typeof scExotic === "object" && _isWasmStruct(scExotic) && callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn1 = exports["__call_fn_1"];
+        if (typeof callFn1 === "function") {
+          const result = callFn1(scExotic, hint);
+          if (result == null || typeof result !== "object") return result;
+          throw new TypeError("Cannot convert object to primitive value");
+        }
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          const result = callFn0(scExotic);
+          if (result == null || typeof result !== "object") return result;
+          throw new TypeError("Cannot convert object to primitive value");
+        }
+      }
+    }
+    // Non-callable Symbol.toPrimitive
+    throw new TypeError("Cannot convert object to primitive value");
+  }
+
+  // OrdinaryToPrimitive §7.1.1.1
+  const methodNames = hint === "string" ? ["toString", "valueOf"] : ["valueOf", "toString"];
+  for (const mName of methodNames) {
+    // Check real JS property first (goes through proxy which may wrap closures)
+    let fn: any;
+    try {
+      fn = obj[mName];
+    } catch {
+      /* property access on opaque struct */
+    }
+    if (typeof fn === "function") {
+      const result = fn.call(obj);
+      if (result == null || typeof result !== "object") return result;
+      continue;
+    }
+    // WasmGC closure struct for valueOf/toString — dispatch via __call_fn_0 (#1090)
+    if (fn != null && typeof fn === "object" && _isWasmStruct(fn) && callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          try {
+            const result = callFn0(fn);
+            if (result == null || typeof result !== "object") return result;
+          } catch (e: any) {
+            if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          }
+          continue;
+        }
+      }
+    }
+    // Then sidecar
+    const scFn = _sidecarGet(raw, mName);
+    if (typeof scFn === "function") {
+      const result = scFn.call(raw);
+      if (result == null || typeof result !== "object") return result;
+      continue;
+    }
+    // WasmGC closure struct in sidecar (#1090)
+    if (scFn != null && typeof scFn === "object" && _isWasmStruct(scFn) && callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          try {
+            const result = callFn0(scFn);
+            if (result == null || typeof result !== "object") return result;
+          } catch (e: any) {
+            if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          }
+          continue;
+        }
+      }
+    }
+    // Then Wasm exports
+    if (callbackState) {
+      const exports = callbackState.getExports();
+      if (exports) {
+        const callFn = exports[`__call_${mName}`];
+        if (typeof callFn === "function") {
+          try {
+            const result = callFn(raw);
+            if (result == null || typeof result !== "object") return result;
+          } catch (e: any) {
+            if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          }
+        }
+      }
+    }
+  }
+  throw new TypeError("Cannot convert object to primitive value");
 }
 
 /**
@@ -368,6 +632,10 @@ function _wasmToPlain(val: any, exports: Record<string, Function> | undefined): 
   return val;
 }
 
+/** Symbol.dispose / Symbol.asyncDispose may not exist in older runtimes (ES2026). */
+const _disposeSym: symbol = (Symbol as any).dispose ?? Symbol.for("Symbol.dispose");
+const _asyncDisposeSym: symbol = (Symbol as any).asyncDispose ?? Symbol.for("Symbol.asyncDispose");
+
 /** Map from JS well-known Symbols to Wasm "@@name" keys (and vice-versa). */
 const _symbolToWasm: Map<symbol, string> = new Map([
   [Symbol.iterator, "@@iterator"],
@@ -382,6 +650,8 @@ const _symbolToWasm: Map<symbol, string> = new Map([
   [Symbol.split, "@@split"],
   [Symbol.unscopables, "@@unscopables"],
   [Symbol.asyncIterator, "@@asyncIterator"],
+  [_disposeSym, "@@dispose"],
+  [_asyncDisposeSym, "@@asyncDispose"],
 ]);
 
 /**
@@ -404,13 +674,22 @@ const _symbolIdToKeys: Map<number, { wasm: string; sym: symbol }> = new Map([
   [10, { wasm: "@@split", sym: Symbol.split }],
   [11, { wasm: "@@unscopables", sym: Symbol.unscopables }],
   [12, { wasm: "@@asyncIterator", sym: Symbol.asyncIterator }],
+  [13, { wasm: "@@dispose", sym: _disposeSym }],
+  [14, { wasm: "@@asyncDispose", sym: _asyncDisposeSym }],
 ]);
 
 /** Safe property get: works on both JS objects and WasmGC structs. */
 function _safeGet(obj: any, key: any): any {
   if (obj == null) return undefined;
-  // Well-known symbol ID (i32 from compiler): resolve to "@@name" and real Symbol
-  if (typeof key === "number" && key >= 1 && key <= 12) {
+  // Coerce WasmGC struct keys to primitives via ToPrimitive (#1090)
+  if (key != null && typeof key === "object" && _isWasmStruct(key)) {
+    const prim = _toPrimitiveSync(key, "string");
+    if (prim != null && typeof prim !== "object") key = prim;
+  }
+  // Well-known symbol ID (i32 from compiler): only apply to WasmGC structs.
+  // For regular JS objects/arrays, numeric keys 1-12 are actual indices, not symbol IDs
+  // (e.g. getOwnPropertyNames conversion loop uses __extern_get with integer indices).
+  if (_isWasmStruct(obj) && typeof key === "number" && key >= 1 && key <= 14) {
     const symKeys = _symbolIdToKeys.get(key);
     if (symKeys) {
       const v = obj[symKeys.sym];
@@ -422,9 +701,36 @@ function _safeGet(obj: any, key: any): any {
       return undefined;
     }
   }
-  const direct = obj[key]; // safe — returns undefined for WasmGC structs
+  if (_isWasmStruct(obj)) {
+    // For WasmGC structs, user-assigned properties live in the sidecar.
+    // Check sidecar FIRST — native JS property access on WasmGC structs can return
+    // built-in artifacts (e.g. `obj.constructor` returns the Wasm struct constructor),
+    // which would shadow user-assigned properties if we checked native first.
+    const sc = _sidecarGet(obj, key);
+    if (sc !== undefined) return sc;
+    // Check string accessor getter stored by Object.defineProperty (sidecar key: __get_<prop>)
+    if (typeof key === "string") {
+      const wasmSc = _wasmStructProps.get(obj);
+      const getter = wasmSc?.[`__get_${key}` as string];
+      if (typeof getter === "function") return (getter as Function).call(obj);
+    }
+    // For JS Symbols, check the accessor map (for Symbol-keyed defineProperty accessors)
+    if (typeof key === "symbol") {
+      const accessor = _wasmStructAccessors.get(obj)?.get(key);
+      if (accessor?.get) return accessor.get.call(obj);
+      // Also check the Wasm "@@name" equivalent
+      const wasmKey = _symbolToWasm.get(key);
+      if (wasmKey) {
+        const sc2 = _sidecarGet(obj, wasmKey);
+        if (sc2 !== undefined) return sc2;
+      }
+    }
+    // Fall back to native access (e.g. Symbol.iterator set directly on the struct)
+    return obj[key];
+  }
+  const direct = obj[key];
   if (direct !== undefined) return direct;
-  // Check sidecar for WasmGC struct properties
+  // Check sidecar for properties set via __extern_set on non-WasmGC objects
   const sc = _sidecarGet(obj, key);
   if (sc !== undefined) return sc;
   // For JS Symbols, also check the Wasm "@@name" equivalent
@@ -438,8 +744,13 @@ function _safeGet(obj: any, key: any): any {
 /** Safe property set: works on both JS objects and WasmGC structs. */
 function _safeSet(obj: any, key: any, val: any): void {
   if (obj == null) return;
+  // Coerce WasmGC struct keys to primitives via ToPrimitive (#1090)
+  if (key != null && typeof key === "object" && _isWasmStruct(key)) {
+    const prim = _toPrimitiveSync(key, "string");
+    if (prim != null && typeof prim !== "object") key = prim;
+  }
   // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name"
-  if (typeof key === "number" && key >= 1 && key <= 12) {
+  if (typeof key === "number" && key >= 1 && key <= 14) {
     const symKeys = _symbolIdToKeys.get(key);
     if (symKeys) {
       try {
@@ -452,33 +763,62 @@ function _safeSet(obj: any, key: any, val: any): void {
       return;
     }
   }
-  try {
-    obj[key] = val;
-  } catch (e) {
-    if (_isWasmStruct(obj)) {
-      // WasmGC struct: check sidecar descriptor flags before allowing write
-      const descs = _wasmPropDescs.get(obj);
-      if (descs) {
-        const propKey = typeof key === "symbol" ? key : String(key);
-        const flags = descs.get(propKey);
-        if (flags !== undefined && !(flags & _SC_WRITABLE)) {
-          return; // silent fail: read-only property (non-strict mode semantics)
-        }
+  // WasmGC structs: native property assignment silently fails for non-struct fields
+  // (V8 ignores `struct.constructor = {}` without throwing in non-strict mode).
+  // Always write to sidecar so that dynamic properties are accessible via _safeGet.
+  if (_isWasmStruct(obj)) {
+    // Invoke sidecar setter if one was stored via Object.defineProperty (sidecar key: __set_<prop>)
+    if (typeof key === "string") {
+      const sc = _wasmStructProps.get(obj);
+      const setter = sc?.[`__set_${key}` as string];
+      if (typeof setter === "function") {
+        (setter as Function).call(obj, val);
+        return;
       }
-      // Check non-extensible: new properties cannot be added.
-      // Silently return (non-strict mode semantics — Wasm has no strict/non-strict distinction).
-      // Strict mode TypeError is handled at the defineProperty level.
-      if (_wasmNonExtensibleObjs.has(obj)) {
-        const sc = _wasmStructProps.get(obj);
-        const propKey = typeof key === "symbol" ? key : String(key);
-        const hasInSidecar = sc && key in sc;
-        const hasInDescs = descs?.has(propKey);
-        if (!hasInSidecar && !hasInDescs) {
-          return; // silent fail: non-extensible, new property not added
+    }
+    // Respect sidecar descriptor flags (non-configurable / non-writable properties)
+    const descs = _wasmPropDescs.get(obj);
+    if (descs) {
+      const propKey = typeof key === "symbol" ? key : String(key);
+      const flags = descs.get(propKey);
+      if (flags !== undefined && !(flags & _SC_WRITABLE)) {
+        return; // silent fail: read-only property
+      }
+    }
+    // Respect non-extensible (no new properties, but existing sidecar props can be updated)
+    if (_wasmNonExtensibleObjs.has(obj)) {
+      const sc = _wasmStructProps.get(obj);
+      const propKey = typeof key === "symbol" ? key : String(key);
+      const hasInSidecar = sc && key in sc;
+      const hasInDescs = descs?.has(propKey);
+      if (!hasInSidecar && !hasInDescs) {
+        return; // silent fail: non-extensible, new property not added
+      }
+    }
+    try {
+      obj[key] = val;
+    } catch {
+      /* struct fields may reject unknown keys */
+    }
+    _sidecarSet(obj, key, val);
+    if (typeof key === "symbol") {
+      const wasmKey = _symbolToWasm.get(key);
+      if (wasmKey) _sidecarSet(obj, wasmKey, val);
+    }
+    if (typeof key === "string" && key.startsWith("@@")) {
+      for (const [sym, wk] of _symbolToWasm) {
+        if (wk === key) {
+          _sidecarSet(obj, sym, val);
+          break;
         }
       }
     }
-    // For both WasmGC structs and non-WasmGC objects (frozen/sealed JS objects),
+    return;
+  }
+  try {
+    obj[key] = val;
+  } catch (e) {
+    // For non-WasmGC objects (frozen/sealed JS objects),
     // fall through to sidecar set — preserves original behavior for non-strict callers.
     _sidecarSet(obj, key, val);
     // Also store under the "@@name" alias for well-known symbols
@@ -496,6 +836,248 @@ function _safeSet(obj: any, key: any, val: any): void {
       }
     }
   }
+}
+
+/**
+ * Live-mirror Proxy over a WasmGC struct (#983).
+ *
+ * Host-side APIs like Array.prototype.X.call(arrayLike, …) and Object.assign
+ * read/write `.length`, numeric indices and named fields on caller-supplied
+ * objects. WasmGC structs are opaque to JS and those accesses throw
+ * "WebAssembly objects are opaque". _wrapForHost returns a JS Proxy that
+ * routes every trap through the existing sidecar infrastructure
+ * (_sidecarGet/_sidecarSet) and the compiled-module __sget_* exports. This
+ * lets host methods both read and WRITE through to the same WasmGC struct
+ * that the test body observes via compiled __extern_get.
+ *
+ * Identity caveat: the proxy is a different JS object than the wasmGC
+ * handle. Callers that care about identity (e.g. Object.assign returning
+ * target) must use _unwrapForHost on the return value before handing it
+ * back to the caller.
+ */
+const _hostProxyCache = new WeakMap<object, any>();
+const _hostProxyReverse = new WeakMap<object, any>();
+
+/**
+ * #1047 — registered prototype refs → method-only own-key list. Populated by
+ * the compiler-emitted `__register_prototype` host import inside the lazy
+ * prototype initializer (`emitLazyProtoGet`). When `_wrapForHost` wraps a
+ * registered prototype, its Proxy enumerates only this list instead of the
+ * underlying struct fields — hiding instance-field leakage from tests like
+ * `hasOwnProperty.call(C.prototype, "instanceField")`.
+ */
+const _prototypeMethodNames = new WeakMap<object, string[]>();
+
+function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): any {
+  if (obj == null || typeof obj !== "object") return obj;
+  if (!_isWasmStruct(obj)) return obj;
+
+  const cached = _hostProxyCache.get(obj);
+  if (cached) return cached;
+
+  const target: Record<string | symbol, any> = Object.create(null);
+
+  const safeGetField = (key: any): any => {
+    // Sidecar first (handles both string and symbol keys)
+    const sc = _sidecarGet(obj, key);
+    if (sc !== undefined) return sc;
+    // Wasm struct field getter
+    if (exports && (typeof key === "string" || typeof key === "number")) {
+      const getter = exports[`__sget_${String(key)}`];
+      if (typeof getter === "function") {
+        try {
+          return getter(obj);
+        } catch {
+          /* not a field of this struct type */
+        }
+      }
+    }
+    // Well-known symbol → @@name sidecar fallback
+    if (typeof key === "symbol") {
+      const wasmKey = _symbolToWasm.get(key);
+      if (wasmKey !== undefined) {
+        const v = _sidecarGet(obj, wasmKey);
+        if (v !== undefined) return v;
+      }
+    }
+    return undefined;
+  };
+
+  // #1047 — if `obj` was registered as a class prototype, surface only the
+  // method names in the allowlist. Otherwise fall back to the struct-field
+  // enumeration used for regular instances.
+  const fieldNamesForHost = (): string[] => {
+    const protoMethods = _prototypeMethodNames.get(obj);
+    if (protoMethods !== undefined) return protoMethods;
+    return _getStructFieldNames(obj, exports) ?? [];
+  };
+
+  const collectKeys = (): (string | symbol)[] => {
+    const keys = new Set<string | symbol>();
+    const fieldNames = fieldNamesForHost();
+    for (const k of fieldNames) keys.add(k);
+    const sc = _wasmStructProps.get(obj);
+    if (sc) {
+      for (const k of Object.getOwnPropertyNames(sc)) keys.add(k);
+      for (const k of Object.getOwnPropertySymbols(sc)) keys.add(k);
+    }
+    return Array.from(keys);
+  };
+
+  const handler: ProxyHandler<any> = {
+    get(_t, key) {
+      const val = safeGetField(key);
+      // If val is a wasmGC closure struct (method stored as a field), wrap
+      // it in a JS function that dispatches via the compiled __call_<name>
+      // export so JS callers (including native ToPrimitive / Array built-ins)
+      // can invoke it. Without this, JS sees `typeof val === "object"` and
+      // ToPrimitive fails with "Cannot convert object to primitive value".
+      if (val != null && typeof val === "object" && _isWasmStruct(val) && exports) {
+        // Resolve the export key — for string keys use directly, for well-known
+        // symbols use the @@name form (e.g. Symbol.toPrimitive → "@@toPrimitive") (#1090)
+        const exportKey = typeof key === "string" ? key : typeof key === "symbol" ? _symbolToWasm.get(key) : undefined;
+        if (exportKey !== undefined) {
+          const callFn = exports[`__call_${exportKey}`];
+          if (typeof callFn === "function") {
+            return function closureBridge(this: any, ...args: any[]) {
+              return callFn(obj);
+            };
+          }
+        }
+        // Generic closure caller fallback — wraps any WasmGC closure struct
+        // in a JS function so V8's native ToPrimitive sees it as callable (#1090)
+        // Try __call_fn_1 first (for 1-arg closures like Symbol.toPrimitive(hint)),
+        // then __call_fn_0 (for zero-arg closures like valueOf/toString).
+        const callFn1 = exports["__call_fn_1"];
+        if (typeof callFn1 === "function") {
+          return function closureBridge(this: any, ...args: any[]) {
+            return callFn1(val, args[0]);
+          };
+        }
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") {
+          return function closureBridge(this: any, ...args: any[]) {
+            return callFn0(val);
+          };
+        }
+        // Non-closure WasmGC struct (e.g. nested object with valueOf/toString) —
+        // wrap with _wrapForHost so its properties are accessible from JS (#1090)
+        return _wrapForHost(val, exports);
+      }
+      return val;
+    },
+    set(_t, key, val) {
+      _safeSet(obj, key, val);
+      return true;
+    },
+    has(_t, key) {
+      // #1047 — for registered class prototypes, the allowlist is
+      // authoritative: an instance field with a default value of 0/null
+      // would otherwise appear truthy via safeGetField.
+      const protoMethods = _prototypeMethodNames.get(obj);
+      if (protoMethods !== undefined) {
+        if (typeof key === "string" && protoMethods.includes(key)) return true;
+        const sc = _wasmStructProps.get(obj);
+        return !!sc && key in sc;
+      }
+      if (safeGetField(key) !== undefined) return true;
+      const sc = _wasmStructProps.get(obj);
+      if (sc && key in sc) return true;
+      const fieldNames = fieldNamesForHost();
+      return typeof key === "string" && fieldNames.includes(key);
+    },
+    deleteProperty(_t, key) {
+      // Always report success — Array.prototype.pop etc. call
+      // `delete O[len-1]` on sparse arrayLikes where the index may not be
+      // present in the sidecar. Returning false here throws a Proxy
+      // invariant TypeError. Sidecar delete is best-effort.
+      _sidecarDelete(obj, key);
+      return true;
+    },
+    ownKeys(_t) {
+      return collectKeys();
+    },
+    getOwnPropertyDescriptor(_t, key) {
+      // For Proxy invariants, getOwnPropertyDescriptor must match target's
+      // non-configurable keys. Our target is an empty extensible object, so
+      // we can return any descriptor we like. We must also reflect the
+      // descriptor back onto target so ownKeys invariants are satisfied when
+      // the host enumerates via Object.keys/getOwnPropertyNames (some
+      // engines cross-check).
+      const sc = _wasmStructProps.get(obj);
+      const hasInSidecar = !!sc && key in sc;
+      const fieldNames = fieldNamesForHost();
+      const hasInFields = typeof key === "string" && fieldNames.includes(key);
+      // #1047 — for registered class prototypes, only consult the allowlist
+      // and the sidecar. Do NOT call safeGetField (which would read default
+      // struct field values for leaking instance fields like `a = 0`).
+      const protoMethods = _prototypeMethodNames.get(obj);
+      if (protoMethods !== undefined) {
+        if (!hasInFields && !hasInSidecar) return undefined;
+      }
+      const val = safeGetField(key);
+      if (protoMethods === undefined && val === undefined && !hasInSidecar && !hasInFields) return undefined;
+      const desc: PropertyDescriptor = {
+        value: val,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      };
+      // Mirror onto target so V8's Proxy invariant checker is happy
+      try {
+        Object.defineProperty(target, key, desc);
+      } catch {
+        /* already defined with different flags — ignore */
+      }
+      return desc;
+    },
+    getPrototypeOf() {
+      return Object.prototype;
+    },
+    defineProperty(_t, key, descriptor) {
+      // Route through sidecar descriptor validation so non-configurable/non-writable
+      // constraints are enforced when native Object.defineProperty/defineProperties
+      // is called on the proxy (#1092).
+      const nKey = _normalizeDescKey(key);
+      const sDescs = _getSidecarDescs(obj);
+      const existingVal = _sidecarGet(obj, key);
+      const newFlags = _validatePropertyDescriptor(sDescs, nKey, descriptor, existingVal);
+      sDescs.set(nKey, newFlags);
+      if (descriptor.value !== undefined) _sidecarSet(obj, key, descriptor.value);
+      if (descriptor.get !== undefined || descriptor.set !== undefined) {
+        if (typeof key === "symbol") {
+          let accMap = _wasmStructAccessors.get(obj);
+          if (!accMap) {
+            accMap = new Map();
+            _wasmStructAccessors.set(obj, accMap);
+          }
+          accMap.set(key, { get: descriptor.get, set: descriptor.set });
+        } else {
+          const sc = _getSidecar(obj);
+          if (descriptor.get) sc[`__get_${String(key)}`] = descriptor.get;
+          if (descriptor.set) sc[`__set_${String(key)}`] = descriptor.set;
+        }
+      }
+      // Mirror onto target for Proxy invariants
+      try {
+        Object.defineProperty(_t, key, descriptor);
+      } catch {
+        /* */
+      }
+      return true;
+    },
+  };
+
+  const proxy = new Proxy(target, handler);
+  _hostProxyCache.set(obj, proxy);
+  _hostProxyReverse.set(proxy, obj);
+  return proxy;
+}
+
+function _unwrapForHost(v: any): any {
+  if (v == null || typeof v !== "object") return v;
+  const orig = _hostProxyReverse.get(v);
+  return orig ?? v;
 }
 
 /** wasm:js-string polyfill for engines without native support (https://developer.mozilla.org/de/docs/WebAssembly/Guides/JavaScript_builtins) */
@@ -517,6 +1099,32 @@ export const jsString = {
 };
 
 const JS_STRINGS_NATIVE_BUILTIN = true;
+
+/** Convert a WasmGC vec struct (or JS array) to a plain JS array.
+ *  Used by array method host imports that need a real JS array. */
+function _toJsArray(arr: any, exports: Record<string, Function> | undefined): any[] {
+  if (arr == null) return [];
+  if (Array.isArray(arr)) return arr;
+  if (exports) {
+    const vecLen = exports.__vec_len;
+    const vecGet = exports.__vec_get;
+    if (typeof vecLen === "function" && typeof vecGet === "function") {
+      try {
+        const len = vecLen(arr) as number;
+        if (typeof len === "number" && len >= 0) {
+          const result: any[] = new Array(len);
+          for (let i = 0; i < len; i++) {
+            result[i] = vecGet(arr, i);
+          }
+          return result;
+        }
+      } catch {
+        // Not a vec — fall through
+      }
+    }
+  }
+  return [arr]; // Fallback: wrap single value
+}
 
 function resolveImport(
   intent: ImportIntent,
@@ -555,7 +1163,19 @@ function resolveImport(
     }
     case "string_method": {
       const method = intent.method;
-      return (s: any, ...a: any[]) => (String(s) as any)[method](...a);
+      return (s: any, ...a: any[]) => {
+        // Coerce wasmGC struct args via ToPrimitive before passing to JS host (#983)
+        const coerce = (v: any): any => {
+          if (v != null && typeof v === "object" && _isWasmStruct(v)) {
+            const prim = _toPrimitive(v, "string", callbackState);
+            return prim === undefined ? "[object Object]" : prim;
+          }
+          return v;
+        };
+        const recv = coerce(s);
+        const args = a.map(coerce);
+        return (String(recv) as any)[method](...args);
+      };
     }
     case "extern_class": {
       if (intent.className === "Document" && intent.action === "get" && intent.member === "body") {
@@ -578,6 +1198,9 @@ function resolveImport(
           }
         }
         const builtinCtors: Record<string, Function> = {
+          Number,
+          Boolean,
+          String,
           Map,
           Set,
           WeakMap,
@@ -599,6 +1222,13 @@ function resolveImport(
           ...(typeof DisposableStack !== "undefined" ? { DisposableStack } : {}),
           ...(typeof AsyncDisposableStack !== "undefined" ? { AsyncDisposableStack } : {}),
           ...(typeof SuppressedError !== "undefined" ? { SuppressedError } : {}),
+          // Intl constructors (#1070)
+          ...(typeof Intl !== "undefined" && typeof Intl.ListFormat !== "undefined"
+            ? { ListFormat: Intl.ListFormat }
+            : {}),
+          ...(typeof Intl !== "undefined" && typeof Intl.NumberFormat !== "undefined"
+            ? { NumberFormat: Intl.NumberFormat }
+            : {}),
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor)
@@ -608,10 +1238,17 @@ function resolveImport(
         // Strip trailing null/undefined args — the compiler pads missing
         // optional args with ref.null.extern, but constructors like RegExp
         // reject explicit null (e.g. new RegExp("x", null) throws).
+        // EXCEPT for String/Number/Boolean: new String(undefined) must produce "undefined",
+        // not "" (which new String() with no args produces).
+        const isWrapperCtor =
+          intent.className === "String" || intent.className === "Number" || intent.className === "Boolean";
         return (...args: any[]) => {
-          let len = args.length;
-          while (len > 0 && args[len - 1] == null) len--;
-          return new Ctor(...args.slice(0, len));
+          if (!isWrapperCtor) {
+            let len = args.length;
+            while (len > 0 && args[len - 1] == null) len--;
+            args = args.slice(0, len);
+          }
+          return new Ctor(...args);
         };
       }
       if (intent.action === "get") {
@@ -635,7 +1272,24 @@ function resolveImport(
       const name = intent.name;
       // Batched string concat: __concat_3, __concat_4, ... (#958)
       if (name.startsWith("__concat_")) {
-        return (...args: string[]) => args.join("");
+        return (...args: any[]) => {
+          // Coerce each arg; wasmGC structs route through _toPrimitive (#983).
+          // User-thrown errors from valueOf/toString propagate.
+          let out = "";
+          for (const a of args) {
+            if (a == null) {
+              out += String(a);
+            } else if (typeof a === "string") {
+              out += a;
+            } else if (typeof a === "object" && _isWasmStruct(a)) {
+              const prim = _toPrimitive(a, "default", callbackState);
+              out += prim === undefined ? "[object Object]" : String(prim);
+            } else {
+              out += String(a);
+            }
+          }
+          return out;
+        };
       }
       if (name === "number_toString") return (v: number) => String(v);
       if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
@@ -649,7 +1303,22 @@ function resolveImport(
           const plain = _wasmToPlain(v, exports);
           // Normalize sentinel values: NaN means "not provided"
           const rep = replacer == null || (typeof replacer === "number" && isNaN(replacer)) ? undefined : replacer;
-          const sp = space == null || (typeof space === "number" && isNaN(space)) ? undefined : space;
+          // Coerce space to primitive — handles WasmGC structs and JS objects
+          // with WasmGC closure valueOf/toString (#1090)
+          let sp: any = space;
+          if (sp != null && typeof sp === "object") {
+            const prim = _toPrimitive(sp, "number", callbackState);
+            if (prim !== undefined) {
+              sp = prim;
+            } else {
+              try {
+                sp = _hostToPrimitive(sp, "number", callbackState);
+              } catch {
+                /* let JSON.stringify handle the coercion error */
+              }
+            }
+          }
+          if (sp == null || (typeof sp === "number" && isNaN(sp))) sp = undefined;
           return JSON.stringify(plain, rep as any, sp);
         };
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
@@ -669,15 +1338,88 @@ function resolveImport(
       if (name === "__extern_length")
         return (obj: any) => {
           if (obj == null) return 0;
+          // Helper: coerce length value to number (#1090) — handles nested WasmGC
+          // structs with valueOf/toString that need ToPrimitive dispatch
+          const coerceLen = (v: any): number => {
+            if (v == null) return 0;
+            if (typeof v === "number") return v;
+            if (typeof v === "string") return Number(v);
+            if (typeof v === "object") {
+              // Try our ToPrimitive for WasmGC structs (#1090)
+              const prim = _toPrimitive(v, "number", callbackState);
+              if (prim !== undefined) return Number(prim);
+              try {
+                const prim2 = _hostToPrimitive(v, "number", callbackState);
+                return Number(prim2);
+              } catch {
+                /* fall through */
+              }
+              return Number(v);
+            }
+            return Number(v);
+          };
+          // Reading .length on an opaque wasmGC struct throws — check sidecar first (#983)
+          if (_isWasmStruct(obj)) {
+            const sc = _sidecarGet(obj, "length");
+            if (sc !== undefined) return coerceLen(sc);
+            const exports = callbackState?.getExports();
+            const getter = exports?.[`__sget_length`];
+            if (typeof getter === "function") {
+              try {
+                return coerceLen(getter(obj));
+              } catch {
+                /* not a field */
+              }
+            }
+            return 0;
+          }
           const len = obj.length;
-          if (len !== undefined) return len;
-          return _sidecarGet(obj, "length") ?? 0;
+          if (len !== undefined) return coerceLen(len);
+          const sc = _sidecarGet(obj, "length");
+          if (sc !== undefined) return coerceLen(sc);
+          // Try struct getter export for WasmGC structs with a 'length' field
+          const exports = callbackState?.getExports();
+          const getter = exports?.__sget_length;
+          if (typeof getter === "function") return coerceLen(getter(obj)) ?? 0;
+          return 0;
+        };
+      // __extern_get_idx: numeric index access bypassing the well-known symbol ID
+      // check in _safeGet. Needed for array-like loops where i can be 1-12 and
+      // _safeGet would otherwise interpret the number as a Symbol ID.
+      // Also uses __sget_N struct getter exports to access WasmGC struct fields.
+      if (name === "__extern_get_idx")
+        return (obj: any, idx: number): any => {
+          if (obj == null) return undefined;
+          // Direct numeric index (works for real JS arrays and array-likes)
+          const v = obj[idx];
+          if (v !== undefined) return v;
+          // Check sidecar with numeric key
+          const sv = _sidecarGet(obj, idx);
+          if (sv !== undefined) return sv;
+          // Also try string key
+          const strKey = String(idx);
+          const vs = obj[strKey];
+          if (vs !== undefined) return vs;
+          const svs = _sidecarGet(obj, strKey);
+          if (svs !== undefined) return svs;
+          // Try struct getter export __sget_N (for WasmGC struct fields like "0", "1", etc.)
+          const exports = callbackState?.getExports();
+          const getter = exports?.[`__sget_${strKey}`];
+          if (typeof getter === "function") return getter(obj);
+          return undefined;
         };
       if (name === "__extern_toString")
         return (v: any) => {
           if (v == null) return String(v);
+          // ToPrimitive for WasmGC structs must run BEFORE any .toString
+          // property read — reading .toString on an opaque struct throws
+          // "WebAssembly objects are opaque" (#850, #983)
+          if (typeof v === "object" && _isWasmStruct(v)) {
+            const prim = _toPrimitive(v, "string", callbackState);
+            if (prim !== undefined) return String(prim);
+            return "[object Object]";
+          }
           if (typeof v.toString === "function") return v.toString();
-          // ToPrimitive for WasmGC structs (#850)
           if (typeof v === "object") {
             const prim = _toPrimitive(v, "string", callbackState);
             if (prim !== undefined) return String(prim);
@@ -688,8 +1430,31 @@ function resolveImport(
             return "[object Object]";
           }
         };
+      if (name === "__extern_toLocaleString")
+        return (v: any) => {
+          if (v == null) return String(v);
+          if (typeof v === "object" && _isWasmStruct(v)) {
+            const exports = callbackState?.getExports();
+            const plain = _wasmToPlain(v, exports);
+            if (plain !== v && plain != null && typeof plain.toLocaleString === "function") {
+              return plain.toLocaleString();
+            }
+            return String(v);
+          }
+          return v.toLocaleString();
+        };
       if (name === "__extern_is_undefined") return (v: any) => (v === undefined ? 1 : 0);
       if (name === "__get_undefined") return () => undefined;
+      // __to_primitive: full ToPrimitive per ECMA-262 §7.1.1 (#1090)
+      // Takes (externref obj, externref hint_string) → externref primitive
+      // Throws TypeError if conversion fails or Symbol.toPrimitive is non-callable
+      if (name === "__to_primitive")
+        return (obj: any, hintStr: any): any => {
+          if (obj == null || typeof obj !== "object") return obj;
+          const hint: "number" | "string" | "default" =
+            hintStr === "string" ? "string" : hintStr === "number" ? "number" : "default";
+          return _hostToPrimitive(obj, hint, callbackState);
+        };
       // __box_symbol: convert i32 symbol ID → real JS Symbol (cached by ID)
       // so symbols preserve identity when crossing the Wasm/JS boundary (#864)
       if (name === "__box_symbol") {
@@ -706,6 +1471,8 @@ function resolveImport(
           [10, Symbol.split],
           [11, Symbol.unscopables],
           [12, Symbol.asyncIterator],
+          [13, _disposeSym],
+          [14, _asyncDisposeSym],
         ]);
         return (id: number) => {
           let sym = symbolCache.get(id);
@@ -717,6 +1484,31 @@ function resolveImport(
         };
       }
       if (name === "__object_create") return (proto: any) => Object.create(proto);
+      if (name === "__new_plain_object") return (): any => ({});
+      if (name === "__register_prototype")
+        return (proto: any, csv: any): void => {
+          // #1047 — populate the prototype method-name allowlist consulted by
+          // `_wrapForHost` so `C.prototype` enumerates methods only.
+          if (proto == null || typeof proto !== "object") return;
+          const names = typeof csv === "string" && csv.length > 0 ? csv.split(",") : [];
+          _prototypeMethodNames.set(proto, names);
+        };
+      if (name === "__unbox_string")
+        return (s: any): any => {
+          if (typeof s === "string") return s; // already a string primitive
+          // WasmGC structs with valueOf/toString closures need ToPrimitive (#1090)
+          if (s != null && typeof s === "object" && _isWasmStruct(s)) {
+            const prim = _toPrimitive(s, "string", callbackState);
+            if (prim !== undefined) return String(prim);
+            try {
+              const prim2 = _hostToPrimitive(s, "string", callbackState);
+              return String(prim2);
+            } catch {
+              /* fall through to String() */
+            }
+          }
+          return String(s); // extract primitive from String wrapper object
+        };
       if (name === "__object_freeze")
         return (obj: any) => {
           if (obj == null) return obj;
@@ -961,9 +1753,10 @@ function resolveImport(
                 // WasmGC struct — validate against sidecar descriptors, then store.
                 // Pass existing sidecar value for SameValue check on non-writable props.
                 const sDescs = _getSidecarDescs(obj);
+                const nProp = _normalizeDescKey(prop);
                 const existingVal = _sidecarGet(obj, prop);
-                const newFlags = _validatePropertyDescriptor(sDescs, prop, desc, existingVal);
-                sDescs.set(prop, newFlags);
+                const newFlags = _validatePropertyDescriptor(sDescs, nProp, desc, existingVal);
+                sDescs.set(nProp, newFlags);
                 if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
               } else {
                 // Spec-mandated TypeError (non-configurable redefinition on real JS objects)
@@ -972,6 +1765,55 @@ function resolveImport(
             } else {
               // Non-TypeError — store value in sidecar
               if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
+            }
+          }
+          return obj;
+        };
+      if (name === "__defineProperty_accessor")
+        return (obj: any, prop: any, getter: any, setter: any, flags: number) => {
+          if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
+            throw new TypeError("Object.defineProperty called on non-object");
+          }
+          const desc: PropertyDescriptor = {};
+          if (getter != null) desc.get = getter;
+          if (setter != null) desc.set = setter;
+          if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
+          if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
+          try {
+            Object.defineProperty(obj, prop, desc);
+          } catch (e) {
+            if (e instanceof TypeError) {
+              const msg = (e as Error).message || "";
+              if (msg.includes("opaque") || msg.includes("WebAssembly")) {
+                // WasmGC struct — store accessor in sidecar
+                const sDescs = _getSidecarDescs(obj);
+                const nProp = _normalizeDescKey(prop);
+                const newFlags = _validatePropertyDescriptor(sDescs, nProp, desc, undefined);
+                sDescs.set(nProp, newFlags);
+                const sc = _wasmStructProps.get(obj) ?? {};
+                _wasmStructProps.set(obj, sc);
+                if (typeof prop === "symbol") {
+                  // Symbol keys can't be used in template literals — use separate accessor map
+                  let accMap = _wasmStructAccessors.get(obj);
+                  if (!accMap) {
+                    accMap = new Map();
+                    _wasmStructAccessors.set(obj, accMap);
+                  }
+                  accMap.set(prop, { get: desc.get, set: desc.set });
+                  // Also mark in sidecar so property enumeration knows it exists
+                  _sidecarSet(obj, prop, undefined);
+                } else {
+                  if (desc.get) sc[`__get_${prop}`] = desc.get;
+                  if (desc.set) sc[`__set_${prop}`] = desc.set;
+                  // Mark the property key as "own" for hasOwnProperty checks.
+                  // `prop in sc` must be true even though the value is undefined —
+                  // _sidecarGet returns undefined which causes _safeGet to fall
+                  // through to the getter check (correct). (#929)
+                  if (!(prop in sc)) sc[prop as string] = undefined;
+                }
+              } else {
+                throw e;
+              }
             }
           }
           return obj;
@@ -1029,9 +1871,10 @@ function resolveImport(
                     if (getFn !== undefined) desc.get = getFn;
                     const setFn = getField(rawDesc, "set");
                     if (setFn !== undefined) desc.set = setFn;
+                    const nKey = _normalizeDescKey(key);
                     const existingVal2 = _sidecarGet(obj, key);
-                    const newFlags = _validatePropertyDescriptor(sDescs, key, desc, existingVal2);
-                    sDescs.set(key, newFlags);
+                    const newFlags = _validatePropertyDescriptor(sDescs, nKey, desc, existingVal2);
+                    sDescs.set(nKey, newFlags);
                     if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
                   }
                 }
@@ -1064,8 +1907,18 @@ function resolveImport(
           const sc = _wasmStructProps.get(obj);
           if (sc && prop in sc) {
             const descs = _wasmPropDescs.get(obj);
-            const flags = descs?.get(prop) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
+            const flags =
+              descs?.get(_normalizeDescKey(prop)) ?? _SC_WRITABLE | _SC_ENUMERABLE | _SC_CONFIGURABLE | _SC_DEFINED;
             if (flags & _SC_ACCESSOR) {
+              if (typeof prop === "symbol") {
+                const accessor = _wasmStructAccessors.get(obj)?.get(prop);
+                return {
+                  get: accessor?.get,
+                  set: accessor?.set,
+                  enumerable: !!(flags & _SC_ENUMERABLE),
+                  configurable: !!(flags & _SC_CONFIGURABLE),
+                };
+              }
               return {
                 get: sc[`__get_${prop}`],
                 set: sc[`__set_${prop}`],
@@ -1103,13 +1956,39 @@ function resolveImport(
           if (obj == null) return [];
           if (!_isWasmStruct(obj)) return Object.getOwnPropertyNames(obj);
           const exports = callbackState?.getExports();
+          // #1047 — registered class prototype: return only the allowlist
+          const protoMethods = _prototypeMethodNames.get(obj);
+          if (protoMethods !== undefined) {
+            const names = protoMethods.slice();
+            const sc = _wasmStructProps.get(obj);
+            if (sc) {
+              for (const k of Object.getOwnPropertyNames(sc)) {
+                if (k.startsWith("__get_") || k.startsWith("__set_")) continue;
+                if (!names.includes(k)) names.push(k);
+              }
+            }
+            return names;
+          }
           const fieldNames: string[] = _getStructFieldNames(obj, exports) ?? [];
           // Also include sidecar property names (string keys only)
+          // Filter out internal accessor keys (__get_<prop>, __set_<prop>) stored by
+          // __defineProperty_accessor — these are implementation artifacts, not own property names.
+          // The real property name (without prefix) is stored separately when the sidecar is set. (#929)
           const sc = _wasmStructProps.get(obj);
           if (sc) {
             for (const k of Object.getOwnPropertyNames(sc)) {
+              if (k.startsWith("__get_") || k.startsWith("__set_")) continue;
               if (!fieldNames.includes(k)) fieldNames.push(k);
             }
+          }
+          // Also include any native JS properties added directly to the WasmGC object
+          // (V8 allows Object.defineProperty on WasmGC structs as JS objects)
+          try {
+            for (const k of Object.getOwnPropertyNames(obj)) {
+              if (!fieldNames.includes(k)) fieldNames.push(k);
+            }
+          } catch {
+            // ignore if not enumerable on this object
           }
           return fieldNames;
         };
@@ -1155,13 +2034,77 @@ function resolveImport(
             return 0;
           }
         };
+      // #1064: record DataView subview metadata (byteOffset, byteLength) on
+      // the backing vec struct so the __extern_method_call DataView fallback
+      // can build a correctly-windowed native DataView. A NaN `length` means
+      // "use bufferByteLength - offset at dispatch time" (set by codegen when
+      // the buffer arg is externref-typed and its length isn't known statically).
+      if (name === "__dv_register_view")
+        return (buf: any, offset: number, length: number) => {
+          if (buf != null && typeof buf === "object") {
+            const off = Number.isFinite(offset) ? (offset as number) | 0 : 0;
+            const len = Number.isFinite(length) ? (length as number) | 0 : -1;
+            _dvViewMeta.set(buf, { offset: off, length: len });
+          }
+        };
       // Generic method call on externref receiver (#799 WI3)
       if (name === "__extern_method_call")
         return (obj: any, method: string, args: any[]) => {
           if (obj == null) throw new TypeError("Cannot read properties of null (reading '" + method + "')");
-          const fn = obj[method];
-          if (typeof fn !== "function") throw new TypeError(method + " is not a function");
-          return fn.apply(obj, args ?? []);
+          // #983: wrap wasmGC receiver + arg structs in live-mirror Proxies.
+          // The proxy's `get` trap now exposes closure-field methods as
+          // callable JS functions, so JS ToPrimitive / Array built-ins can
+          // invoke poisoned valueOf/toString and let errors propagate.
+          const exports = callbackState?.getExports();
+          const wrappedObj = _isWasmStruct(obj) ? _wrapForHost(obj, exports) : obj;
+          const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
+          const fn = wrappedObj[method];
+          if (typeof fn !== "function") {
+            // DataView method fallback (#1056): the compiler emits DataView as an
+            // i32_byte vec struct, so DataView.prototype methods aren't directly
+            // callable on the wasmGC receiver. Detect the method pattern and
+            // dispatch via a live Uint8Array view onto the struct's byte backing
+            // store (__dv_byte_{len,get,set} exports).
+            const dvMatch =
+              typeof method === "string" &&
+              /^(get|set)(Uint8|Int8|Uint16|Int16|Uint32|Int32|Float16|Float32|Float64|BigInt64|BigUint64)$/.exec(
+                method,
+              );
+            if (dvMatch && _isWasmStruct(obj) && exports) {
+              const dvLen = exports.__dv_byte_len as ((v: any) => number) | undefined;
+              const dvGet = exports.__dv_byte_get as ((v: any, i: number) => number) | undefined;
+              const dvSet = exports.__dv_byte_set as ((v: any, i: number, b: number) => void) | undefined;
+              if (typeof dvLen === "function" && typeof dvGet === "function") {
+                const bufLen = dvLen(obj);
+                if (bufLen >= 0) {
+                  // #1064: honor the view window recorded by __dv_register_view
+                  // at construction. Without this, getXxx/setXxx operate on the
+                  // full backing buffer and out-of-range errors don't fire.
+                  const meta = _dvViewMeta.get(obj);
+                  const viewOffset = meta ? meta.offset : 0;
+                  const viewLength = meta && meta.length >= 0 ? meta.length : bufLen - viewOffset;
+                  const bytes = new Uint8Array(bufLen);
+                  for (let i = 0; i < bufLen; i++) bytes[i] = dvGet(obj, i) & 0xff;
+                  // `new DataView(buf, offset, length)` validates bounds; if
+                  // meta is stale/inconsistent this may throw TypeError which
+                  // the Wasm caller can catch via the standard exn bridge.
+                  const realDv = new DataView(bytes.buffer, viewOffset, viewLength);
+                  const nativeFn = (realDv as any)[method];
+                  if (typeof nativeFn === "function") {
+                    const result = nativeFn.apply(realDv, args ?? []);
+                    if (dvMatch[1] === "set" && typeof dvSet === "function") {
+                      const endByte = viewOffset + viewLength;
+                      for (let i = viewOffset; i < endByte; i++) dvSet(obj, i, bytes[i]!);
+                    }
+                    return result;
+                  }
+                }
+              }
+            }
+            throw new TypeError(method + " is not a function");
+          }
+          const ret = fn.apply(wrappedObj, wrappedArgs);
+          return ret === wrappedObj ? obj : _unwrapForHost(ret);
         };
       // Type.prototype.method.call(receiver, ...args) dispatch for built-in types.
       // Used when e.g. Array.prototype.every.call(functionObj, fn) — the receiver
@@ -1172,7 +2115,14 @@ function resolveImport(
           if (!Type || !Type.prototype) throw new TypeError(typeName + " is not a constructor");
           const method = Type.prototype[methodName];
           if (typeof method !== "function") throw new TypeError(methodName + " is not a function");
-          return method.call(receiver, ...(args ?? []));
+          // #983: wrap wasmGC receiver + arg structs in live-mirror Proxies.
+          // Proxy get trap exposes closure-field methods as callable JS fns,
+          // so native ToPrimitive on a wasmGC arg with closure valueOf works.
+          const exports = callbackState?.getExports();
+          const wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
+          const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
+          const ret = method.call(wrappedReceiver, ...wrappedArgs);
+          return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
         };
       // Get actual JS built-in object by name (#965) — fixes WI3 null receiver for built-in classes
       if (name === "__get_builtin") return (n: string) => (globalThis as any)[n];
@@ -1184,7 +2134,24 @@ function resolveImport(
       if (name === "__object_is") return (x: any, y: any): number => (Object.is(x, y) ? 1 : 0);
       // Object.assign(target, ...sources) — shallow copy (#965)
       if (name === "__object_assign")
-        return (target: any, sources: any[]): any => Object.assign(target, ...(sources ?? []));
+        return (target: any, sources: any[]): any => {
+          // #983: if target is a wasmGC struct, assign through a live-mirror
+          // Proxy so every source property Set writes back via the sidecar,
+          // and return the original struct reference for caller identity.
+          const exports = callbackState?.getExports();
+          const targetIsStruct = _isWasmStruct(target);
+          if (targetIsStruct) {
+            const wrappedTarget = _wrapForHost(target, exports);
+            const wrappedSources = (sources ?? []).map((s) => (_isWasmStruct(s) ? _wrapForHost(s, exports) : s));
+            Object.assign(wrappedTarget, ...wrappedSources);
+            return target;
+          }
+          // Non-struct target: wrap only wasmGC sources so their property
+          // enumeration works, and return Object.assign's normal result
+          // (which wraps primitives in a boxed object per spec).
+          const wrappedSources = (sources ?? []).map((s) => (_isWasmStruct(s) ? _wrapForHost(s, exports) : s));
+          return Object.assign(target as object, ...wrappedSources);
+        };
       // Object.fromEntries(iterable) — create object from entries (#965)
       if (name === "__object_fromEntries") return (iterable: any): any => Object.fromEntries(iterable);
       // Object.getOwnPropertyDescriptors(obj) — all own descriptors (#965)
@@ -1219,10 +2186,47 @@ function resolveImport(
           }
         };
       if (name === "Object_propertyIsEnumerable")
-        return (obj: any, key: any) => (Object.prototype.propertyIsEnumerable.call(obj, key) ? 1 : 0);
-      if (name === "Object_toString") return (obj: any) => Object.prototype.toString.call(obj);
-      if (name === "Object_valueOf") return (obj: any) => Object.prototype.valueOf.call(obj);
-      if (name === "Object_toLocaleString") return (obj: any) => Object.prototype.toLocaleString.call(obj);
+        return (obj: any, key: any) => {
+          if (_isWasmStruct(obj)) {
+            const descs = _wasmPropDescs.get(obj);
+            if (descs) {
+              const flags = descs.get(String(key));
+              if (flags !== undefined) return flags & _SC_ENUMERABLE ? 1 : 0;
+            }
+            const sc = _wasmStructProps.get(obj);
+            if (sc && String(key) in sc) return 1;
+            // #1047 — registered class prototype: only allowlisted methods
+            const protoMethods = _prototypeMethodNames.get(obj);
+            if (protoMethods !== undefined) {
+              return protoMethods.includes(String(key)) ? 1 : 0;
+            }
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+            return fieldNames.includes(String(key)) ? 1 : 0;
+          }
+          return Object.prototype.propertyIsEnumerable.call(obj, key) ? 1 : 0;
+        };
+      if (name === "Object_toString")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) return "[object Object]";
+          return Object.prototype.toString.call(obj);
+        };
+      if (name === "Object_valueOf")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) {
+            const prim = _toPrimitive(obj, "default", callbackState);
+            return prim === undefined ? obj : prim;
+          }
+          return Object.prototype.valueOf.call(obj);
+        };
+      if (name === "Object_toLocaleString")
+        return (obj: any) => {
+          if (_isWasmStruct(obj)) {
+            const prim = _toPrimitive(obj, "string", callbackState);
+            return prim === undefined ? "[object Object]" : String(prim);
+          }
+          return Object.prototype.toLocaleString.call(obj);
+        };
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
       // hasOwnProperty runtime check for externref/any receivers
       if (name === "__hasOwnProperty")
@@ -1238,6 +2242,16 @@ function resolveImport(
           // WasmGC struct: check sidecar properties
           const sc = _wasmStructProps.get(obj);
           if (sc && key in sc) return 1;
+          // Check descriptor map (for accessor properties set via Object.defineProperty)
+          // __defineProperty_accessor stores flags in _wasmPropDescs so that
+          // hasOwnProperty returns true for accessor-only properties. (#929)
+          const descs = _wasmPropDescs.get(obj);
+          if (descs && descs.has(String(key))) return 1;
+          // #1047 — registered class prototype: only allowlisted methods qualify
+          const protoMethods = _prototypeMethodNames.get(obj);
+          if (protoMethods !== undefined) {
+            return protoMethods.includes(String(key)) ? 1 : 0;
+          }
           // Check struct field names via exported helpers
           const exports = callbackState?.getExports();
           const fieldNames = _getStructFieldNames(obj, exports) ?? [];
@@ -1263,6 +2277,11 @@ function resolveImport(
           // Sidecar props without explicit descriptor are enumerable
           const sc = _wasmStructProps.get(obj);
           if (sc && String(key) in sc) return 1;
+          // #1047 — registered class prototype: only allowlisted methods
+          const protoMethods = _prototypeMethodNames.get(obj);
+          if (protoMethods !== undefined) {
+            return protoMethods.includes(String(key)) ? 1 : 0;
+          }
           // Check struct field names (always enumerable)
           const exports = callbackState?.getExports();
           const fieldNames = _getStructFieldNames(obj, exports) ?? [];
@@ -1805,6 +2824,39 @@ function resolveImport(
             },
           };
         };
+      // Fallback for arr.concat(anyArg) when arg is not a known WasmGC array.
+      // Converts the WasmGC receiver to a JS array via __vec_len/__vec_get exports,
+      // then calls Array.prototype.concat with all arguments.
+      if (name === "__array_concat_any")
+        return (arr: any, args: any[]) => {
+          const exports = callbackState?.getExports();
+          const vecLen = exports?.__vec_len;
+          const vecGet = exports?.__vec_get;
+          if (typeof vecLen !== "function" || typeof vecGet !== "function") {
+            return ([] as any[]).concat(...args);
+          }
+          const len = vecLen(arr) as number;
+          const jsArr: any[] = new Array(len);
+          for (let i = 0; i < len; i++) {
+            jsArr[i] = vecGet(arr, i);
+          }
+          return jsArr.concat(...args);
+        };
+      // Array.prototype.flat(depth?) — flatten nested arrays (#1136)
+      // Converts WasmGC vec to JS array, then calls native flat()
+      if (name === "__array_flat")
+        return (arr: any, depth: any) => {
+          const exports = callbackState?.getExports();
+          const jsArr = _toJsArray(arr, exports);
+          return jsArr.flat(depth === undefined ? undefined : depth);
+        };
+      // Array.prototype.flatMap(callback, thisArg?) — map then flatten (#1136)
+      if (name === "__array_flatMap")
+        return (arr: any, fn: Function, thisArg: any) => {
+          const exports = callbackState?.getExports();
+          const jsArr = _toJsArray(arr, exports);
+          return thisArg !== undefined ? jsArr.flatMap(fn as any, thisArg) : jsArr.flatMap(fn as any);
+        };
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
@@ -1827,7 +2879,21 @@ function resolveImport(
           const r = Number.isNaN(radix) ? undefined : radix;
           return parseInt(String(s), r as any);
         };
-      if (name === "parseFloat") return (s: any) => parseFloat(String(s));
+      if (name === "parseFloat")
+        return (s: any) => {
+          // For Boolean/Number/String wrapper objects (new Boolean(true), etc.),
+          // use Number() coercion which calls valueOf() → 1/0/string.
+          // parseFloat(String(new Boolean(true))) = parseFloat("true") = NaN, which
+          // breaks arithmetic like `"1" / new Boolean(true)`. (#929)
+          if (s != null && typeof s === "object") {
+            try {
+              return Number(s);
+            } catch {
+              /* fall through */
+            }
+          }
+          return parseFloat(String(s));
+        };
       // URI encoding/decoding host imports
       if (name === "decodeURI") return (s: any) => decodeURI(String(s));
       if (name === "decodeURIComponent") return (s: any) => decodeURIComponent(String(s));
@@ -1885,6 +2951,15 @@ function resolveImport(
           const exports = callbackState?.getExports();
           return exports?.[`__cb_${id}`]?.(cap, ...args);
         };
+    case "getter_callback_maker":
+      return (id: number, cap: any) =>
+        // Regular function (not arrow) so 'this' is bound to the receiver;
+        // rest params forward setter arguments (value) to the Wasm callback.
+        // eslint-disable-next-line func-names
+        function (this: any, ...args: any[]) {
+          const exports = callbackState?.getExports();
+          return exports?.[`__cb_${id}`]?.(cap, this, ...args);
+        };
     case "await":
       return (v: any) => v;
     case "dynamic_import":
@@ -1898,8 +2973,9 @@ function resolveImport(
       return intent.targetType === "boolean"
         ? (v: any) => (v ? 1 : 0)
         : (v: any) => {
-            // For objects, try ToPrimitive first — Number() on WasmGC structs returns NaN
-            // without throwing (#866), so the catch-based approach doesn't work.
+            // For objects, try our ToPrimitive first — Number() on WasmGC structs
+            // returns NaN without throwing (#866), and proxied structs may have
+            // WasmGC closures for Symbol.toPrimitive that V8 can't call (#1090).
             if (v != null && typeof v === "object") {
               const prim = _toPrimitive(v, "number", callbackState);
               if (prim !== undefined) {
@@ -1909,21 +2985,15 @@ function resolveImport(
                   /* */
                 }
               }
+              // _toPrimitive returned undefined — try the full host ToPrimitive (#1090)
+              // which checks real JS properties, sidecar, and Wasm exports.
+              // Let TypeError propagate so Wasm catch_all can intercept it.
+              const prim2 = _hostToPrimitive(v, "number", callbackState);
+              return Number(prim2);
             }
             try {
               return Number(v);
             } catch {
-              // Number() failed (e.g. Symbol)
-              if (v != null && typeof v === "object") {
-                const prim = _toPrimitive(v, "number", callbackState);
-                if (prim !== undefined) {
-                  try {
-                    return Number(prim);
-                  } catch {
-                    /* */
-                  }
-                }
-              }
               return NaN;
             }
           };
@@ -1938,10 +3008,34 @@ function resolveImport(
           const getter = exports?.[`__sget_${key}`];
           if (typeof getter === "function") return getter(obj);
         }
+        // #1057 — vec wrapper structs (results of String.prototype.split,
+        // Array.prototype.map, etc.) must report `.constructor === Array`.
+        // Only fire AFTER _safeGet and __sget_ fallback return nothing —
+        // class instances with sidecar constructors or struct getters are
+        // already handled above. Use __vec_len to positively identify vec
+        // wrappers: it returns a number for vecs and throws for non-vecs.
+        // (fieldNames === null was too broad — closure structs also lack
+        // field names, causing 1545 range_error regressions.)
+        if (key === "constructor" && obj != null && _isWasmStruct(obj)) {
+          const exports = callbackState?.getExports();
+          const vecLen = exports?.__vec_len;
+          if (typeof vecLen === "function") {
+            try {
+              const len = vecLen(obj);
+              if (typeof len === "number") return Array;
+            } catch {
+              // Not a vec wrapper — fall through
+            }
+          }
+        }
         return undefined;
       };
     case "extern_set":
       return _safeSet;
+    case "host_eq":
+      // #1065 — strict equality for two externref operands that the GC path
+      // could not compare via ref.eq (e.g. host functions like `Array === Array`).
+      return (a: any, b: any) => (a === b ? 1 : 0);
     case "date_new":
       return () => new Date();
     case "date_now":
@@ -1954,6 +3048,11 @@ function resolveImport(
       const val = deps?.[intent.name];
       if (val !== undefined) return () => val;
       if (intent.name === "globalThis") return () => globalThis;
+      // Fall back to the host's ambient global (e.g. `Array`, `Object`) when
+      // deps does not override it. This makes `x.constructor === Array`
+      // compare against the real host Array constructor. (#1065)
+      const ambient = (globalThis as any)[intent.name];
+      if (ambient !== undefined) return () => ambient;
       return () => {};
     }
     case "proxy_create":
@@ -1981,7 +3080,10 @@ function resolveImport(
  * Each string pool entry becomes a WebAssembly.Global keyed by the literal text.
  */
 export function buildStringConstants(stringPool: string[] = []): Record<string, WebAssembly.Global> {
-  const constants: Record<string, WebAssembly.Global> = {};
+  // Use a null-prototype object so inherited names like "hasOwnProperty" /
+  // "toString" / "constructor" from Object.prototype don't shadow real pool
+  // entries via the `s in constants` duplicate check.
+  const constants: Record<string, WebAssembly.Global> = Object.create(null);
   for (const s of stringPool) {
     if (!(s in constants)) {
       constants[s] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
@@ -2133,6 +3235,70 @@ function wrapWithContainment(
   return fn;
 }
 
+/**
+ * Build a WASI polyfill for running WASI-compiled modules in JS environments.
+ * Routes fd_write(fd=1) to console.log, fd_write(fd=2) to console.error,
+ * and proc_exit to process.exit (Node) or throw (browser).
+ *
+ * Usage:
+ *   const wasi = buildWasiPolyfill();
+ *   const { instance } = await WebAssembly.instantiate(binary, { wasi_snapshot_preview1: wasi });
+ *   wasi.setMemory(instance.exports.memory as WebAssembly.Memory);
+ *   (instance.exports._start as Function)();
+ */
+export function buildWasiPolyfill(): {
+  fd_write: (fd: number, iovs: number, iovs_len: number, nwritten: number) => number;
+  proc_exit: (code: number) => void;
+  setMemory: (mem: WebAssembly.Memory) => void;
+} {
+  let memory: WebAssembly.Memory | undefined;
+  // Partial line buffer per fd for data not ending in newline
+  const lineBuffers: Record<number, string> = {};
+
+  return {
+    setMemory(mem: WebAssembly.Memory) {
+      memory = mem;
+    },
+
+    fd_write(fd: number, iovs: number, iovs_len: number, nwritten: number): number {
+      if (!memory) return -1; // EBADF-ish: memory not set
+
+      const view = new DataView(memory.buffer);
+      let totalWritten = 0;
+
+      for (let i = 0; i < iovs_len; i++) {
+        const ptr = view.getUint32(iovs + i * 8, true);
+        const len = view.getUint32(iovs + i * 8 + 4, true);
+        const bytes = new Uint8Array(memory.buffer, ptr, len);
+        const text = new TextDecoder().decode(bytes);
+
+        // Buffer partial lines; flush on newline
+        const buf = (lineBuffers[fd] || "") + text;
+        const lines = buf.split("\n");
+        // Last element is the incomplete line (or "" if text ended with \n)
+        lineBuffers[fd] = lines.pop()!;
+        const writer = fd === 2 ? console.error : console.log;
+        for (const line of lines) {
+          writer(line);
+        }
+
+        totalWritten += len;
+      }
+
+      // Write total bytes written
+      view.setUint32(nwritten, totalWritten, true);
+      return 0; // __WASI_ERRNO_SUCCESS
+    },
+
+    proc_exit(code: number): void {
+      if (typeof process !== "undefined" && typeof process.exit === "function") {
+        process.exit(code);
+      }
+      throw new Error(`WASI proc_exit(${code})`);
+    },
+  };
+}
+
 /** Build the WebAssembly import object from a closed manifest */
 export function buildImports(
   manifest: ImportDescriptor[],
@@ -2203,7 +3369,7 @@ export function buildImports(
     }
 
     env[imp.name] = fn;
-    if (imp.intent.type === "callback_maker") hasCallbacks = true;
+    if (imp.intent.type === "callback_maker" || imp.intent.type === "getter_callback_maker") hasCallbacks = true;
     // Native string marshal helpers need late-bound exports (for memory access)
     if (imp.name === "__str_from_mem" || imp.name === "__str_to_mem") hasCallbacks = true;
   }

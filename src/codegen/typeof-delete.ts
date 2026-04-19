@@ -1,22 +1,22 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * typeof, delete, instanceof, and RegExp literal compilation.
  * Extracted from expressions.ts (issue #688 step 5).
  */
 import ts from "typescript";
+import { isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
+import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { shiftLateImportIndices } from "./expressions/late-imports.js";
+import { resolveStructName } from "./expressions/misc.js";
+import { addUnionImports, parseRegExpLiteral, resolveWasmType } from "./index.js";
 import { addImport } from "./registry/imports.js";
 import { addFuncType } from "./registry/types.js";
-import { resolveWasmType, addUnionImports, parseRegExpLiteral } from "./index.js";
-import { isAnyValue, ensureAnyHelpers } from "./shared.js";
-import { isNumberType, isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
-import type { Instr, ValType } from "../ir/types.js";
-import { compileExpression, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
+import { compileExpression, ensureAnyHelpers, isAnyValue } from "./shared.js";
 import { compileStringLiteral } from "./string-ops.js";
-import { resolveStructName } from "./expressions/misc.js";
-import { shiftLateImportIndices } from "./expressions/late-imports.js";
 
 // ── Delete expression ─────────────────────────────────────────────────
 
@@ -489,6 +489,13 @@ function staticTypeofForType(ctx: CodegenContext, tsType: ts.Type): string | nul
   if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) return "undefined";
   if (tsType.flags & ts.TypeFlags.BigInt || tsType.flags & ts.TypeFlags.BigIntLiteral) return "bigint";
 
+  // Wrapper objects (new String/Number/Boolean) are "object" not their primitive type (#929)
+  if (tsType.flags & ts.TypeFlags.Object) {
+    const sym = tsType.getSymbol?.();
+    if (sym && (sym.name === "String" || sym.name === "Number" || sym.name === "Boolean")) {
+      return "object";
+    }
+  }
   // Check string before wasm type mapping (native strings map to ref)
   if (isStringType(tsType)) return "string";
 
@@ -576,6 +583,33 @@ export function compileTypeofExpression(
     }
   }
 
+  // typeof UndeclaredIdentifier -> "undefined" (per ES spec: typeof on an
+  // unresolvable Reference returns "undefined" instead of throwing). Without
+  // this, accessing an undeclared identifier would emit a ref.cast or host
+  // call that throws at runtime. (#1050)
+  //
+  // We detect "undeclared" as: bare Identifier whose symbol at location has
+  // no value declaration AND whose parent in source is not a let/const TDZ
+  // binding. We conservatively unwrap `as`/parenthesized casts used in tests.
+  {
+    let ident: ts.Expression = operand;
+    while (
+      ts.isParenthesizedExpression(ident) ||
+      ts.isAsExpression(ident) ||
+      ts.isTypeAssertionExpression(ident) ||
+      ts.isNonNullExpression(ident)
+    ) {
+      ident = (ident as ts.ParenthesizedExpression | ts.AsExpression).expression;
+    }
+    if (ts.isIdentifier(ident)) {
+      const sym = ctx.checker.getSymbolAtLocation(ident);
+      const hasValueDecl = !!sym?.valueDeclaration;
+      if (!hasValueDecl) {
+        return compileStringLiteral(ctx, fctx, "undefined");
+      }
+    }
+  }
+
   const tsType = ctx.checker.getTypeAtLocation(operand);
 
   // Try static resolution first via the shared helper
@@ -652,6 +686,29 @@ export function compileTypeofComparison(
   // Static resolution: if the typeof result is known at compile time,
   // emit a constant comparison result without any runtime call.
   const operand = typeofExpr.expression;
+
+  // typeof UndeclaredIdentifier -> "undefined" (#1050)
+  {
+    let ident: ts.Expression = operand;
+    while (
+      ts.isParenthesizedExpression(ident) ||
+      ts.isAsExpression(ident) ||
+      ts.isTypeAssertionExpression(ident) ||
+      ts.isNonNullExpression(ident)
+    ) {
+      ident = (ident as ts.ParenthesizedExpression | ts.AsExpression).expression;
+    }
+    if (ts.isIdentifier(ident)) {
+      const sym = ctx.checker.getSymbolAtLocation(ident);
+      if (!sym?.valueDeclaration) {
+        const matches = "undefined" === stringLiteral;
+        const result = isEq ? (matches ? 1 : 0) : matches ? 0 : 1;
+        fctx.body.push({ op: "i32.const", value: result });
+        return { kind: "i32" };
+      }
+    }
+  }
+
   const tsType = ctx.checker.getTypeAtLocation(operand);
   let staticTypeof: string | null = null;
   // Math.<constant> -> "number", Math.<method> -> "function"

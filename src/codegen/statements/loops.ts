@@ -1,33 +1,49 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Loop statement lowering: while, for, do-while, for-of, for-in.
  */
 import ts from "typescript";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
-import { coerceType, compileExpression, emitBoundsCheckedArrayGet, valTypesMatch } from "../shared.js";
-import { emitCoercedLocalSet } from "../expressions/helpers.js";
-import { shiftLateImportIndices } from "../expressions/late-imports.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { reportError, reportErrorNoNode } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
-import { addFuncType, getArrTypeIdxFromVec } from "../registry/types.js";
-import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "../registry/imports.js";
-import { ensureI32Condition, ensureNativeStringHelpers, nativeStringType, resolveWasmType } from "../index.js";
-import { resolveComputedKeyExpression } from "../literals.js";
-import { collectInstrs, adjustRethrowDepth, saveBlockScopedShadows, restoreBlockScopedShadows } from "./shared.js";
 import {
-  ensureAsyncIterator,
-  ensureBindingLocals,
-  syncDestructuredLocalsToGlobals,
-  compileObjectDestructuring,
+  findUnresolvableInArrayPattern,
+  findUnresolvableInObjectPattern,
+  isStrictContext,
+} from "../expressions/assignment.js";
+import { emitCoercedLocalSet } from "../expressions/helpers.js";
+import { shiftLateImportIndices } from "../expressions/late-imports.js";
+import {
+  addIteratorImports,
+  ensureI32Condition,
+  ensureNativeStringHelpers,
+  nativeStringType,
+  resolveWasmType,
+} from "../index.js";
+import { resolveComputedKeyExpression } from "../literals.js";
+import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "../registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec } from "../registry/types.js";
+import {
+  coerceType,
+  compileExpression,
+  compileStatement,
+  emitBoundsCheckedArrayGet,
+  valTypesMatch,
+} from "../shared.js";
+import {
   compileArrayDestructuring,
-  emitNullGuard,
-  emitDefaultValueCheck,
-  compileExternrefObjectDestructuringDecl,
   compileExternrefArrayDestructuringDecl,
+  compileExternrefObjectDestructuringDecl,
+  compileObjectDestructuring,
+  emitDefaultValueCheck,
+  emitNullGuard,
+  ensureAsyncIterator,
+  syncDestructuredLocalsToGlobals,
 } from "./destructuring.js";
-import { compileStatement } from "../shared.js";
+import { adjustRethrowDepth, collectInstrs, restoreBlockScopedShadows, saveBlockScopedShadows } from "./shared.js";
 
 export function compileWhileStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.WhileStatement): void {
   // block $break
@@ -719,7 +735,6 @@ function compileForOfDestructuring(
   } else if (ts.isArrayBindingPattern(pattern)) {
     // Array destructuring in for-of: for (var [a, b] of arr)
     // Element may be a vec struct (array wrapper) OR a tuple struct.
-
     // Handle externref elements: use __extern_get to extract indexed properties
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
       if (elemType.kind === "externref") {
@@ -861,8 +876,11 @@ function compileForOfDestructuring(
         if (ts.isOmittedExpression(element)) continue;
 
         // Handle nested binding patterns: for (const [{ a, b }] of arr)
+        // Skip rest elements (dotDotDotToken) — those are handled below so the
+        // rest vec is built before recursing into the nested pattern.
         if (
           ts.isBindingElement(element) &&
+          !element.dotDotDotToken &&
           (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))
         ) {
           const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, innerElemType);
@@ -924,6 +942,12 @@ function compileForOfDestructuring(
             restIdx = allocLocal(fctx, restName, restVecType);
           }
           fctx.body.push({ op: "local.set", index: restIdx });
+
+          // If the rest target is itself a binding pattern (e.g. [...[...x]]),
+          // recurse into it with the freshly built rest vec as the element.
+          if (ts.isArrayBindingPattern(element.name) || ts.isObjectBindingPattern(element.name)) {
+            compileForOfDestructuring(ctx, fctx, element.name, restIdx, restVecType, stmt);
+          }
           continue;
         }
 
@@ -967,6 +991,18 @@ function compileForOfAssignDestructuring(
   arrTypeIdx: number,
   stmt: ts.ForOfStatement,
 ): void {
+  // §6.2.4 PutValue: strict-mode assignment to unresolvable reference throws
+  // ReferenceError. For for-of destructuring assignment, the throw happens each
+  // iteration at the point of first unresolvable PutValue.
+  const hasUnresolvable = ts.isObjectLiteralExpression(expr)
+    ? findUnresolvableInObjectPattern(ctx, fctx, expr)
+    : findUnresolvableInArrayPattern(ctx, fctx, expr);
+  if (hasUnresolvable && isStrictContext(stmt)) {
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "ref.null.extern" } as Instr);
+    fctx.body.push({ op: "throw", tagIdx } as unknown as Instr);
+    return;
+  }
   if (ts.isObjectLiteralExpression(expr)) {
     // for ({a, b} of arr) — elem is a struct ref, extract fields
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
@@ -2326,6 +2362,9 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   }
 
   // Fallback: host-delegated iterator protocol
+  // Ensure iterator host imports are registered before using them
+  addIteratorImports(ctx);
+
   // Coerce to externref if the iterable is a struct ref (GC type).
   if (iterableType.kind !== "externref") {
     coerceType(ctx, fctx, iterableType, { kind: "externref" });

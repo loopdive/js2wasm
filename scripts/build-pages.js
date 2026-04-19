@@ -51,6 +51,12 @@ function copyDirectory(source, destination) {
   });
 }
 
+function copyDirectoryIfExists(source, destination) {
+  if (!existsSync(source)) return false;
+  copyDirectory(source, destination);
+  return true;
+}
+
 function copyFileIfExists(source, destination) {
   if (!existsSync(source)) return false;
   copyFile(source, destination);
@@ -81,6 +87,14 @@ function resolvePreferredFile(primarySource, ...fallbackSources) {
     if (fallbackSource && existsSync(fallbackSource)) return fallbackSource;
   }
   throw new Error(`Required path does not exist: ${primarySource}`);
+}
+
+function resolvePreferredFileOrNull(primarySource, ...fallbackSources) {
+  if (existsSync(primarySource)) return primarySource;
+  for (const fallbackSource of fallbackSources) {
+    if (fallbackSource && existsSync(fallbackSource)) return fallbackSource;
+  }
+  return null;
 }
 
 function writeJson(destination, value) {
@@ -190,10 +204,30 @@ function buildStaticTest262Data(resultsJsonlPath) {
   };
 }
 
+function buildStaticTest262DataFromReport(reportPath) {
+  const report = JSON.parse(readFileSync(reportPath, "utf-8"));
+  const categories = Array.isArray(report.categories)
+    ? report.categories
+        .map((entry) => ({
+          name: entry.name,
+          path: entry.name,
+          fileCount: 0,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+
+  return {
+    categories: { categories },
+    filesJson: {},
+    resultsJson: {},
+  };
+}
+
 ensureExists(PLAYGROUND_DIST);
-ensureExists(join(DASHBOARD_DIR, "index.html"));
-ensureExists(join(DASHBOARD_DIR, "data"));
-ensureExists(join(DASHBOARD_DIR, "data.js"));
+const hasDashboardBundle =
+  existsSync(join(DASHBOARD_DIR, "index.html")) &&
+  existsSync(join(DASHBOARD_DIR, "data")) &&
+  existsSync(join(DASHBOARD_DIR, "data.js"));
 // issues-graph.html and graph-data.json live in public/ — Vite copies them
 // into playground-dist automatically, so they're already in PAGES_DIST.
 
@@ -212,19 +246,22 @@ const PUBLIC_REPORT_SHORT = join(ROOT, "public", "benchmarks", "report.html");
 copyFileIfExists(PUBLIC_REPORT, join(PAGES_DIST, "benchmarks", "results", "report.html"));
 copyFileIfExists(PUBLIC_REPORT_SHORT, join(PAGES_DIST, "benchmarks", "report.html"));
 
-// Add the static dashboard route and pre-generated dashboard data.
-copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "dashboard", "index.html"));
-copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "dashboard", "data"));
-copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"));
+// Add the static dashboard route and pre-generated dashboard data when the
+// private planning artifacts are present. Public exports intentionally omit
+// them.
+if (hasDashboardBundle) {
+  copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "dashboard", "index.html"));
+  copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "dashboard", "data"));
+  copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"));
+}
 // issues-graph.html + graph-data.json are in public/ → included via Vite build
-copyDirectory(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
+copyDirectoryIfExists(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
 
-// Add the benchmark data files fetched by the public report pages.
-copyFileIfExists(
-  join(BENCHMARKS_RESULTS_DIR, "history.json"),
-  join(PAGES_DIST, "benchmarks", "results", "history.json"),
-);
-copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "latest.json"), join(PAGES_DIST, "benchmarks", "results", "latest.json"));
+// Add the benchmark data files fetched by the public report pages. Public pages
+// should read from the already-curated public summaries, not from the full
+// internal benchmark results directory.
+copyFileIfExists(join(PUBLIC_BENCH, "history.json"), join(PAGES_DIST, "benchmarks", "results", "history.json"));
+copyFileIfExists(join(PUBLIC_BENCH, "latest.json"), join(PAGES_DIST, "benchmarks", "results", "latest.json"));
 // Preference order:
 //   1. test262-current.{jsonl,json}  — committed by the nightly workflow,
 //      always present in CI checkouts. THIS is what GitHub Pages should serve.
@@ -234,28 +271,36 @@ copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "latest.json"), join(PAGES_DIST, "
 // Do NOT fall back to runs/ archive — those files can be months old and would
 // silently poison the deployed dashboard.
 const test262ReportSource = resolvePreferredFile(
+  join(PUBLIC_BENCH, "test262-report.json"),
   join(BENCHMARKS_RESULTS_DIR, "test262-current.json"),
   join(BENCHMARKS_RESULTS_DIR, "test262-report.json"),
-  join(PUBLIC_BENCH, "test262-report.json"),
   latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-report-", ".json"),
 );
-const test262ResultsSource = resolvePreferredFile(
+const test262ResultsSource = resolvePreferredFileOrNull(
   join(BENCHMARKS_RESULTS_DIR, "test262-current.jsonl"),
+  join(PUBLIC_BENCH, "test262-results.jsonl"),
   join(BENCHMARKS_RESULTS_DIR, "test262-results.jsonl"),
   latestNamedFile(BENCHMARKS_RESULTS_DIR, "test262-results-", ".jsonl"),
 );
-copyFile(test262ReportSource, join(PAGES_DIST, "benchmarks", "results", "test262-report.json"));
-copyFile(test262ResultsSource, join(PAGES_DIST, "benchmarks", "results", "test262-results.jsonl"));
-copyFile(
+const test262RunsIndexSource = resolvePreferredFileOrNull(
   join(BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
-  join(PAGES_DIST, "benchmarks", "results", "runs", "index.json"),
+  join(PUBLIC_BENCH, "runs", "index.json"),
 );
+copyFile(test262ReportSource, join(PAGES_DIST, "benchmarks", "results", "test262-report.json"));
+if (test262ResultsSource) {
+  copyFile(test262ResultsSource, join(PAGES_DIST, "benchmarks", "results", "test262-results.jsonl"));
+}
+if (test262RunsIndexSource) {
+  copyFile(test262RunsIndexSource, join(PAGES_DIST, "benchmarks", "results", "runs", "index.json"));
+}
 
 const equivTests = buildEquivTests();
 writeJson(join(PLAYGROUND_DATA_DIR, "equiv-tests.json"), equivTests);
 writeJson(join(PLAYGROUND_APP_DATA_DIR, "equiv-tests.json"), equivTests);
 
-const test262Data = buildStaticTest262Data(test262ResultsSource);
+const test262Data = test262ResultsSource
+  ? buildStaticTest262Data(test262ResultsSource)
+  : buildStaticTest262DataFromReport(test262ReportSource);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-index-summary.json"), test262Data.categories);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-files.json"), test262Data.filesJson);
 writeJson(join(PLAYGROUND_DATA_DIR, "test262-file-results.json"), test262Data.resultsJson);
@@ -264,48 +309,30 @@ writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-files.json"), test262Data.files
 writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-file-results.json"), test262Data.resultsJson);
 
 copyFileIfExists(
-  join(BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
+  join(PUBLIC_BENCH, "playground-benchmark-sidebar.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
 );
 copyFileIfExists(
-  join(BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"),
+  join(PUBLIC_BENCH, "loadtime-benchmarks.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"),
 );
-if (existsSync(join(BENCHMARKS_RESULTS_DIR, "loadtime"))) {
-  copyDirectory(join(BENCHMARKS_RESULTS_DIR, "loadtime"), join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime"));
+if (existsSync(join(PUBLIC_BENCH, "loadtime"))) {
+  copyDirectory(join(PUBLIC_BENCH, "loadtime"), join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime"));
 }
-copyFileIfExists(
-  join(BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
-  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "runs", "index.json"),
-);
+if (test262RunsIndexSource) {
+  copyFile(test262RunsIndexSource, join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "runs", "index.json"));
+}
 copyFileIfExists(
   join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "test262-report.json"),
 );
 copyFileIfExists(
-  join(BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"),
+  join(PUBLIC_BENCH, "size-benchmarks.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"),
 );
 
 // Disable Jekyll processing so all generated assets are published as-is.
 writeFileSync(join(PAGES_DIST, ".nojekyll"), "");
-
-// Sync benchmark data to public/ for the landing page (Vite serves public/ as static)
-mkdirSync(PUBLIC_BENCH, { recursive: true });
-copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-report.json"), join(PUBLIC_BENCH, "test262-report.json"));
-copyFileIfExists(
-  join(BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
-  join(PUBLIC_BENCH, "playground-benchmark-sidebar.json"),
-);
-copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "test262-editions.json"), join(PUBLIC_BENCH, "test262-editions.json"));
-copyFileIfExists(join(BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"), join(PUBLIC_BENCH, "size-benchmarks.json"));
-copyFileIfExists(
-  join(BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"),
-  join(PUBLIC_BENCH, "loadtime-benchmarks.json"),
-);
-if (existsSync(join(BENCHMARKS_RESULTS_DIR, "loadtime"))) {
-  copyDirectory(join(BENCHMARKS_RESULTS_DIR, "loadtime"), join(PUBLIC_BENCH, "loadtime"));
-}
 
 // Copy web components to pages-dist root and dashboard
 const COMPONENTS_DIR = join(ROOT, "components");
@@ -313,10 +340,12 @@ for (const file of ["site-nav.js", "t262-charts.js", "trend-chart.js", "perf-ben
   copyFileIfExists(join(COMPONENTS_DIR, file), join(PAGES_DIST, "components", file));
 }
 
-// Copy sprint-stats.json to dashboard data
-copyFileIfExists(
-  join(ROOT, "dashboard", "data", "sprint-stats.json"),
-  join(PAGES_DIST, "dashboard", "data", "sprint-stats.json"),
-);
+// Copy sprint-stats.json to dashboard data when dashboard artifacts exist.
+if (hasDashboardBundle) {
+  copyFileIfExists(
+    join(ROOT, "dashboard", "data", "sprint-stats.json"),
+    join(PAGES_DIST, "dashboard", "data", "sprint-stats.json"),
+  );
+}
 
 console.log(`GitHub Pages artifact ready at ${PAGES_DIST}`);

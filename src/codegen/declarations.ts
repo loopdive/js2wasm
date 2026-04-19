@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Declaration collection and compilation — unified AST visitor, class declarations,
  * function bodies, and struct type registration.
@@ -5,8 +6,6 @@
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
-import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -17,7 +16,36 @@ import {
   mapTsTypeToWasm,
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
+import { collectShapes } from "../shape-inference.js";
+import { ensureWrapperTypes } from "./any-helpers.js";
+import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
 import { reportError } from "./context/errors.js";
+import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
+import { bodyUsesArguments, compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import {
+  addArrayIteratorImports,
+  addForInImports,
+  addIteratorImports,
+  addStringImports,
+  addUnionImports,
+  collectEnumDeclarations,
+  ensureStructForType,
+  extractConstantDefault,
+  FUNCTIONAL_ARRAY_METHODS,
+  hasAsyncModifier,
+  hasDeclareModifier,
+  hasExportModifier,
+  isGeneratorFunction,
+  KNOWN_CONSTRUCTORS,
+  MATH_HOST_METHODS_1ARG,
+  MATH_HOST_METHODS_2ARG,
+  parseRegExpLiteral,
+  resolveWasmType,
+  STRING_METHODS,
+  unwrapGeneratorYieldType,
+} from "./index.js";
+import { ensureNativeStringExternBridge, ensureNativeStringHelpers } from "./native-strings.js";
 import { addImport, addStringConstantGlobal, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
 import {
   addFuncType,
@@ -25,35 +53,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
-import { coerceType, compileExpression, compileStatement, hoistFunctionDeclarations } from "./shared.js";
-import { collectShapes } from "../shape-inference.js";
-import { ensureNativeStringHelpers } from "./native-strings.js";
-import { ensureWrapperTypes } from "./any-helpers.js";
-import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
-import { compileFunctionBody, registerInlinableFunction } from "./function-body.js";
-import {
-  resolveWasmType,
-  ensureStructForType,
-  addStringImports,
-  addUnionImports,
-  addIteratorImports,
-  addArrayIteratorImports,
-  addForInImports,
-  collectEnumDeclarations,
-  extractConstantDefault,
-  FUNCTIONAL_ARRAY_METHODS,
-  hasAsyncModifier,
-  hasDeclareModifier,
-  hasExportModifier,
-  hasStaticModifier,
-  isGeneratorFunction,
-  KNOWN_CONSTRUCTORS,
-  MATH_HOST_METHODS_1ARG,
-  MATH_HOST_METHODS_2ARG,
-  parseRegExpLiteral,
-  STRING_METHODS,
-  unwrapGeneratorYieldType,
-} from "./index.js";
+import { compileExpression, compileStatement } from "./shared.js";
 
 /** Accumulated state for the single-pass collector */
 interface UnifiedCollectorState {
@@ -89,6 +89,7 @@ interface UnifiedCollectorState {
   jsonNeedParse: boolean;
   // -- collectCallbackImports --
   callbackFound: boolean;
+  getterCallbackFound: boolean; // Object.defineProperty accessor descriptors (#929)
   // -- collectFunctionalArrayImports --
   funcArrayNeed1: boolean;
   funcArrayNeed2: boolean;
@@ -140,6 +141,7 @@ export function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedC
     jsonNeedStringify: false,
     jsonNeedParse: false,
     callbackFound: false,
+    getterCallbackFound: false,
     funcArrayNeed1: false,
     funcArrayNeed2: false,
     unionFound: false,
@@ -477,6 +479,33 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
       state.callbackFound = true;
     }
   }
+  // ── getterCallbackFound: Object.defineProperty / Reflect.defineProperty with accessor descriptor (#929) ──
+  // Also covers Object.defineProperties(obj, { p1: desc1, p2: desc2, ... }) (#1027)
+  if (!state.getterCallbackFound && ts.isCallExpression(node)) {
+    if (
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.name) &&
+      ts.isIdentifier(node.expression.expression) &&
+      (node.expression.expression.text === "Object" || node.expression.expression.text === "Reflect")
+    ) {
+      const methodName = node.expression.name.text;
+      if (methodName === "defineProperty" && node.arguments.length >= 3) {
+        if (isAccessorDescriptor(node.arguments[2]!)) {
+          state.getterCallbackFound = true;
+        }
+      } else if (methodName === "defineProperties" && node.arguments.length >= 2) {
+        const propsArg = node.arguments[1]!;
+        if (ts.isObjectLiteralExpression(propsArg)) {
+          for (const prop of propsArg.properties) {
+            if (ts.isPropertyAssignment(prop) && isAccessorDescriptor(prop.initializer)) {
+              state.getterCallbackFound = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
 
   // ── collectFunctionalArrayImports ──
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -709,25 +738,28 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
 /** Run all post-walk finalization (register imports based on collected state) */
 export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorState): void {
   // ── collectConsoleImports finalize ──
-  const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
-  for (const method of CONSOLE_METHODS) {
-    const needed = state.consoleNeededByMethod.get(method);
-    if (!needed) continue;
-    if (needed.has("number")) {
-      const t = addFuncType(ctx, [{ kind: "f64" }], []);
-      addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("bool")) {
-      const t = addFuncType(ctx, [{ kind: "i32" }], []);
-      addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("string")) {
-      const t = addFuncType(ctx, [{ kind: "externref" }], []);
-      addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("externref")) {
-      const t = addFuncType(ctx, [{ kind: "externref" }], []);
-      addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
+  // In WASI mode, console.log/error use fd_write — skip JS host console imports
+  if (!ctx.wasi) {
+    const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
+    for (const method of CONSOLE_METHODS) {
+      const needed = state.consoleNeededByMethod.get(method);
+      if (!needed) continue;
+      if (needed.has("number")) {
+        const t = addFuncType(ctx, [{ kind: "f64" }], []);
+        addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("bool")) {
+        const t = addFuncType(ctx, [{ kind: "i32" }], []);
+        addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("string")) {
+        const t = addFuncType(ctx, [{ kind: "externref" }], []);
+        addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("externref")) {
+        const t = addFuncType(ctx, [{ kind: "externref" }], []);
+        addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
+      }
     }
   }
 
@@ -871,7 +903,7 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
-      ensureNativeStringHelpers(ctx);
+      ensureNativeStringExternBridge(ctx);
     }
   }
   if (state.needsFromCodePoint) {
@@ -921,9 +953,16 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   }
 
   // ── collectCallbackImports finalize ──
-  if (state.callbackFound) {
+  if (state.callbackFound || state.getterCallbackFound) {
     const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+    if (state.callbackFound) {
+      addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+    }
+    if (state.getterCallbackFound) {
+      // __make_getter_callback: same signature — wraps a function so 'this' is bound (#929)
+      // Used for Object.defineProperty accessor descriptors (getter/setter callbacks).
+      addImport(ctx, "env", "__make_getter_callback", { kind: "func", typeIdx });
+    }
   }
 
   // ── collectFunctionalArrayImports finalize ──
@@ -1238,6 +1277,32 @@ export function collectEmptyObjectWidening(
   }
 
   scanStatements(sourceFile.statements);
+}
+
+/** Returns true if an Object.defineProperty descriptor ObjectLiteral is an accessor descriptor
+ * with an ACTUAL function getter or setter that needs the sidecar/extern path.
+ * Descriptors with `get: undefined` or `set: undefined` are NOT treated as accessor descriptors —
+ * they are widened like data descriptors so the property appears in for-in and hasOwnProperty
+ * (matching baseline behavior where all Object.defineProperty targets are widened). (#929) */
+function isAccessorDescriptor(descArg: ts.Expression): boolean {
+  if (!ts.isObjectLiteralExpression(descArg)) return false;
+  for (const prop of descArg.properties) {
+    // Method shorthand: get() {...} or set(v) {...} — always a real accessor
+    if (ts.isMethodDeclaration(prop) && prop.name && ts.isIdentifier(prop.name)) {
+      if (prop.name.text === "get" || prop.name.text === "set") return true;
+    }
+    // Property assignment: get: <expr> or set: <expr>
+    // Only treat as accessor if the value is an actual function (not `undefined` or other non-callable)
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+      if (prop.name.text === "get" || prop.name.text === "set") {
+        const init = prop.initializer;
+        if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) return true;
+        // Named identifier that is NOT `undefined` or `null` — may be a function variable
+        if (ts.isIdentifier(init) && init.text !== "undefined" && init.text !== "null") return true;
+      }
+    }
+  }
+  return false;
 }
 
 export function collectPropsFromStatements(
@@ -1600,11 +1665,12 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
 
   // Third: collect function declarations (uses resolveWasmType for real type indices)
   for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+    if (ts.isFunctionDeclaration(stmt) && (stmt.name || hasExportModifier(stmt))) {
       // Skip declare function stubs (no body, inside or matching declare)
       if (hasDeclareModifier(stmt)) continue;
 
-      const name = stmt.name.text;
+      // Anonymous `export default function() {}` gets the synthetic name "default"
+      const name = stmt.name ? stmt.name.text : "default";
       // Register the function's .name value for ES-spec compliance
       ctx.functionNameMap.set(name, name);
       const sig = ctx.checker.getSignatureFromDeclaration(stmt);
@@ -1647,13 +1713,34 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       let params: ValType[];
       let results: ValType[];
 
+      // A binding-pattern parameter with a rest element and no type annotation
+      // (e.g. `function f([...r])` or `function f({...x})`) infers as `{}` or
+      // `{ [k: string]: any }` in TypeScript, which resolveWasmType maps to a
+      // degenerate struct (single-field cell or empty struct). Callers that
+      // pass an array/object to such a param fail the ref.test cast and
+      // receive ref.null — breaking destructuring inside the function. Force
+      // externref so the conversion paths in destructureParam{Array,Object}
+      // handle the incoming value correctly.
+      const restBindingOverridesToExternref = (p: ts.ParameterDeclaration): boolean => {
+        if (p.type || p.dotDotDotToken) return false;
+        if (ts.isArrayBindingPattern(p.name)) {
+          return p.name.elements.some((e) => !ts.isOmittedExpression(e) && !!e.dotDotDotToken);
+        }
+        if (ts.isObjectBindingPattern(p.name)) {
+          return p.name.elements.some((e) => !!e.dotDotDotToken);
+        }
+        return false;
+      };
+
       if (isGenerator) {
         // Generator functions: parameters are compiled normally, return is externref
         params = [];
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
           const paramType = ctx.checker.getTypeAtLocation(param);
-          let wasmType = resolveWasmType(ctx, paramType);
+          let wasmType: ValType = restBindingOverridesToExternref(param)
+            ? { kind: "externref" }
+            : resolveWasmType(ctx, paramType);
           // If the parameter has a default value and is a non-null ref type,
           // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
           if (param.initializer && wasmType.kind === "ref") {
@@ -1704,7 +1791,9 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
-            let wasmType = resolveWasmType(ctx, paramType);
+            let wasmType: ValType = restBindingOverridesToExternref(param)
+              ? { kind: "externref" }
+              : resolveWasmType(ctx, paramType);
             // If the parameter has a default value and is a non-null ref type,
             // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
             if (param.initializer && wasmType.kind === "ref") {
@@ -1755,6 +1844,13 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         ctx.funcOptionalParams.set(name, optionalParams);
       }
 
+      // Track functions that read `arguments` (#1053) so callers can
+      // populate the __extras_argv global with runtime args beyond the
+      // formal param count.
+      if (stmt.body && bodyUsesArguments(stmt.body)) {
+        ctx.funcUsesArguments.add(name);
+      }
+
       const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
       const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
       ctx.funcMap.set(name, funcIdx);
@@ -1776,6 +1872,193 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
           name,
           desc: { kind: "func", index: funcIdx },
         });
+        // `export default function foo() {}` — also export as "default" (#1074)
+        // Skip if name is already "default" (anonymous export default function)
+        const mods = ts.canHaveModifiers(stmt) ? ts.getModifiers(stmt) : undefined;
+        const isDefault = mods?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
+        if (isDefault && name !== "default") {
+          ctx.mod.exports.push({
+            name: "default",
+            desc: { kind: "func", index: funcIdx },
+          });
+        }
+      }
+    }
+  }
+
+  // Export default: surface `export default <ident>` as Wasm exports (#1074).
+  // Walk ExportAssignment nodes and resolve the bound declaration to a function
+  // already registered in funcMap.  Emit under both the declaration name AND
+  // "default" so either `instance.exports.identity(x)` or
+  // `instance.exports.default(x)` works from a JS host.
+  if (isEntryFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExportAssignment(stmt)) continue;
+      // `export = expr` (isExportEquals) is CJS — skip for now (#1075)
+      if (stmt.isExportEquals) continue;
+
+      let targetName: string | undefined;
+
+      // Case 1: `export default <identifier>` — resolve the referenced name
+      if (ts.isIdentifier(stmt.expression)) {
+        targetName = stmt.expression.text;
+      }
+      // Case 2: `export default function foo() {}` — inline function decl
+      else if (ts.isFunctionExpression(stmt.expression) && stmt.expression.name) {
+        targetName = stmt.expression.name.text;
+      }
+
+      if (targetName && ctx.funcMap.has(targetName)) {
+        const funcIdx = ctx.funcMap.get(targetName)!;
+
+        // Mark the function as exported (for dead-code elimination etc.)
+        const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+        if (func && !func.exported) {
+          func.exported = true;
+        }
+
+        // Add the declaration name as an export if not already exported
+        const alreadyExported = ctx.mod.exports.some((e) => e.desc.kind === "func" && e.desc.index === funcIdx);
+        if (!alreadyExported) {
+          ctx.mod.exports.push({
+            name: targetName,
+            desc: { kind: "func", index: funcIdx },
+          });
+        }
+
+        // Always add "default" alias so ESM semantics are preserved
+        ctx.mod.exports.push({
+          name: "default",
+          desc: { kind: "func", index: funcIdx },
+        });
+      }
+    }
+  }
+
+  // CJS exports: recognize `module.exports` / `exports.foo` patterns (#1075).
+  // Phase 1 — register CJS function expressions and surface CJS assignments as Wasm exports.
+  // This runs after the ESM export-default block so CJS and ESM don't conflict.
+  if (isEntryFile) {
+    // Helper: check if expression is `module.exports`
+    function isModuleExports(e: ts.Expression): boolean {
+      return (
+        ts.isPropertyAccessExpression(e) &&
+        ts.isIdentifier(e.expression) &&
+        e.expression.text === "module" &&
+        e.name.text === "exports"
+      );
+    }
+
+    // Helper: extract export name from `module.exports.foo` or `exports.foo`
+    function getCjsNamedExportName(e: ts.Expression): string | undefined {
+      if (!ts.isPropertyAccessExpression(e)) return undefined;
+      // module.exports.foo
+      if (isModuleExports(e.expression)) return e.name.text;
+      // exports.foo
+      if (ts.isIdentifier(e.expression) && e.expression.text === "exports") return e.name.text;
+      return undefined;
+    }
+
+    // Track whether we saw `module.exports = ...` (replaces entire exports object)
+    let hasModuleExportsDefault = false;
+
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExpressionStatement(stmt)) continue;
+      const expr = stmt.expression;
+      if (!ts.isBinaryExpression(expr) || expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
+
+      // Pattern 1: `module.exports = <ident>` — default export of an existing function
+      if (isModuleExports(expr.left) && ts.isIdentifier(expr.right)) {
+        const targetName = expr.right.text;
+        if (ctx.funcMap.has(targetName)) {
+          hasModuleExportsDefault = true;
+          const funcIdx = ctx.funcMap.get(targetName)!;
+          const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+          if (func && !func.exported) func.exported = true;
+
+          const alreadyExported = ctx.mod.exports.some((e) => e.desc.kind === "func" && e.desc.index === funcIdx);
+          if (!alreadyExported) {
+            ctx.mod.exports.push({ name: targetName, desc: { kind: "func", index: funcIdx } });
+          }
+          ctx.mod.exports.push({ name: "default", desc: { kind: "func", index: funcIdx } });
+        }
+        continue;
+      }
+
+      // Pattern 1b: `module.exports = function foo() {}` — default export of inline function
+      if (isModuleExports(expr.left) && ts.isFunctionExpression(expr.right)) {
+        hasModuleExportsDefault = true;
+        const fnExpr = expr.right;
+        const name = fnExpr.name?.text ?? "default";
+        if (!ctx.funcMap.has(name)) {
+          // Register the function expression
+          const sig = ctx.checker.getSignatureFromDeclaration(fnExpr);
+          if (sig) {
+            const params: ValType[] = [];
+            for (const param of fnExpr.parameters) {
+              const paramType = ctx.checker.getTypeAtLocation(param);
+              params.push(resolveWasmType(ctx, paramType));
+            }
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            const results = isVoidType(retType) ? [] : [resolveWasmType(ctx, retType)];
+            const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
+            const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+            ctx.funcMap.set(name, funcIdx);
+            ctx.functionNameMap.set(name, fnExpr.name?.text ?? name);
+            ctx.mod.functions.push({ name, typeIdx, locals: [], body: [], exported: true });
+            ctx.mod.exports.push({ name, desc: { kind: "func", index: funcIdx } });
+            if (name !== "default") {
+              ctx.mod.exports.push({ name: "default", desc: { kind: "func", index: funcIdx } });
+            }
+          }
+        }
+        continue;
+      }
+
+      // Pattern 2: `module.exports.foo = <fn>` or `exports.foo = <fn>` — named export
+      const exportName = getCjsNamedExportName(expr.left);
+      if (!exportName) continue;
+
+      if (ts.isFunctionExpression(expr.right)) {
+        const fnExpr = expr.right;
+        const name = exportName;
+        if (!ctx.funcMap.has(name)) {
+          // Register the CJS function expression
+          const sig = ctx.checker.getSignatureFromDeclaration(fnExpr);
+          if (!sig) continue;
+          const params: ValType[] = [];
+          for (const param of fnExpr.parameters) {
+            const paramType = ctx.checker.getTypeAtLocation(param);
+            params.push(resolveWasmType(ctx, paramType));
+          }
+          const retType = ctx.checker.getReturnTypeOfSignature(sig);
+          const results = isVoidType(retType) ? [] : [resolveWasmType(ctx, retType)];
+          const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
+          const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+          ctx.funcMap.set(name, funcIdx);
+          ctx.functionNameMap.set(name, fnExpr.name?.text ?? name);
+          ctx.mod.functions.push({ name, typeIdx, locals: [], body: [], exported: true });
+          ctx.mod.exports.push({ name, desc: { kind: "func", index: funcIdx } });
+        } else {
+          // Function already registered (e.g., as a FunctionDeclaration) — just export it
+          const funcIdx = ctx.funcMap.get(name)!;
+          const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+          if (func && !func.exported) func.exported = true;
+          if (!ctx.mod.exports.some((e) => e.name === name)) {
+            ctx.mod.exports.push({ name, desc: { kind: "func", index: funcIdx } });
+          }
+        }
+      } else if (ts.isIdentifier(expr.right)) {
+        // `exports.foo = someExistingFunction`
+        const targetName = expr.right.text;
+        if (ctx.funcMap.has(targetName)) {
+          const funcIdx = ctx.funcMap.get(targetName)!;
+          const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+          if (func && !func.exported) func.exported = true;
+          if (!ctx.mod.exports.some((e) => e.name === exportName)) {
+            ctx.mod.exports.push({ name: exportName, desc: { kind: "func", index: funcIdx } });
+          }
+        }
       }
     }
   }
@@ -2034,6 +2317,28 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
     if (targetName && ctx.moduleGlobals.has(targetName)) {
       ctx.moduleInitStatements.push(stmt);
+    }
+  }
+
+  // Export default for module globals (#1108): `export default <variable>` where
+  // the variable is a module-level global (e.g. `var add = createMathOperation(fn, 0)`)
+  // This runs AFTER module globals are registered (Fourth pass above).
+  if (isEntryFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExportAssignment(stmt) || stmt.isExportEquals) continue;
+      if (!ts.isIdentifier(stmt.expression)) continue;
+      const varName = stmt.expression.text;
+      // Skip if already handled as a function export
+      if (ctx.funcMap.has(varName)) continue;
+      if (ctx.moduleGlobals.has(varName)) {
+        // Defer the actual export — global indices are not final yet because
+        // later collectDeclarations calls may add string-constant import globals
+        // which shift all defined-global indices.  Record the variable name
+        // and resolve the correct absolute index in a fixup pass.
+        if (!ctx.deferredDefaultGlobalExport) {
+          ctx.deferredDefaultGlobalExport = varName;
+        }
+      }
     }
   }
 }
@@ -2356,20 +2661,76 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
 
   // Compile top-level function declarations
   for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+    if (ts.isFunctionDeclaration(stmt) && (stmt.name || hasExportModifier(stmt)) && !hasDeclareModifier(stmt)) {
+      const fnName = stmt.name ? stmt.name.text : "default";
       if (stmt.body) {
-        const idx = funcByName.get(stmt.name.text);
+        const idx = funcByName.get(fnName);
         if (idx !== undefined) {
           const func = ctx.mod.functions[idx]!;
           try {
             compileFunctionBody(ctx, stmt, func);
-            registerInlinableFunction(ctx, stmt.name.text, func);
+            registerInlinableFunction(ctx, fnName, func);
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            reportError(ctx, stmt, `Internal error compiling function '${stmt.name.text}': ${msg}`);
+            reportError(ctx, stmt, `Internal error compiling function '${fnName}': ${msg}`);
           }
         }
       }
+    }
+  }
+
+  // Compile CJS function expression bodies (#1075)
+  // These were registered in collectDeclarations from `module.exports.foo = function() {}`
+  // and `exports.foo = function() {}` patterns.
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isExpressionStatement(stmt)) continue;
+    const expr = stmt.expression;
+    if (!ts.isBinaryExpression(expr) || expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
+
+    // Extract the function expression from CJS patterns
+    let fnExpr: ts.FunctionExpression | undefined;
+    let funcName: string | undefined;
+
+    const left = expr.left;
+    if (ts.isFunctionExpression(expr.right)) {
+      // Check for module.exports = function() {} or module.exports.foo = function() {} or exports.foo = function() {}
+      if (
+        ts.isPropertyAccessExpression(left) &&
+        ts.isIdentifier(left.expression) &&
+        left.expression.text === "module" &&
+        left.name.text === "exports"
+      ) {
+        // module.exports = function foo() {}
+        fnExpr = expr.right;
+        funcName = fnExpr.name?.text ?? "default";
+      } else if (ts.isPropertyAccessExpression(left)) {
+        // module.exports.foo or exports.foo
+        const inner = left.expression;
+        const isModExports =
+          ts.isPropertyAccessExpression(inner) &&
+          ts.isIdentifier(inner.expression) &&
+          inner.expression.text === "module" &&
+          inner.name.text === "exports";
+        const isExports = ts.isIdentifier(inner) && inner.text === "exports";
+        if (isModExports || isExports) {
+          fnExpr = expr.right;
+          funcName = left.name.text;
+        }
+      }
+    }
+
+    if (!fnExpr || !funcName || !fnExpr.body) continue;
+    const idx = funcByName.get(funcName);
+    if (idx === undefined) continue;
+    const func = ctx.mod.functions[idx]!;
+    // Skip if body already compiled (e.g., was also a FunctionDeclaration)
+    if (func.body.length > 0) continue;
+    try {
+      compileFunctionBody(ctx, fnExpr as unknown as ts.FunctionDeclaration, func);
+      registerInlinableFunction(ctx, funcName, func);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      reportError(ctx, stmt, `Internal error compiling CJS function '${funcName}': ${msg}`);
     }
   }
 

@@ -46,7 +46,9 @@ function resolveImport(intent, deps, callbackState) {
     case "extern_get":
       return (obj, key) => obj?.[key];
     case "callback_maker":
-      return (id, cap) => (...args) => callbackState.getExports()?.[`__cb_${id}`]?.(cap, ...args);
+      return (id, cap) =>
+        (...args) =>
+          callbackState.getExports()?.[`__cb_${id}`]?.(cap, ...args);
     case "box":
       if (intent.targetType === "boolean") return (v) => Boolean(v);
       return (v) => v;
@@ -80,10 +82,14 @@ export function buildImports(manifest, deps = {}, stringPool = []) {
 export async function instantiateWasm(binary, env, stringConstants = {}) {
   if (typeof WebAssembly.instantiate === "function") {
     try {
-      const { instance } = await WebAssembly.instantiate(binary, { env, string_constants: stringConstants }, {
-        builtins: ["js-string"],
-        importedStringConstants: "string_constants",
-      });
+      const { instance } = await WebAssembly.instantiate(
+        binary,
+        { env, string_constants: stringConstants },
+        {
+          builtins: ["js-string"],
+          importedStringConstants: "string_constants",
+        },
+      );
       return { instance, nativeBuiltins: true };
     } catch {
       // Fall through.
@@ -98,8 +104,7 @@ export async function instantiateWasm(binary, env, stringConstants = {}) {
 }
 
 export async function instantiateWasmStreaming(source, env, stringConstants = {}) {
-  const response =
-    source instanceof Response ? source : source instanceof Promise ? await source : await fetch(source);
+  const response = source instanceof Response ? source : source instanceof Promise ? await source : await fetch(source);
   const fallback = response.clone();
   if (typeof WebAssembly.instantiateStreaming === "function") {
     try {

@@ -1,0 +1,37 @@
+# Public repository export allowlist.
+# One path per line, relative to the private repository root.
+# Directories are copied recursively.
+
+.github/workflows/ci.yml
+.github/workflows/deploy-pages.yml
+.gitignore
+.prettierignore
+.prettierrc
+biome.json
+CONTRIBUTING.md
+LICENSE
+README.md
+ROADMAP.md
+components
+index.html
+package.json
+pnpm-lock.yaml
+playground
+public
+scripts/build-pages.js
+scripts/build-test262-report.mjs
+scripts/compiler-bundle-entry.ts
+scripts/diff-playground-benchmarks.mjs
+scripts/generate-browser-runtime-benchmarks.mjs
+scripts/generate-editions.ts
+scripts/generate-feature-compatibility.ts
+scripts/generate-feature-examples.ts
+scripts/generate-playground-benchmark-sidebar.mjs
+scripts/generate-readme-tables.ts
+scripts/generate-size-benchmarks.ts
+scripts/run-pages-build.mjs
+src
+tests
+tsconfig.json
+vite.config.ts
+vitest.config.ts

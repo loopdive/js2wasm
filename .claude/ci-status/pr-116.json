@@ -1,0 +1,15 @@
+{
+  "pr": 116,
+  "conclusion": "failure",
+  "head_branch": "issue-1064-reapply-dataview-sidecar",
+  "head_sha": "6b8071e42d8452ac1bc8f9d7710e60021c12489a",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24291583421",
+  "timestamp": "2026-04-11T21:09:17Z",
+  "pass": 22185,
+  "fail": 18309,
+  "compile_error": 1326,
+  "snapshot_delta": 28,
+  "net_per_test": 1561,
+  "regressions": 57,
+  "improvements": 1618
+}

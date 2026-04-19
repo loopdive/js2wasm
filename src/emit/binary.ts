@@ -1,20 +1,19 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import type {
-  WasmModule,
-  TypeDef,
-  ValType,
-  Instr,
   BlockType,
   FieldDef,
-  Import,
-  WasmFunction,
-  WasmExport,
   GlobalDef,
-  CatchClause,
-  TagDef,
+  Import,
+  Instr,
   SourcePos,
+  TypeDef,
+  ValType,
+  WasmExport,
+  WasmFunction,
+  WasmModule,
 } from "../ir/types.js";
 import { WasmEncoder } from "./encoder.js";
-import { OP, GC, TYPE, SECTION, SIMD } from "./opcodes.js";
+import { GC, OP, SECTION, SIMD, TYPE } from "./opcodes.js";
 
 /** A source map entry: maps a wasm byte offset to a source position */
 export interface SourceMapEntry {
