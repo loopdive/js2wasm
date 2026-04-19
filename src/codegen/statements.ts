@@ -52,7 +52,8 @@ export {
   emitNestedBindingDefault,
   ensureBindingLocals,
 } from "./statements/destructuring.js";
-export { bodyUsesArguments, emitArgumentsObject, hoistFunctionDeclarations } from "./statements/nested-declarations.js";
+export { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
+export { emitArgumentsObject, hoistFunctionDeclarations } from "./statements/nested-declarations.js";
 export { collectInstrs } from "./statements/shared.js";
 export { emitTdzCheck } from "./statements/tdz.js";
 
