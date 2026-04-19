@@ -106,12 +106,43 @@ function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
   return [{ op: "extern.convert_any" } as Instr];
 }
 
-export function buildDestructureNullThrow(ctx: CodegenContext): Instr[] {
-  const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
+export function buildDestructureNullThrow(ctx: CodegenContext, fctx?: FunctionContext): Instr[] {
+  const msg = "Cannot destructure 'null' or 'undefined'";
   addStringConstantGlobal(ctx, msg);
   const strIdx = ctx.stringGlobalMap.get(msg)!;
+  // Prefer host import so caller sees a genuine JS TypeError (constructor-matching
+  // tests such as `({constructor}) => constructor === TypeError` pass). Fall back
+  // to wasm throw+tag when a FunctionContext isn't available for late-import flush.
+  const throwIdx = ensureLateImport(ctx, "__throw_type_error", [{ kind: "externref" }], []);
+  if (throwIdx !== undefined && fctx) {
+    flushLateImportShifts(ctx, fctx);
+    const funcIdx = ctx.funcMap.get("__throw_type_error")!;
+    return [
+      { op: "global.get", index: strIdx } as Instr,
+      { op: "call", funcIdx } as Instr,
+      { op: "unreachable" } as Instr,
+    ];
+  }
   const tagIdx = ensureExnTag(ctx);
   return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+}
+
+/**
+ * Returns true when `expr` is a literal `null` or `undefined` — which per spec
+ * must throw TypeError when used as the source value for a destructuring pattern
+ * (RequireObjectCoercible / GetIterator).
+ *
+ * Used by parameter default-emission to statically reject `({pat} = null)` and
+ * `({pat} = undefined)` even when paramType is numeric (loses null/undef info).
+ */
+export function isNullOrUndefinedLiteral(expr: ts.Expression): boolean {
+  if (expr.kind === ts.SyntaxKind.NullKeyword) return true;
+  if (ts.isIdentifier(expr) && expr.text === "undefined") return true;
+  if (expr.kind === ts.SyntaxKind.VoidExpression) {
+    const v = expr as ts.VoidExpression;
+    return ts.isNumericLiteral(v.expression);
+  }
+  return false;
 }
 
 /**
@@ -284,7 +315,7 @@ export function emitExternrefDestructureGuard(ctx: CodegenContext, fctx: Functio
   // Check ref.is_null first (handles null)
   fctx.body.push({ op: "local.get", index: paramIdx });
   fctx.body.push({ op: "ref.is_null" } as Instr);
-  fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: [] });
+  fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx, fctx), else: [] });
 
   // Also check JS undefined via __extern_is_undefined import
   const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
@@ -292,7 +323,7 @@ export function emitExternrefDestructureGuard(ctx: CodegenContext, fctx: Functio
     flushLateImportShifts(ctx, fctx);
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "call", funcIdx: undefIdx });
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: [] });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx, fctx), else: [] });
   }
 }
 
@@ -476,19 +507,22 @@ export function destructureParamObject(
     }
   }
 
-  // Close null guard — throw TypeError when null (JS spec: destructuring null/undefined is TypeError)
-  if (isNullable) {
+  // Close null guard — throw TypeError when null (JS spec: destructuring null/undefined is TypeError).
+  // Skip for empty `{}` patterns (#225): the guard should only fire when there are
+  // actual property accesses that would trap.
+  if (isNullable && pattern.elements.length > 0) {
     fctx.body = savedBody;
-    if (destructInstrs.length > 0) {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: buildDestructureNullThrow(ctx),
-        else: destructInstrs,
-      });
-    }
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: buildDestructureNullThrow(ctx, fctx),
+      else: destructInstrs,
+    });
+  } else if (isNullable) {
+    fctx.body = savedBody;
+    fctx.body.push(...destructInstrs);
   }
 }
 
@@ -833,7 +867,7 @@ export function destructureParamArray(
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
-            then: nullDefaultInstrs.length > 0 ? nullDefaultInstrs : buildDestructureNullThrow(ctx),
+            then: nullDefaultInstrs.length > 0 ? nullDefaultInstrs : buildDestructureNullThrow(ctx, fctx),
             else: destructInstrs,
           });
         }
@@ -1049,17 +1083,20 @@ export function destructureParamArray(
   }
 
   // Close null guard — throw TypeError when null (JS spec)
+  // Skip for empty `[]` patterns (#225).
   if (isNullable) {
     fctx.body = savedBody;
-    if (destructInstrs.length > 0) {
+    if (destructInstrs.length > 0 && pattern.elements.length > 0) {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" } as Instr);
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },
-        then: buildDestructureNullThrow(ctx),
+        then: buildDestructureNullThrow(ctx, fctx),
         else: destructInstrs,
       });
+    } else if (destructInstrs.length > 0) {
+      fctx.body.push(...destructInstrs);
     }
   }
 }
