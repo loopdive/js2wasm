@@ -192,10 +192,9 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 
 ### Agent work dispatch
 - PO creates the task queue at sprint start (tech lead dispatches to devs)
-- **Dev protocol: "pushed = done, claim next NOW — do NOT wait for merge."** As soon as a dev pushes their branch + opens a PR via `gh pr create`, they immediately mark their current task `completed` in TaskList and claim the next unowned task. They do NOT wait for CI to pass, tech lead review, tech lead merge, or a "merged, do next" message. The merge happens asynchronously; if CI fails the tech lead will ping to context-switch back — that is a rare exceptional event. Never block on merge confirmation.
-- **Dev self-merge: devs merge their OWN clean PRs without waiting for tech lead.** When the Option B CI Status Feed (`.claude/ci-status/pr-<N>.json`) reports the dev's PR with `delta > 0`, `regressions/improvements < 10%`, no single error-bucket >50 regressions, and a narrow ≤5-file scope — the dev runs `/dev-self-merge` and admin-merges their own PR directly. Escalate to tech lead only when criteria fail. See `.claude/skills/dev-self-merge.md` for the full checklist.
-- Dev agents self-serve: after pushing a task's PR, they check `TaskList` and claim the next unowned task
-- Dev agents do NOT exit after completing a task — they always check TaskList first
+- **Dev protocol: push PR → wait for CI → self-merge → claim next task.** Devs do NOT move on to the next task while waiting for CI. They monitor `.claude/ci-status/pr-<N>.json` (idle, no token burn) until it appears with a SHA matching their branch HEAD. Then they self-merge or fix regressions. Only after the PR is merged do they claim the next task.
+- **Dev self-merge: devs merge their OWN clean PRs without waiting for tech lead.** When `.claude/ci-status/pr-<N>.json` reports `net_per_test > 0` on a matching SHA, `regressions/improvements < 10%`, no single error-bucket >50 regressions — the dev runs `gh pr merge <N> --admin --merge` directly. Escalate to tech lead only when criteria fail. See `.claude/skills/dev-self-merge.md` for the full checklist.
+- Dev agents do NOT exit after completing a task — after merge, they check `TaskList` and claim the next unowned task
 - Dev agents do NOT run full test262 locally; they run scoped local checks, push their branch, and open a PR to trigger GitHub Actions
 
 ### Controlling agents
@@ -207,21 +206,22 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 - **Session registry**: track active agent sessions in `plan/method/agent-sessions.md` so sessions can be resumed. When respawning, pass the context summary in the spawn prompt.
 - **Orphaned agents** (lost team context after crash): check worktrees for commits (`git -C <wt> log --oneline main..HEAD`) and uncommitted work (`git -C <wt> diff --stat`). Save any work, then kill the process. Write `## Suspended Work` in the issue file manually with the worktree path and state.
 
-### Merge protocol (PR + CI, devs don't run local test262)
+### Merge protocol (PR + CI, devs self-merge)
 
-**Devs do NOT run local test262.** Branch validation now happens in GitHub Actions:
+**Devs do NOT run local test262.** Branch validation happens in GitHub Actions:
 
-1. **Dev merges main INTO their branch** — `git merge main` (not rebase)
-2. **Dev runs scoped local checks only** — issue-targeted compile/run checks and any narrow local tests needed for confidence
-3. **Dev pushes the branch to origin**
-4. **Dev opens a PR against `main`**
-5. **GitHub Actions runs sharded test262 on the PR branch** and compares against the current `main` baseline
-6. **Tech lead approves/rejects based on PR CI** and any review findings
-7. **If approved**: merge the PR, then the same workflow runs again on `main` and refreshes the baseline
-8. **If rejected**: dev fixes on their branch, pushes again, and lets the PR workflow re-run
-9. **Never use `git merge` (without --ff-only) on main.** Main should move through reviewed PRs and protected checks.
+1. **Dev merges `origin/main` INTO their branch** — `git merge origin/main` (not rebase), BEFORE opening a PR
+   - Planning artifact conflicts (`dashboard/`, `plan/`, `public/`) → `git checkout --theirs` + regen
+   - Compiler source conflicts (`src/**/*.ts`) → create a priority `[CONFLICT]` TaskList item; assign to `senior-developer` (Opus); do NOT resolve inline
+2. **Dev runs scoped local checks** — issue-targeted compile/run checks for confidence
+3. **Dev pushes the branch to origin and opens a PR against `main`**
+4. **Dev waits for CI** — monitors `.claude/ci-status/pr-<N>.json` until it appears with a SHA matching HEAD (idle wait, no token burn)
+5. **Dev self-merges** — if `net_per_test > 0`, SHA matches, ratio <10%, no bucket >50: `gh pr merge <N> --admin --merge`
+6. **If regressions**: dev fixes on branch, pushes again, loops back to step 4
+7. **Escalate to tech lead** only when: regressions >10, single bucket >50, or judgment call needed
+8. **After merge**: dev marks task `completed`, claims next task
+9. **Never use `git merge` on main directly.** All merges go through PRs + CI.
 10. **Never rebase.** Merge preserves history and is safely reversible.
-11. **Devs continue working on next task** while waiting for PR checks — they don't block.
 
 ### Issue completion (tester post-merge)
 1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
