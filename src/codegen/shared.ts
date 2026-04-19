@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Shared types, values, and late-bound function registrations for the codegen
  * modules.  This module exists solely to break circular dependencies between
@@ -498,3 +499,21 @@ export function compileSuperElementAccess(
 
 // ── resolveEnclosingClassName registration ────────────────────────────
 // (delegate stub already existed but was never registered — fixed here)
+
+// ── addStringImports ─────────────────────────────────────────────────
+// Delegate to break circular dependency: any-helpers.ts needs string
+// imports but addStringImports lives in index.ts which imports any-helpers.
+
+type AddStringImportsFn = (ctx: CodegenContext) => void;
+
+let _addStringImports: AddStringImportsFn = () => {
+  // No-op before registration — standalone mode may not have string imports
+};
+
+export function registerAddStringImports(fn: AddStringImportsFn): void {
+  _addStringImports = fn;
+}
+
+export function addStringImportsDelegate(ctx: CodegenContext): void {
+  _addStringImports(ctx);
+}

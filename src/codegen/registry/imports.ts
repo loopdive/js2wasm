@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Import/global registry ownership for the backend.
  *
@@ -172,5 +173,11 @@ function fixupModuleGlobalIndices(ctx: CodegenContext, threshold: number, delta:
   }
   if (ctx.wasiBumpPtrGlobalIdx >= threshold) {
     ctx.wasiBumpPtrGlobalIdx += delta;
+  }
+  if (ctx.argcGlobalIdx >= threshold) {
+    ctx.argcGlobalIdx += delta;
+  }
+  if (ctx.extrasArgvGlobalIdx >= threshold) {
+    ctx.extrasArgvGlobalIdx += delta;
   }
 }

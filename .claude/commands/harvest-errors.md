@@ -14,12 +14,12 @@ Analyze the latest test262 run results, cross-reference with existing issues, an
    - For each pattern, count occurrences and collect 3 sample file paths
 
 3. Cross-reference with existing issues:
-   - Read all files in `plan/issues/ready/` and `plan/issues/done/`
+   - Read issue files in `plan/issues/`
    - Match error patterns to existing issue titles/descriptions
-   - Mark each pattern as: ADDRESSED (issue in done/), IN PROGRESS (issue in ready/), or NEW
+   - Mark each pattern as: ADDRESSED (`status: done`), IN PROGRESS (`status: ready` / `in-progress` / `review`), or NEW
 
 4. For NEW patterns with >50 occurrences:
-   - Create issue files in `plan/issues/ready/` with next available number
+   - Create issue files in `plan/issues/` with next available number
    - Include: priority (based on count), sample files, root cause analysis, suggested fix
    - Update `plan/issues/backlog/backlog.md`
 

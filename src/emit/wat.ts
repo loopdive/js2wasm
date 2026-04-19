@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import { walkInstructions } from "../codegen/walk-instructions.js";
 import type {
   BlockType,
@@ -382,9 +383,9 @@ function formatInstr(instr: Instr, _depth: number): string {
     case "i64.const":
       return `i64.const ${instr.value}`;
     case "f64.const":
-      return `f64.const ${instr.value}`;
+      return `f64.const ${Object.is(instr.value, -0) ? "-0.0" : instr.value}`;
     case "f32.const":
-      return `f32.const ${instr.value}`;
+      return `f32.const ${Object.is(instr.value, -0) ? "-0.0" : instr.value}`;
     case "br":
       return `br ${instr.depth}`;
     case "br_if":

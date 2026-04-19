@@ -53,7 +53,7 @@ Look for systemic patterns:
 
 ### 3. Propose improvements
 
-Write a retrospective report to `plan/retrospectives/sprint-{N}.md`:
+Write a retrospective report to `plan/issues/sprints/{N}/sprint.md`:
 
 ```markdown
 # Sprint {N} Retrospective
@@ -88,7 +88,7 @@ Do NOT make edits unilaterally — propose them and wait for approval.
 - Workflow rules: `CLAUDE.md` (Team & Workflow section)
 - Team setup: `plan/team-setup.md`
 - Issues: `plan/issues/` (ready/, done/, blocked/, backlog/)
-- Retrospectives: `plan/retrospectives/`
+- Retrospectives are integrated into `plan/issues/<sprint>/sprint.md`
 
 ## Scrum ceremonies (adapted for AI agents)
 

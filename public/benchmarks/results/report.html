@@ -242,7 +242,7 @@
 
       <div class="chart-container">
         <h2>Conformance Trend</h2>
-        <div id="chart"></div>
+        <trend-chart id="chart" mode="line" height="320" x-key="timestamp"></trend-chart>
         <div class="legend">
           <div class="legend-item">
             <div class="legend-dot" style="background: rgba(255, 255, 255, 0.9)"></div>
@@ -346,141 +346,21 @@
             '<p style="color:#8b949e;text-align:center;padding:24px">Need at least 2 data points for a chart.</p>';
           return;
         }
-
-        const W = 1100,
-          H = 400;
-        const PAD = { top: 20, right: 60, bottom: 60, left: 70 };
-        const plotW = W - PAD.left - PAD.right;
-        const plotH = H - PAD.top - PAD.bottom;
-
-        // Compute scales
-        const maxCount = Math.max(...data.map((d) => Math.max(d.pass + d.fail + d.ce + d.skip, d.total)));
-        const yMax = Math.ceil(maxCount / 5000) * 5000;
-
-        function x(i) {
-          return PAD.left + (i / (data.length - 1)) * plotW;
-        }
-        function y(val) {
-          return PAD.top + plotH - (val / yMax) * plotH;
-        }
-        function yPct(pct) {
-          return PAD.top + plotH - (pct / 100) * plotH;
-        }
-
-        let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
-
-        // Grid lines
-        const gridSteps = 5;
-        for (let i = 0; i <= gridSteps; i++) {
-          const val = (yMax / gridSteps) * i;
-          const yPos = y(val);
-          svg += `<line x1="${PAD.left}" y1="${yPos}" x2="${W - PAD.right}" y2="${yPos}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`;
-          svg += `<text x="${PAD.left - 8}" y="${yPos + 4}" text-anchor="end" fill="rgba(255,255,255,0.3)" font-size="11">${(val / 1000).toFixed(0)}k</text>`;
-          // Right axis: percentage
-          const pct = (i / gridSteps) * 100;
-          svg += `<text x="${W - PAD.right + 8}" y="${yPos + 4}" text-anchor="start" fill="rgba(255,255,255,0.3)" font-size="11">${pct.toFixed(0)}%</text>`;
-        }
-
-        // X-axis labels (show up to 8)
-        const step = Math.max(1, Math.floor(data.length / 8));
-        for (let i = 0; i < data.length; i += step) {
-          const xPos = x(i);
-          const d = new Date(data[i].timestamp);
-          const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          svg += `<text x="${xPos}" y="${H - PAD.bottom + 20}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="11">${label}</text>`;
-          const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-          svg += `<text x="${xPos}" y="${H - PAD.bottom + 34}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="10">${time}</text>`;
-        }
-
-        // Stacked area: skip (bottom) + ce + fail + pass (top)
-        // Draw as layered areas
-        function areaPath(valueFn, baseFn) {
-          let path = `M ${x(0)} ${valueFn(0)}`;
-          for (let i = 1; i < data.length; i++) path += ` L ${x(i)} ${valueFn(i)}`;
-          for (let i = data.length - 1; i >= 0; i--) path += ` L ${x(i)} ${baseFn(i)}`;
-          path += " Z";
-          return path;
-        }
-
-        // Cumulative values for stacking
-        const cumSkip = data.map((d) => d.skip);
-        const cumCe = data.map((d, i) => cumSkip[i] + d.ce);
-        const cumFail = data.map((d, i) => cumCe[i] + d.fail);
-        const cumPass = data.map((d, i) => cumFail[i] + d.pass);
-
-        // Areas (bottom to top)
-        svg += `<path d="${areaPath(
-          (i) => y(cumSkip[i]),
-          () => y(0),
-        )}" fill="${COLORS.skip}" opacity="0.15"/>`;
-        svg += `<path d="${areaPath(
-          (i) => y(cumCe[i]),
-          (i) => y(cumSkip[i]),
-        )}" fill="${COLORS.ce}" opacity="0.2"/>`;
-        svg += `<path d="${areaPath(
-          (i) => y(cumFail[i]),
-          (i) => y(cumCe[i]),
-        )}" fill="${COLORS.fail}" opacity="0.2"/>`;
-        svg += `<path d="${areaPath(
-          (i) => y(cumPass[i]),
-          (i) => y(cumFail[i]),
-        )}" fill="${COLORS.pass}" opacity="0.2"/>`;
-
-        // Lines
-        function linePath(valueFn) {
-          let path = `M ${x(0)} ${valueFn(0)}`;
-          for (let i = 1; i < data.length; i++) path += ` L ${x(i)} ${valueFn(i)}`;
-          return path;
-        }
-
-        svg += `<path d="${linePath((i) => y(data[i].pass))}" fill="none" stroke="${COLORS.pass}" stroke-width="2.5"/>`;
-        svg += `<path d="${linePath((i) => y(data[i].fail))}" fill="none" stroke="${COLORS.fail}" stroke-width="2"/>`;
-        svg += `<path d="${linePath((i) => y(data[i].ce))}" fill="none" stroke="${COLORS.ce}" stroke-width="2"/>`;
-
-        // Pass rate line (right axis)
-        const rates = data.map((d) => (d.total > 0 ? (d.pass / d.total) * 100 : 0));
-        svg += `<path d="${linePath((i) => yPct(rates[i]))}" fill="none" stroke="${COLORS.rate}" stroke-width="2" stroke-dasharray="6,3"/>`;
-
-        // Data points (interactive)
-        for (let i = 0; i < data.length; i++) {
-          const d = data[i];
-          const rate = d.total > 0 ? ((d.pass / d.total) * 100).toFixed(1) : "0.0";
-          svg += `<circle cx="${x(i)}" cy="${y(d.pass)}" r="4" fill="${COLORS.pass}" class="data-point" data-idx="${i}"/>`;
-          // Invisible wider hit area for tooltip
-          svg += `<rect x="${x(i) - 15}" y="${PAD.top}" width="30" height="${plotH}" fill="transparent" class="hover-zone" data-idx="${i}"/>`;
-        }
-
-        // Axis labels
-        svg += `<text x="${PAD.left - 45}" y="${PAD.top + plotH / 2}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="12" transform="rotate(-90 ${PAD.left - 45} ${PAD.top + plotH / 2})">Test Count</text>`;
-        svg += `<text x="${W - PAD.right + 45}" y="${PAD.top + plotH / 2}" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="12" transform="rotate(90 ${W - PAD.right + 45} ${PAD.top + plotH / 2})">Pass Rate</text>`;
-
-        svg += "</svg>";
-        document.getElementById("chart").innerHTML = svg;
-
-        // Tooltip interactivity
-        const tooltip = document.getElementById("tooltip");
-        document.querySelectorAll(".hover-zone").forEach((zone) => {
-          zone.addEventListener("mouseenter", (e) => {
-            const idx = parseInt(zone.getAttribute("data-idx"));
-            const d = data[idx];
-            const rate = d.total > 0 ? ((d.pass / d.total) * 100).toFixed(1) : "0.0";
-            tooltip.innerHTML =
-              `<strong>${formatDate(d.timestamp)}</strong><br>` +
-              `Pass: <span style="color:${COLORS.pass}">${d.pass.toLocaleString()}</span> | ` +
-              `Fail: <span style="color:${COLORS.fail}">${d.fail.toLocaleString()}</span> | ` +
-              `CE: <span style="color:${COLORS.ce}">${d.ce.toLocaleString()}</span><br>` +
-              `Rate: <span style="color:${COLORS.rate}">${rate}%</span> | ` +
-              `Git: <code>${d.gitHash}</code>`;
-            tooltip.style.display = "block";
-          });
-          zone.addEventListener("mousemove", (e) => {
-            tooltip.style.left = e.pageX + 12 + "px";
-            tooltip.style.top = e.pageY - 10 + "px";
-          });
-          zone.addEventListener("mouseleave", () => {
-            tooltip.style.display = "none";
-          });
-        });
+        const chart = document.getElementById("chart");
+        chart.setAttribute(
+          "series",
+          JSON.stringify([
+            { key: "pass", color: COLORS.pass, lineWidth: 2.5 },
+            { key: "fail", color: COLORS.fail, lineWidth: 2, lineOpacity: 0.8 },
+            { key: "ce", color: COLORS.ce, lineWidth: 2, lineOpacity: 0.8 },
+            { key: "skip", color: COLORS.skip, lineWidth: 1.5, lineOpacity: 0.75 },
+            { key: "passRate", color: COLORS.rate, axis: "right", lineWidth: 2, dasharray: "6,3" },
+          ]),
+        );
+        chart.data = data.map((entry) => ({
+          ...entry,
+          passRate: entry.total > 0 ? (entry.pass / entry.total) * 100 : 0,
+        }));
       }
 
       function renderHistory(data) {
@@ -610,6 +490,7 @@
       })();
     </script>
     <script src="../../components/t262-charts.js"></script>
+    <script src="../../components/trend-chart.js"></script>
     <script src="../../components/site-nav.js"></script>
   </body>
 </html>

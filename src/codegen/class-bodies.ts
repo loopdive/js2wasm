@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Class declaration collection and class body compilation.
  *
@@ -700,6 +701,7 @@ export function compileClassBodies(
       labelMap: new Map(),
       savedBodies: [],
       isConstructor: true,
+      isDerivedConstructor: ctx.classParentMap.has(className),
     };
 
     // Re-resolve the constructor function type now that all class struct types

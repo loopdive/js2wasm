@@ -12,7 +12,7 @@ import { existsSync } from "node:fs";
  * Current state (2026-04-11): the stress test documents a precondition gap.
  * compileProject does not yet compile npm-installed lodash sources to Wasm
  * in a way that produces a callable exported function. See
- * plan/issues/ready/1031.md "## Stress Test Results" for the full write-up.
+ * plan/issues/1031.md "## Stress Test Results" for the full write-up.
  *
  * These tests encode the CURRENT observed behavior so future work (follow-up
  * issues filed from #1031) can flip the assertions when the gaps are closed.
@@ -35,21 +35,21 @@ describe("#1031 lodash Tier 1 stress test", () => {
     expect(funcExports).toEqual([]);
   });
 
-  runIfInstalled(
-    "compileProject on ESM lodash-es/identity.js: `export default` not emitted as Wasm export (documented gap)",
-    () => {
-      const result = compileProject("node_modules/lodash-es/identity.js", { allowJs: true });
-      expect(result.success).toBe(true);
+  runIfInstalled("compileProject on ESM lodash-es/identity.js: exports default + identity (#1074)", async () => {
+    const result = compileProject("node_modules/lodash-es/identity.js", { allowJs: true });
+    expect(result.success).toBe(true);
 
-      // lodash-es uses `function identity(v) { return v; }` + `export default identity`.
-      // The default export is not currently surfaced as a named Wasm function export
-      // by compileMultiSource, so there is nothing callable from the host.
-      const mod = new WebAssembly.Module(result.binary);
-      const exports = WebAssembly.Module.exports(mod);
-      const funcExports = exports.filter((e) => e.kind === "function");
-      expect(funcExports).toEqual([]);
-    },
-  );
+    // After #1074, `export default identity` surfaces both "default" and "identity"
+    // as Wasm function exports. identity(x) returns x unchanged.
+    const imports = (await import("../../src/runtime.ts")).buildImports(result.imports, undefined, result.stringPool);
+    const { instance } = await WebAssembly.instantiate(result.binary, imports);
+    const exports = instance.exports as Record<string, Function>;
+    expect(typeof exports.default).toBe("function");
+    expect(typeof exports.identity).toBe("function");
+    expect(exports.default(42)).toBe(42);
+    expect(exports.identity(42)).toBe(42);
+    expect(exports.identity(0)).toBe(0);
+  });
 
   runIfInstalled(
     "compileProject on ESM lodash-es/clamp.js: Wasm validation fails on generated toNumber (documented gap)",

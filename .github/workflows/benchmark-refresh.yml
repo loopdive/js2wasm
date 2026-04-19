@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   refresh-benchmarks:
-    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+    if: github.repository == 'loopdive/js2wasm' && (github.event_name != 'push' || github.actor != 'github-actions[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -72,7 +72,7 @@ jobs:
           set +e
           node scripts/diff-playground-benchmarks.mjs \
             --baseline benchmark-baseline/playground-benchmark-sidebar.json \
-            --candidate benchmarks/results/playground-benchmark-sidebar.json \
+            --candidate public/benchmarks/results/playground-benchmark-sidebar.json \
             --max-relative-regression 0.50 \
             --max-wasm-slowdown 0.40 \
             > benchmark-reports/performance-regressions.txt
@@ -92,7 +92,7 @@ jobs:
       - name: Fail on performance regressions
         if: steps.benchmark_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.allow_performance_regressions) && !(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'benchmark-regression-approved'))
         run: |
-          echo "Landing-page benchmark regressions detected relative to benchmarks/results/playground-benchmark-sidebar.json"
+          echo "Landing-page benchmark regressions detected relative to public/benchmarks/results/playground-benchmark-sidebar.json"
           cat benchmark-reports/performance-regressions.txt
           exit 1
 
@@ -108,6 +108,8 @@ jobs:
             benchmarks/results/history.json
             benchmarks/results/playground-benchmark-sidebar.json
             benchmarks/results/size-benchmarks.json
+            public/benchmarks/results/latest.json
+            public/benchmarks/results/history.json
             public/benchmarks/results/playground-benchmark-sidebar.json
             public/benchmarks/results/size-benchmarks.json
             playground/public/benchmarks/results/playground-benchmark-sidebar.json

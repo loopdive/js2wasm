@@ -99,7 +99,7 @@ After successful merge:
    - Move issue: `mv plan/issues/in-review/{N}.md plan/issues/done/{N}.md`
    - Add `completed: YYYY-MM-DD` to frontmatter
    - Append `## Test Results` section with pass counts
-   - Update `plan/dependency-graph.md` — strikethrough completed issue
+   - Update `plan/log/dependency-graph.md` — strikethrough completed issue
    - Check `plan/issues/blocked/` — move newly unblocked issues to `ready/`
    - Add entry to `plan/issues/done/log.md`
 4. Message tech lead: `"Merged #N to main. [pass count delta]. Post-merge cleanup done."`
@@ -149,7 +149,7 @@ When tech lead requests a baseline measurement (not a review):
 ## Key files
 
 - Issue queue: `plan/issues/in-review/` (your input), `plan/issues/ready/` (failed reviews go here)
-- Dependency graph: `plan/dependency-graph.md`
+- Dependency graph: `plan/log/dependency-graph.md`
 - Done log: `plan/issues/done/log.md`
 - Test262 config: `tests/test262-runner.ts`
 - Results: `benchmarks/results/`

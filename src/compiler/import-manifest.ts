@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
 import type { TypedAST } from "../checker/index.js";
 import type { CompileError, ImportDescriptor, ImportIntent } from "../index.js";
@@ -98,6 +99,10 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Host strict-equality for two externref operands that are not WasmGC eqrefs
   // (e.g. host functions like `Array === Array`). (#1065)
   if (name === "__host_eq") return { type: "host_eq" };
+
+  // Host loose-equality for two externref operands (§7.2.15 Abstract Equality).
+  // Used for `any`-typed loose equality where null == undefined must be true. (#1134)
+  if (name === "__host_loose_eq") return { type: "host_loose_eq" };
 
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
@@ -201,8 +206,6 @@ function checkJsTypeCoverage(ast: TypedAST): CompileError[] {
 // downgrade from error to warning so they don't block compilation.
 const DOWNGRADE_DIAG_CODES = new Set([
   2304, // "Cannot find name 'X'" — unknown identifiers compiled as externref/unreachable
-  2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
-  2322, // "Type 'X' is not assignable to type 'Y'"
   2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
   2551, // "Property 'X' does not exist on type 'Y'. Did you mean 'Z'?" — variant of 2339 with suggestion (#613)
   2454, // "Variable 'X' is used before being assigned"

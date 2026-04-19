@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * typeof, delete, instanceof, and RegExp literal compilation.
  * Extracted from expressions.ts (issue #688 step 5).

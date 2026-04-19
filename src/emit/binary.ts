@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import type {
   BlockType,
   FieldDef,
@@ -851,6 +852,9 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       break;
     case "f64.copysign":
       enc.byte(OP.f64_copysign);
+      break;
+    case "i32.wrap_i64":
+      enc.byte(OP.i32_wrap_i64);
       break;
     case "i32.trunc_f64_s":
       enc.byte(OP.i32_trunc_f64_s);
