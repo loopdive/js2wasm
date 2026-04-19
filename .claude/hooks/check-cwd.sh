@@ -9,8 +9,20 @@ if [ -z "$CMD" ]; then
   exit 0
 fi
 
-# Only check git commands
-if ! echo "$CMD" | grep -qE 'git (checkout|commit|merge|add|push|reset|revert|cherry-pick|branch)'; then
+# Exempt `gh` CLI commands entirely — `gh pr close --comment "...git merge..."`
+# talks to the GitHub API, not the local git. Any occurrence of "git merge" etc.
+# inside gh arguments is string data, not an invocation.
+# Accept leading whitespace, optional sandbox prefixes, and standard paths.
+if echo "$CMD" | grep -qE '(^|[;&|&&|\|\|])[[:space:]]*gh[[:space:]]'; then
+  exit 0
+fi
+
+# Only check git commands. The regex requires `git` to sit at a command boundary:
+# start of command, or after `;`, `&`, `|` (which also covers `&&` and `||`).
+# This prevents false positives where `git merge` appears inside a quoted argument
+# (e.g. a commit message body or a gh pr close --comment "...").
+GIT_SUBCMD_RE='(checkout|commit|merge|add|push|reset|revert|cherry-pick|branch)'
+if ! echo "$CMD" | grep -qE "(^|[;&|])[[:space:]]*git[[:space:]]+${GIT_SUBCMD_RE}([[:space:]]|$)"; then
   exit 0
 fi
 
@@ -62,6 +74,11 @@ fi
 
 # ALLOW: git branch (listing/creating branches — read-only or prep)
 if echo "$CMD" | grep -qE 'git branch( |$|-D|-d)'; then
+  exit 0
+fi
+
+# ALLOW: git revert (tech lead revert of a bad merge, commit message gets CHECKLIST-FOXTROT on the follow-up)
+if echo "$CMD" | grep -qE '(^|[;&|])[[:space:]]*git revert'; then
   exit 0
 fi
 

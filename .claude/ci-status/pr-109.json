@@ -1,0 +1,15 @@
+{
+  "pr": 109,
+  "conclusion": "failure",
+  "head_branch": "issue-1034-prettier-stress",
+  "head_sha": "1c0f8f4f6b572c4f23f380d400b26d50087ee6a2",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24301071644",
+  "timestamp": "2026-04-12T07:06:11Z",
+  "pass": 2262,
+  "fail": 1884,
+  "compile_error": 37684,
+  "snapshot_delta": -19923,
+  "net_per_test": -19923,
+  "regressions": 19934,
+  "improvements": 11
+}

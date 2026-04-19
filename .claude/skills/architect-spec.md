@@ -9,7 +9,7 @@ Any agent can use this skill to produce an architect-quality implementation plan
 
 ## Steps
 
-1. Read the issue file at `plan/issues/ready/{N}.md`
+1. Read the issue file at `plan/issues/{N}.md`
 
 2. For each sub-pattern in the issue, find the codegen function:
 ```bash

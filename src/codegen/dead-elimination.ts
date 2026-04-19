@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Dead import and type elimination pass.
  *
@@ -9,7 +10,7 @@
  * to determine which function indices and type indices are actually referenced,
  * then removes the dead ones and remaps all surviving indices.
  */
-import type { Instr, TypeDef, ValType, WasmModule, StructTypeDef, SubTypeDef, ArrayTypeDef } from "../ir/types.js";
+import type { ArrayTypeDef, Instr, StructTypeDef, SubTypeDef, TypeDef, ValType, WasmModule } from "../ir/types.js";
 import { walkInstructions } from "./walk-instructions.js";
 
 // --- Reference collection ---

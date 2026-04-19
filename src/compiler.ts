@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import {
   analyzeFiles,
   analyzeMultiSource,
@@ -5,9 +6,23 @@ import {
   IncrementalLanguageService,
   type TypedAST,
 } from "./checker/index.js";
-import { generateModule, generateMultiModule } from "./codegen/index.js";
-import { resetCompileDepth } from "./codegen/expressions.js";
 import { generateLinearModule, generateLinearMultiModule } from "./codegen-linear/index.js";
+import { resetCompileDepth } from "./codegen/expressions.js";
+import { generateModule, generateMultiModule } from "./codegen/index.js";
+import {
+  buildImportManifest,
+  checkJsTypeCoverage,
+  DOWNGRADE_DIAG_CODES,
+  looksLikeTsSyntaxOnJs,
+} from "./compiler/import-manifest.js";
+import { applyCabiTransform, generateDts, generateImportsHelper, widenNonDefaultableTypes } from "./compiler/output.js";
+import {
+  detectEarlyErrors,
+  pushSourceAnchoredDiagnostic,
+  rewriteEvalSuperCall,
+  validateHardenedMode,
+  validateSafeMode,
+} from "./compiler/validation.js";
 import { emitBinary, emitBinaryWithSourceMap, emitSourceMappingURLSection } from "./emit/binary.js";
 import { WasmEncoder } from "./emit/encoder.js";
 import { generateSourceMap } from "./emit/sourcemap.js";
@@ -16,21 +31,17 @@ import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult } from "./index.js";
 import { optimizeBinary } from "./optimize.js";
 import { generateWit } from "./wit-generator.js";
-import {
-  validateSafeMode,
-  detectEarlyErrors,
-  validateHardenedMode,
-  pushSourceAnchoredDiagnostic,
-} from "./compiler/validation.js";
-import {
-  DOWNGRADE_DIAG_CODES,
-  looksLikeTsSyntaxOnJs,
-  checkJsTypeCoverage,
-  buildImportManifest,
-} from "./compiler/import-manifest.js";
-import { applyCabiTransform, generateDts, generateImportsHelper, widenNonDefaultableTypes } from "./compiler/output.js";
-export type { ObjectCompileResult } from "./compiler/output.js";
 export { compileToObjectSource } from "./compiler/output.js";
+export type { ObjectCompileResult } from "./compiler/output.js";
+
+const HARD_TS_DIAG_CODES = new Set([
+  2322, // "Type 'X' is not assignable to type 'Y'"
+  2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
+]);
+
+function isHardTypeScriptDiagnostic(diag: { category: number; code: number }): boolean {
+  return diag.category === 1 && HARD_TS_DIAG_CODES.has(diag.code);
+}
 
 /**
  * Orchestrates the full compilation pipeline:
@@ -51,7 +62,9 @@ export function compileSource(
   const emitWatOutput = options.emitWat !== false;
 
   // Step 0: Pre-process imports (replace import * as X with declare namespace)
-  const processedSource = preprocessImports(source);
+  // #1054: rewrite eval("...super()...") to a throwing IIFE so early-error
+  // rules for PerformEval fire at runtime.
+  const processedSource = preprocessImports(rewriteEvalSuperCall(source));
 
   // Step 1: Parse and type-check
   let isJsMode = options.allowJs === true || (options.fileName?.endsWith(".js") ?? false);
@@ -146,8 +159,9 @@ export function compileSource(
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
   );
+  const hasHardTypeErrors = ast.diagnostics.some(isHardTypeScriptDiagnostic);
 
-  if (hasSyntaxErrors && errors.length > 0) {
+  if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -411,7 +425,9 @@ export function compileMultiSource(
   const errors: CompileError[] = [];
   const emitWatOutput = options.emitWat !== false;
 
-  const multiAst = analyzeMultiSource(files, entryFile);
+  const multiAst = analyzeMultiSource(files, entryFile, undefined, {
+    allowJs: options.allowJs,
+  });
 
   for (const diag of multiAst.diagnostics) {
     if (diag.category === 1) {
@@ -421,6 +437,7 @@ export function compileMultiSource(
         line: pos.line + 1,
         column: pos.character + 1,
         severity: "error",
+        code: diag.code,
       });
     }
   }
@@ -428,8 +445,9 @@ export function compileMultiSource(
   const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
     (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
   );
+  const hasHardTypeErrors = multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
 
-  if (hasSyntaxErrors && errors.length > 0) {
+  if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -650,6 +668,7 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
         line: pos.line + 1,
         column: pos.character + 1,
         severity: "error",
+        code: diag.code,
       });
     }
   }
@@ -657,8 +676,9 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
   const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
     (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
   );
+  const hasHardTypeErrors = multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
 
-  if (hasSyntaxErrors && errors.length > 0) {
+  if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
       binary: new Uint8Array(0),
       wat: "",

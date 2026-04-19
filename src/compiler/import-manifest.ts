@@ -1,6 +1,7 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
-import type { CompileError, ImportDescriptor, ImportIntent } from "../index.js";
 import type { TypedAST } from "../checker/index.js";
+import type { CompileError, ImportDescriptor, ImportIntent } from "../index.js";
 import type { WasmModule } from "../ir/types.js";
 import { hasExportModifier } from "./validation.js";
 
@@ -60,6 +61,7 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
 
   // Callback maker
   if (name === "__make_callback") return { type: "callback_maker" };
+  if (name === "__make_getter_callback") return { type: "getter_callback_maker" };
 
   // Async/await
   if (name === "__await") return { type: "await" };
@@ -87,12 +89,22 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // globalThis
   if (name === "__get_globalThis") return { type: "declared_global", name: "globalThis" };
 
+  // defineProperty with accessor descriptor
+  if (name === "__defineProperty_accessor") return { type: "builtin", name: "__defineProperty_accessor" };
+
   // Extern get/set
   if (name === "__extern_get") return { type: "extern_get" };
   if (name === "__extern_set") return { type: "extern_set" };
 
+  // Host strict-equality for two externref operands that are not WasmGC eqrefs
+  // (e.g. host functions like `Array === Array`). (#1065)
+  if (name === "__host_eq") return { type: "host_eq" };
+
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
+
+  // __new_plain_object is a builtin factory, not an extern class constructor
+  if (name === "__new_plain_object") return { type: "builtin", name: "__new_plain_object" };
 
   // Unknown constructor imports (__new_ClassName)
   if (name.startsWith("__new_")) {
@@ -190,8 +202,6 @@ function checkJsTypeCoverage(ast: TypedAST): CompileError[] {
 // downgrade from error to warning so they don't block compilation.
 const DOWNGRADE_DIAG_CODES = new Set([
   2304, // "Cannot find name 'X'" — unknown identifiers compiled as externref/unreachable
-  2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
-  2322, // "Type 'X' is not assignable to type 'Y'"
   2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
   2551, // "Property 'X' does not exist on type 'Y'. Did you mean 'Z'?" — variant of 2339 with suggestion (#613)
   2454, // "Variable 'X' is used before being assigned"
@@ -338,4 +348,4 @@ const DOWNGRADE_DIAG_CODES = new Set([
   1121, // "Octal literals are not allowed in strict mode" — valid sloppy-mode JS
 ]);
 
-export { DOWNGRADE_DIAG_CODES, looksLikeTsSyntaxOnJs, checkJsTypeCoverage, classifyImport, buildImportManifest };
+export { buildImportManifest, checkJsTypeCoverage, classifyImport, DOWNGRADE_DIAG_CODES, looksLikeTsSyntaxOnJs };

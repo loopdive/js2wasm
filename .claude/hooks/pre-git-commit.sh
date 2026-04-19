@@ -27,10 +27,10 @@ fi
 if echo "$CMD" | grep -q 'git commit'; then
   # Verify code word from pre-commit checklist
   if ! echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
-    echo "BLOCKED: Missing code word. Read plan/pre-commit-checklist.md for instructions." >&2
+    echo "BLOCKED: Missing code word. Read plan/method/pre-commit-checklist.md for instructions." >&2
     exit 2
   fi
-  CHECKLIST=$(head -15 /workspace/plan/pre-commit-checklist.md 2>/dev/null)
+  CHECKLIST=$(head -15 /workspace/plan/method/pre-commit-checklist.md 2>/dev/null)
   if [ -n "$CHECKLIST" ]; then
     jq -n --arg ctx "VERIFY BEFORE COMMITTING: pwd=$(pwd) branch=$BRANCH. Have you checked: specific files staged? diff reviewed? no accidental deletions?" \
       '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $ctx}}'

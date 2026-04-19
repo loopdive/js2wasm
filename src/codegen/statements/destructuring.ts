@@ -1,33 +1,28 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Destructuring declaration lowering.
  * Handles object destructuring, array destructuring, and string destructuring patterns.
  */
 import ts from "typescript";
 import type { Instr, ValType } from "../../ir/types.js";
+import { reportError } from "../context/errors.js";
+import { allocLocal, getLocalType } from "../context/locals.js";
+import type { CodegenContext, FunctionContext } from "../context/types.js";
+import { shiftLateImportIndices } from "../expressions/late-imports.js";
+import { ensureNativeStringHelpers, ensureStructForType, nativeStringType, resolveWasmType } from "../index.js";
+import { resolveComputedKeyExpression } from "../literals.js";
+import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "../registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec } from "../registry/types.js";
 import {
   coerceType,
   compileExpression,
   emitBoundsCheckedArrayGet,
-  ensureLateImport,
+  registerEmitDefaultValueCheck,
+  registerEmitNestedBindingDefault,
+  registerEnsureBindingLocals,
   valTypesMatch,
   VOID_RESULT,
-  registerEnsureBindingLocals,
-  registerEmitNestedBindingDefault,
-  registerEmitDefaultValueCheck,
 } from "../shared.js";
-import { shiftLateImportIndices } from "../expressions/late-imports.js";
-import { reportError } from "../context/errors.js";
-import { allocLocal, getLocalType } from "../context/locals.js";
-import type { CodegenContext, FunctionContext } from "../context/types.js";
-import {
-  addFuncType,
-  getArrTypeIdxFromVec,
-  getOrRegisterRefCellType,
-  getOrRegisterVecType,
-} from "../registry/types.js";
-import { addImport, addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "../registry/imports.js";
-import { ensureNativeStringHelpers, ensureStructForType, nativeStringType, resolveWasmType } from "../index.js";
-import { resolveComputedKeyExpression } from "../literals.js";
 import { collectInstrs } from "./shared.js";
 
 export function ensureBindingLocals(ctx: CodegenContext, fctx: FunctionContext, pattern: ts.BindingPattern): void {

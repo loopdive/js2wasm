@@ -13,7 +13,7 @@ Provide the issue number. This skill reads the issue file and compiles 2-3 sampl
 
 ## Steps
 
-1. Read the issue file at `plan/issues/ready/{N}.md`
+1. Read the issue file at `plan/issues/{N}.md`
 2. Find the "Sample files" section — extract 2-3 test file paths
 3. For each sample test, compile and run:
 
@@ -37,7 +37,7 @@ console.log('Result:', ret === 1 ? 'PASS' : 'FAIL (returned ' + ret + ')');
 
 4. Report results:
    - **All fail**: issue is real, ready to dispatch
-   - **All pass**: issue is already fixed — close it, move to done/
+   - **All pass**: issue is already fixed — close it, mark it done
    - **Mixed**: issue is partially fixed — update the issue with current status
 
 ## Output

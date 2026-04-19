@@ -1,0 +1,14 @@
+{
+  "pr": 80,
+  "conclusion": "failure",
+  "head_branch": "issue-1036-disposable-stack-chain",
+  "head_sha": "69902a15be68786b7c96f7eab851c01c4534bb90",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24282882178",
+  "timestamp": "2026-04-11T13:02:13Z",
+  "pass": 21318,
+  "fail": 19021,
+  "compile_error": 1470,
+  "delta": 128,
+  "regressions": 47,
+  "improvements": 175
+}

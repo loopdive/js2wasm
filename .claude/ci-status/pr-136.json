@@ -1,0 +1,15 @@
+{
+  "pr": 136,
+  "conclusion": "success",
+  "head_branch": "lodash-es-e2e-tier1",
+  "head_sha": "2175c1ef6b0f6c16a88826a921d5193c0b4ac141",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24309158312",
+  "timestamp": "2026-04-12T16:05:34Z",
+  "pass": 22412,
+  "fail": 15393,
+  "compile_error": 3998,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
+  "regressions": 0,
+  "improvements": 0
+}

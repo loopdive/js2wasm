@@ -1,19 +1,20 @@
 <!doctype html>
 <html>
   <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>js2wasm playground</title>
     <style>
       * {
         box-sizing: border-box;
         margin: 0;
-        scrollbar-color: #3b3b3b #181818;
+        scrollbar-color: #3b3b3b var(--ui-bg);
       }
       *::-webkit-scrollbar {
         width: 8px;
         height: 8px;
       }
       *::-webkit-scrollbar-track {
-        background: #181818;
+        background: var(--ui-bg);
       }
       *::-webkit-scrollbar-thumb {
         background: #3b3b3b;
@@ -23,11 +24,23 @@
         background: #555;
       }
       body {
+        --panel-tab-height: 40px;
+        --ui-bg: #181818;
+        --surface-bg: #1e1e1e;
+        --panel-header-bg: #1b1b1b;
+        --separator-color: #2a2d2e;
+        --separator-hover: #3a3d41;
+        --muted-text: #8b8b8b;
+        --button-bg: transparent;
+        --button-hover-bg: #2a2d2e;
+        --button-active-bg: #31353a;
+        --button-fg: #c5c5c5;
         font-family: "SF Mono", "Fira Code", monospace;
-        background: #181818;
+        background: var(--ui-bg);
         color: #cccccc;
         padding: 0;
         height: 100vh;
+        min-height: 100dvh;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -37,16 +50,16 @@
         font-size: 1.1rem;
         color: #e0e0e0;
       }
-      .toolbar {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        padding: 0 1rem;
-        border-top: 1px solid #2b2b2b;
-        flex-shrink: 0;
-      }
       .toolbar-logo {
-        height: 22px;
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
+      }
+      .toolbar-logo img {
+        height: 34px;
+        width: auto;
+        display: block;
+        filter: grayscale(1) contrast(2.4) brightness(1.35);
       }
       .toolbar-btn {
         display: flex;
@@ -80,6 +93,14 @@
         color: #666;
         transition: color 0.15s;
       }
+      #run {
+        justify-content: center;
+      }
+      #run .tb-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
       .toolbar-link {
         text-decoration: none;
       }
@@ -91,16 +112,303 @@
         color: #5a5a5a;
         padding: 0.3rem 0;
       }
-      .toolbar-btn.icon-only {
-        padding: 0 0.35rem;
-        min-width: 35px;
+      .panel-tab-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .panel-tab-controls > .toolbar-logo {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .panel-tab-controls > .toolbar-logo img {
+        height: 20px;
+        width: auto;
+      }
+      .panel-tab-controls > .toolbar-btn {
+        display: inline-flex;
+        align-items: center;
         justify-content: center;
+        height: 26px;
+        padding: 0 10px;
+        border: none;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        box-shadow: none;
       }
-      .toolbar-btn.icon-only .tb-icon {
-        margin-right: 0;
+      .panel-tab-controls > .toolbar-btn .tb-icon {
+        color: #ffffff;
       }
-      .toolbar-btn.icon-only .tb-label {
+      .panel-tab-controls > .toolbar-btn .tb-icon.lg {
+        font-size: 0.95rem;
+        line-height: 1;
+      }
+      .panel-tab-controls > .toolbar-btn .tb-label {
+        color: #cfcfcf;
+        font-size: 11px;
+      }
+      .panel-tab-controls > .toolbar-btn:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.07);
+      }
+      .panel-tab-controls > .toolbar-btn:hover:not(:disabled) .tb-label {
+        color: #c6c6c6;
+      }
+      .panel-tab-controls > .toolbar-btn:disabled {
+        opacity: 0.45;
+      }
+      .panel-tab[data-tab="ts-source"] > .panel-tab-label {
+        display: inline-flex;
+        align-items: center;
+      }
+      .panel-tab .panel-tab-meta {
+        font-size: 11px;
+        color: #7a7a7a;
+        white-space: nowrap;
+      }
+      .panel-tab[data-tab="ts-source"] > .timing {
+        margin-left: auto;
+        padding: 0;
+        font-size: 11px;
+        color: #7a7a7a;
+        white-space: nowrap;
+      }
+      .panel-tab-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        box-shadow: none;
+        color: #d9d9d9;
+        cursor: pointer;
+      }
+      .panel-tab-toggle .panel-tab-toggle-close {
         display: none;
+        font-size: 22px;
+        line-height: 1;
+        color: currentColor;
+      }
+      .panel-tab-toggle svg {
+        width: 20px;
+        height: 20px;
+        display: block;
+        fill: currentColor;
+      }
+      .panel-tab-toggle:hover {
+        background: transparent;
+      }
+      .panel-tab-toggle.active {
+        color: #ffffff;
+        background: transparent;
+      }
+      .right-editor-controls-slot {
+        position: sticky;
+        right: 0;
+        margin-left: auto;
+        z-index: 2;
+        background: var(--panel-header-bg);
+        border-left: 1px solid var(--separator-color);
+        border-right: none;
+        box-shadow: -12px 0 16px -16px rgba(0, 0, 0, 0.9);
+      }
+      .right-editor-controls {
+        gap: 6px;
+      }
+      #bench {
+        display: none;
+      }
+      .t262-section-header-row > #bench {
+        display: inline-flex;
+      }
+      #download-wasm {
+        display: none;
+      }
+
+      .mobile-sidebar-overlay {
+        display: none;
+      }
+      .layout-split.bottom-collapsible,
+      .layout-child.bottom-collapsible {
+        overflow: hidden;
+      }
+      .layout-split.bottom-collapsible > .layout-child:last-child,
+      .layout-child.bottom-collapsible > .layout-child:last-child {
+        opacity: 1;
+        transform: scaleY(1) translateY(0);
+        transform-origin: top center;
+      }
+      .layout-split.bottom-collapsed > .layout-child:first-child,
+      .layout-child.bottom-collapsed > .layout-child:first-child {
+        flex: 1 1 100% !important;
+      }
+      .layout-split.bottom-collapsed > .layout-divider-v,
+      .layout-child.bottom-collapsed > .layout-divider-v {
+        height: 0 !important;
+        min-height: 0 !important;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .layout-split.bottom-collapsed > .layout-child:last-child,
+      .layout-child.bottom-collapsed > .layout-child:last-child {
+        flex: 0 0 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
+        opacity: 0;
+        transform: scaleY(0.92) translateY(6px);
+        transform-origin: top center;
+        pointer-events: none;
+      }
+
+      @media (max-width: 900px), (max-height: 720px) {
+        .layout-split.bottom-collapsible > .layout-child,
+        .layout-split.bottom-collapsible > .layout-divider-v,
+        .layout-child.bottom-collapsible > .layout-child,
+        .layout-child.bottom-collapsible > .layout-divider-v {
+          transition:
+            flex 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+            flex-basis 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+            max-height 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+            min-height 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+            height 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 0.28s ease,
+            transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        body {
+          height: 100dvh;
+        }
+        .main-area {
+          padding-top: 0 !important;
+          margin-top: 0;
+          height: 100dvh;
+        }
+        .layout-divider-h {
+          width: 10px;
+        }
+        .layout-divider-v {
+          height: 10px;
+        }
+        .mobile-sidebar-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 1000;
+          display: block;
+          background: rgba(6, 10, 20, 0.98);
+          transform: translateX(-100%);
+          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          overflow: hidden;
+        }
+        .mobile-sidebar-overlay.open {
+          transform: translateX(0);
+        }
+        .mobile-sidebar-content {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+        }
+        .mobile-sidebar-close {
+          position: fixed;
+          top: 10px;
+          right: 10px;
+          z-index: 3;
+          width: 32px;
+          height: 32px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          border-radius: 8px;
+          background: transparent;
+          color: #f3f3f3;
+          font-size: 18px;
+          line-height: 1;
+          cursor: pointer;
+        }
+        .mobile-sidebar-close:hover {
+          background: transparent;
+        }
+        .panel-tab {
+          min-height: 50px;
+          width: fit-content;
+          flex: 0 0 auto;
+          padding: 0 16px;
+          font-size: 13px;
+        }
+        .panel-tab-bar {
+          min-height: 50px;
+          height: 50px;
+        }
+        .panel-tab .panel-tab-meta {
+          display: none;
+        }
+        .panel-tab-controls-slot:not(.right-editor-controls-slot) {
+          position: sticky;
+          left: 0;
+          z-index: 2;
+          background: var(--panel-header-bg);
+          box-shadow: 12px 0 16px -16px rgba(0, 0, 0, 0.9);
+        }
+        .panel-tab-controls {
+          gap: 8px;
+        }
+        .panel-tab-controls > .toolbar-logo img {
+          height: 28px;
+        }
+        .panel-tab-controls > .toolbar-btn {
+          height: 40px;
+          padding: 0 16px;
+          border-radius: 8px;
+          background: transparent;
+        }
+        .panel-tab-controls > .toolbar-btn .tb-icon.lg {
+          font-size: 1.25rem;
+        }
+        .panel-tab-controls > .toolbar-btn .tb-label {
+          font-size: 13px;
+        }
+        .panel-tab-toggle {
+          width: 38px;
+          height: 38px;
+          background: transparent;
+        }
+        .panel-tab-toggle.active {
+          background: transparent;
+        }
+        .panel-tab-toggle svg {
+          width: 24px;
+          height: 24px;
+        }
+        .right-editor-controls-slot {
+          position: sticky;
+          left: auto;
+          right: 0;
+          margin-left: auto;
+          z-index: 3;
+          background: var(--panel-header-bg);
+          border-left: 1px solid var(--separator-color);
+          border-right: none;
+          box-shadow: -12px 0 16px -16px rgba(0, 0, 0, 0.9);
+        }
+        .t262-cat-header {
+          font-size: 12px;
+          padding: 5px 10px;
+        }
+        .t262-file {
+          font-size: 12px;
+          padding: 4px 10px;
+        }
+        .t262-files {
+          padding-left: 12px;
+        }
       }
 
       /* ─── Main area ───────────────────────────────────── */
@@ -132,7 +440,7 @@
       .layout-divider-h.active,
       .layout-divider-v:hover,
       .layout-divider-v.active {
-        background: #4e4e4e;
+        background: rgba(255, 255, 255, 0.02);
       }
       .layout-divider-h::after {
         content: "";
@@ -142,6 +450,16 @@
         left: -3px;
         right: -3px;
       }
+      .layout-divider-h::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        width: 1px;
+        transform: translateX(-0.5px);
+        background: var(--separator-color);
+      }
       .layout-divider-v::after {
         content: "";
         position: absolute;
@@ -150,27 +468,67 @@
         top: -3px;
         bottom: -3px;
       }
+      .layout-divider-v::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 1px;
+        transform: translateY(-0.5px);
+        background: var(--separator-color);
+      }
+      .layout-divider-h:hover::before,
+      .layout-divider-h.active::before,
+      .layout-divider-v:hover::before,
+      .layout-divider-v.active::before {
+        background: var(--separator-hover);
+      }
 
       /* Panel tab bar */
       .panel-tab-bar {
         display: flex;
-        border-bottom: 1px solid #2b2b2b;
+        align-items: stretch;
+        min-height: var(--panel-tab-height);
+        height: var(--panel-tab-height);
+        border-bottom: 1px solid var(--separator-color);
         flex-shrink: 0;
         overflow-x: auto;
-        background: #1e1e1e;
+        overscroll-behavior-x: contain;
+        background: var(--panel-header-bg);
+      }
+      .panel-tab-controls-slot {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+        padding: 0 8px;
+        border-right: 1px solid var(--separator-color);
+      }
+      .panel-tab-controls > .toolbar-logo {
+        margin-left: 2px;
+        margin-right: 2px;
+      }
+      .panel-tab-controls > .toolbar-logo img {
+        height: 25px;
       }
       .panel-tab {
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 6px 12px;
+        min-height: var(--panel-tab-height);
+        padding: 0 14px;
+        position: relative;
         cursor: grab;
+        touch-action: none;
         font-size: 12px;
-        color: #888;
-        border-right: 1px solid #2b2b2b;
+        color: var(--muted-text);
+        border-right: 1px solid var(--separator-color);
         white-space: nowrap;
         flex-shrink: 0;
         user-select: none;
+      }
+      .panel-tab.has-close.active {
+        padding-right: 36px;
       }
       .panel-tab:hover {
         color: #bbb;
@@ -178,7 +536,7 @@
       }
       .panel-tab.active {
         color: #cccccc;
-        background: #181818;
+        background: var(--ui-bg);
       }
       .panel-tab.dragging {
         opacity: 0.4;
@@ -191,13 +549,18 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        position: absolute;
+        top: 50%;
+        right: 10px;
+        transform: translateY(-50%);
         border-radius: 3px;
         opacity: 0;
         cursor: pointer;
+        pointer-events: none;
       }
-      .panel-tab:hover .close-btn,
-      .panel-tab.active .close-btn {
+      .panel-tab.has-close.active .close-btn {
         opacity: 0.5;
+        pointer-events: auto;
       }
       .panel-tab .close-btn:hover {
         opacity: 1;
@@ -476,64 +839,157 @@
         display: flex;
         flex-direction: column;
         height: 100%;
-        background: #181818;
+        min-height: 0;
+        background: var(--ui-bg);
+      }
+      .t262-sidebar-topbar {
+        display: none;
+      }
+      .t262-sidebar-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .t262-sidebar-brand .toolbar-logo {
+        flex-shrink: 0;
+      }
+      .t262-sidebar-brand .toolbar-logo img {
+        height: 22px;
+        width: auto;
+      }
+      .t262-sidebar-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #8e8e8e;
+      }
+      .t262-sidebar-topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 0;
+        width: 100%;
+        margin-left: auto;
+        justify-content: flex-end;
+      }
+      @media (min-width: 901px) and (min-height: 721px) {
+        .t262-sidebar-topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          min-height: 40px;
+          padding: 4px 8px;
+          border-bottom: 1px solid var(--separator-color);
+          background: var(--panel-header-bg);
+          flex-shrink: 0;
+        }
+        .t262-sidebar-topbar-actions .toolbar-btn,
+        .t262-sidebar-topbar-actions .panel-tab-toggle {
+          height: 28px;
+          min-width: 28px;
+          padding: 0 6px;
+          border: 1px solid transparent;
+          border-radius: 4px;
+          background: var(--button-bg);
+          box-shadow: none;
+          color: var(--button-fg);
+        }
+        .t262-sidebar-topbar-actions .toolbar-btn .tb-label {
+          color: inherit;
+          font-size: 11px;
+        }
+        .t262-sidebar-topbar-actions .toolbar-btn .tb-icon,
+        .t262-sidebar-topbar-actions .panel-tab-toggle {
+          color: inherit;
+        }
+        .t262-sidebar-topbar-actions .panel-tab-toggle svg {
+          width: 18px;
+          height: 18px;
+        }
+        .t262-sidebar-topbar-actions .toolbar-btn:hover:not(:disabled),
+        .t262-sidebar-topbar-actions .panel-tab-toggle:hover {
+          background: var(--button-hover-bg);
+          border-color: var(--separator-color);
+        }
+        .t262-sidebar-topbar-actions .toolbar-btn:active:not(:disabled),
+        .t262-sidebar-topbar-actions .panel-tab-toggle:active {
+          background: var(--button-active-bg);
+        }
       }
       .t262-search-wrap {
-        padding: 6px 8px;
-        border-bottom: 1px solid #2b2b2b;
+        padding: 8px 10px 10px;
         flex-shrink: 0;
-        background: #1e1e1e;
+        background: transparent;
+        border-top: none;
       }
       .t262-search {
         width: 100%;
-        background: #2b2b2b;
-        border: 1px solid #3b3b3b;
+        background: #1b1b1b;
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%237f7f7f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>');
+        background-repeat: no-repeat;
+        background-position: 12px center;
+        background-size: 15px 15px;
+        border: 1px solid #2c2c2c;
         border-radius: 3px;
-        color: #ccc;
-        padding: 4px 8px;
-        font-family: inherit;
-        font-size: 12px;
+        color: #d7d7d7;
+        padding: 10px 14px 10px 36px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        line-height: 1.2;
         outline: none;
+        box-shadow: none;
       }
       .t262-search:focus {
-        border-color: #555;
+        border-color: #4a4a4a;
+      }
+      .t262-search::placeholder {
+        color: #7f7f7f;
       }
       .t262-list {
         flex: 1;
+        min-height: 0;
         overflow-y: auto;
-        padding: 4px 0;
+        padding: 6px 0;
       }
       .t262-cat-header {
-        padding: 4px 10px;
+        padding: 5px 12px;
         cursor: pointer;
-        font-size: 12px;
-        color: #9cdcfe;
+        font-size: 13px;
+        line-height: 1.45;
+        color: #c9c9c9;
         user-select: none;
       }
       .t262-cat-header:hover {
-        background: rgba(255, 255, 255, 0.04);
+        background: rgba(255, 255, 255, 0.03);
       }
       .t262-top-header {
         display: flex;
         align-items: center;
       }
       .t262-arrow {
-        font-size: 9px;
+        font-size: 10px;
         display: inline-block;
-        width: 12px;
-        color: #888;
+        width: 14px;
+        color: #7f7f7f;
       }
       .t262-cat-count {
-        color: #555;
-        font-size: 11px;
+        color: #6f6f6f;
+        font-size: 12px;
       }
       .t262-files {
-        padding-left: 18px;
+        padding-left: 20px;
       }
       .t262-file {
-        font-size: 0.7rem;
-        color: #999;
-        padding: 2px 10px;
+        font-size: 13px;
+        line-height: 1.45;
+        color: #b7b7b7;
+        padding: 4px 12px;
+        border-radius: 4px;
         cursor: pointer;
         white-space: nowrap;
         overflow: hidden;
@@ -552,12 +1008,12 @@
         color: #666;
       }
       .t262-file:hover {
-        color: #ddd;
-        background: #1a1a2e;
+        color: #e2e2e2;
+        background: rgba(255, 255, 255, 0.04);
       }
       .t262-file.active {
-        color: #7c9dfc;
-        background: #1a1a3a;
+        color: #ffffff;
+        background: #2a2d2e;
       }
       .bench-file-name {
         flex: 1;
@@ -609,19 +1065,91 @@
         color: #777;
       }
       .t262-section-header {
-        font-size: 0.65rem;
+        font-size: 0.72rem;
         font-weight: bold;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #888;
-        padding: 10px 10px 6px;
-        border-bottom: 1px solid #2a2a2a;
+        color: #8e8e8e;
+        padding: 12px 12px 7px;
+        border-bottom: 1px solid var(--separator-color);
+      }
+      .t262-section-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .bench-section-btn {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 22px;
+        padding: 0 8px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--muted-text);
+        font: inherit;
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .bench-section-btn:hover:not(:disabled) {
+        color: var(--button-fg);
+        background: var(--button-hover-bg);
+        border-color: var(--separator-color);
+      }
+      .bench-section-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .bench-section-btn .tb-icon {
+        color: currentColor;
+        font-size: 11px;
+        line-height: 1;
+      }
+      .bench-section-btn .tb-label {
+        color: inherit;
+      }
+      .output-section-btn {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 22px;
+        padding: 0 8px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--muted-text);
+        font: inherit;
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .output-section-btn:hover:not(:disabled) {
+        color: var(--button-fg);
+        background: var(--button-hover-bg);
+        border-color: var(--separator-color);
+      }
+      .output-section-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .output-section-btn .tb-icon {
+        color: currentColor;
+        font-size: 11px;
+        line-height: 1;
+      }
+      .output-section-btn .tb-label {
+        color: inherit;
       }
       .t262-group-header {
-        font-size: 0.75rem;
+        font-size: 0.82rem;
         font-weight: bold;
-        color: #ddd;
-        padding: 4px 10px 2px;
+        color: #d6d6d6;
+        padding: 6px 12px 3px;
         margin-top: 4px;
       }
 
@@ -762,36 +1290,37 @@
 
   <body>
     <div class="main-area" id="layout-root"></div>
-    <div class="toolbar">
-      <img src="/jswasmlogo.png" alt="js2wasm" class="toolbar-logo" />
-      <button class="toolbar-btn" id="compile">
-        <span class="tb-icon lg">&#9881;</span><span class="tb-label">compile</span>
-      </button>
+    <div class="mobile-sidebar-overlay" id="mobile-sidebar-overlay">
+      <div class="mobile-sidebar-content" id="mobile-sidebar-content">
+        <button class="mobile-sidebar-close" id="mobile-sidebar-close" aria-label="Close file browser">&times;</button>
+      </div>
+    </div>
+    <div hidden>
+      <a class="toolbar-logo" id="sidebar-logo" href="../" aria-label="js2 home">
+        <img src="/js2logo.svg" alt="JS2 logo" />
+      </a>
+      <span class="timing" id="timing"></span>
+      <div class="panel-tab-controls" id="panel-tab-controls">
+        <button class="panel-tab-toggle" id="panel-sidebar-toggle" aria-label="Toggle file browser" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 4h18v16H3V4Zm2 2v12h4V6H5Zm6 0v12h8V6h-8Z"></path>
+          </svg>
+          <span class="panel-tab-toggle-close" aria-hidden="true">&times;</span>
+        </button>
+        <button class="panel-tab-toggle" id="panel-bottom-toggle" aria-label="Toggle bottom panel" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 4h18v16H3V4Zm2 2v8h14V6H5Zm0 10h14v2H5v-2Z"></path>
+          </svg>
+        </button>
+      </div>
       <button class="toolbar-btn" id="run" disabled>
-        <span class="tb-icon lg">&#9654;</span><span class="tb-label">run</span>
+        <span class="tb-icon lg">&#9654;</span>
       </button>
       <button class="toolbar-btn" id="bench" disabled>
-        <span class="tb-icon">&#9201;</span><span class="tb-label">bench</span>
-      </button>
-      <button class="toolbar-btn" id="download-wat" disabled>
-        <span class="tb-icon">&#11015;</span><span class="tb-label">.wat</span>
+        <span class="tb-icon lg">&#9654;</span><span class="tb-label">run</span>
       </button>
       <button class="toolbar-btn" id="download-wasm" disabled>
-        <span class="tb-icon">&#11015;</span><span class="tb-label">.wasm</span>
-      </button>
-      <a class="toolbar-btn toolbar-link" id="compat-link" href="./benchmarks/report.html">
-        <span class="tb-icon">&#9638;</span><span class="tb-label">compatibility</span>
-      </a>
-      <a class="toolbar-btn toolbar-link" id="plan-link" href="./dashboard/">
-        <span class="tb-icon">&#9783;</span><span class="tb-label">plan</span>
-      </a>
-      <span class="toolbar-spacer"></span>
-      <span class="timing" id="timing"></span>
-      <button class="toolbar-btn icon-only" id="toggle-sidebar" title="Toggle sidebar">
-        <span class="tb-icon">&#9776;</span><span class="tb-label">sidebar</span>
-      </button>
-      <button class="toolbar-btn icon-only" id="reset-layout" title="Reset playground">
-        <span class="tb-icon">&#8634;</span><span class="tb-label">reset</span>
+        <span class="tb-icon">&#11015;</span><span class="tb-label">download</span>
       </button>
     </div>
     <script type="module" src="./main.ts"></script>

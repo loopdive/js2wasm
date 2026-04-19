@@ -10,7 +10,7 @@
         document.head.appendChild(base);
       })();
     </script>
-    <title>JS2 - Javascript compiler</title>
+    <title>JS² - Javascript compiler</title>
     <meta
       name="description"
       content="js2wasm is an ahead-of-time compiler that compiles JavaScript and TypeScript to WebAssembly GC."
@@ -18,7 +18,6 @@
     <style>
       :root {
         --bg: #060a14;
-        --hero-piece-clearance: 0px;
         --bg-soft: #0c1220;
         --fg: #ffffff;
         --fg-soft: rgba(255, 255, 255, 0.68);
@@ -70,70 +69,12 @@
         display: block;
         -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
         mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
+        contain: strict;
+        opacity: 0.82;
+        transition: opacity 180ms ease;
       }
-
-      .puzzle-bg path {
-        fill: none;
-        stroke: rgba(255, 255, 255, 0.05);
-        stroke-width: 2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        vector-effect: non-scaling-stroke;
-      }
-      .puzzle-bg #puzzle-bg-path {
-        filter: blur(1px);
-      }
-
-      @keyframes glow-fade-soft {
-        0% {
-          opacity: 0;
-        }
-        10% {
-          opacity: 0.5;
-        }
-        80% {
-          opacity: 0.5;
-        }
-        100% {
-          opacity: 0;
-        }
-      }
-      @keyframes glow-fade {
-        0% {
-          opacity: 0;
-        }
-        10% {
-          opacity: 1;
-        }
-        80% {
-          opacity:;
-        }
-        100% {
-          opacity: 0;
-        }
-      }
-      .puzzle-bg #puzzle-bg-glow {
-        stroke: url(#puzzle-glow-gradient);
-        stroke-width: 4;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        filter: blur(8px);
-        animation: glow-fade-soft 15s ease infinite;
-      }
-      .puzzle-bg #puzzle-bg-glow-sharp {
-        stroke: url(#puzzle-glow-gradient);
-        stroke-width: 2.5;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        animation: glow-fade 15s ease infinite;
-        filter: blur(0.5px);
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .puzzle-bg #puzzle-bg-glow,
-        .puzzle-bg #puzzle-bg-glow-sharp {
-          animation: none;
-          opacity: 1;
-        }
+      .puzzle-bg.is-paused {
+        opacity: 0;
       }
 
       main,
@@ -161,6 +102,15 @@
         padding: 112px 56px 88px;
       }
 
+      .hero-logo {
+        width: 111px;
+        height: 111px;
+        display: block;
+        margin: 0 0 24px;
+        border-radius: 2px;
+        box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28);
+      }
+
       h1 {
         max-width: 1180px;
         margin: 0 0 34px;
@@ -174,7 +124,7 @@
 
       .hero-title-shell {
         display: grid;
-        align-items: end;
+        align-items: start;
       }
 
       .hero-title-measure,
@@ -329,7 +279,7 @@
       .intro p,
       .code-copy p,
       .cta p {
-        max-width: 760px;
+        max-width: 960px;
         font-size: 18px;
         line-height: 1.72;
         color: var(--fg-soft);
@@ -370,6 +320,12 @@
         filter: grayscale(1) contrast(2.4) brightness(1.25);
       }
 
+      .feature-icon img {
+        display: block;
+        width: 38px;
+        height: 38px;
+      }
+
       .feature-card h3 {
         margin: 0 0 18px;
         font-family: var(--mono);
@@ -377,6 +333,12 @@
         font-weight: 500;
         letter-spacing: 0.06em;
         text-transform: uppercase;
+      }
+
+      .feature-card h3 .heart-mark {
+        font-size: 1.22em;
+        line-height: 0;
+        vertical-align: -0.08em;
       }
 
       .feature-card p {
@@ -468,6 +430,40 @@
       .diagram-legend-line.passed {
         border-top-width: 1px;
         border-top-color: rgba(255, 255, 255, 0.82);
+      }
+
+      .host-bench-copy {
+        max-width: 860px;
+        margin-top: 18px;
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--fg-faint);
+      }
+
+      .host-bench-group {
+        margin-top: 42px;
+      }
+
+      .host-bench-group:first-of-type {
+        margin-top: 32px;
+      }
+
+      .host-bench-title {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--fg-faint);
+        margin: 0 0 16px;
+      }
+
+      .host-bench-subcopy {
+        max-width: 780px;
+        margin: 0 0 28px;
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--fg-faint);
       }
 
       /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
@@ -687,31 +683,43 @@
         max-width: 1400px;
         margin: 0 auto;
         padding: 64px 56px;
+        border-top: 1px solid var(--line);
       }
 
       .footer-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 44px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        align-items: start;
+        gap: 44px 64px;
         padding-bottom: 42px;
       }
 
+      .footer-brand {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 16px;
+        min-width: 0;
+      }
+
       .footer-brand img {
-        height: 34px;
+        height: 42px;
         width: auto;
         display: block;
       }
 
       .footer-brand p {
-        margin-top: 12px;
+        margin: 0;
+        max-width: 34ch;
         font-size: 14px;
+        line-height: 1.6;
         color: var(--fg-faint);
       }
 
       .footer-cols {
-        display: flex;
-        gap: 72px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 28px 40px;
       }
 
       .footer-col h4 {
@@ -740,16 +748,6 @@
 
       .footer-col a:hover {
         color: var(--fg);
-      }
-
-      .footer-bottom {
-        padding-top: 30px;
-        border-top: 1px solid var(--line);
-        display: flex;
-        justify-content: space-between;
-        gap: 24px;
-        color: var(--fg-faint);
-        font-size: 13px;
       }
 
       @media (max-width: 1120px) {
@@ -786,6 +784,16 @@
           padding-top: 104px;
         }
 
+        .hero-logo {
+          width: 80px;
+          height: 80px;
+          margin: 14px 0 20px;
+        }
+
+        h1 {
+          font-size: clamp(42px, 8vw, 64px);
+        }
+
         .code-section,
         .footer-top {
           grid-template-columns: 1fr;
@@ -793,8 +801,8 @@
         }
 
         .footer-cols {
-          gap: 36px;
-          flex-wrap: wrap;
+          grid-template-columns: 1fr 1fr;
+          gap: 28px 24px;
         }
       }
 
@@ -816,8 +824,13 @@
           border-bottom: none;
         }
 
-        .footer-bottom {
-          flex-direction: column;
+        .footer-cols {
+          grid-template-columns: 1fr;
+        }
+
+        .footer-brand {
+          grid-template-columns: 1fr;
+          gap: 12px;
         }
 
         .hero-actions,
@@ -1118,54 +1131,31 @@
     </style>
   </head>
   <body>
-    <svg class="puzzle-bg" aria-hidden="true">
-      <defs>
-        <linearGradient id="puzzle-glow-gradient" x1="0%" y1="-50%" x2="0%" y2="-10%" gradientUnits="objectBoundingBox">
-          <stop offset="0%" stop-color="#ffffff" stop-opacity="0"></stop>
-          <stop offset="30%" stop-color="#d4c8ff" stop-opacity="0"></stop>
-          <stop offset="45%" stop-color="#ffffff" stop-opacity="1"></stop>
-          <stop offset="55%" stop-color="#ffffff" stop-opacity="1"></stop>
-          <stop offset="70%" stop-color="#d4c8ff" stop-opacity="0"></stop>
-          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"></stop>
-          <animate attributeName="y1" values="-50%;100%" dur="15s" repeatCount="indefinite" />
-          <animate attributeName="y2" values="-10%;150%" dur="15s" repeatCount="indefinite" />
-        </linearGradient>
-        <filter id="puzzle-glow-filter" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="0.8" result="blur"></feGaussianBlur>
-          <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1.25 0"></feColorMatrix>
-        </filter>
-      </defs>
-      <path id="puzzle-bg-path"></path>
-      <path id="puzzle-bg-glow"></path>
-      <path id="puzzle-bg-glow-sharp"></path>
-    </svg>
+    <canvas class="puzzle-bg" aria-hidden="true"></canvas>
     <site-nav></site-nav>
 
     <main>
       <div class="hero-wrap">
         <section class="hero">
+          <img class="hero-logo" src="./js2logo.svg" alt="JS2 logo" />
           <h1
             id="hero-title"
-            data-texts='["JS2: A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an interpreter.",
-            "JavaScript compiled ahead of time, for fast cold starts and speed.", "Contain supply chain attacks with fine grained module sandboxing.", "Compatible with existing Javascript code, not a new language."]'
+            data-texts='["A next generation JavaScript compiler.", "Compile JavaScript without embedding a JS engine.",
+            "JavaScript compiled ahead of time, for fast cold starts and speed.", "Reduce supply chain attack surface with module sandboxing.", "Target existing Javascript code, not a new language."]'
           >
             <span class="hero-title-shell">
-              <span class="hero-title-measure" aria-hidden="true">
-                JS2 - A next generation JavaScript compiler.", "Compile JavaScript to WebAssembly without embedding an
-                interpreter.
-              </span>
+              <span class="hero-title-measure" aria-hidden="true"></span>
               <span class="hero-title-type"></span>
             </span>
           </h1>
           <p class="hero-sub">
             The JS
             <sup>2</sup>
-            compiler project is a technology study for next generation Javascript that AOT compiles real JavaScript to
-            WebAssembly.
+            compiler is a Loopdive project focused on ahead-of-time compilation of real JavaScript to WebAssembly.
           </p>
           <div class="hero-actions">
-            <a class="btn-solid" href="./playground/">Live demo</a>
-            <a class="btn-outline" href="#goals">Javascript compatibility</a>
+            <a class="btn-solid" href="./playground/">Playground</a>
+            <a class="btn-outline" href="#goals">Compatibility</a>
           </div>
         </section>
       </div>
@@ -1174,57 +1164,47 @@
 
       <section class="section-pad" id="mission">
         <div class="intro">
-          <h2>Next generation JavaScript compiler.</h2>
+          <h2>Mission: Next generation JavaScript.</h2>
           <p>
-            The mission of the JS
-            <sup>2</sup>
-            compiler project is to make JavaScript more secure, modular, and lightweight.
+            The mission of the JS² compiler project is to make WebAssembly a drop-in deployment target for existing
+            JavaScript and npm packages, running modules without embedding a JS runtime and enabling more secure,
+            flexible dependency management.
           </p>
         </div>
         <div class="features-grid">
           <article class="feature-card">
-            <div class="feature-icon">🧩</div>
-            <h3>Small modules</h3>
-            <p>Target Wasm GC directly and avoid bundling a JavaScript runtime into every output module.</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon">🔒</div>
-            <h3>Sandboxed by default</h3>
-            <p>Filesystem, network, DOM, and globals stay behind explicit imports instead of ambient access.</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon">JS</div>
-            <h3>Just Javascript</h3>
+            <div class="feature-icon"><img src="./javascript-logo-white.svg" alt="JavaScript logo" /></div>
+            <h3>Not a New Language</h3>
             <p>
-              Write idiomatic JavaScript and TypeScript instead of switching to a separate language just to target Wasm.
+              Compile existing JavaScript and npm packages without rewriting them into a new language or restricted
+              subset. Stay compatible with the JavaScript ecosystem.
             </p>
           </article>
           <article class="feature-card">
-            <div class="feature-icon">npm</div>
-            <h3>npm compatibility</h3>
-            <p>Move existing package ecosystems toward Wasm hosts instead of forcing rewrites into other languages.</p>
+            <div class="feature-icon"><img src="./wasm-logo-white.svg" alt="WebAssembly logo" /></div>
+            <h3>JS Host or Standalone</h3>
+            <p>
+              Deploy compiled modules across JavaScript hosts and standalone WebAssembly runtimes without embedding a JS
+              engine in the module or hand-writing glue code.
+            </p>
           </article>
-        </div>
-        <div class="intro" style="margin-top: 56px">
-          <h2>JS & NPM compatible.</h2>
-          <p>
-            Compile existing Javascript code to WebAssembly and run it anywhere - in a browser, Node.js or WebAssembly runtime or even compatible to a native executable without shipping a JS runtime.
-          </p>
-        </div>
+          <article class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <h3>Module Sandboxing</h3>
+            <p>
+              Reduce supply chain attack surface by isolating JavaScript modules from each other inside the same
+              application and keeping filesystem, network, DOM, and globals behind explicit imports.
+            </p>
+          </article>
 
-        <div class="intro" style="margin-top: 56px">
-          <h2>Plug & Play composition.</h2>
-          <p>
-            Dependencies are resolved at link or runtime and thus code can be composed by module consumers, breaking down dependencies on toolchains, platforms, or applications.
-          </p>
-        </div>
-        <div class="intro" style="margin-top: 56px">
-          <h2>Module Sandboxing.</h2>
-          <p>
-            While JavaScript in the browser is running in a sandbox, dependencies are not isolated from each other and
-            one foul module risks it all, as has been proven by recent supply chain attacks. In Node.js it is worse —
-            any program has full access to the file system and network.
-          </p>
+          <article class="feature-card">
+            <div class="feature-icon">🧩</div>
+            <h3>Dependency Injection</h3>
+            <p>
+              Link modules through explicit imports so consumers can choose implementations, control upgrades, and swap
+              dependencies for each environment.
+            </p>
+          </article>
         </div>
       </section>
 
@@ -1234,8 +1214,8 @@
         <div class="intro">
           <h2>Goal: 100% JavaScript compatibility.</h2>
           <p>
-            Which JS language features compile to WebAssembly today, and which are still on the roadmap. Status is
-            derived from ECMAScript Test262 pass rates and known compiler limitations.
+            Which JS language features compile to WebAssembly today, which still rely on host support, and which are
+            still on the roadmap. Status is derived from ECMAScript Test262 pass rates and known compiler limitations.
           </p>
           <p style="margin-top: 1.25rem">
             <a class="btn-outline" href="./benchmarks/report.html">Compatibility Test Report</a>
@@ -2366,7 +2346,7 @@ const sum = big + 1n;</pre
                 <details>
                   <summary></summary>
                   <pre>new WeakRef(obj); // not supported</pre>
-                  <div class="feat-explain">GC-observable. Not available in WasmGC.</div>
+                  <div class="feat-explain">GC-observable. Not available in standard WasmGC today.</div>
                 </details>
               </div>
             </div>
@@ -2885,13 +2865,66 @@ match (value) {
 
       <hr class="divider" />
 
+      <section class="section-pad" id="wasm-hosts">
+        <div class="intro">
+          <h2>Run JavaScript without an interpreter.</h2>
+          <p>
+            When running outside of a JS engine like found in browsers or Node.js, compatibility today typically means
+            embedding a JS interpreter inside the WebAssembly module. This increases module size and slows execution.
+          </p>
+          <p class="host-bench-copy">
+            Each bar shows the measured median for one toolchain. Lower values are better. The vertical marker shows the
+            plain JavaScript baseline running in a JS host.
+          </p>
+        </div>
+
+        <div class="host-bench-group">
+          <h3 class="host-bench-title">Wasmtime</h3>
+          <p class="host-bench-subcopy">
+            Compare direct AOT WebAssembly output against interpreter-bundling approaches in a standalone WebAssembly
+            runtime.
+          </p>
+          <div class="conformance-diagrams">
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
+                mode="absolute-lower-better"
+                baseline-label="JS (V8)"
+                title="Cold Start"
+                legend="Median startup time for standalone Wasmtime execution, with JS-host baseline marker (lower is better)"
+              ></perf-benchmark-chart>
+            </div>
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
+                mode="absolute-lower-better"
+                baseline-label="JS (V8)"
+                title="Hot Runtime"
+                legend="Median amortized runtime per call after one module load in Wasmtime, with JS-host baseline marker (lower is better)"
+              ></perf-benchmark-chart>
+            </div>
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
+                mode="absolute-lower-better"
+                baseline-label="JS (V8)"
+                title="Module Size"
+                legend="Raw .wasm or component size for the standalone Wasmtime comparison, with JS baseline marker (lower is better)"
+              ></perf-benchmark-chart>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
       <section class="section-pad" id="how-it-works">
         <div class="intro">
           <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
             Write regular JavaScript. The compiler produces a .wasm binary that runs anywhere WebAssembly runs &mdash;
-            browser, server, edge. No interpreter embedded, no garbage collector shipped. The module is isolated from
-            its host and other modules and thus the surface for supply chain attacks through dependencies is reduced.
+            browser, server, edge. No interpreter embedded, no garbage collector shipped. When deployed with explicit
+            imports, the module boundary can reduce ambient access and limit supply-chain attack surface.
           </p>
         </div>
 
@@ -3034,12 +3067,11 @@ const dom = await js2.import("./dom.js", { document });
       <section class="section-pad cta" id="roadmap">
         <h2>Project roadmap.</h2>
         <p>
-          The project is still incomplete, but the playground, report, and planning artifacts already make the compiler
-          direction concrete and inspectable.
+          The roadmap is to first establish compatibility with existing code, then expand host support, optimize
+          performance, and strengthen security.
         </p>
         <div class="cta-actions">
-          <a class="btn-solid" href="./playground/">Open Playground</a>
-          <a class="btn-outline" href="./dashboard/">Project Progress</a>
+          <a class="btn-solid" href="./dashboard/">Roadmap</a>
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">View Source</a>
         </div>
       </section>
@@ -3048,39 +3080,28 @@ const dom = await js2.import("./dom.js", { document });
     <footer>
       <div class="footer-top">
         <div class="footer-brand">
-          <img src="/jswasmlogo.png" alt="js2 logo" />
+          <img src="./js2logo.svg" alt="JS² logo" />
           <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
         </div>
         <div class="footer-cols">
           <div class="footer-col">
-            <h4>Project</h4>
+            <h4>Explore</h4>
             <ul>
               <li><a href="./playground/">Playground</a></li>
-              <li><a href="./dashboard/">Progress</a></li>
+              <li><a href="#roadmap">Roadmap</a></li>
               <li><a href="./benchmarks/report.html">Conformance Report</a></li>
+              <li><a href="#goals">Compatibility</a></li>
             </ul>
           </div>
           <div class="footer-col">
-            <h4>Analysis</h4>
+            <h4>Inspect</h4>
             <ul>
-              <li><a href="./issues-graph.html">Issues Graph</a></li>
               <li><a href="./wasm-treemap.html">Wasm Treemap</a></li>
               <li><a href="https://github.com/loopdive/js2wasm">GitHub</a></li>
-            </ul>
-          </div>
-          <div class="footer-col">
-            <h4>Focus</h4>
-            <ul>
-              <li><a href="#goals">Goals</a></li>
               <li><a href="#approach">Approach</a></li>
-              <li><a href="#links">Published tools</a></li>
             </ul>
           </div>
         </div>
-      </div>
-      <div class="footer-bottom">
-        <span>js2 GitHub Pages site</span>
-        <span>Built from the same artifacts used for compiler development.</span>
       </div>
     </footer>
 
@@ -3091,24 +3112,33 @@ const dom = await js2.import("./dom.js", { document });
 
     <script>
       (function mountPuzzleBackground() {
-        const svg = document.querySelector(".puzzle-bg");
-        const path = document.getElementById("puzzle-bg-path");
-        const glowPath = document.getElementById("puzzle-bg-glow");
-        const glowSharp = document.getElementById("puzzle-bg-glow-sharp");
-        if (
-          !(svg instanceof SVGElement) ||
-          !(path instanceof SVGPathElement) ||
-          !(glowPath instanceof SVGPathElement)
-        ) {
+        const canvas = document.querySelector(".puzzle-bg");
+        if (!(canvas instanceof HTMLCanvasElement)) {
           return;
         }
+        const gl = canvas.getContext("webgl", {
+          alpha: true,
+          antialias: true,
+          depth: false,
+          stencil: false,
+          preserveDrawingBuffer: false,
+          powerPreference: "low-power",
+        });
+        if (!gl) return;
 
-        const basePieceWidth = 180;
-        const basePieceHeight = 186;
-        const mobilePieceHeight = 124;
+        const basePieceWidth = 220;
+        const basePieceHeight = 228;
+        const mobilePieceWidth = 200;
+        const mobilePieceAspect = basePieceHeight / basePieceWidth;
         const seedBase = 37;
         const tabsize = 20;
         const jitter = 4;
+        const cycleDuration = 25.8;
+        const activePortion = 0.7;
+        const targetFrameMs = 1000 / 30;
+        const desktopLineHalfWidth = 3.4;
+        const mobileLineHalfWidth = 2.7;
+        const segmentSteps = 12;
 
         let seed = seedBase;
         let a = 0;
@@ -3126,8 +3156,15 @@ const dom = await js2.import("./dom.js", { document });
         let vertical = false;
         let width = 0;
         let height = 0;
-        let horizontalSegments = [];
-        let verticalSegments = [];
+        let deviceWidth = 0;
+        let deviceHeight = 0;
+        let raf = 0;
+        let lastFrameMs = 0;
+        let isInView = true;
+        let isVisible = document.visibilityState !== "hidden";
+        let shouldAnimate = true;
+        let vertexCount = 0;
+        let currentLineHalfWidth = desktopLineHalfWidth;
 
         const random = () => {
           const x = Math.sin(seed) * 10000;
@@ -3190,18 +3227,6 @@ const dom = await js2.import("./dom.js", { document });
               ];
           return pts;
         };
-        const curveCommands = (pts) =>
-          [
-            `C${pts[1].x},${pts[1].y} ${pts[2].x},${pts[2].y} ${pts[3].x},${pts[3].y}`,
-            `C${pts[4].x},${pts[4].y} ${pts[5].x},${pts[5].y} ${pts[6].x},${pts[6].y}`,
-            `C${pts[7].x},${pts[7].y} ${pts[8].x},${pts[8].y} ${pts[9].x},${pts[9].y}`,
-          ].join(" ");
-        const reverseCurveCommands = (pts) =>
-          [
-            `C${pts[8].x},${pts[8].y} ${pts[7].x},${pts[7].y} ${pts[6].x},${pts[6].y}`,
-            `C${pts[5].x},${pts[5].y} ${pts[4].x},${pts[4].y} ${pts[3].x},${pts[3].y}`,
-            `C${pts[2].x},${pts[2].y} ${pts[1].x},${pts[1].y} ${pts[0].x},${pts[0].y}`,
-          ].join(" ");
         const first = () => {
           e = uniform(-j, j);
           next();
@@ -3215,23 +3240,60 @@ const dom = await js2.import("./dom.js", { document });
           d = uniform(-j, j);
           e = uniform(-j, j);
         };
-
-        const genD = () => {
-          let str = "";
+        const cubicPoint = (p0, p1, p2, p3, u) => {
+          const omu = 1 - u;
+          const omu2 = omu * omu;
+          const u2 = u * u;
+          return {
+            x: omu2 * omu * p0.x + 3 * omu2 * u * p1.x + 3 * omu * u2 * p2.x + u2 * u * p3.x,
+            y: omu2 * omu * p0.y + 3 * omu2 * u * p1.y + 3 * omu * u2 * p2.y + u2 * u * p3.y,
+          };
+        };
+        const sampleCurveChain = (pts) => {
+          const out = [pts[0]];
+          const appendCurve = (p0, p1, p2, p3) => {
+            for (let step = 1; step <= segmentSteps; ++step) {
+              out.push(cubicPoint(p0, p1, p2, p3, step / segmentSteps));
+            }
+          };
+          appendCurve(pts[0], pts[1], pts[2], pts[3]);
+          appendCurve(pts[3], pts[4], pts[5], pts[6]);
+          appendCurve(pts[6], pts[7], pts[8], pts[9]);
+          return out;
+        };
+        const pushVertex = (buffer, x, y, centerY, edgeCoord) => {
+          buffer.push(x, y, centerY, edgeCoord);
+        };
+        const appendPolylineTriangles = (polyline, buffer) => {
+          for (let i = 0; i < polyline.length - 1; ++i) {
+            const p0 = polyline[i];
+            const p1 = polyline[i + 1];
+            const dx = p1.x - p0.x;
+            const dy = p1.y - p0.y;
+            const len = Math.hypot(dx, dy);
+            if (!len) continue;
+            const nx = (-dy / len) * currentLineHalfWidth;
+            const ny = (dx / len) * currentLineHalfWidth;
+            pushVertex(buffer, p0.x + nx, p0.y + ny, p0.y, 1.0);
+            pushVertex(buffer, p0.x - nx, p0.y - ny, p0.y, -1.0);
+            pushVertex(buffer, p1.x + nx, p1.y + ny, p1.y, 1.0);
+            pushVertex(buffer, p1.x + nx, p1.y + ny, p1.y, 1.0);
+            pushVertex(buffer, p0.x - nx, p0.y - ny, p0.y, -1.0);
+            pushVertex(buffer, p1.x - nx, p1.y - ny, p1.y, -1.0);
+          }
+        };
+        const buildGeometry = () => {
+          const triangles = [];
           seed = seedBase;
           t = tabsize / 200.0;
           j = jitter / 100.0;
-          horizontalSegments = Array.from({ length: Math.max(0, yn - 1) }, () => []);
-          verticalSegments = Array.from({ length: Math.max(0, xn - 1) }, () => []);
 
           vertical = false;
           for (yi = 1; yi < yn; ++yi) {
             xi = 0;
             first();
             for (; xi < xn; ++xi) {
-              const pts = segmentPoints(false);
-              horizontalSegments[yi - 1][xi] = pts;
-              str += `M${pts[0].x},${pts[0].y} ${curveCommands(pts)} `;
+              appendPolylineTriangles(sampleCurveChain(segmentPoints(false)), triangles);
               next();
             }
           }
@@ -3241,44 +3303,233 @@ const dom = await js2.import("./dom.js", { document });
             yi = 0;
             first();
             for (; yi < yn; ++yi) {
-              const pts = segmentPoints(true);
-              verticalSegments[xi - 1][yi] = pts;
-              str += `M${pts[0].x},${pts[0].y} ${curveCommands(pts)} `;
+              appendPolylineTriangles(sampleCurveChain(segmentPoints(true)), triangles);
               next();
             }
           }
 
-          return str.trim();
+          return new Float32Array(triangles);
         };
 
-        let raf = 0;
-        const render = () => {
+        const createShader = (type, source) => {
+          const shader = gl.createShader(type);
+          if (!shader) return null;
+          gl.shaderSource(shader, source);
+          gl.compileShader(shader);
+          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error(gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+          }
+          return shader;
+        };
+        const vertexShader = createShader(
+          gl.VERTEX_SHADER,
+          `
+            attribute vec2 aPosition;
+            attribute float aCenterY;
+            attribute float aEdgeCoord;
+            uniform vec2 uResolution;
+            varying vec2 vUv;
+            varying float vEdgeCoord;
+            void main() {
+              vec2 zeroToOne = aPosition / uResolution;
+              vec2 clip = zeroToOne * 2.0 - 1.0;
+              gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+              vUv = vec2(zeroToOne.x, aCenterY / uResolution.y);
+              vEdgeCoord = aEdgeCoord;
+            }
+          `,
+        );
+        const fragmentShader = createShader(
+          gl.FRAGMENT_SHADER,
+          `
+            precision mediump float;
+            uniform float uTime;
+            uniform float uCycleDuration;
+            uniform float uActivePortion;
+            varying vec2 vUv;
+            varying float vEdgeCoord;
+            float hash(float n) {
+              return fract(sin(n) * 43758.5453123);
+            }
+            void main() {
+              float cycle = fract(uTime / uCycleDuration);
+              float sweep = min(cycle / uActivePortion, 1.0);
+              float center = mix(-0.16, 1.16, sweep);
+              float strike = center;
+              float frontAnchor = strike + 0.22;
+              float frontGlowDist = abs(vUv.y - frontAnchor);
+              float frontDelta = frontAnchor - vUv.y;
+              float front =
+                smoothstep(-0.05, 0.0, frontDelta) *
+                (1.0 - smoothstep(0.0, 0.085, frontDelta));
+              float frontGlow = smoothstep(0.095, 0.0, frontGlowDist);
+              float behind = frontAnchor - vUv.y;
+              float afterglow =
+                (1.0 - smoothstep(0.02, 0.56, behind)) *
+                step(0.0, behind);
+              float cometLane = floor(vUv.x * 6.0);
+              float cometPhase = fract(vUv.x * 6.0);
+              float cometHead = smoothstep(0.16, 0.0, abs(cometPhase - 0.5));
+              float cometTrail =
+                (1.0 - smoothstep(0.0, 0.32, 0.5 - cometPhase)) *
+                step(cometPhase, 0.5);
+              float cometGlow = smoothstep(0.42, 0.0, abs(cometPhase - 0.5));
+              float cometStrength = 0.75 + 0.25 * hash(cometLane + floor(uTime * 2.0) * 11.0);
+              float comet = (cometHead * 1.2 + cometTrail * 0.42) * cometStrength;
+              float cometBloom = cometGlow * cometStrength;
+              float alpha = afterglow * 0.2 + frontGlow * 0.18;
+              alpha += front * 0.64;
+              alpha += front * comet * 1.7;
+              alpha += frontGlow * cometBloom * 0.95;
+              float edgeT = abs(vEdgeCoord);
+              float normalEdge = 1.0 - smoothstep(0.04, 1.0, edgeT);
+              float cometEdge = 1.0 - smoothstep(0.0, 1.0, edgeT);
+              float edgeSoft = mix(normalEdge, cometEdge, clamp(cometBloom * 0.95, 0.0, 1.0));
+              alpha *= edgeSoft;
+              alpha *= smoothstep(0.0, 0.08, vUv.y);
+              alpha *= smoothstep(1.05, 0.6, vUv.y);
+              alpha *= 0.82;
+              vec3 bgTint = vec3(0.08, 0.11, 0.18);
+              vec3 glowTint = vec3(0.72, 0.79, 0.96);
+              float headMix = clamp(front * 0.95 + frontGlow * 0.45 + cometBloom * 0.55, 0.0, 1.0);
+              vec3 color = mix(bgTint, glowTint, clamp(afterglow * 0.9 + headMix, 0.0, 1.0));
+              color = mix(color, vec3(1.0), clamp(front * 0.8 + comet * 0.55, 0.0, 1.0));
+              gl_FragColor = vec4(color, alpha);
+            }
+          `,
+        );
+        if (!vertexShader || !fragmentShader) return;
+        const program = gl.createProgram();
+        if (!program) return;
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          console.error(gl.getProgramInfoLog(program));
+          return;
+        }
+        gl.useProgram(program);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        const positionLoc = gl.getAttribLocation(program, "aPosition");
+        const centerYLoc = gl.getAttribLocation(program, "aCenterY");
+        const edgeCoordLoc = gl.getAttribLocation(program, "aEdgeCoord");
+        const resolutionLoc = gl.getUniformLocation(program, "uResolution");
+        const timeLoc = gl.getUniformLocation(program, "uTime");
+        const cycleDurationLoc = gl.getUniformLocation(program, "uCycleDuration");
+        const activePortionLoc = gl.getUniformLocation(program, "uActivePortion");
+        const buffer = gl.createBuffer();
+        if (!buffer) return;
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.enableVertexAttribArray(positionLoc);
+        gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(centerYLoc);
+        gl.vertexAttribPointer(centerYLoc, 1, gl.FLOAT, false, 16, 8);
+        gl.enableVertexAttribArray(edgeCoordLoc);
+        gl.vertexAttribPointer(edgeCoordLoc, 1, gl.FLOAT, false, 16, 12);
+
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const clearFrame = () => {
+          gl.viewport(0, 0, deviceWidth, deviceHeight);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+        };
+        const draw = (timeSeconds) => {
+          gl.viewport(0, 0, deviceWidth, deviceHeight);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.useProgram(program);
+          gl.uniform2f(resolutionLoc, width, height);
+          gl.uniform1f(timeLoc, timeSeconds);
+          gl.uniform1f(cycleDurationLoc, cycleDuration);
+          gl.uniform1f(activePortionLoc, activePortion);
+          gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        };
+        const frame = (nowMs) => {
           raf = 0;
-          width = Math.max(window.innerWidth, document.documentElement.scrollWidth, document.body.scrollWidth);
+          if (!shouldAnimate) return;
+          if (nowMs - lastFrameMs >= targetFrameMs) {
+            lastFrameMs = nowMs;
+            draw(nowMs * 0.001);
+          }
+          raf = window.requestAnimationFrame(frame);
+        };
+        const startLoop = () => {
+          if (raf || !shouldAnimate) return;
+          raf = window.requestAnimationFrame(frame);
+        };
+        const stopLoop = () => {
+          if (raf) {
+            window.cancelAnimationFrame(raf);
+            raf = 0;
+          }
+          clearFrame();
+        };
+        const updateAnimationState = () => {
+          shouldAnimate = !(prefersReducedMotion.matches || !isInView || !isVisible);
+          canvas.classList.toggle("is-paused", !shouldAnimate);
+          if (shouldAnimate) startLoop();
+          else stopLoop();
+        };
+        const render = () => {
+          width = document.documentElement.clientWidth;
           height = window.innerHeight;
-          const pieceHeight = window.innerWidth <= 720 ? mobilePieceHeight : basePieceHeight;
-          xn = Math.max(2, Math.ceil(width / basePieceWidth));
-          yn = Math.max(2, Math.ceil(height / pieceHeight));
-          svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-          svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
-          svg.setAttribute("width", "100%");
-          svg.setAttribute("height", String(height));
-          svg.style.height = `${height}px`;
-          const d = genD();
-          path.setAttribute("d", d);
-          glowPath.setAttribute("d", d);
-          if (glowSharp) glowSharp.setAttribute("d", d);
-          document.documentElement.style.setProperty("--hero-piece-clearance", `0px`);
+          const dpr = Math.min(window.devicePixelRatio || 1, 3);
+          deviceWidth = Math.max(1, Math.round(width * dpr));
+          deviceHeight = Math.max(1, Math.round(height * dpr));
+          canvas.width = deviceWidth;
+          canvas.height = deviceHeight;
+          canvas.style.height = `${height}px`;
+          const isMobile = window.innerWidth <= 720;
+          const pieceWidth = isMobile ? mobilePieceWidth : basePieceWidth;
+          const pieceHeight = isMobile ? mobilePieceWidth * mobilePieceAspect : basePieceHeight;
+          currentLineHalfWidth = isMobile ? mobileLineHalfWidth : desktopLineHalfWidth;
+          xn = Math.max(2, Math.ceil(width / pieceWidth));
+          if (isMobile) {
+            const actualPieceWidth = width / xn;
+            const actualPieceHeight = actualPieceWidth * mobilePieceAspect;
+            yn = Math.max(2, Math.ceil(height / actualPieceHeight));
+          } else {
+            yn = Math.max(2, Math.ceil(height / pieceHeight));
+          }
+          const geometry = buildGeometry();
+          vertexCount = geometry.length / 4;
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+          gl.bufferData(gl.ARRAY_BUFFER, geometry, gl.STATIC_DRAW);
+          clearFrame();
+          if (shouldAnimate) draw(performance.now() * 0.001);
         };
 
         render();
+        updateAnimationState();
+
+        const heroWrap = document.querySelector(".hero-wrap");
+        if (heroWrap && "IntersectionObserver" in window) {
+          const observer = new IntersectionObserver(
+            ([entry]) => {
+              isInView = !!entry?.isIntersecting;
+              updateAnimationState();
+            },
+            { threshold: 0.08 },
+          );
+          observer.observe(heroWrap);
+        }
+
+        document.addEventListener("visibilitychange", () => {
+          isVisible = document.visibilityState !== "hidden";
+          updateAnimationState();
+        });
+        prefersReducedMotion.addEventListener?.("change", updateAnimationState);
+
         window.addEventListener("resize", () => {
-          if (raf) cancelAnimationFrame(raf);
-          raf = requestAnimationFrame(render);
+          render();
         });
       })();
 
-      // Glow wave animation is now pure CSS/SMIL — no JS needed
+      // Hero wave is WebGL-rendered and only animates while visible.
 
       // Minimal syntax highlighter for feature code examples
       // Syntax highlight feature examples and how-it-works code blocks with shiki
@@ -3309,7 +3560,9 @@ const dom = await js2.import("./dom.js", { document });
         const tables = document.querySelector(".feat-tables");
         if (tables) {
           tables.classList.add("strict-only");
-          const hostRows = Array.from(document.querySelectorAll(".feat-row")).filter((row) => row.querySelector(".feat-host"));
+          const hostRows = Array.from(document.querySelectorAll(".feat-row")).filter((row) =>
+            row.querySelector(".feat-host"),
+          );
           hostRows.forEach((row) => {
             const badge = row.querySelector(".feat-badge");
             if (!(badge instanceof HTMLElement)) return;
@@ -3655,7 +3908,9 @@ const dom = await js2.import("./dom.js", { document });
             setSize("how-dom-js-size", dom.jsSizeGzip);
             setSize("how-dom-wasm-size", dom.wasmSizeGzip);
           }
-        } catch { /* keep static fallbacks */ }
+        } catch {
+          /* keep static fallbacks */
+        }
       })();
 
       (function typeHeroTitle() {

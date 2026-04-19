@@ -4,7 +4,7 @@ import { wrapTest } from "./test262-runner.js";
 import { buildImports } from "../src/runtime.js";
 
 /**
- * Issue #129: propertyHelper.js stubs.
+ * Issue #1114: propertyHelper.js stubs.
  *
  * Tests that the no-op stubs for verifyEnumerable, verifyNotEnumerable,
  * verifyWritable, verifyNotWritable, verifyConfigurable, verifyNotConfigurable
@@ -28,7 +28,7 @@ async function compileAndRun(source: string) {
   }
 }
 
-describe("Issue #129: propertyHelper.js stubs", () => {
+describe("Issue #1114: propertyHelper.js stubs", () => {
   it("verifyWritable / verifyNotWritable stubs compile and run", async () => {
     // Simulate a test262 test that includes propertyHelper.js and uses
     // verifyWritable/verifyNotWritable (two-arg form, no object literal).

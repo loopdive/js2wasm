@@ -1,38 +1,30 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Class declaration collection and class body compilation.
  *
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./context/types.js";
-import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
-import { allocLocal, deduplicateLocals } from "./context/locals.js";
+import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
-import { ensureExnTag } from "./registry/imports.js";
-import { addFuncType, getOrRegisterVecType } from "./registry/types.js";
-import { nextModuleGlobalIdx } from "./registry/imports.js";
-import { getArrTypeIdxFromVec } from "./registry/types.js";
+import { allocLocal, deduplicateLocals } from "./context/locals.js";
+import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import { bodyUsesArguments } from "./function-body.js";
+import { cacheStringLiterals, hasAbstractModifier, hasStaticModifier, resolveWasmType } from "./index.js";
+import { ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
+import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
   coerceType,
   compileExpression,
   compileStatement,
   emitArgumentsObject,
   emitBoundsCheckedArrayGet,
-  hoistFunctionDeclarations,
   resolveComputedKeyExpression,
   valTypesMatch,
 } from "./shared.js";
-import { compileFunctionBody, bodyUsesArguments } from "./function-body.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
-import {
-  cacheStringLiterals,
-  hasAbstractModifier,
-  hasAsyncModifier,
-  hasStaticModifier,
-  resolveWasmType,
-} from "./index.js";
 
 export function resolveClassMemberName(ctx: CodegenContext, name: ts.PropertyName): string | undefined {
   if (ts.isIdentifier(name)) return name.text;
@@ -332,6 +324,13 @@ export function collectClassDeclaration(
         }
       }
 
+      // Track methods that read `arguments` (#1053) so callers can
+      // populate the __extras_argv global with runtime args beyond the
+      // formal param count.
+      if (member.body && bodyUsesArguments(member.body)) {
+        ctx.funcUsesArguments.add(fullName);
+      }
+
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
       const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
       ctx.funcMap.set(fullName, methodFuncIdx);
@@ -487,6 +486,31 @@ export function collectClassDeclaration(
       }
       ancestor = ctx.classParentMap.get(ancestor);
     }
+  }
+
+  // #1047 — collect own (non-static) method + accessor names so `_wrapForHost`
+  // can present `C.prototype` with a method-only own-key set. Instance fields
+  // (ownFields) are intentionally excluded — they must NOT appear as own
+  // properties of the prototype.
+  {
+    const protoMethodNames: string[] = [];
+    const seen = new Set<string>();
+    for (const member of decl.members) {
+      if (hasStaticModifier(member)) continue;
+      if (
+        ts.isMethodDeclaration(member) ||
+        ts.isGetAccessorDeclaration(member) ||
+        ts.isSetAccessorDeclaration(member)
+      ) {
+        if (!member.name) continue;
+        const n = resolveClassMemberName(ctx, member.name);
+        if (n === undefined) continue;
+        if (seen.has(n)) continue;
+        seen.add(n);
+        protoMethodNames.push(n);
+      }
+    }
+    ctx.classMethodNames.set(className, protoMethodNames);
   }
 
   // Register static properties as module globals

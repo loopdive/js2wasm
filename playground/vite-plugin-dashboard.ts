@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import type { WebSocket as WsType } from "ws";
 
-const projectRoot = resolve(__dirname, "..");
+const projectRoot = resolve(import.meta.dirname, "..");
 
 // ── Frontmatter parser ───────────────────────────────────────
 function parseFrontmatter(text: string): Record<string, any> {

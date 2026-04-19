@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Declaration collection and compilation — unified AST visitor, class declarations,
  * function bodies, and struct type registration.
@@ -5,8 +6,6 @@
  * Extracted from codegen/index.ts (#1013).
  */
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
-import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -17,7 +16,36 @@ import {
   mapTsTypeToWasm,
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
+import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
+import { collectShapes } from "../shape-inference.js";
+import { ensureWrapperTypes } from "./any-helpers.js";
+import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
 import { reportError } from "./context/errors.js";
+import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
+import { bodyUsesArguments, compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import {
+  addArrayIteratorImports,
+  addForInImports,
+  addIteratorImports,
+  addStringImports,
+  addUnionImports,
+  collectEnumDeclarations,
+  ensureStructForType,
+  extractConstantDefault,
+  FUNCTIONAL_ARRAY_METHODS,
+  hasAsyncModifier,
+  hasDeclareModifier,
+  hasExportModifier,
+  isGeneratorFunction,
+  KNOWN_CONSTRUCTORS,
+  MATH_HOST_METHODS_1ARG,
+  MATH_HOST_METHODS_2ARG,
+  parseRegExpLiteral,
+  resolveWasmType,
+  STRING_METHODS,
+  unwrapGeneratorYieldType,
+} from "./index.js";
+import { ensureNativeStringExternBridge, ensureNativeStringHelpers } from "./native-strings.js";
 import { addImport, addStringConstantGlobal, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
 import {
   addFuncType,
@@ -25,35 +53,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
-import { coerceType, compileExpression, compileStatement, hoistFunctionDeclarations } from "./shared.js";
-import { collectShapes } from "../shape-inference.js";
-import { ensureNativeStringHelpers } from "./native-strings.js";
-import { ensureWrapperTypes } from "./any-helpers.js";
-import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
-import { compileFunctionBody, registerInlinableFunction } from "./function-body.js";
-import {
-  resolveWasmType,
-  ensureStructForType,
-  addStringImports,
-  addUnionImports,
-  addIteratorImports,
-  addArrayIteratorImports,
-  addForInImports,
-  collectEnumDeclarations,
-  extractConstantDefault,
-  FUNCTIONAL_ARRAY_METHODS,
-  hasAsyncModifier,
-  hasDeclareModifier,
-  hasExportModifier,
-  hasStaticModifier,
-  isGeneratorFunction,
-  KNOWN_CONSTRUCTORS,
-  MATH_HOST_METHODS_1ARG,
-  MATH_HOST_METHODS_2ARG,
-  parseRegExpLiteral,
-  STRING_METHODS,
-  unwrapGeneratorYieldType,
-} from "./index.js";
+import { compileExpression, compileStatement } from "./shared.js";
 
 /** Accumulated state for the single-pass collector */
 interface UnifiedCollectorState {
@@ -89,6 +89,7 @@ interface UnifiedCollectorState {
   jsonNeedParse: boolean;
   // -- collectCallbackImports --
   callbackFound: boolean;
+  getterCallbackFound: boolean; // Object.defineProperty accessor descriptors (#929)
   // -- collectFunctionalArrayImports --
   funcArrayNeed1: boolean;
   funcArrayNeed2: boolean;
@@ -140,6 +141,7 @@ export function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedC
     jsonNeedStringify: false,
     jsonNeedParse: false,
     callbackFound: false,
+    getterCallbackFound: false,
     funcArrayNeed1: false,
     funcArrayNeed2: false,
     unionFound: false,
@@ -477,6 +479,33 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
       state.callbackFound = true;
     }
   }
+  // ── getterCallbackFound: Object.defineProperty / Reflect.defineProperty with accessor descriptor (#929) ──
+  // Also covers Object.defineProperties(obj, { p1: desc1, p2: desc2, ... }) (#1027)
+  if (!state.getterCallbackFound && ts.isCallExpression(node)) {
+    if (
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.name) &&
+      ts.isIdentifier(node.expression.expression) &&
+      (node.expression.expression.text === "Object" || node.expression.expression.text === "Reflect")
+    ) {
+      const methodName = node.expression.name.text;
+      if (methodName === "defineProperty" && node.arguments.length >= 3) {
+        if (isAccessorDescriptor(node.arguments[2]!)) {
+          state.getterCallbackFound = true;
+        }
+      } else if (methodName === "defineProperties" && node.arguments.length >= 2) {
+        const propsArg = node.arguments[1]!;
+        if (ts.isObjectLiteralExpression(propsArg)) {
+          for (const prop of propsArg.properties) {
+            if (ts.isPropertyAssignment(prop) && isAccessorDescriptor(prop.initializer)) {
+              state.getterCallbackFound = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
 
   // ── collectFunctionalArrayImports ──
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -709,25 +738,28 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
 /** Run all post-walk finalization (register imports based on collected state) */
 export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedCollectorState): void {
   // ── collectConsoleImports finalize ──
-  const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
-  for (const method of CONSOLE_METHODS) {
-    const needed = state.consoleNeededByMethod.get(method);
-    if (!needed) continue;
-    if (needed.has("number")) {
-      const t = addFuncType(ctx, [{ kind: "f64" }], []);
-      addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("bool")) {
-      const t = addFuncType(ctx, [{ kind: "i32" }], []);
-      addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("string")) {
-      const t = addFuncType(ctx, [{ kind: "externref" }], []);
-      addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
-    }
-    if (needed.has("externref")) {
-      const t = addFuncType(ctx, [{ kind: "externref" }], []);
-      addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
+  // In WASI mode, console.log/error use fd_write — skip JS host console imports
+  if (!ctx.wasi) {
+    const CONSOLE_METHODS = ["log", "warn", "error", "info", "debug"] as const;
+    for (const method of CONSOLE_METHODS) {
+      const needed = state.consoleNeededByMethod.get(method);
+      if (!needed) continue;
+      if (needed.has("number")) {
+        const t = addFuncType(ctx, [{ kind: "f64" }], []);
+        addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("bool")) {
+        const t = addFuncType(ctx, [{ kind: "i32" }], []);
+        addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("string")) {
+        const t = addFuncType(ctx, [{ kind: "externref" }], []);
+        addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
+      }
+      if (needed.has("externref")) {
+        const t = addFuncType(ctx, [{ kind: "externref" }], []);
+        addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
+      }
     }
   }
 
@@ -871,7 +903,7 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
-      ensureNativeStringHelpers(ctx);
+      ensureNativeStringExternBridge(ctx);
     }
   }
   if (state.needsFromCodePoint) {
@@ -921,9 +953,16 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   }
 
   // ── collectCallbackImports finalize ──
-  if (state.callbackFound) {
+  if (state.callbackFound || state.getterCallbackFound) {
     const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+    if (state.callbackFound) {
+      addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+    }
+    if (state.getterCallbackFound) {
+      // __make_getter_callback: same signature — wraps a function so 'this' is bound (#929)
+      // Used for Object.defineProperty accessor descriptors (getter/setter callbacks).
+      addImport(ctx, "env", "__make_getter_callback", { kind: "func", typeIdx });
+    }
   }
 
   // ── collectFunctionalArrayImports finalize ──
@@ -1238,6 +1277,32 @@ export function collectEmptyObjectWidening(
   }
 
   scanStatements(sourceFile.statements);
+}
+
+/** Returns true if an Object.defineProperty descriptor ObjectLiteral is an accessor descriptor
+ * with an ACTUAL function getter or setter that needs the sidecar/extern path.
+ * Descriptors with `get: undefined` or `set: undefined` are NOT treated as accessor descriptors —
+ * they are widened like data descriptors so the property appears in for-in and hasOwnProperty
+ * (matching baseline behavior where all Object.defineProperty targets are widened). (#929) */
+function isAccessorDescriptor(descArg: ts.Expression): boolean {
+  if (!ts.isObjectLiteralExpression(descArg)) return false;
+  for (const prop of descArg.properties) {
+    // Method shorthand: get() {...} or set(v) {...} — always a real accessor
+    if (ts.isMethodDeclaration(prop) && prop.name && ts.isIdentifier(prop.name)) {
+      if (prop.name.text === "get" || prop.name.text === "set") return true;
+    }
+    // Property assignment: get: <expr> or set: <expr>
+    // Only treat as accessor if the value is an actual function (not `undefined` or other non-callable)
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+      if (prop.name.text === "get" || prop.name.text === "set") {
+        const init = prop.initializer;
+        if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) return true;
+        // Named identifier that is NOT `undefined` or `null` — may be a function variable
+        if (ts.isIdentifier(init) && init.text !== "undefined" && init.text !== "null") return true;
+      }
+    }
+  }
+  return false;
 }
 
 export function collectPropsFromStatements(
@@ -1755,6 +1820,13 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         ctx.funcOptionalParams.set(name, optionalParams);
       }
 
+      // Track functions that read `arguments` (#1053) so callers can
+      // populate the __extras_argv global with runtime args beyond the
+      // formal param count.
+      if (stmt.body && bodyUsesArguments(stmt.body)) {
+        ctx.funcUsesArguments.add(name);
+      }
+
       const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
       const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
       ctx.funcMap.set(name, funcIdx);
@@ -2034,6 +2106,28 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
     if (targetName && ctx.moduleGlobals.has(targetName)) {
       ctx.moduleInitStatements.push(stmt);
+    }
+  }
+
+  // Export default for module globals (#1108): `export default <variable>` where
+  // the variable is a module-level global (e.g. `var add = createMathOperation(fn, 0)`)
+  // This runs AFTER module globals are registered (Fourth pass above).
+  if (isEntryFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExportAssignment(stmt) || stmt.isExportEquals) continue;
+      if (!ts.isIdentifier(stmt.expression)) continue;
+      const varName = stmt.expression.text;
+      // Skip if already handled as a function export
+      if (ctx.funcMap.has(varName)) continue;
+      if (ctx.moduleGlobals.has(varName)) {
+        // Defer the actual export — global indices are not final yet because
+        // later collectDeclarations calls may add string-constant import globals
+        // which shift all defined-global indices.  Record the variable name
+        // and resolve the correct absolute index in a fixup pass.
+        if (!ctx.deferredDefaultGlobalExport) {
+          ctx.deferredDefaultGlobalExport = varName;
+        }
+      }
     }
   }
 }

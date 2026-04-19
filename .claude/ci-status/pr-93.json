@@ -1,0 +1,14 @@
+{
+  "pr": 93,
+  "conclusion": "failure",
+  "head_branch": "issue-1047-instance-field-prototype-leak",
+  "head_sha": "753d198f60d7f10c54b45d2932f7bfb091da170e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24287168380",
+  "timestamp": "2026-04-11T17:01:37Z",
+  "pass": 21929,
+  "fail": 18565,
+  "compile_error": 1325,
+  "delta": 179,
+  "regressions": 4,
+  "improvements": 183
+}

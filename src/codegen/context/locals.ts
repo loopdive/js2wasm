@@ -1,11 +1,12 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Local-slot allocation helpers.
  *
  * This module owns parameter/local slot bookkeeping and temporary-local reuse.
  */
 import type { Instr, ValType } from "../../ir/types.js";
-import type { FunctionContext } from "./types.js";
 import { walkChildren } from "../walk-instructions.js";
+import type { FunctionContext } from "./types.js";
 
 export function allocLocal(fctx: FunctionContext, name: string, type: ValType): number {
   const index = fctx.params.length + fctx.locals.length;
