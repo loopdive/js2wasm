@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Backend context creation ownership.
  *
@@ -63,6 +64,7 @@ export function createCodegenContext(
     funcUsesArguments: new Set(),
     extrasArgvGlobalIdx: -1,
     extrasArgvVecTypeIdx: -1,
+    argcGlobalIdx: -1,
     valueOfClosureTypes: new Map(),
     exnTagIdx: -1,
     hasUnionImports: false,
@@ -87,6 +89,7 @@ export function createCodegenContext(
     nativeStrTypeIdx: -1,
     consStrTypeIdx: -1,
     nativeStrHelpersEmitted: false,
+    nativeStrExternBridgeEmitted: false,
     nativeStrHelpers: new Map(),
     refCellTypeMap: new Map(),
     anyValueTypeIdx: -1,
@@ -98,6 +101,7 @@ export function createCodegenContext(
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
+    needsToUint32: false,
     classDeclarationMap: new Map(),
     wrapperNumberTypeIdx: -1,
     wrapperStringTypeIdx: -1,

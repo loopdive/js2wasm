@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import {
@@ -41,6 +42,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
+import { registerAddStringImports } from "./shared.js";
 import { stackBalance } from "./stack-balance.js";
 
 // ── Extracted sub-modules ──────────────────────────────────────────────────
@@ -68,6 +70,7 @@ import {
 } from "./declarations.js";
 import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
 import {
+  ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   flatStringType,
   nativeStringType,
@@ -82,6 +85,7 @@ export {
   destructureParamObject,
   ensureAnyHelpers,
   ensureAnyValueType,
+  ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   ensureWrapperTypes,
   flatStringType,
@@ -250,6 +254,10 @@ export function generateModule(
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
     }
 
+    // Emit __toUint32 Wasm helper after all imports registered (bypasses bug
+    // where direct addImport calls do not shift defined-function indices).
+    emitToUint32Helper(ctx);
+
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
 
@@ -276,6 +284,26 @@ export function generateModule(
 
     // Collect ref.func targets so the binary emitter can add a declarative element segment
     collectDeclaredFuncRefs(ctx);
+
+    // Resolve deferred `export default <variable>` for module globals (#1108).
+    // Must run AFTER compileDeclarations — string-constant imports added during
+    // body compilation shift numImportGlobals, so indices aren't final until now.
+    if (ctx.deferredDefaultGlobalExport) {
+      const varName = ctx.deferredDefaultGlobalExport;
+      const globalName = `__mod_${varName}`;
+      const localIdx = ctx.mod.globals.findIndex((g) => g.name === globalName);
+      if (localIdx >= 0) {
+        const absIdx = ctx.numImportGlobals + localIdx;
+        const alreadyExported = ctx.mod.exports.some(
+          (e) => e.name === "default" || (e.name === varName && e.desc.kind === "global"),
+        );
+        if (!alreadyExported) {
+          ctx.mod.exports.push({ name: "default", desc: { kind: "global", index: absIdx } });
+          ctx.mod.exports.push({ name: varName, desc: { kind: "global", index: absIdx } });
+        }
+      }
+      ctx.deferredDefaultGlobalExport = undefined;
+    }
 
     // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
     const importNames = mod.imports.map((imp) => imp.name);
@@ -1808,6 +1836,9 @@ export function generateMultiModule(
       emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
     }
 
+    // Emit __toUint32 Wasm helper after all imports registered.
+    emitToUint32Helper(ctx);
+
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
 
@@ -1839,6 +1870,26 @@ export function generateMultiModule(
 
     // Collect ref.func targets so the binary emitter can add a declarative element segment
     collectDeclaredFuncRefs(ctx);
+
+    // Resolve deferred `export default <variable>` for module globals (#1108).
+    // Must run AFTER compileDeclarations — string-constant imports added during
+    // body compilation shift numImportGlobals, so indices aren't final until now.
+    if (ctx.deferredDefaultGlobalExport) {
+      const varName = ctx.deferredDefaultGlobalExport;
+      const globalName = `__mod_${varName}`;
+      const localIdx = ctx.mod.globals.findIndex((g) => g.name === globalName);
+      if (localIdx >= 0) {
+        const absIdx = ctx.numImportGlobals + localIdx;
+        const alreadyExported = ctx.mod.exports.some(
+          (e) => e.name === "default" || (e.name === varName && e.desc.kind === "global"),
+        );
+        if (!alreadyExported) {
+          ctx.mod.exports.push({ name: "default", desc: { kind: "global", index: absIdx } });
+          ctx.mod.exports.push({ name: varName, desc: { kind: "global", index: absIdx } });
+        }
+      }
+      ctx.deferredDefaultGlobalExport = undefined;
+    }
 
     // Copy metadata for .d.ts / helper generation
     const importNames = mod.imports.map((imp) => imp.name);
@@ -2198,7 +2249,8 @@ function collectPrimitiveMethodImports(ctx: CodegenContext, sourceFile: ts.Sourc
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
-  if (needed.has("string_compare")) {
+  if (needed.has("string_compare") && !ctx.nativeStrings) {
+    // In native strings mode, __str_compare Wasm helper handles this — no host import needed
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
@@ -2520,6 +2572,10 @@ export function addStringImports(ctx: CodegenContext): void {
     }
   }
 }
+
+// Register addStringImports so any-helpers.ts can call it via the delegate
+// (breaks circular dep: index.ts → any-helpers.ts → shared.ts ← index.ts)
+registerAddStringImports(addStringImports);
 
 /** Parse a RegExp literal text (e.g. "/\\d+/gi") into pattern and flags */
 export function parseRegExpLiteral(text: string): { pattern: string; flags: string } {
@@ -2871,11 +2927,48 @@ function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
     }
   }
 
-  // Register __toUint32 host import: (f64) → i32
-  if (needsToUint32 && !ctx.funcMap.has("__toUint32")) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+  // ToUint32: defer until after all imports are added; see emitToUint32Helper.
+  if (needsToUint32) {
+    ctx.needsToUint32 = true;
   }
+}
+
+/**
+ * Emit the __toUint32 Wasm helper function. Must be called AFTER all imports
+ * that are added directly via addImport (bypassing ensureLateImport's shift
+ * mechanism) have been registered, and BEFORE any user function body that
+ * calls Math.clz32 or Math.imul is compiled. Emitting earlier leaves a stale
+ * funcMap entry because addImport does not shift defined-function indices.
+ *
+ * Implements ES §7.1.7: NaN/±Infinity → 0, otherwise trunc(x) modulo 2^32.
+ */
+export function emitToUint32Helper(ctx: CodegenContext): void {
+  if (!ctx.needsToUint32) return;
+  if (ctx.funcMap.has("__toUint32")) return;
+  const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__toUint32", funcIdx);
+  const body: Instr[] = [
+    { op: "local.get", index: 0 },
+    { op: "local.get", index: 0 },
+    { op: "f64.ne" },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+    { op: "local.get", index: 0 },
+    { op: "f64.abs" },
+    { op: "f64.const", value: Infinity },
+    { op: "f64.eq" },
+    { op: "if", blockType: { kind: "empty" }, then: [{ op: "i32.const", value: 0 }, { op: "return" }] },
+    { op: "local.get", index: 0 },
+    { op: "i64.trunc_sat_f64_s" } as unknown as Instr,
+    { op: "i32.wrap_i64" },
+  ];
+  ctx.mod.functions.push({
+    name: "__toUint32",
+    typeIdx,
+    locals: [],
+    body,
+    exported: false,
+  });
 }
 
 /** Scan source for parseInt / parseFloat / Number() / unary + on strings and register host imports */
@@ -3939,7 +4032,17 @@ export function isTupleType(type: ts.Type): boolean {
 export function getTupleElementTypes(ctx: CodegenContext, tsType: ts.Type): ValType[] {
   const typeRef = tsType as ts.TypeReference;
   const typeArgs = ctx.checker.getTypeArguments(typeRef);
-  return typeArgs.map((t) => resolveWasmType(ctx, t));
+  return typeArgs.map((t) => {
+    // In tuple element position, `undefined` must not map to i32: i32 can't
+    // distinguish "missing" from 0, which breaks destructuring default checks
+    // on hole/undefined elements (e.g. `[x=23] = [,]` — the param default is a
+    // hole-array tuple; the sNaN sentinel gets truncated to i32 0 and the inner
+    // default `x=23` never fires). Promote to f64 so the sNaN sentinel survives.
+    if ((t.flags & ts.TypeFlags.Undefined) !== 0) {
+      return { kind: "f64" };
+    }
+    return resolveWasmType(ctx, t);
+  });
 }
 
 /**
@@ -4544,6 +4647,38 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
       constructorParams: [],
       methods,
       properties: new Map([["constructor", { type: { kind: "externref" }, readonly: true }]]),
+    });
+  }
+
+  // Intl.ListFormat — extern class for internationalized list formatting
+  if (!ctx.externClasses.has("ListFormat")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("format", externMethod(1)); // format(list) → string (externref)
+    methods.set("formatToParts", externMethod(1)); // formatToParts(list) → array (externref)
+    methods.set("resolvedOptions", externMethod(0)); // resolvedOptions() → object (externref)
+    ctx.externClasses.set("ListFormat", {
+      importPrefix: "Intl_ListFormat",
+      namespacePath: ["Intl"],
+      className: "ListFormat",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }], // locale?, options?
+      methods,
+      properties: new Map(),
+    });
+  }
+
+  // Intl.NumberFormat — extern class for internationalized number formatting
+  if (!ctx.externClasses.has("NumberFormat")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    methods.set("format", externMethod(1)); // format(n) → string (externref)
+    methods.set("formatToParts", externMethod(1)); // formatToParts(n) → array (externref)
+    methods.set("resolvedOptions", externMethod(0)); // resolvedOptions() → object (externref)
+    ctx.externClasses.set("NumberFormat", {
+      importPrefix: "Intl_NumberFormat",
+      namespacePath: ["Intl"],
+      className: "NumberFormat",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }], // locale?, options?
+      methods,
+      properties: new Map(),
     });
   }
 

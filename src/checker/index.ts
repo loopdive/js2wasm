@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
 
 function isBrowserLikeRuntime(): boolean {
@@ -543,7 +544,9 @@ export function analyzeMultiSource(
   const program = ts.createProgram(rootNames, compilerOptions, compilerHost);
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
-  const semanticDiagnostics = program.getSemanticDiagnostics();
+  const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
+    ? ([] as ts.Diagnostic[])
+    : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   const entrySourceFile = program.getSourceFile(normalizedEntry)!;

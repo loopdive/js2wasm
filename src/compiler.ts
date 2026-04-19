@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import {
   analyzeFiles,
   analyzeMultiSource,
@@ -32,6 +33,15 @@ import { optimizeBinary } from "./optimize.js";
 import { generateWit } from "./wit-generator.js";
 export { compileToObjectSource } from "./compiler/output.js";
 export type { ObjectCompileResult } from "./compiler/output.js";
+
+const HARD_TS_DIAG_CODES = new Set([
+  2322, // "Type 'X' is not assignable to type 'Y'"
+  2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
+]);
+
+function isHardTypeScriptDiagnostic(diag: { category: number; code: number }): boolean {
+  return diag.category === 1 && HARD_TS_DIAG_CODES.has(diag.code);
+}
 
 /**
  * Orchestrates the full compilation pipeline:
@@ -149,8 +159,9 @@ export function compileSource(
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
   );
+  const hasHardTypeErrors = ast.diagnostics.some(isHardTypeScriptDiagnostic);
 
-  if (hasSyntaxErrors && errors.length > 0) {
+  if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -416,25 +427,40 @@ export function compileMultiSource(
 
   const multiAst = analyzeMultiSource(files, entryFile, undefined, {
     allowJs: options.allowJs,
+    skipSemanticDiagnostics: options.skipSemanticDiagnostics,
   });
 
+  // When allowJs is set (e.g. compiling npm packages like lodash-es), only report
+  // diagnostics from the entry file — dependency files may have TS errors we can't
+  // control (missing globals, JSDoc param issues, etc.).
+  const isEntryDiag = (diag: { file?: { fileName: string } }) =>
+    !options.allowJs || !diag.file || diag.file === multiAst.entryFile;
+
   for (const diag of multiAst.diagnostics) {
-    if (diag.category === 1) {
+    if (diag.category === 1 && isEntryDiag(diag)) {
       const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0) : { line: 0, character: 0 };
       errors.push({
         message: typeof diag.messageText === "string" ? diag.messageText : diag.messageText.messageText,
         line: pos.line + 1,
         column: pos.character + 1,
         severity: "error",
+        code: diag.code,
       });
     }
   }
 
-  const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
-    (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
-  );
+  // When allowJs is set, don't bail on TS diagnostics — JS packages with JSDoc
+  // annotations produce many false-positive errors (TS1016 optional params,
+  // TS2322 type mismatches, TS8017 signature-in-JS, etc.). Codegen handles it fine.
+  const hasSyntaxErrors =
+    !options.allowJs &&
+    multiAst.syntacticDiagnostics.some(
+      (d) => d.category === 1 && isEntryDiag(d) && multiAst.sourceFiles.some((sf) => d.file === sf),
+    );
+  const hasHardTypeErrors =
+    !options.allowJs && multiAst.diagnostics.some((d) => isHardTypeScriptDiagnostic(d) && isEntryDiag(d));
 
-  if (hasSyntaxErrors && errors.length > 0) {
+  if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
       binary: new Uint8Array(0),
       wat: "",
@@ -655,6 +681,7 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
         line: pos.line + 1,
         column: pos.character + 1,
         severity: "error",
+        code: diag.code,
       });
     }
   }
@@ -662,8 +689,9 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
   const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
     (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
   );
+  const hasHardTypeErrors = multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
 
-  if (hasSyntaxErrors && errors.length > 0) {
+  if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
       binary: new Uint8Array(0),
       wat: "",

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Control flow statement lowering: return, if, switch, break, continue, labeled.
  */
@@ -7,6 +8,7 @@ import type { Instr, ValType } from "../../ir/types.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
+import { emitThrowString } from "../expressions/helpers.js";
 import { addStringImports, ensureI32Condition, ensureNativeStringHelpers, resolveWasmType } from "../index.js";
 import {
   coerceType,
@@ -122,6 +124,26 @@ export function compileReturnStatement(ctx: CodegenContext, fctx: FunctionContex
   }
 
   const hasPendingFinally = fctx.finallyStack && fctx.finallyStack.length > 0;
+
+  // Derived class constructors: per §10.2.1.3 step 13c, returning a non-object
+  // non-undefined value must throw TypeError. Detect this statically via the
+  // TS type of the expression BEFORE compiling, since compileExpression will
+  // otherwise silently coerce a primitive to the struct ref type — producing a
+  // null ref that traps at the caller's `new` site with an uncatchable
+  // "dereferencing a null pointer" Wasm error. (#825)
+  if (fctx.isDerivedConstructor && stmt.expression) {
+    const tsType = ctx.checker.getTypeAtLocation(stmt.expression);
+    const primitiveFlags =
+      ts.TypeFlags.NumberLike |
+      ts.TypeFlags.BooleanLike |
+      ts.TypeFlags.BigIntLike |
+      ts.TypeFlags.StringLike |
+      ts.TypeFlags.ESSymbolLike;
+    if (tsType.flags & primitiveFlags) {
+      emitThrowString(ctx, fctx, "TypeError: Derived constructors may only return an object or undefined");
+      return;
+    }
+  }
 
   if (stmt.expression) {
     const exprType = compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);

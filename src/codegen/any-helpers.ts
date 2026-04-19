@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * AnyValue boxing/unboxing helpers and wrapper struct types for
  * Number, String, and Boolean object wrappers.
@@ -8,7 +9,7 @@ import type { Instr, StructTypeDef, ValType } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
 import { nativeStringType } from "./native-strings.js";
 import { addFuncType } from "./registry/types.js";
-import { registerEnsureAnyHelpers } from "./shared.js";
+import { addStringImportsDelegate, registerEnsureAnyHelpers } from "./shared.js";
 
 /**
  * Register the $AnyValue struct type for boxing `any` typed values.
@@ -177,9 +178,15 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   // Ensure the $AnyValue struct type is registered before emitting helpers
   ensureAnyValueType(ctx);
 
+  // Ensure wasm:js-string imports are available for string content comparison
+  addStringImportsDelegate(ctx);
+
   const anyTypeIdx = ctx.anyValueTypeIdx;
   const anyRef: ValType = { kind: "ref", typeIdx: anyTypeIdx };
   const anyRefNull: ValType = { kind: "ref_null", typeIdx: anyTypeIdx };
+
+  // String content comparison via wasm:js-string equals (tag 5)
+  const strEqualsIdx = ctx.jsStringImports.get("equals") ?? -1;
 
   // Helper to register a helper function
   function addHelper(
@@ -723,23 +730,51 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
             op: "if",
             blockType: { kind: "val", type: { kind: "i32" } },
             then: [
-              // Cross-tag numeric equality: if one is i32(2) and other is f64(3), compare as f64
+              // Cross-tag loose equality (§7.2.15):
+              // 1. null == undefined (tags 0+1): both tags < 2 → true
               { op: "local.get", index: 2 },
+              { op: "i32.const", value: 2 },
+              { op: "i32.lt_s" },
               { op: "local.get", index: 3 },
-              { op: "i32.add" },
-              { op: "i32.const", value: 5 }, // 2+3 = 5
-              { op: "i32.eq" },
+              { op: "i32.const", value: 2 },
+              { op: "i32.lt_s" },
+              { op: "i32.and" },
               {
                 op: "if",
                 blockType: { kind: "val", type: { kind: "i32" } },
-                then: [
-                  { op: "local.get", index: 0 },
-                  { op: "call", funcIdx: toF64Idx },
-                  { op: "local.get", index: 1 },
-                  { op: "call", funcIdx: toF64Idx },
-                  { op: "f64.eq" },
+                then: [{ op: "i32.const", value: 1 }],
+                else: [
+                  // 2. Both tags are numeric-coercible (tags 2,3,4 = i32,f64,bool)?
+                  //    §7.2.15 steps 4-5, 8-9: coerce to number and compare
+                  //    Check: both tags are in {2,3,4} → tag >= 2 && tag <= 4
+                  { op: "local.get", index: 2 },
+                  { op: "i32.const", value: 2 },
+                  { op: "i32.ge_s" },
+                  { op: "local.get", index: 2 },
+                  { op: "i32.const", value: 4 },
+                  { op: "i32.le_s" },
+                  { op: "i32.and" },
+                  { op: "local.get", index: 3 },
+                  { op: "i32.const", value: 2 },
+                  { op: "i32.ge_s" },
+                  { op: "local.get", index: 3 },
+                  { op: "i32.const", value: 4 },
+                  { op: "i32.le_s" },
+                  { op: "i32.and" },
+                  { op: "i32.and" },
+                  {
+                    op: "if",
+                    blockType: { kind: "val", type: { kind: "i32" } },
+                    then: [
+                      { op: "local.get", index: 0 },
+                      { op: "call", funcIdx: toF64Idx },
+                      { op: "local.get", index: 1 },
+                      { op: "call", funcIdx: toF64Idx },
+                      { op: "f64.eq" },
+                    ],
+                    else: [{ op: "i32.const", value: 0 }],
+                  },
                 ],
-                else: [{ op: "i32.const", value: 0 }],
               },
             ],
             else: [
@@ -804,10 +839,30 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                               { op: "ref.eq" },
                             ],
                             else: [
-                              // null/undefined (tag < 2): both same tag → equal
+                              // tag 5 (string): compare content via wasm:js-string equals
                               { op: "local.get", index: 2 },
-                              { op: "i32.const", value: 2 },
-                              { op: "i32.lt_s" },
+                              { op: "i32.const", value: 5 },
+                              { op: "i32.eq" },
+                              {
+                                op: "if",
+                                blockType: { kind: "val", type: { kind: "i32" } },
+                                then:
+                                  strEqualsIdx >= 0
+                                    ? [
+                                        { op: "local.get", index: 0 },
+                                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+                                        { op: "local.get", index: 1 },
+                                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+                                        { op: "call", funcIdx: strEqualsIdx },
+                                      ]
+                                    : [{ op: "i32.const", value: 0 }],
+                                else: [
+                                  // null/undefined (tag < 2): both same tag → equal
+                                  { op: "local.get", index: 2 },
+                                  { op: "i32.const", value: 2 },
+                                  { op: "i32.lt_s" },
+                                ],
+                              },
                             ],
                           },
                         ],
@@ -922,12 +977,30 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                               { op: "ref.eq" },
                             ],
                             else: [
-                              // null/undefined (tag < 2): both same tag → equal
-                              // string (tag 5): different AnyValue boxes → not same ref
-                              // (string content equality is handled by string-specific codepaths)
+                              // tag 5 (string): compare content via wasm:js-string equals
                               { op: "local.get", index: 2 },
-                              { op: "i32.const", value: 2 },
-                              { op: "i32.lt_s" },
+                              { op: "i32.const", value: 5 },
+                              { op: "i32.eq" },
+                              {
+                                op: "if",
+                                blockType: { kind: "val", type: { kind: "i32" } },
+                                then:
+                                  strEqualsIdx >= 0
+                                    ? [
+                                        { op: "local.get", index: 0 },
+                                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+                                        { op: "local.get", index: 1 },
+                                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+                                        { op: "call", funcIdx: strEqualsIdx },
+                                      ]
+                                    : [{ op: "i32.const", value: 0 }],
+                                else: [
+                                  // null/undefined (tag < 2): both same tag → equal
+                                  { op: "local.get", index: 2 },
+                                  { op: "i32.const", value: 2 },
+                                  { op: "i32.lt_s" },
+                                ],
+                              },
                             ],
                           },
                         ],

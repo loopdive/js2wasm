@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Shared backend context and metadata types.
  *
@@ -117,6 +118,10 @@ export interface FunctionContext {
   boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
   /** Whether this function is a class constructor (for new.target support) */
   isConstructor?: boolean;
+  /** Whether this constructor belongs to a class declared with `extends`. Spec §10.2.1.3
+   * step 13c requires a derived constructor that returns a non-object, non-undefined
+   * value to throw TypeError instead of silently coercing and null-dereffing. */
+  isDerivedConstructor?: boolean;
   /** Whether this function is a generator (function*) */
   isGenerator?: boolean;
   /** Set of variable names that are read-only bindings (e.g. named function expression name) */
@@ -289,6 +294,12 @@ export interface CodegenContext {
   extrasArgvGlobalIdx: number;
   /** Vec struct type index for the extras argv global (matches externref vec type). */
   extrasArgvVecTypeIdx: number;
+  /**
+   * Absolute Wasm global index for the `__argc` (mut i32) module global.
+   * Set by the caller to communicate the actual call-site argument count
+   * to functions that use `arguments`. -1 = not yet created.
+   */
+  argcGlobalIdx: number;
   /** Map from struct name → set of closure type indices used for valueOf fields */
   valueOfClosureTypes: Map<string, number[]>;
   /** Tag index for the exception tag (-1 if not yet registered) */
@@ -303,6 +314,9 @@ export interface CodegenContext {
   generatorYieldType: Map<string, ValType>;
   /** Map from module-level variable name → global index in mod.globals */
   moduleGlobals: Map<string, number>;
+  /** Deferred `export default <variable>` where variable is a module global (#1108).
+   *  Resolved after all collectDeclarations calls when global indices are final. */
+  deferredDefaultGlobalExport?: string;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
   /** Nested function capture info. */
@@ -334,6 +348,8 @@ export interface CodegenContext {
   consStrTypeIdx: number;
   /** Whether native string helper functions have been emitted */
   nativeStrHelpersEmitted: boolean;
+  /** Whether native string host bridge helpers have been emitted */
+  nativeStrExternBridgeEmitted: boolean;
   /** Map from native string helper name → function index */
   nativeStrHelpers: Map<string, number>;
   /** Map from value type kind → ref cell struct type index */
@@ -358,6 +374,8 @@ export interface CodegenContext {
   widenedVarStructMap: Map<string, string>;
   /** Math methods that need inline Wasm implementations */
   pendingMathMethods: Set<string>;
+  /** True if Math.clz32 or Math.imul is used — requires ToUint32 Wasm helper */
+  needsToUint32: boolean;
   /** Map from class name → class AST declaration node */
   classDeclarationMap: Map<string, ts.ClassDeclaration | ts.ClassExpression>;
   /** Cache for function type deduplication: signature key → type index */

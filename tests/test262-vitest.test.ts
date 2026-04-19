@@ -475,7 +475,7 @@ function findNthAssert(source: string, retVal: number): string {
   const lines = source.split("\n");
   const assertStarts: { line: number; text: string }[] = [];
   for (let i = 0; i < lines.length; i++) {
-    if (/\bassert\b/.test(lines[i])) {
+    if (/\b(assert|verify\w+)\b/.test(lines[i])) {
       const text = lines
         .slice(i, Math.min(i + 3, lines.length))
         .join(" ")

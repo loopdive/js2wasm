@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * Loop statement lowering: while, for, do-while, for-of, for-in.
  */
@@ -8,6 +9,11 @@ import { popBody, pushBody } from "../context/bodies.js";
 import { reportError, reportErrorNoNode } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
+import {
+  findUnresolvableInArrayPattern,
+  findUnresolvableInObjectPattern,
+  isStrictContext,
+} from "../expressions/assignment.js";
 import { emitCoercedLocalSet } from "../expressions/helpers.js";
 import { shiftLateImportIndices } from "../expressions/late-imports.js";
 import {
@@ -729,7 +735,6 @@ function compileForOfDestructuring(
   } else if (ts.isArrayBindingPattern(pattern)) {
     // Array destructuring in for-of: for (var [a, b] of arr)
     // Element may be a vec struct (array wrapper) OR a tuple struct.
-
     // Handle externref elements: use __extern_get to extract indexed properties
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
       if (elemType.kind === "externref") {
@@ -871,8 +876,11 @@ function compileForOfDestructuring(
         if (ts.isOmittedExpression(element)) continue;
 
         // Handle nested binding patterns: for (const [{ a, b }] of arr)
+        // Skip rest elements (dotDotDotToken) — those are handled below so the
+        // rest vec is built before recursing into the nested pattern.
         if (
           ts.isBindingElement(element) &&
+          !element.dotDotDotToken &&
           (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))
         ) {
           const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, innerElemType);
@@ -934,6 +942,12 @@ function compileForOfDestructuring(
             restIdx = allocLocal(fctx, restName, restVecType);
           }
           fctx.body.push({ op: "local.set", index: restIdx });
+
+          // If the rest target is itself a binding pattern (e.g. [...[...x]]),
+          // recurse into it with the freshly built rest vec as the element.
+          if (ts.isArrayBindingPattern(element.name) || ts.isObjectBindingPattern(element.name)) {
+            compileForOfDestructuring(ctx, fctx, element.name, restIdx, restVecType, stmt);
+          }
           continue;
         }
 
@@ -977,6 +991,18 @@ function compileForOfAssignDestructuring(
   arrTypeIdx: number,
   stmt: ts.ForOfStatement,
 ): void {
+  // §6.2.4 PutValue: strict-mode assignment to unresolvable reference throws
+  // ReferenceError. For for-of destructuring assignment, the throw happens each
+  // iteration at the point of first unresolvable PutValue.
+  const hasUnresolvable = ts.isObjectLiteralExpression(expr)
+    ? findUnresolvableInObjectPattern(ctx, fctx, expr)
+    : findUnresolvableInArrayPattern(ctx, fctx, expr);
+  if (hasUnresolvable && isStrictContext(stmt)) {
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "ref.null.extern" } as Instr);
+    fctx.body.push({ op: "throw", tagIdx } as unknown as Instr);
+    return;
+  }
   if (ts.isObjectLiteralExpression(expr)) {
     // for ({a, b} of arr) — elem is a struct ref, extract fields
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {

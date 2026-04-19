@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
 import type { AnalyzeOptions, TypedAST } from "./index.js";
 import { getLibSourceFile, isKnownLibName } from "./index.js";
@@ -6,11 +7,16 @@ import { getLibSourceFile, isKnownLibName } from "./index.js";
  * Incremental compiler that reuses parsed lib SourceFiles across compilations.
  *
  * Uses the module-level LIB_SOURCE_FILES cache from checker/index.ts to return
- * the SAME SourceFile objects for lib files. Combined with oldProgram, this
- * enables TS to achieve full structure reuse — skipping re-parsing, re-binding,
- * and re-resolving for unchanged lib files.
+ * the SAME SourceFile objects for lib files. This lets TypeScript skip re-parsing
+ * of unchanged lib files across compilations — the main performance win.
  *
- * Each compilation creates a FRESH checker (no state leakage between tests).
+ * Each compilation creates a FRESH ts.Program with a FRESH checker — we deliberately
+ * do NOT pass `oldProgram` into ts.createProgram. Structure reuse via oldProgram
+ * can leak checker state between compilations (#1119): a specific user test can
+ * poison the reused program's internal state (scope chain / type resolution
+ * cycles) and every subsequent compile throws "Maximum call stack size exceeded"
+ * in ~0ms until the compiler is recreated. Giving up structure reuse costs a
+ * few ms per compile but eliminates an entire class of cross-test contamination.
  */
 export class IncrementalLanguageService {
   private currentSource = "";
@@ -18,7 +24,6 @@ export class IncrementalLanguageService {
   private fileName: string;
   private compilerOptions: ts.CompilerOptions;
   private host: ts.CompilerHost;
-  private oldProgram: ts.Program | undefined;
 
   constructor(fileName = "input.ts") {
     this.fileName = fileName;
@@ -32,7 +37,7 @@ export class IncrementalLanguageService {
     };
 
     // Custom host that returns CACHED SourceFile objects for lib files.
-    // Same object identity across calls enables oldProgram structure reuse.
+    // Identity stability lets TypeScript skip re-parsing unchanged libs.
     this.host = {
       getSourceFile: (name: string, languageVersion: ts.ScriptTarget) => {
         if (name === this.fileName) return this.currentSourceFile;
@@ -76,8 +81,8 @@ export class IncrementalLanguageService {
       options.checkJs = true;
     }
 
-    const program = ts.createProgram([this.fileName], options, this.host, this.oldProgram);
-    this.oldProgram = program;
+    // Intentionally no oldProgram — see class-level doc (#1119).
+    const program = ts.createProgram([this.fileName], options, this.host);
 
     const checker = program.getTypeChecker();
     const syntacticDiagnostics = program.getSyntacticDiagnostics();
@@ -96,6 +101,6 @@ export class IncrementalLanguageService {
   }
 
   dispose(): void {
-    this.oldProgram = undefined;
+    // Nothing to dispose — lib SourceFile cache is module-level and persists for the process.
   }
 }

@@ -228,6 +228,7 @@ jobs:
           # Also update public/ so the landing page dev server picks up fresh data
           mkdir -p public/benchmarks/results
           cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
+          cp shard-artifacts/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
 
       - name: Append to runs/index.json (trend graph data)
         run: |
@@ -262,7 +263,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json benchmarks/results/runs/index.json
+          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
           if git diff --cached --quiet; then
             echo "No baseline changes to commit."
             exit 0
@@ -290,8 +291,9 @@ jobs:
             cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-report.json
             cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
             cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
+            cp shard-artifacts/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
             # Stage ONLY the benchmark files — nothing else
-            git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json benchmarks/results/runs/index.json
+            git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
             git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
           fi
           git push

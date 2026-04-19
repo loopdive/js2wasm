@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
  * String operations extracted from expressions.ts.
  * Handles string literals, templates, tagged templates, string binary ops,
@@ -13,6 +14,7 @@ import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { getFuncParamTypes } from "./expressions/helpers.js";
 import { addStringImports, addUnionImports, flatStringType, nativeStringType, resolveWasmType } from "./index.js";
+import { ensureNativeStringExternBridge } from "./native-strings.js";
 import { addStringConstantGlobal, ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterTemplateVecType, getOrRegisterVecType } from "./registry/types.js";
 import { compileExpression, ensureLateImport, flushLateImportShifts, registerCompileStringLiteral } from "./shared.js";
@@ -167,6 +169,8 @@ export function compileNativeTemplateExpression(
 ): ValType | null {
   const concatIdx = ctx.nativeStrHelpers.get("__str_concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
+  ensureNativeStringExternBridge(ctx);
+  flushLateImportShifts(ctx, fctx);
   const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
   if (concatIdx === undefined) return null;
 
@@ -1694,6 +1698,8 @@ export function compileNativeStringMethodCall(
   const importName = `string_${method}`;
   const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx !== undefined) {
+    ensureNativeStringExternBridge(ctx);
+    flushLateImportShifts(ctx, fctx);
     // Marshal receiver: flatten + native string -> externref
     compileExpression(ctx, fctx, propAccess.expression);
     emitFlatten();
