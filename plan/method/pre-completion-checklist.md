@@ -29,15 +29,20 @@ Local validation happens AFTER merging main into your branch, but **full test262
 9. [ ] PR opened against `main`
 10. [ ] PR is the canonical place for full validation — wait for GitHub Actions `test262` results there
 
-## Signal completion
+## Wait for CI and self-merge
 
-11. [ ] Final integration check: `git merge main` — no-op if nothing changed, catches main moving before push
-12. [ ] Message tech lead: `"Completed #N (commit <hash>). PR: <url>. Scoped local checks pass; waiting on CI."`
+11. [ ] Monitor `.claude/ci-status/pr-<N>.json` until it appears with SHA matching your branch HEAD (poll every 60s)
+12. [ ] Read result: `net_per_test`, `regressions`, `improvements`
+    - `net_per_test > 0`, ratio <10%, no bucket >50 → `gh pr merge <N> --admin --merge`
+    - regressions: fix on branch, push, loop back to step 11
+    - escalate to tech lead only if: regressions >10, bucket >50, or judgment call
+13. [ ] After merge: mark task `completed` in TaskList, claim next task
 
 ## What NOT to do
 
-- Do NOT signal completion before merging main into your branch
-- Do NOT use `git rebase` — use `git merge main` instead
-- Do NOT ask tech lead/tester to resolve conflicts — you own them
+- Do NOT open a PR before merging `origin/main` into your branch
+- Do NOT move on to the next task while waiting for CI — wait, then self-merge
+- Do NOT use `git rebase` — use `git merge origin/main` instead
+- Do NOT resolve compiler source conflicts (`src/`) inline — create a `[CONFLICT]` priority task for a senior-developer (Opus)
 - Do NOT leave uncommitted changes on your branch
 - Do NOT treat local full `test262` as part of the normal developer workflow — use the PR workflow instead
