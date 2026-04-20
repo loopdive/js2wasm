@@ -24,7 +24,7 @@ export default defineConfig({
       formats: ["es"],
     },
     rollupOptions: {
-      external: ["typescript", "node:fs", "node:path", "node:process", "binaryen"],
+      external: ["typescript", "node:fs", "node:path", "node:process", "node:module", "binaryen"],
     },
   },
 });
