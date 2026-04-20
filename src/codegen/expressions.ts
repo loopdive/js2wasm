@@ -159,10 +159,27 @@ function isAsyncCallExpression(ctx: CodegenContext, expr: ts.CallExpression): bo
 
 /**
  * Wrap the current stack value in Promise.resolve() for async function calls (#919).
+ *
+ * `resultType` is the TypeScript-level result from compileCallExpression; when
+ * the TS signature says `Promise<void>` that helper returns `VOID_RESULT` even
+ * though the underlying wasm function still leaves an externref on the stack.
+ * Check the last emitted call against the wasm type table — if a value is
+ * already on the stack, skip the `ref.null.extern` push (otherwise the later
+ * stack-balance pass would drop the Promise we just built).
  */
 function wrapAsyncReturn(ctx: CodegenContext, fctx: FunctionContext, resultType: InnerResult): ValType {
+  const lastInstr = fctx.body[fctx.body.length - 1];
+  let wasmStackHasValue = false;
+  if (lastInstr) {
+    const op = (lastInstr as any).op;
+    if (op === "call" && (lastInstr as any).funcIdx !== undefined) {
+      wasmStackHasValue = !wasmFuncReturnsVoid(ctx, (lastInstr as any).funcIdx);
+    } else if (op === "call_ref" && (lastInstr as any).typeIdx !== undefined) {
+      wasmStackHasValue = !wasmFuncTypeReturnsVoid(ctx, (lastInstr as any).typeIdx);
+    }
+  }
   if (resultType === null || resultType === VOID_RESULT) {
-    fctx.body.push({ op: "ref.null.extern" });
+    if (!wasmStackHasValue) fctx.body.push({ op: "ref.null.extern" });
   } else if (resultType.kind !== "externref") {
     coerceType(ctx, fctx, resultType, { kind: "externref" });
   }
