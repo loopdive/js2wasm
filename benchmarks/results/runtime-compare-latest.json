@@ -1,0 +1,1099 @@
+{
+  "generatedAt": "2026-04-20T20:26:50.665Z",
+  "wasmtimeVersion": "wasmtime 31.0.0 (7a9be587f 2025-03-20)",
+  "wasmtimeOptimize": "opt-level=2",
+  "host": {
+    "node": "v22.22.2",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "note": "Wasmtime results use precompiled cwasm artifacts with a speed-optimized profile as a best-effort approximation of a production edge deployment. This is not a claim about Fastly's exact internal runtime flags.",
+  "hotRuntimeDefinition": "Hot runtime is amortized wall-clock milliseconds per call inside a fresh process after one module/program load, measured by looping inside the same process/module.",
+  "computeOnlyDefinition": "Compute-only is estimated as (single-process looped run - single-call run) / iterations, using the runtime workload input. It approximates pure execution time after subtracting fixed startup and load overhead.",
+  "results": [
+    {
+      "id": "array-sum",
+      "label": "Array fill + sum",
+      "sourceBytes": 441,
+      "sourceGzipBytes": 278,
+      "baselineResult": {
+        "coldArg": 2000,
+        "coldValue": 1018392,
+        "runtimeArg": 1000000,
+        "runtimeValue": 511492320
+      },
+      "toolchains": [
+        {
+          "id": "node-js",
+          "label": "Node.js",
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "compileMs": null,
+          "rawBytes": 441,
+          "gzipBytes": 278,
+          "precompiledBytes": null,
+          "coldStart": {
+            "arg": 2000,
+            "runs": 7,
+            "medianMs": 30.050567,
+            "allMs": [
+              33.195291,
+              29.95889299999999,
+              38.193128,
+              33.86826300000007,
+              29.144484000000034,
+              30.050567,
+              29.27762299999995
+            ],
+            "result": 1018392
+          },
+          "runtime": {
+            "arg": 1000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 25.486128999999984,
+            "allMs": [
+              25.486128999999984,
+              27.331104400000005,
+              26.307720399999972,
+              24.76879219999996,
+              25.331797600000026
+            ],
+            "result": 511492320
+          },
+          "computeOnly": {
+            "arg": 1000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 15.6260108,
+            "allMs": [
+              14.3076386,
+              15.6260108,
+              15.4145284,
+              16.015046,
+              15.905956600000001
+            ],
+            "result": 511492320
+          },
+          "metadata": {
+            "engine": "v22.22.2",
+            "hotIterations": 5,
+            "computeMethod": "internal in-process timed loop after warm-up"
+          }
+        },
+        {
+          "id": "js2wasm-node",
+          "label": "js2wasm -> Node.js (hosted)",
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": 2775758,
+          "runtimeBytes": 2024,
+          "compileMs": 1248.0870659999998,
+          "rawBytes": 286,
+          "gzipBytes": 223,
+          "precompiledBytes": null,
+          "coldStart": {
+            "arg": 2000,
+            "runs": 7,
+            "medianMs": 425.47989099999995,
+            "allMs": [
+              430.5962840000002,
+              430.77856999999995,
+              431.430961,
+              425.17385000000013,
+              418.94207000000006,
+              425.47989099999995,
+              413.18163600000025
+            ],
+            "result": 1018392
+          },
+          "runtime": {
+            "arg": 1000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 94.22621239999971,
+            "allMs": [
+              92.06492899999975,
+              92.5382669999999,
+              96.9014565999998,
+              94.94127200000003,
+              94.22621239999971
+            ],
+            "result": 511492320
+          },
+          "computeOnly": {
+            "arg": 1000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 5.4597761999999985,
+            "allMs": [
+              5.4597761999999985,
+              5.649968400000001,
+              5.506594999999993,
+              5.358724600000005,
+              5.176161000000002
+            ],
+            "result": 511492320
+          },
+          "metadata": {
+            "engine": "v22.22.2",
+            "wasmOptFlags": [
+              "--all-features",
+              "-O4"
+            ],
+            "target": "gc",
+            "fast": true,
+            "hotIterations": 5,
+            "computeMethod": "internal in-process timed loop after warm-up"
+          }
+        },
+        {
+          "id": "js2wasm-wasmtime",
+          "label": "js2wasm -> Wasmtime",
+          "status": "runtime-error",
+          "notes": [
+            "error: unknown -W / --wasm option: gc-support\n"
+          ],
+          "compilerBytes": 2775758,
+          "runtimeBytes": null,
+          "compileMs": 705.3489840000002,
+          "rawBytes": 519,
+          "gzipBytes": 315,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "assemblyscript-wasmtime",
+          "label": "AssemblyScript -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "AssemblyScript toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "javy-wasmtime",
+          "label": "Javy -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "Javy CLI is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "porffor-node",
+          "label": "Porffor -> Node.js runtime",
+          "status": "unavailable",
+          "notes": [
+            "Porffor toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-runtime-eval-wasmtime",
+          "label": "StarlingMonkey runtime-eval -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "StarlingMonkey runtime-eval artifact is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-componentize-wasmtime",
+          "label": "StarlingMonkey + ComponentizeJS -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "STARLINGMONKEY_ADAPTER is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        }
+      ]
+    },
+    {
+      "id": "fib-recursive",
+      "label": "Fibonacci recursion",
+      "sourceBytes": 318,
+      "sourceGzipBytes": 216,
+      "baselineResult": {
+        "coldArg": 10,
+        "coldValue": 55,
+        "runtimeArg": 30,
+        "runtimeValue": 832040
+      },
+      "toolchains": [
+        {
+          "id": "node-js",
+          "label": "Node.js",
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "compileMs": null,
+          "rawBytes": 318,
+          "gzipBytes": 216,
+          "precompiledBytes": null,
+          "coldStart": {
+            "arg": 10,
+            "runs": 7,
+            "medianMs": 30.11047199999848,
+            "allMs": [
+              30.999605999999403,
+              30.114376000001357,
+              30.11047199999848,
+              29.613241000000926,
+              28.983550000000832,
+              32.73697699999866,
+              29.58974599999965
+            ],
+            "result": 55
+          },
+          "runtime": {
+            "arg": 30,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 18.305074199999943,
+            "allMs": [
+              18.34163039999985,
+              17.978597199999786,
+              18.305074199999943,
+              17.77071199999991,
+              18.75202680000002
+            ],
+            "result": 832040
+          },
+          "computeOnly": {
+            "arg": 30,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 9.8993632,
+            "allMs": [
+              9.8003766,
+              9.915547399999998,
+              9.8993632,
+              10.250744399999999,
+              9.878231600000001
+            ],
+            "result": 832040
+          },
+          "metadata": {
+            "engine": "v22.22.2",
+            "hotIterations": 5,
+            "computeMethod": "internal in-process timed loop after warm-up"
+          }
+        },
+        {
+          "id": "js2wasm-node",
+          "label": "js2wasm -> Node.js (hosted)",
+          "status": "compile-error",
+          "notes": [
+            "[wasm-validator error in function fib] call param types must match, on \n(call $__any_add\n (local.get $0)\n (call $fib\n  (i32.const 2)\n )\n)\n(on argument 0)\nFatal: error validating input\n"
+          ],
+          "compilerBytes": 2775758,
+          "runtimeBytes": 2024,
+          "compileMs": 444.9745409999996,
+          "rawBytes": 5878,
+          "gzipBytes": 2397,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "js2wasm-wasmtime",
+          "label": "js2wasm -> Wasmtime",
+          "status": "blocked",
+          "notes": [
+            "target:wasi still emits non-WASI imports for this program",
+            "env:__unbox_number",
+            "env:__box_number"
+          ],
+          "compilerBytes": 2775758,
+          "runtimeBytes": null,
+          "compileMs": 356.7127610000007,
+          "rawBytes": 4186,
+          "gzipBytes": 1764,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null,
+          "metadata": {
+            "baselineCold": 55,
+            "baselineRuntime": 832040,
+            "importCount": 2
+          }
+        },
+        {
+          "id": "assemblyscript-wasmtime",
+          "label": "AssemblyScript -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "AssemblyScript toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "javy-wasmtime",
+          "label": "Javy -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "Javy CLI is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "porffor-node",
+          "label": "Porffor -> Node.js runtime",
+          "status": "unavailable",
+          "notes": [
+            "Porffor toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-runtime-eval-wasmtime",
+          "label": "StarlingMonkey runtime-eval -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "StarlingMonkey runtime-eval artifact is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-componentize-wasmtime",
+          "label": "StarlingMonkey + ComponentizeJS -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "STARLINGMONKEY_ADAPTER is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        }
+      ]
+    },
+    {
+      "id": "fib",
+      "label": "Fibonacci loop",
+      "sourceBytes": 348,
+      "sourceGzipBytes": 235,
+      "baselineResult": {
+        "coldArg": 5000,
+        "coldValue": -1846256875,
+        "runtimeArg": 20000000,
+        "runtimeValue": -1821818939
+      },
+      "toolchains": [
+        {
+          "id": "node-js",
+          "label": "Node.js",
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "compileMs": null,
+          "rawBytes": 348,
+          "gzipBytes": 235,
+          "precompiledBytes": null,
+          "coldStart": {
+            "arg": 5000,
+            "runs": 7,
+            "medianMs": 31.30801900000006,
+            "allMs": [
+              36.0582089999989,
+              30.000496000000567,
+              30.62118299999929,
+              28.56418599999961,
+              33.711144000000786,
+              35.86730499999976,
+              31.30801900000006
+            ],
+            "result": -1846256875
+          },
+          "runtime": {
+            "arg": 20000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 130.00257439999987,
+            "allMs": [
+              130.09398760000005,
+              129.8488079999999,
+              130.00257439999987,
+              129.80077779999993,
+              130.19690359999987
+            ],
+            "result": -1821818939
+          },
+          "computeOnly": {
+            "arg": 20000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 102.736819,
+            "allMs": [
+              102.73180180000001,
+              103.01602360000001,
+              102.736819,
+              102.77565360000001,
+              102.72176520000001
+            ],
+            "result": -1821818939
+          },
+          "metadata": {
+            "engine": "v22.22.2",
+            "hotIterations": 5,
+            "computeMethod": "internal in-process timed loop after warm-up"
+          }
+        },
+        {
+          "id": "js2wasm-node",
+          "label": "js2wasm -> Node.js (hosted)",
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": 2775758,
+          "runtimeBytes": 2024,
+          "compileMs": 351.2873860000036,
+          "rawBytes": 131,
+          "gzipBytes": 125,
+          "precompiledBytes": null,
+          "coldStart": {
+            "arg": 5000,
+            "runs": 7,
+            "medianMs": 429.31761800000095,
+            "allMs": [
+              429.88036900000225,
+              430.4357929999969,
+              425.2354059999998,
+              429.31761800000095,
+              423.9804000000004,
+              435.48416400000133,
+              426.25224999999773
+            ],
+            "result": -1846256875
+          },
+          "runtime": {
+            "arg": 20000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 98.74402659999978,
+            "allMs": [
+              98.7329635999995,
+              98.63794420000049,
+              100.60138999999981,
+              100.54680599999992,
+              98.74402659999978
+            ],
+            "result": -1821818939
+          },
+          "computeOnly": {
+            "arg": 20000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 6.2309214,
+            "allMs": [
+              6.232239799999991,
+              6.226455199999998,
+              6.2181875999999985,
+              6.2309214,
+              6.238693999999998
+            ],
+            "result": -1821818939
+          },
+          "metadata": {
+            "engine": "v22.22.2",
+            "wasmOptFlags": [
+              "--all-features",
+              "-O4"
+            ],
+            "target": "gc",
+            "fast": true,
+            "hotIterations": 5,
+            "computeMethod": "internal in-process timed loop after warm-up"
+          }
+        },
+        {
+          "id": "js2wasm-wasmtime",
+          "label": "js2wasm -> Wasmtime",
+          "status": "runtime-error",
+          "notes": [
+            "error: unknown -W / --wasm option: gc-support\n"
+          ],
+          "compilerBytes": 2775758,
+          "runtimeBytes": null,
+          "compileMs": 318.2973180000008,
+          "rawBytes": 223,
+          "gzipBytes": 182,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "assemblyscript-wasmtime",
+          "label": "AssemblyScript -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "AssemblyScript toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "javy-wasmtime",
+          "label": "Javy -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "Javy CLI is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "porffor-node",
+          "label": "Porffor -> Node.js runtime",
+          "status": "unavailable",
+          "notes": [
+            "Porffor toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-runtime-eval-wasmtime",
+          "label": "StarlingMonkey runtime-eval -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "StarlingMonkey runtime-eval artifact is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-componentize-wasmtime",
+          "label": "StarlingMonkey + ComponentizeJS -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "STARLINGMONKEY_ADAPTER is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        }
+      ]
+    },
+    {
+      "id": "object-ops",
+      "label": "Object field churn",
+      "sourceBytes": 440,
+      "sourceGzipBytes": 273,
+      "baselineResult": {
+        "coldArg": 1000,
+        "coldValue": -20015548,
+        "runtimeArg": 800000,
+        "runtimeValue": 1986408576
+      },
+      "toolchains": [
+        {
+          "id": "node-js",
+          "label": "Node.js",
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "compileMs": null,
+          "rawBytes": 440,
+          "gzipBytes": 273,
+          "precompiledBytes": null,
+          "coldStart": {
+            "arg": 1000,
+            "runs": 7,
+            "medianMs": 30.683474999997998,
+            "allMs": [
+              31.10250299999825,
+              30.683474999997998,
+              30.07798299999922,
+              30.008837000001222,
+              31.498891999999614,
+              31.103233000001637,
+              30.48222700000042
+            ],
+            "result": -20015548
+          },
+          "runtime": {
+            "arg": 800000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 13.82652539999981,
+            "allMs": [
+              13.997485199999938,
+              13.82652539999981,
+              13.951822999999422,
+              13.41284400000004,
+              13.727075999999943
+            ],
+            "result": 1986408576
+          },
+          "computeOnly": {
+            "arg": 800000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 5.2409704,
+            "allMs": [
+              5.2551890000000006,
+              5.239942600000001,
+              5.234760799999999,
+              5.2409704,
+              5.2421126000000005
+            ],
+            "result": 1986408576
+          },
+          "metadata": {
+            "engine": "v22.22.2",
+            "hotIterations": 5,
+            "computeMethod": "internal in-process timed loop after warm-up"
+          }
+        },
+        {
+          "id": "js2wasm-node",
+          "label": "js2wasm -> Node.js (hosted)",
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": 2775758,
+          "runtimeBytes": 2024,
+          "compileMs": 321.4516410000033,
+          "rawBytes": 377,
+          "gzipBytes": 265,
+          "precompiledBytes": null,
+          "coldStart": {
+            "arg": 1000,
+            "runs": 7,
+            "medianMs": 429.59381199999916,
+            "allMs": [
+              427.20786299999963,
+              426.6413969999994,
+              429.70813700000144,
+              429.59381199999916,
+              425.9865959999988,
+              430.0399230000003,
+              434.3179919999966
+            ],
+            "result": -20015548
+          },
+          "runtime": {
+            "arg": 800000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 88.23455399999948,
+            "allMs": [
+              88.25202600000048,
+              87.16537320000062,
+              88.23455399999948,
+              86.87866400000057,
+              88.96919759999874
+            ],
+            "result": 1986408576
+          },
+          "computeOnly": {
+            "arg": 800000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 0.7530240000000049,
+            "allMs": [
+              0.7528998000000001,
+              0.7538415999999983,
+              0.7489465999999994,
+              0.7532245999999987,
+              0.7530240000000049
+            ],
+            "result": 1986408576
+          },
+          "metadata": {
+            "engine": "v22.22.2",
+            "wasmOptFlags": [
+              "--all-features",
+              "-O4"
+            ],
+            "target": "gc",
+            "fast": true,
+            "hotIterations": 5,
+            "computeMethod": "internal in-process timed loop after warm-up"
+          }
+        },
+        {
+          "id": "js2wasm-wasmtime",
+          "label": "js2wasm -> Wasmtime",
+          "status": "runtime-error",
+          "notes": [
+            "error: unknown -W / --wasm option: gc-support\n"
+          ],
+          "compilerBytes": 2775758,
+          "runtimeBytes": null,
+          "compileMs": 339.38248300000123,
+          "rawBytes": 609,
+          "gzipBytes": 345,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "assemblyscript-wasmtime",
+          "label": "AssemblyScript -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "AssemblyScript toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "javy-wasmtime",
+          "label": "Javy -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "Javy CLI is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "porffor-node",
+          "label": "Porffor -> Node.js runtime",
+          "status": "unavailable",
+          "notes": [
+            "Porffor toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-runtime-eval-wasmtime",
+          "label": "StarlingMonkey runtime-eval -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "StarlingMonkey runtime-eval artifact is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-componentize-wasmtime",
+          "label": "StarlingMonkey + ComponentizeJS -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "STARLINGMONKEY_ADAPTER is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        }
+      ]
+    },
+    {
+      "id": "string-hash",
+      "label": "String build + hash",
+      "sourceBytes": 601,
+      "sourceGzipBytes": 341,
+      "baselineResult": {
+        "coldArg": 100,
+        "coldValue": 36729899,
+        "runtimeArg": 20000,
+        "runtimeValue": 862771296
+      },
+      "toolchains": [
+        {
+          "id": "node-js",
+          "label": "Node.js",
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "compileMs": null,
+          "rawBytes": 601,
+          "gzipBytes": 341,
+          "precompiledBytes": null,
+          "coldStart": {
+            "arg": 100,
+            "runs": 7,
+            "medianMs": 33.20815500000026,
+            "allMs": [
+              30.988813999996637,
+              33.584212999994634,
+              32.11030899999605,
+              33.87479000000167,
+              33.20815500000026,
+              31.573423999994702,
+              33.22605499999918
+            ],
+            "result": 36729899
+          },
+          "runtime": {
+            "arg": 20000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 9.559639000000606,
+            "allMs": [
+              9.559639000000606,
+              9.60619399999996,
+              9.329085200000554,
+              9.289149000000908,
+              9.734884999999485
+            ],
+            "result": 862771296
+          },
+          "computeOnly": {
+            "arg": 20000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 1.1957097999999995,
+            "allMs": [
+              1.1833706000000006,
+              1.1937939999999991,
+              1.2471815999999998,
+              1.2185240000000008,
+              1.1957097999999995
+            ],
+            "result": 862771296
+          },
+          "metadata": {
+            "engine": "v22.22.2",
+            "hotIterations": 5,
+            "computeMethod": "internal in-process timed loop after warm-up"
+          }
+        },
+        {
+          "id": "js2wasm-node",
+          "label": "js2wasm -> Node.js (hosted)",
+          "status": "compile-error",
+          "notes": [
+            "[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (f64.convert_i32_s\n   (local.get $7)\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (f64.convert_i32_s\n     (local.get $7)\n    )\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (f64.convert_i32_s\n   (local.get $8)\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (f64.convert_i32_s\n     (local.get $8)\n    )\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (local.get $2)\n (extern.convert_any\n  (struct.new $struct.0\n   (i32.const 1)\n   (i32.const 0)\n   (array.new_fixed $array.0 1\n    (i32.const 59)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] local.set's value type must be correct, on \n(local.set $10\n (call $length\n  (extern.convert_any\n   (local.get $2)\n  )\n )\n)\nFatal: error validating input\n"
+          ],
+          "compilerBytes": 2775758,
+          "runtimeBytes": 2024,
+          "compileMs": 360.0410900000061,
+          "rawBytes": 4426,
+          "gzipBytes": 1903,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "js2wasm-wasmtime",
+          "label": "js2wasm -> Wasmtime",
+          "status": "compile-error",
+          "notes": [
+            "[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (local.get $7)\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (local.get $7)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (local.get $10)\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (local.get $10)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (local.get $2)\n (extern.convert_any\n  (struct.new $struct.0\n   (i32.const 1)\n   (i32.const 0)\n   (array.new_fixed $array.0 1\n    (i32.const 59)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] local.set's value type must be correct, on \n(local.set $12\n (call $length\n  (extern.convert_any\n   (local.get $2)\n  )\n )\n)\nFatal: error validating input\n"
+          ],
+          "compilerBytes": 2775758,
+          "runtimeBytes": null,
+          "compileMs": 312.7369719999988,
+          "rawBytes": 4774,
+          "gzipBytes": 1990,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "assemblyscript-wasmtime",
+          "label": "AssemblyScript -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "AssemblyScript toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "javy-wasmtime",
+          "label": "Javy -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "Javy CLI is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "porffor-node",
+          "label": "Porffor -> Node.js runtime",
+          "status": "unavailable",
+          "notes": [
+            "Porffor toolchain is not installed"
+          ],
+          "compilerBytes": null,
+          "runtimeBytes": null,
+          "rawBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-runtime-eval-wasmtime",
+          "label": "StarlingMonkey runtime-eval -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "StarlingMonkey runtime-eval artifact is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        },
+        {
+          "id": "starlingmonkey-componentize-wasmtime",
+          "label": "StarlingMonkey + ComponentizeJS -> Wasmtime",
+          "status": "unavailable",
+          "notes": [
+            "STARLINGMONKEY_ADAPTER is not configured"
+          ],
+          "rawBytes": null,
+          "runtimeBytes": null,
+          "gzipBytes": null,
+          "precompiledBytes": null,
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
+        }
+      ]
+    }
+  ]
+}

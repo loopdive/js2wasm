@@ -1602,9 +1602,15 @@ export function compilePropertyAccess(
       }
     }
 
-    // Handle instance method accessed as value (not call): obj.method (#820)
+    // Handle instance method accessed as value (not call): obj.method (#820, #1149)
     // Returns null externref to prevent null deref traps from the fallthrough path.
-    if (ctx.classSet.has(typeName)) {
+    // Applies to both class instances and object-literal struct types: object-literal
+    // methods are registered in classMethodSet under `${typeName}_${propName}` even
+    // though the struct type itself is not in classSet. Without this, the fallback
+    // path would dynamically add a struct field for the method and read its null
+    // default, causing a null_deref trap when the detached method reference is later
+    // invoked — instead of the TypeError the JS caller would expect.
+    {
       const methodFullName = `${typeName}_${propName}`;
       if (ctx.classMethodSet.has(methodFullName) || ctx.staticMethodSet.has(methodFullName)) {
         const funcIdx = ctx.funcMap.get(methodFullName);
