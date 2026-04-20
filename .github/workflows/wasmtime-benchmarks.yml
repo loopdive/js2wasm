@@ -50,6 +50,8 @@ jobs:
 
       - name: Run competitive benchmarks
         run: node --experimental-strip-types benchmarks/compare-runtimes.ts
+        env:
+          WASMTIME_WASM_FLAGS: "-W gc=y,function-references=y,exceptions=y"
 
       - name: Generate wasmtime chart data
         run: node scripts/generate-wasmtime-chart-data.mjs
