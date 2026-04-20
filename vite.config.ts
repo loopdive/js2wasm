@@ -16,6 +16,7 @@ export default defineConfig({
     },
   },
   build: {
+    target: "esnext",
     lib: {
       entry: {
         index: "src/index.ts",
@@ -24,7 +25,22 @@ export default defineConfig({
       formats: ["es"],
     },
     rollupOptions: {
-      external: ["typescript", "node:fs", "node:path", "node:process", "binaryen"],
+      external: [
+        "typescript",
+        "binaryen",
+        "path",
+        "fs",
+        "url",
+        "os",
+        "child_process",
+        "node:fs",
+        "node:path",
+        "node:process",
+        "node:module",
+        "node:url",
+        "node:os",
+        "node:child_process",
+      ],
     },
   },
 });
