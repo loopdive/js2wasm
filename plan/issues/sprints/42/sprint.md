@@ -325,7 +325,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
 | #862 | Empty error message failures: iterator/destructuring step-err tests (212 FAIL) | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
-| #907 | Replace __init_done runtime guards with start/init entry semantics | high | ready |
 | #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
 | #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | ready |
 | #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
@@ -362,6 +361,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
 | #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | in-progress |
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
+| #1132 | Publish compiler as @loopdive/js2 on npm + JSR | high | in-progress |
+| #1147 | Fix _start export regressions — 639 test262 failures from PR #177 | high | in-progress |
 
 ### Review
 
@@ -369,6 +370,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #825 | Null dereference failures (2,295 runtime failures) | high | review |
 | #826 | Illegal cast failures (1,276 runtime failures) | high | review |
+| #907 | Replace __init_done runtime guards with start/init entry semantics | high | review |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | review |
 | #1006 | Support eval via JS host import | medium | review |
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | review |
@@ -400,5 +402,69 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1107 | lodash-es Tier 1 E2E harness — identity, clamp, add compile and run | critical | done |
 | #1108 | lodash-es add: export default of HOF closure result not surfaced as Wasm export | high | done |
 | #1124 | Audit current codegen IR and, if needed, define a minimal SSA middle-end | high | done |
+| #1136 | Array.prototype.flat() and flatMap() not implemented | medium | done |
+| #1137 | ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented | medium | done |
+| #1138 | Destructuring: unresolvable defaults throw ReferenceError instead of being undefined | high | done |
+| #1139 | Destructuring: TypeError not thrown on null/undefined source (RequireObjectCoercible) | high | done |
+| #1140 | Array methods .call() with array-like receiver not supported | medium | done |
+| #1141 | Object.defineProperties: descriptor shape not validated per ECMA-262 §10.1 | medium | done |
+| #1142 | Class method .call()/.apply() missing brand-check on thisArg | medium | done |
+| #1143 | Array callback arg push not gated on paramTypes.length — extra args emitted unconditionally | low | done |
+| #1144 | Static class elements: this.#priv access inside static methods uses wrong receiver | medium | done |
+| #1145 | Async generator: undefined tuple elements promote to f64, corrupting sNaN sentinel | medium | done |
+| #1146 | for-of: nested rest binding patterns not decoded (825 ary-rest-rest cluster) | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
+## Retroactive Sprint 42 Completions
+
+_Issues confirmed merged to main during Sprint 42 but not in the auto-generated table above (frontmatter sprint field not updated). Added 2026-04-19._
+
+| Issue | Title | PR | Notes |
+|---|---|---|---|
+| #907 | Replace `__init_done` guards with `_start` export | #177 | Was originally deferred; shipped mid-sprint |
+| #991 | Timeout fixes — close(fixed by #1085) | #197 | Closed as fixed by iterative walker |
+| #992 | Timeout fixes — verified | #200 | Closed as fixed |
+| #993 | Timeout fixes — verified | #200 | Closed as fixed |
+| #994 | Static private getter via `this` in static methods | #158 | Timeout root cause fixed |
+| #997 | BigInt → toPrimitive path | #120 | Sprint 41 carry-over, merged in sprint 42 |
+| #1005 | Cold-start benchmark: Wasm-in-Node vs JS-in-Node | bench PR | Performance measurement infra |
+| #1018 | `getOwnPropertyDescriptor` null guard | #122 | Sprint 41 carry-over |
+| #1024 | Destructuring rest holes | #124 | Sprint 41 carry-over |
+| #1026 | Built-in constructor `.prototype` access via `__get_builtin`+`__extern_get` | #195 | 86 test262 improvements |
+| #1034 | Prettier stress test | #109 | Sprint 41 carry-over |
+| #1035 | WASI `writeFileSync` → `path_open`+`fd_write`+`fd_close` | #176 | WASI filesystem |
+| #1044 | Recognize Node.js builtin modules as host imports | #174 | npm compatibility |
+| #1053 | `arguments.length` — trailing comma inflation fix | #129, #189 | Sprint 41 carry-over + follow-up |
+| #1063 | Lodash closure ref | #110 | Sprint 41 carry-over |
+| #1067 | `<dep-graph>` interactive dependency graph web component | dep-graph PR | Dashboard infra |
+| #1069 | Object literal → struct inference externref | #139 | Sprint 41 carry-over |
+| #1072 | Return-type coercion f64 → externref | #138 | Sprint 41 carry-over |
+| #1073 | Eval scope injection — `__extern_eval` JS-side harness | #183 | +107 test262 |
+| #1074 | Surface ESM `export default` as Wasm function export | #131 | Primary sprint goal |
+| #1075 | CommonJS `module.exports`/`require` support | #180 | CJS compatibility |
+| #1078 | Emergency baseline-refresh `workflow_dispatch` | #1078 PR | CI hardening |
+| #1079 | Baseline age stamp + SHA on dashboard | #1079 PR | CI hardening |
+| #1085 | `bodyUsesArguments` iterative walker | #127 | Sprint 41 carry-over |
+| #1086 | Extract and memoize `bodyUsesArguments` | #156 | Refactor |
+| #1090 | `OrdinaryToPrimitive` — host toPrimitive before fallback | #123 | Sprint 41 carry-over |
+| #1091 | Early errors residuals | #121 | Sprint 41 carry-over |
+| #1092 | Wrong error type fixes | #125 | Sprint 41 carry-over |
+| #1109 | Prevent double-shifting + skip hard type errors in allowJs | #153 | Codegen fix |
+| #1119 | CompilerPool incremental state leak | #198 | ~400 CE fixed |
+| #1122 | WASI: prevent `_start` calling parameterized `main()` | #175 | WASI correctness |
+| #1123 | Landing page audit | #178 | Docs |
+| #1127 | Nested rest binding decode | #224 | Destructuring |
+| #1128 | `toPrimitive` TypeError on non-callable @@toPrimitive | #181 | +spec compliance |
+| #1132 | Publish compiler as `@loopdive/js2` on npm + JSR | npm PR | Package release |
+| #1134 | Loose equality `null==undefined`, `bool==number` for externref | loose-eq PR | +conformance |
+| #1136 | `Array.prototype.flat()` and `flatMap()` | #190 | ES2019 methods |
+| #1137 | ES2023 array methods: `toReversed`, `toSorted`, `toSpliced`, `with` | #192 | 18/89 test262 |
+| #1138 | Destructuring: unresolvable defaults throw `ReferenceError` (+115 test262) | #216 | |
+| #1139 | Destructuring: `TypeError` on null/undefined source (RequireObjectCoercible) | #225 | |
+| #1140 | Array methods `.call()` with array-like receiver | #223 | |
+| #1141 | `Object.defineProperties`: descriptor shape validation per ECMA-262 §10.1 | #226 | |
+| #1142 | Brand-check `thisArg` on class method `.call()`/`.apply()` | #227 | |
+| #1143 | Array callback arg push not gated on `paramTypes.length` | #228 | |
+| #1144 | Static class elements: `this.#priv` access in static methods | #204 | |
+| #1145 | Async-gen: undefined tuple elements promote to f64, corrupting sNaN | #205 | |
+| #1146 | For-of nested rest binding patterns (#825 ary-rest-rest cluster) | #209 | Sub-issue of #825 |

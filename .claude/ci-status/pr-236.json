@@ -1,0 +1,15 @@
+{
+  "pr": 236,
+  "conclusion": "failure",
+  "head_branch": "fix/sprint42-issue-ids",
+  "head_sha": "454785cedd55b301d633ce8398186f5b8d25f484",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24641920332",
+  "timestamp": "2026-04-20T00:15:54Z",
+  "pass": 21257,
+  "fail": 13166,
+  "compile_error": 7240,
+  "snapshot_delta": -1193,
+  "net_per_test": -1193,
+  "regressions": 2577,
+  "improvements": 1384
+}
