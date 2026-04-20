@@ -1268,21 +1268,6 @@
               </span>
             </div>
           </div>
-          <div class="diagram-panel">
-            <perf-benchmark-chart
-              src="./benchmarks/results/playground-benchmark-sidebar.json"
-              title="Runtime Speed"
-              legend="Wasm runtime speed relative to JS (larger is better, whisker = ±1σ)"
-            ></perf-benchmark-chart>
-          </div>
-          <div class="diagram-panel">
-            <perf-benchmark-chart
-              src="./benchmarks/results/loadtime-benchmarks.json"
-              mode="loadtime"
-              title="Loading Speed"
-              legend="Wasm loading speed relative to JS (larger is better, whisker = ±1σ)"
-            ></perf-benchmark-chart>
-          </div>
         </div>
 
         <div class="feat-filter">
@@ -2872,15 +2857,36 @@ match (value) {
 
       <section class="section-pad" id="wasm-hosts">
         <div class="intro">
-          <h2>Tiny modules that start and run fast.</h2>
+          <h2>Fast cold starts and execution, tiny modules that ship without runtime code.</h2>
           <p>
             When running outside of a JS engine like found in browsers or Node.js, compatibility today typically means
             embedding a JS interpreter inside the WebAssembly module. This increases module size and slows execution.
           </p>
-          <p class="host-bench-copy">
-            Each bar shows the measured median for one toolchain. Lower values are better. The vertical marker shows the
-            plain JavaScript baseline running in a JS host.
+        </div>
+
+        <div class="host-bench-group">
+          <h3 class="host-bench-title">Browser &amp; Node.js</h3>
+          <p class="host-bench-subcopy">
+            Runtime execution speed and module load time relative to plain JavaScript, measured in browser and Node.js
+            environments.
           </p>
+          <div class="conformance-diagrams">
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/playground-benchmark-sidebar.json"
+                title="Runtime Speed"
+                legend="Wasm runtime speed relative to JS (larger is better, whisker = ±1σ)"
+              ></perf-benchmark-chart>
+            </div>
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/loadtime-benchmarks.json"
+                mode="loadtime"
+                title="Loading Speed"
+                legend="Wasm loading speed relative to JS (larger is better, whisker = ±1σ)"
+              ></perf-benchmark-chart>
+            </div>
+          </div>
         </div>
 
         <div class="host-bench-group">
