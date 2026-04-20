@@ -2047,6 +2047,22 @@ assert._isSameValue = isSameValue;
           // destructuring of throwing iterators (#1150).
           if (obj == null) return [];
           if (Array.isArray(obj)) return obj;
+          // Compiled sources that do `iter[Symbol.iterator] = fn` often land the
+          // function under a stringified "Symbol(Symbol.iterator)" key rather
+          // than the real well-known symbol. Array.from would then reject on
+          // "iterator method exists but not callable". Detect that up front and
+          // fall back to array-like enumeration so throwing iterators still
+          // propagate via Array.from while plain non-iterable objects don't
+          // error out.
+          if (typeof obj === "object") {
+            const iterFn = (obj as any)[Symbol.iterator];
+            if (iterFn !== undefined && typeof iterFn !== "function") {
+              const out: any[] = [];
+              const len = typeof (obj as any).length === "number" ? (obj as any).length >>> 0 : 0;
+              for (let i = 0; i < len; i++) out.push((obj as any)[i]);
+              return out;
+            }
+          }
           return Array.from(obj);
         };
       if (name === "__extern_slice")
