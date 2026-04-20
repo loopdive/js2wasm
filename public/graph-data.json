@@ -16625,6 +16625,18 @@
       "cluster": "spec-completeness"
     },
     {
+      "id": "1147",
+      "title": "Fix _start export regressions — 639 test262 failures from PR #177",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -18688,7 +18700,8 @@
         "1141",
         "1142",
         "1144",
-        "1146"
+        "1146",
+        "1147"
       ]
     },
     {
@@ -22937,6 +22950,10 @@
       "issue": "1146"
     },
     {
+      "goal": "spec-completeness",
+      "issue": "1147"
+    },
+    {
       "goal": "standalone-mode",
       "issue": "34"
     },
@@ -26635,6 +26652,10 @@
       "issue": "1146"
     },
     {
+      "goal": "async-model",
+      "issue": "1147"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -26991,6 +27012,10 @@
       "issue": "1146"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1147"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -27347,6 +27372,10 @@
       "issue": "1146"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1147"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -27701,6 +27730,10 @@
     {
       "goal": "property-model",
       "issue": "1146"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1147"
     },
     {
       "goal": "iterator-protocol",
