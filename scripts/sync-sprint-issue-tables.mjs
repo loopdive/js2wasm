@@ -158,8 +158,12 @@ function syncSprintFile(file, sprintNumber, issues) {
     sprintNumber,
     issues.filter((issue) => issue.sprintNumber === sprintNumber),
   );
+  // The \\n? at the end of the pattern consumes the newline after END; add it
+  // back so content that follows (e.g. hand-written sections) stays on a new line.
   const pattern = new RegExp(`${START}[\\s\\S]*?${END}\\n?`, "m");
-  const next = pattern.test(text) ? text.replace(pattern, generated.trimEnd()) : `${text}\n\n${generated.trimEnd()}\n`;
+  const next = pattern.test(text)
+    ? text.replace(pattern, generated.trimEnd() + "\n")
+    : `${text}\n\n${generated.trimEnd()}\n`;
   writeFileSync(file, next);
 }
 

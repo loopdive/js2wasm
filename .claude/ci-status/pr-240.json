@@ -1,0 +1,15 @@
+{
+  "pr": 240,
+  "conclusion": "success",
+  "head_branch": "issue-1148-investigate-skip",
+  "head_sha": "1671c06ea736a90f5c237011a8d26a35c685d33c",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24691710845",
+  "timestamp": "2026-04-20T21:47:19Z",
+  "pass": 21345,
+  "fail": 13327,
+  "compile_error": 7135,
+  "snapshot_delta": 21,
+  "net_per_test": 21,
+  "regressions": 0,
+  "improvements": 21
+}
