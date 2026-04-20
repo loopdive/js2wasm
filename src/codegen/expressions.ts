@@ -175,6 +175,32 @@ function wrapAsyncReturn(ctx: CodegenContext, fctx: FunctionContext, resultType:
 }
 
 /**
+ * Splice instructions [start..end) from fctx.body and re-emit them inside a
+ * try/catch that converts synchronous throws into a rejected Promise. Used for
+ * async function calls so that a throw during default-param evaluation or body
+ * execution surfaces as `f().then(_, onRej)` rather than an uncaught wasm
+ * exception (#1150).
+ */
+function wrapAsyncCallInTryCatch(ctx: CodegenContext, fctx: FunctionContext, start: number): void {
+  const rejectIdx = ensureLateImport(ctx, "Promise_reject", [{ kind: "externref" }], [{ kind: "externref" }]);
+  const getCaughtIdx = ensureLateImport(ctx, "__get_caught_exception", [], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  if (rejectIdx === undefined || getCaughtIdx === undefined) return;
+  const inner = fctx.body.splice(start);
+  const catchAll: Instr[] = [
+    { op: "call", funcIdx: getCaughtIdx } as Instr,
+    { op: "call", funcIdx: rejectIdx } as Instr,
+  ];
+  fctx.body.push({
+    op: "try",
+    blockType: { kind: "val", type: { kind: "externref" } },
+    body: inner,
+    catches: [],
+    catchAll,
+  } as unknown as Instr);
+}
+
+/**
  * Check whether the last instruction emitted since bodyLenBefore is a
  * void-returning call.
  */
@@ -667,6 +693,7 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
   }
 
   if (ts.isCallExpression(expr)) {
+    const callStart = fctx.body.length;
     const callResult = compileCallExpression(ctx, fctx, expr);
     if (fctx.pendingCallbackWritebacks && fctx.pendingCallbackWritebacks.length > 0) {
       fctx.body.push(...fctx.pendingCallbackWritebacks);
@@ -683,7 +710,12 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
       // Do NOT clear — re-emit after every subsequent call
     }
     if (isAsyncCallExpression(ctx, expr)) {
-      return wrapAsyncReturn(ctx, fctx, callResult);
+      const wrappedType = wrapAsyncReturn(ctx, fctx, callResult);
+      // Wrap the call+Promise.resolve in try/catch so synchronous throws from
+      // the async function body (e.g. TDZ ReferenceError during default param
+      // evaluation) become rejected Promises per spec (#1150).
+      wrapAsyncCallInTryCatch(ctx, fctx, callStart);
+      return wrappedType;
     }
     return callResult;
   }

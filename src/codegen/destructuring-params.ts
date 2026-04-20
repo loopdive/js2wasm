@@ -580,6 +580,11 @@ export function destructureParamArray(
         [{ kind: "externref" }],
       );
       flushLateImportShifts(ctx, fctx);
+      // __array_from_iter materializes iterables (generators, sets, custom @@iterator)
+      // via Array.from so __extern_length / __extern_get_idx operate on a real array.
+      // Throws from iterator .next() propagate (spec-compliant for throwing iterators, #1150).
+      const fbIterFn = ensureLateImport(ctx, "__array_from_iter", [{ kind: "externref" }], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
 
       // Else: try each other known vec type and convert element-by-element
       const convertInstrs: Instr[] = [];
@@ -663,9 +668,10 @@ export function destructureParamArray(
       }
 
       // Fallback: if no Wasm vec type matched, the externref is a plain JS array/iterable.
-      // Use __extern_length + __extern_get_idx host imports to build a vec_externref. (#825)
-      // (imports pre-registered above to avoid stale funcIdx in convertInstrs)
-      if (fbLenFn !== undefined && fbGetIdxFn !== undefined) {
+      // Materialize via Array.from first so iterator protocol runs (generators, custom
+      // @@iterator); then walk with __extern_length + __extern_get_idx. (#825, #1150)
+      if (fbLenFn !== undefined && fbGetIdxFn !== undefined && fbIterFn !== undefined) {
+        const fbMatTmp = allocLocal(fctx, `__dparam_fb_mat_${fctx.locals.length}`, { kind: "externref" });
         const fbLenTmp = allocLocal(fctx, `__dparam_fb_len_${fctx.locals.length}`, { kind: "i32" });
         const fbArrTmp = allocLocal(fctx, `__dparam_fb_arr_${fctx.locals.length}`, {
           kind: "ref",
@@ -674,8 +680,12 @@ export function destructureParamArray(
         const fbIdxTmp = allocLocal(fctx, `__dparam_fb_idx_${fctx.locals.length}`, { kind: "i32" });
 
         const fallbackInstrs: Instr[] = [
-          // len = i32(__extern_length(param))
+          // materialized = __array_from_iter(param) — throws from iterator .next() propagate
           { op: "local.get", index: paramIdx } as Instr,
+          { op: "call", funcIdx: fbIterFn } as Instr,
+          { op: "local.set", index: fbMatTmp } as Instr,
+          // len = i32(__extern_length(materialized))
+          { op: "local.get", index: fbMatTmp } as Instr,
           { op: "call", funcIdx: fbLenFn } as Instr,
           { op: "i32.trunc_sat_f64_s" } as unknown as Instr,
           { op: "local.set", index: fbLenTmp } as Instr,
@@ -700,10 +710,10 @@ export function destructureParamArray(
                   { op: "local.get", index: fbLenTmp } as Instr,
                   { op: "i32.ge_s" } as Instr,
                   { op: "br_if", depth: 1 } as Instr,
-                  // arr[idx] = __extern_get_idx(param, f64(idx))
+                  // arr[idx] = __extern_get_idx(materialized, f64(idx))
                   { op: "local.get", index: fbArrTmp } as Instr,
                   { op: "local.get", index: fbIdxTmp } as Instr,
-                  { op: "local.get", index: paramIdx } as Instr,
+                  { op: "local.get", index: fbMatTmp } as Instr,
                   { op: "local.get", index: fbIdxTmp } as Instr,
                   { op: "f64.convert_i32_s" } as Instr,
                   { op: "call", funcIdx: fbGetIdxFn } as Instr,
