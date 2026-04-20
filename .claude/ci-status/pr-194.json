@@ -1,15 +1,15 @@
 {
   "pr": 194,
-  "conclusion": "failure",
+  "conclusion": "cancelled",
   "head_branch": "issue-1025-binding-element-null-audit",
-  "head_sha": "60de5a54c5652f20c55ee64f028103a98a1df7cc",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640443100",
-  "timestamp": "2026-04-20T00:09:22Z",
-  "pass": 22992,
-  "fail": 14691,
-  "compile_error": 3977,
-  "snapshot_delta": 542,
-  "net_per_test": 542,
-  "regressions": 804,
-  "improvements": 1346
+  "head_sha": "e51f5605a8bc95bd5dd5d0be299280f5dd56cacb",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694169393",
+  "timestamp": "2026-04-20T23:49:37Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
 }
