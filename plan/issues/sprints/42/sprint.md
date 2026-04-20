@@ -362,6 +362,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | in-progress |
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
 | #1132 | Publish compiler as @loopdive/js2 on npm + JSR | high | in-progress |
+| #1147 | Fix _start export regressions — 639 test262 failures from PR #177 | high | in-progress |
 
 ### Review
 
