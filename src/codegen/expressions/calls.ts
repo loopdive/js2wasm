@@ -1675,8 +1675,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
         fctx.body.push({ op: "call", funcIdx: hostIdx });
 
-        // If there's a second argument (property descriptors), expand at compile time
-        if (expr.arguments.length >= 2 && ts.isObjectLiteralExpression(expr.arguments[1]!)) {
+        // If there's a second argument (property descriptors), expand at compile time.
+        // Only use static expansion when every descriptor value is an object literal —
+        // non-literal values (identifiers, expressions) may inherit descriptor flags from
+        // their prototype, which static expansion can't see at compile time.
+        if (
+          expr.arguments.length >= 2 &&
+          ts.isObjectLiteralExpression(expr.arguments[1]!) &&
+          (expr.arguments[1] as ts.ObjectLiteralExpression).properties.every(
+            (p) =>
+              !ts.isPropertyAssignment(p) || ts.isObjectLiteralExpression((p as ts.PropertyAssignment).initializer),
+          )
+        ) {
           const descsLiteral = expr.arguments[1] as ts.ObjectLiteralExpression;
           // Save created object to local for repeated use
           const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
@@ -1770,8 +1780,56 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
           // Push obj back on stack as the result
           fctx.body.push({ op: "local.get", index: objLocal });
+        } else if (expr.arguments.length >= 2 && ts.isObjectLiteralExpression(expr.arguments[1]!)) {
+          // Object literal second arg with non-literal descriptor values (identifiers/expressions).
+          // Iterate properties at compile time, calling __defineProperty_desc(obj, key, desc)
+          // for each. This lets the runtime use native Object.defineProperty which traverses
+          // the descriptor's prototype chain per ToPropertyDescriptor (ECMA-262 §10.1).
+          const descsLiteral = expr.arguments[1] as ts.ObjectLiteralExpression;
+          const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: objLocal });
+
+          const dpDescIdx = ensureLateImport(
+            ctx,
+            "__defineProperty_desc",
+            [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+            [{ kind: "externref" }],
+          );
+          flushLateImportShifts(ctx, fctx);
+
+          for (const prop of descsLiteral.properties) {
+            if (!ts.isPropertyAssignment(prop)) continue;
+            const propName = ts.isIdentifier(prop.name)
+              ? prop.name.text
+              : ts.isStringLiteral(prop.name)
+                ? prop.name.text
+                : ts.isNumericLiteral(prop.name)
+                  ? prop.name.text
+                  : undefined;
+            if (propName === undefined) continue;
+
+            if (dpDescIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: objLocal });
+              addStringConstantGlobal(ctx, propName);
+              const strGlobalIdx = ctx.stringGlobalMap.get(propName);
+              if (strGlobalIdx !== undefined) {
+                fctx.body.push({ op: "global.get", index: strGlobalIdx } as Instr);
+              } else {
+                fctx.body.push({ op: "ref.null.extern" });
+              }
+              const descValType = compileExpression(ctx, fctx, prop.initializer);
+              if (!descValType) {
+                fctx.body.push({ op: "ref.null.extern" });
+              } else if (descValType.kind !== "externref") {
+                coerceType(ctx, fctx, descValType, { kind: "externref" });
+              }
+              fctx.body.push({ op: "call", funcIdx: dpDescIdx });
+              fctx.body.push({ op: "drop" });
+            }
+          }
+          fctx.body.push({ op: "local.get", index: objLocal });
         } else if (expr.arguments.length >= 2) {
-          // Non-literal descriptors: use __defineProperties host import
+          // Non-literal second arg: use __defineProperties host import
           const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
           fctx.body.push({ op: "local.set", index: objLocal });
 

@@ -1,0 +1,15 @@
+{
+  "pr": 239,
+  "conclusion": "success",
+  "head_branch": "fix/1147-property-chain-fallback",
+  "head_sha": "720650efd1ad60df6bc51baa38d5160281894c91",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24692828545",
+  "timestamp": "2026-04-20T22:29:17Z",
+  "pass": 21383,
+  "fail": 13289,
+  "compile_error": 7135,
+  "snapshot_delta": 38,
+  "net_per_test": 38,
+  "regressions": 0,
+  "improvements": 38
+}
