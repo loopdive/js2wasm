@@ -2093,6 +2093,29 @@ assert._isSameValue = isSameValue;
       //   bit 0: writable, bit 1: enumerable, bit 2: configurable
       //   bit 3: writable specified, bit 4: enumerable specified, bit 5: configurable specified
       //   bit 6: is accessor (get/set), bit 7: has value
+      if (name === "__defineProperty_desc")
+        return (obj: any, prop: any, desc: any) => {
+          if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
+            throw new TypeError("Object.defineProperty called on non-object");
+          }
+          const key = prop != null ? String(prop) : "";
+          // For plain JS objects and descriptors, use native Object.defineProperty which
+          // follows the prototype chain for descriptor flags per ToPropertyDescriptor.
+          if (!_isWasmStruct(obj)) {
+            Object.defineProperty(obj, key, desc);
+            return obj;
+          }
+          // WasmGC struct obj: apply via sidecar
+          const getField = (o: any, f: string): any => (!_isWasmStruct(o) ? o[f] : _sidecarGet(o, f));
+          const d = _toPropertyDescriptorValidate(desc, getField);
+          const sDescs = _getSidecarDescs(obj);
+          const nKey = _normalizeDescKey(key);
+          const existingVal = _sidecarGet(obj, key);
+          const newFlags = _validatePropertyDescriptor(sDescs, nKey, d, existingVal);
+          sDescs.set(nKey, newFlags);
+          if (d.value !== undefined) _sidecarSet(obj, key, d.value);
+          return obj;
+        };
       if (name === "__defineProperty_value")
         return (obj: any, prop: any, value: any, flags: number) => {
           if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
@@ -2207,14 +2230,25 @@ assert._isSameValue = isSameValue;
             return v;
           };
           // If descsObj is a WasmGC struct, native Object.defineProperties sees it as empty
-          // and silently no-ops. Pre-validate descriptors here so bad shapes throw TypeError
-          // per ECMA-262 10.1 (ToPropertyDescriptor) before reaching native.
+          // and silently no-ops. Apply descriptors directly instead.
           if (_isWasmStruct(descsObj)) {
             const keys = getKeys(descsObj);
+            const isObjWasm = _isWasmStruct(obj);
+            const sDescs = isObjWasm ? _getSidecarDescs(obj) : null;
             for (const key of keys) {
               const rawDesc = getField(descsObj, key);
-              _toPropertyDescriptorValidate(rawDesc, getField);
+              const desc = _toPropertyDescriptorValidate(rawDesc, getField);
+              if (isObjWasm) {
+                const nKey = _normalizeDescKey(key);
+                const existingVal2 = _sidecarGet(obj, key);
+                const newFlags = _validatePropertyDescriptor(sDescs!, nKey, desc, existingVal2);
+                sDescs!.set(nKey, newFlags);
+                if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
+              } else {
+                Object.defineProperty(obj, key, desc);
+              }
             }
+            return obj;
           }
           try {
             Object.defineProperties(obj, descsObj);
