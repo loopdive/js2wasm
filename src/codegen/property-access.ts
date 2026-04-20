@@ -1185,13 +1185,71 @@ export function compilePropertyAccess(
       // runtime Function.length — the ES spec pins .length for methods like
       // Array.prototype.toSorted to 1 even though the lib d.ts declares
       // compareFn as optional ("?"). Defer to __extern_get("length") so the
-      // runtime value wins. The static path stays for user-defined functions
-      // where the runtime value is a wasm funcref without a readable .length.
+      // runtime value wins — but only when the root identifier of the chain
+      // is a known reachable global (BUILTIN_CTOR_NAMES / globalThis). Bare
+      // lib identifiers like `encodeURIComponent` or `DisposableStack` don't
+      // have a runtime externref binding, so __extern_get would throw.
       const isLibrarySig = lengthSigs.some((s) => {
         const decl = s.getDeclaration?.();
         return decl?.getSourceFile().isDeclarationFile === true;
       });
-      if (!isLibrarySig) {
+      const BUILTIN_GLOBAL_ROOTS = new Set([
+        "Object",
+        "Array",
+        "Function",
+        "Symbol",
+        "Proxy",
+        "Reflect",
+        "Math",
+        "BigInt",
+        "JSON",
+        "Date",
+        "RegExp",
+        "ArrayBuffer",
+        "SharedArrayBuffer",
+        "DataView",
+        "Promise",
+        "WeakMap",
+        "WeakSet",
+        "WeakRef",
+        "FinalizationRegistry",
+        "Atomics",
+        "Iterator",
+        "Map",
+        "Set",
+        "Error",
+        "TypeError",
+        "RangeError",
+        "SyntaxError",
+        "URIError",
+        "EvalError",
+        "ReferenceError",
+        "String",
+        "Number",
+        "Boolean",
+        "Int8Array",
+        "Uint8Array",
+        "Uint8ClampedArray",
+        "Int16Array",
+        "Uint16Array",
+        "Int32Array",
+        "Uint32Array",
+        "Float32Array",
+        "Float64Array",
+        "BigInt64Array",
+        "BigUint64Array",
+        "globalThis",
+      ]);
+      let rootNode: ts.Expression = expr.expression;
+      while (ts.isPropertyAccessExpression(rootNode) || ts.isElementAccessExpression(rootNode)) {
+        rootNode = rootNode.expression;
+      }
+      const rootIsReachableBuiltin =
+        ts.isIdentifier(rootNode) &&
+        BUILTIN_GLOBAL_ROOTS.has(rootNode.text) &&
+        !fctx.localMap.has(rootNode.text) &&
+        !(fctx.boxedCaptures?.has(rootNode.text) ?? false);
+      if (!isLibrarySig || !rootIsReachableBuiltin) {
         // ES spec: Function.length = number of required params before first
         // optional/default/rest. TS forbids required-after-optional, so filtering
         // out optional/default/rest is equivalent to iterating until the first one.
@@ -1204,7 +1262,8 @@ export function compilePropertyAccess(
         fctx.body.push({ op: "f64.const", value: paramCount });
         return { kind: "f64" };
       }
-      // Library signature → fall through to externref / __extern_get path below.
+      // Library signature rooted at a reachable builtin → fall through to
+      // externref / __extern_get path below.
     }
   }
 
