@@ -1258,6 +1258,21 @@ export function compileArrowAsClosure(
   // Emit default-value initialization for simple params with defaults
   emitArrowParamDefaults(ctx, liftedFctx, arrow, 1 /* skip __self */);
 
+  // Fallback: allocate externref locals for each name in a binding pattern.
+  // Used when the param type doesn't match any known struct/vec — locals are
+  // initialized to null/undefined (best-effort; the type is unknown at compile time).
+  function allocBindingLocals(pattern: ts.BindingPattern): void {
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (!ts.isBindingElement(element)) continue;
+      if (ts.isIdentifier(element.name)) {
+        allocLocal(liftedFctx, element.name.text, { kind: "externref" });
+      } else {
+        allocBindingLocals(element.name);
+      }
+    }
+  }
+
   // Destructuring parameter initialization: for parameters with binding patterns
   // (e.g. function([x, y]) or function({a, b})), extract values from the parameter
   // and assign them to local variables. Delegate to the shared destructuring

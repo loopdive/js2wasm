@@ -2,17 +2,30 @@
 
 **Read this before merging to main.**
 
-## How ff-only works with merge commits
+## Dev self-merge via PR (standard path)
 
-Your branch has merge commits from `git merge main` — that's normal. **ff-only still works** as long as your branch tip includes main's HEAD as an ancestor. The key:
+Devs do NOT do a direct ff-only merge to main. Instead:
 
-1. `git merge main` on your branch → creates merge commit → your branch now includes all of main
-2. `cd /workspace && git merge --ff-only <branch>` → succeeds because main is an ancestor of your branch tip
-3. If ff-only fails: main moved since your last `git merge main`. Just merge main again and retry.
+1. [ ] `git fetch origin && git merge origin/main` on your branch (before opening PR)
+   - Planning conflicts → `git checkout --theirs` + regen
+   - Compiler source conflicts → dispatch to `senior-developer` (Opus) via priority TaskList item
+2. [ ] Run scoped local checks (issue-specific compile+run)
+3. [ ] `git push && gh pr create`
+4. [ ] Monitor `.claude/ci-status/pr-<N>.json` until SHA matches HEAD
+5. [ ] `net_per_test > 0`: `gh pr merge <N> --admin --merge`
+6. [ ] Escalate to tech lead if: regressions > 10, single bucket > 50, or judgment call needed
 
-**Never rebase to "fix" ff-only.** Just merge main into your branch one more time.
+## Tech lead direct merge (fallback / hotfix only)
 
-## Before merging to main
+Only used when bypassing PR flow is explicitly approved.
+
+### How ff-only works with merge commits
+
+Your branch has merge commits from `git merge main` — that's normal. **ff-only still works** as long as your branch tip includes main's HEAD as an ancestor.
+
+If ff-only fails: main moved since your last `git merge main`. Just merge main again and retry. **Never rebase.**
+
+### Before merging to main
 
 1. [ ] You are in `/workspace` on `main`: `pwd && git branch --show-current`
 2. [ ] You already merged main into your branch: `git merge main` (on your branch)
