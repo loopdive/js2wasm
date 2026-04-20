@@ -307,7 +307,7 @@ class SiteNav extends HTMLElement {
       </style>
       <nav class="site-nav">
         <a class="nav-logo" href="${base}" aria-label="js2 home">
-          <img src="${base}js2logo.svg" alt="JS2 logo" />
+          <img src="${base}js2logo-squaring-the-circle-white.svg" alt="JS² logo" />
         </a>
         <ul class="nav-links">
           <li><a href="${isLanding ? "" : base}#mission">Mission</a></li>
