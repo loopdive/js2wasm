@@ -2889,7 +2889,7 @@ match (value) {
           </div>
         </div>
 
-        <div class="host-bench-group">
+        <div class="host-bench-group" id="wasmtime-bench-group" style="display: none">
           <h3 class="host-bench-title">Wasmtime</h3>
           <p class="host-bench-subcopy">
             Compare direct AOT WebAssembly output against interpreter-bundling approaches in a standalone WebAssembly
@@ -3149,6 +3149,16 @@ console.log(instance.exports.run()); // &rarr; 55</pre
     <script type="module" src="./components/site-nav.js"></script>
     <script type="module" src="./components/t262-charts.js"></script>
     <script type="module" src="./components/perf-benchmark-chart.js"></script>
+    <script>
+      fetch("./benchmarks/results/wasm-host-wasmtime-coldstart.json")
+        .then((r) => r.json())
+        .then((d) => {
+          if (Array.isArray(d) && d.length > 0) {
+            document.getElementById("wasmtime-bench-group").style.display = "";
+          }
+        })
+        .catch(() => {});
+    </script>
     <script src="./components/trend-chart.js"></script>
     <script src="./components/dep-graph.js"></script>
 
