@@ -39,6 +39,12 @@ jobs:
             | tar -xJ --strip-components=1 -C /usr/local/bin wasmtime-v31.0.0-x86_64-linux/wasmtime
           wasmtime --version
 
+      - name: Install binaryen (wasm-opt)
+        run: |
+          curl -fsSL https://github.com/WebAssembly/binaryen/releases/download/version_122/binaryen-version_122-x86_64-linux.tar.gz \
+            | tar -xz --strip-components=2 -C /usr/local/bin binaryen-version_122/bin/wasm-opt
+          wasm-opt --version
+
       - name: Build compiler bundle
         run: pnpm run build:compiler-bundle
 
