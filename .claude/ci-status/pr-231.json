@@ -1,15 +1,15 @@
 {
   "pr": 231,
-  "conclusion": "failure",
+  "conclusion": "cancelled",
   "head_branch": "feat/ir",
-  "head_sha": "1c5b48870723a95741fce11bbf1a10dcc201f497",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640550553",
-  "timestamp": "2026-04-20T00:09:40Z",
-  "pass": 22950,
-  "fail": 14519,
-  "compile_error": 4191,
-  "snapshot_delta": 500,
-  "net_per_test": 500,
-  "regressions": 837,
-  "improvements": 1337
+  "head_sha": "72335bf36267d0f9971732c8b83fdc6d3e8fae88",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693954483",
+  "timestamp": "2026-04-20T23:38:39Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
 }
