@@ -36,6 +36,7 @@ jobs:
         run: pnpm run typecheck
 
       - name: Regenerate planning artifacts
+        if: github.event_name == 'push'
         run: |
           if [ -d plan ] || [ -d dashboard ]; then
             pnpm run build:planning-artifacts
@@ -44,6 +45,7 @@ jobs:
           fi
 
       - name: Check planning artifacts are committed
+        if: github.event_name == 'push'
         run: |
           if [ -d plan ] || [ -d dashboard ]; then
             git diff --exit-code -- \
