@@ -1,15 +1,15 @@
 {
   "pr": 157,
-  "conclusion": "failure",
+  "conclusion": "cancelled",
   "head_branch": "issue-1098-codegen-patch-audit",
-  "head_sha": "8d979c9d8c49a59ae67095614b16d5292bc5c53b",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640266650",
-  "timestamp": "2026-04-19T23:50:27Z",
-  "pass": 22950,
-  "fail": 14519,
-  "compile_error": 4191,
-  "snapshot_delta": 500,
-  "net_per_test": 500,
-  "regressions": 837,
-  "improvements": 1337
+  "head_sha": "d83d66bb40a8569565ef615367c2eaa4d4ff1d68",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694142770",
+  "timestamp": "2026-04-20T23:56:30Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
 }
