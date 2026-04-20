@@ -1,0 +1,15 @@
+{
+  "pr": 232,
+  "conclusion": "success",
+  "head_branch": "issue-1119-state-leak",
+  "head_sha": "a779438b1e043f18e142f77340831c3f4aec1b2b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24692711192",
+  "timestamp": "2026-04-20T22:25:22Z",
+  "pass": 21345,
+  "fail": 13327,
+  "compile_error": 7135,
+  "snapshot_delta": 0,
+  "net_per_test": 21,
+  "regressions": 0,
+  "improvements": 21
+}
