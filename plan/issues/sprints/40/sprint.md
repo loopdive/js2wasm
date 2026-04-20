@@ -366,7 +366,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1082 | ci-status-feed delta is absolute snapshot not per-test regression — lies to dev-self-merge gate | critical | done |
 | #1084 | compileCount bypass in compiler-fork-worker.mjs — RECREATE never fires when errors dominate a chunk | critical | done |
 
-<!-- GENERATED_ISSUE_TABLES_END --><!-- INTEGRATED_RETROSPECTIVE:2026-04-11-ci-baseline-drift-investigation.md -->
+<!-- GENERATED_ISSUE_TABLES_END -->
+<!-- INTEGRATED_RETROSPECTIVE:2026-04-11-ci-baseline-drift-investigation.md -->
 ## Retrospective Addendum: CI baseline drift investigation — reusable playbook
 
 _Source: `plan/log/retrospectives/2026-04-11-ci-baseline-drift-investigation.md`._
