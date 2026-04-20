@@ -1,15 +1,15 @@
 {
   "pr": 239,
-  "conclusion": "failure",
+  "conclusion": "success",
   "head_branch": "fix/1147-property-chain-fallback",
-  "head_sha": "8c47d05ef118ac99ca354c213492541657cda8ba",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24691573917",
-  "timestamp": "2026-04-20T21:43:05Z",
-  "pass": 21345,
-  "fail": 13291,
-  "compile_error": 7027,
-  "snapshot_delta": 21,
-  "net_per_test": 21,
-  "regressions": 18,
-  "improvements": 39
+  "head_sha": "720650efd1ad60df6bc51baa38d5160281894c91",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24692828545",
+  "timestamp": "2026-04-20T22:29:17Z",
+  "pass": 21383,
+  "fail": 13289,
+  "compile_error": 7135,
+  "snapshot_delta": 38,
+  "net_per_test": 38,
+  "regressions": 0,
+  "improvements": 38
 }

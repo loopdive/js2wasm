@@ -1,39 +1,39 @@
 {
-  "timestamp": "2026-04-20T21:04:20.446Z",
-  "baseline_generated_at": "2026-04-20T21:04:20Z",
-  "baseline_sha": "d6b83a36195b8ab7a59caca5d9ef81fb47fa2aa3",
+  "timestamp": "2026-04-20T22:23:05.275Z",
+  "baseline_generated_at": "2026-04-20T22:23:05Z",
+  "baseline_sha": "9aa7d1e93663da21d95a42cc49920f7ff76117f2",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
     "total": 43172,
-    "pass": 21324,
-    "fail": 13312,
-    "compile_error": 7027,
+    "pass": 21345,
+    "fail": 13327,
+    "compile_error": 7135,
     "compile_timeout": 26,
-    "skip": 1483,
-    "compilable": 34636,
+    "skip": 1339,
+    "compilable": 34672,
     "stale": 0
   },
   "official_summary": {
     "total": 43172,
-    "pass": 21324,
-    "fail": 13312,
-    "compile_error": 7027,
+    "pass": 21345,
+    "fail": 13327,
+    "compile_error": 7135,
     "compile_timeout": 26,
-    "skip": 1483,
-    "compilable": 34636,
+    "skip": 1339,
+    "compilable": 34672,
     "stale": 0
   },
   "full_summary": {
     "total": 43172,
-    "pass": 21324,
-    "fail": 13312,
-    "compile_error": 7027,
+    "pass": 21345,
+    "fail": 13327,
+    "compile_error": 7135,
     "compile_timeout": 26,
-    "skip": 1483,
-    "compilable": 34636,
+    "skip": 1339,
+    "compilable": 34672,
     "stale": 0
   },
   "strict_summary": {
@@ -49,12 +49,12 @@
   "scope_summaries": {
     "annex_b": {
       "total": 1086,
-      "pass": 107,
-      "fail": 105,
-      "compile_error": 730,
+      "pass": 128,
+      "fail": 120,
+      "compile_error": 838,
       "compile_timeout": 0,
-      "skip": 144,
-      "compilable": 212,
+      "skip": 0,
+      "compilable": 248,
       "stale": 0
     },
     "proposal": {
@@ -90,11 +90,11 @@
     },
     {
       "name": "annexB/language",
-      "pass": 76,
-      "fail": 89,
-      "compile_error": 536,
+      "pass": 97,
+      "fail": 104,
+      "compile_error": 644,
       "compile_timeout": 0,
-      "skip": 144,
+      "skip": 0,
       "total": 845
     },
     {
@@ -914,16 +914,15 @@
     "negative_test_fail": 78,
     "null_deref": 670,
     "oob": 50,
-    "other": 3274,
+    "other": 3318,
     "promise_error": 72,
     "range_error": 14,
-    "runtime_error": 1692,
+    "runtime_error": 1699,
     "type_error": 1588,
     "unreachable": 21,
-    "wasm_compile": 5151
+    "wasm_compile": 5223
   },
   "skip_reasons": {
-    "Annex B §B.3.3 early-error hoisting: requires direct-eval scope visibility, not observable through JS host eval (#1073 followup)": 144,
     "compiler hang (see HANGING_TESTS)": 2,
     "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)": 460,
     "ES2020: BigInt typed arrays not implemented (#838)": 28,
