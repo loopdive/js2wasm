@@ -1,0 +1,68 @@
+name: Wasmtime Benchmarks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "benchmarks/competitive/**"
+      - "src/**"
+      - "scripts/compiler-bundle-entry.ts"
+      - "scripts/generate-wasmtime-chart-data.mjs"
+      - ".github/workflows/wasmtime-benchmarks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  benchmark:
+    name: Run Wasmtime benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm via Corepack
+        run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: Install Wasmtime
+        run: |
+          curl -fsSL https://github.com/bytecodealliance/wasmtime/releases/download/v31.0.0/wasmtime-v31.0.0-x86_64-linux.tar.xz \
+            | tar -xJ --strip-components=1 -C /usr/local/bin wasmtime-v31.0.0-x86_64-linux/wasmtime
+          wasmtime --version
+
+      - name: Build compiler bundle
+        run: pnpm run build:compiler-bundle
+
+      - name: Run competitive benchmarks
+        run: node --experimental-strip-types benchmarks/compare-runtimes.ts
+
+      - name: Generate wasmtime chart data
+        run: node scripts/generate-wasmtime-chart-data.mjs
+
+      - name: Commit benchmark results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f \
+            benchmarks/results/runtime-compare-latest.json \
+            benchmarks/results/wasm-host-wasmtime-coldstart.json \
+            benchmarks/results/wasm-host-wasmtime-hot-runtime.json \
+            benchmarks/results/wasm-host-wasmtime-module-size.json \
+            public/benchmarks/results/wasm-host-wasmtime-coldstart.json \
+            public/benchmarks/results/wasm-host-wasmtime-hot-runtime.json \
+            public/benchmarks/results/wasm-host-wasmtime-module-size.json
+          if git diff --cached --quiet; then
+            echo "No benchmark changes to commit"
+          else
+            git commit -m "chore(benchmarks): update wasmtime benchmark results [skip ci]"
+            git push
+          fi
