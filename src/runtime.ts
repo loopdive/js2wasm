@@ -1805,6 +1805,10 @@ assert._isSameValue = isSameValue;
         return (msg: any) => {
           throw new TypeError(msg == null ? "" : String(msg));
         };
+      if (name === "__throw_reference_error")
+        return (msg: any) => {
+          throw new ReferenceError(msg == null ? "" : String(msg));
+        };
       // __to_primitive: full ToPrimitive per ECMA-262 §7.1.1 (#1090)
       // Takes (externref obj, externref hint_string) → externref primitive
       // Throws TypeError if conversion fails or Symbol.toPrimitive is non-callable
@@ -2033,6 +2037,17 @@ assert._isSameValue = isSameValue;
             }
           }
           return Object.entries(obj);
+        };
+      if (name === "__array_from_iter")
+        return (obj: any): any => {
+          // Materialize an iterable/array-like to a real JS array so downstream
+          // destructuring can walk it via .length + indexed access. For proper
+          // iterators (e.g. generators) this invokes the iterator protocol and
+          // propagates any throws from .next() — needed for spec-compliant
+          // destructuring of throwing iterators (#1150).
+          if (obj == null) return [];
+          if (Array.isArray(obj)) return obj;
+          return Array.from(obj);
         };
       if (name === "__extern_slice")
         return (arr: any, start: number) => {
