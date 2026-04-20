@@ -1,0 +1,15 @@
+{
+  "pr": 237,
+  "conclusion": "failure",
+  "head_branch": "fix/check-regressions",
+  "head_sha": "25ee775353835821e64803208d982e25a68988bf",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24673782510",
+  "timestamp": "2026-04-20T15:09:28Z",
+  "pass": 21282,
+  "fail": 13140,
+  "compile_error": 7241,
+  "snapshot_delta": 156,
+  "net_per_test": 156,
+  "regressions": 6,
+  "improvements": 162
+}
