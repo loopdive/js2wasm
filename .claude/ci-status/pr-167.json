@@ -1,0 +1,15 @@
+{
+  "pr": 167,
+  "conclusion": "failure",
+  "head_branch": "issue-1120-int32-bitwise-loop",
+  "head_sha": "e42acaaef541f6882a149bb0a31400ea2ec45782",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640269055",
+  "timestamp": "2026-04-19T23:58:32Z",
+  "pass": 22950,
+  "fail": 14519,
+  "compile_error": 4191,
+  "snapshot_delta": 500,
+  "net_per_test": 500,
+  "regressions": 837,
+  "improvements": 1337
+}

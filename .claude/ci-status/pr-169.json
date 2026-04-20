@@ -1,0 +1,15 @@
+{
+  "pr": 169,
+  "conclusion": "failure",
+  "head_branch": "issue-1045-wasi-dom-error",
+  "head_sha": "bee732fc06d4cc61e19e7c5bde7f7e54fc92653b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640368873",
+  "timestamp": "2026-04-20T00:07:56Z",
+  "pass": 22950,
+  "fail": 14519,
+  "compile_error": 4191,
+  "snapshot_delta": 500,
+  "net_per_test": 500,
+  "regressions": 837,
+  "improvements": 1337
+}

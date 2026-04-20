@@ -1,0 +1,15 @@
+{
+  "pr": 206,
+  "conclusion": "failure",
+  "head_branch": "issue-privatefieldset-brand",
+  "head_sha": "dcf5b067807c8ec0dca83efd2a7c7191fbd92107",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24625101860",
+  "timestamp": "2026-04-19T12:05:23Z",
+  "pass": 22541,
+  "fail": 15332,
+  "compile_error": 3930,
+  "snapshot_delta": 91,
+  "net_per_test": 91,
+  "regressions": 1,
+  "improvements": 92
+}

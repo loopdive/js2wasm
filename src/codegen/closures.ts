@@ -24,6 +24,7 @@ import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/typ
 import {
   addFuncType,
   destructureParamArray,
+  destructureParamObject,
   ensureExnTag,
   ensureStructForType,
   getArrTypeIdxFromVec,
@@ -33,6 +34,11 @@ import {
   nextModuleGlobalIdx,
   resolveWasmType,
 } from "./index.js";
+import {
+  buildDestructureNullThrow,
+  emitExternrefDestructureGuard,
+  isNullOrUndefinedLiteral,
+} from "./destructuring-params.js";
 import {
   coerceType,
   compileExpression,
@@ -565,14 +571,26 @@ export function emitArrowParamDestructuring(
  * Emit the sentinel check + conditional default assignment for a parameter.
  */
 function emitParamDefaultCheckInline(
+  ctx: CodegenContext,
   fctx: FunctionContext,
   paramIdx: number,
   paramType: ValType,
   thenInstrs: Instr[],
 ): void {
   if (paramType.kind === "externref") {
+    // JS default params fire when arg is `undefined` (not just wasm null). Callers
+    // padding missing args use `__get_undefined` which returns real JS undefined,
+    // so a plain `ref.is_null` would miss it and skip the default — triggering
+    // "Cannot destructure 'null' or 'undefined'" on the next guard. Use
+    // `__extern_is_undefined` which covers both wasm null and JS undefined.
     fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "ref.is_null" });
+    const isUndefIdx = ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+    flushLateImportShiftsShared(ctx, fctx);
+    if (isUndefIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+    } else {
+      fctx.body.push({ op: "ref.is_null" });
+    }
     fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
   } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
     fctx.body.push({ op: "local.get", index: paramIdx });
@@ -629,15 +647,35 @@ export function emitArrowParamDefaults(
     const paramType = fctx.params[paramIdx]?.type;
     if (!paramType) continue;
 
+    // Pre-ensure `__extern_is_undefined` before compiling the initializer so any
+    // late-import funcIdx shift happens while `fctx.body` is still authoritative.
+    // Without this, the initializer compiles into `thenInstrs`, which gets
+    // detached from `fctx` after the body swap below — any subsequent shift
+    // triggered by ensureLateImport inside emitParamDefaultCheckInline would
+    // miss `thenInstrs`, leaving stale funcIdx values in its `call` ops.
+    if (paramType.kind === "externref") {
+      ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShiftsShared(ctx, fctx);
+    }
+
+    // Per spec §14.3.3.1/§8.4.2: throw TypeError when destructuring null/undefined.
+    const dstrNullDefault =
+      (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) &&
+      isNullOrUndefinedLiteral(param.initializer);
+
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
-    compileExpression(ctx, fctx, param.initializer, paramType);
-    fctx.body.push({ op: "local.set", index: paramIdx });
+    if (dstrNullDefault) {
+      for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
+    } else {
+      compileExpression(ctx, fctx, param.initializer, paramType);
+      fctx.body.push({ op: "local.set", index: paramIdx });
+    }
     const thenInstrs = fctx.body;
     fctx.body = savedBody;
 
     // Emit the null/zero check + conditional assignment
-    emitParamDefaultCheckInline(fctx, paramIdx, paramType, thenInstrs);
+    emitParamDefaultCheckInline(ctx, fctx, paramIdx, paramType, thenInstrs);
     // Mark param as initialized after the if
     if (tdzFlags) {
       fctx.body.push({ op: "i32.const", value: 1 });
@@ -697,14 +735,31 @@ export function emitMethodParamDefaults(
     const paramType = fctx.params[paramIdx]?.type;
     if (!paramType) continue;
 
+    // Pre-ensure `__extern_is_undefined` before compiling the initializer — see
+    // rationale above in emitArrowParamDefaults. Without this, a late-import
+    // shift inside emitParamDefaultCheckInline misses the detached thenInstrs.
+    if (paramType.kind === "externref") {
+      ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShiftsShared(ctx, fctx);
+    }
+
+    // Per spec §14.3.3.1/§8.4.2: throw TypeError when destructuring null/undefined.
+    const dstrNullDefault =
+      (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) &&
+      isNullOrUndefinedLiteral(param.initializer);
+
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
-    compileExpression(ctx, fctx, param.initializer, paramType);
-    fctx.body.push({ op: "local.set", index: paramIdx });
+    if (dstrNullDefault) {
+      for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
+    } else {
+      compileExpression(ctx, fctx, param.initializer, paramType);
+      fctx.body.push({ op: "local.set", index: paramIdx });
+    }
     const thenInstrs = fctx.body;
     fctx.body = savedBody;
 
-    emitParamDefaultCheckInline(fctx, paramIdx, paramType, thenInstrs);
+    emitParamDefaultCheckInline(ctx, fctx, paramIdx, paramType, thenInstrs);
     if (tdzFlags) {
       fctx.body.push({ op: "i32.const", value: 1 });
       fctx.body.push({ op: "local.set", index: tdzFlags[i]! });
@@ -855,6 +910,12 @@ export function compileArrowAsClosure(
     }
   } else {
     collectReferencedIdentifiers(body, referencedNames);
+  }
+  // Also walk parameter default initializers — e.g. `function({...rest} = o)`
+  // references `o` in the default, which must be captured so it's resolvable
+  // inside the lifted closure.
+  for (const p of arrow.parameters) {
+    if (p.initializer) collectReferencedIdentifiers(p.initializer, referencedNames);
   }
 
   // Transitively add captures needed by called nested functions.
@@ -1197,34 +1258,34 @@ export function compileArrowAsClosure(
   // Emit default-value initialization for simple params with defaults
   emitArrowParamDefaults(ctx, liftedFctx, arrow, 1 /* skip __self */);
 
+  // Fallback: allocate externref locals for each name in a binding pattern.
+  // Used when the param type doesn't match any known struct/vec — locals are
+  // initialized to null/undefined (best-effort; the type is unknown at compile time).
+  function allocBindingLocals(pattern: ts.BindingPattern): void {
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (!ts.isBindingElement(element)) continue;
+      if (ts.isIdentifier(element.name)) {
+        allocLocal(liftedFctx, element.name.text, { kind: "externref" });
+      } else {
+        allocBindingLocals(element.name);
+      }
+    }
+  }
+
   // Destructuring parameter initialization: for parameters with binding patterns
   // (e.g. function([x, y]) or function({a, b})), extract values from the parameter
-  // and assign them to local variables.
+  // and assign them to local variables. Delegate to the shared destructuring
+  // implementations (same as function declarations) so that default initializers,
+  // nested patterns, rest elements, and ReferenceError-on-unresolvable defaults
+  // all work uniformly across function declarations, function expressions, and
+  // arrow functions (#ref-error-A).
   for (let pi = 0; pi < arrow.parameters.length; pi++) {
     const param = arrow.parameters[pi]!;
     if (ts.isIdentifier(param.name)) continue; // simple param, already handled
 
     const paramIdx = pi + 1; // +1 for __self
     const paramType = arrowParams[pi]!;
-
-    // Helper: allocate locals for all identifiers in a binding pattern
-    // using TS type inference for each element. This is a fallback for when
-    // the Wasm type doesn't provide enough info to extract values.
-    const allocBindingLocals = (pattern: ts.BindingPattern) => {
-      for (const element of pattern.elements) {
-        if (ts.isOmittedExpression(element)) continue;
-        if (ts.isIdentifier(element.name)) {
-          const localName = element.name.text;
-          if (!liftedFctx.localMap.has(localName)) {
-            const elemTsType = ctx.checker.getTypeAtLocation(element);
-            const elemWasmType = resolveWasmType(ctx, elemTsType);
-            allocLocal(liftedFctx, localName, elemWasmType);
-          }
-        } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
-          allocBindingLocals(element.name);
-        }
-      }
-    };
 
     if (ts.isArrayBindingPattern(param.name)) {
       // Array destructuring: function([a, b, c]) { ... }
@@ -1320,10 +1381,15 @@ export function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if (resolvedParamType.kind === "ref_null" && fpadInstrs.length > 0) {
+            if (resolvedParamType.kind === "ref_null" && param.name.elements.length > 0) {
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
-              liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
+              liftedFctx.body.push({
+                op: "if",
+                blockType: { kind: "empty" },
+                then: buildDestructureNullThrow(ctx, liftedFctx),
+                else: fpadInstrs,
+              });
             } else {
               liftedFctx.body.push(...fpadInstrs);
             }
@@ -1348,10 +1414,15 @@ export function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if (resolvedParamType.kind === "ref_null" && fpadInstrs.length > 0) {
+            if (resolvedParamType.kind === "ref_null" && param.name.elements.length > 0) {
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
-              liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
+              liftedFctx.body.push({
+                op: "if",
+                blockType: { kind: "empty" },
+                then: buildDestructureNullThrow(ctx, liftedFctx),
+                else: fpadInstrs,
+              });
             } else {
               liftedFctx.body.push(...fpadInstrs);
             }
@@ -1394,15 +1465,34 @@ export function compileArrowAsClosure(
             liftedFctx.body.push({ op: "local.set", index: localIdx });
           }
           liftedFctx.body = savedBodyFPOD;
-          if (paramType.kind === "ref_null" && fpodInstrs.length > 0) {
+          if (paramType.kind === "ref_null" && param.name.elements.length > 0) {
             liftedFctx.body.push({ op: "local.get", index: paramIdx });
             liftedFctx.body.push({ op: "ref.is_null" } as Instr);
-            liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpodInstrs });
+            liftedFctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: buildDestructureNullThrow(ctx, liftedFctx),
+              else: fpodInstrs,
+            });
           } else {
             liftedFctx.body.push(...fpodInstrs);
           }
           handled = allFound;
+        } else if (paramType.kind === "ref_null" && param.name.elements.length > 0) {
+          // Non-struct ref_null type — still need guard when value is null
+          liftedFctx.body.push({ op: "local.get", index: paramIdx });
+          liftedFctx.body.push({ op: "ref.is_null" } as Instr);
+          liftedFctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: buildDestructureNullThrow(ctx, liftedFctx),
+            else: [],
+          });
         }
+      } else if (paramType.kind === "externref" && param.name.elements.length > 0) {
+        // Externref param with non-empty non-struct-matching object pattern:
+        // reject null/undefined per spec (RequireObjectCoercible).
+        emitExternrefDestructureGuard(ctx, liftedFctx, paramIdx);
       }
       if (!handled) {
         allocBindingLocals(param.name);
@@ -1685,6 +1775,9 @@ export function compileArrowAsCallback(
     }
   } else {
     collectReferencedIdentifiers(body, referencedNames);
+  }
+  for (const p of arrow.parameters) {
+    if (p.initializer) collectReferencedIdentifiers(p.initializer, referencedNames);
   }
 
   // Detect which captured variables are written inside the callback body (#859)

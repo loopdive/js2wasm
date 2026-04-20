@@ -106,12 +106,43 @@ function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
   return [{ op: "extern.convert_any" } as Instr];
 }
 
-export function buildDestructureNullThrow(ctx: CodegenContext): Instr[] {
-  const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
+export function buildDestructureNullThrow(ctx: CodegenContext, fctx?: FunctionContext): Instr[] {
+  const msg = "Cannot destructure 'null' or 'undefined'";
   addStringConstantGlobal(ctx, msg);
   const strIdx = ctx.stringGlobalMap.get(msg)!;
+  // Prefer host import so caller sees a genuine JS TypeError (constructor-matching
+  // tests such as `({constructor}) => constructor === TypeError` pass). Fall back
+  // to wasm throw+tag when a FunctionContext isn't available for late-import flush.
+  const throwIdx = ensureLateImport(ctx, "__throw_type_error", [{ kind: "externref" }], []);
+  if (throwIdx !== undefined && fctx) {
+    flushLateImportShifts(ctx, fctx);
+    const funcIdx = ctx.funcMap.get("__throw_type_error")!;
+    return [
+      { op: "global.get", index: strIdx } as Instr,
+      { op: "call", funcIdx } as Instr,
+      { op: "unreachable" } as Instr,
+    ];
+  }
   const tagIdx = ensureExnTag(ctx);
   return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+}
+
+/**
+ * Returns true when `expr` is a literal `null` or `undefined` — which per spec
+ * must throw TypeError when used as the source value for a destructuring pattern
+ * (RequireObjectCoercible / GetIterator).
+ *
+ * Used by parameter default-emission to statically reject `({pat} = null)` and
+ * `({pat} = undefined)` even when paramType is numeric (loses null/undef info).
+ */
+export function isNullOrUndefinedLiteral(expr: ts.Expression): boolean {
+  if (expr.kind === ts.SyntaxKind.NullKeyword) return true;
+  if (ts.isIdentifier(expr) && expr.text === "undefined") return true;
+  if (expr.kind === ts.SyntaxKind.VoidExpression) {
+    const v = expr as ts.VoidExpression;
+    return ts.isNumericLiteral(v.expression);
+  }
+  return false;
 }
 
 /**
@@ -136,8 +167,45 @@ export function destructureParamObjectExternref(
   }
   if (getIdx === undefined) return;
 
+  const excludedKeys: string[] = [];
+  for (const element of pattern.elements) {
+    if (!ts.isBindingElement(element) || element.dotDotDotToken) continue;
+    const pn = element.propertyName ?? element.name;
+    if (ts.isIdentifier(pn)) excludedKeys.push(pn.text);
+    else if (ts.isStringLiteral(pn)) excludedKeys.push(pn.text);
+    else if (ts.isNumericLiteral(pn)) excludedKeys.push(pn.text);
+  }
+
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
+
+    if (element.dotDotDotToken) {
+      if (!ts.isIdentifier(element.name)) continue;
+      const restName = element.name.text;
+      let restIdx = fctx.localMap.get(restName);
+      if (restIdx === undefined) {
+        restIdx = allocLocal(fctx, restName, { kind: "externref" });
+      }
+      let restObjIdx = ctx.funcMap.get("__extern_rest_object");
+      if (restObjIdx === undefined) {
+        const importsBefore = ctx.numImportFuncs;
+        const restObjType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        addImport(ctx, "env", "__extern_rest_object", { kind: "func", typeIdx: restObjType });
+        shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+        restObjIdx = ctx.funcMap.get("__extern_rest_object");
+        getIdx = ctx.funcMap.get("__extern_get");
+      }
+      if (restObjIdx === undefined) continue;
+      const excludedStr = excludedKeys.join(",");
+      addStringConstantGlobal(ctx, excludedStr);
+      const excludedStrIdx = ctx.stringGlobalMap.get(excludedStr);
+      if (excludedStrIdx === undefined) continue;
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "global.get", index: excludedStrIdx });
+      fctx.body.push({ op: "call", funcIdx: restObjIdx });
+      fctx.body.push({ op: "local.set", index: restIdx });
+      continue;
+    }
 
     const propNameNode = element.propertyName ?? element.name;
     let propNameText: string | undefined;
@@ -247,7 +315,7 @@ export function emitExternrefDestructureGuard(ctx: CodegenContext, fctx: Functio
   // Check ref.is_null first (handles null)
   fctx.body.push({ op: "local.get", index: paramIdx });
   fctx.body.push({ op: "ref.is_null" } as Instr);
-  fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: [] });
+  fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx, fctx), else: [] });
 
   // Also check JS undefined via __extern_is_undefined import
   const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
@@ -255,7 +323,7 @@ export function emitExternrefDestructureGuard(ctx: CodegenContext, fctx: Functio
     flushLateImportShifts(ctx, fctx);
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "call", funcIdx: undefIdx });
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: [] });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx, fctx), else: [] });
   }
 }
 
@@ -290,6 +358,12 @@ export function destructureParamObject(
         const typeName = ctx.anonTypeMap.get(tsType) ?? tsType.getSymbol()?.name ?? tsType.aliasSymbol?.name;
         structTypeIdx = typeName ? ctx.structMap.get(typeName) : undefined;
       }
+      // Patterns with a rest element (`{...x}`) cannot use the struct-ref fast
+      // path — struct.get only exposes known fields, but spec-compliant rest
+      // must enumerate every own property (including getters, accessors).
+      // Always route through __extern_rest_object for rest patterns.
+      const hasRestElement = pattern.elements.some((e) => ts.isBindingElement(e) && !!e.dotDotDotToken);
+      if (hasRestElement) structTypeIdx = undefined;
 
       if (structTypeIdx !== undefined) {
         // Use ref.test to check if the value is the expected struct (safe for primitives) (#852)
@@ -433,19 +507,22 @@ export function destructureParamObject(
     }
   }
 
-  // Close null guard — throw TypeError when null (JS spec: destructuring null/undefined is TypeError)
-  if (isNullable) {
+  // Close null guard — throw TypeError when null (JS spec: destructuring null/undefined is TypeError).
+  // Skip for empty `{}` patterns (#225): the guard should only fire when there are
+  // actual property accesses that would trap.
+  if (isNullable && pattern.elements.length > 0) {
     fctx.body = savedBody;
-    if (destructInstrs.length > 0) {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: buildDestructureNullThrow(ctx),
-        else: destructInstrs,
-      });
-    }
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: buildDestructureNullThrow(ctx, fctx),
+      else: destructInstrs,
+    });
+  } else if (isNullable) {
+    fctx.body = savedBody;
+    fctx.body.push(...destructInstrs);
   }
 }
 
@@ -490,6 +567,19 @@ export function destructureParamArray(
         { op: "ref.cast", typeIdx: extVecIdx },
         { op: "local.set", index: resultLocal } as Instr,
       ];
+
+      // Pre-register fallback host imports BEFORE building convertInstrs, so that
+      // any function index shifts from late imports are visible to boxToExternref
+      // calls inside the vec-type conversion loop below. (#825)
+      const fbLenFn = ensureLateImport(ctx, "__extern_length", [{ kind: "externref" }], [{ kind: "f64" }]);
+      flushLateImportShifts(ctx, fctx);
+      const fbGetIdxFn = ensureLateImport(
+        ctx,
+        "__extern_get_idx",
+        [{ kind: "externref" }, { kind: "f64" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
 
       // Else: try each other known vec type and convert element-by-element
       const convertInstrs: Instr[] = [];
@@ -570,6 +660,80 @@ export function destructureParamArray(
         convertInstrs.push({ op: "local.get", index: anyTmp } as Instr);
         convertInstrs.push({ op: "ref.test", typeIdx: vecIdx });
         convertInstrs.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs, else: [] } as Instr);
+      }
+
+      // Fallback: if no Wasm vec type matched, the externref is a plain JS array/iterable.
+      // Use __extern_length + __extern_get_idx host imports to build a vec_externref. (#825)
+      // (imports pre-registered above to avoid stale funcIdx in convertInstrs)
+      if (fbLenFn !== undefined && fbGetIdxFn !== undefined) {
+        const fbLenTmp = allocLocal(fctx, `__dparam_fb_len_${fctx.locals.length}`, { kind: "i32" });
+        const fbArrTmp = allocLocal(fctx, `__dparam_fb_arr_${fctx.locals.length}`, {
+          kind: "ref",
+          typeIdx: extArrTypeIdx,
+        });
+        const fbIdxTmp = allocLocal(fctx, `__dparam_fb_idx_${fctx.locals.length}`, { kind: "i32" });
+
+        const fallbackInstrs: Instr[] = [
+          // len = i32(__extern_length(param))
+          { op: "local.get", index: paramIdx } as Instr,
+          { op: "call", funcIdx: fbLenFn } as Instr,
+          { op: "i32.trunc_sat_f64_s" } as unknown as Instr,
+          { op: "local.set", index: fbLenTmp } as Instr,
+          // arr = array.new_default(len)
+          { op: "local.get", index: fbLenTmp } as Instr,
+          { op: "array.new_default", typeIdx: extArrTypeIdx },
+          { op: "local.set", index: fbArrTmp } as Instr,
+          // idx = 0
+          { op: "i32.const", value: 0 } as Instr,
+          { op: "local.set", index: fbIdxTmp } as Instr,
+          // loop: copy elements
+          {
+            op: "block",
+            blockType: { kind: "empty" },
+            body: [
+              {
+                op: "loop",
+                blockType: { kind: "empty" },
+                body: [
+                  // if idx >= len, break
+                  { op: "local.get", index: fbIdxTmp } as Instr,
+                  { op: "local.get", index: fbLenTmp } as Instr,
+                  { op: "i32.ge_s" } as Instr,
+                  { op: "br_if", depth: 1 } as Instr,
+                  // arr[idx] = __extern_get_idx(param, f64(idx))
+                  { op: "local.get", index: fbArrTmp } as Instr,
+                  { op: "local.get", index: fbIdxTmp } as Instr,
+                  { op: "local.get", index: paramIdx } as Instr,
+                  { op: "local.get", index: fbIdxTmp } as Instr,
+                  { op: "f64.convert_i32_s" } as Instr,
+                  { op: "call", funcIdx: fbGetIdxFn } as Instr,
+                  { op: "array.set", typeIdx: extArrTypeIdx } as Instr,
+                  // idx++
+                  { op: "local.get", index: fbIdxTmp } as Instr,
+                  { op: "i32.const", value: 1 } as Instr,
+                  { op: "i32.add" } as Instr,
+                  { op: "local.set", index: fbIdxTmp } as Instr,
+                  { op: "br", depth: 0 } as Instr,
+                ],
+              } as Instr,
+            ],
+          } as Instr,
+          // Build vec_externref: struct.new(len, arr)
+          { op: "local.get", index: fbLenTmp } as Instr,
+          { op: "local.get", index: fbArrTmp } as Instr,
+          { op: "struct.new", typeIdx: extVecIdx },
+          { op: "local.set", index: resultLocal } as Instr,
+        ];
+
+        // Only run fallback if resultLocal is still null (no vec type matched)
+        convertInstrs.push({ op: "local.get", index: resultLocal } as Instr);
+        convertInstrs.push({ op: "ref.is_null" } as Instr);
+        convertInstrs.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: fallbackInstrs,
+          else: [],
+        } as Instr);
       }
 
       fctx.body.push({
@@ -703,7 +867,7 @@ export function destructureParamArray(
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
-            then: nullDefaultInstrs.length > 0 ? nullDefaultInstrs : buildDestructureNullThrow(ctx),
+            then: nullDefaultInstrs.length > 0 ? nullDefaultInstrs : buildDestructureNullThrow(ctx, fctx),
             else: destructInstrs,
           });
         }
@@ -836,11 +1000,57 @@ export function destructureParamArray(
         fctx.body.push({ op: "local.set", index: restLocal });
       } else if (ts.isArrayBindingPattern(element.name)) {
         // Nested rest with array pattern: function([...[a, b]])
-        const nestedTmpLocal = allocLocal(fctx, `__rest_nested_${fctx.locals.length}`, paramType);
+        // The freshly-created struct is a non-null vec matching the outer vec type.
+        const nestedType: ValType = { kind: "ref", typeIdx: vecTypeIdx };
+        const nestedTmpLocal = allocLocal(fctx, `__rest_nested_${fctx.locals.length}`, nestedType);
         fctx.body.push({ op: "local.set", index: nestedTmpLocal });
-        destructureParamArray(ctx, fctx, nestedTmpLocal, element.name, paramType);
+        destructureParamArray(ctx, fctx, nestedTmpLocal, element.name, nestedType);
+      } else if (ts.isObjectBindingPattern(element.name)) {
+        // Nested rest with object pattern: function([...{length}]) or [...{0:v}]
+        // The rest array is array-like: destructure "length" from vec field 0
+        // and numeric properties via vec's data array. destructureParamObject
+        // on the vec type only knows "length" and "data" — numeric keys would
+        // be skipped. Emit property access inline to cover both shapes.
+        const nestedType: ValType = { kind: "ref", typeIdx: vecTypeIdx };
+        const nestedTmpLocal = allocLocal(fctx, `__rest_nested_${fctx.locals.length}`, nestedType);
+        fctx.body.push({ op: "local.set", index: nestedTmpLocal });
+        ensureBindingLocals(ctx, fctx, element.name);
+        for (const nested of element.name.elements) {
+          if (!ts.isBindingElement(nested)) continue;
+          if (nested.dotDotDotToken) continue;
+          if (!ts.isIdentifier(nested.name)) continue;
+          const propNode = nested.propertyName ?? nested.name;
+          let key: string | undefined;
+          if (ts.isIdentifier(propNode)) key = propNode.text;
+          else if (ts.isStringLiteral(propNode)) key = propNode.text;
+          else if (ts.isNumericLiteral(propNode)) key = propNode.text;
+          if (key === undefined) continue;
+          const localName = nested.name.text;
+          const localIdx = fctx.localMap.get(localName);
+          if (localIdx === undefined) continue;
+          const localType = getLocalType(fctx, localIdx);
+          if (!localType) continue;
+          if (key === "length") {
+            fctx.body.push({ op: "local.get", index: nestedTmpLocal });
+            fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+            coerceType(ctx, fctx, { kind: "i32" }, localType);
+            fctx.body.push({ op: "local.set", index: localIdx });
+            continue;
+          }
+          const numKey = Number(key);
+          if (Number.isInteger(numKey) && numKey >= 0 && String(numKey) === key) {
+            const arrDef = ctx.mod.types[arrTypeIdx];
+            const elemWasmType =
+              arrDef && arrDef.kind === "array" ? arrDef.element : ({ kind: "externref" } as ValType);
+            fctx.body.push({ op: "local.get", index: nestedTmpLocal });
+            fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+            fctx.body.push({ op: "i32.const", value: numKey });
+            emitBoundsCheckedArrayGetUndef(ctx, fctx, arrTypeIdx, elemWasmType);
+            coerceType(ctx, fctx, elemWasmType, localType);
+            fctx.body.push({ op: "local.set", index: localIdx });
+          }
+        }
       } else {
-        // Unsupported pattern — just drop the struct
         fctx.body.push({ op: "drop" });
       }
       continue;
@@ -873,17 +1083,20 @@ export function destructureParamArray(
   }
 
   // Close null guard — throw TypeError when null (JS spec)
+  // Skip for empty `[]` patterns (#225).
   if (isNullable) {
     fctx.body = savedBody;
-    if (destructInstrs.length > 0) {
+    if (destructInstrs.length > 0 && pattern.elements.length > 0) {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" } as Instr);
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },
-        then: buildDestructureNullThrow(ctx),
+        then: buildDestructureNullThrow(ctx, fctx),
         else: destructInstrs,
       });
+    } else if (destructInstrs.length > 0) {
+      fctx.body.push(...destructInstrs);
     }
   }
 }

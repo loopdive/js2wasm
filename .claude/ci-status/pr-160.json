@@ -1,0 +1,15 @@
+{
+  "pr": 160,
+  "conclusion": "failure",
+  "head_branch": "issue-1076-ci-merge-split",
+  "head_sha": "bf79b1ddcfe0350e609bd3576739fa112bc83880",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640270321",
+  "timestamp": "2026-04-20T00:09:34Z",
+  "pass": 22950,
+  "fail": 14519,
+  "compile_error": 4191,
+  "snapshot_delta": 500,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

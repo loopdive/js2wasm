@@ -10,6 +10,7 @@
         document.head.appendChild(base);
       })();
     </script>
+    <script defer src="./frame-nav-sync.js"></script>
     <title>JS² - Javascript compiler</title>
     <meta
       name="description"
@@ -1137,7 +1138,7 @@
     <main>
       <div class="hero-wrap">
         <section class="hero">
-          <img class="hero-logo" src="./js2logo.svg" alt="JS2 logo" />
+          <img class="hero-logo" src="./js2logo-squaring-the-circle-white.svg" alt="JS2 logo" />
           <h1
             id="hero-title"
             data-texts='["A next generation JavaScript compiler.", "Compile JavaScript without embedding a JS engine.",
@@ -1176,8 +1177,8 @@
             <div class="feature-icon"><img src="./javascript-logo-white.svg" alt="JavaScript logo" /></div>
             <h3>Not a New Language</h3>
             <p>
-              Compile existing JavaScript and npm packages without rewriting them into a new language or restricted
-              subset. Stay compatible with the JavaScript ecosystem.
+              Compile existing JavaScript and TypeScript without rewriting into a new language or restricted subset.
+              Target compatibility with the JavaScript ecosystem.
             </p>
           </article>
           <article class="feature-card">
@@ -1266,21 +1267,6 @@
                 <span>Total tests run</span>
               </span>
             </div>
-          </div>
-          <div class="diagram-panel">
-            <perf-benchmark-chart
-              src="./benchmarks/results/playground-benchmark-sidebar.json"
-              title="Runtime Speed"
-              legend="Wasm runtime speed relative to JS (larger is better, whisker = ±1σ)"
-            ></perf-benchmark-chart>
-          </div>
-          <div class="diagram-panel">
-            <perf-benchmark-chart
-              src="./benchmarks/results/loadtime-benchmarks.json"
-              mode="loadtime"
-              title="Loading Speed"
-              legend="Wasm loading speed relative to JS (larger is better, whisker = ±1σ)"
-            ></perf-benchmark-chart>
           </div>
         </div>
 
@@ -1471,13 +1457,17 @@ function legacy() {
                 </details>
               </div>
               <div class="feat-row">
-                <span class="feat-badge none">✗</span>
+                <span class="feat-badge partial">⚠</span>
+                <span class="feat-host">host</span>
                 <span class="feat-name">eval()</span>
-                <span class="feat-desc">Dynamic code evaluation at runtime</span>
+                <span class="feat-desc">Dynamic code evaluation via JS host import</span>
                 <details>
                   <summary></summary>
-                  <pre>eval("1 + 2"); // not supported</pre>
-                  <div class="feat-explain">Requires a JS engine at runtime. Not possible in AOT compilation.</div>
+                  <pre>eval("1 + 2"); // delegated to host</pre>
+                  <div class="feat-explain">
+                    Compiles to a host import that delegates to the JS engine. Requires a JS host runtime; not available
+                    in standalone Wasm.
+                  </div>
                 </details>
               </div>
               <div class="feat-row" data-sloppy>
@@ -2867,22 +2857,43 @@ match (value) {
 
       <section class="section-pad" id="wasm-hosts">
         <div class="intro">
-          <h2>Run JavaScript without an interpreter.</h2>
+          <h2>Tiny modules that start and run fast.</h2>
           <p>
             When running outside of a JS engine like found in browsers or Node.js, compatibility today typically means
             embedding a JS interpreter inside the WebAssembly module. This increases module size and slows execution.
           </p>
-          <p class="host-bench-copy">
-            Each bar shows the measured median for one toolchain. Lower values are better. The vertical marker shows the
-            plain JavaScript baseline running in a JS host.
-          </p>
         </div>
 
         <div class="host-bench-group">
+          <h3 class="host-bench-title">Browser &amp; Node.js</h3>
+          <p class="host-bench-subcopy">
+            Runtime execution speed and module load time relative to plain JavaScript, measured in browser and Node.js
+            environments.
+          </p>
+          <div class="conformance-diagrams">
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/playground-benchmark-sidebar.json"
+                title="Runtime Speed"
+                legend="Wasm runtime speed relative to JS (larger is better, whisker = ±1σ)"
+              ></perf-benchmark-chart>
+            </div>
+            <div class="diagram-panel">
+              <perf-benchmark-chart
+                src="./benchmarks/results/loadtime-benchmarks.json"
+                mode="loadtime"
+                title="Loading Speed"
+                legend="Wasm loading speed relative to JS (larger is better, whisker = ±1σ)"
+              ></perf-benchmark-chart>
+            </div>
+          </div>
+        </div>
+
+        <div class="host-bench-group" id="wasmtime-bench-group" style="display: none">
           <h3 class="host-bench-title">Wasmtime</h3>
           <p class="host-bench-subcopy">
             Compare direct AOT WebAssembly output against interpreter-bundling approaches in a standalone WebAssembly
-            runtime.
+            runtime. Benchmark data is collected when Wasmtime is available in the CI environment.
           </p>
           <div class="conformance-diagrams">
             <div class="diagram-panel">
@@ -2922,9 +2933,10 @@ match (value) {
         <div class="intro">
           <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
-            Write regular JavaScript. The compiler produces a .wasm binary that runs anywhere WebAssembly runs &mdash;
-            browser, server, edge. No interpreter embedded, no garbage collector shipped. When deployed with explicit
-            imports, the module boundary can reduce ambient access and limit supply-chain attack surface.
+            Write regular JavaScript. The compiler produces a .wasm binary that runs in any WebAssembly host with GC
+            support &mdash; browser, server, edge. No interpreter embedded; garbage collection is handled by the host
+            via WasmGC. When deployed with explicit imports, the module boundary can reduce ambient access and limit
+            supply-chain attack surface.
           </p>
         </div>
 
@@ -2959,20 +2971,25 @@ export function run() {
               <span class="how-step-size" id="how-fib-wasm-size">(0.2 KB gzipped)</span>
             </h3>
             <pre class="how-code wat">
-(func $fibonacci (param f64) (result f64)
+;; simplified — actual output includes
+;; box/unbox for externref returns
+(func $fibonacci (param f64) (result externref)
   local.get 0
   f64.const 1
   f64.le
-  (if (result f64)
-    (then local.get 0)
-    (else
-      local.get 0  f64.const 1  f64.sub
-      call $fibonacci
-      local.get 0  f64.const 2  f64.sub
-      call $fibonacci
-      f64.add)))
+  if
+    local.get 0
+    call $__box_number
+    return
+  end
+  local.get 0  f64.const 1  f64.sub
+  call $fibonacci  call $__unbox_number
+  local.get 0  f64.const 2  f64.sub
+  call $fibonacci  call $__unbox_number
+  f64.add
+  call $__box_number)
 
-(func $run (export "run") (result f64)
+(func $run (export "run") (result externref)
   f64.const 10
   call $fibonacci)</pre
             >
@@ -2994,7 +3011,6 @@ export function run() {
               <pre class="how-code js">
 const el = document.createElement("div");
 el.textContent = "Hello from Wasm";
-el.style.color = "blue";
 document.body.appendChild(el);</pre
               >
               <span class="how-code-label">dom.js</span>
@@ -3013,27 +3029,32 @@ document.body.appendChild(el);</pre
               <pre class="how-code wat">
 (import "env" "global_document"
   (func $doc (result externref)))
-(import "env" "__extern_method_call"
-  (func $call (param externref externref)
+(import "env" "Document_createElement"
+  (func $createElement
+    (param externref externref externref)
+    (result externref)))
+(import "env" "Element_set_textContent"
+  (func $setTC (param externref externref)))
+(import "env" "Node_appendChild"
+  (func $appendChild
+    (param externref externref)
+    (result externref)))
+(import "env" "Document_get_body"
+  (func $getBody (param externref)
     (result externref)))
 
 (func $__module_init
   call $doc
   string.const "div"
-  call $call              ;; createElement
+  call $createElement
   local.tee $el
-  string.const "textContent"
   string.const "Hello from Wasm"
-  call $__extern_set      ;; el.textContent = ...
-  local.get $el
-  string.const "color"
-  string.const "blue"
-  call $__style_set       ;; el.style.color = ...
+  call $setTC
   call $doc
-  string.const "body"
-  call $__extern_get      ;; document.body
+  call $getBody
   local.get $el
-  call $call)             ;; .appendChild(el)</pre
+  call $appendChild
+  drop)</pre
               >
               <span class="how-code-label">dom.wat</span>
             </div>
@@ -3041,25 +3062,45 @@ document.body.appendChild(el);</pre
         </div>
 
         <div class="how-step" style="margin-top: 56px">
-          <h3 class="how-step-title">Import and run</h3>
+          <h3 class="how-step-title">Compile and run</h3>
           <pre class="how-code js">
-import { js2 } from "js2wasm";
+// Compile from JavaScript source
+import { compile } from "js2wasm";
+import { buildImports } from "js2wasm/runtime";
 
-// Pure computation — runs standalone
-const app = await js2.import("./app.js");
-console.log(app.run()); // → 55
+const result = compile(sourceCode, {
+  fileName: "app.js"
+});
 
-// DOM example — pass browser globals
-const dom = await js2.import("./dom.js", { document });
-// div is already appended to document.body</pre
+// Instantiate the compiled module
+const imports = buildImports(
+  result.imports, undefined, result.stringPool
+);
+const { instance } = await WebAssembly
+  .instantiate(result.binary, imports);
+console.log(instance.exports.run()); // &rarr; 55</pre
           >
           <span class="how-code-label">run.ts</span>
           <p class="how-sub" style="margin-top: 12px">
-            <code>js2.import()</code>
-            instantiates the cached compiled module or compiles on demand if needed, builds host imports, instantiates,
-            and returns typed exports. Pass browser globals as dependencies for DOM access.
+            <code>compile()</code>
+            produces a
+            <code>.wasm</code>
+            binary and import manifest. Use
+            <code>buildImports()</code>
+            to create the host import object, then instantiate with the standard WebAssembly API.
           </p>
         </div>
+      </section>
+
+      <hr class="divider" />
+
+      <section class="section-pad" id="dep-graph">
+        <h2>Dependency graph.</h2>
+        <p style="color: var(--fg-soft); max-width: 640px; margin-bottom: 24px">
+          Interactive view of issue dependencies. Hover a node to see details, click to highlight its prerequisite and
+          dependent chains.
+        </p>
+        <dep-graph src="./public/graph-data.json"></dep-graph>
       </section>
 
       <hr class="divider" />
@@ -3080,7 +3121,7 @@ const dom = await js2.import("./dom.js", { document });
     <footer>
       <div class="footer-top">
         <div class="footer-brand">
-          <img src="./js2logo.svg" alt="JS² logo" />
+          <img src="./js2logo-squaring-the-circle-white.svg" alt="JS² logo" />
           <p>JavaScript and TypeScript ahead-of-time compilation for WebAssembly GC.</p>
         </div>
         <div class="footer-cols">
@@ -3108,7 +3149,18 @@ const dom = await js2.import("./dom.js", { document });
     <script type="module" src="./components/site-nav.js"></script>
     <script type="module" src="./components/t262-charts.js"></script>
     <script type="module" src="./components/perf-benchmark-chart.js"></script>
+    <script>
+      fetch("./benchmarks/results/wasm-host-wasmtime-coldstart.json")
+        .then((r) => r.json())
+        .then((d) => {
+          if (Array.isArray(d) && d.length > 0) {
+            document.getElementById("wasmtime-bench-group").style.display = "";
+          }
+        })
+        .catch(() => {});
+    </script>
     <script src="./components/trend-chart.js"></script>
+    <script src="./components/dep-graph.js"></script>
 
     <script>
       (function mountPuzzleBackground() {

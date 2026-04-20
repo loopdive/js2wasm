@@ -64,6 +64,7 @@ export function createCodegenContext(
     funcUsesArguments: new Set(),
     extrasArgvGlobalIdx: -1,
     extrasArgvVecTypeIdx: -1,
+    argcGlobalIdx: -1,
     valueOfClosureTypes: new Map(),
     exnTagIdx: -1,
     hasUnionImports: false,
@@ -100,6 +101,7 @@ export function createCodegenContext(
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
+    needsToUint32: false,
     classDeclarationMap: new Map(),
     wrapperNumberTypeIdx: -1,
     wrapperStringTypeIdx: -1,
@@ -118,7 +120,10 @@ export function createCodegenContext(
     wasi: options?.wasi ?? false,
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,
+    wasiPathOpenIdx: -1,
+    wasiFdCloseIdx: -1,
     wasiBumpPtrGlobalIdx: -1,
+    wasiNodeFsFuncs: options?.wasiNodeFsFuncs ?? new Set(),
     tdzGlobals: new Map(),
     tdzLetConstNames: new Set(),
     definedPropertyFlags: new Map(),
@@ -128,6 +133,7 @@ export function createCodegenContext(
     shapePropFlags: new Map(),
     funcConstructorMap: new Map(),
     ensureStructPending: new Set(),
+    nodeBuiltinGlobals: new Map(),
   };
 
   getOrRegisterVecType(ctx, "externref", { kind: "externref" });

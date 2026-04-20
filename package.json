@@ -1,30 +1,71 @@
 {
-  "name": "js2wasm",
+  "name": "@loopdive/js2",
   "version": "0.1.0",
+  "description": "Direct AOT compilation from JavaScript and TypeScript to WebAssembly GC",
+  "keywords": [
+    "webassembly",
+    "wasm",
+    "wasm-gc",
+    "compiler",
+    "typescript",
+    "aot",
+    "ahead-of-time",
+    "javascript"
+  ],
+  "homepage": "https://js2.loopdive.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/loopdive/js2.git"
+  },
+  "bugs": {
+    "url": "https://github.com/loopdive/js2/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "author": "Thomas Tränkler <git@thomas.traenkler.com>",
   "license": "Apache-2.0 WITH LLVM-exception",
   "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "bin": {
+    "js2": "./dist/cli.js",
     "js2wasm": "./dist/cli.js"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js"
+    },
+    "./optimize": {
+      "types": "./dist/optimize.d.ts",
+      "import": "./dist/optimize.js"
+    },
+    "./cli": "./dist/cli.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
-    "build": "vite build",
+    "build": "vite build --config vite.config.lib.ts",
+    "build:playground": "vite build --config playground/vite.config.ts",
     "dev": "pnpm run build:compiler-bundle && vite serve --config playground/vite.config.ts",
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
+    "prepublishOnly": "pnpm run build",
     "refresh:benchmarks": "npx tsx benchmarks/run.ts && pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && pnpm run generate:size-benchmarks && node scripts/generate-browser-runtime-benchmarks.mjs",
     "benchmark:competitive": "pnpm run build:compiler-bundle && node --experimental-strip-types benchmarks/compare-runtimes.ts",
     "build:compiler-bundle": "esbuild scripts/compiler-bundle-entry.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript --external:binaryen",
@@ -41,14 +82,12 @@
     "publish:public": "node scripts/publish-public-repo.mjs",
     "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
     "report": "npx tsx scripts/serve-report.ts",
-    "build:playground": "pnpm run build:compiler-bundle && node scripts/generate-playground-benchmark-sidebar.mjs && vite build --config playground/vite.config.ts",
     "build:pages": "node scripts/run-pages-build.mjs",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
     "prepare": "git config core.hooksPath .husky || true"
   },
   "dependencies": {
     "binaryen": "^125.0.0",
-    "shiki": "^4.0.2",
     "typescript": "^5.7"
   },
   "devDependencies": {
@@ -65,6 +104,7 @@
     "lodash-es": "^4.18.1",
     "monaco-editor": "^0.55.1",
     "prettier": "^3.8.1",
+    "shiki": "^4.0.2",
     "ts-morph": "^27.0.2",
     "vite": "^6",
     "vite-plugin-dts": "^4",
