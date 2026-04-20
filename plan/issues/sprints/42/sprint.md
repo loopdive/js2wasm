@@ -363,6 +363,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
 | #1132 | Publish compiler as @loopdive/js2 on npm + JSR | high | in-progress |
 | #1147 | Fix _start export regressions — 639 test262 failures from PR #177 | high | in-progress |
+| #1148 | Investigate skip:103 regression — Annex B eval-code skip filter | high | in-progress |
+| #1149 | Fix null_deref:32 — eval-code direct methods with arguments declare | high | in-progress |
+| #1150 | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | high | in-progress |
 
 ### Review
 

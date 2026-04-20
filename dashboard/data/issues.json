@@ -2029,6 +2029,16 @@
   ],
   "inprogress": [
     {
+      "id": "1147",
+      "title": "Fix _start export regressions — 639 test262 failures from PR #177",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
