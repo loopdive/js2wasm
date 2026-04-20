@@ -4,13 +4,26 @@ description: Devs must send status via TaskUpdate not verbose SendMessage, and s
 type: feedback
 originSessionId: 0ffbd21c-b73d-429a-a76d-4fb742ea9794
 ---
-Two related rules for keeping dev ↔ tech-lead communication token-efficient:
+Three rules for keeping dev ↔ tech-lead communication token-efficient:
+
+## 0. No idle notifications
+
+When TaskList is empty and a dev has nothing to do, they MUST stay silent — no `idle_notification` JSON, no "standing by" SendMessage. Idle pings land in the tech lead's context stream and add tokens every turn for the rest of the session.
+
+**Why:** idle_notification blobs are pure overhead — they carry no decision-relevant information. Each one injected into the tech lead context costs ~100 tokens on every subsequent tool call for the lifetime of the session. In a session with 4 devs firing 3-4 idle pings each, this adds thousands of wasted tokens.
+
+**How to apply:**
+- Devs: when TaskList returns empty, simply stop. Don't message. Wait for dispatch.
+- Tech lead: if an idle_notification arrives, ignore it and do not ping back asking for status. That causes a message-crossing loop.
+- Brief new dev agents on this at spawn time: "When idle, stay silent."
 
 ## 1. Status updates → TaskUpdate, not SendMessage
 
 When a dev has progress to report (branch pushed, PR opened, tests passing, blocker hit), they should call `TaskUpdate` on their current task, NOT send a multi-paragraph SendMessage narrating what they did.
 
 **Why:** SendMessage content lands verbatim in the tech lead's conversation context. A 500-word status report from one dev costs the tech lead ~700 tokens every subsequent tool call for the rest of the session. TaskUpdate metadata is queried on-demand via `TaskGet`, and only when the tech lead actually needs it.
+
+**Tech lead must NOT ping agents asking for status.** Doing so triggers a response, which may cross with an in-flight report, causing duplicate messages and cascading token waste. Wait for the agent to self-report when done.
 
 **When SendMessage is still appropriate:**
 - Blocker requiring tech lead decision ("need input on approach for X")
