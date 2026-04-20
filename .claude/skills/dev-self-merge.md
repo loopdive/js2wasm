@@ -1,11 +1,11 @@
 ---
 name: dev-self-merge
-description: Criteria and procedure for devs to self-merge their own PRs after CI reports clean, without waiting for tech lead admin-merge. Invoked after Option B's FileChanged hook fires on .claude/ci-status/pr-<N>.json.
+description: Criteria and procedure for devs to self-merge their own PRs after CI reports clean, without waiting for tech lead admin-merge. Dev waits (idle) after gh pr create, polling .claude/ci-status/pr-<N>.json until SHA matches HEAD, then runs this checklist.
 ---
 
 # Dev self-merge
 
-After `gh pr create` and CI has completed (you'll know via the FileChanged hook firing on `.claude/ci-status/pr-<N>.json`), you can self-merge your own PR without waiting for the tech lead — IF all the criteria below hold. The tech lead is a bottleneck by design; this skill eliminates them from the critical path for unambiguously clean PRs.
+After `gh pr create`, wait (idle — no next task yet) until `.claude/ci-status/pr-<N>.json` appears with a SHA matching your branch HEAD. Then run through this checklist. You can self-merge your own PR without waiting for the tech lead — IF all the criteria below hold. The tech lead is a bottleneck by design; this skill eliminates them from the critical path for unambiguously clean PRs.
 
 ## When NOT to self-merge
 
