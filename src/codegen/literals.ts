@@ -587,12 +587,17 @@ export function compileWidenedEmptyObject(
   widenedProps: { name: string; type: ValType }[],
 ): ValType | null {
   // The struct was already registered during the pre-pass (collectEmptyObjectWidening).
-  // Look it up via the anonTypeMap.
+  // Look it up via the anonTypeMap, or the widenedVarStructMap (which holds the pre-pass
+  // registration even for `any`-typed vars that must skip anonTypeMap to avoid polluting
+  // the singleton `any` type object).
   const type = ctx.checker.getTypeAtLocation(expr);
   let typeName = ctx.anonTypeMap.get(type);
   if (!typeName && ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
     const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
     typeName = ctx.anonTypeMap.get(varType);
+  }
+  if (!typeName && ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
+    typeName = ctx.widenedVarStructMap.get(expr.parent.name.text);
   }
   if (!typeName) {
     // Fallback: the pre-pass should have registered it but didn't match type identity.
@@ -618,9 +623,17 @@ export function compileWidenedEmptyObject(
       ctx.structMap.set(typeName, typeIdx);
       ctx.typeIdxToStructName.set(typeIdx, typeName);
       ctx.structFields.set(typeName, fields);
-      ctx.anonTypeMap.set(type, typeName);
+      // Skip anonTypeMap registration for `any` — it's a singleton type object shared by
+      // all any-typed vars, so registering it would pollute every any-typed var's lookup.
+      if (!(type.flags & ts.TypeFlags.Any)) {
+        ctx.anonTypeMap.set(type, typeName);
+      }
       const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
-      ctx.anonTypeMap.set(varType, typeName);
+      if (!(varType.flags & ts.TypeFlags.Any)) {
+        ctx.anonTypeMap.set(varType, typeName);
+      }
+      // Record via widenedVarStructMap so later lookups still find it for any-typed vars.
+      ctx.widenedVarStructMap.set(expr.parent.name.text, typeName);
     }
   }
   if (!typeName) return null;
