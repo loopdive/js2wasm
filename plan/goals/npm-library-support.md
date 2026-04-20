@@ -38,6 +38,7 @@ not.
 | **1032** | Compile axios to Wasm — Node builtins routed as host imports; harvest error patterns | Backlog | ready | high |
 | **1033** | Compile React to Wasm — UI library stress test; DOM as host imports; harvest closure/hook/Symbol patterns | Backlog | ready | high |
 | **1043** | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | 42 | ready | high |
+| **1043** | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | 43 | ready | high |
 | **1060** | ModuleResolver prefers @types/*/.d.ts over real .js body, dropping npm implementations | 41 | done | high |
 | **1061** | analyzeMultiSource / compileMultiSource drops allowJs and forces .js → .ts | 41 | done | high |
 | **1068** | parser: 'await' not allowed as label identifier — blocks prettier/index.mjs | 41 | done | medium |
@@ -45,6 +46,7 @@ not.
 | **1072** | runtime: f64 → externref coercion missing on function return in bundled prettier (trimNewlinesEnd validation fail) | 41 | done | high |
 | **1074** | Surface ESM default export as a named Wasm function export | 41 | done | high |
 | **1075** | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | 42 | ready | high |
+| **1075** | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | 43 | ready | high |
 | **1107** | lodash-es Tier 1 E2E harness — identity, clamp, add compile and run | 42 | done | critical |
 | **1108** | lodash-es add: export default of HOF closure result not surfaced as Wasm export | 42 | done | high |
 
