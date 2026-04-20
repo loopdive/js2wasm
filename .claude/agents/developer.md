@@ -31,13 +31,29 @@ Message only what the recipient needs to act on. Broadcasts wake every agent —
 
 ### On completion
 1. Commit all work on your branch
-2. Merge main into your branch: `git merge main`
-3. Push your branch to `origin`
-4. Open a PR against `main`
-5. Signal tech lead: `"PR ready: <url>. Branch <name>, commit <hash>."`
-6. **Do NOT run test262 yourself.** The GitHub `test262` workflow validates branch PRs and `main` commits.
-7. **Wait for PR merge confirmation.** Continue working on the NEXT task while waiting — pick from TaskList. But do NOT merge anything yourself.
-8. Once tech lead confirms merge: mark previous task as `completed`.
+2. **Merge main into your branch first**: `git fetch origin && git merge origin/main`
+   - Planning artifact conflicts (`dashboard/`, `plan/`, `public/graph-data.json`): resolve with `git checkout --theirs <file>`, then regen with `pnpm run build:planning-artifacts`
+   - Compiler source conflicts (`src/**/*.ts`): **do NOT resolve inline**. Create a priority TaskList item: `[CONFLICT] Resolve merge conflicts on <branch>: <file1>, <file2>` and assign to a `senior-developer` agent (Opus). Wait for it to resolve and push before continuing.
+3. Run scoped local checks (issue-specific compile+run)
+4. `git push origin <branch>`
+5. `gh pr create --base main --title "..." --body "..."`
+6. **Wait for CI** — monitor `.claude/ci-status/pr-<N>.json` until it appears with a SHA matching your current branch HEAD:
+   ```bash
+   # Poll every 60s until the file exists and SHA matches
+   while true; do
+     if [ -f .claude/ci-status/pr-<N>.json ]; then
+       sha=$(node -e "console.log(require('./.claude/ci-status/pr-<N>.json').sha)")
+       head=$(git rev-parse HEAD)
+       if [ "$sha" = "$head" ]; then break; fi
+     fi
+     sleep 60
+   done
+   ```
+7. Read the result:
+   - `net_per_test > 0` (or `== 0` with no regressions): **self-merge**: `gh pr merge <N> --admin --merge`
+   - regressions detected: fix on your branch, `git push`, loop back to step 6
+   - `net_per_test < 0` with >10 regressions or a single bucket >50: escalate to tech lead before merging
+8. After merge: mark task `completed` in TaskList and claim the next unowned task.
 
 **"Completed" means merged to main, not "code done".** Do not mark a task completed until the merge is confirmed.
 
@@ -50,18 +66,14 @@ You can invoke these on-demand by reading the skill file and following its steps
 - `.claude/skills/create-issue.md` — create a new issue from a failure pattern you discover
 
 ### Integration and merge rules
-- **Before signaling completion**: merge main into your branch, re-run your scoped local checks, push, open a PR, then signal.
-  1. Commit all your work first
-  2. `git merge main` — merges main into YOUR branch (not rebase)
-  3. If conflicts: resolve them yourself. If merge goes badly: `git merge --abort` and retry or ask for help.
-  4. Re-run your scoped local checks **after** merge (catches integration breakage)
-  5. `git push` your branch and open a PR to trigger CI
-  6. Only signal completion after the PR exists and your post-merge local checks pass
-- When tech lead broadcasts "Main updated" → `git merge main` into your branch before your next commit
-- **You do not merge to main yourself.** Open a PR and let the branch CI run the `test262` workflow on your integrated branch.
-- Main is protected by CI, not by a local tester handoff.
-- **Never use `git merge` (without --ff-only) on main.** Only `git merge --ff-only` is allowed on main.
-- **ff-only with merge commits**: your branch will have merge commits from `git merge main` — that's normal. ff-only still works because your branch tip includes main's HEAD. If ff-only fails, it means main moved since your last `git merge main` — just merge main into your branch again and retry. **Never rebase** to fix ff-only.
+- **Merge main into your branch BEFORE opening a PR** — not after. This catches conflicts locally before CI runs.
+- Conflict taxonomy:
+  - Planning artifacts (`dashboard/`, `plan/`, `public/`) → `git checkout --theirs` + `pnpm run build:planning-artifacts`
+  - Compiler source (`src/**/*.ts`) → dispatch to `senior-developer` (Opus) via priority TaskList item; do NOT resolve inline
+- **You self-merge your own clean PRs** via `gh pr merge --admin --merge` once CI confirms `net_per_test > 0` and SHA matches.
+- Escalate to tech lead only when: regressions > 10, or single error bucket > 50, or you're unsure.
+- **Never use `git merge` on main directly.** All merges go through PRs.
+- **Never rebase.** If ff-only would fail (main moved), just `git merge origin/main` into your branch again and re-push.
 
 ### Pause and suspend protocols
 
