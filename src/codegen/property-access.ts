@@ -1181,17 +1181,30 @@ export function compilePropertyAccess(
     const lengthSigs =
       callSigs && callSigs.length > 0 ? callSigs : constructSigs2 && constructSigs2.length > 0 ? constructSigs2 : null;
     if (lengthSigs && lengthSigs.length > 0) {
-      // ES spec: Function.length = number of required params before first
-      // optional/default/rest. TS forbids required-after-optional, so filtering
-      // out optional/default/rest is equivalent to iterating until the first one.
-      const sig = lengthSigs[0]!;
-      const paramCount = sig.parameters.filter((p: any) => {
-        const decl = p.valueDeclaration;
-        if (!decl || !ts.isParameter(decl)) return true;
-        return !decl.dotDotDotToken && !decl.questionToken && !decl.initializer;
-      }).length;
-      fctx.body.push({ op: "f64.const", value: paramCount });
-      return { kind: "f64" };
+      // For library/ambient functions, TS's param count can disagree with the
+      // runtime Function.length — the ES spec pins .length for methods like
+      // Array.prototype.toSorted to 1 even though the lib d.ts declares
+      // compareFn as optional ("?"). Defer to __extern_get("length") so the
+      // runtime value wins. The static path stays for user-defined functions
+      // where the runtime value is a wasm funcref without a readable .length.
+      const isLibrarySig = lengthSigs.some((s) => {
+        const decl = s.getDeclaration?.();
+        return decl?.getSourceFile().isDeclarationFile === true;
+      });
+      if (!isLibrarySig) {
+        // ES spec: Function.length = number of required params before first
+        // optional/default/rest. TS forbids required-after-optional, so filtering
+        // out optional/default/rest is equivalent to iterating until the first one.
+        const sig = lengthSigs[0]!;
+        const paramCount = sig.parameters.filter((p: any) => {
+          const decl = p.valueDeclaration;
+          if (!decl || !ts.isParameter(decl)) return true;
+          return !decl.dotDotDotToken && !decl.questionToken && !decl.initializer;
+        }).length;
+        fctx.body.push({ op: "f64.const", value: paramCount });
+        return { kind: "f64" };
+      }
+      // Library signature → fall through to externref / __extern_get path below.
     }
   }
 
