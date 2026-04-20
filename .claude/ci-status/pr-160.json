@@ -4,11 +4,11 @@
   "head_branch": "issue-1076-ci-merge-split",
   "head_sha": "bf79b1ddcfe0350e609bd3576739fa112bc83880",
   "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640270321",
-  "timestamp": "2026-04-20T00:09:34Z",
+  "timestamp": "2026-04-20T23:58:41Z",
   "pass": 22950,
   "fail": 14519,
   "compile_error": 4191,
-  "snapshot_delta": 500,
+  "snapshot_delta": 1569,
   "net_per_test": null,
   "regressions": null,
   "improvements": null
