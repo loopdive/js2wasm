@@ -1,6 +1,16 @@
 {
   "backlog": [
     {
+      "id": "1133",
+      "title": "Fibonacci story points, velocity tracking, and token-budgeted sprint sizing",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "methodology",
+      "status": "backlog",
+      "sprint": ""
+    },
+    {
       "id": "1111",
       "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
       "priority": "medium",
@@ -9,6 +19,16 @@
       "goal": "builtin-methods",
       "status": "backlog",
       "sprint": "42"
+    },
+    {
+      "id": "1111",
+      "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "builtin-methods",
+      "status": "backlog",
+      "sprint": "43"
     },
     {
       "id": "1029",
@@ -89,6 +109,18 @@
       "sprint": "42"
     },
     {
+      "id": "742",
+      "title": "Extract and refactor compileCallExpression (3,350 lines)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "688"
+      ],
+      "goal": "maintainability",
+      "status": "blocked",
+      "sprint": "43"
+    },
+    {
       "id": "735",
       "title": "- Async iteration correctness (329 tests)",
       "priority": "medium",
@@ -104,10 +136,114 @@
   ],
   "ready": [
     {
-      "id": "1127",
-      "title": "new C() with var C = class {...} resolves to inner class ctor when outer has nested class field",
+      "id": "1137",
+      "title": "Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "platform",
+      "status": "ready",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1136",
+      "title": "Reference platform scenario: capability-safe DOM wrapper with explicit subtree authority",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "platform",
+      "status": "ready",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1135",
+      "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1134",
+      "title": "__any_eq loose equality missing cross-tag coercion — null==undefined, bool==number all return false",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1131",
+      "title": "Middle-end SSA IR: implementation plan",
       "priority": "high",
       "feasibility": "hard",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1130",
+      "title": "Array methods — getter-observing property access on indices and length",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1129",
+      "title": "ToObject (§7.1.18) not implemented — no primitive auto-boxing",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1128",
+      "title": "OrdinaryToPrimitive returns undefined instead of throwing TypeError (§7.1.1.1 step 6)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1090"
+      ],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1128",
+      "title": "Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "test262",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1127",
+      "title": "SameValue for DefineProperty f64 comparison uses f64.ne — wrong for NaN and ±0",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1127",
+      "title": "Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]]",
+      "priority": "medium",
+      "feasibility": "medium",
       "depends_on": [],
       "goal": "conformance",
       "status": "open",
@@ -124,6 +260,16 @@
       "sprint": "42"
     },
     {
+      "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1126",
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
@@ -136,6 +282,18 @@
       "sprint": "42"
     },
     {
+      "id": "1126",
+      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1125",
       "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
       "priority": "high",
@@ -146,12 +304,32 @@
       "sprint": "42"
     },
     {
+      "id": "1125",
+      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "benchmarking",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1123",
       "title": "Verify landing page claims and code examples against current compiler behavior",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "correctness",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1122",
+      "title": "Keep standalone recursive numeric benchmark stable across non-run entry exports",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
       "status": "ready",
       "sprint": "42"
     },
@@ -163,7 +341,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1121",
@@ -178,6 +356,18 @@
       "sprint": "42"
     },
     {
+      "id": "1121",
+      "title": "Infer numeric recursive fast path without JSDoc hints on exported entrypoints",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1120",
       "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
       "priority": "high",
@@ -186,6 +376,26 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1120",
+      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1119",
+      "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "open",
+      "sprint": "Backlog"
     },
     {
       "id": "1119",
@@ -206,6 +416,16 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1119",
+      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1118",
@@ -240,6 +460,18 @@
       "goal": "compilable",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1109",
+      "title": "lodash-es clamp: Wasm validation error in typeof/RegExp codegen path",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1107"
+      ],
+      "goal": "compilable",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1105",
@@ -314,6 +546,18 @@
       "sprint": "42"
     },
     {
+      "id": "1099",
+      "title": "Standalone execution demo — compile and run a program on Wasmtime with zero JS host",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1094"
+      ],
+      "goal": "platform",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1098",
       "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
       "priority": "medium",
@@ -322,6 +566,16 @@
       "goal": "core-semantics",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1098",
+      "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1096",
@@ -334,6 +588,16 @@
       "sprint": "42"
     },
     {
+      "id": "1096",
+      "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "platform",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1095",
       "title": "Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes",
       "priority": "medium",
@@ -344,6 +608,16 @@
       "sprint": "42"
     },
     {
+      "id": "1095",
+      "title": "Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1094",
       "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
       "priority": "high",
@@ -351,7 +625,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1093",
@@ -361,7 +635,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1089",
@@ -384,6 +658,18 @@
       "goal": "maintainability",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1086",
+      "title": "codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1085"
+      ],
+      "goal": "maintainability",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1083",
@@ -418,6 +704,16 @@
       "sprint": "42"
     },
     {
+      "id": "1080",
+      "title": "[umbrella] Fix CI baseline-drift regression gate — main is not self-healing",
+      "priority": "critical",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1079",
       "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
       "priority": "medium",
@@ -428,9 +724,43 @@
       "sprint": "42"
     },
     {
+      "id": "1079",
+      "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1078",
       "title": "CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion",
       "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1076"
+      ],
+      "goal": "ci-hardening",
+      "status": "ready",
+      "sprint": "42"
+    },
+    {
+      "id": "1078",
+      "title": "CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1076"
+      ],
+      "goal": "ci-hardening",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1077",
+      "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
+      "priority": "high",
       "feasibility": "easy",
       "depends_on": [
         "1076"
@@ -449,7 +779,7 @@
       ],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1076",
@@ -460,6 +790,16 @@
       "goal": "ci-hardening",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1076",
+      "title": "CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline",
+      "priority": "critical",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1075",
@@ -476,6 +816,20 @@
       "sprint": "42"
     },
     {
+      "id": "1075",
+      "title": "CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1060",
+        "1061",
+        "1074"
+      ],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1073",
       "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
       "priority": "high",
@@ -485,7 +839,7 @@
       ],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1067",
@@ -495,7 +849,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1066",
@@ -536,6 +890,20 @@
       "sprint": "42"
     },
     {
+      "id": "1058",
+      "title": "Compile the TypeScript compiler itself to Wasm — self-hosting stress test",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1042",
+        "1044",
+        "1046"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1052",
       "title": "Array destructuring ignores user-overridden Array.prototype[Symbol.iterator]",
       "priority": "low",
@@ -568,6 +936,18 @@
       "sprint": "42"
     },
     {
+      "id": "1045",
+      "title": "DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1041"
+      ],
+      "goal": "platform",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1044",
       "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
       "priority": "high",
@@ -576,6 +956,16 @@
         "1041"
       ],
       "goal": "async-model",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1043",
+      "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
       "status": "ready",
       "sprint": "42"
     },
@@ -587,7 +977,7 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1042",
@@ -620,6 +1010,16 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "1035",
+      "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1033",
@@ -667,16 +1067,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "1008",
-      "title": "Add mobile-first layout support to the playground",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "Backlog"
-    },
-    {
       "id": "1006",
       "title": "Support eval via JS host import",
       "priority": "medium",
@@ -684,7 +1074,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1005",
@@ -693,6 +1083,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1004",
+      "title": "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "generator-model",
       "status": "ready",
       "sprint": "42"
     },
@@ -703,6 +1103,18 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "generator-model",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1003",
+      "title": "Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1000"
+      ],
+      "goal": "contributor-readiness",
       "status": "ready",
       "sprint": "42"
     },
@@ -716,7 +1128,7 @@
       ],
       "goal": "contributor-readiness",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1002",
@@ -739,6 +1151,16 @@
       "sprint": "42"
     },
     {
+      "id": "1001",
+      "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1000",
       "title": "Normalize issue frontmatter and repopulate historical sprint issue assignments",
       "priority": "high",
@@ -749,6 +1171,16 @@
       "sprint": "42"
     },
     {
+      "id": "1000",
+      "title": "Normalize issue frontmatter and repopulate historical sprint issue assignments",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "996",
       "title": "Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout",
       "priority": "low",
@@ -756,7 +1188,7 @@
       "depends_on": [],
       "goal": "error-model",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "995",
@@ -766,7 +1198,7 @@
       "depends_on": [],
       "goal": "iterator-protocol",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "994",
@@ -776,7 +1208,7 @@
       "depends_on": [],
       "goal": "compilable",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "993",
@@ -786,7 +1218,7 @@
       "depends_on": [],
       "goal": "compilable",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "992",
@@ -796,7 +1228,7 @@
       "depends_on": [],
       "goal": "iterator-protocol",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "991",
@@ -806,7 +1238,7 @@
       "depends_on": [],
       "goal": "error-model",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "983",
@@ -851,7 +1283,7 @@
       ],
       "goal": "developer-experience",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "906",
@@ -865,6 +1297,19 @@
       "goal": "error-model",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "906",
+      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "800",
+        "898"
+      ],
+      "goal": "error-model",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "905",
@@ -1087,6 +1532,16 @@
       "sprint": "42"
     },
     {
+      "id": "862",
+      "title": "Empty error message failures: iterator/destructuring step-err tests (212 FAIL)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "crash-free",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "861",
       "title": "Playground: fs module externalized error in browser",
       "priority": "high",
@@ -1115,6 +1570,16 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "854",
+      "title": "Iterator protocol: null next/return/throw methods (126 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "838",
@@ -1299,6 +1764,18 @@
       "sprint": "42"
     },
     {
+      "id": "773",
+      "title": "Monomorphize functions: compile with call-site types, not generic externref",
+      "priority": "critical",
+      "feasibility": "hard",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "compilable",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "745",
       "title": "Tagged union representation to replace externref boxing",
       "priority": "high",
@@ -1320,6 +1797,19 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "42"
+    },
+    {
+      "id": "744",
+      "title": "Function monomorphization for polymorphic call sites",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "743",
+        "1124"
+      ],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "743",
@@ -1539,6 +2029,26 @@
   ],
   "inprogress": [
     {
+      "id": "1132",
+      "title": "Publish compiler as @loopdive/js2 on npm + JSR",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "distribution",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
+      "id": "1093",
+      "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
       "id": "1064",
       "title": "DataView bridge: subview metadata so bounds errors propagate",
       "priority": "medium",
@@ -1579,6 +2089,18 @@
       "sprint": "Backlog"
     },
     {
+      "id": "1044",
+      "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1041"
+      ],
+      "goal": "async-model",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
       "id": "1022",
       "title": "Array built-in method 'object is not a function' (640 FAIL)",
       "priority": "critical",
@@ -1595,6 +2117,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
+      "id": "1008",
+      "title": "Add mobile-first layout support to the playground",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "developer-experience",
       "status": "in-progress",
       "sprint": "42"
     },
@@ -1634,8 +2166,50 @@
   ],
   "review": [
     {
+      "id": "1123",
+      "title": "Verify landing page claims and code examples against current compiler behavior",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
       "id": "1117",
       "title": "Expected TypeError but got wrong error type (136 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1094",
+      "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1073",
+      "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1006"
+      ],
+      "goal": "spec-completeness",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1067",
+      "title": "Dependency graph as a web component adopting the landing page color scheme",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -1654,6 +2228,26 @@
       "sprint": "Backlog"
     },
     {
+      "id": "1006",
+      "title": "Support eval via JS host import",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1005",
+      "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
       "id": "929",
       "title": "Object.defineProperty called on non-object (88 FAIL)",
       "priority": "medium",
@@ -1662,6 +2256,18 @@
       "goal": "test-infrastructure",
       "status": "review",
       "sprint": "Backlog"
+    },
+    {
+      "id": "907",
+      "title": "Replace __init_done runtime guards with start/init entry semantics",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "900"
+      ],
+      "goal": "developer-experience",
+      "status": "review",
+      "sprint": "42"
     },
     {
       "id": "871",
@@ -1717,6 +2323,118 @@
     }
   ],
   "done": [
+    {
+      "id": "1146",
+      "title": "for-of: nested rest binding patterns not decoded (825 ary-rest-rest cluster)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "825"
+      ],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1145",
+      "title": "Async generator: undefined tuple elements promote to f64, corrupting sNaN sentinel",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1144",
+      "title": "Static class elements: this.#priv access inside static methods uses wrong receiver",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1143",
+      "title": "Array callback arg push not gated on paramTypes.length — extra args emitted unconditionally",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1142",
+      "title": "Class method .call()/.apply() missing brand-check on thisArg",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1141",
+      "title": "Object.defineProperties: descriptor shape not validated per ECMA-262 §10.1",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1140",
+      "title": "Array methods .call() with array-like receiver not supported",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1139",
+      "title": "Destructuring: TypeError not thrown on null/undefined source (RequireObjectCoercible)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1138",
+      "title": "Destructuring: unresolvable defaults throw ReferenceError instead of being undefined",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1137",
+      "title": "ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1136",
+      "title": "Array.prototype.flat() and flatMap() not implemented",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
     {
       "id": "1124",
       "title": "Audit current codegen IR and, if needed, define a minimal SSA middle-end",
@@ -2300,6 +3018,66 @@
       "goal": "core-semantics",
       "status": "done",
       "sprint": "41"
+    },
+    {
+      "id": "996",
+      "title": "Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "error-model",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "995",
+      "title": "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "iterator-protocol",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "994",
+      "title": "Class static-private-getter test hits 30s compiler timeout",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "993",
+      "title": "Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "992",
+      "title": "Iterator.prototype.take limit-less-than-total hits 30s compiler timeout",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "iterator-protocol",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "991",
+      "title": "Iterator helper generator-reentrancy tests hit 30s compiler timeout",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "error-model",
+      "status": "done",
+      "sprint": "42"
     },
     {
       "id": "990",
@@ -11336,6 +12114,16 @@
     }
   ],
   "wontfix": [
+    {
+      "id": "1083",
+      "title": "codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "wont-fix",
+      "sprint": "Backlog"
+    },
     {
       "id": "1041",
       "title": "Pre-bundled single-file stress test scaffold — closed, superseded by #1046",

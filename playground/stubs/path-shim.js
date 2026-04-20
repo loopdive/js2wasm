@@ -78,6 +78,31 @@ export function parse(p) {
 
 export const sep = "/";
 export const delimiter = ":";
-export const posix = { resolve, dirname, basename, extname, join, normalize, relative, isAbsolute, parse, sep, delimiter };
+export const posix = {
+  resolve,
+  dirname,
+  basename,
+  extname,
+  join,
+  normalize,
+  relative,
+  isAbsolute,
+  parse,
+  sep,
+  delimiter,
+};
 
-export default { resolve, dirname, basename, extname, join, normalize, relative, isAbsolute, parse, sep, delimiter, posix };
+export default {
+  resolve,
+  dirname,
+  basename,
+  extname,
+  join,
+  normalize,
+  relative,
+  isAbsolute,
+  parse,
+  sep,
+  delimiter,
+  posix,
+};

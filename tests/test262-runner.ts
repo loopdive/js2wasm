@@ -243,6 +243,12 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "ES2020: BigInt typed arrays not implemented (#838)" };
   }
 
+  // #1073: annexB/language/eval-code blanket skip removed. The __extern_eval
+  // handler now prepends JS-side harness shims (assert_sameValue, assert_throws,
+  // etc.) so Gap 1 (harness visibility, ~107 tests) is resolved. Gap 2 (export
+  // syntax in eval strings, ~48 tests) and Gap 3 (indirect eval wiring, ~24
+  // tests) will fail naturally — they were false positives before #1006.
+
   if (scope.scope === "proposal" && process.env.TEST262_INCLUDE_PROPOSALS !== "1") {
     return {
       skip: true,
@@ -1222,32 +1228,32 @@ let __assert_count: number = 1;
 
 class Test262Error {
   message: string;
-  constructor(msg: string) {
+  constructor(msg: string = "") {
     this.message = msg;
   }
 }
 
-function isSameValue(a: number, b: number): number {
+function isSameValue(a: any, b: any): number {
   if (a === b) { return 1; }
   if (a !== a && b !== b) { return 1; }
   return 0;
 }
 
-function assert_sameValue(actual: number, expected: number): void {
+function assert_sameValue(actual: any, expected: any): void {
   __assert_count = __assert_count + 1;
   if (!isSameValue(actual, expected)) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_notSameValue(actual: number, expected: number): void {
+function assert_notSameValue(actual: any, expected: any): void {
   __assert_count = __assert_count + 1;
   if (isSameValue(actual, expected)) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_true(value: number): void {
+function assert_true(value: any): void {
   __assert_count = __assert_count + 1;
   if (!value) {
     if (!__fail) __fail = __assert_count;
@@ -1289,14 +1295,14 @@ function assert_throwsAsync(fn: () => any): void {
   if (needsStrAssert) {
     p += `
 
-function assert_sameValue_str(actual: string, expected: string): void {
+function assert_sameValue_str(actual: any, expected: string): void {
   __assert_count = __assert_count + 1;
   if (actual !== expected) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_notSameValue_str(actual: string, expected: string): void {
+function assert_notSameValue_str(actual: any, expected: string): void {
   __assert_count = __assert_count + 1;
   if (actual === expected) {
     if (!__fail) __fail = __assert_count;
@@ -1307,14 +1313,14 @@ function assert_notSameValue_str(actual: string, expected: string): void {
   if (needsBoolAssert) {
     p += `
 
-function assert_sameValue_bool(actual: boolean, expected: boolean): void {
+function assert_sameValue_bool(actual: any, expected: boolean): void {
   __assert_count = __assert_count + 1;
   if (actual !== expected) {
     if (!__fail) __fail = __assert_count;
   }
 }
 
-function assert_notSameValue_bool(actual: boolean, expected: boolean): void {
+function assert_notSameValue_bool(actual: any, expected: boolean): void {
   __assert_count = __assert_count + 1;
   if (actual === expected) {
     if (!__fail) __fail = __assert_count;

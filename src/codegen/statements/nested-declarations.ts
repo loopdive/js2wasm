@@ -6,6 +6,7 @@
  */
 import ts from "typescript";
 import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
+import { bodyUsesArguments } from "../helpers/body-uses-arguments.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import {
   collectReferencedIdentifiers,
@@ -697,30 +698,6 @@ function getCol(node: ts.Node): number {
 }
 
 /**
- * Check if a node tree references the `arguments` identifier.
- * Skips nested function declarations and function expressions (which have
- * their own `arguments` binding), but traverses into arrow functions
- * because arrows inherit the enclosing function's `arguments`.
- */
-export function bodyUsesArguments(node: ts.Node): boolean {
-  // Iterative DFS to avoid stack overflow on deeply nested ASTs (CI cgroup limits)
-  const stack: ts.Node[] = [node];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    if (ts.isIdentifier(current) && current.text === "arguments") return true;
-    if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) {
-      continue;
-    }
-    // Arrow functions do NOT have their own `arguments` — they inherit
-    // the enclosing function's, so we must traverse into them.
-    current.forEachChild((child) => {
-      stack.push(child);
-    });
-  }
-  return false;
-}
-
-/**
  * Register (on first use) a module-level mutable global that carries
  * "extra" runtime arguments from a call site to a callee whose body reads
  * `arguments`. The global is consumed (read + reset to null) in the
@@ -744,6 +721,25 @@ export function ensureExtrasArgvGlobal(ctx: CodegenContext): { globalIdx: number
   ctx.extrasArgvGlobalIdx = globalIdx;
   ctx.extrasArgvVecTypeIdx = vti;
   return { globalIdx, vecTypeIdx: vti };
+}
+
+/**
+ * Lazily register a `(mut i32)` module global `__argc` that callers set
+ * to the actual call-site argument count before invoking a function whose
+ * body reads `arguments`. The callee reads this to set `arguments.length`
+ * correctly (instead of using the formal parameter count).
+ */
+export function ensureArgcGlobal(ctx: CodegenContext): number {
+  if (ctx.argcGlobalIdx >= 0) return ctx.argcGlobalIdx;
+  const globalIdx = nextModuleGlobalIdx(ctx);
+  ctx.mod.globals.push({
+    name: "__argc",
+    type: { kind: "i32" },
+    mutable: true,
+    init: [{ op: "i32.const", value: -1 }],
+  });
+  ctx.argcGlobalIdx = globalIdx;
+  return globalIdx;
 }
 
 /**
@@ -821,12 +817,32 @@ export function emitArgumentsVecBody(
   const { vecTypeIdx: vti, arrTypeIdx: ati, argsLocalIdx: argsLocal, arrTmpIdx: arrTmp } = locals;
 
   const { globalIdx: extrasGlobalIdx } = ensureExtrasArgvGlobal(ctx);
+  const argcGlobalIdx = ensureArgcGlobal(ctx);
   const extrasVecType: ValType = { kind: "ref_null", typeIdx: vti };
   const extrasLocal = allocLocal(fctx, "__extras_argv_local", extrasVecType);
   const extrasLenLocal = allocLocal(fctx, "__extras_len", { kind: "i32" });
   const totalLenLocal = allocLocal(fctx, "__args_total_len", { kind: "i32" });
+  const argcLocal = allocLocal(fctx, "__argc_local", { kind: "i32" });
 
-  // Consume the global: read it and immediately clear so nested calls
+  // Read the actual call-site argument count from __argc global.
+  // This was set by the caller before the call instruction.
+  // If __argc is -1 (sentinel = not set, e.g. called from module init),
+  // fall back to numArgs (formal param count) for backwards compatibility.
+  fctx.body.push({ op: "global.get", index: argcGlobalIdx } as Instr);
+  fctx.body.push({ op: "local.tee", index: argcLocal });
+  fctx.body.push({ op: "i32.const", value: -1 } as Instr);
+  fctx.body.push({ op: "i32.eq" } as Instr);
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [{ op: "i32.const", value: numArgs } as Instr, { op: "local.set", index: argcLocal } as Instr],
+    else: [],
+  } as Instr);
+  // Clear __argc so nested calls don't see stale data.
+  fctx.body.push({ op: "i32.const", value: -1 } as Instr);
+  fctx.body.push({ op: "global.set", index: argcGlobalIdx } as Instr);
+
+  // Consume the extras global: read it and immediately clear so nested calls
   // don't see stale data.
   fctx.body.push({ op: "global.get", index: extrasGlobalIdx } as Instr);
   fctx.body.push({ op: "local.set", index: extrasLocal });
@@ -848,8 +864,8 @@ export function emitArgumentsVecBody(
   } as Instr);
   fctx.body.push({ op: "local.set", index: extrasLenLocal });
 
-  // totalLen = numArgs + extrasLen
-  fctx.body.push({ op: "i32.const", value: numArgs });
+  // totalLen = argc + extrasLen (argc = actual call-site args, not formal params)
+  fctx.body.push({ op: "local.get", index: argcLocal });
   fctx.body.push({ op: "local.get", index: extrasLenLocal });
   fctx.body.push({ op: "i32.add" });
   fctx.body.push({ op: "local.set", index: totalLenLocal });
@@ -860,32 +876,47 @@ export function emitArgumentsVecBody(
   fctx.body.push({ op: "local.set", index: arrTmp });
 
   // Fill formals: arr[i] = box(param[i + paramOffset])
+  // Guard each slot with `if (i < argc)` so we only fill actually-passed args.
+  // When argc < numArgs (fewer args than formal params), the array is smaller
+  // than numArgs and unguarded writes would be OOB.
   for (let i = 0; i < numArgs; i++) {
-    fctx.body.push({ op: "local.get", index: arrTmp });
-    fctx.body.push({ op: "i32.const", value: i });
-    fctx.body.push({ op: "local.get", index: i + paramOffset });
+    const thenInstrs: Instr[] = [];
+    thenInstrs.push({ op: "local.get", index: arrTmp } as Instr);
+    thenInstrs.push({ op: "i32.const", value: i } as Instr);
+    thenInstrs.push({ op: "local.get", index: i + paramOffset } as Instr);
     const pt = paramTypes[i]!;
     if (pt.kind === "f64") {
       const boxIdx = ctx.funcMap.get("__box_number");
       if (boxIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx: boxIdx });
+        thenInstrs.push({ op: "call", funcIdx: boxIdx } as Instr);
       } else {
-        fctx.body.push({ op: "drop" });
-        fctx.body.push({ op: "ref.null.extern" });
+        thenInstrs.push({ op: "drop" } as Instr);
+        thenInstrs.push({ op: "ref.null.extern" } as Instr);
       }
     } else if (pt.kind === "i32") {
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
       const boxIdx = ctx.funcMap.get("__box_number");
       if (boxIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx: boxIdx });
+        thenInstrs.push({ op: "call", funcIdx: boxIdx } as Instr);
       } else {
-        fctx.body.push({ op: "drop" });
-        fctx.body.push({ op: "ref.null.extern" });
+        thenInstrs.push({ op: "drop" } as Instr);
+        thenInstrs.push({ op: "ref.null.extern" } as Instr);
       }
     } else if (pt.kind === "ref" || pt.kind === "ref_null") {
-      fctx.body.push({ op: "extern.convert_any" } as Instr);
+      thenInstrs.push({ op: "extern.convert_any" } as Instr);
     }
-    fctx.body.push({ op: "array.set", typeIdx: ati } as Instr);
+    thenInstrs.push({ op: "array.set", typeIdx: ati } as Instr);
+
+    // Emit: if (i < argc) { ...thenInstrs }
+    fctx.body.push({ op: "i32.const", value: i } as Instr);
+    fctx.body.push({ op: "local.get", index: argcLocal });
+    fctx.body.push({ op: "i32.lt_s" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+      else: [],
+    } as Instr);
   }
 
   // If extras is non-null, copy extras into arr starting at offset numArgs.

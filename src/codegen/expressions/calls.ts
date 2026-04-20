@@ -50,7 +50,7 @@ import { emitNullCheckThrow, typeErrorThrowInstrs } from "../property-access.js"
 import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch, VOID_RESULT } from "../shared.js";
 import { compileStatement, hoistFunctionDeclarations } from "../statements.js";
-import { emitSetExtrasArgv } from "../statements/nested-declarations.js";
+import { emitSetExtrasArgv, ensureArgcGlobal } from "../statements/nested-declarations.js";
 import { compileNativeStringMethodCall, compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import {
   defaultValueInstrs,
@@ -64,6 +64,7 @@ import {
   compileDateMethodCall,
   compileMathCall,
   ensureDateDaysFromCivilHelper,
+  wasiAllocStringData,
 } from "./builtins.js";
 import {
   compileCallablePropertyCall,
@@ -92,6 +93,23 @@ function usesArguments(node: ts.Node): boolean {
     return false;
   }
   return ts.forEachChild(node, usesArguments) ?? false;
+}
+
+/**
+ * Emit `global.set __argc` with the actual call-site argument count.
+ * This communicates how many args were really passed so the callee can
+ * build a correctly-sized `arguments` object (per ES spec, arguments.length
+ * equals the number of args passed, not the number of formal params).
+ * Only emitted when the callee is known to use `arguments`.
+ */
+function emitSetArgc(ctx: CodegenContext, fctx: FunctionContext, actualArgCount: number, paramCount: number): void {
+  const argcGlobalIdx = ensureArgcGlobal(ctx);
+  // Set __argc = min(actualArgCount, paramCount) — the count of formal param
+  // slots actually filled. Overflow args are in __extras_argv and tracked by
+  // extrasLen, so totalLen = argc + extrasLen gives the correct arguments.length.
+  const argc = Math.min(actualArgCount, paramCount);
+  fctx.body.push({ op: "i32.const", value: argc });
+  fctx.body.push({ op: "global.set", index: argcGlobalIdx } as Instr);
 }
 
 /**
@@ -188,6 +206,23 @@ function compileOptionalDirectCall(ctx: CodegenContext, fctx: FunctionContext, e
   });
 
   return resultType;
+}
+
+function isEvalCallExpression(expr: ts.CallExpression): boolean {
+  if (expr.questionDotToken) return false;
+  let callee: ts.Expression = expr.expression;
+  while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
+  if (ts.isIdentifier(callee) && callee.text === "eval") return true;
+  // Indirect form: (0, eval)(src) — a comma expression whose right side is `eval`.
+  if (
+    ts.isBinaryExpression(callee) &&
+    callee.operatorToken.kind === ts.SyntaxKind.CommaToken &&
+    ts.isIdentifier(callee.right) &&
+    callee.right.text === "eval"
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -386,6 +421,40 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // Optional chaining on direct call: fn?.()
   if (expr.questionDotToken && ts.isIdentifier(expr.expression)) {
     return compileOptionalDirectCall(ctx, fctx, expr);
+  }
+
+  // eval(...) — route to __extern_eval JS-host import (#1006).
+  // Covers direct `eval(src)` and indirect `(0, eval)(src)` / `(0,eval)(src)`.
+  // In standalone/WASI mode the host import is unavailable and will trap at
+  // instantiation time — callers that need eval must use a JS host.
+  if (isEvalCallExpression(expr)) {
+    let evalIdx = ctx.funcMap.get("__extern_eval");
+    if (evalIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const evalType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__extern_eval", { kind: "func", typeIdx: evalType });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      evalIdx = ctx.funcMap.get("__extern_eval");
+    }
+    if (evalIdx === undefined) {
+      fctx.body.push({ op: "unreachable" });
+      return null;
+    }
+    if (expr.arguments.length === 0) {
+      fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+      return { kind: "externref" };
+    }
+    const srcArg = expr.arguments[0]!;
+    const srcType = compileExpression(ctx, fctx, srcArg);
+    if (srcType && srcType.kind !== "externref") {
+      coerceType(ctx, fctx, srcType, { kind: "externref" });
+    }
+    for (let ai = 1; ai < expr.arguments.length; ai++) {
+      const extraType = compileExpression(ctx, fctx, expr.arguments[ai]!);
+      if (extraType) fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "call", funcIdx: evalIdx });
+    return { kind: "externref" };
   }
 
   // Dynamic import() — delegate to __dynamic_import host import.
@@ -1606,8 +1675,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
         fctx.body.push({ op: "call", funcIdx: hostIdx });
 
-        // If there's a second argument (property descriptors), expand at compile time
-        if (expr.arguments.length >= 2 && ts.isObjectLiteralExpression(expr.arguments[1]!)) {
+        // If there's a second argument (property descriptors), expand at compile time.
+        // Only use static expansion when every descriptor value is an object literal —
+        // non-literal values (identifiers, expressions) may inherit descriptor flags from
+        // their prototype, which static expansion can't see at compile time.
+        if (
+          expr.arguments.length >= 2 &&
+          ts.isObjectLiteralExpression(expr.arguments[1]!) &&
+          (expr.arguments[1] as ts.ObjectLiteralExpression).properties.every(
+            (p) =>
+              !ts.isPropertyAssignment(p) || ts.isObjectLiteralExpression((p as ts.PropertyAssignment).initializer),
+          )
+        ) {
           const descsLiteral = expr.arguments[1] as ts.ObjectLiteralExpression;
           // Save created object to local for repeated use
           const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
@@ -1701,8 +1780,56 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
           // Push obj back on stack as the result
           fctx.body.push({ op: "local.get", index: objLocal });
+        } else if (expr.arguments.length >= 2 && ts.isObjectLiteralExpression(expr.arguments[1]!)) {
+          // Object literal second arg with non-literal descriptor values (identifiers/expressions).
+          // Iterate properties at compile time, calling __defineProperty_desc(obj, key, desc)
+          // for each. This lets the runtime use native Object.defineProperty which traverses
+          // the descriptor's prototype chain per ToPropertyDescriptor (ECMA-262 §10.1).
+          const descsLiteral = expr.arguments[1] as ts.ObjectLiteralExpression;
+          const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: objLocal });
+
+          const dpDescIdx = ensureLateImport(
+            ctx,
+            "__defineProperty_desc",
+            [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+            [{ kind: "externref" }],
+          );
+          flushLateImportShifts(ctx, fctx);
+
+          for (const prop of descsLiteral.properties) {
+            if (!ts.isPropertyAssignment(prop)) continue;
+            const propName = ts.isIdentifier(prop.name)
+              ? prop.name.text
+              : ts.isStringLiteral(prop.name)
+                ? prop.name.text
+                : ts.isNumericLiteral(prop.name)
+                  ? prop.name.text
+                  : undefined;
+            if (propName === undefined) continue;
+
+            if (dpDescIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: objLocal });
+              addStringConstantGlobal(ctx, propName);
+              const strGlobalIdx = ctx.stringGlobalMap.get(propName);
+              if (strGlobalIdx !== undefined) {
+                fctx.body.push({ op: "global.get", index: strGlobalIdx } as Instr);
+              } else {
+                fctx.body.push({ op: "ref.null.extern" });
+              }
+              const descValType = compileExpression(ctx, fctx, prop.initializer);
+              if (!descValType) {
+                fctx.body.push({ op: "ref.null.extern" });
+              } else if (descValType.kind !== "externref") {
+                coerceType(ctx, fctx, descValType, { kind: "externref" });
+              }
+              fctx.body.push({ op: "call", funcIdx: dpDescIdx });
+              fctx.body.push({ op: "drop" });
+            }
+          }
+          fctx.body.push({ op: "local.get", index: objLocal });
         } else if (expr.arguments.length >= 2) {
-          // Non-literal descriptors: use __defineProperties host import
+          // Non-literal second arg: use __defineProperties host import
           const objLocal = allocLocal(fctx, `__ocreate_obj_${fctx.locals.length}`, { kind: "externref" });
           fctx.body.push({ op: "local.set", index: objLocal });
 
@@ -2812,6 +2939,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsEarly) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, staticParamCount);
+          }
           // Re-lookup funcIdx: argument compilation may trigger addUnionImports
           const finalStaticIdx = ctx.funcMap.get(fullName) ?? funcIdx;
           fctx.body.push({ op: "call", funcIdx: finalStaticIdx });
@@ -3180,6 +3311,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsStatic) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, paramCount);
+          }
           const finalMethodIdx = ctx.funcMap.get(fullName) ?? resolvedStaticIdx;
           fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
           const sig = ctx.checker.getResolvedSignature(expr);
@@ -3259,6 +3394,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
           }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsNg) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, ngParamCount);
+          }
           const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
           fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
           const elseInstrs = fctx.body;
@@ -3313,6 +3452,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
             pushDefaultValue(fctx, paramTypes[i]!, ctx);
           }
+        }
+        // Set __argc before the call so the callee knows the actual arg count
+        if (calleeReadsArgsNn) {
+          emitSetArgc(ctx, fctx, expr.arguments.length, methodParamCount);
         }
         // Re-lookup funcIdx: argument compilation may trigger addUnionImports
         const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -3395,6 +3538,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                 pushDefaultValue(fctx, paramTypes[i]!, ctx);
               }
             }
+            // Set __argc before the call so the callee knows the actual arg count
+            if (calleeReadsArgsSm) {
+              emitSetArgc(ctx, fctx, expr.arguments.length, smMethodParamCount);
+            }
             const finalStructMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
             fctx.body.push({ op: "call", funcIdx: finalStructMethodIdx });
             const elseInstrs = fctx.body;
@@ -3451,6 +3598,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             for (let i = Math.min(expr.arguments.length, nnMethodParamCount) + 1; i < paramTypes.length; i++) {
               pushDefaultValue(fctx, paramTypes[i]!, ctx);
             }
+          }
+          // Set __argc before the call so the callee knows the actual arg count
+          if (calleeReadsArgsNns) {
+            emitSetArgc(ctx, fctx, expr.arguments.length, nnMethodParamCount);
           }
           // Re-lookup funcIdx: argument compilation may trigger addUnionImports
           const finalStructMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -4046,9 +4197,60 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     }
   }
 
-  // Handle global isNaN(n) / isFinite(n) — inline wasm
+  // WASI mode: writeFileSync(path, data) → __wasi_write_file_sync(pathPtr, pathLen, dataPtr, dataLen)
+  if (
+    ctx.wasi &&
+    ts.isIdentifier(expr.expression) &&
+    ctx.wasiNodeFsFuncs.has(expr.expression.text) &&
+    expr.expression.text === "writeFileSync" &&
+    expr.arguments.length >= 2
+  ) {
+    const writeFileSyncIdx = ctx.funcMap.get("__wasi_write_file_sync");
+    if (writeFileSyncIdx !== undefined) {
+      const pathArg = expr.arguments[0]!;
+      const dataArg = expr.arguments[1]!;
+
+      // Handle path argument — must be a string literal for now (embedded in data segment)
+      if (ts.isStringLiteral(pathArg)) {
+        const pathData = wasiAllocStringData(ctx, pathArg.text);
+        fctx.body.push({ op: "i32.const", value: pathData.offset } as Instr);
+        fctx.body.push({ op: "i32.const", value: pathData.length } as Instr);
+      } else {
+        // Dynamic path: compile expression and use runtime string-to-linear-memory copy
+        // For now, use bump allocator to store the string data
+        compileWasiStringArgToLinearMemory(ctx, fctx, pathArg);
+      }
+
+      // Handle data argument — string literal or expression
+      if (ts.isStringLiteral(dataArg) || ts.isNoSubstitutionTemplateLiteral(dataArg)) {
+        const dataData = wasiAllocStringData(ctx, dataArg.text);
+        fctx.body.push({ op: "i32.const", value: dataData.offset } as Instr);
+        fctx.body.push({ op: "i32.const", value: dataData.length } as Instr);
+      } else {
+        // Dynamic data: compile and convert to linear memory
+        compileWasiStringArgToLinearMemory(ctx, fctx, dataArg);
+      }
+
+      fctx.body.push({ op: "call", funcIdx: writeFileSyncIdx });
+      return VOID_RESULT;
+    }
+  }
+
+  // Handle global isNaN(n) / isFinite(n) / parseInt / parseFloat — inline wasm
   if (ts.isIdentifier(expr.expression)) {
-    const funcName = expr.expression.text;
+    // Resolve aliases like `var freeParseInt = parseInt; freeParseInt(...)` (#1109)
+    let funcName = expr.expression.text;
+    const _knownGlobalFuncs = new Set(["parseInt", "parseFloat", "isNaN", "isFinite"]);
+    if (!_knownGlobalFuncs.has(funcName)) {
+      const sym = ctx.checker.getSymbolAtLocation(expr.expression);
+      const decl = sym?.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer && ts.isIdentifier(decl.initializer)) {
+        const initName = decl.initializer.text;
+        if (_knownGlobalFuncs.has(initName)) {
+          funcName = initName;
+        }
+      }
+    }
 
     if (funcName === "isNaN" && expr.arguments.length >= 1) {
       // isNaN(n) → n !== n
@@ -4732,6 +4934,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         for (let i = totalPushed; i < paramTypes.length; i++) {
           pushDefaultValue(fctx, paramTypes[i]!, ctx);
         }
+      }
+      // Set __argc before the call so the callee knows the actual arg count
+      if (calleeReadsArgsDirect) {
+        emitSetArgc(ctx, fctx, expr.arguments.length, paramCount);
       }
     }
 
@@ -6554,5 +6760,46 @@ function compileIIFE(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallEx
 
 /** Resolve the enclosing class name from a FunctionContext.
  *  Uses enclosingClassName if set (e.g. closures), otherwise parses ClassName from "ClassName_methodName". */
+
+/**
+ * Compile a string expression argument and write it to WASI linear memory via bump allocator.
+ * Pushes (ptr: i32, len: i32) onto the stack.
+ *
+ * For string literals, this is handled at the call site via wasiAllocStringData.
+ * This function handles dynamic string values (variables, expressions) by
+ * compiling a runtime copy from the WasmGC string to linear memory.
+ *
+ * Current limitation: only supports string literals assigned to variables at compile time.
+ * For truly dynamic strings, we'd need a runtime string-to-memory encoder.
+ * For now, emit unreachable for unsupported cases.
+ */
+function compileWasiStringArgToLinearMemory(ctx: CodegenContext, fctx: FunctionContext, expr: ts.Expression): void {
+  // If it's an identifier referencing a const/let with a string literal initializer,
+  // we can resolve it at compile time
+  if (ts.isIdentifier(expr)) {
+    const sym = ctx.checker.getSymbolAtLocation(expr);
+    if (sym?.valueDeclaration && ts.isVariableDeclaration(sym.valueDeclaration)) {
+      const init = sym.valueDeclaration.initializer;
+      if (init && (ts.isStringLiteral(init) || ts.isNoSubstitutionTemplateLiteral(init))) {
+        const data = wasiAllocStringData(ctx, init.text);
+        fctx.body.push({ op: "i32.const", value: data.offset } as Instr);
+        fctx.body.push({ op: "i32.const", value: data.length } as Instr);
+        return;
+      }
+    }
+  }
+
+  // Template literal with only a head (no substitutions)
+  if (ts.isNoSubstitutionTemplateLiteral(expr)) {
+    const data = wasiAllocStringData(ctx, expr.text);
+    fctx.body.push({ op: "i32.const", value: data.offset } as Instr);
+    fctx.body.push({ op: "i32.const", value: data.length } as Instr);
+    return;
+  }
+
+  // Fallback: unsupported dynamic string — trap at runtime
+  // TODO: implement runtime GC-string to linear-memory copy for dynamic strings
+  fctx.body.push({ op: "unreachable" } as Instr);
+}
 
 export { compileCallExpression, compileIIFE, compileOptionalCallExpression };

@@ -351,7 +351,18 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
 
   // ── collectParseImports ──
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-    const name = node.expression.text;
+    let name = node.expression.text;
+    // Resolve aliases like `var freeParseInt = parseInt; freeParseInt(...)` (#1109)
+    if (name !== "parseInt" && name !== "parseFloat") {
+      const sym = ctx.checker.getSymbolAtLocation(node.expression);
+      const decl = sym?.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer && ts.isIdentifier(decl.initializer)) {
+        const initName = decl.initializer.text;
+        if (initName === "parseInt" || initName === "parseFloat") {
+          name = initName;
+        }
+      }
+    }
     if (name === "parseInt" || name === "parseFloat") {
       state.parseNeeded.add(name);
     }
@@ -780,7 +791,8 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
-  if (state.primitiveNeeded.has("string_compare")) {
+  if (state.primitiveNeeded.has("string_compare") && !ctx.nativeStrings) {
+    // In native strings mode, __str_compare Wasm helper handles this — no host import needed
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
     addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
@@ -876,13 +888,18 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
       ctx.pendingMathMethods.add(method);
     }
   }
-  if (state.mathNeedsToUint32 && !ctx.funcMap.has("__toUint32")) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+  // ToUint32: defer emission until after all imports are registered (#1094).
+  // Registering as a defined function here would leave a stale funcMap index
+  // since subsequent imports added via addImport (e.g. __register_prototype)
+  // do not shift defined-function indices. emitToUint32Helper() runs later.
+  if (state.mathNeedsToUint32) {
+    ctx.needsToUint32 = true;
   }
 
   // ── collectParseImports finalize ──
   for (const name of state.parseNeeded) {
+    // Skip if already registered (e.g. by collectExternDeclarations from lib.d.ts) (#1109)
+    if (ctx.funcMap.has(name)) continue;
     if (name === "parseInt") {
       const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", name, { kind: "func", typeIdx });
@@ -894,6 +911,7 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
 
   // ── collectURIImports finalize ──
   for (const name of state.uriNeeded) {
+    if (ctx.funcMap.has(name)) continue;
     const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", name, { kind: "func", typeIdx });
   }
@@ -1252,10 +1270,16 @@ export function collectEmptyObjectWidening(
             // Map variable name to struct name for later lookup
             ctx.widenedVarStructMap.set(varName, structName);
             // Also try to map TS types (may not match later due to type identity)
+            // Skip `any` — it's a singleton type object shared by all any-typed vars,
+            // so registering it would cause every any-typed var to resolve to this struct.
             const varType = checker.getTypeAtLocation(decl.name);
-            ctx.anonTypeMap.set(varType, structName);
+            if (!(varType.flags & ts.TypeFlags.Any)) {
+              ctx.anonTypeMap.set(varType, structName);
+            }
             const initType = checker.getTypeAtLocation(decl.initializer);
-            ctx.anonTypeMap.set(initType, structName);
+            if (!(initType.flags & ts.TypeFlags.Any)) {
+              ctx.anonTypeMap.set(initType, structName);
+            }
           }
         }
       }
@@ -1504,6 +1528,30 @@ export function applyShapeInference(ctx: CodegenContext, checker: ts.TypeChecker
 }
 
 export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isEntryFile = true): void {
+  function getAssignmentRootIdentifier(expr: ts.Expression): string | undefined {
+    let current: ts.Expression = expr;
+    while (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isTypeAssertionExpression(current)
+    ) {
+      current = current.expression;
+    }
+    while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+      current = current.expression;
+      while (
+        ts.isParenthesizedExpression(current) ||
+        ts.isAsExpression(current) ||
+        ts.isNonNullExpression(current) ||
+        ts.isTypeAssertionExpression(current)
+      ) {
+        current = current.expression;
+      }
+    }
+    return ts.isIdentifier(current) ? current.text : undefined;
+  }
+
   // First: collect enum declarations (so enum values are available)
   collectEnumDeclarations(ctx, sourceFile);
 
@@ -1713,13 +1761,34 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       let params: ValType[];
       let results: ValType[];
 
+      // A binding-pattern parameter with a rest element and no type annotation
+      // (e.g. `function f([...r])` or `function f({...x})`) infers as `{}` or
+      // `{ [k: string]: any }` in TypeScript, which resolveWasmType maps to a
+      // degenerate struct (single-field cell or empty struct). Callers that
+      // pass an array/object to such a param fail the ref.test cast and
+      // receive ref.null — breaking destructuring inside the function. Force
+      // externref so the conversion paths in destructureParam{Array,Object}
+      // handle the incoming value correctly.
+      const restBindingOverridesToExternref = (p: ts.ParameterDeclaration): boolean => {
+        if (p.type || p.dotDotDotToken) return false;
+        if (ts.isArrayBindingPattern(p.name)) {
+          return p.name.elements.some((e) => !ts.isOmittedExpression(e) && !!e.dotDotDotToken);
+        }
+        if (ts.isObjectBindingPattern(p.name)) {
+          return p.name.elements.some((e) => !!e.dotDotDotToken);
+        }
+        return false;
+      };
+
       if (isGenerator) {
         // Generator functions: parameters are compiled normally, return is externref
         params = [];
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
           const paramType = ctx.checker.getTypeAtLocation(param);
-          let wasmType = resolveWasmType(ctx, paramType);
+          let wasmType: ValType = restBindingOverridesToExternref(param)
+            ? { kind: "externref" }
+            : resolveWasmType(ctx, paramType);
           // If the parameter has a default value and is a non-null ref type,
           // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
           if (param.initializer && wasmType.kind === "ref") {
@@ -1770,7 +1839,9 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
-            let wasmType = resolveWasmType(ctx, paramType);
+            let wasmType: ValType = restBindingOverridesToExternref(param)
+              ? { kind: "externref" }
+              : resolveWasmType(ctx, paramType);
             // If the parameter has a default value and is a non-null ref type,
             // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
             if (param.initializer && wasmType.kind === "ref") {
@@ -2172,6 +2243,10 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
   }
 
+  // Single pass preserves source order, which matters for statements that depend on
+  // side effects from earlier statements (e.g. `(Ctor as any).prototype = proto` must
+  // run before `new Ctor()` captures the prototype, and `obj.prop = v` must run between
+  // `var before = ...typeof obj.prop` and `var after = ...obj.prop === v`).
   for (const stmt of sourceFile.statements) {
     if (ts.isVariableStatement(stmt)) {
       if (hasDeclareModifier(stmt)) continue;
@@ -2206,28 +2281,12 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       ts.isForInStatement(stmt) ||
       ts.isForOfStatement(stmt) ||
       ts.isWhileStatement(stmt) ||
-      ts.isDoStatement(stmt)
+      ts.isDoStatement(stmt) ||
+      ts.isIfStatement(stmt) ||
+      ts.isTryStatement(stmt) ||
+      ts.isSwitchStatement(stmt) ||
+      ts.isLabeledStatement(stmt)
     ) {
-      walkModuleStmtForVars(stmt);
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-    if (ts.isIfStatement(stmt)) {
-      walkModuleStmtForVars(stmt);
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-    if (ts.isTryStatement(stmt)) {
-      walkModuleStmtForVars(stmt);
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-    if (ts.isSwitchStatement(stmt)) {
-      walkModuleStmtForVars(stmt);
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-    if (ts.isLabeledStatement(stmt)) {
       walkModuleStmtForVars(stmt);
       ctx.moduleInitStatements.push(stmt);
       continue;
@@ -2235,65 +2294,41 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     if (ts.isBlock(stmt)) {
       walkModuleStmtForVars(stmt);
       ctx.moduleInitStatements.push(stmt);
-    }
-  }
-
-  // Fifth: collect module-level expression statements for init compilation
-  // (e.g. obj.length = 3, obj[0] = 10 for shape-inferred array-like variables,
-  //  new function(){}(args) constructor calls, standalone function calls)
-  for (const stmt of sourceFile.statements) {
-    if (!ts.isExpressionStatement(stmt)) continue;
-    const expr = stmt.expression;
-
-    // Collect `new` expression statements (e.g. `new function(){...}(args)`)
-    if (ts.isNewExpression(expr)) {
-      ctx.moduleInitStatements.push(stmt);
       continue;
     }
-
-    // Collect standalone function call statements (e.g. `foo()`)
-    if (ts.isCallExpression(expr)) {
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-
-    // Collect prefix/postfix increment/decrement expressions (++x, x++, --x, x--)
-    if (ts.isPrefixUnaryExpression(expr) || ts.isPostfixUnaryExpression(expr)) {
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-
-    // Collect binary expression statements that modify module-level globals
-    if (!ts.isBinaryExpression(expr)) continue;
-    // Accept all assignment operators (=, +=, -=, etc.) and any binary op that
-    // might have side effects on module globals
-    const opKind = expr.operatorToken.kind;
-    const isAssignOp =
-      opKind === ts.SyntaxKind.EqualsToken ||
-      opKind === ts.SyntaxKind.PlusEqualsToken ||
-      opKind === ts.SyntaxKind.MinusEqualsToken ||
-      opKind === ts.SyntaxKind.AsteriskEqualsToken ||
-      opKind === ts.SyntaxKind.SlashEqualsToken ||
-      opKind === ts.SyntaxKind.PercentEqualsToken ||
-      opKind === ts.SyntaxKind.AmpersandEqualsToken ||
-      opKind === ts.SyntaxKind.BarEqualsToken ||
-      opKind === ts.SyntaxKind.CaretEqualsToken ||
-      opKind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
-      opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
-      opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
-    if (!isAssignOp) continue;
-    // Check if the left side references a known module global
-    let targetName: string | undefined;
-    if (ts.isIdentifier(expr.left)) {
-      // Simple assignment: f = ...
-      targetName = expr.left.text;
-    } else if (ts.isPropertyAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
-      targetName = expr.left.expression.text;
-    } else if (ts.isElementAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
-      targetName = expr.left.expression.text;
-    }
-    if (targetName && ctx.moduleGlobals.has(targetName)) {
-      ctx.moduleInitStatements.push(stmt);
+    // Module-level expression statements with side effects:
+    // new expressions, call expressions, ++/--, assignments to module globals
+    if (ts.isExpressionStatement(stmt)) {
+      const expr = stmt.expression;
+      if (ts.isNewExpression(expr) || ts.isCallExpression(expr)) {
+        ctx.moduleInitStatements.push(stmt);
+        continue;
+      }
+      if (ts.isPrefixUnaryExpression(expr) || ts.isPostfixUnaryExpression(expr)) {
+        ctx.moduleInitStatements.push(stmt);
+        continue;
+      }
+      if (ts.isBinaryExpression(expr)) {
+        const opKind = expr.operatorToken.kind;
+        const isAssignOp =
+          opKind === ts.SyntaxKind.EqualsToken ||
+          opKind === ts.SyntaxKind.PlusEqualsToken ||
+          opKind === ts.SyntaxKind.MinusEqualsToken ||
+          opKind === ts.SyntaxKind.AsteriskEqualsToken ||
+          opKind === ts.SyntaxKind.SlashEqualsToken ||
+          opKind === ts.SyntaxKind.PercentEqualsToken ||
+          opKind === ts.SyntaxKind.AmpersandEqualsToken ||
+          opKind === ts.SyntaxKind.BarEqualsToken ||
+          opKind === ts.SyntaxKind.CaretEqualsToken ||
+          opKind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
+          opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
+          opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
+        if (!isAssignOp) continue;
+        const targetName = getAssignmentRootIdentifier(expr.left);
+        if (targetName && ctx.moduleGlobals.has(targetName)) {
+          ctx.moduleInitStatements.push(stmt);
+        }
+      }
     }
   }
 
@@ -2759,48 +2794,69 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         shiftLocalIndices(compiledInitFctx.body, existingLocals);
       }
     } else {
-      // No main() function — create a standalone __module_init and inject
-      // a guarded call at the start of every exported function.
+      // No main() function — create a standalone __module_init.
+      // Strategy depends on whether there are user-exported functions (#907):
+      //   - No exports: export __module_init directly as _start (no guard needed)
+      //   - Has exports: inject guarded call via __init_done into each export
 
-      // Add a guard global: __init_done (i32, initially 0)
-      const guardGlobalIdx = nextModuleGlobalIdx(ctx);
-      ctx.mod.globals.push({
-        name: "__init_done",
-        type: { kind: "i32" },
-        mutable: true,
-        init: [{ op: "i32.const", value: 0 }],
-      });
+      const hasExportedFunctions = ctx.mod.functions.some((f) => f.exported && f.name !== "__module_init");
 
-      // Create the __module_init function
-      const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
-      const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-      ctx.mod.functions.push({
-        name: "__module_init",
-        typeIdx: initTypeIdx,
-        locals: compiledInitFctx.locals,
-        body: compiledInitFctx.body,
-        exported: false,
-      });
+      if (!hasExportedFunctions) {
+        // Module-init-only program: export __module_init as _start.
+        // No __init_done guard needed — the caller invokes _start once.
+        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
+        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.mod.functions.push({
+          name: "_start",
+          typeIdx: initTypeIdx,
+          locals: compiledInitFctx.locals,
+          body: compiledInitFctx.body,
+          exported: true,
+        });
+        ctx.mod.exports.push({
+          name: "_start",
+          desc: { kind: "func", index: initFuncIdx },
+        });
+      } else {
+        // Has exports but no main() — use __init_done guard for lazy init.
+        const guardGlobalIdx = nextModuleGlobalIdx(ctx);
+        ctx.mod.globals.push({
+          name: "__init_done",
+          type: { kind: "i32" },
+          mutable: true,
+          init: [{ op: "i32.const", value: 0 }],
+        });
 
-      // Inject guarded call at the start of every exported function.
-      // Each function gets its own deep copy of the guard preamble instructions
-      // to avoid shared-object bugs during dead-import elimination's index remapping.
-      for (const func of ctx.mod.functions) {
-        if (func.exported && func.name !== "__module_init") {
-          const guardPreamble: Instr[] = [
-            { op: "global.get", index: guardGlobalIdx },
-            { op: "i32.eqz" },
-            {
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [
-                { op: "i32.const", value: 1 } as Instr,
-                { op: "global.set", index: guardGlobalIdx } as Instr,
-                { op: "call", funcIdx: initFuncIdx } as Instr,
-              ],
-            } as Instr,
-          ];
-          func.body = [...guardPreamble, ...func.body];
+        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
+        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.mod.functions.push({
+          name: "__module_init",
+          typeIdx: initTypeIdx,
+          locals: compiledInitFctx.locals,
+          body: compiledInitFctx.body,
+          exported: false,
+        });
+
+        // Inject guarded call at the start of every exported function.
+        // Each function gets its own deep copy of the guard preamble instructions
+        // to avoid shared-object bugs during dead-import elimination's index remapping.
+        for (const func of ctx.mod.functions) {
+          if (func.exported && func.name !== "__module_init") {
+            const guardPreamble: Instr[] = [
+              { op: "global.get", index: guardGlobalIdx },
+              { op: "i32.eqz" },
+              {
+                op: "if",
+                blockType: { kind: "empty" },
+                then: [
+                  { op: "i32.const", value: 1 } as Instr,
+                  { op: "global.set", index: guardGlobalIdx } as Instr,
+                  { op: "call", funcIdx: initFuncIdx } as Instr,
+                ],
+              } as Instr,
+            ];
+            func.body = [...guardPreamble, ...func.body];
+          }
         }
       }
     }

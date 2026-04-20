@@ -11,7 +11,12 @@ import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, deduplicateLocals } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  buildDestructureNullThrow,
+  destructureParamArray,
+  destructureParamObject,
+  isNullOrUndefinedLiteral,
+} from "./destructuring-params.js";
 import { bodyUsesArguments } from "./function-body.js";
 import { cacheStringLiterals, hasAbstractModifier, hasStaticModifier, resolveWasmType } from "./index.js";
 import { ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
@@ -22,6 +27,8 @@ import {
   compileStatement,
   emitArgumentsObject,
   emitBoundsCheckedArrayGet,
+  ensureLateImport,
+  flushLateImportShifts,
   resolveComputedKeyExpression,
   valTypesMatch,
 } from "./shared.js";
@@ -701,6 +708,7 @@ export function compileClassBodies(
       labelMap: new Map(),
       savedBodies: [],
       isConstructor: true,
+      isDerivedConstructor: ctx.classParentMap.has(className),
     };
 
     // Re-resolve the constructor function type now that all class struct types
@@ -769,6 +777,17 @@ export function compileClassBodies(
         const paramIdx = i;
         const paramType = params[i]!.type;
 
+        // Pre-ensure `__extern_is_undefined` before compiling the initializer so
+        // any late-import funcIdx shift happens while `fctx.body` is authoritative.
+        // Without this, the initializer compiles into `thenInstrs`, which gets
+        // detached from `fctx` after popBody below — any subsequent shift
+        // triggered by ensureLateImport in the check emission would miss
+        // `thenInstrs`, leaving stale funcIdx values in its `call` ops.
+        if (paramType.kind === "externref") {
+          ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+        }
+
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
         const ctorDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
@@ -779,10 +798,18 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
+        // Emit the null/zero check + conditional assignment.
+        // externref: use `__extern_is_undefined` — callers padding missing args
+        // use `__get_undefined` which returns real JS undefined, so a plain
+        // `ref.is_null` would miss it and skip the default.
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "ref.is_null" });
+          const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          if (isUndefIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          } else {
+            fctx.body.push({ op: "ref.is_null" });
+          }
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
@@ -1009,20 +1036,45 @@ export function compileClassBodies(
         const paramLocalIdx = isStatic ? pi : pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
 
+        // Pre-ensure `__extern_is_undefined` before compiling the initializer so
+        // any late-import shift happens while `fctx.body` is authoritative. See
+        // constructor site above for the full rationale.
+        if (paramType.kind === "externref") {
+          ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+        }
+
+        // Per spec §14.3.3.1/§8.4.2: throw TypeError when destructuring null/undefined.
+        // Literal null/undefined default on a binding pattern means: when default fires,
+        // destructuring that value must throw.
+        const dstrNullDefault =
+          (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) &&
+          isNullOrUndefinedLiteral(param.initializer);
+
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
-        const methDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
-        if (methDfltType && !valTypesMatch(methDfltType, paramType)) {
-          coerceType(ctx, fctx, methDfltType, paramType);
+        if (dstrNullDefault) {
+          for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
+        } else {
+          const methDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
+          if (methDfltType && !valTypesMatch(methDfltType, paramType)) {
+            coerceType(ctx, fctx, methDfltType, paramType);
+          }
+          fctx.body.push({ op: "local.set", index: paramLocalIdx });
         }
-        fctx.body.push({ op: "local.set", index: paramLocalIdx });
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
+        // Emit the null/zero check + conditional assignment.
+        // externref: see constructor site above for the `__extern_is_undefined` rationale.
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "ref.is_null" });
+          const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          if (isUndefIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          } else {
+            fctx.body.push({ op: "ref.is_null" });
+          }
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
@@ -1318,6 +1370,13 @@ export function compileClassBodies(
         const paramLocalIdx = pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
 
+        // Pre-ensure `__extern_is_undefined` before compiling the initializer —
+        // see constructor site above for the rationale.
+        if (paramType.kind === "externref") {
+          ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShifts(ctx, fctx);
+        }
+
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
         const getSetDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
@@ -1328,10 +1387,16 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
+        // Emit the null/zero check + conditional assignment.
+        // externref: see constructor site above for the `__extern_is_undefined` rationale.
         if (paramType.kind === "externref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "ref.is_null" });
+          const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          if (isUndefIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          } else {
+            fctx.body.push({ op: "ref.is_null" });
+          }
           fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
         } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
           fctx.body.push({ op: "local.get", index: paramLocalIdx });

@@ -21,7 +21,7 @@ import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { patchStructNewForAddedField } from "./expressions/late-imports.js";
+import { emitUndefined, patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { resolveStructName } from "./expressions/misc.js";
 import { bodyUsesArguments } from "./function-body.js";
 import {
@@ -587,12 +587,17 @@ export function compileWidenedEmptyObject(
   widenedProps: { name: string; type: ValType }[],
 ): ValType | null {
   // The struct was already registered during the pre-pass (collectEmptyObjectWidening).
-  // Look it up via the anonTypeMap.
+  // Look it up via the anonTypeMap, or the widenedVarStructMap (which holds the pre-pass
+  // registration even for `any`-typed vars that must skip anonTypeMap to avoid polluting
+  // the singleton `any` type object).
   const type = ctx.checker.getTypeAtLocation(expr);
   let typeName = ctx.anonTypeMap.get(type);
   if (!typeName && ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
     const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
     typeName = ctx.anonTypeMap.get(varType);
+  }
+  if (!typeName && ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
+    typeName = ctx.widenedVarStructMap.get(expr.parent.name.text);
   }
   if (!typeName) {
     // Fallback: the pre-pass should have registered it but didn't match type identity.
@@ -618,9 +623,17 @@ export function compileWidenedEmptyObject(
       ctx.structMap.set(typeName, typeIdx);
       ctx.typeIdxToStructName.set(typeIdx, typeName);
       ctx.structFields.set(typeName, fields);
-      ctx.anonTypeMap.set(type, typeName);
+      // Skip anonTypeMap registration for `any` — it's a singleton type object shared by
+      // all any-typed vars, so registering it would pollute every any-typed var's lookup.
+      if (!(type.flags & ts.TypeFlags.Any)) {
+        ctx.anonTypeMap.set(type, typeName);
+      }
       const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
-      ctx.anonTypeMap.set(varType, typeName);
+      if (!(varType.flags & ts.TypeFlags.Any)) {
+        ctx.anonTypeMap.set(varType, typeName);
+      }
+      // Record via widenedVarStructMap so later lookups still find it for any-typed vars.
+      ctx.widenedVarStructMap.set(expr.parent.name.text, typeName);
     }
   }
   if (!typeName) return null;
@@ -732,11 +745,13 @@ export function compileObjectLiteralForStruct(
         // Default value for missing fields: use "undefined" sentinels so
         // destructuring default-value checks can detect missing properties.
         // f64 uses sNaN sentinel 0x7FF00000DEADC0DE (matches emitDefaultValueCheck #866).
+        // externref uses JS undefined (via __get_undefined) not ref.null.extern,
+        // because JS destructuring defaults fire only on `=== undefined`, not null.
         if (field.type.kind === "f64") {
           fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
           fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
         } else if (field.type.kind === "externref") {
-          fctx.body.push({ op: "ref.null.extern" });
+          emitUndefined(ctx, fctx);
         } else if (field.type.kind === "eqref") {
           fctx.body.push({ op: "ref.null.eq" });
         } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
@@ -1225,14 +1240,18 @@ export function compileTupleLiteral(
       }
     } else {
       // Missing element — push sentinel value that destructuring recognizes as
-      // "absent": sNaN sentinel for f64, ref.null for refs/externref, 0 for i32 (#852, #866).
+      // "absent": sNaN sentinel for f64, JS undefined for externref, ref.null
+      // for refs, 0 for i32. For externref we emit `call $__get_undefined` so
+      // destructuring defaults (which fire on `=== undefined`, not `null`)
+      // trigger correctly when a tuple-typed arg is shorter than the pattern
+      // (e.g. `([x = d]) => {}` called with `[]`) — per §8.6.2 (#852, #866).
       if (expectedType.kind === "f64") {
         fctx.body.push({ op: "i64.const", value: 0x7ff00000deadc0den } as unknown as Instr);
         fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
       } else if (expectedType.kind === "i32") {
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (expectedType.kind === "externref") {
-        fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+        emitUndefined(ctx, fctx);
       } else if (expectedType.kind === "ref_null" || expectedType.kind === "ref") {
         const typeIdx = (expectedType as { typeIdx: number }).typeIdx;
         fctx.body.push({ op: "ref.null", typeIdx } as unknown as Instr);

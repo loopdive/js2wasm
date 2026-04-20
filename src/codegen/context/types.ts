@@ -32,6 +32,10 @@ export interface CodegenOptions {
   nativeStrings?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
+  /** Node builtin modules detected during import preprocessing (#1044) */
+  nodeBuiltins?: import("../../import-resolver.js").NodeBuiltinImport[];
+  /** Set of function names imported from node:fs (detected pre-preprocessing) */
+  wasiNodeFsFuncs?: Set<string>;
 }
 
 /** Info about an externally declared class. */
@@ -118,6 +122,10 @@ export interface FunctionContext {
   boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
   /** Whether this function is a class constructor (for new.target support) */
   isConstructor?: boolean;
+  /** Whether this constructor belongs to a class declared with `extends`. Spec §10.2.1.3
+   * step 13c requires a derived constructor that returns a non-object, non-undefined
+   * value to throw TypeError instead of silently coercing and null-dereffing. */
+  isDerivedConstructor?: boolean;
   /** Whether this function is a generator (function*) */
   isGenerator?: boolean;
   /** Set of variable names that are read-only bindings (e.g. named function expression name) */
@@ -290,6 +298,12 @@ export interface CodegenContext {
   extrasArgvGlobalIdx: number;
   /** Vec struct type index for the extras argv global (matches externref vec type). */
   extrasArgvVecTypeIdx: number;
+  /**
+   * Absolute Wasm global index for the `__argc` (mut i32) module global.
+   * Set by the caller to communicate the actual call-site argument count
+   * to functions that use `arguments`. -1 = not yet created.
+   */
+  argcGlobalIdx: number;
   /** Map from struct name → set of closure type indices used for valueOf fields */
   valueOfClosureTypes: Map<string, number[]>;
   /** Tag index for the exception tag (-1 if not yet registered) */
@@ -364,6 +378,8 @@ export interface CodegenContext {
   widenedVarStructMap: Map<string, string>;
   /** Math methods that need inline Wasm implementations */
   pendingMathMethods: Set<string>;
+  /** True if Math.clz32 or Math.imul is used — requires ToUint32 Wasm helper */
+  needsToUint32: boolean;
   /** Map from class name → class AST declaration node */
   classDeclarationMap: Map<string, ts.ClassDeclaration | ts.ClassExpression>;
   /** Cache for function type deduplication: signature key → type index */
@@ -397,7 +413,11 @@ export interface CodegenContext {
   /** WASI import indices */
   wasiFdWriteIdx: number;
   wasiProcExitIdx: number;
+  wasiPathOpenIdx: number;
+  wasiFdCloseIdx: number;
   wasiBumpPtrGlobalIdx: number;
+  /** Set of node:fs functions used in WASI mode */
+  wasiNodeFsFuncs: Set<string>;
   /** Map from let/const module global variable name → TDZ flag global index */
   tdzGlobals: Map<string, number>;
   /** Set of let/const module global variable names */
@@ -414,6 +434,8 @@ export interface CodegenContext {
   funcConstructorMap: Map<string, { structTypeIdx: number; ctorFuncName: string }>;
   /** Per-compilation recursion guard for ensureStructForType (prevents infinite loops on circular types) */
   ensureStructPending: Set<ts.Type>;
+  /** Node builtin modules registered as externref globals (#1044) */
+  nodeBuiltinGlobals: Map<string, number>; // localName → funcIdx
 }
 
 export type { SourcePos };

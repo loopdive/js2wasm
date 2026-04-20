@@ -3,7 +3,13 @@ export type ImportIntent =
   | { type: "string_literal"; value: string }
   | { type: "math"; method: string }
   | { type: "console_log"; variant: string }
-  | { type: "extern_class"; className: string; action: "new" | "method" | "get" | "set"; member?: string }
+  | {
+      type: "extern_class";
+      className: string;
+      action: "new" | "method" | "get" | "set";
+      member?: string;
+      namespacePath?: string[];
+    }
   | { type: "string_method"; method: string }
   | { type: "builtin"; name: string }
   | { type: "callback_maker" }
@@ -20,8 +26,10 @@ export type ImportIntent =
   | { type: "date_now" }
   | { type: "declared_global"; name: string }
   | { type: "host_eq" }
+  | { type: "host_loose_eq" }
   | { type: "dynamic_import" }
-  | { type: "proxy_create" };
+  | { type: "proxy_create" }
+  | { type: "node_builtin"; moduleName: string };
 
 export interface ImportDescriptor {
   module: "env" | "wasm:js-string" | "string_constants";

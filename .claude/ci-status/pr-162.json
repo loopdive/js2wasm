@@ -1,0 +1,15 @@
+{
+  "pr": 162,
+  "conclusion": "failure",
+  "head_branch": "issue-1077-fresh-baseline",
+  "head_sha": "9094e4c4c74145482693f3edce442b0d1c2e89f5",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640273574",
+  "timestamp": "2026-04-20T00:03:54Z",
+  "pass": 22950,
+  "fail": 14519,
+  "compile_error": 4191,
+  "snapshot_delta": 500,
+  "net_per_test": 500,
+  "regressions": 837,
+  "improvements": 1337
+}
