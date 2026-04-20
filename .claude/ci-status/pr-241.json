@@ -2,14 +2,14 @@
   "pr": 241,
   "conclusion": "success",
   "head_branch": "issue-1149-null-deref-eval-method",
-  "head_sha": "79f31b929c4a3a69f94d1b5ba9f057813650b06b",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24692122806",
-  "timestamp": "2026-04-20T22:01:53Z",
-  "pass": 21360,
-  "fail": 13276,
-  "compile_error": 7027,
+  "head_sha": "40b3b168ef8c5679fbc797f3417f4fd47574bec9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24692520511",
+  "timestamp": "2026-04-20T22:22:57Z",
+  "pass": 21381,
+  "fail": 13291,
+  "compile_error": 7135,
   "snapshot_delta": 36,
-  "net_per_test": 36,
+  "net_per_test": 57,
   "regressions": 0,
-  "improvements": 36
+  "improvements": 57
 }
