@@ -335,7 +335,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1058 | Compile the TypeScript compiler itself to Wasm — self-hosting stress test | high | ready |
 | #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
 | #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | ready |
-| #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | ready |
 | #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | ready |
 | #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | ready |
 | #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
@@ -375,6 +374,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1006 | Support eval via JS host import | medium | review |
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | review |
 | #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | review |
+| #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | review |
 | #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | review |
 | #1117 | Expected TypeError but got wrong error type (136 tests) | medium | review |
 | #1123 | Verify landing page claims and code examples against current compiler behavior | high | review |
