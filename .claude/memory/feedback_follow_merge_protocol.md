@@ -2,22 +2,21 @@
 name: feedback_follow_merge_protocol
 description: CRITICAL — follow the documented merge protocol exactly, don't shortcut by merging as tech lead
 type: feedback
+originSessionId: 0ffbd21c-b73d-429a-a76d-4fb742ea9794
 ---
+**Merge protocol is now PR + CI, not local tester agents.** The old tester-agent protocol (spawning a short-lived tester to run test262 locally) is retired. Test262 runs in GitHub Actions on every PR.
 
-**Never merge branches yourself as tech lead.** Follow the CLAUDE.md merge protocol:
+Current protocol (see CLAUDE.md "Merge protocol"):
+1. Dev merges `origin/main` into branch BEFORE opening PR
+2. Dev pushes branch, opens PR against `main`
+3. GitHub Actions sharded test262 runs on the PR branch, writes `.claude/ci-status/pr-<N>.json`
+4. Dev waits (idle) for CI result on matching SHA
+5. Dev self-merges via `gh pr merge <N> --admin --merge` when `net_per_test > 0`
+6. Tech lead escalation only for: regressions >10, bucket >50, judgment call
 
-1. Dev signals "branch ready for test"
-2. Tech lead spawns a **short-lived tester agent** (isolation: worktree) that runs equiv tests + test262 on the integrated branch
-3. Tester creates merge proof and ff-only merges if pass count is stable
-4. One tester at a time
-
-**Why:** The tech lead was manually creating merge proofs and running quick equiv checks instead of spawning testers. This skips full test262 verification, which is how sprint 31 originally regressed (4 merges stacked without test262). The merge protocol exists because of that failure.
+**Why retained:** The underlying lesson (never skip test262 verification) still holds. The mechanism changed — CI does it now, not a local tester. The rule "don't merge without test262 confirmation" is still the invariant.
 
 **How to apply:**
-- When a dev says "branch ready", spawn: `Agent(subagent_type: "tester", isolation: "worktree", team_name: current_team)`
-- Give the tester the branch name, commit hash, and worktree path
-- The tester runs **BOTH equiv tests AND test262** (`pnpm run test:262`) on the integrated branch
-- Tester creates merge proof with test262 pass count, does ff-only merge
-- Tech lead does NOT touch merge-proof.json or run `git merge` directly
-- **NEVER skip test262 in tester prompts** — equiv-only is how sprint 31 regressed
-- Only exception: docs-only changes with zero compiler changes (README, ROADMAP, sprint files)
+- Never admin-merge a PR without a `.claude/ci-status/pr-<N>.json` result on a matching SHA
+- The ci-status feed is the test262 confirmation — it replaces the old merge-proof.json
+- Only exception: docs-only changes with zero `src/` changes
