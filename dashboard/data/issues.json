@@ -136,6 +136,88 @@
   ],
   "ready": [
     {
+      "id": "1159",
+      "title": "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "open",
+      "sprint": ""
+    },
+    {
+      "id": "1158",
+      "title": "destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern []",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1157",
+      "title": "RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "open",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1155",
+      "title": "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "open",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1154",
+      "title": "test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1119"
+      ],
+      "goal": "spec-completeness",
+      "status": "open",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1152",
+      "title": "Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "crash-free",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1151",
+      "title": "Async function synchronous throws bypass Promise.reject wrapping",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1147",
+      "title": "Add a public Docs page to the site",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1137",
       "title": "Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js",
       "priority": "high",
@@ -163,7 +245,7 @@
       "depends_on": [],
       "goal": "",
       "status": "ready",
-      "sprint": ""
+      "sprint": "43"
     },
     {
       "id": "1134",
@@ -246,26 +328,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "conformance",
-      "status": "open",
-      "sprint": "Ready"
-    },
-    {
-      "id": "1127",
-      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "correctness",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1127",
-      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "correctness",
       "status": "ready",
       "sprint": "43"
     },
@@ -279,29 +341,7 @@
       ],
       "goal": "performance",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1126",
-      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "performance",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1125",
-      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "benchmarking",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1125",
@@ -331,16 +371,6 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1122",
-      "title": "Keep standalone recursive numeric benchmark stable across non-run entry exports",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -353,29 +383,7 @@
       ],
       "goal": "performance",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1121",
-      "title": "Infer numeric recursive fast path without JSDoc hints on exported entrypoints",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "performance",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1120",
-      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1120",
@@ -399,31 +407,21 @@
     },
     {
       "id": "1119",
+      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "closed",
+      "sprint": "43"
+    },
+    {
+      "id": "1119",
       "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
       "priority": "medium",
       "feasibility": "hard",
       "depends_on": [],
       "goal": "conformance",
-      "status": "open",
-      "sprint": "Ready"
-    },
-    {
-      "id": "1119",
-      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1119",
-      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "async-model",
       "status": "ready",
       "sprint": "43"
     },
@@ -448,18 +446,6 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1109",
-      "title": "lodash-es clamp: Wasm validation error in typeof/RegExp codegen path",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1107"
-      ],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1109",
@@ -543,29 +529,7 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1099",
-      "title": "Standalone execution demo — compile and run a program on Wasmtime with zero JS host",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1094"
-      ],
-      "goal": "platform",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1098",
-      "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1098",
@@ -585,27 +549,7 @@
       "depends_on": [],
       "goal": "platform",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1096",
-      "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "platform",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1095",
-      "title": "Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "maintainability",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1095",
@@ -657,18 +601,6 @@
       ],
       "goal": "maintainability",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1086",
-      "title": "codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [
-        "1085"
-      ],
-      "goal": "maintainability",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -701,16 +633,6 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1080",
-      "title": "[umbrella] Fix CI baseline-drift regression gate — main is not self-healing",
-      "priority": "critical",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -721,29 +643,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1079",
-      "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1078",
-      "title": "CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [
-        "1076"
-      ],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1078",
@@ -767,18 +667,6 @@
       ],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1077",
-      "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [
-        "1076"
-      ],
-      "goal": "ci-hardening",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -789,31 +677,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1076",
-      "title": "CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline",
-      "priority": "critical",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1075",
-      "title": "CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1060",
-        "1061",
-        "1074"
-      ],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1075",
@@ -887,20 +751,6 @@
       ],
       "goal": "compiler-architecture",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1058",
-      "title": "Compile the TypeScript compiler itself to Wasm — self-hosting stress test",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1042",
-        "1044",
-        "1046"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -933,18 +783,6 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1045",
-      "title": "DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1041"
-      ],
-      "goal": "platform",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -958,16 +796,6 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1043",
-      "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1043",
@@ -1009,16 +837,6 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1035",
-      "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -1045,6 +863,16 @@
       "goal": "npm-library-support",
       "status": "ready",
       "sprint": "Backlog"
+    },
+    {
+      "id": "1025",
+      "title": "BindingElement array-pattern default guards still use ref.is_null",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1011",
@@ -1094,29 +922,7 @@
       "depends_on": [],
       "goal": "generator-model",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1004",
-      "title": "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "generator-model",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1003",
-      "title": "Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1000"
-      ],
-      "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1003",
@@ -1148,27 +954,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1001",
-      "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1000",
-      "title": "Normalize issue frontmatter and repopulate historical sprint issue assignments",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1000",
@@ -1284,19 +1070,6 @@
       "goal": "developer-experience",
       "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "906",
-      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "800",
-        "898"
-      ],
-      "goal": "error-model",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "906",
@@ -1523,19 +1296,9 @@
     },
     {
       "id": "862",
-      "title": "Empty error message failures: iterator/destructuring step-err tests (212 FAIL)",
+      "title": "Iterator protocol missing on function-declaration binding-pattern params",
       "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "crash-free",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "862",
-      "title": "Empty error message failures: iterator/destructuring step-err tests (212 FAIL)",
-      "priority": "medium",
-      "feasibility": "medium",
+      "feasibility": "hard",
       "depends_on": [],
       "goal": "crash-free",
       "status": "ready",
@@ -1560,16 +1323,6 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "854",
-      "title": "Iterator protocol: null next/return/throw methods (126 tests)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "854",
@@ -1761,18 +1514,6 @@
       ],
       "goal": "compilable",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "773",
-      "title": "Monomorphize functions: compile with call-site types, not generic externref",
-      "priority": "critical",
-      "feasibility": "hard",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "compilable",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -1784,19 +1525,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "744",
-      "title": "Function monomorphization for polymorphic call sites",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "743",
-        "1124"
-      ],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "744",
@@ -2029,12 +1757,94 @@
   ],
   "inprogress": [
     {
+      "id": "1156",
+      "title": "Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1152"
+      ],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "43"
+    },
+    {
+      "id": "1153",
+      "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
+      "priority": "critical",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "crash-free",
+      "status": "in-progress",
+      "sprint": "43"
+    },
+    {
+      "id": "1150",
+      "title": "Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
+      "id": "1149",
+      "title": "Fix null_deref:32 — eval-code direct methods with arguments declare",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
+      "id": "1148",
+      "title": "Investigate skip:103 regression — Annex B eval-code skip filter",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
+      "id": "1147",
+      "title": "Fix Function.length regression on library methods — wrong answer for toSorted/slice/splice/etc.",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "distribution",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
+      "id": "1120",
+      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "in-progress",
+      "sprint": "42"
+    },
+    {
+      "id": "1098",
+      "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
       "status": "in-progress",
       "sprint": "42"
     },
@@ -2196,6 +2006,18 @@
       "sprint": "42"
     },
     {
+      "id": "1077",
+      "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [
+        "1076"
+      ],
+      "goal": "ci-hardening",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
       "id": "1073",
       "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
       "priority": "high",
@@ -2240,6 +2062,16 @@
     {
       "id": "1005",
       "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "review",
+      "sprint": "42"
+    },
+    {
+      "id": "1001",
+      "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -2434,6 +2266,16 @@
       "goal": "spec-completeness",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "done",
+      "sprint": "43"
     },
     {
       "id": "1124",

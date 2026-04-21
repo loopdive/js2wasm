@@ -1,0 +1,15 @@
+{
+  "pr": 244,
+  "conclusion": "failure",
+  "head_branch": "issue-1017-yield-star-v2",
+  "head_sha": "bff67488fffaecf91074b65a823c027cb729833e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24698925140",
+  "timestamp": "2026-04-21T01:44:00Z",
+  "pass": 21709,
+  "fail": 13017,
+  "compile_error": 7081,
+  "snapshot_delta": 290,
+  "net_per_test": 290,
+  "regressions": 15,
+  "improvements": 305
+}

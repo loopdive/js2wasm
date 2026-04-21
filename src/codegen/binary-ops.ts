@@ -202,6 +202,42 @@ export function compileBinaryExpression(
     return compileNullishCoalescing(ctx, fctx, expr);
   }
 
+  // ── Fast path: `expr | 0` → pure ToInt32 coercion ──
+  // In JavaScript, `x | 0` is idiomatically used to coerce a number to int32.
+  // Since OR-ing with 0 is the identity for the bit pattern, we can skip
+  // compiling the right operand entirely and just emit ToInt32 on the left.
+  // This avoids the expensive double-ToInt32 + i32.or + f64.convert sequence
+  // that compileBitwiseBinaryOp would generate.
+  if (op === ts.SyntaxKind.BarToken && ts.isNumericLiteral(expr.right) && expr.right.text === "0") {
+    const leftType = compileExpression(ctx, fctx, expr.left);
+    if (!leftType) return null;
+    if (leftType.kind === "f64") {
+      emitToInt32(fctx);
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    } else if (leftType.kind === "i32") {
+      // Already i32 — `x | 0` is identity, just convert to f64 for JS number semantics
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    } else if (leftType.kind === "externref") {
+      // externref → coerce to f64 first, then ToInt32
+      const pfIdx = ctx.funcMap.get("parseFloat");
+      if (pfIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: pfIdx });
+      } else {
+        addUnionImports(ctx);
+        const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+        fctx.body.push({ op: "call", funcIdx: unboxIdx });
+      }
+      emitToInt32(fctx);
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    } else {
+      // ref/ref_null — coerce to f64 via valueOf, then ToInt32
+      coerceType(ctx, fctx, leftType, { kind: "f64" }, "number");
+      emitToInt32(fctx);
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+    return { kind: "f64" };
+  }
+
   // Comma operator: (a, b) — evaluate a, drop its value, evaluate b
   if (op === ts.SyntaxKind.CommaToken) {
     const leftType = compileExpression(ctx, fctx, expr.left);
