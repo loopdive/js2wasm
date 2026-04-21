@@ -41,8 +41,56 @@ const HARD_TS_DIAG_CODES = new Set([
   2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
 ]);
 
-function isHardTypeScriptDiagnostic(diag: { category: number; code: number }): boolean {
-  return diag.category === 1 && HARD_TS_DIAG_CODES.has(diag.code);
+/**
+ * #862: TypeScript infers `function f([,])` as `function f([,]: [any?])` — a tuple type.
+ * A call site like `f(generator)` then trips TS2345 even though, in JS/TS at runtime,
+ * a binding-pattern parameter destructures any iterable per ECMA-262 §13.3.3.6
+ * (IteratorBindingInitialization). Suppress 2345 when the target parameter uses an
+ * array/object binding pattern and lacks an explicit type annotation — the inferred
+ * tuple type is a TypeScript fiction that does not reflect runtime semantics.
+ */
+function isBindingPatternFalsePositive(diag: ts.Diagnostic, checker: ts.TypeChecker): boolean {
+  if (diag.code !== 2345) return false;
+  const file = diag.file;
+  if (!file || diag.start === undefined) return false;
+  const pos = diag.start;
+  function findNode(node: ts.Node): ts.Node | undefined {
+    if (pos < node.getStart(file) || pos >= node.getEnd()) return undefined;
+    let found: ts.Node = node;
+    node.forEachChild((child) => {
+      const inner = findNode(child);
+      if (inner) found = inner;
+    });
+    return found;
+  }
+  let n: ts.Node | undefined = findNode(file);
+  while (n && !ts.isCallExpression(n) && !ts.isNewExpression(n)) {
+    n = n.parent;
+  }
+  if (!n || !(ts.isCallExpression(n) || ts.isNewExpression(n))) return false;
+  const args = n.arguments;
+  if (!args) return false;
+  let argIdx = -1;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (pos >= a.getStart(file) && pos < a.getEnd()) {
+      argIdx = i;
+      break;
+    }
+  }
+  if (argIdx < 0) return false;
+  const sig = checker.getResolvedSignature(n);
+  if (!sig) return false;
+  const paramDecl = sig.getDeclaration()?.parameters?.[argIdx];
+  if (!paramDecl) return false;
+  if (paramDecl.type) return false; // explicit annotation — respect it
+  return ts.isArrayBindingPattern(paramDecl.name) || ts.isObjectBindingPattern(paramDecl.name);
+}
+
+function isHardTypeScriptDiagnostic(diag: ts.Diagnostic, checker?: ts.TypeChecker): boolean {
+  if (diag.category !== 1 || !HARD_TS_DIAG_CODES.has(diag.code)) return false;
+  if (checker && isBindingPatternFalsePositive(diag, checker)) return false;
+  return true;
 }
 
 /**
@@ -192,7 +240,7 @@ export function compileSource(
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
   );
-  const hasHardTypeErrors = ast.diagnostics.some(isHardTypeScriptDiagnostic);
+  const hasHardTypeErrors = ast.diagnostics.some((d) => isHardTypeScriptDiagnostic(d, ast.checker));
 
   if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
@@ -498,7 +546,8 @@ export function compileMultiSource(
       (d) => d.category === 1 && isEntryDiag(d) && multiAst.sourceFiles.some((sf) => d.file === sf),
     );
   const hasHardTypeErrors =
-    !options.allowJs && multiAst.diagnostics.some((d) => isHardTypeScriptDiagnostic(d) && isEntryDiag(d));
+    !options.allowJs &&
+    multiAst.diagnostics.some((d) => isHardTypeScriptDiagnostic(d, multiAst.checker) && isEntryDiag(d));
 
   if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
@@ -729,7 +778,7 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
   const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
     (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
   );
-  const hasHardTypeErrors = multiAst.diagnostics.some(isHardTypeScriptDiagnostic);
+  const hasHardTypeErrors = multiAst.diagnostics.some((d) => isHardTypeScriptDiagnostic(d, multiAst.checker));
 
   if ((hasSyntaxErrors || hasHardTypeErrors) && errors.length > 0) {
     return {
