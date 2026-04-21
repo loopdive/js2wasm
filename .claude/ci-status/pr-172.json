@@ -2,14 +2,14 @@
   "pr": 172,
   "conclusion": "failure",
   "head_branch": "issue-1017-yield-star-delegation",
-  "head_sha": "cbb76198d7bc3bcbd6cd6891138de9341cbae869",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693658101",
-  "timestamp": "2026-04-21T00:06:07Z",
-  "pass": 21394,
-  "fail": 13278,
+  "head_sha": "791ddc35d24ed6c3a2d47cf8ee8ec7c35232bfa1",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694145695",
+  "timestamp": "2026-04-21T01:05:43Z",
+  "pass": 21432,
+  "fail": 13240,
   "compile_error": 7135,
   "snapshot_delta": 13,
-  "net_per_test": 49,
+  "net_per_test": 51,
   "regressions": 15,
-  "improvements": 64
+  "improvements": 66
 }
