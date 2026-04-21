@@ -37,106 +37,187 @@ createFreshCompiler();
 process.on("unhandledRejection", () => {});
 
 // ── Prototype-poisoning sandbox ───────────────────────────────────────
-// test262 tests routinely mutate built-in prototypes: deleting methods,
-// replacing them with accessors, Object.defineProperty on numeric indices,
-// freezing, etc.  Since compile and execute share the same process, any
-// residual poison breaks the TypeScript compiler + js2wasm codegen on
-// subsequent compilations (#1153 root cause).
+// test262 tests routinely mutate built-in prototypes. Since compile and
+// execute share the same process, residual poison breaks the TypeScript
+// compiler + js2wasm codegen on subsequent compilations (#1153 / #1154).
 //
-// Concrete crashes observed before full restoration:
+// Concrete crashes observed in test262 CI before this sandbox grew:
 //   - Array.prototype.reduce deleted → "constructSigs.reduce is not a function"
-//     at src/codegen/index.ts:4997
 //   - WeakMap.prototype.set deleted → "cache.set is not a function"
-//     at src/codegen/helpers/body-uses-arguments.ts:28
 //   - RegExp.prototype.exec deleted → "commentDirectiveRegEx.exec is not a
 //     function" inside typescript.js (scanner)
+//   - Array.prototype.from deleted → #1154 iteration/spread cluster
 //
-// Strategy: snapshot ALL own property descriptors of compiler-critical
-// prototypes at startup. After each test, restore any descriptor that has
-// drifted and delete any keys added by the test.  Non-configurable poison
-// (a test that re-defines a method with configurable:false) is detected
-// and triggers worker restart — recovery is impossible in-process.
+// Strategy: capture the ORIGINAL VALUE of each method we restore, then
+// after every test re-assign it if it changed.  We do NOT use
+// Object.defineProperty on builtin prototypes — that disturbs V8's
+// internal shape/IC caches and causes many tests to fail (#1153 attempt 1).
+// Simple value re-assignment is enough: the descriptor for a method that
+// was replaced (e.g. `Array.prototype.reduce = () => {...}`) still has
+// writable:true, so `=` restores the original function.
+//
+// For numeric-index accessors added to Array.prototype (configurable data
+// or accessor properties), we delete.  For tests that add non-configurable
+// poison, we exit for worker-pool restart — recovery is impossible.
 
-const POISONABLE_PROTOTYPES = [
-  { name: "Array.prototype", proto: Array.prototype },
-  { name: "Object.prototype", proto: Object.prototype },
-  { name: "Function.prototype", proto: Function.prototype },
-  { name: "String.prototype", proto: String.prototype },
-  { name: "Number.prototype", proto: Number.prototype },
-  { name: "Boolean.prototype", proto: Boolean.prototype },
-  { name: "RegExp.prototype", proto: RegExp.prototype },
-  { name: "Map.prototype", proto: Map.prototype },
-  { name: "Set.prototype", proto: Set.prototype },
-  { name: "WeakMap.prototype", proto: WeakMap.prototype },
-  { name: "WeakSet.prototype", proto: WeakSet.prototype },
-  { name: "Error.prototype", proto: Error.prototype },
-  { name: "Promise.prototype", proto: Promise.prototype },
-  { name: "Symbol.prototype", proto: Symbol.prototype },
-  { name: "Date.prototype", proto: Date.prototype },
+// --- Category 1: numeric Array.prototype keys and Object.prototype keys
+// (must be deleted, not re-assigned — they're properties not on the
+// original descriptor set).
+const _origArrayIterator = Array.prototype[Symbol.iterator];
+const _origArrayProtoNumericKeys = new Set(
+  Object.getOwnPropertyNames(Array.prototype).filter((k) => /^\d+$/.test(k)),
+);
+const _origObjectProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype));
+
+// --- Category 2: specific methods the compiler + TypeScript use.
+// Captured by VALUE at startup. Restored by simple assignment.
+// When adding here: verify a test262 test that poisons the method actually
+// triggered a compile_error before the entry was added.
+const _METHOD_SNAPSHOTS = [
+  // Array.prototype — higher-order methods are used all over codegen + TS
+  ["Array.prototype", Array.prototype, [
+    "reduce", "reduceRight", "map", "filter", "forEach", "find", "findIndex",
+    "findLast", "findLastIndex", "some", "every", "indexOf", "lastIndexOf",
+    "includes", "push", "pop", "shift", "unshift", "slice", "splice",
+    "concat", "join", "reverse", "sort", "flat", "flatMap", "fill", "copyWithin",
+    "at", "entries", "keys", "values", "toString", "toLocaleString",
+  ]],
+  ["String.prototype", String.prototype, [
+    "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes",
+    "indexOf", "lastIndexOf", "match", "matchAll", "normalize", "padEnd",
+    "padStart", "repeat", "replace", "replaceAll", "search", "slice", "split",
+    "startsWith", "substring", "substr", "toLowerCase", "toUpperCase", "trim",
+    "trimStart", "trimEnd", "toString", "valueOf", "at",
+  ]],
+  ["Number.prototype", Number.prototype, [
+    "toString", "toFixed", "toPrecision", "toExponential", "valueOf", "toLocaleString",
+  ]],
+  ["Boolean.prototype", Boolean.prototype, ["toString", "valueOf"]],
+  ["RegExp.prototype", RegExp.prototype, ["exec", "test", "toString"]],
+  ["Map.prototype", Map.prototype, [
+    "get", "set", "has", "delete", "clear", "forEach", "entries", "keys", "values",
+  ]],
+  ["Set.prototype", Set.prototype, [
+    "add", "has", "delete", "clear", "forEach", "entries", "keys", "values",
+  ]],
+  ["WeakMap.prototype", WeakMap.prototype, ["get", "set", "has", "delete"]],
+  ["WeakSet.prototype", WeakSet.prototype, ["add", "has", "delete"]],
+  ["Error.prototype", Error.prototype, ["toString"]],
+  ["Function.prototype", Function.prototype, ["call", "apply", "bind", "toString"]],
+  ["Object.prototype", Object.prototype, [
+    "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable",
+    "toString", "valueOf", "toLocaleString",
+  ]],
+  ["Promise.prototype", Promise.prototype, ["then", "catch", "finally"]],
+  ["Date.prototype", Date.prototype, [
+    "getTime", "getFullYear", "getMonth", "getDate", "getDay", "getHours",
+    "getMinutes", "getSeconds", "getMilliseconds", "getTimezoneOffset",
+    "toISOString", "toJSON", "toString", "valueOf", "toLocaleString",
+  ]],
 ];
 
-// For each prototype, snapshot the descriptor of every own key (including
-// Symbol-keyed ones) and the set of keys so we can tell "added by test".
-// We use descriptors (not values) so accessors added on top of data
-// properties get caught.  Comparison is by-reference on the descriptor
-// fields we care about; a test that re-defines a method with the identical
-// descriptor shape is a no-op from our perspective, which is fine.
-const _protoSnapshots = POISONABLE_PROTOTYPES.map(({ name, proto }) => {
-  const ownKeys = Reflect.ownKeys(proto);
-  const descriptors = new Map();
-  for (const key of ownKeys) {
-    descriptors.set(key, Object.getOwnPropertyDescriptor(proto, key));
-  }
-  return { name, proto, descriptors };
-});
+// --- Category 3: static "namespace" methods (Array.from, Object.keys, etc.)
+// These live on the CONSTRUCTOR, not the prototype, so they bypass the
+// prototype-descriptor logic entirely.
+const _STATIC_SNAPSHOTS = [
+  ["Array", Array, ["from", "of", "isArray"]],
+  ["Object", Object, [
+    "keys", "values", "entries", "assign", "freeze", "isFrozen",
+    "getOwnPropertyNames", "getOwnPropertyDescriptor", "getOwnPropertySymbols",
+    "getPrototypeOf", "setPrototypeOf", "defineProperty", "defineProperties",
+    "create", "is",
+  ]],
+  ["String", String, ["fromCharCode", "fromCodePoint", "raw"]],
+  ["Number", Number, ["isFinite", "isInteger", "isNaN", "isSafeInteger", "parseFloat", "parseInt"]],
+  ["Math", Math, [
+    "abs", "ceil", "floor", "round", "trunc", "sign", "min", "max", "pow",
+    "sqrt", "log", "log2", "log10", "exp", "random",
+    "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "hypot",
+    "fround", "imul", "clz32",
+  ]],
+  ["JSON", JSON, ["parse", "stringify"]],
+  ["Reflect", Reflect, [
+    "get", "set", "has", "deleteProperty", "ownKeys",
+    "getOwnPropertyDescriptor", "defineProperty",
+    "getPrototypeOf", "setPrototypeOf", "construct", "apply",
+  ]],
+  ["RegExp", RegExp, []],
+];
 
-function descriptorDiffers(a, b) {
-  if (!a && !b) return false;
-  if (!a || !b) return true;
-  return (
-    a.value !== b.value ||
-    a.get !== b.get ||
-    a.set !== b.set ||
-    a.writable !== b.writable ||
-    a.enumerable !== b.enumerable ||
-    a.configurable !== b.configurable
-  );
-}
+const _snapshotValue = (obj, key) => {
+  try { return obj[key]; } catch { return undefined; }
+};
+const _methodOrig = _METHOD_SNAPSHOTS.map(([name, obj, keys]) => ({
+  name, obj, values: keys.map((k) => [k, _snapshotValue(obj, k)]),
+}));
+const _staticOrig = _STATIC_SNAPSHOTS.map(([name, obj, keys]) => ({
+  name, obj, values: keys.map((k) => [k, _snapshotValue(obj, k)]),
+}));
 
 function restoreBuiltins() {
-  for (const { name, proto, descriptors: origDescriptors } of _protoSnapshots) {
-    const currentKeys = Reflect.ownKeys(proto);
+  // Restore Array.prototype[Symbol.iterator]
+  if (Array.prototype[Symbol.iterator] !== _origArrayIterator) {
+    try { Array.prototype[Symbol.iterator] = _origArrayIterator; } catch {}
+  }
 
-    // (1) Delete keys added by the test that are NOT in the snapshot.
-    //     A non-configurable addition is unrecoverable → exit for restart.
-    for (const key of currentKeys) {
-      if (origDescriptors.has(key)) continue;
-      const desc = Object.getOwnPropertyDescriptor(proto, key);
+  // Remove numeric-indexed accessor properties added to Array.prototype
+  for (const key of Object.getOwnPropertyNames(Array.prototype)) {
+    if (/^\d+$/.test(key) && !_origArrayProtoNumericKeys.has(key)) {
+      try { delete Array.prototype[key]; } catch {}
+    }
+  }
+
+  // Remove properties added to Object.prototype
+  for (const key of Object.getOwnPropertyNames(Object.prototype)) {
+    if (!_origObjectProtoKeys.has(key)) {
+      try { delete Object.prototype[key]; } catch {}
+    }
+  }
+
+  // Restore specific methods on prototypes (value-assignment only).
+  for (const { obj, values } of _methodOrig) {
+    for (const [key, orig] of values) {
+      if (orig === undefined) continue;
+      let cur;
+      try { cur = obj[key]; } catch { cur = undefined; }
+      if (cur !== orig) {
+        try { obj[key] = orig; } catch {}
+      }
+    }
+  }
+
+  // Restore static/namespace methods on constructors.
+  for (const { obj, values } of _staticOrig) {
+    for (const [key, orig] of values) {
+      if (orig === undefined) continue;
+      let cur;
+      try { cur = obj[key]; } catch { cur = undefined; }
+      if (cur !== orig) {
+        try { obj[key] = orig; } catch {}
+      }
+    }
+  }
+
+  // Detect non-configurable poison on Array.prototype — cannot be cleaned up.
+  for (const key of Object.getOwnPropertyNames(Array.prototype)) {
+    if (/^\d+$/.test(key)) {
+      const desc = Object.getOwnPropertyDescriptor(Array.prototype, key);
       if (desc && !desc.configurable) {
         console.error(
-          `[unified-worker pid=${process.pid}] FATAL: non-configurable ${name}[${String(key)}] added by test — exiting for restart`,
+          `[unified-worker pid=${process.pid}] FATAL: non-configurable Array.prototype[${key}] — exiting for restart`,
         );
         process.exit(1);
       }
-      try { delete proto[key]; } catch {}
     }
+  }
 
-    // (2) Restore any descriptor that has drifted from the snapshot.
-    //     A non-configurable drift is unrecoverable → exit for restart.
-    for (const [key, origDesc] of origDescriptors) {
-      const curDesc = Object.getOwnPropertyDescriptor(proto, key);
-      if (!descriptorDiffers(curDesc, origDesc)) continue;
-      if (curDesc && !curDesc.configurable) {
+  // Non-configurable additions to Object.prototype also require restart.
+  for (const key of Object.getOwnPropertyNames(Object.prototype)) {
+    if (!_origObjectProtoKeys.has(key)) {
+      const desc = Object.getOwnPropertyDescriptor(Object.prototype, key);
+      if (desc && !desc.configurable) {
         console.error(
-          `[unified-worker pid=${process.pid}] FATAL: non-configurable ${name}[${String(key)}] drifted — exiting for restart`,
-        );
-        process.exit(1);
-      }
-      try {
-        Object.defineProperty(proto, key, origDesc);
-      } catch (e) {
-        console.error(
-          `[unified-worker pid=${process.pid}] FATAL: cannot restore ${name}[${String(key)}] (${e.message}) — exiting for restart`,
+          `[unified-worker pid=${process.pid}] FATAL: non-configurable Object.prototype[${key}] — exiting for restart`,
         );
         process.exit(1);
       }
