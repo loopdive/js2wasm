@@ -340,6 +340,31 @@ function applyTypeofNarrowing(
 }
 
 export function compileIfStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.IfStatement): void {
+  // Constant-folding: if the condition is a compile-time constant (e.g. after
+  // --define substitution of process.env.NODE_ENV), emit only the taken branch.
+  // Handles: "x" === "y", "x" !== "y", true, false, !true, !false
+  const constResult = evaluateConstantCondition(stmt.expression);
+  if (constResult !== undefined) {
+    if (constResult) {
+      // Condition is always true — emit only the then branch
+      if (ts.isBlock(stmt.thenStatement)) {
+        for (const s of stmt.thenStatement.statements) compileStatement(ctx, fctx, s);
+      } else {
+        compileStatement(ctx, fctx, stmt.thenStatement);
+      }
+    } else {
+      // Condition is always false — emit only the else branch (if any)
+      if (stmt.elseStatement) {
+        if (ts.isBlock(stmt.elseStatement)) {
+          for (const s of stmt.elseStatement.statements) compileStatement(ctx, fctx, s);
+        } else {
+          compileStatement(ctx, fctx, stmt.elseStatement);
+        }
+      }
+    }
+    return;
+  }
+
   // Detect null-narrowing pattern before compiling the condition
   const narrowing = detectNullNarrowing(stmt.expression);
 
@@ -796,4 +821,66 @@ export function compileContinueStatement(
   }
 
   fctx.body.push({ op: "br", depth });
+}
+
+/**
+ * Evaluate a condition expression at compile time if possible.
+ * Returns true/false for constant conditions, undefined if not constant.
+ *
+ * Handles:
+ * - `"x" === "y"`, `"x" !== "y"` (string literal comparisons)
+ * - `true`, `false` literals
+ * - `!<constant>` (prefix logical not)
+ * - `"x" == "y"`, `"x" != "y"` (loose equality on string literals)
+ * - `&&` and `||` with constant operands
+ */
+export function evaluateConstantCondition(expr: ts.Expression): boolean | undefined {
+  // Unwrap parentheses
+  let e = expr;
+  while (ts.isParenthesizedExpression(e)) e = e.expression;
+
+  // Boolean literals: true, false
+  if (e.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (e.kind === ts.SyntaxKind.FalseKeyword) return false;
+
+  // Prefix !: negate a constant sub-expression
+  if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
+    const inner = evaluateConstantCondition(e.operand);
+    return inner !== undefined ? !inner : undefined;
+  }
+
+  // Binary comparison of two string literals
+  if (ts.isBinaryExpression(e)) {
+    const left = unwrapParens(e.left);
+    const right = unwrapParens(e.right);
+    if (ts.isStringLiteral(left) && ts.isStringLiteral(right)) {
+      const eq = left.text === right.text;
+      switch (e.operatorToken.kind) {
+        case ts.SyntaxKind.EqualsEqualsEqualsToken:
+        case ts.SyntaxKind.EqualsEqualsToken:
+          return eq;
+        case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+        case ts.SyntaxKind.ExclamationEqualsToken:
+          return !eq;
+      }
+    }
+    // Logical && and || with constant operands
+    if (e.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+      const l = evaluateConstantCondition(e.left);
+      if (l === false) return false;
+      if (l === true) return evaluateConstantCondition(e.right);
+    }
+    if (e.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+      const l = evaluateConstantCondition(e.left);
+      if (l === true) return true;
+      if (l === false) return evaluateConstantCondition(e.right);
+    }
+  }
+
+  return undefined;
+}
+
+function unwrapParens(e: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(e)) e = e.expression;
+  return e;
 }
