@@ -20,6 +20,46 @@ import { buildImports } from "./runtime-bundle.mjs";
 // the rejection propagates and crashes the parent's IPC channel.
 process.on("unhandledRejection", () => {});
 
+/**
+ * Extract a human-readable message from a Wasm runtime error. Returns
+ * { message, stack } so the caller can forward both over IPC. If
+ * `instance` is null, skips tag-based payload lookup.
+ */
+function extractWasmExceptionInfo(err, instance) {
+  if (err instanceof WebAssembly.Exception) {
+    let payload = null;
+    if (instance) {
+      try {
+        const tag = instance.exports.__exn_tag ?? instance.exports.__tag;
+        if (tag) payload = err.getArg(tag, 0);
+      } catch {}
+    }
+    if (payload instanceof Error) {
+      const message = payload.message ?? String(payload);
+      return { message, stack: payload.stack ?? message };
+    }
+    if (payload != null) {
+      const message = String(payload);
+      return { message, stack: message };
+    }
+    return {
+      message: instance ? "TypeError (null/undefined access)" : "wasm exception during module init",
+      stack: null,
+    };
+  }
+  if (err instanceof Error) {
+    let message = err.message ?? String(err);
+    const stack = err.stack ?? message;
+    if (/illegal cast|null|unreachable|out of bounds/.test(message)) {
+      const funcMatch = stack.match(/at (\w+) \(wasm:/);
+      if (funcMatch) message = `${message} [in ${funcMatch[1]}()]`;
+    }
+    return { message, stack };
+  }
+  const s = String(err);
+  return { message: s, stack: s };
+}
+
 parentPort.on("message", async (msg) => {
   const { id, imports, stringPool, isRuntimeNegative } = msg;
   // Read binary from disk (cachePath) or use inline binary — avoids
@@ -37,10 +77,25 @@ parentPort.on("message", async (msg) => {
       const result = await WebAssembly.instantiate(binary, importObj);
       instance = result.instance;
     } catch (err) {
+      if (err instanceof WebAssembly.CompileError || err instanceof WebAssembly.LinkError) {
+        reply({
+          ok: false,
+          error: err.message ?? String(err),
+          instantiateError: true,
+        });
+        return;
+      }
+      if (isRuntimeNegative) {
+        reply({ ok: true, runtimeNegativePass: true });
+        return;
+      }
+      const info = extractWasmExceptionInfo(err, null);
       reply({
         ok: false,
-        error: err.message ?? String(err),
+        error: info.message,
+        isException: true,
         instantiateError: true,
+        exceptionPayload: info.stack,
       });
       return;
     }
@@ -73,44 +128,12 @@ parentPort.on("message", async (msg) => {
         return;
       }
 
-      // Extract exception info
-      let errInfo = "";
-      let exceptionPayload = null;
-
-      if (execErr instanceof WebAssembly.Exception) {
-        // Try to get payload via getArg
-        let payload = null;
-        try {
-          const tag = instance.exports.__exn_tag ?? instance.exports.__tag;
-          if (tag) payload = execErr.getArg(tag, 0);
-        } catch {}
-
-        if (payload instanceof Error) {
-          errInfo = payload.message ?? String(payload);
-          exceptionPayload = payload.stack ?? errInfo;
-        } else {
-          errInfo = "TypeError (null/undefined access)";
-        }
-      } else if (execErr instanceof Error) {
-        errInfo = execErr.message ?? String(execErr);
-        exceptionPayload = execErr.stack ?? errInfo;
-        // For Wasm traps (illegal cast, null deref, unreachable), extract
-        // the function name from the stack trace for better diagnostics.
-        if (exceptionPayload && /illegal cast|null|unreachable|out of bounds/.test(errInfo)) {
-          const funcMatch = exceptionPayload.match(/at (\w+) \(wasm:/);
-          if (funcMatch) {
-            errInfo = `${errInfo} [in ${funcMatch[1]}()]`;
-          }
-        }
-      } else {
-        errInfo = String(execErr);
-      }
-
+      const info = extractWasmExceptionInfo(execErr, instance);
       reply({
         ok: false,
-        error: errInfo,
+        error: info.message,
         isException: true,
-        exceptionPayload,
+        exceptionPayload: info.stack,
       });
     }
   } catch (outerErr) {

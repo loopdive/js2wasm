@@ -1,0 +1,15 @@
+{
+  "pr": 253,
+  "conclusion": "failure",
+  "head_branch": "chore/statusline-progress-bars",
+  "head_sha": "2e493a9024d8156839bd7448be4874eecdebed8e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24704180584",
+  "timestamp": "2026-04-21T04:50:21Z",
+  "pass": 24483,
+  "fail": 13700,
+  "compile_error": 3621,
+  "snapshot_delta": 3064,
+  "net_per_test": 3064,
+  "regressions": 82,
+  "improvements": 3146
+}

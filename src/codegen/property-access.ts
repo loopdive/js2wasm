@@ -92,6 +92,26 @@ export function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string 
 }
 
 /**
+ * Resolve a struct name for a property access/assignment target expression,
+ * with fallbacks for widened variables and `this` in function constructors.
+ */
+export function resolveStructNameForExpr(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expression: ts.Expression,
+): string | undefined {
+  const objType = ctx.checker.getTypeAtLocation(expression);
+  let typeName = resolveStructName(ctx, objType);
+  if (!typeName && ts.isIdentifier(expression)) {
+    typeName = ctx.widenedVarStructMap.get(expression.text);
+  }
+  if (!typeName && expression.kind === ts.SyntaxKind.ThisKeyword) {
+    typeName = resolveThisStructName(ctx, fctx);
+  }
+  return typeName;
+}
+
+/**
  * Check if a type looks like an IteratorResult (has .value and .done properties)
  * even if the type checker doesn't resolve it as IteratorResult directly.
  * This handles cases where the type is a union (IteratorYieldResult | IteratorReturnResult).
@@ -1181,17 +1201,89 @@ export function compilePropertyAccess(
     const lengthSigs =
       callSigs && callSigs.length > 0 ? callSigs : constructSigs2 && constructSigs2.length > 0 ? constructSigs2 : null;
     if (lengthSigs && lengthSigs.length > 0) {
-      // ES spec: Function.length = number of required params before first
-      // optional/default/rest. TS forbids required-after-optional, so filtering
-      // out optional/default/rest is equivalent to iterating until the first one.
-      const sig = lengthSigs[0]!;
-      const paramCount = sig.parameters.filter((p: any) => {
-        const decl = p.valueDeclaration;
-        if (!decl || !ts.isParameter(decl)) return true;
-        return !decl.dotDotDotToken && !decl.questionToken && !decl.initializer;
-      }).length;
-      fctx.body.push({ op: "f64.const", value: paramCount });
-      return { kind: "f64" };
+      // For library/ambient functions, TS's param count can disagree with the
+      // runtime Function.length — the ES spec pins .length for methods like
+      // Array.prototype.toSorted to 1 even though the lib d.ts declares
+      // compareFn as optional ("?"). Defer to __extern_get("length") so the
+      // runtime value wins — but only when the root identifier of the chain
+      // is a known reachable global (BUILTIN_CTOR_NAMES / globalThis). Bare
+      // lib identifiers like `encodeURIComponent` or `DisposableStack` don't
+      // have a runtime externref binding, so __extern_get would throw.
+      const isLibrarySig = lengthSigs.some((s) => {
+        const decl = s.getDeclaration?.();
+        return decl?.getSourceFile().isDeclarationFile === true;
+      });
+      const BUILTIN_GLOBAL_ROOTS = new Set([
+        "Object",
+        "Array",
+        "Function",
+        "Symbol",
+        "Proxy",
+        "Reflect",
+        "Math",
+        "BigInt",
+        "JSON",
+        "Date",
+        "RegExp",
+        "ArrayBuffer",
+        "SharedArrayBuffer",
+        "DataView",
+        "Promise",
+        "WeakMap",
+        "WeakSet",
+        "WeakRef",
+        "FinalizationRegistry",
+        "Atomics",
+        "Iterator",
+        "Map",
+        "Set",
+        "Error",
+        "TypeError",
+        "RangeError",
+        "SyntaxError",
+        "URIError",
+        "EvalError",
+        "ReferenceError",
+        "String",
+        "Number",
+        "Boolean",
+        "Int8Array",
+        "Uint8Array",
+        "Uint8ClampedArray",
+        "Int16Array",
+        "Uint16Array",
+        "Int32Array",
+        "Uint32Array",
+        "Float32Array",
+        "Float64Array",
+        "BigInt64Array",
+        "BigUint64Array",
+        "globalThis",
+      ]);
+      let rootNode: ts.Expression = expr.expression;
+      while (ts.isPropertyAccessExpression(rootNode) || ts.isElementAccessExpression(rootNode)) {
+        rootNode = rootNode.expression;
+      }
+      const rootIsReachableBuiltin =
+        ts.isIdentifier(rootNode) &&
+        BUILTIN_GLOBAL_ROOTS.has(rootNode.text) &&
+        !fctx.localMap.has(rootNode.text) &&
+        !(fctx.boxedCaptures?.has(rootNode.text) ?? false);
+      if (!isLibrarySig || !rootIsReachableBuiltin) {
+        // ES spec: Function.length = number of required params before first
+        // optional/default/rest. TS forbids required-after-optional, so filtering
+        // out optional/default/rest is equivalent to iterating until the first one.
+        const sig = lengthSigs[0]!;
+        const paramCount = sig.parameters.filter((p: any) => {
+          const decl = p.valueDeclaration;
+          if (!decl || !ts.isParameter(decl)) return true;
+          return !decl.dotDotDotToken && !decl.questionToken && !decl.initializer;
+        }).length;
+        fctx.body.push({ op: "f64.const", value: paramCount });
+        return { kind: "f64" };
+      }
+      // Library signature rooted at a reachable builtin → fall through to
+      // externref / __extern_get path below.
     }
   }
 
@@ -1569,15 +1661,7 @@ export function compilePropertyAccess(
   }
 
   // Handle getter accessor on user-defined classes
-  let typeName = resolveStructName(ctx, objType);
-  // Fallback: check widened variable struct map for empty objects with later-assigned props
-  if (!typeName && ts.isIdentifier(expr.expression)) {
-    typeName = ctx.widenedVarStructMap.get(expr.expression.text);
-  }
-  // Fallback for `this.prop` in function constructors
-  if (!typeName && expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
-    typeName = resolveThisStructName(ctx, fctx);
-  }
+  const typeName = resolveStructNameForExpr(ctx, fctx, expr.expression);
   if (typeName) {
     const accessorKey = `${typeName}_${propName}`;
     if (ctx.classAccessorSet.has(accessorKey)) {
@@ -1602,9 +1686,15 @@ export function compilePropertyAccess(
       }
     }
 
-    // Handle instance method accessed as value (not call): obj.method (#820)
+    // Handle instance method accessed as value (not call): obj.method (#820, #1149)
     // Returns null externref to prevent null deref traps from the fallthrough path.
-    if (ctx.classSet.has(typeName)) {
+    // Applies to both class instances and object-literal struct types: object-literal
+    // methods are registered in classMethodSet under `${typeName}_${propName}` even
+    // though the struct type itself is not in classSet. Without this, the fallback
+    // path would dynamically add a struct field for the method and read its null
+    // default, causing a null_deref trap when the detached method reference is later
+    // invoked — instead of the TypeError the JS caller would expect.
+    {
       const methodFullName = `${typeName}_${propName}`;
       if (ctx.classMethodSet.has(methodFullName) || ctx.staticMethodSet.has(methodFullName)) {
         const funcIdx = ctx.funcMap.get(methodFullName);
@@ -2505,28 +2595,6 @@ export function compileElementAccessBody(
     }
 
     // Handle vec struct (array wrapped in {length, data})
-    // First, check if the key is a well-known symbol (e.g. Symbol.iterator).
-    // Well-known symbols are NOT numeric array indices — route through
-    // extern.convert_any + __extern_get so the runtime can resolve them (#854).
-    {
-      const symKey = resolveComputedKeyExpression(ctx, expr.argumentExpression);
-      if (symKey !== undefined && symKey.startsWith("@@")) {
-        fctx.body.push({ op: "extern.convert_any" });
-        compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
-        const funcIdx = ensureLateImport(
-          ctx,
-          "__extern_get",
-          [{ kind: "externref" }, { kind: "externref" }],
-          [{ kind: "externref" }],
-        );
-        flushLateImportShifts(ctx, fctx);
-        if (funcIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx });
-          return { kind: "externref" };
-        }
-        return null;
-      }
-    }
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const arrDef = ctx.mod.types[arrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {

@@ -28,7 +28,7 @@ import { buildDestructureNullThrow } from "../destructuring-params.js";
 import { resolveComputedKeyExpression } from "../literals.js";
 import { emitNullGuardedStructGet, isProvablyNonNull } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
-import { coerceType, compileExpression, resolveThisStructName, valTypesMatch } from "../shared.js";
+import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import { findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
 import { emitCoercedLocalSet, emitThrowString, getFuncParamTypes, updateLocalType } from "./helpers.js";
@@ -39,7 +39,7 @@ import {
   shiftLateImportIndices,
 } from "./late-imports.js";
 import { emitMappedArgParamSync, emitMappedArgReverseSync } from "./logical-ops.js";
-import { resolveStructName } from "./misc.js";
+import { resolveStructName, resolveStructNameForExpr } from "./misc.js";
 
 /**
  * Emit a null/undefined guard for an externref-typed destructuring source.
@@ -1310,15 +1310,7 @@ function emitAssignToTarget(
       return;
     }
 
-    const objType = ctx.checker.getTypeAtLocation(target.expression);
-    let typeName = resolveStructName(ctx, objType);
-    if (!typeName && ts.isIdentifier(target.expression)) {
-      typeName = ctx.widenedVarStructMap.get(target.expression.text);
-    }
-    // Fallback for `this.prop` in function constructors
-    if (!typeName && target.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      typeName = resolveThisStructName(ctx, fctx);
-    }
+    const typeName = resolveStructNameForExpr(ctx, fctx, target.expression);
     if (!typeName) return;
 
     const structTypeIdx = ctx.structMap.get(typeName);
@@ -1618,7 +1610,11 @@ function compilePropertyAssignment(
   if (isExternalDeclaredClass(objType, ctx.checker)) {
     const externSetResult = compileExternPropertySet(ctx, fctx, target, value, objType);
     if (externSetResult !== null) return externSetResult;
-    // Fall through to struct-based assignment if import is missing
+    // For host objects, missing specific setter imports must not silently drop
+    // the assignment. Fall back to dynamic __extern_set on the host object
+    // instead of treating the extern class like a Wasm struct.
+    const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
+    return compilePropertyAssignmentExternSet(ctx, fctx, target, value, propName);
   }
 
   // Handle shape-inferred array-like variables: obj.length = N
@@ -1681,33 +1677,13 @@ function compilePropertyAssignment(
     }
   }
 
-  let typeName = resolveStructName(ctx, objType);
-  // Fallback: check widened variable struct map for empty objects that got properties added later
-  if (!typeName && ts.isIdentifier(target.expression)) {
-    typeName = ctx.widenedVarStructMap.get(target.expression.text);
-  }
-  // Fallback for `this.prop` in function constructors
-  if (!typeName && target.expression.kind === ts.SyntaxKind.ThisKeyword) {
-    typeName = resolveThisStructName(ctx, fctx);
-  }
+  const typeName = resolveStructNameForExpr(ctx, fctx, target.expression);
   if (!typeName) {
-    // No struct type resolved and not an external class. This happens when obj: any has only
-    // accessor properties defined via Object.defineProperty (those are excluded from struct
-    // widening so no struct is created). Fall back to __extern_set for any/unknown-typed objects.
-    const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
-    // NOTE: TypeFlags.Any check removed — TypeScript reports ANY type for `new foo()` instances
-    // (when lib.d.ts is not loaded), causing false positives for constructor instances like `f.bind = ...`.
-    // The TypeFlags.Object wrapper check below handles the needed cases (String/Number/Boolean/Object).
-    // Also handle JS built-in wrapper objects (e.g. String/Number/Boolean created via `new String(...)`)
-    // — these are externref in Wasm, so property assignment must use __extern_set.
-    // Only trigger for known wrapper types, not arbitrary user-defined class instances.
-    if ((objType.flags & ts.TypeFlags.Object) !== 0) {
-      const symName = objType.symbol?.name ?? "";
-      if (symName === "String" || symName === "Number" || symName === "Boolean" || symName === "Object") {
-        return compilePropertyAssignmentExternSet(ctx, fctx, target, value, propName);
-      }
-    }
-    return null;
+    // No struct type resolved. Mirror the compound/logical assignment fallback:
+    // treat the receiver as a host/dynamic object and route the write through
+    // __extern_set instead of silently dropping the assignment.
+    const fieldName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
+    return compilePropertyAssignmentExternSet(ctx, fctx, target, value, fieldName);
   }
 
   // Check for setter accessor on user-defined classes
@@ -2673,10 +2649,7 @@ function compilePropertyLogicalAssignment(
   const propName = ts.isPrivateIdentifier(target.name) ? "__priv_" + target.name.text.slice(1) : target.name.text;
 
   // Resolve struct type
-  let typeName = resolveStructName(ctx, objType);
-  if (!typeName && ts.isIdentifier(target.expression)) {
-    typeName = ctx.widenedVarStructMap.get(target.expression.text);
-  }
+  const typeName = resolveStructNameForExpr(ctx, fctx, target.expression);
   if (!typeName) {
     // Fallback: treat as externref property access via __extern_get / __extern_set
     return compilePropertyLogicalAssignmentExternref(ctx, fctx, target, rhs, op, propName);
@@ -3776,10 +3749,7 @@ function compilePropertyCompoundAssignment(
   }
 
   // Resolve struct type
-  let typeName = resolveStructName(ctx, objType);
-  if (!typeName && ts.isIdentifier(target.expression)) {
-    typeName = ctx.widenedVarStructMap.get(target.expression.text);
-  }
+  const typeName = resolveStructNameForExpr(ctx, fctx, target.expression);
   if (!typeName) {
     // Fallback: treat as externref property access via __extern_get / __extern_set
     return compilePropertyCompoundAssignmentExternref(ctx, fctx, target, rhs, op, propName);

@@ -1,15 +1,15 @@
 {
   "pr": 231,
-  "conclusion": "failure",
+  "conclusion": "success",
   "head_branch": "feat/ir",
-  "head_sha": "587e811d690f0599d92ec0e599e8883021dc533f",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24624982634",
-  "timestamp": "2026-04-19T12:05:22Z",
-  "pass": 22541,
-  "fail": 15332,
-  "compile_error": 3930,
-  "snapshot_delta": 91,
-  "net_per_test": 91,
-  "regressions": 1,
-  "improvements": 92
+  "head_sha": "50628e4315d865df33397c7cdbbe46c65018cb1e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694139949",
+  "timestamp": "2026-04-21T01:19:29Z",
+  "pass": 21419,
+  "fail": 13253,
+  "compile_error": 7135,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
+  "regressions": 0,
+  "improvements": 0
 }

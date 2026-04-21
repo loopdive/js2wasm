@@ -21,14 +21,29 @@ import { coerceType, compileExpression } from "../shared.js";
 import { emitTdzCheck } from "../statements.js";
 import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 
-export function emitLocalTdzCheck(ctx: CodegenContext, fctx: FunctionContext, _name: string, flagIdx: number): void {
-  const tagIdx = ensureExnTag(ctx);
+export function emitLocalTdzCheck(ctx: CodegenContext, fctx: FunctionContext, name: string, flagIdx: number): void {
+  const throwRefErrIdx = ensureLateImport(ctx, "__throw_reference_error", [{ kind: "externref" }], []);
+  flushLateImportShifts(ctx, fctx);
   fctx.body.push({ op: "local.get", index: flagIdx });
   fctx.body.push({ op: "i32.eqz" });
+  let then: Instr[];
+  if (throwRefErrIdx !== undefined) {
+    const msg = `${name} is not defined`;
+    addStringConstantGlobal(ctx, msg);
+    const strIdx = ctx.stringGlobalMap.get(msg)!;
+    then = [
+      { op: "global.get", index: strIdx } as Instr,
+      { op: "call", funcIdx: throwRefErrIdx } as Instr,
+      { op: "unreachable" } as unknown as Instr,
+    ];
+  } else {
+    const tagIdx = ensureExnTag(ctx);
+    then = [{ op: "ref.null.extern" } as Instr, { op: "throw", tagIdx } as unknown as Instr];
+  }
   fctx.body.push({
     op: "if",
     blockType: { kind: "empty" },
-    then: [{ op: "ref.null.extern" } as Instr, { op: "throw", tagIdx }],
+    then,
     else: [],
   } as unknown as Instr);
 }
@@ -214,6 +229,17 @@ function analyzeTdzAccessByPos(ctx: CodegenContext, varName: string, callNode: t
 
 /** Emit a static TDZ throw (guaranteed violation — no flag check needed). */
 export function emitStaticTdzThrow(ctx: CodegenContext, fctx: FunctionContext, name: string): void {
+  const throwRefErrIdx = ensureLateImport(ctx, "__throw_reference_error", [{ kind: "externref" }], []);
+  flushLateImportShifts(ctx, fctx);
+  if (throwRefErrIdx !== undefined) {
+    const msg = `${name} is not defined`;
+    addStringConstantGlobal(ctx, msg);
+    const strIdx = ctx.stringGlobalMap.get(msg)!;
+    fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+    fctx.body.push({ op: "call", funcIdx: throwRefErrIdx } as Instr);
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return;
+  }
   const tagIdx = ensureExnTag(ctx);
   fctx.body.push({ op: "ref.null.extern" } as Instr);
   fctx.body.push({ op: "throw", tagIdx });

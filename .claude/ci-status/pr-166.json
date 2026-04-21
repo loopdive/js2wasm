@@ -1,15 +1,15 @@
 {
   "pr": 166,
-  "conclusion": "failure",
+  "conclusion": "success",
   "head_branch": "issue-1043-define-substitution",
-  "head_sha": "e814ee6525192184eecf60ec91735f8da03cb843",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24629821155",
-  "timestamp": "2026-04-19T16:53:39Z",
-  "pass": 22761,
-  "fail": 15012,
-  "compile_error": 3886,
-  "snapshot_delta": 311,
-  "net_per_test": 311,
-  "regressions": 635,
-  "improvements": 946
+  "head_sha": "485f33dde8f7251e3e57cf9854f800b377c75983",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24698838555",
+  "timestamp": "2026-04-21T01:43:37Z",
+  "pass": 21699,
+  "fail": 13027,
+  "compile_error": 7081,
+  "snapshot_delta": 280,
+  "net_per_test": 280,
+  "regressions": 0,
+  "improvements": 280
 }

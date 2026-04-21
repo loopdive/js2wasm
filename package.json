@@ -60,7 +60,7 @@
   },
   "scripts": {
     "build": "vite build --config vite.config.lib.ts",
-    "build:playground": "vite build",
+    "build:playground": "vite build --config playground/vite.config.ts",
     "dev": "pnpm run build:compiler-bundle && vite serve --config playground/vite.config.ts",
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",

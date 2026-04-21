@@ -1,0 +1,15 @@
+{
+  "pr": 256,
+  "conclusion": "success",
+  "head_branch": "issue-862-align-refnull",
+  "head_sha": "633ab4728c21a0a224ccc8996b1e3832d1f64f93",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24714028776",
+  "timestamp": "2026-04-21T09:18:38Z",
+  "pass": 24483,
+  "fail": 13700,
+  "compile_error": 3621,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
+  "regressions": 0,
+  "improvements": 0
+}
