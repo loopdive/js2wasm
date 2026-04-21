@@ -316,39 +316,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #742 | Extract and refactor compileCallExpression (3,350 lines) | medium | blocked |
 
-### Ready
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #744 | Function monomorphization for polymorphic call sites | high | ready |
-| #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
-| #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
-| #862 | Empty error message failures: iterator/destructuring step-err tests (212 FAIL) | medium | ready |
-| #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
-| #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
-| #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
-| #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
-| #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
-| #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
-| #1045 | DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame) | high | ready |
-| #1058 | Compile the TypeScript compiler itself to Wasm — self-hosting stress test | high | ready |
-| #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
-| #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | ready |
-| #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | ready |
-| #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | ready |
-| #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
-| #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | ready |
-| #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
-| #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | ready |
-| #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
-| #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
-| #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
-| #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
-| #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
-| #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
-| #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | ready |
-
 ### In Progress
 
 | Issue | Title | Priority | Status |
