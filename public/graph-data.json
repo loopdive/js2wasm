@@ -14252,7 +14252,7 @@
       "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -14584,6 +14584,17 @@
       "files": [],
       "goal": "core-semantics",
       "cluster": "core-semantics"
+    },
+    {
+      "id": "1025",
+      "title": "BindingElement array-pattern default guards still use ref.is_null",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Sprint-41",
+      "depends_on": [],
+      "files": [],
+      "cluster": "sprint-Sprint-41"
     },
     {
       "id": "1025",
@@ -15370,7 +15381,7 @@
       "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "42",
       "depends_on": [
         "1076"
@@ -15745,7 +15756,7 @@
       "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -16136,7 +16147,7 @@
       "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [],
       "files": [],

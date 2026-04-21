@@ -1,15 +1,15 @@
 {
   "pr": 173,
-  "conclusion": "failure",
+  "conclusion": "success",
   "head_branch": "issue-1001-preallocate-arrays",
-  "head_sha": "6c23e663225a17b2b0cdc5a1c621aa4896bd39d7",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640290988",
-  "timestamp": "2026-04-20T00:07:40Z",
-  "pass": 22950,
-  "fail": 14519,
-  "compile_error": 4191,
-  "snapshot_delta": 500,
-  "net_per_test": 500,
-  "regressions": 837,
-  "improvements": 1337
+  "head_sha": "2b6e1b59b974de048fb0ade6477d871657963663",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694000085",
+  "timestamp": "2026-04-21T01:01:16Z",
+  "pass": 21419,
+  "fail": 13253,
+  "compile_error": 7135,
+  "snapshot_delta": 0,
+  "net_per_test": 74,
+  "regressions": 0,
+  "improvements": 74
 }
