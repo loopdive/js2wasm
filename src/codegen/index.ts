@@ -13,6 +13,8 @@ import {
 } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction, WasmModule } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
+import { compileIrPathFunctions } from "../ir/integration.js";
+import { planIrCompilation } from "../ir/select.js";
 import { createCodegenContext } from "./context/create-context.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
@@ -280,6 +282,19 @@ export function generateModule(
 
     // Third pass: compile function bodies
     compileDeclarations(ctx, ast.sourceFile);
+
+    // Experimental IR path: for functions selected by `planIrCompilation`,
+    // rebuild their bodies via the middle-end IR (AST → IR → Wasm). Runs
+    // AFTER `compileDeclarations` so the symbolic-ref resolver sees final
+    // funcIdx / globalIdx / typeIdx assignments — this is what makes
+    // `shiftLateImportIndices` a no-op for IR-path bodies.
+    if (options?.experimentalIR) {
+      const selection = planIrCompilation(ast.sourceFile, { experimentalIR: true });
+      const report = compileIrPathFunctions(ctx, ast.sourceFile, selection);
+      for (const err of report.errors) {
+        reportErrorNoNode(ctx, `IR path failed for ${err.func}: ${err.message}`);
+      }
+    }
 
     // Fixup pass: reconcile struct.new argument counts with actual struct field counts.
     // Dynamic field additions during expression compilation can add fields to struct types
