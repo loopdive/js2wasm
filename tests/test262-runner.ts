@@ -1253,7 +1253,7 @@ function assert_notSameValue(actual: any, expected: any): void {
   }
 }
 
-function assert_true(value: any): void {
+function assert_true(value: any, _msg?: any): void {
   __assert_count = __assert_count + 1;
   if (!value) {
     if (!__fail) __fail = __assert_count;
