@@ -1,15 +1,15 @@
 {
   "pr": 233,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-862-iterator-step-errors",
-  "head_sha": "b3840f4a6a71aea528019d8e3a9971595a508276",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694161318",
-  "timestamp": "2026-04-20T23:48:49Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "14b23291d3f4cfaf6f8955e85987e262607827c1",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693823479",
+  "timestamp": "2026-04-21T00:06:56Z",
+  "pass": 21269,
+  "fail": 13420,
+  "compile_error": 7118,
+  "snapshot_delta": -112,
+  "net_per_test": -76,
+  "regressions": 301,
+  "improvements": 225
 }
