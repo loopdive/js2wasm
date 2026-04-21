@@ -14589,6 +14589,17 @@
       "id": "1025",
       "title": "BindingElement array-pattern default guards still use ref.is_null",
       "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Sprint-41",
+      "depends_on": [],
+      "files": [],
+      "cluster": "sprint-Sprint-41"
+    },
+    {
+      "id": "1025",
+      "title": "BindingElement array-pattern default guards still use ref.is_null",
+      "priority": "high",
       "status": "done",
       "raw_status": "done",
       "sprint": "40",
