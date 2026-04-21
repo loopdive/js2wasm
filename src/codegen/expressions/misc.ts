@@ -173,6 +173,34 @@ function compileYieldExpression(ctx: CodegenContext, fctx: FunctionContext, expr
     return null;
   }
 
+  // ── yield* delegation: iterate inner generator and push all values into outer buffer ──
+  if (expr.asteriskToken) {
+    if (!expr.expression) {
+      reportError(ctx, expr, "yield* requires an expression");
+      return null;
+    }
+    // Compile the inner iterable expression (returns the generator/iterable object)
+    const innerType = compileExpression(ctx, fctx, expr.expression);
+    if (innerType === null) {
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" } as ValType;
+    }
+    // Coerce to externref if needed
+    const coerced = coerceType(ctx, fctx, innerType, { kind: "externref" } as ValType);
+    // Store in temp, then call __gen_yield_star(buffer, iterable)
+    const tmpLocal = allocLocal(fctx, `__yield_star_tmp_${fctx.locals.length}`, { kind: "externref" } as ValType);
+    fctx.body.push({ op: "local.set", index: tmpLocal });
+    fctx.body.push({ op: "local.get", index: bufferIdx });
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    const yieldStarIdx = ctx.funcMap.get("__gen_yield_star");
+    if (yieldStarIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: yieldStarIdx });
+    }
+    // yield* evaluates to undefined in our eager model
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" } as ValType;
+  }
+
   if (!expr.expression) {
     // yield with no value: push undefined
     const pushRefIdx = ctx.funcMap.get("__gen_push_ref");
