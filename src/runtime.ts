@@ -2853,6 +2853,15 @@ assert._isSameValue = isSameValue;
         return (buf: any[], v: any) => {
           buf.push(v);
         };
+      if (name === "__gen_yield_star")
+        return (buf: any[], iterable: any) => {
+          // Iterate the inner iterable and push all values into the outer buffer
+          if (iterable != null && typeof iterable[Symbol.iterator] === "function") {
+            for (const v of iterable) {
+              buf.push(v);
+            }
+          }
+        };
       if (name === "__create_generator")
         return (buf: any[], pendingThrow: any) => {
           let index = 0;
