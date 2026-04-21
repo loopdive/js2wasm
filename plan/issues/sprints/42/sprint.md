@@ -428,3 +428,10 @@ _Issues confirmed merged to main during Sprint 42 but not in the auto-generated 
 | #1144 | Static class elements: `this.#priv` access in static methods | #204 | |
 | #1145 | Async-gen: undefined tuple elements promote to f64, corrupting sNaN | #205 | |
 | #1146 | For-of nested rest binding patterns (#825 ary-rest-rest cluster) | #209 | Sub-issue of #825 |
+## Sprint 42 Final Results
+
+**Closed**: 2026-04-21
+**Final baseline**: 24,483 / 43,172 pass = **56.7%**
+**Issues completed**: 40 done, 1 backlog (#1111 deferred)
+**Carried to Sprint 43**: #825 (null deref, partial), #826 (illegal cast, partial), #742 (blocked), #1111 (backlog)
+**Key merges this sprint**: #144 (Symbol.iterator on vecs), #160 (CI split), #231 (IR scaffold Phase 1)
