@@ -45,7 +45,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #744 | Function monomorphization for polymorphic call sites | high | ready |
 | #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
 | #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
-| #862 | Empty error message failures: iterator/destructuring step-err tests (212 FAIL) | medium | ready |
+| #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | ready |
 | #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | ready |
@@ -81,6 +81,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
+| #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
 | #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
