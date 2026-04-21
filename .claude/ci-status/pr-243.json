@@ -1,15 +1,15 @@
 {
   "pr": 243,
-  "conclusion": "cancelled",
+  "conclusion": "success",
   "head_branch": "issue-1150-async-destructuring-fix",
-  "head_sha": "bd1ee06440f6df6dcf37fd91eadc5fc6943ddc44",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694119384",
-  "timestamp": "2026-04-20T23:46:49Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "276c21dd43a393832461f672d76431b791703194",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694110630",
+  "timestamp": "2026-04-21T00:49:08Z",
+  "pass": 21681,
+  "fail": 12991,
+  "compile_error": 7135,
+  "snapshot_delta": 300,
+  "net_per_test": 336,
+  "regressions": 0,
+  "improvements": 336
 }
