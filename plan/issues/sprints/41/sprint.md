@@ -253,12 +253,6 @@ If any dev finishes early, pick from: #1051, #1024, #997, #1016a (class dstr sli
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### Ready
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1025 | BindingElement array-pattern default guards still use ref.is_null | high | ready |
-
 ### Done
 
 | Issue | Title | Priority | Status |
