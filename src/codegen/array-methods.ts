@@ -810,13 +810,17 @@ export function compileArrayLikePrototypeCall(
       if (mapBoxIdx === undefined) return undefined;
       flushLateImportShifts(ctx, fctx);
       const mapReturnToExternref: Instr[] =
-        closureInfo.returnType?.kind === "f64"
-          ? [{ op: "call", funcIdx: mapBoxIdx } as Instr]
-          : closureInfo.returnType?.kind === "i32"
-            ? [{ op: "f64.convert_i32_s" } as unknown as Instr, { op: "call", funcIdx: mapBoxIdx } as Instr]
-            : closureInfo.returnType?.kind === "ref" || closureInfo.returnType?.kind === "ref_null"
-              ? [{ op: "extern.convert_any" } as unknown as Instr]
-              : []; // externref: already right type
+        closureInfo.returnType === null
+          ? // Void callback leaves nothing on the stack; push null so local.set
+            // has a value. Maps produced from void callbacks fill with undefined.
+            [{ op: "ref.null.extern" } as Instr]
+          : closureInfo.returnType.kind === "f64"
+            ? [{ op: "call", funcIdx: mapBoxIdx } as Instr]
+            : closureInfo.returnType.kind === "i32"
+              ? [{ op: "f64.convert_i32_s" } as unknown as Instr, { op: "call", funcIdx: mapBoxIdx } as Instr]
+              : closureInfo.returnType.kind === "ref" || closureInfo.returnType.kind === "ref_null"
+                ? [{ op: "extern.convert_any" } as unknown as Instr]
+                : []; // externref: already right type
       fctx.body.push({ op: "call", funcIdx: arrNewIdx });
       fctx.body.push({ op: "local.set", index: resultTmp });
       fctx.body.push({
@@ -910,13 +914,17 @@ export function compileArrayLikePrototypeCall(
       if (rdBoxIdx === undefined) return undefined;
       flushLateImportShifts(ctx, fctx);
       const reduceResultToExternref: Instr[] =
-        closureInfo.returnType?.kind === "f64"
-          ? [{ op: "call", funcIdx: rdBoxIdx } as Instr]
-          : closureInfo.returnType?.kind === "i32"
-            ? [{ op: "f64.convert_i32_s" } as unknown as Instr, { op: "call", funcIdx: rdBoxIdx } as Instr]
-            : closureInfo.returnType?.kind === "ref" || closureInfo.returnType?.kind === "ref_null"
-              ? [{ op: "extern.convert_any" } as unknown as Instr]
-              : []; // externref or null: already right type
+        closureInfo.returnType === null
+          ? // Void callback leaves nothing on the stack; push null so local.set
+            // has a value. Subsequent iterations pass undefined as acc.
+            [{ op: "ref.null.extern" } as Instr]
+          : closureInfo.returnType.kind === "f64"
+            ? [{ op: "call", funcIdx: rdBoxIdx } as Instr]
+            : closureInfo.returnType.kind === "i32"
+              ? [{ op: "f64.convert_i32_s" } as unknown as Instr, { op: "call", funcIdx: rdBoxIdx } as Instr]
+              : closureInfo.returnType.kind === "ref" || closureInfo.returnType.kind === "ref_null"
+                ? [{ op: "extern.convert_any" } as unknown as Instr]
+                : []; // externref: already right type
 
       fctx.body.push({
         op: "block",
@@ -1010,13 +1018,16 @@ export function compileArrayLikePrototypeCall(
       if (rrBoxIdx === undefined) return undefined;
       flushLateImportShifts(ctx, fctx);
       const rrResultToExternref: Instr[] =
-        closureInfo.returnType?.kind === "f64"
-          ? [{ op: "call", funcIdx: rrBoxIdx } as Instr]
-          : closureInfo.returnType?.kind === "i32"
-            ? [{ op: "f64.convert_i32_s" } as unknown as Instr, { op: "call", funcIdx: rrBoxIdx } as Instr]
-            : closureInfo.returnType?.kind === "ref" || closureInfo.returnType?.kind === "ref_null"
-              ? [{ op: "extern.convert_any" } as unknown as Instr]
-              : [];
+        closureInfo.returnType === null
+          ? // Void callback — see note in reduce case.
+            [{ op: "ref.null.extern" } as Instr]
+          : closureInfo.returnType.kind === "f64"
+            ? [{ op: "call", funcIdx: rrBoxIdx } as Instr]
+            : closureInfo.returnType.kind === "i32"
+              ? [{ op: "f64.convert_i32_s" } as unknown as Instr, { op: "call", funcIdx: rrBoxIdx } as Instr]
+              : closureInfo.returnType.kind === "ref" || closureInfo.returnType.kind === "ref_null"
+                ? [{ op: "extern.convert_any" } as unknown as Instr]
+                : [];
 
       // Loop: while i >= 0
       /** Exit when i < 0 */
