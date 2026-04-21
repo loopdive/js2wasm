@@ -154,6 +154,14 @@ jobs:
             --baseline-generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             ${{ inputs.include_proposals && '--include-proposals' || '' }}
 
+      - name: Fetch fresh baseline from origin/main
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin main --depth=1
+          git show origin/main:benchmarks/results/test262-current.jsonl \
+            > benchmarks/results/test262-current.jsonl
+          echo "Fetched fresh baseline from origin/main ($(wc -l < benchmarks/results/test262-current.jsonl) lines)"
+
       - name: Compare against current main baseline
         id: regression_diff
         run: |

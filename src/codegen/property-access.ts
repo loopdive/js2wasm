@@ -92,6 +92,26 @@ export function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string 
 }
 
 /**
+ * Resolve a struct name for a property access/assignment target expression,
+ * with fallbacks for widened variables and `this` in function constructors.
+ */
+export function resolveStructNameForExpr(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expression: ts.Expression,
+): string | undefined {
+  const objType = ctx.checker.getTypeAtLocation(expression);
+  let typeName = resolveStructName(ctx, objType);
+  if (!typeName && ts.isIdentifier(expression)) {
+    typeName = ctx.widenedVarStructMap.get(expression.text);
+  }
+  if (!typeName && expression.kind === ts.SyntaxKind.ThisKeyword) {
+    typeName = resolveThisStructName(ctx, fctx);
+  }
+  return typeName;
+}
+
+/**
  * Check if a type looks like an IteratorResult (has .value and .done properties)
  * even if the type checker doesn't resolve it as IteratorResult directly.
  * This handles cases where the type is a union (IteratorYieldResult | IteratorReturnResult).
@@ -1641,15 +1661,7 @@ export function compilePropertyAccess(
   }
 
   // Handle getter accessor on user-defined classes
-  let typeName = resolveStructName(ctx, objType);
-  // Fallback: check widened variable struct map for empty objects with later-assigned props
-  if (!typeName && ts.isIdentifier(expr.expression)) {
-    typeName = ctx.widenedVarStructMap.get(expr.expression.text);
-  }
-  // Fallback for `this.prop` in function constructors
-  if (!typeName && expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
-    typeName = resolveThisStructName(ctx, fctx);
-  }
+  const typeName = resolveStructNameForExpr(ctx, fctx, expr.expression);
   if (typeName) {
     const accessorKey = `${typeName}_${propName}`;
     if (ctx.classAccessorSet.has(accessorKey)) {

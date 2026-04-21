@@ -1,15 +1,15 @@
 {
   "pr": 169,
-  "conclusion": "failure",
+  "conclusion": "success",
   "head_branch": "issue-1045-wasi-dom-error",
-  "head_sha": "bee732fc06d4cc61e19e7c5bde7f7e54fc92653b",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640368873",
-  "timestamp": "2026-04-20T00:07:56Z",
-  "pass": 22950,
-  "fail": 14519,
-  "compile_error": 4191,
-  "snapshot_delta": 500,
-  "net_per_test": 500,
-  "regressions": 837,
-  "improvements": 1337
+  "head_sha": "4a2808aff48c77110f178b32d08c494ca3e2229d",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694155642",
+  "timestamp": "2026-04-21T00:50:08Z",
+  "pass": 21419,
+  "fail": 13253,
+  "compile_error": 7135,
+  "snapshot_delta": 38,
+  "net_per_test": 38,
+  "regressions": 0,
+  "improvements": 38
 }
