@@ -48,9 +48,7 @@ fragile. Maintainability improvements directly reduce coordination cost.
 | **975** | Sprint file cleanup — remove orphan issue refs from closed sprints | 40 | done | low |
 | **976** | Extract site nav into reusable web component, share between landing page and dashboard | 0 | done | medium |
 | **989** | Enrich invalid Wasm binary CEs with byte offset, WAT slice, and source-mapped location | 39 | done | high |
-| **1086** | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | 42 | ready | medium |
 | **1086** | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | 43 | ready | medium |
-| **1095** | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | 42 | ready | medium |
 | **1095** | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | 43 | ready | medium |
 | **1097** | Remove stale import-helper generator path in compiler/output.ts | 42 | done | low |
 
