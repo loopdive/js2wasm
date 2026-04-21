@@ -2,14 +2,14 @@
   "pr": 151,
   "conclusion": "success",
   "head_branch": "issue-826-illegal-cast",
-  "head_sha": "35db742693ddc1317d883914831d3e3b92f35fbc",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693907036",
-  "timestamp": "2026-04-21T00:34:11Z",
+  "head_sha": "7b92db61cd360eb94afa195aa9618eccf4508387",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694148899",
+  "timestamp": "2026-04-21T01:19:26Z",
   "pass": 21434,
   "fail": 13237,
   "compile_error": 7136,
-  "snapshot_delta": 53,
-  "net_per_test": 89,
+  "snapshot_delta": 15,
+  "net_per_test": 15,
   "regressions": 0,
-  "improvements": 89
+  "improvements": 15
 }
