@@ -45,6 +45,8 @@ import {
   emitBoundsCheckedArrayGet,
   ensureLateImport as ensureLateImportShared,
   flushLateImportShifts as flushLateImportShiftsShared,
+  getCol,
+  getLine,
   registerCompileArrowAsClosure,
   resolveEnclosingClassName,
   valTypesMatch,
@@ -55,7 +57,7 @@ import {
   compileExternrefObjectDestructuringDecl,
   compileStatement,
 } from "./statements.js";
-import { coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
+import { coercionInstrs, defaultValueInstrs, emitGuardedRefCast } from "./type-coercion.js";
 
 // ── Arrow function callbacks ──────────────────────────────────────────
 
@@ -1286,6 +1288,25 @@ export function compileArrowAsClosure(
 
     const paramIdx = pi + 1; // +1 for __self
     const paramType = arrowParams[pi]!;
+
+    // Helper: allocate locals for all identifiers in a binding pattern
+    // using TS type inference for each element. This is a fallback for when
+    // the Wasm type doesn't provide enough info to extract values.
+    const allocBindingLocals = (pattern: ts.BindingPattern) => {
+      for (const element of pattern.elements) {
+        if (ts.isOmittedExpression(element)) continue;
+        if (ts.isIdentifier(element.name)) {
+          const localName = element.name.text;
+          if (!liftedFctx.localMap.has(localName)) {
+            const elemTsType = ctx.checker.getTypeAtLocation(element);
+            const elemWasmType = resolveWasmType(ctx, elemTsType);
+            allocLocal(liftedFctx, localName, elemWasmType);
+          }
+        } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+          allocBindingLocals(element.name);
+        }
+      }
+    };
 
     if (ts.isArrayBindingPattern(param.name)) {
       // Array destructuring: function([a, b, c]) { ... }
