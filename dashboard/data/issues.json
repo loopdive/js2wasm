@@ -146,6 +146,16 @@
       "sprint": ""
     },
     {
+      "id": "1158",
+      "title": "destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern []",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
       "id": "1157",
       "title": "RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions)",
       "priority": "high",
@@ -448,6 +458,16 @@
       "goal": "conformance",
       "status": "open",
       "sprint": "Backlog"
+    },
+    {
+      "id": "1119",
+      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "closed",
+      "sprint": "43"
     },
     {
       "id": "1119",
@@ -1553,9 +1573,9 @@
     },
     {
       "id": "862",
-      "title": "Empty error message failures: iterator/destructuring step-err tests (212 FAIL)",
+      "title": "Iterator protocol missing on function-declaration binding-pattern params",
       "priority": "medium",
-      "feasibility": "medium",
+      "feasibility": "hard",
       "depends_on": [],
       "goal": "crash-free",
       "status": "ready",
