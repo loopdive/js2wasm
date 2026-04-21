@@ -1,0 +1,15 @@
+{
+  "pr": 249,
+  "conclusion": "failure",
+  "head_branch": "fix/ci-autocommit-artifacts",
+  "head_sha": "80803f793144401042851253613f93c42c7c69d2",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24701275837",
+  "timestamp": "2026-04-21T02:53:19Z",
+  "pass": 23787,
+  "fail": 14055,
+  "compile_error": 3962,
+  "snapshot_delta": 2368,
+  "net_per_test": 2368,
+  "regressions": 47,
+  "improvements": 2415
+}
