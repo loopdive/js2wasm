@@ -2,14 +2,14 @@
   "pr": 231,
   "conclusion": "success",
   "head_branch": "feat/ir",
-  "head_sha": "1c5b48870723a95741fce11bbf1a10dcc201f497",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693934651",
-  "timestamp": "2026-04-21T00:38:02Z",
+  "head_sha": "50628e4315d865df33397c7cdbbe46c65018cb1e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694139949",
+  "timestamp": "2026-04-21T01:19:29Z",
   "pass": 21419,
   "fail": 13253,
   "compile_error": 7135,
-  "snapshot_delta": 38,
-  "net_per_test": 74,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
   "regressions": 0,
-  "improvements": 74
+  "improvements": 0
 }
