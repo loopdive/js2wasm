@@ -501,7 +501,22 @@
       </div>
     </div>
 
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Dependency graph</h2>
+        <div class="panel-actions">
+          <a href="../issues-graph.html">open full page</a>
+        </div>
+      </div>
+      <p style="color: var(--text-muted); max-width: 720px; margin-bottom: 16px">
+        Interactive view of issue dependencies. Hover a node to inspect it, click to highlight prerequisite and
+        dependent chains.
+      </p>
+      <dep-graph src="../public/graph-data.json"></dep-graph>
+    </div>
+
     <script type="module" src="../components/site-nav.js"></script>
+    <script src="../components/dep-graph.js"></script>
     <script src="data.js" onerror=""></script>
     <script>
       // ── Data loading ──────────────────────────────────────────────
