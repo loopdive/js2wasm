@@ -304,45 +304,17 @@ At the end of Sprint 42:
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### Backlog
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | backlog |
-
-### Blocked
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #742 | Extract and refactor compileCallExpression (3,350 lines) | medium | blocked |
-
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1132 | Publish compiler as @loopdive/js2 on npm + JSR | high | in-progress |
 
-### Review
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #825 | Null dereference failures (2,295 runtime failures) | high | review |
-| #826 | Illegal cast failures (1,276 runtime failures) | high | review |
-| #907 | Replace __init_done runtime guards with start/init entry semantics | high | review |
-| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | review |
-| #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | review |
-| #1006 | Support eval via JS host import | medium | review |
-| #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | review |
-| #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | review |
-| #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | review |
-| #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | review |
-| #1117 | Expected TypeError but got wrong error type (136 tests) | medium | review |
-| #1123 | Verify landing page claims and code examples against current compiler behavior | high | review |
-
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #907 | Replace __init_done runtime guards with start/init entry semantics | high | done |
 | #990 | Remaining early-error gaps after detectEarlyErrors(): reserved words, module grammar, using, ASI | high | done |
 | #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | done |
 | #992 | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | medium | done |
@@ -350,17 +322,26 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #994 | Class static-private-getter test hits 30s compiler timeout | medium | done |
 | #995 | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | low | done |
 | #996 | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | low | done |
+| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | done |
+| #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | done |
+| #1006 | Support eval via JS host import | medium | done |
 | #1036 | DisposableStack/AsyncDisposableStack property-chain access produces Wasm null trap (94 FAIL) | medium | done |
 | #1037 | Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL) | medium | done |
 | #1038 | Function.prototype.bind not implemented (70 FAIL) | high | done |
 | #1047 | Instance fields leak onto prototype via _wrapForHost struct-field enumeration | high | done |
 | #1057 | String.prototype.split result constructor !== Array | low | done |
+| #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | done |
 | #1071 | codegen: for-of requires an array expression — blocks iteration over Map/Set/iterator in bundled JS | high | done |
+| #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | done |
+| #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
 | #1088 | test262: assertion location diagnostic misses verifyProperty/verifyEqualTo — 273 tests report 'found 0 asserts in source' | medium | done |
+| #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | done |
 | #1097 | Remove stale import-helper generator path in compiler/output.ts | low | done |
 | #1106 | CI baseline-refresh bot wipes plan/ and .claude/memory/ on every run | high | done |
 | #1107 | lodash-es Tier 1 E2E harness — identity, clamp, add compile and run | critical | done |
 | #1108 | lodash-es add: export default of HOF closure result not surfaced as Wasm export | high | done |
+| #1117 | Expected TypeError but got wrong error type (136 tests) | medium | done |
+| #1123 | Verify landing page claims and code examples against current compiler behavior | high | done |
 | #1124 | Audit current codegen IR and, if needed, define a minimal SSA middle-end | high | done |
 | #1136 | Array.prototype.flat() and flatMap() not implemented | medium | done |
 | #1137 | ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented | medium | done |
