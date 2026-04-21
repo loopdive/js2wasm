@@ -3141,23 +3141,40 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
             addError(node, "'yield' is a reserved word and may not be used as an identifier in strict mode");
           }
         } else if (name === "await") {
-          // Reserved in module code and inside any enclosing async function.
-          let reserved = sourceFileIsModule;
-          if (!reserved) {
-            let c: ts.Node | undefined = node.parent;
-            while (c) {
-              if (
-                (ts.isFunctionDeclaration(c) ||
-                  ts.isFunctionExpression(c) ||
-                  ts.isArrowFunction(c) ||
-                  ts.isMethodDeclaration(c)) &&
-                c.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
-              ) {
+          // ES spec §13.2.5.1: `await` is reserved at module top level
+          // ([+Await] goal) and inside async function bodies. A non-async
+          // function body uses [~Await], so `await` is a valid identifier
+          // there even within a module. Walk up to the nearest function
+          // boundary to determine the context.
+          let reserved = false;
+          let c: ts.Node | undefined = node.parent;
+          while (c) {
+            if (ts.isArrowFunction(c)) {
+              // Arrow functions inherit [+Await] from their enclosing context —
+              // they do NOT reset it. If async, mark reserved and stop.
+              // If non-async, keep walking outward.
+              if (c.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
                 reserved = true;
                 break;
               }
-              c = c.parent;
+              // non-async arrow: continue to enclosing scope
+            } else if (ts.isFunctionDeclaration(c) || ts.isFunctionExpression(c) || ts.isMethodDeclaration(c)) {
+              // Non-arrow function boundary resets [Await] context.
+              // Exception: if 'await' is the BindingIdentifier (name) of THIS
+              // function, it's evaluated in the ENCLOSING scope's [Await] context,
+              // not the function's own body. Keep walking up. (#1068)
+              if ((c as any).name === node) {
+                c = c.parent;
+                continue;
+              }
+              reserved = !!c.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword);
+              break;
             }
+            c = c.parent;
+          }
+          // No enclosing function — module top level is [+Await]
+          if (!c && sourceFileIsModule) {
+            reserved = true;
           }
           if (reserved) {
             addError(
