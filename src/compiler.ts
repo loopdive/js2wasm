@@ -28,6 +28,7 @@ import { emitBinary, emitBinaryWithSourceMap, emitSourceMappingURLSection } from
 import { WasmEncoder } from "./emit/encoder.js";
 import { generateSourceMap } from "./emit/sourcemap.js";
 import { emitWat } from "./emit/wat.js";
+import { applyDefineSubstitutions } from "./compiler/define-substitution.js";
 import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult } from "./index.js";
 import { optimizeBinary } from "./optimize.js";
@@ -85,14 +86,17 @@ export function compileSource(
   const errors: CompileError[] = [];
   const emitWatOutput = options.emitWat !== false;
 
-  // Step 0: Pre-process imports (replace import * as X with declare namespace)
+  // Step 0a: Apply compile-time define substitutions (#1043)
+  const definedSource = options.define ? applyDefineSubstitutions(source, options.define) : source;
+
+  // Step 0b: Pre-process imports (replace import * as X with declare namespace)
   // #1054: rewrite eval("...super()...") to a throwing IIFE so early-error
   // rules for PerformEval fire at runtime.
   //
   // Before preprocessing strips import declarations, detect node:fs imports
   // for WASI mode (preprocessing replaces them with declare stubs).
-  const wasiNodeFsFuncs = options.target === "wasi" ? detectNodeFsImports(source) : undefined;
-  const preprocessed = preprocessImports(rewriteEvalSuperCall(source));
+  const wasiNodeFsFuncs = options.target === "wasi" ? detectNodeFsImports(definedSource) : undefined;
+  const preprocessed = preprocessImports(rewriteEvalSuperCall(definedSource));
   const processedSource = preprocessed.source;
 
   // Step 1: Parse and type-check
@@ -456,7 +460,12 @@ export function compileMultiSource(
   const errors: CompileError[] = [];
   const emitWatOutput = options.emitWat !== false;
 
-  const multiAst = analyzeMultiSource(files, entryFile, undefined, {
+  // Apply define substitutions to all source files (#1043)
+  const processedFiles = options.define
+    ? Object.fromEntries(Object.entries(files).map(([k, v]) => [k, applyDefineSubstitutions(v, options.define!)]))
+    : files;
+
+  const multiAst = analyzeMultiSource(processedFiles, entryFile, undefined, {
     allowJs: options.allowJs,
     skipSemanticDiagnostics: options.skipSemanticDiagnostics,
   });

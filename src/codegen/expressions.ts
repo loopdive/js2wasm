@@ -159,10 +159,27 @@ function isAsyncCallExpression(ctx: CodegenContext, expr: ts.CallExpression): bo
 
 /**
  * Wrap the current stack value in Promise.resolve() for async function calls (#919).
+ *
+ * `resultType` is the TypeScript-level result from compileCallExpression; when
+ * the TS signature says `Promise<void>` that helper returns `VOID_RESULT` even
+ * though the underlying wasm function still leaves an externref on the stack.
+ * Check the last emitted call against the wasm type table — if a value is
+ * already on the stack, skip the `ref.null.extern` push (otherwise the later
+ * stack-balance pass would drop the Promise we just built).
  */
 function wrapAsyncReturn(ctx: CodegenContext, fctx: FunctionContext, resultType: InnerResult): ValType {
+  const lastInstr = fctx.body[fctx.body.length - 1];
+  let wasmStackHasValue = false;
+  if (lastInstr) {
+    const op = (lastInstr as any).op;
+    if (op === "call" && (lastInstr as any).funcIdx !== undefined) {
+      wasmStackHasValue = !wasmFuncReturnsVoid(ctx, (lastInstr as any).funcIdx);
+    } else if (op === "call_ref" && (lastInstr as any).typeIdx !== undefined) {
+      wasmStackHasValue = !wasmFuncTypeReturnsVoid(ctx, (lastInstr as any).typeIdx);
+    }
+  }
   if (resultType === null || resultType === VOID_RESULT) {
-    fctx.body.push({ op: "ref.null.extern" });
+    if (!wasmStackHasValue) fctx.body.push({ op: "ref.null.extern" });
   } else if (resultType.kind !== "externref") {
     coerceType(ctx, fctx, resultType, { kind: "externref" });
   }
@@ -172,6 +189,32 @@ function wrapAsyncReturn(ctx: CodegenContext, fctx: FunctionContext, resultType:
     fctx.body.push({ op: "call", funcIdx: resolveIdx });
   }
   return { kind: "externref" };
+}
+
+/**
+ * Splice instructions [start..end) from fctx.body and re-emit them inside a
+ * try/catch that converts synchronous throws into a rejected Promise. Used for
+ * async function calls so that a throw during default-param evaluation or body
+ * execution surfaces as `f().then(_, onRej)` rather than an uncaught wasm
+ * exception (#1150).
+ */
+function wrapAsyncCallInTryCatch(ctx: CodegenContext, fctx: FunctionContext, start: number): void {
+  const rejectIdx = ensureLateImport(ctx, "Promise_reject", [{ kind: "externref" }], [{ kind: "externref" }]);
+  const getCaughtIdx = ensureLateImport(ctx, "__get_caught_exception", [], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  if (rejectIdx === undefined || getCaughtIdx === undefined) return;
+  const inner = fctx.body.splice(start);
+  const catchAll: Instr[] = [
+    { op: "call", funcIdx: getCaughtIdx } as Instr,
+    { op: "call", funcIdx: rejectIdx } as Instr,
+  ];
+  fctx.body.push({
+    op: "try",
+    blockType: { kind: "val", type: { kind: "externref" } },
+    body: inner,
+    catches: [],
+    catchAll,
+  } as unknown as Instr);
 }
 
 /**
@@ -667,6 +710,7 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
   }
 
   if (ts.isCallExpression(expr)) {
+    const callStart = fctx.body.length;
     const callResult = compileCallExpression(ctx, fctx, expr);
     if (fctx.pendingCallbackWritebacks && fctx.pendingCallbackWritebacks.length > 0) {
       fctx.body.push(...fctx.pendingCallbackWritebacks);
@@ -683,7 +727,12 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
       // Do NOT clear — re-emit after every subsequent call
     }
     if (isAsyncCallExpression(ctx, expr)) {
-      return wrapAsyncReturn(ctx, fctx, callResult);
+      const wrappedType = wrapAsyncReturn(ctx, fctx, callResult);
+      // Wrap the call+Promise.resolve in try/catch so synchronous throws from
+      // the async function body (e.g. TDZ ReferenceError during default param
+      // evaluation) become rejected Promises per spec (#1150).
+      wrapAsyncCallInTryCatch(ctx, fctx, callStart);
+      return wrappedType;
     }
     return callResult;
   }
