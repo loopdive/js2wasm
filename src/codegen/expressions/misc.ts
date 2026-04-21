@@ -11,18 +11,30 @@ import { reportError } from "../context/errors.js";
 import { allocLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { ensureI32Condition, isAnyValue } from "../index.js";
-import { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName } from "../property-access.js";
+import {
+  getIteratorResultValueType,
+  isGeneratorIteratorResultLike,
+  resolveStructName,
+  resolveStructNameForExpr,
+} from "../property-access.js";
 import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
+import { evaluateConstantCondition } from "../statements/control-flow.js";
 
 // Re-export for backward compatibility — these helpers now live in property-access.ts.
-export { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName };
+export { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName, resolveStructNameForExpr };
 
 function compileConditionalExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.ConditionalExpression,
 ): ValType | null {
+  // Constant-folding: if the condition is a compile-time constant, emit only the taken branch.
+  const constResult = evaluateConstantCondition(expr.condition);
+  if (constResult !== undefined) {
+    return compileExpression(ctx, fctx, constResult ? expr.whenTrue : expr.whenFalse);
+  }
+
   const condType = compileExpression(ctx, fctx, expr.condition);
   if (!condType) {
     // void condition — JS treats undefined as falsy, so push i32.const 0
@@ -159,6 +171,34 @@ function compileYieldExpression(ctx: CodegenContext, fctx: FunctionContext, expr
   if (bufferIdx === undefined) {
     reportError(ctx, expr, "Internal error: __gen_buffer not found in generator function");
     return null;
+  }
+
+  // ── yield* delegation: iterate inner generator and push all values into outer buffer ──
+  if (expr.asteriskToken) {
+    if (!expr.expression) {
+      reportError(ctx, expr, "yield* requires an expression");
+      return null;
+    }
+    // Compile the inner iterable expression (returns the generator/iterable object)
+    const innerType = compileExpression(ctx, fctx, expr.expression);
+    if (innerType === null) {
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" } as ValType;
+    }
+    // Coerce to externref if needed
+    const coerced = coerceType(ctx, fctx, innerType, { kind: "externref" } as ValType);
+    // Store in temp, then call __gen_yield_star(buffer, iterable)
+    const tmpLocal = allocLocal(fctx, `__yield_star_tmp_${fctx.locals.length}`, { kind: "externref" } as ValType);
+    fctx.body.push({ op: "local.set", index: tmpLocal });
+    fctx.body.push({ op: "local.get", index: bufferIdx });
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    const yieldStarIdx = ctx.funcMap.get("__gen_yield_star");
+    if (yieldStarIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: yieldStarIdx });
+    }
+    // yield* evaluates to undefined in our eager model
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" } as ValType;
   }
 
   if (!expr.expression) {

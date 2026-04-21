@@ -1,0 +1,15 @@
+{
+  "pr": 247,
+  "conclusion": "failure",
+  "head_branch": "issue-1152-array-proto-higher-order",
+  "head_sha": "504c1726bdcd378f92f4e782d46d845c1d58f89e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24700451296",
+  "timestamp": "2026-04-21T02:29:49Z",
+  "pass": 22043,
+  "fail": 12788,
+  "compile_error": 6976,
+  "snapshot_delta": 624,
+  "net_per_test": 624,
+  "regressions": 11,
+  "improvements": 635
+}

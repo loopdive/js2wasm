@@ -145,6 +145,11 @@ export interface CompileOptions {
    * parity with the legacy direct-emission path.
    */
   experimentalIR?: boolean;
+  /** Compile-time constant definitions. Substitutes identifiers/dotted paths with literal values
+   *  before TypeScript parsing. Example: `{ "process.env.NODE_ENV": '"production"' }`.
+   *  Values must be valid JS expression literals (strings need inner quotes).
+   *  Also supports shorthand: `"production"` mode sets process.env.NODE_ENV and typeof guards. */
+  define?: Record<string, string>;
 }
 
 import * as path from "path";

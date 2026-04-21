@@ -37,73 +37,383 @@ createFreshCompiler();
 process.on("unhandledRejection", () => {});
 
 // ── Prototype-poisoning sandbox ───────────────────────────────────────
-// test262 tests routinely mutate built-in prototypes (Object.defineProperty
-// on Array.prototype, freezing arrays, overriding Symbol.iterator, etc.).
-// Since compile and execute share the same process, poisoned prototypes
-// break the TypeScript compiler on subsequent compilations.
+// test262 tests routinely mutate built-in prototypes. Since compile and
+// execute share the same process, residual poison breaks the TypeScript
+// compiler + js2wasm codegen on subsequent compilations (#1153 / #1154).
 //
-// Strategy: snapshot numeric index descriptors on Array.prototype and
-// well-known symbols at startup. After each test, delete any numeric
-// properties added to Array.prototype and restore Symbol.iterator.
-// Full descriptor restoration is too aggressive — it interferes with
-// V8's internal array optimizations.
+// Concrete crashes observed in test262 CI before this sandbox grew:
+//   - Array.prototype.reduce deleted → "constructSigs.reduce is not a function"
+//   - WeakMap.prototype.set deleted → "cache.set is not a function"
+//   - RegExp.prototype.exec deleted → "commentDirectiveRegEx.exec is not a
+//     function" inside typescript.js (scanner)
+//   - Array.prototype.from deleted → #1154 iteration/spread cluster
+//
+// Strategy: capture the ORIGINAL VALUE of each method we restore, then
+// after every test re-assign it if it changed.  We do NOT use
+// Object.defineProperty on builtin prototypes — that disturbs V8's
+// internal shape/IC caches and causes many tests to fail (#1153 attempt 1).
+// Simple value re-assignment is enough: the descriptor for a method that
+// was replaced (e.g. `Array.prototype.reduce = () => {...}`) still has
+// writable:true, so `=` restores the original function.
+//
+// For numeric-index accessors added to Array.prototype (configurable data
+// or accessor properties), we delete.  For tests that add non-configurable
+// poison, we exit for worker-pool restart — recovery is impossible.
 
+// --- Category 1: numeric Array.prototype keys and Object.prototype keys
+// (must be deleted, not re-assigned — they're properties not on the
+// original descriptor set).
 const _origArrayIterator = Array.prototype[Symbol.iterator];
-const _origArrayProtoNumericKeys = new Set(
-  Object.getOwnPropertyNames(Array.prototype).filter(k => /^\d+$/.test(k))
-);
+const _origArrayProtoNumericKeys = new Set(Object.getOwnPropertyNames(Array.prototype).filter((k) => /^\d+$/.test(k)));
 const _origObjectProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype));
-const _origMapGet = Map.prototype.get;
-const _origMapSet = Map.prototype.set;
-const _origMapHas = Map.prototype.has;
+
+// --- Category 2: specific methods the compiler + TypeScript use.
+// Captured by VALUE at startup. Restored by simple assignment.
+// When adding here: verify a test262 test that poisons the method actually
+// triggered a compile_error before the entry was added.
+const _METHOD_SNAPSHOTS = [
+  // Array.prototype — higher-order methods are used all over codegen + TS
+  [
+    "Array.prototype",
+    Array.prototype,
+    [
+      "reduce",
+      "reduceRight",
+      "map",
+      "filter",
+      "forEach",
+      "find",
+      "findIndex",
+      "findLast",
+      "findLastIndex",
+      "some",
+      "every",
+      "indexOf",
+      "lastIndexOf",
+      "includes",
+      "push",
+      "pop",
+      "shift",
+      "unshift",
+      "slice",
+      "splice",
+      "concat",
+      "join",
+      "reverse",
+      "sort",
+      "flat",
+      "flatMap",
+      "fill",
+      "copyWithin",
+      "at",
+      "entries",
+      "keys",
+      "values",
+      "toString",
+      "toLocaleString",
+    ],
+  ],
+  [
+    "String.prototype",
+    String.prototype,
+    [
+      "charAt",
+      "charCodeAt",
+      "codePointAt",
+      "concat",
+      "endsWith",
+      "includes",
+      "indexOf",
+      "lastIndexOf",
+      "match",
+      "matchAll",
+      "normalize",
+      "padEnd",
+      "padStart",
+      "repeat",
+      "replace",
+      "replaceAll",
+      "search",
+      "slice",
+      "split",
+      "startsWith",
+      "substring",
+      "substr",
+      "toLowerCase",
+      "toUpperCase",
+      "trim",
+      "trimStart",
+      "trimEnd",
+      "toString",
+      "valueOf",
+      "at",
+    ],
+  ],
+  [
+    "Number.prototype",
+    Number.prototype,
+    ["toString", "toFixed", "toPrecision", "toExponential", "valueOf", "toLocaleString"],
+  ],
+  ["Boolean.prototype", Boolean.prototype, ["toString", "valueOf"]],
+  ["RegExp.prototype", RegExp.prototype, ["exec", "test", "toString"]],
+  ["Map.prototype", Map.prototype, ["get", "set", "has", "delete", "clear", "forEach", "entries", "keys", "values"]],
+  ["Set.prototype", Set.prototype, ["add", "has", "delete", "clear", "forEach", "entries", "keys", "values"]],
+  ["WeakMap.prototype", WeakMap.prototype, ["get", "set", "has", "delete"]],
+  ["WeakSet.prototype", WeakSet.prototype, ["add", "has", "delete"]],
+  ["Error.prototype", Error.prototype, ["toString"]],
+  ["Function.prototype", Function.prototype, ["call", "apply", "bind", "toString"]],
+  [
+    "Object.prototype",
+    Object.prototype,
+    ["hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toString", "valueOf", "toLocaleString"],
+  ],
+  ["Promise.prototype", Promise.prototype, ["then", "catch", "finally"]],
+  [
+    "Date.prototype",
+    Date.prototype,
+    [
+      "getTime",
+      "getFullYear",
+      "getMonth",
+      "getDate",
+      "getDay",
+      "getHours",
+      "getMinutes",
+      "getSeconds",
+      "getMilliseconds",
+      "getTimezoneOffset",
+      "toISOString",
+      "toJSON",
+      "toString",
+      "valueOf",
+      "toLocaleString",
+    ],
+  ],
+];
+
+// --- Category 3: static "namespace" methods (Array.from, Object.keys, etc.)
+// These live on the CONSTRUCTOR, not the prototype, so they bypass the
+// prototype-descriptor logic entirely.
+const _STATIC_SNAPSHOTS = [
+  ["Array", Array, ["from", "of", "isArray"]],
+  [
+    "Object",
+    Object,
+    [
+      "keys",
+      "values",
+      "entries",
+      "assign",
+      "freeze",
+      "isFrozen",
+      "getOwnPropertyNames",
+      "getOwnPropertyDescriptor",
+      "getOwnPropertySymbols",
+      "getPrototypeOf",
+      "setPrototypeOf",
+      "defineProperty",
+      "defineProperties",
+      "create",
+      "is",
+    ],
+  ],
+  ["String", String, ["fromCharCode", "fromCodePoint", "raw"]],
+  ["Number", Number, ["isFinite", "isInteger", "isNaN", "isSafeInteger", "parseFloat", "parseInt"]],
+  [
+    "Math",
+    Math,
+    [
+      "abs",
+      "ceil",
+      "floor",
+      "round",
+      "trunc",
+      "sign",
+      "min",
+      "max",
+      "pow",
+      "sqrt",
+      "log",
+      "log2",
+      "log10",
+      "exp",
+      "random",
+      "sin",
+      "cos",
+      "tan",
+      "asin",
+      "acos",
+      "atan",
+      "atan2",
+      "hypot",
+      "fround",
+      "imul",
+      "clz32",
+    ],
+  ],
+  ["JSON", JSON, ["parse", "stringify"]],
+  [
+    "Reflect",
+    Reflect,
+    [
+      "get",
+      "set",
+      "has",
+      "deleteProperty",
+      "ownKeys",
+      "getOwnPropertyDescriptor",
+      "defineProperty",
+      "getPrototypeOf",
+      "setPrototypeOf",
+      "construct",
+      "apply",
+    ],
+  ],
+  ["RegExp", RegExp, []],
+];
+
+// --- Category 4: accessor properties on RegExp.prototype (getters).
+// When poisoned (e.g. `Object.defineProperty(RegExp.prototype, 'flags',
+// { get() { return undefined } })` in test262's flags-undefined-throws.js),
+// V8 internal helpers that call `.split(regex)`, `.matchAll(regex)` etc.
+// propagate the poisoned getter into `new RegExp(r, r.flags + "y")` and
+// throw "Invalid flags supplied to RegExp constructor 'undefinedy'" on any
+// subsequent compile step (e.g. validation.ts splits source by /\r?\n/u).
+// (#1157)
+// Accessors MUST be restored via Object.defineProperty with the original
+// descriptor — value-assignment hits the poisoned setter (or no-op).
+const _ACCESSOR_SNAPSHOTS = [
+  [
+    "RegExp.prototype",
+    RegExp.prototype,
+    ["flags", "source", "global", "ignoreCase", "multiline", "sticky", "unicode", "unicodeSets", "dotAll", "hasIndices"],
+  ],
+];
+
+const _snapshotValue = (obj, key) => {
+  try {
+    return obj[key];
+  } catch {
+    return undefined;
+  }
+};
+const _methodOrig = _METHOD_SNAPSHOTS.map(([name, obj, keys]) => ({
+  name,
+  obj,
+  values: keys.map((k) => [k, _snapshotValue(obj, k)]),
+}));
+const _staticOrig = _STATIC_SNAPSHOTS.map(([name, obj, keys]) => ({
+  name,
+  obj,
+  values: keys.map((k) => [k, _snapshotValue(obj, k)]),
+}));
+const _accessorOrig = _ACCESSOR_SNAPSHOTS.map(([name, obj, keys]) => ({
+  name,
+  obj,
+  descriptors: keys
+    .map((k) => [k, Object.getOwnPropertyDescriptor(obj, k)])
+    .filter(([, d]) => d !== undefined && typeof d.get === "function"),
+}));
 
 function restoreBuiltins() {
   // Restore Array.prototype[Symbol.iterator]
   if (Array.prototype[Symbol.iterator] !== _origArrayIterator) {
-    Array.prototype[Symbol.iterator] = _origArrayIterator;
+    try {
+      Array.prototype[Symbol.iterator] = _origArrayIterator;
+    } catch {}
   }
 
   // Remove numeric-indexed accessor properties added to Array.prototype
-  // (e.g. Object.defineProperty(Array.prototype, "0", {get: ...}))
-  // These cause "Cannot set property N of [object Array] which has only a getter"
   for (const key of Object.getOwnPropertyNames(Array.prototype)) {
     if (/^\d+$/.test(key) && !_origArrayProtoNumericKeys.has(key)) {
-      try { delete Array.prototype[key]; } catch {}
+      try {
+        delete Array.prototype[key];
+      } catch {}
     }
   }
 
   // Remove properties added to Object.prototype
   for (const key of Object.getOwnPropertyNames(Object.prototype)) {
     if (!_origObjectProtoKeys.has(key)) {
-      try { delete Object.prototype[key]; } catch {}
+      try {
+        delete Object.prototype[key];
+      } catch {}
     }
   }
 
-  // Restore Map.prototype core methods (mapperCache.get errors)
-  if (Map.prototype.get !== _origMapGet) Map.prototype.get = _origMapGet;
-  if (Map.prototype.set !== _origMapSet) Map.prototype.set = _origMapSet;
-  if (Map.prototype.has !== _origMapHas) Map.prototype.has = _origMapHas;
+  // Restore specific methods on prototypes (value-assignment only).
+  for (const { obj, values } of _methodOrig) {
+    for (const [key, orig] of values) {
+      if (orig === undefined) continue;
+      let cur;
+      try {
+        cur = obj[key];
+      } catch {
+        cur = undefined;
+      }
+      if (cur !== orig) {
+        try {
+          obj[key] = orig;
+        } catch {}
+      }
+    }
+  }
 
-  // Detect non-configurable poison on Array.prototype (cannot be cleaned up).
-  // Some test262 tests add non-configurable getters/setters to Array.prototype
-  // which permanently corrupt all arrays in this process. When detected,
-  // signal the pool to terminate and restart this worker.
+  // Restore static/namespace methods on constructors.
+  for (const { obj, values } of _staticOrig) {
+    for (const [key, orig] of values) {
+      if (orig === undefined) continue;
+      let cur;
+      try {
+        cur = obj[key];
+      } catch {
+        cur = undefined;
+      }
+      if (cur !== orig) {
+        try {
+          obj[key] = orig;
+        } catch {}
+      }
+    }
+  }
+
+  // Restore accessor properties (getters) via Object.defineProperty when
+  // their backing get function differs from the snapshot. These are cold
+  // paths (RegExp.prototype.flags etc.) so defineProperty is safe here —
+  // it does not disturb V8's hot-path ICs the way Array.prototype accessors
+  // would.
+  for (const { obj, descriptors } of _accessorOrig) {
+    for (const [key, orig] of descriptors) {
+      const cur = Object.getOwnPropertyDescriptor(obj, key);
+      if (!cur || cur.get !== orig.get || cur.set !== orig.set) {
+        try {
+          Object.defineProperty(obj, key, orig);
+        } catch {}
+      }
+    }
+  }
+
+  // Detect non-configurable poison on Array.prototype — cannot be cleaned up.
   for (const key of Object.getOwnPropertyNames(Array.prototype)) {
     if (/^\d+$/.test(key)) {
       const desc = Object.getOwnPropertyDescriptor(Array.prototype, key);
       if (desc && !desc.configurable) {
-        console.error(`[unified-worker pid=${process.pid}] FATAL: non-configurable Array.prototype[${key}] — exiting for restart`);
+        console.error(
+          `[unified-worker pid=${process.pid}] FATAL: non-configurable Array.prototype[${key}] — exiting for restart`,
+        );
         process.exit(1);
       }
     }
   }
 
-  // Also check Object.prototype for non-configurable additions
+  // Non-configurable additions to Object.prototype also require restart.
   for (const key of Object.getOwnPropertyNames(Object.prototype)) {
     if (!_origObjectProtoKeys.has(key)) {
       const desc = Object.getOwnPropertyDescriptor(Object.prototype, key);
       if (desc && !desc.configurable) {
-        console.error(`[unified-worker pid=${process.pid}] FATAL: non-configurable Object.prototype[${key}] — exiting for restart`);
+        console.error(
+          `[unified-worker pid=${process.pid}] FATAL: non-configurable Object.prototype[${key}] — exiting for restart`,
+        );
         process.exit(1);
       }
     }
@@ -121,6 +431,41 @@ function doCompile(source, sourceMapUrl) {
         emitWat: false,
         skipSemanticDiagnostics: true,
       });
+}
+
+/**
+ * Extract a human-readable message from a Wasm runtime error.
+ * Handles `WebAssembly.Exception` (extracts payload via `__exn_tag`),
+ * generic `Error` (pulls `.message` + function-name annotation), and
+ * anything else (falls back to `String(err)`). If `instance` is null
+ * (e.g. the throw happened during `WebAssembly.instantiate` from a
+ * start function), tag lookup is skipped.
+ */
+function extractWasmExceptionMessage(err, instance) {
+  if (err instanceof WebAssembly.Exception) {
+    let payload = null;
+    if (instance) {
+      try {
+        const tag = instance.exports.__exn_tag ?? instance.exports.__tag;
+        if (tag) payload = err.getArg(tag, 0);
+      } catch {}
+    }
+    if (payload instanceof Error) {
+      return payload.message ?? String(payload);
+    }
+    if (payload != null) return String(payload);
+    return instance ? "TypeError (null/undefined access)" : "wasm exception during module init";
+  }
+  if (err instanceof Error) {
+    let info = err.message ?? String(err);
+    const stack = err.stack ?? "";
+    if (/illegal cast|null|unreachable|out of bounds/.test(info)) {
+      const funcMatch = stack.match(/at (\w+) \(wasm:/);
+      if (funcMatch) info = `${info} [in ${funcMatch[1]}()]`;
+    }
+    return info;
+  }
+  return String(err);
 }
 
 function extractWasmFuncName(err) {
@@ -269,39 +614,48 @@ process.on("message", async (msg) => {
   }
   const compileMs = performance.now() - compileStart;
 
-  const hasErrors = !result.success || result.errors.some(e => e.severity === "error");
+  const hasErrors = !result.success || result.errors.some((e) => e.severity === "error");
 
   if (hasErrors) {
     const errMsg = result.errors
-      .filter(e => e.severity === "error")
-      .map(e => `L${e.line}:${e.column} ${e.message}`)
+      .filter((e) => e.severity === "error")
+      .map((e) => `L${e.line}:${e.column} ${e.message}`)
       .join("; ");
-    const errorCodes = result.errors
-      .filter(e => e.severity === "error" && e.code)
-      .map(e => e.code);
+    const errorCodes = result.errors.filter((e) => e.severity === "error" && e.code).map((e) => e.code);
 
     // Write error to disk cache if paths provided
     if (msg.wasmPath && msg.metaPath) {
       try {
         writeFileSync(msg.wasmPath, new Uint8Array(0));
-        writeFileSync(msg.metaPath, JSON.stringify({
-          ok: false, error: errMsg || "unknown", errorCodes, compileMs,
-        }));
+        writeFileSync(
+          msg.metaPath,
+          JSON.stringify({
+            ok: false,
+            error: errMsg || "unknown",
+            errorCodes,
+            compileMs,
+          }),
+        );
       } catch {}
     }
 
     // Negative parse/early tests: compile error = pass
     if (execute && isNegative) {
       const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
-      const hasEarlyError = errorCodes.some(c => ES_EARLY_ERRORS.has(c));
+      const hasEarlyError = errorCodes.some((c) => ES_EARLY_ERRORS.has(c));
       process.send({
-        id, status: hasEarlyError ? "pass" : "pass",
-        compileMs, errorCodes,
+        id,
+        status: hasEarlyError ? "pass" : "pass",
+        compileMs,
+        errorCodes,
       });
     } else {
       process.send({
-        id, status: "compile_error",
-        error: errMsg || "unknown", errorCodes, compileMs,
+        id,
+        status: "compile_error",
+        error: errMsg || "unknown",
+        errorCodes,
+        compileMs,
       });
     }
     postCompileCleanup();
@@ -337,13 +691,16 @@ process.on("message", async (msg) => {
   if (msg.wasmPath && msg.metaPath) {
     try {
       writeFileSync(msg.wasmPath, result.binary);
-      writeFileSync(msg.metaPath, JSON.stringify({
-        ok: true,
-        stringPool: result.stringPool,
-        imports: result.imports,
-        sourceMap: result.sourceMap || null,
-        compileMs,
-      }));
+      writeFileSync(
+        msg.metaPath,
+        JSON.stringify({
+          ok: true,
+          stringPool: result.stringPool,
+          imports: result.imports,
+          sourceMap: result.sourceMap || null,
+          compileMs,
+        }),
+      );
     } catch {}
   }
 
@@ -363,7 +720,8 @@ process.on("message", async (msg) => {
       await WebAssembly.instantiate(result.binary, importObj);
       // Instantiation succeeded — this is a failure (expected parse/early error)
       process.send({
-        id, status: "fail",
+        id,
+        status: "fail",
         error: `expected parse/early ${expectedErrorType || "error"} but compiled and instantiated successfully`,
         compileMs,
       });
@@ -384,11 +742,37 @@ process.on("message", async (msg) => {
       const wasmResult = await WebAssembly.instantiate(result.binary, importObj);
       instance = wasmResult.instance;
     } catch (err) {
+      const execMs = performance.now() - execStart;
+      // Real Wasm compile/link failures stay as compile_error. A throw from
+      // the module's start function — which surfaces as WebAssembly.Exception
+      // or a plain Error — is a runtime throw, not a compile failure.
+      if (err instanceof WebAssembly.CompileError || err instanceof WebAssembly.LinkError) {
+        process.send({
+          id,
+          status: "compile_error",
+          error: err.message ?? String(err),
+          instantiateError: true,
+          compileMs,
+          execMs,
+        });
+        postCompileCleanup();
+        return;
+      }
+
+      if (isRuntimeNegative) {
+        process.send({ id, status: "pass", compileMs, execMs, runtimeNegativePass: true });
+        postCompileCleanup();
+        return;
+      }
+
       process.send({
-        id, status: "compile_error",
-        error: err.message ?? String(err),
+        id,
+        status: "fail",
+        error: extractWasmExceptionMessage(err, null),
+        isException: true,
         instantiateError: true,
-        compileMs, execMs: performance.now() - execStart,
+        compileMs,
+        execMs,
       });
       postCompileCleanup();
       return;
@@ -402,9 +786,11 @@ process.on("message", async (msg) => {
     const testFn = instance.exports.test;
     if (typeof testFn !== "function") {
       process.send({
-        id, status: "compile_error",
+        id,
+        status: "compile_error",
         error: "no test export",
-        compileMs, execMs: performance.now() - execStart,
+        compileMs,
+        execMs: performance.now() - execStart,
       });
       postCompileCleanup();
       return;
@@ -417,9 +803,12 @@ process.on("message", async (msg) => {
 
       if (isRuntimeNegative) {
         process.send({
-          id, status: "fail",
+          id,
+          status: "fail",
           error: "expected runtime error but succeeded",
-          ret, compileMs, execMs,
+          ret,
+          compileMs,
+          execMs,
           runtimeNegativeNoThrow: true,
         });
       } else {
@@ -434,51 +823,32 @@ process.on("message", async (msg) => {
         return;
       }
 
-      // Extract exception info
-      let errInfo = "";
-      if (execErr instanceof WebAssembly.Exception) {
-        let payload = null;
-        try {
-          const tag = instance.exports.__exn_tag ?? instance.exports.__tag;
-          if (tag) payload = execErr.getArg(tag, 0);
-        } catch {}
-
-        if (payload instanceof Error) {
-          errInfo = payload.message ?? String(payload);
-        } else {
-          errInfo = "TypeError (null/undefined access)";
-        }
-      } else if (execErr instanceof Error) {
-        errInfo = execErr.message ?? String(execErr);
-        const stack = execErr.stack ?? "";
-        if (/illegal cast|null|unreachable|out of bounds/.test(errInfo)) {
-          const funcMatch = stack.match(/at (\w+) \(wasm:/);
-          if (funcMatch) errInfo = `${errInfo} [in ${funcMatch[1]}()]`;
-        }
-      } else {
-        errInfo = String(execErr);
-      }
+      let errInfo = extractWasmExceptionMessage(execErr, instance);
 
       // Annotate with source location via source map
       const byteOffset = extractWasmByteOffset(execErr);
       const mapped =
-        byteOffset !== undefined && result.sourceMap
-          ? lookupSourceMapOffset(result.sourceMap, byteOffset)
-          : undefined;
+        byteOffset !== undefined && result.sourceMap ? lookupSourceMapOffset(result.sourceMap, byteOffset) : undefined;
       if (mapped) {
         errInfo = `L${mapped.line}:${mapped.column} ${errInfo}`;
       }
 
       process.send({
-        id, status: "fail", error: errInfo,
-        isException: true, compileMs, execMs,
+        id,
+        status: "fail",
+        error: errInfo,
+        isException: true,
+        compileMs,
+        execMs,
       });
     }
   } catch (outerErr) {
     process.send({
-      id, status: "compile_error",
+      id,
+      status: "compile_error",
       error: outerErr.message ?? String(outerErr),
-      compileMs, execMs: performance.now() - execStart,
+      compileMs,
+      execMs: performance.now() - execStart,
     });
   }
 

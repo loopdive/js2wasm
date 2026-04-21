@@ -45,7 +45,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #744 | Function monomorphization for polymorphic call sites | high | ready |
 | #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
 | #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
-| #862 | Empty error message failures: iterator/destructuring step-err tests (212 FAIL) | medium | ready |
+| #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | ready |
 | #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | ready |
@@ -60,6 +60,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | ready |
 | #1006 | Support eval via JS host import | medium | ready |
+| #1025 | BindingElement array-pattern default guards still use ref.is_null | high | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
 | #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | ready |
@@ -82,13 +83,30 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
 | #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
+| #1119 | ES2015 SingleNameBinding anonymous function/class naming from destructuring context | medium | ready |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
 | #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
 | #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
 | #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | ready |
+| #1127 | Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]] | medium | ready |
 | #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | ready |
+| #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | ready |
+| #1147 | Add a public Docs page to the site | medium | ready |
+| #1152 | Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions) | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | in-progress |
+| #1156 | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | medium | in-progress |
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
