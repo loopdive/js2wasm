@@ -15756,7 +15756,7 @@
       "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [],
       "files": [],
