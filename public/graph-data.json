@@ -14252,7 +14252,7 @@
       "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "42",
       "depends_on": [],
       "files": [],
