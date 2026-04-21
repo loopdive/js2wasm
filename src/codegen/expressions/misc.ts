@@ -11,13 +11,18 @@ import { reportError } from "../context/errors.js";
 import { allocLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { ensureI32Condition, isAnyValue } from "../index.js";
-import { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName } from "../property-access.js";
+import {
+  getIteratorResultValueType,
+  isGeneratorIteratorResultLike,
+  resolveStructName,
+  resolveStructNameForExpr,
+} from "../property-access.js";
 import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { evaluateConstantCondition } from "../statements/control-flow.js";
 
 // Re-export for backward compatibility — these helpers now live in property-access.ts.
-export { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName };
+export { getIteratorResultValueType, isGeneratorIteratorResultLike, resolveStructName, resolveStructNameForExpr };
 
 function compileConditionalExpression(
   ctx: CodegenContext,

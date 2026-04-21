@@ -11,7 +11,9 @@ import { compile, createIncrementalCompiler } from "./compiler-bundle.mjs";
 
 let compileCount = 0;
 const GC_INTERVAL = 25;
-const RECREATE_INTERVAL = 100;
+// With #973 fix (no oldProgram reuse), there's no type leakage between
+// compilations. Recreate interval is now purely for memory management.
+const RECREATE_INTERVAL = 500;
 
 let incrementalCompiler = null;
 function createFreshCompiler() {

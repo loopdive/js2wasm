@@ -14,7 +14,7 @@ import { allocLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { addArrayIteratorImports, addStringImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
-import { getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
+import { getArrTypeIdxFromVec, getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
 import {
   compileArrowAsClosure,
   compileExpression,
@@ -1767,7 +1767,62 @@ export function compileArrayMethodCall(
   const arrInfo = resolveArrayInfo(ctx, receiverType);
   if (!arrInfo) return undefined;
 
-  const { vecTypeIdx, arrTypeIdx, elemType } = arrInfo;
+  let { vecTypeIdx, arrTypeIdx, elemType } = arrInfo;
+
+  // The receiver's actual Wasm type may differ from the TS type — e.g.
+  // `[0, true].lastIndexOf(...)` infers i32 elements during construction,
+  // but resolveArrayInfo resolves (number|boolean)[] → __vec_externref.
+  // Probe-compile the receiver to determine the actual Wasm type (#826).
+  const receiverExpr = ts.isPropertyAccessExpression(propAccess) ? propAccess.expression : undefined;
+  if (receiverExpr) {
+    // Fast path: check the Wasm local/global type directly
+    let actualType: ValType | undefined;
+    if (ts.isIdentifier(receiverExpr)) {
+      const name = receiverExpr.text;
+      const localIdx = fctx.localMap.get(name);
+      if (localIdx !== undefined) {
+        actualType = fctx.locals[localIdx]?.type;
+      } else {
+        const gIdx = ctx.moduleGlobals.get(name);
+        if (gIdx !== undefined) {
+          const globalDef = ctx.mod.globals[localGlobalIdx(ctx, gIdx)];
+          actualType = globalDef?.type;
+        }
+      }
+    }
+    // Slow path: probe-compile the receiver to determine its actual type.
+    // Compiles the expression, captures the result type, then rolls back.
+    if (!actualType || actualType.kind === "externref" || actualType.kind === "f64" || actualType.kind === "i32") {
+      const savedLen = fctx.body.length;
+      const probeResult = compileExpression(ctx, fctx, receiverExpr);
+      // Roll back — the method function will re-compile the receiver
+      fctx.body.length = savedLen;
+      if (
+        probeResult &&
+        (probeResult.kind === "ref" || probeResult.kind === "ref_null") &&
+        (probeResult as any).typeIdx !== undefined
+      ) {
+        actualType = probeResult;
+      }
+    }
+    if (
+      actualType &&
+      (actualType.kind === "ref" || actualType.kind === "ref_null") &&
+      (actualType as { typeIdx: number }).typeIdx !== vecTypeIdx
+    ) {
+      const actualVecIdx = (actualType as { typeIdx: number }).typeIdx;
+      const actualArrIdx = getArrTypeIdxFromVec(ctx, actualVecIdx);
+      if (actualArrIdx >= 0) {
+        const actualArrDef = ctx.mod.types[actualArrIdx];
+        if (actualArrDef && actualArrDef.kind === "array") {
+          vecTypeIdx = actualVecIdx;
+          arrTypeIdx = actualArrIdx;
+          elemType = actualArrDef.element;
+        }
+      }
+    }
+  }
+
   const methodAccess = propAccess as ts.PropertyAccessExpression;
 
   // If receiver is a module global, proxy it through a temp local so
@@ -3681,6 +3736,8 @@ interface ArrayLoopLocals {
 
 /**
  * Compile receiver, extract vec/data/len, alloc loop locals, set i = 0.
+ * The caller (compileArrayMethodCall) has already resolved the correct
+ * vec/arr/elem types via probe-compile (#826).
  */
 function setupArrayLoop(
   ctx: CodegenContext,
@@ -3691,7 +3748,12 @@ function setupArrayLoop(
   elemType: ValType,
   tag: string,
 ): ArrayLoopLocals {
-  const vecTmp = allocLocal(fctx, `__arr_${tag}_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  compileExpression(ctx, fctx, propAccess.expression);
+
+  const vecTmp = allocLocal(fctx, `__arr_${tag}_vec_${fctx.locals.length}`, {
+    kind: "ref_null",
+    typeIdx: vecTypeIdx,
+  });
   const dataTmp = allocLocal(fctx, `__arr_${tag}_data_${fctx.locals.length}`, {
     kind: "ref_null",
     typeIdx: arrTypeIdx,
@@ -3699,7 +3761,6 @@ function setupArrayLoop(
   const lenTmp = allocLocal(fctx, `__arr_${tag}_len_${fctx.locals.length}`, { kind: "i32" });
   const iTmp = allocLocal(fctx, `__arr_${tag}_i_${fctx.locals.length}`, { kind: "i32" });
 
-  compileExpression(ctx, fctx, propAccess.expression);
   fctx.body.push({ op: "local.tee", index: vecTmp });
   emitReceiverNullGuard(ctx, fctx, vecTmp);
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
@@ -4278,7 +4339,13 @@ function compileArrayReduceRight(
   }
 
   // Build the loop locals struct for buildClosureCallInstrs compatibility
-  const loop: ArrayLoopLocals = { vecTmp, dataTmp, lenTmp, iTmp, getOp };
+  const loop: ArrayLoopLocals = {
+    vecTmp,
+    dataTmp,
+    lenTmp,
+    iTmp,
+    getOp,
+  };
 
   // Build reduce-specific callback invocation (2-arg: acc, elem)
   let callInstrs: Instr[];

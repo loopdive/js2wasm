@@ -186,6 +186,7 @@ and [#998](../sprints/40/998.md); [#848](../sprints/30/848.md) is already comple
 | [642](642.md) | Low | Deno/Cloudflare loader plugins | Developer experience | Ready |
 | [1136](1136.md) | High | Reference platform scenario: capability-safe DOM wrapper with explicit subtree authority | Security + browser platform story | Ready |
 | [1137](1137.md) | High | Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js | Serverless / runtime-surface credibility | Ready |
+| [1147](../sprints/43/1147.md) | Medium | Add a public Docs page to the site | Developer onboarding / discoverability | Ready |
 
 ---
 
