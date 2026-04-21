@@ -2,14 +2,14 @@
   "pr": 166,
   "conclusion": "success",
   "head_branch": "issue-1043-define-substitution",
-  "head_sha": "db8d041fe07c3e592acf2e0b4db8617642b445a3",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693972078",
-  "timestamp": "2026-04-21T00:39:27Z",
+  "head_sha": "8c16c332016c471c2d7cd0f53b65586f95fefd75",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694162890",
+  "timestamp": "2026-04-21T01:22:09Z",
   "pass": 21419,
   "fail": 13253,
   "compile_error": 7135,
-  "snapshot_delta": 38,
-  "net_per_test": 74,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
   "regressions": 0,
-  "improvements": 74
+  "improvements": 0
 }
