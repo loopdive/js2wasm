@@ -1,41 +1,24 @@
 ---
 name: project_next_session
-description: Session state — 17,822 pass (41.3%), cache disabled, sprint 36 in progress
+description: Current project state — sprint 42 closed, sprint 43 active, 56.7% pass rate
 type: project
+originSessionId: 0ffbd21c-b73d-429a-a76d-4fb742ea9794
 ---
+**Sprint 42 closed 2026-04-21. Sprint 43 is active.**
 
-## Final state (2026-04-04)
+- **Baseline**: 24,483 / 43,172 pass = 56.7%
+- **Git HEAD**: 735f8b4e5 (main)
+- **Sprint 43**: 60+ issues ready, no active PRs, no dispatched devs
+- **PR queue**: clear (last merges: #144, #160, #231)
+- **Sprint tag**: `sprint/42` tagged; `sprint-43/begin` NOT yet tagged
 
-**Git:** main at `448bef79`
-**Test262:** `17,822 / 43,120` official pass (41.3%) — cache disabled, honest result
-**Report:** `benchmarks/results/test262-report-20260404-033322.json`
+**What's open in sprint 43:**
+- #825 null deref (partial, carry-over)
+- #826 illegal cast (partial, carry-over)
+- #742 compileCallExpression refactor (blocked on #688)
+- #1111 wrapper object constructors (ready)
+- 50+ fresh ready issues
 
-### Session totals (sprints 31-36)
-- Start: 15,103 pass (35.2%)
-- End: 17,822 pass (41.3%)
-- Improvement: +2,719 pass (+6.1%)
+**Start next session:** tag `sprint-43/begin`, dispatch devs on high-impact sprint 43 issues.
 
-### Key lesson: cache was hiding truth
-- The test262 disk cache caused false baselines (17,782 was cache-inflated)
-- Cache now permanently disabled — every test compiled fresh
-- Proposals pre-filtered at file level (not just skipped in JSONL)
-
-### Sprint 36 (in progress)
-Done: #914, #915, #916, #917, #918, #920, #922, #932, #942, #944
-Merging: #921 (test-and-merge script running)
-Pending merge: #919, #927, #931
-Pending work: #923 (state leakage), #933 (shared charts)
-Deferred: #910-#913 (refactoring → sprint 37)
-
-### Sprint 37 (planned)
-Property descriptors (#797), prototype chain (#799), runner stability (#943),
-compiler state leakage (#923), refactoring (#910-#913).
-Target: 55-60% conformance.
-
-### Process changes this session
-- test-and-merge.sh replaces tester agents (zero tokens)
-- developer.md model: sonnet (was opus)
-- senior-developer.md for hard issues (opus + max effort)
-- reasoning_effort field in all issue files
-- Never dismiss regressions — always bisect
-- Cache disabled permanently
+**Why:** Sprint 42 wrap-up complete. Worktrees cleaned (all 80+ removed). Branch cleanup (964 remote branches) deferred.
