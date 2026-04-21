@@ -104,6 +104,36 @@
   ],
   "ready": [
     {
+      "id": "1162",
+      "title": "yield* async — unexpected undefined AST node in compileExpression (~161 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1161",
+      "title": "Cannot destructure null/undefined in private class method params (~429 dstr tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1160",
+      "title": "Array.from codegen error — property of first arg must be integer (730 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1159",
       "title": "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics",
       "priority": "medium",

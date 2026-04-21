@@ -90,6 +90,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
 | #1152 | Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions) | high | ready |
+| #1160 | Array.from codegen error — property of first arg must be integer (730 tests) | high | ready |
+| #1161 | Cannot destructure null/undefined in private class method params (~429 dstr tests) | high | ready |
+| #1162 | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | high | ready |
 
 ### In Progress
 
