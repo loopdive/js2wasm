@@ -1,6 +1,6 @@
 ---
 title: "Sprint 42 — First npm package compiles and runs E2E in Wasm"
-status: planning
+status: done
 sprint: 42
 goal: spec-completeness
 ---
