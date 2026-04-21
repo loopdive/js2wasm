@@ -74,7 +74,6 @@ makes the error paths spec-compliant.
 | **896** | Restore direct numeric GC-array codegen in hot loops | 34 | done | high |
 | **898** | Extend compile-time TDZ elimination to loop-local accesses | 34 | done | medium |
 | **899** | Extend compile-time TDZ elimination to provably safe closure captures | 34 | done | medium |
-| **906** | Compile away TDZ tracking for definite-assignment top-level numeric locals | 42 | ready | high |
 | **906** | Compile away TDZ tracking for definite-assignment top-level numeric locals | 43 | ready | high |
 | **913** | Split compiler.ts into validation, orchestration, and output modules | 39 | done | medium |
 | **947** | Calendar WAT analysis: 6 codegen inefficiencies found in the default playground example | 37 | done | medium |

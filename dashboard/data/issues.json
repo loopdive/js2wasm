@@ -245,7 +245,7 @@
       "depends_on": [],
       "goal": "",
       "status": "ready",
-      "sprint": ""
+      "sprint": "43"
     },
     {
       "id": "1134",
@@ -328,30 +328,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "conformance",
-      "status": "open",
-      "sprint": "Ready"
-    },
-    {
-      "id": "1127",
-      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "correctness",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1126",
-      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1126",
@@ -364,16 +342,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1125",
-      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "benchmarking",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1125",
@@ -403,29 +371,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1122",
-      "title": "Keep standalone recursive numeric benchmark stable across non-run entry exports",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1121",
-      "title": "Infer numeric recursive fast path without JSDoc hints on exported entrypoints",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1121",
@@ -476,18 +422,8 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "conformance",
-      "status": "open",
-      "sprint": "Ready"
-    },
-    {
-      "id": "1119",
-      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "async-model",
       "status": "ready",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1118",
@@ -510,18 +446,6 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1109",
-      "title": "lodash-es clamp: Wasm validation error in typeof/RegExp codegen path",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1107"
-      ],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1109",
@@ -605,18 +529,6 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1099",
-      "title": "Standalone execution demo — compile and run a program on Wasmtime with zero JS host",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1094"
-      ],
-      "goal": "platform",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -637,27 +549,7 @@
       "depends_on": [],
       "goal": "platform",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1096",
-      "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "platform",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1095",
-      "title": "Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "maintainability",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1095",
@@ -709,18 +601,6 @@
       ],
       "goal": "maintainability",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1086",
-      "title": "codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [
-        "1085"
-      ],
-      "goal": "maintainability",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -753,16 +633,6 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1080",
-      "title": "[umbrella] Fix CI baseline-drift regression gate — main is not self-healing",
-      "priority": "critical",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -773,29 +643,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1079",
-      "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1078",
-      "title": "CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [
-        "1076"
-      ],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1078",
@@ -829,31 +677,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1076",
-      "title": "CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline",
-      "priority": "critical",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1075",
-      "title": "CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1060",
-        "1061",
-        "1074"
-      ],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1075",
@@ -927,20 +751,6 @@
       ],
       "goal": "compiler-architecture",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1058",
-      "title": "Compile the TypeScript compiler itself to Wasm — self-hosting stress test",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1042",
-        "1044",
-        "1046"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -962,18 +772,6 @@
       "goal": "compiler-architecture",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1045",
-      "title": "DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1041"
-      ],
-      "goal": "platform",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1045",
@@ -1007,16 +805,6 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1043",
-      "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -1040,16 +828,6 @@
       "goal": "developer-experience",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1035",
-      "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1035",
@@ -1094,7 +872,7 @@
       "depends_on": [],
       "goal": "",
       "status": "ready",
-      "sprint": "Sprint-41"
+      "sprint": "43"
     },
     {
       "id": "1011",
@@ -1144,29 +922,7 @@
       "depends_on": [],
       "goal": "generator-model",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "1004",
-      "title": "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "generator-model",
-      "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1003",
-      "title": "Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1000"
-      ],
-      "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1003",
@@ -1199,16 +955,6 @@
       "goal": "ci-hardening",
       "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "1000",
-      "title": "Normalize issue frontmatter and repopulate historical sprint issue assignments",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "1000",
@@ -1324,19 +1070,6 @@
       "goal": "developer-experience",
       "status": "ready",
       "sprint": "43"
-    },
-    {
-      "id": "906",
-      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "800",
-        "898"
-      ],
-      "goal": "error-model",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "906",
@@ -1563,16 +1296,6 @@
     },
     {
       "id": "862",
-      "title": "Empty error message failures: iterator/destructuring step-err tests (212 FAIL)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "crash-free",
-      "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "862",
       "title": "Iterator protocol missing on function-declaration binding-pattern params",
       "priority": "medium",
       "feasibility": "hard",
@@ -1600,16 +1323,6 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "854",
-      "title": "Iterator protocol: null next/return/throw methods (126 tests)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "854",
@@ -1801,18 +1514,6 @@
       ],
       "goal": "compilable",
       "status": "ready",
-      "sprint": "42"
-    },
-    {
-      "id": "773",
-      "title": "Monomorphize functions: compile with call-site types, not generic externref",
-      "priority": "critical",
-      "feasibility": "hard",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "compilable",
-      "status": "ready",
       "sprint": "43"
     },
     {
@@ -1824,19 +1525,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "744",
-      "title": "Function monomorphization for polymorphic call sites",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "743",
-        "1124"
-      ],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "42"
     },
     {
       "id": "744",
@@ -2078,7 +1766,7 @@
       ],
       "goal": "spec-completeness",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": "43"
     },
     {
       "id": "1153",
