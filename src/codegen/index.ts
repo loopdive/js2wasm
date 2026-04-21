@@ -14,7 +14,7 @@ import {
 import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction, WasmModule } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
 import { createCodegenContext } from "./context/create-context.js";
-import { reportErrorNoNode } from "./context/errors.js";
+import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
 import type {
   ClosureInfo,
@@ -212,6 +212,11 @@ export function generateModule(
     // Note: console imports handled by unified collector (skipped in WASI mode via registerWasiImports)
     // First pass: collect declare namespaces (registers imports before local funcs)
     collectExternDeclarations(ctx, ast.sourceFile);
+
+    // WASI target: check for DOM-only globals and emit compile errors
+    if (ctx.wasi) {
+      checkWasiDomUsage(ctx, ast.sourceFile);
+    }
 
     // Scan lib files for DOM extern classes + globals (only if user code uses DOM)
     // After lib.d.ts refactoring, TS loads individual lib files (lib.es5.d.ts, etc.)
@@ -1817,6 +1822,13 @@ export function generateMultiModule(
     // Phase 1: Collect extern declarations first (needed before import collectors)
     for (const sf of multiAst.sourceFiles) {
       collectExternDeclarations(ctx, sf);
+    }
+
+    // WASI target: check for DOM-only globals and emit compile errors
+    if (ctx.wasi) {
+      for (const sf of multiAst.sourceFiles) {
+        checkWasiDomUsage(ctx, sf);
+      }
     }
 
     // Scan lib files for DOM extern classes + globals (only if any user code uses DOM)
@@ -3566,6 +3578,12 @@ function collectGeneratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile)
     addImport(ctx, "env", "__gen_push_ref", {
       kind: "func",
       typeIdx: pushRefType,
+    });
+
+    // __gen_yield_star: (externref, externref) → void  (iterates inner iterable, pushes all values into outer buffer)
+    addImport(ctx, "env", "__gen_yield_star", {
+      kind: "func",
+      typeIdx: pushRefType, // same signature as push_ref: (buf, iterable) → void
     });
 
     // __create_generator: (buf: externref, pendingThrow: externref) → externref
@@ -5370,6 +5388,28 @@ function collectDeclaredGlobals(ctx: CodegenContext, libFile: ts.SourceFile, use
 }
 
 /**
+ * DOM-only globals that require a browser host and are not available in WASI.
+ * Used to emit a compile error when `--target wasi` is combined with DOM usage.
+ */
+const DOM_ONLY_GLOBALS = new Set([
+  "document",
+  "window",
+  "navigator",
+  "location",
+  "history",
+  "HTMLElement",
+  "Element",
+  "Node",
+  "Event",
+  "EventTarget",
+  "DocumentFragment",
+  "Text",
+  "Comment",
+  "requestAnimationFrame",
+  "cancelAnimationFrame",
+]);
+
+/**
  * Register Node.js builtin module imports as externref host imports (#1044).
  *
  * For each detected `import * as X from 'node:http'` (or named/default import),
@@ -5479,6 +5519,30 @@ function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {
     if (found) break;
   }
   return found;
+}
+
+/**
+ * In WASI mode, scan source for DOM-only globals and report compile errors.
+ * DOM globals require a browser host and are not available in standalone Wasm.
+ */
+function checkWasiDomUsage(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
+  const found = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && DOM_ONLY_GLOBALS.has(node.text)) {
+      if (!found.has(node.text)) {
+        found.add(node.text);
+        reportError(
+          ctx,
+          node,
+          `Codegen error: DOM global '${node.text}' is not available in WASI target — DOM requires a browser host`,
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  for (const stmt of sourceFile.statements) {
+    ts.forEachChild(stmt, visit);
+  }
 }
 
 // ── Regular declaration collection ───────────────────────────────────

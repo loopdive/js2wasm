@@ -70,4 +70,27 @@ export function test(): f64 {
 `);
     expect(result).toBe(1);
   });
+
+  it("mixed-type literal .lastIndexOf does not illegal_cast", async () => {
+    // [0, true, 2] constructs a __vec_f64 at literal time because TS
+    // infers (number|boolean)[] as __vec_externref, but the literal
+    // elements resolve to i32/f64. Without probe-compile fixup in
+    // compileArrayMethodCall, the ref.cast against __vec_externref
+    // traps on the actual __vec_f64 receiver.
+    const result = await run(`
+export function test(): f64 {
+  return [0, true, 2].lastIndexOf(2) === 2 ? 1 : 0;
+}
+`);
+    expect(result).toBe(1);
+  });
+
+  it("mixed-type literal .indexOf does not illegal_cast", async () => {
+    const result = await run(`
+export function test(): f64 {
+  return [1, true, 3].indexOf(3) === 2 ? 1 : 0;
+}
+`);
+    expect(result).toBe(1);
+  });
 });

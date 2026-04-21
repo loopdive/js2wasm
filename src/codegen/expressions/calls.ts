@@ -83,6 +83,80 @@ import { compileSuperElementMethodCall, compileSuperMethodCall } from "./new-sup
 import { ensureNativeStringExternBridge } from "../native-strings.js";
 
 /**
+ * Known built-in global class/object names that compile to ref.null.extern
+ * via compileIdentifier's graceful fallback. These need __get_builtin to
+ * resolve the real JS object for host-delegated calls (method dispatch,
+ * getOwnPropertyDescriptor, etc.).
+ */
+const BUILTIN_CLASS_NAMES = new Set([
+  "Object",
+  "Array",
+  "Function",
+  "Symbol",
+  "Proxy",
+  "Reflect",
+  "Math",
+  "BigInt",
+  "JSON",
+  "Date",
+  "RegExp",
+  "ArrayBuffer",
+  "SharedArrayBuffer",
+  "DataView",
+  "Promise",
+  "WeakMap",
+  "WeakSet",
+  "WeakRef",
+  "FinalizationRegistry",
+  "Atomics",
+  "Iterator",
+  "Map",
+  "Set",
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "ReferenceError",
+  "String",
+  "Number",
+  "Boolean",
+  "Int8Array",
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float32Array",
+  "Float64Array",
+  "BigInt64Array",
+  "BigUint64Array",
+]);
+
+/**
+ * Look up closure info for a variable by checking if its local type
+ * is a ref to a known closure struct. Handles cases like:
+ *   var f = function() { ... }; f();
+ *   const f = makeAdder(5); f.call(null, 10);
+ */
+function resolveClosureInfoFromLocal(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  name: string,
+): ClosureInfo | undefined {
+  const localIdx = fctx.localMap.get(name);
+  if (localIdx === undefined) return undefined;
+  const localType =
+    localIdx < fctx.params.length ? fctx.params[localIdx]?.type : fctx.locals[localIdx - fctx.params.length]?.type;
+  if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+    return ctx.closureInfoByTypeIdx.get(localType.typeIdx);
+  }
+  return undefined;
+}
+
+/**
  * Check if a node (function body) uses the `arguments` binding.
  * Skips nested function/function-expression scopes (they have their own `arguments`),
  * but traverses arrow functions (which inherit the enclosing `arguments`).
@@ -617,20 +691,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         let closureInfo = ctx.closureMap.get(funcName);
         const funcIdx = ctx.funcMap.get(funcName);
 
-        // Fallback: if the variable is a local with a ref type, look up closure info
-        // by struct type index. This handles cases like:
-        //   const f = makeAdder(5); f.call(null, 10);
         if (!closureInfo && funcIdx === undefined) {
-          const localIdx = fctx.localMap.get(funcName);
-          if (localIdx !== undefined) {
-            const localType =
-              localIdx < fctx.params.length
-                ? fctx.params[localIdx]?.type
-                : fctx.locals[localIdx - fctx.params.length]?.type;
-            if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-              closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
-            }
-          }
+          closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
         }
 
         if (closureInfo || funcIdx !== undefined) {
@@ -2062,58 +2124,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
 
       // Fallback: dynamic case — delegate to __getOwnPropertyDescriptor host import
-      // If arg0 is a known built-in global identifier (Math, Object, Array, etc.),
-      // use __get_builtin to get the real JS object instead of the ref.null.extern
-      // produced by compileIdentifier's graceful fallback. This mirrors the same
-      // pattern used for __extern_method_call receivers (see BUILTIN_CLASS_NAMES below).
-      const arg0IsBuiltin =
-        ts.isIdentifier(arg0) &&
-        new Set([
-          "Object",
-          "Array",
-          "Function",
-          "Symbol",
-          "Proxy",
-          "Reflect",
-          "Math",
-          "BigInt",
-          "JSON",
-          "Date",
-          "RegExp",
-          "ArrayBuffer",
-          "SharedArrayBuffer",
-          "DataView",
-          "Promise",
-          "WeakMap",
-          "WeakSet",
-          "WeakRef",
-          "FinalizationRegistry",
-          "Atomics",
-          "Iterator",
-          "Map",
-          "Set",
-          "Error",
-          "TypeError",
-          "RangeError",
-          "SyntaxError",
-          "URIError",
-          "EvalError",
-          "ReferenceError",
-          "String",
-          "Number",
-          "Boolean",
-          "Int8Array",
-          "Uint8Array",
-          "Uint8ClampedArray",
-          "Int16Array",
-          "Uint16Array",
-          "Int32Array",
-          "Uint32Array",
-          "Float32Array",
-          "Float64Array",
-          "BigInt64Array",
-          "BigUint64Array",
-        ]).has((arg0 as ts.Identifier).text);
+      // If arg0 is a known built-in global identifier, use __get_builtin to get
+      // the real JS object instead of the ref.null.extern from compileIdentifier.
+      const arg0IsBuiltin = ts.isIdentifier(arg0) && BUILTIN_CLASS_NAMES.has((arg0 as ts.Identifier).text);
 
       let getBuiltinFuncIdx: number | undefined;
       if (arg0IsBuiltin) {
@@ -4068,40 +4081,6 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         // (#965) For known built-in class identifiers (Object, Array, Proxy, etc.) that would
         // otherwise compile to ref.null.extern, use __get_builtin to get the real JS object.
         {
-          // Known built-in class names that compile to null in compileIdentifier fallback.
-          // These need __get_builtin to get the actual JS object for method dispatch.
-          const BUILTIN_CLASS_NAMES = new Set([
-            "Object",
-            "Array",
-            "Function",
-            "Symbol",
-            "Proxy",
-            "Reflect",
-            "Math",
-            "BigInt",
-            "JSON",
-            "Date",
-            "RegExp",
-            "ArrayBuffer",
-            "SharedArrayBuffer",
-            "DataView",
-            "Promise",
-            "WeakMap",
-            "WeakSet",
-            "WeakRef",
-            "FinalizationRegistry",
-            "Atomics",
-            "Iterator",
-            "Map",
-            "Set",
-            "Error",
-            "TypeError",
-            "RangeError",
-            "String",
-            "Number",
-            "Boolean",
-          ]);
-
           const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
           const arrPushIdx = ensureLateImport(
             ctx,
@@ -4346,12 +4325,6 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const unboxIdx = ctx.funcMap.get("__unbox_number");
         if (unboxIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: unboxIdx });
-          return { kind: "f64" };
-        }
-        // Fallback to parseFloat if __unbox_number not registered yet
-        const pfIdx = ctx.funcMap.get("parseFloat");
-        if (pfIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: pfIdx });
           return { kind: "f64" };
         }
       }
@@ -4600,19 +4573,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     let closureInfo = ctx.closureMap.get(funcName);
 
     if (!closureInfo) {
-      // Fallback: if the variable is a local with a ref type, look up closure info
-      // by struct type index. This handles cases like:
-      //   var f; f = function() { ... }; f();
-      const localIdx = fctx.localMap.get(funcName);
-      if (localIdx !== undefined) {
-        const localType =
-          localIdx < fctx.params.length
-            ? fctx.params[localIdx]?.type
-            : fctx.locals[localIdx - fctx.params.length]?.type;
-        if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-          closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
-        }
-      }
+      closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
     }
     if (closureInfo) {
       return compileClosureCall(ctx, fctx, expr, funcName, closureInfo);
@@ -4654,6 +4615,66 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         if (wrapperTypes) {
           const matchedClosureInfo = wrapperTypes.closureInfo;
           const matchedStructTypeIdx = wrapperTypes.structTypeIdx;
+          const expectedReturn = matchedClosureInfo.returnType; // null for void
+
+          // (#1131) Preemptively create alternative closure wrapper types.
+          // TypeScript allows covariant return types in callbacks, e.g.
+          // () => string is assignable to () => void. The actual closure may
+          // use a different funcref type than the declared signature expects.
+          // V8's isorecursive canonicalization merges struct types with the same
+          // layout, so struct-level casts succeed. But funcref types remain
+          // distinct per return type — we must dispatch on funcref type.
+          // Create common return-type variants now so closures compiled later
+          // reuse the same funcref types and the dispatch chain finds them.
+          type FuncCandidate = { funcTypeIdx: number; structTypeIdx: number; returnType: ValType | null };
+          const funcCandidates: FuncCandidate[] = [
+            {
+              funcTypeIdx: matchedClosureInfo.funcTypeIdx,
+              structTypeIdx: matchedClosureInfo.structTypeIdx,
+              returnType: matchedClosureInfo.returnType,
+            },
+          ];
+          const seenFuncTypeIdx = new Set<number>([matchedClosureInfo.funcTypeIdx]);
+
+          const tryAltFuncType = (retTypes: ValType[]) => {
+            const alt = getOrCreateFuncRefWrapperTypes(ctx, sigParamWasmTypes, retTypes);
+            if (alt && !seenFuncTypeIdx.has(alt.closureInfo.funcTypeIdx)) {
+              seenFuncTypeIdx.add(alt.closureInfo.funcTypeIdx);
+              funcCandidates.push({
+                funcTypeIdx: alt.closureInfo.funcTypeIdx,
+                structTypeIdx: alt.closureInfo.structTypeIdx,
+                returnType: alt.closureInfo.returnType,
+              });
+            }
+          };
+          // Create externref-return variant if not already expected
+          if (!expectedReturn || expectedReturn.kind !== "externref") {
+            tryAltFuncType([{ kind: "externref" }]);
+          }
+          // Create void-return variant if not already expected
+          if (expectedReturn !== null) {
+            tryAltFuncType([]);
+          }
+          // Also scan closureInfoByTypeIdx for other matching-arity func types
+          for (const [, info] of ctx.closureInfoByTypeIdx) {
+            if (info.paramTypes.length !== sigParamCount) continue;
+            if (seenFuncTypeIdx.has(info.funcTypeIdx)) continue;
+            let paramsMatch = true;
+            for (let pi = 0; pi < sigParamCount; pi++) {
+              if (!valTypesMatch(info.paramTypes[pi]!, sigParamWasmTypes[pi]!)) {
+                paramsMatch = false;
+                break;
+              }
+            }
+            if (paramsMatch) {
+              seenFuncTypeIdx.add(info.funcTypeIdx);
+              funcCandidates.push({
+                funcTypeIdx: info.funcTypeIdx,
+                structTypeIdx: info.structTypeIdx,
+                returnType: info.returnType,
+              });
+            }
+          }
 
           // Compile the callee to get the value on the stack
           const innerResultType = compileExpression(ctx, fctx, expr.expression);
@@ -4678,15 +4699,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             fctx.body.push({ op: "local.set", index: closureLocal });
           }
 
-          // Push closure ref as first arg (self param) — null-check → TypeError (#728)
-          fctx.body.push({ op: "local.get", index: closureLocal });
-          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
-
-          // Push call arguments with type coercion (only up to declared param count)
+          // Compile call arguments with type coercion (only up to declared param count)
+          // Save them to locals so they can be re-pushed in each dispatch branch.
+          const argLocals: number[] = [];
           {
             const cpParamCnt = matchedClosureInfo.paramTypes.length;
             for (let i = 0; i < Math.min(expr.arguments.length, cpParamCnt); i++) {
               compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+              const argLocal = allocLocal(fctx, `__carg_${fctx.locals.length}`, matchedClosureInfo.paramTypes[i]!);
+              fctx.body.push({ op: "local.set", index: argLocal });
+              argLocals.push(argLocal);
             }
             for (let i = cpParamCnt; i < expr.arguments.length; i++) {
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
@@ -4696,12 +4718,22 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
 
-          // Pad missing arguments with defaults
+          // Pad missing arguments with defaults and save to locals.
+          // For non-nullable ref params, widen the padding slot to nullable so
+          // pushDefaultValue emits a plain ref.null (without ref.as_non_null,
+          // which would trap at runtime). The callee wrapper signature accepts
+          // nullable refs, so this is assignment-compatible. (#1131)
           for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
-            pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!, ctx);
+            const paramType = matchedClosureInfo.paramTypes[i]!;
+            const padType: ValType =
+              paramType.kind === "ref" ? { kind: "ref_null", typeIdx: paramType.typeIdx } : paramType;
+            pushDefaultValue(fctx, padType, ctx);
+            const argLocal = allocLocal(fctx, `__carg_${fctx.locals.length}`, padType);
+            fctx.body.push({ op: "local.set", index: argLocal });
+            argLocals.push(argLocal);
           }
 
-          // Push the funcref from the closure struct (field 0) and call_ref — null-check → TypeError (#728)
+          // Extract funcref from the closure struct (field 0) — null-check → TypeError (#728)
           fctx.body.push({ op: "local.get", index: closureLocal });
           emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
           fctx.body.push({
@@ -4709,15 +4741,88 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             typeIdx: matchedStructTypeIdx,
             fieldIdx: 0,
           });
-          // Guard funcref cast to avoid illegal cast (#778)
-          emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
-          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
-          fctx.body.push({
-            op: "call_ref",
-            typeIdx: matchedClosureInfo.funcTypeIdx,
-          });
 
-          return matchedClosureInfo.returnType ?? VOID_RESULT;
+          if (funcCandidates.length <= 1) {
+            // Single func type — push self+args back onto stack then call
+            // Stack before: [funcref]
+            // Need: [self, ...args, funcref] for call_ref
+            // Re-push self and args under the funcref by saving funcref first
+            const funcrefLocal = allocLocal(fctx, `__frd_${fctx.locals.length}`, { kind: "funcref" } as ValType);
+            fctx.body.push({ op: "local.set", index: funcrefLocal } as unknown as Instr);
+            // Push self (null-check)
+            fctx.body.push({ op: "local.get", index: closureLocal });
+            emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
+            // Push args
+            for (const al of argLocals) {
+              fctx.body.push({ op: "local.get", index: al });
+            }
+            // Push funcref back, guarded cast, call
+            fctx.body.push({ op: "local.get", index: funcrefLocal } as unknown as Instr);
+            emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
+            emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
+            fctx.body.push({
+              op: "call_ref",
+              typeIdx: matchedClosureInfo.funcTypeIdx,
+            });
+          } else {
+            // (#1131) Multi-funcref-type dispatch: the closure may have a different
+            // return type than declared (e.g. () => string passed as () => void).
+            // Save funcref, then dispatch on funcref type. Each branch re-pushes
+            // self + args + typed funcref for call_ref.
+            const funcrefLocal = allocLocal(fctx, `__frd_${fctx.locals.length}`, { kind: "funcref" } as ValType);
+            fctx.body.push({ op: "local.set", index: funcrefLocal } as unknown as Instr);
+
+            const retBlockType =
+              expectedReturn === null ? ({ kind: "empty" } as const) : ({ kind: "val", type: expectedReturn } as const);
+
+            // Build dispatch chain bottom-up (innermost = throw TypeError)
+            let funcDispatch: Instr[] = typeErrorThrowInstrs(ctx);
+
+            for (const fc of [...funcCandidates].reverse()) {
+              // Each candidate needs: push self, push args, push typed funcref, call_ref
+              // The self struct type must match the funcref's expected first param.
+              // All wrapper struct types have the same layout so closureLocal works,
+              // but call_ref expects (ref $specificStruct). We use ref.cast to cast
+              // closureLocal to the funcref's expected struct type.
+              const fcCallBody: Instr[] = [];
+              // Push self (cast to the funcref's expected struct type)
+              fcCallBody.push({ op: "local.get", index: closureLocal } as unknown as Instr);
+              if (fc.structTypeIdx !== matchedStructTypeIdx) {
+                // V8 canonicalizes same-layout structs, so this cast succeeds
+                fcCallBody.push({ op: "ref.cast", typeIdx: fc.structTypeIdx } as unknown as Instr);
+              }
+              // Push args
+              for (const al of argLocals) {
+                fcCallBody.push({ op: "local.get", index: al } as unknown as Instr);
+              }
+              // Push typed funcref and call
+              fcCallBody.push({ op: "local.get", index: funcrefLocal } as unknown as Instr);
+              fcCallBody.push({ op: "ref.cast", typeIdx: fc.funcTypeIdx } as unknown as Instr);
+              fcCallBody.push({ op: "call_ref", typeIdx: fc.funcTypeIdx } as unknown as Instr);
+
+              // Coerce return to expected type
+              if (expectedReturn === null && fc.returnType !== null) {
+                fcCallBody.push({ op: "drop" } as Instr);
+              } else if (expectedReturn !== null && fc.returnType === null) {
+                fcCallBody.push(...defaultValueInstrs(expectedReturn));
+              }
+
+              funcDispatch = [
+                { op: "local.get", index: funcrefLocal } as unknown as Instr,
+                { op: "ref.test", typeIdx: fc.funcTypeIdx } as unknown as Instr,
+                {
+                  op: "if",
+                  blockType: retBlockType,
+                  then: fcCallBody,
+                  else: funcDispatch,
+                } as Instr,
+              ];
+            }
+
+            fctx.body.push(...funcDispatch);
+          }
+
+          return expectedReturn ?? VOID_RESULT;
         }
       }
 
@@ -6120,18 +6225,8 @@ function compileConditionalCallee(
     if (ts.isIdentifier(branchExpr)) {
       const funcName = branchExpr.text;
       let closureInfo = ctx.closureMap.get(funcName);
-      // Fallback: if variable is a local with ref type, look up closure info by type idx
       if (!closureInfo) {
-        const localIdx = fctx.localMap.get(funcName);
-        if (localIdx !== undefined) {
-          const localType =
-            localIdx < fctx.params.length
-              ? fctx.params[localIdx]?.type
-              : fctx.locals[localIdx - fctx.params.length]?.type;
-          if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-            closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
-          }
-        }
+        closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
       }
       if (closureInfo) {
         // Use the original expr's arguments but with this identifier as callee
