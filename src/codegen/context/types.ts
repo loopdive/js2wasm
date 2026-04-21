@@ -32,6 +32,12 @@ export interface CodegenOptions {
   nativeStrings?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
+  /**
+   * Experimental: route a narrow set of functions through the middle-end IR
+   * (see `src/ir/`). Defaults to off. Leave off in production until the IR
+   * reaches parity with the legacy direct-emission path.
+   */
+  experimentalIR?: boolean;
   /** Node builtin modules detected during import preprocessing (#1044) */
   nodeBuiltins?: import("../../import-resolver.js").NodeBuiltinImport[];
   /** Set of function names imported from node:fs (detected pre-preprocessing) */
