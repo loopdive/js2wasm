@@ -326,7 +326,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #862 | Empty error message failures: iterator/destructuring step-err tests (212 FAIL) | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
 | #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
-| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | ready |
 | #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
 | #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
@@ -341,11 +340,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | ready |
 | #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
 | #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | ready |
-| #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
 | #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
-| #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
 | #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
 | #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
@@ -360,8 +357,13 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
 | #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | in-progress |
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
+| #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | in-progress |
+| #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | in-progress |
 | #1132 | Publish compiler as @loopdive/js2 on npm + JSR | high | in-progress |
-| #1147 | Fix _start export regressions — 639 test262 failures from PR #177 | high | in-progress |
+| #1147 | Fix Function.length regression on library methods — wrong answer for toSorted/slice/splice/etc. | high | in-progress |
+| #1148 | Investigate skip:103 regression — Annex B eval-code skip filter | high | in-progress |
+| #1149 | Fix null_deref:32 — eval-code direct methods with arguments declare | high | in-progress |
+| #1150 | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | high | in-progress |
 
 ### Review
 
@@ -370,6 +372,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #825 | Null dereference failures (2,295 runtime failures) | high | review |
 | #826 | Illegal cast failures (1,276 runtime failures) | high | review |
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | review |
+| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | review |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | review |
 | #1006 | Support eval via JS host import | medium | review |
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | review |

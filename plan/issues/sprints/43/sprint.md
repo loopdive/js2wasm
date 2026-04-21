@@ -92,4 +92,10 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
 
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | in-progress |
+
 <!-- GENERATED_ISSUE_TABLES_END -->
