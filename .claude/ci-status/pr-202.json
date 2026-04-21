@@ -1,15 +1,15 @@
 {
   "pr": 202,
-  "conclusion": "cancelled",
+  "conclusion": "success",
   "head_branch": "issue-async-gen-dstr-illegal-cast",
-  "head_sha": "f10d97b84bcc23e33b04a3580051c425be8a61aa",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694161585",
-  "timestamp": "2026-04-20T23:52:47Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "332aab3dbafd1cf666a32b693073e3d587c96426",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693853033",
+  "timestamp": "2026-04-21T00:13:53Z",
+  "pass": 21419,
+  "fail": 13253,
+  "compile_error": 7135,
+  "snapshot_delta": 38,
+  "net_per_test": 74,
+  "regressions": 0,
+  "improvements": 74
 }
