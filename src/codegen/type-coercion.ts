@@ -173,11 +173,17 @@ function buildVecFromExternref(
   flushLateImportShifts(ctx, fctx);
   const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
   flushLateImportShifts(ctx, fctx);
+  // Materialize iterables (generators, custom @@iterator) via Array.from so
+  // the length/indexed-access loop below walks a real array. Throws from
+  // iterator .next() propagate to the caller (#1150).
+  const iterIdx = ensureLateImport(ctx, "__array_from_iter", [{ kind: "externref" }], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
 
   if (lenIdx === undefined || getIdx === undefined) {
     return [{ op: "ref.null", typeIdx: vecTypeIdx } as Instr];
   }
 
+  const matLocal = allocLocal(fctx, `__vec_mat_${fctx.locals.length}`, { kind: "externref" });
   const lenLocal = allocLocal(fctx, `__vec_len_${fctx.locals.length}`, { kind: "i32" });
   const arrLocal = allocLocal(fctx, `__vec_arr_${fctx.locals.length}`, {
     kind: "ref_null",
@@ -236,8 +242,18 @@ function buildVecFromExternref(
     return [];
   };
 
+  const matInstrs: Instr[] =
+    iterIdx !== undefined
+      ? [
+          { op: "local.get", index: externLocal } as Instr,
+          { op: "call", funcIdx: iterIdx } as Instr,
+          { op: "local.set", index: matLocal } as Instr,
+        ]
+      : [{ op: "local.get", index: externLocal } as Instr, { op: "local.set", index: matLocal } as Instr];
+
   return [
-    { op: "local.get", index: externLocal } as Instr,
+    ...matInstrs,
+    { op: "local.get", index: matLocal } as Instr,
     { op: "call", funcIdx: lenIdx } as Instr,
     { op: "i32.trunc_sat_f64_s" } as unknown as Instr,
     { op: "local.set", index: lenLocal } as Instr,
@@ -260,7 +276,7 @@ function buildVecFromExternref(
             { op: "br_if", depth: 1 } as Instr,
             { op: "local.get", index: arrLocal } as Instr,
             { op: "local.get", index: idxLocal } as Instr,
-            { op: "local.get", index: externLocal } as Instr,
+            { op: "local.get", index: matLocal } as Instr,
             ...(boxIdx !== undefined
               ? [
                   { op: "local.get", index: idxLocal } as Instr,
