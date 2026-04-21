@@ -1,0 +1,15 @@
+{
+  "pr": 245,
+  "conclusion": "failure",
+  "head_branch": "issue-1135-dstr-iterable-v2",
+  "head_sha": "3ea8f6153eaf4688db98e8ad7639ce4afe1b54d9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24699069013",
+  "timestamp": "2026-04-21T01:46:03Z",
+  "pass": 21706,
+  "fail": 13020,
+  "compile_error": 7081,
+  "snapshot_delta": 287,
+  "net_per_test": 287,
+  "regressions": 20,
+  "improvements": 307
+}
