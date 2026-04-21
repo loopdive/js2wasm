@@ -1222,6 +1222,8 @@ function buildPreamble(
   needsDoneForAsyncTest: boolean,
   needsTestTypedArray: boolean,
   needsAssertThrowsAsync: boolean,
+  needsTypedArrayBinding: boolean,
+  needsIteratorBinding: boolean,
 ): string {
   let p = `let __fail: number = 0;
 let __assert_count: number = 1;
@@ -1454,6 +1456,28 @@ function testWithTypedArrayConstructors(fn: any): void {
     fn(constructors[i]);
   }
 }`;
+  }
+
+  if (needsTypedArrayBinding) {
+    // Substitute for the abstract %TypedArray% intrinsic — see note at detection
+    // site. Int8Array.prototype.X === %TypedArray%.prototype.X in practice for
+    // the proto methods these tests exercise.
+    p += `
+
+const TypedArray: any = Int8Array;`;
+  }
+
+  if (needsIteratorBinding) {
+    // Shim for the %Iterator% constructor from the iterator-helpers proposal.
+    // Our runtime doesn't expose a global `Iterator`, but %IteratorPrototype%
+    // is reachable via [][Symbol.iterator]()'s proto chain. We build a
+    // minimal function whose .prototype === %IteratorPrototype% so tests
+    // that do `typeof Iterator === 'function'`, `Iterator.prototype.X`, or
+    // `class X extends Iterator {}` have a usable binding.
+    p += `
+
+function Iterator(this: any): void {}
+(Iterator as any).prototype = Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]()));`;
   }
 
   return p;
@@ -1697,6 +1721,24 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   const needsDoneForAsyncTest = needsAsyncTest && !needsDone;
   const needsTestTypedArray = includes.includes("testTypedArray.js") && /testWithTypedArrayConstructors/.test(body);
 
+  // test262's testTypedArray.js include defines `var TypedArray = Object.getPrototypeOf(Int8Array);`
+  // as the abstract %TypedArray% intrinsic. Our runtime's Object.getPrototypeOf(Int8Array) does not
+  // yield a usable abstract super — but Int8Array.prototype.X IS the same function as
+  // %TypedArray%.prototype.X for proto methods that matter in tests (every/forEach/copyWithin/…).
+  // So we inject `const TypedArray = Int8Array` whenever a test references `TypedArray` without
+  // declaring it locally. Caveat: tests that rely on TypedArray being abstract (e.g. `new TypedArray()`
+  // throwing) will regress — those are rare and live in TypedArrayConstructors/*, not /prototype/*.
+  const needsTypedArrayBinding =
+    /\bTypedArray\b/.test(body) && !/\b(?:var|let|const|function|class)\s+TypedArray\b/.test(body);
+
+  // test262's iterator-helpers tests reference bare `Iterator` as the
+  // %Iterator% constructor. Our runtime lacks that global; inject a minimal
+  // shim whose .prototype === %IteratorPrototype% (reachable from
+  // [][Symbol.iterator]()'s proto chain). Passes `typeof Iterator ===
+  // 'function'` and satisfies `Iterator.prototype.X` lookups.
+  const needsIteratorBinding =
+    /\bIterator\b/.test(body) && !/\b(?:var|let|const|function|class)\s+Iterator\b/.test(body);
+
   // Build cache key as a bitmask string
   const cacheKey = [
     needsAssertThrows,
@@ -1717,6 +1759,8 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     needsDoneForAsyncTest,
     needsTestTypedArray,
     needsAssertThrowsAsync,
+    needsTypedArrayBinding,
+    needsIteratorBinding,
   ]
     .map((b) => (b ? "1" : "0"))
     .join("");
@@ -1742,6 +1786,8 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
       needsDoneForAsyncTest,
       needsTestTypedArray,
       needsAssertThrowsAsync,
+      needsTypedArrayBinding,
+      needsIteratorBinding,
     );
     preambleCache.set(cacheKey, preamble);
   }
