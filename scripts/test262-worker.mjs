@@ -272,6 +272,24 @@ const _STATIC_SNAPSHOTS = [
   ["RegExp", RegExp, []],
 ];
 
+// --- Category 4: accessor properties on RegExp.prototype (getters).
+// When poisoned (e.g. `Object.defineProperty(RegExp.prototype, 'flags',
+// { get() { return undefined } })` in test262's flags-undefined-throws.js),
+// V8 internal helpers that call `.split(regex)`, `.matchAll(regex)` etc.
+// propagate the poisoned getter into `new RegExp(r, r.flags + "y")` and
+// throw "Invalid flags supplied to RegExp constructor 'undefinedy'" on any
+// subsequent compile step (e.g. validation.ts splits source by /\r?\n/u).
+// (#1157)
+// Accessors MUST be restored via Object.defineProperty with the original
+// descriptor — value-assignment hits the poisoned setter (or no-op).
+const _ACCESSOR_SNAPSHOTS = [
+  [
+    "RegExp.prototype",
+    RegExp.prototype,
+    ["flags", "source", "global", "ignoreCase", "multiline", "sticky", "unicode", "unicodeSets", "dotAll", "hasIndices"],
+  ],
+];
+
 const _snapshotValue = (obj, key) => {
   try {
     return obj[key];
@@ -288,6 +306,13 @@ const _staticOrig = _STATIC_SNAPSHOTS.map(([name, obj, keys]) => ({
   name,
   obj,
   values: keys.map((k) => [k, _snapshotValue(obj, k)]),
+}));
+const _accessorOrig = _ACCESSOR_SNAPSHOTS.map(([name, obj, keys]) => ({
+  name,
+  obj,
+  descriptors: keys
+    .map((k) => [k, Object.getOwnPropertyDescriptor(obj, k)])
+    .filter(([, d]) => d !== undefined && typeof d.get === "function"),
 }));
 
 function restoreBuiltins() {
@@ -347,6 +372,22 @@ function restoreBuiltins() {
       if (cur !== orig) {
         try {
           obj[key] = orig;
+        } catch {}
+      }
+    }
+  }
+
+  // Restore accessor properties (getters) via Object.defineProperty when
+  // their backing get function differs from the snapshot. These are cold
+  // paths (RegExp.prototype.flags etc.) so defineProperty is safe here —
+  // it does not disturb V8's hot-path ICs the way Array.prototype accessors
+  // would.
+  for (const { obj, descriptors } of _accessorOrig) {
+    for (const [key, orig] of descriptors) {
+      const cur = Object.getOwnPropertyDescriptor(obj, key);
+      if (!cur || cur.get !== orig.get || cur.set !== orig.set) {
+        try {
+          Object.defineProperty(obj, key, orig);
         } catch {}
       }
     }
