@@ -2,14 +2,14 @@
   "pr": 171,
   "conclusion": "success",
   "head_branch": "issue-1004-string-concat-opt",
-  "head_sha": "9122be3f663df043caedf674864466cc955561e8",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693647483",
-  "timestamp": "2026-04-21T00:20:54Z",
-  "pass": 21384,
-  "fail": 13343,
+  "head_sha": "96cb8cfdd5b03f05136bf4678ce25700cfa0b1b3",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694144005",
+  "timestamp": "2026-04-21T01:08:16Z",
+  "pass": 21422,
+  "fail": 13305,
   "compile_error": 7080,
   "snapshot_delta": 3,
-  "net_per_test": 39,
+  "net_per_test": 41,
   "regressions": 0,
-  "improvements": 39
+  "improvements": 41
 }
