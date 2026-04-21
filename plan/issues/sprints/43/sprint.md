@@ -100,6 +100,11 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1008 | Add mobile-first layout support to the playground | medium | in-progress |
+| #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
+| #1148 | Investigate skip:103 regression — Annex B eval-code skip filter | high | in-progress |
+| #1149 | Fix null_deref:32 — eval-code direct methods with arguments declare | high | in-progress |
+| #1150 | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | high | in-progress |
 | #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | in-progress |
 | #1156 | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | medium | in-progress |
 

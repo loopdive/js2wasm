@@ -1767,6 +1767,7 @@ const ARRAY_METHODS = new Set([
   "entries",
   "keys",
   "values",
+  "@@iterator", // Array.prototype[Symbol.iterator] === Array.prototype.values (#854)
   "toReversed",
   "toSorted",
   "toSpliced",
