@@ -1,0 +1,15 @@
+{
+  "pr": 250,
+  "conclusion": "failure",
+  "head_branch": "issue-1156-arr-proto-numeric-init",
+  "head_sha": "93dd34888c5fe590b7f42de0a54429714d71fa57",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24701814426",
+  "timestamp": "2026-04-21T03:12:33Z",
+  "pass": 24158,
+  "fail": 13746,
+  "compile_error": 3900,
+  "snapshot_delta": 2739,
+  "net_per_test": 2739,
+  "regressions": 62,
+  "improvements": 2801
+}
