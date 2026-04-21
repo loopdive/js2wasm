@@ -5,6 +5,7 @@ model=$(echo "$input" | jq -r '.model.display_name // empty')
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 weekly=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 effort=$(echo "$input" | jq -r '.thinking.type // .effort // empty')
+in_worktree=$(echo "$input" | jq -r '.worktree.path // empty')
 printf '\033[01;34m%s\033[00m' "${cwd:-$(pwd)}"
 [ -n "$model" ] && printf ' \033[00;37m%s\033[00m' "$model"
 [ -n "$effort" ] && [ "$effort" != "none" ] && [ "$effort" != "disabled" ] && printf ' \033[00;33m%s\033[00m' "$effort"
@@ -25,7 +26,7 @@ if [ -n "$used" ] || [ -n "$weekly" ]; then
       printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
     }' /dev/null
   fi
-  if [ -n "$weekly" ]; then
+  if [ -n "$weekly" ] && [ -z "$in_worktree" ]; then
     awk -v p="$weekly" 'BEGIN {
       if (p >= 75)      { fill="48;5;196"; fg=37 }
       else if (p >= 50) { fill=43; fg=30 }
@@ -67,7 +68,7 @@ bg_progress_bar() {
 pass_bar() {
   awk -v p="$1" -v label="$2" 'BEGIN {
     if (p >= 55)      { fill=42; fg=30 }
-    else if (p >= 50) { fill=43; fg=30 }
+    else if (p >= 33) { fill=43; fg=30 }
     else              { fill="48;5;196"; fg=37 }
   }
   END {
@@ -139,10 +140,14 @@ elif [ -n "$vitesting" ]; then
           fi
         fi
       fi
-      p_bar=$(pass_bar "$pass_pct" "${pass_pct}% pass")
       d_bar=$(bg_progress_bar "$pct" "$eta_label" 42 100 30)
-      f_bar=$(free_bar "$free_g")
-      printf ' | \033[00;33m⟳t262\033[00m %s %s %s' "$p_bar" "$d_bar" "$f_bar"
+      if [ -z "$in_worktree" ]; then
+        p_bar=$(pass_bar "$pass_pct" "${pass_pct}% pass")
+        f_bar=$(free_bar "$free_g")
+        printf ' | \033[00;33m⟳t262\033[00m %s %s %s' "$p_bar" "$d_bar" "$f_bar"
+      else
+        printf ' | \033[00;33m⟳t262\033[00m %s' "$d_bar"
+      fi
     else
       printf ' | \033[00;33m⟳t262:starting\033[00m'
     fi
@@ -155,8 +160,10 @@ elif [ -f "$report" ]; then
   pass_pct=$(awk "BEGIN {printf \"%.1f\", $pass * 100 / $total}")
   free_mb=$(free -m | awk '/Mem/{print $7}')
   free_g=$(awk "BEGIN {printf \"%.0f\", $free_mb / 1024}")
-  p_bar=$(pass_bar "$pass_pct" "${pass_pct}% pass")
-  f_bar=$(free_bar "$free_g")
-  printf ' | t262 %s %s' "$p_bar" "$f_bar"
+  if [ -z "$in_worktree" ]; then
+    p_bar=$(pass_bar "$pass_pct" "${pass_pct}% pass")
+    f_bar=$(free_bar "$free_g")
+    printf ' | t262 %s %s' "$p_bar" "$f_bar"
+  fi
 fi
 printf '\n'
