@@ -1,0 +1,15 @@
+{
+  "pr": 246,
+  "conclusion": "failure",
+  "head_branch": "issue-1153-compiler-crashes",
+  "head_sha": "81ae6780f9b391c60bfba672d10c3df866584a88",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24700175936",
+  "timestamp": "2026-04-21T02:05:18Z",
+  "pass": 3081,
+  "fail": 1971,
+  "compile_error": 36779,
+  "snapshot_delta": -18338,
+  "net_per_test": -18338,
+  "regressions": 18405,
+  "improvements": 67
+}
