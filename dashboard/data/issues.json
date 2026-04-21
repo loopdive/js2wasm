@@ -1786,7 +1786,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "in-progress",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1149",
@@ -1796,7 +1796,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "in-progress",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1148",
@@ -1806,17 +1806,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "in-progress",
-      "sprint": "42"
-    },
-    {
-      "id": "1147",
-      "title": "Fix Function.length regression on library methods — wrong answer for toSorted/slice/splice/etc.",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1132",
@@ -1825,36 +1815,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "distribution",
-      "status": "in-progress",
-      "sprint": "42"
-    },
-    {
-      "id": "1120",
-      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "in-progress",
-      "sprint": "42"
-    },
-    {
-      "id": "1098",
-      "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "in-progress",
-      "sprint": "42"
-    },
-    {
-      "id": "1093",
-      "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "async-model",
       "status": "in-progress",
       "sprint": "42"
     },
@@ -1899,18 +1859,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "1044",
-      "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1041"
-      ],
-      "goal": "async-model",
-      "status": "in-progress",
-      "sprint": "42"
-    },
-    {
       "id": "1022",
       "title": "Array built-in method 'object is not a function' (640 FAIL)",
       "priority": "critical",
@@ -1928,7 +1876,7 @@
       "depends_on": [],
       "goal": "core-semantics",
       "status": "in-progress",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1008",
@@ -1938,7 +1886,7 @@
       "depends_on": [],
       "goal": "developer-experience",
       "status": "in-progress",
-      "sprint": "42"
+      "sprint": "43"
     },
     {
       "id": "1007",

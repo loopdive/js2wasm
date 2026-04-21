@@ -320,17 +320,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1008 | Add mobile-first layout support to the playground | medium | in-progress |
-| #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | in-progress |
-| #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | in-progress |
-| #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | in-progress |
-| #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | in-progress |
-| #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | in-progress |
 | #1132 | Publish compiler as @loopdive/js2 on npm + JSR | high | in-progress |
-| #1147 | Fix Function.length regression on library methods — wrong answer for toSorted/slice/splice/etc. | high | in-progress |
-| #1148 | Investigate skip:103 regression — Annex B eval-code skip filter | high | in-progress |
-| #1149 | Fix null_deref:32 — eval-code direct methods with arguments declare | high | in-progress |
-| #1150 | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | high | in-progress |
 
 ### Review
 
