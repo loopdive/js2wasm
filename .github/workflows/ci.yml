@@ -9,6 +9,9 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+permissions:
+  contents: write
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -51,7 +54,7 @@ jobs:
             if ! git diff --quiet -- plan/goals plan/issues/sprints dashboard/data.js dashboard/data public/graph-data.json; then
               git config user.name "github-actions[bot]"
               git config user.email "github-actions[bot]@users.noreply.github.com"
-              git add plan/goals plan/issues/sprints dashboard/data.js dashboard/data public/graph-data.json
+              git add -f plan/goals plan/issues/sprints dashboard/data.js dashboard/data public/graph-data.json
               git commit -m "chore(planning-artifacts): regen after merge [skip ci]"
               git push
             fi
