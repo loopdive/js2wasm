@@ -23,6 +23,7 @@ import {
   flushLateImportShifts,
   valTypesMatch,
 } from "./shared.js";
+import { buildVecFromExternref, getVecInfo } from "./type-coercion.js";
 
 /**
  * Bounds-checked array.get that returns JS `undefined` (via __get_undefined)
@@ -753,10 +754,25 @@ export function destructureParamArray(
         else: convertInstrs,
       });
 
+      // Fallback: if none of the known vec types matched, treat the externref
+      // as a JS array/iterable and build a fresh __vec_externref from it via
+      // __extern_length/__extern_get. Unblocks Wasm-to-Wasm rest-destructuring
+      // after setExports — __make_iterable unconditionally converts vec structs
+      // to JS arrays at the call boundary, which would otherwise trap here (#1135).
+      const extVecInfo = getVecInfo(ctx, extVecIdx);
+      if (extVecInfo) {
+        const fallbackInstrs = buildVecFromExternref(ctx, fctx, paramIdx, extVecIdx, extVecInfo);
+        fctx.body.push({ op: "local.get", index: resultLocal } as Instr);
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [...fallbackInstrs, { op: "local.set", index: resultLocal } as Instr],
+          else: [],
+        } as Instr);
+      }
+
       // Now destructure from the converted vec_externref.
-      // If the externref didn't match any known vec type, resultLocal will be
-      // null and struct.get will trap — this is correct behavior for non-array
-      // arguments (the trap propagates as a runtime error that callers can catch).
       destructureParamArray(ctx, fctx, resultLocal, pattern, convertedType);
       return;
     }
