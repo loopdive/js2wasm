@@ -1022,6 +1022,12 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const pushRefType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
     addImport(ctx, "env", "__gen_push_ref", { kind: "func", typeIdx: pushRefType });
 
+    // __gen_yield_star: (externref, externref) → void  (iterates inner iterable, pushes all values into outer buffer)
+    addImport(ctx, "env", "__gen_yield_star", {
+      kind: "func",
+      typeIdx: pushRefType, // same signature as push_ref: (buf, iterable) → void
+    });
+
     // __create_generator: (buf: externref, pendingThrow: externref) -> externref
     // Takes a buffer of yielded values and an optional pending exception,
     // returns a Generator-like object that defers the throw to the first next() call.
@@ -1270,10 +1276,16 @@ export function collectEmptyObjectWidening(
             // Map variable name to struct name for later lookup
             ctx.widenedVarStructMap.set(varName, structName);
             // Also try to map TS types (may not match later due to type identity)
+            // Skip `any` — it's a singleton type object shared by all any-typed vars,
+            // so registering it would cause every any-typed var to resolve to this struct.
             const varType = checker.getTypeAtLocation(decl.name);
-            ctx.anonTypeMap.set(varType, structName);
+            if (!(varType.flags & ts.TypeFlags.Any)) {
+              ctx.anonTypeMap.set(varType, structName);
+            }
             const initType = checker.getTypeAtLocation(decl.initializer);
-            ctx.anonTypeMap.set(initType, structName);
+            if (!(initType.flags & ts.TypeFlags.Any)) {
+              ctx.anonTypeMap.set(initType, structName);
+            }
           }
         }
       }
@@ -1522,6 +1534,30 @@ export function applyShapeInference(ctx: CodegenContext, checker: ts.TypeChecker
 }
 
 export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile, isEntryFile = true): void {
+  function getAssignmentRootIdentifier(expr: ts.Expression): string | undefined {
+    let current: ts.Expression = expr;
+    while (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isTypeAssertionExpression(current)
+    ) {
+      current = current.expression;
+    }
+    while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+      current = current.expression;
+      while (
+        ts.isParenthesizedExpression(current) ||
+        ts.isAsExpression(current) ||
+        ts.isNonNullExpression(current) ||
+        ts.isTypeAssertionExpression(current)
+      ) {
+        current = current.expression;
+      }
+    }
+    return ts.isIdentifier(current) ? current.text : undefined;
+  }
+
   // First: collect enum declarations (so enum values are available)
   collectEnumDeclarations(ctx, sourceFile);
 
@@ -2213,6 +2249,10 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
   }
 
+  // Single pass preserves source order, which matters for statements that depend on
+  // side effects from earlier statements (e.g. `(Ctor as any).prototype = proto` must
+  // run before `new Ctor()` captures the prototype, and `obj.prop = v` must run between
+  // `var before = ...typeof obj.prop` and `var after = ...obj.prop === v`).
   for (const stmt of sourceFile.statements) {
     if (ts.isVariableStatement(stmt)) {
       if (hasDeclareModifier(stmt)) continue;
@@ -2247,28 +2287,12 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       ts.isForInStatement(stmt) ||
       ts.isForOfStatement(stmt) ||
       ts.isWhileStatement(stmt) ||
-      ts.isDoStatement(stmt)
+      ts.isDoStatement(stmt) ||
+      ts.isIfStatement(stmt) ||
+      ts.isTryStatement(stmt) ||
+      ts.isSwitchStatement(stmt) ||
+      ts.isLabeledStatement(stmt)
     ) {
-      walkModuleStmtForVars(stmt);
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-    if (ts.isIfStatement(stmt)) {
-      walkModuleStmtForVars(stmt);
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-    if (ts.isTryStatement(stmt)) {
-      walkModuleStmtForVars(stmt);
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-    if (ts.isSwitchStatement(stmt)) {
-      walkModuleStmtForVars(stmt);
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-    if (ts.isLabeledStatement(stmt)) {
       walkModuleStmtForVars(stmt);
       ctx.moduleInitStatements.push(stmt);
       continue;
@@ -2276,65 +2300,41 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     if (ts.isBlock(stmt)) {
       walkModuleStmtForVars(stmt);
       ctx.moduleInitStatements.push(stmt);
-    }
-  }
-
-  // Fifth: collect module-level expression statements for init compilation
-  // (e.g. obj.length = 3, obj[0] = 10 for shape-inferred array-like variables,
-  //  new function(){}(args) constructor calls, standalone function calls)
-  for (const stmt of sourceFile.statements) {
-    if (!ts.isExpressionStatement(stmt)) continue;
-    const expr = stmt.expression;
-
-    // Collect `new` expression statements (e.g. `new function(){...}(args)`)
-    if (ts.isNewExpression(expr)) {
-      ctx.moduleInitStatements.push(stmt);
       continue;
     }
-
-    // Collect standalone function call statements (e.g. `foo()`)
-    if (ts.isCallExpression(expr)) {
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-
-    // Collect prefix/postfix increment/decrement expressions (++x, x++, --x, x--)
-    if (ts.isPrefixUnaryExpression(expr) || ts.isPostfixUnaryExpression(expr)) {
-      ctx.moduleInitStatements.push(stmt);
-      continue;
-    }
-
-    // Collect binary expression statements that modify module-level globals
-    if (!ts.isBinaryExpression(expr)) continue;
-    // Accept all assignment operators (=, +=, -=, etc.) and any binary op that
-    // might have side effects on module globals
-    const opKind = expr.operatorToken.kind;
-    const isAssignOp =
-      opKind === ts.SyntaxKind.EqualsToken ||
-      opKind === ts.SyntaxKind.PlusEqualsToken ||
-      opKind === ts.SyntaxKind.MinusEqualsToken ||
-      opKind === ts.SyntaxKind.AsteriskEqualsToken ||
-      opKind === ts.SyntaxKind.SlashEqualsToken ||
-      opKind === ts.SyntaxKind.PercentEqualsToken ||
-      opKind === ts.SyntaxKind.AmpersandEqualsToken ||
-      opKind === ts.SyntaxKind.BarEqualsToken ||
-      opKind === ts.SyntaxKind.CaretEqualsToken ||
-      opKind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
-      opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
-      opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
-    if (!isAssignOp) continue;
-    // Check if the left side references a known module global
-    let targetName: string | undefined;
-    if (ts.isIdentifier(expr.left)) {
-      // Simple assignment: f = ...
-      targetName = expr.left.text;
-    } else if (ts.isPropertyAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
-      targetName = expr.left.expression.text;
-    } else if (ts.isElementAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
-      targetName = expr.left.expression.text;
-    }
-    if (targetName && ctx.moduleGlobals.has(targetName)) {
-      ctx.moduleInitStatements.push(stmt);
+    // Module-level expression statements with side effects:
+    // new expressions, call expressions, ++/--, assignments to module globals
+    if (ts.isExpressionStatement(stmt)) {
+      const expr = stmt.expression;
+      if (ts.isNewExpression(expr) || ts.isCallExpression(expr)) {
+        ctx.moduleInitStatements.push(stmt);
+        continue;
+      }
+      if (ts.isPrefixUnaryExpression(expr) || ts.isPostfixUnaryExpression(expr)) {
+        ctx.moduleInitStatements.push(stmt);
+        continue;
+      }
+      if (ts.isBinaryExpression(expr)) {
+        const opKind = expr.operatorToken.kind;
+        const isAssignOp =
+          opKind === ts.SyntaxKind.EqualsToken ||
+          opKind === ts.SyntaxKind.PlusEqualsToken ||
+          opKind === ts.SyntaxKind.MinusEqualsToken ||
+          opKind === ts.SyntaxKind.AsteriskEqualsToken ||
+          opKind === ts.SyntaxKind.SlashEqualsToken ||
+          opKind === ts.SyntaxKind.PercentEqualsToken ||
+          opKind === ts.SyntaxKind.AmpersandEqualsToken ||
+          opKind === ts.SyntaxKind.BarEqualsToken ||
+          opKind === ts.SyntaxKind.CaretEqualsToken ||
+          opKind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
+          opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
+          opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
+        if (!isAssignOp) continue;
+        const targetName = getAssignmentRootIdentifier(expr.left);
+        if (targetName && ctx.moduleGlobals.has(targetName)) {
+          ctx.moduleInitStatements.push(stmt);
+        }
+      }
     }
   }
 

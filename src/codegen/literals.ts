@@ -587,12 +587,17 @@ export function compileWidenedEmptyObject(
   widenedProps: { name: string; type: ValType }[],
 ): ValType | null {
   // The struct was already registered during the pre-pass (collectEmptyObjectWidening).
-  // Look it up via the anonTypeMap.
+  // Look it up via the anonTypeMap, or the widenedVarStructMap (which holds the pre-pass
+  // registration even for `any`-typed vars that must skip anonTypeMap to avoid polluting
+  // the singleton `any` type object).
   const type = ctx.checker.getTypeAtLocation(expr);
   let typeName = ctx.anonTypeMap.get(type);
   if (!typeName && ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
     const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
     typeName = ctx.anonTypeMap.get(varType);
+  }
+  if (!typeName && ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
+    typeName = ctx.widenedVarStructMap.get(expr.parent.name.text);
   }
   if (!typeName) {
     // Fallback: the pre-pass should have registered it but didn't match type identity.
@@ -618,9 +623,17 @@ export function compileWidenedEmptyObject(
       ctx.structMap.set(typeName, typeIdx);
       ctx.typeIdxToStructName.set(typeIdx, typeName);
       ctx.structFields.set(typeName, fields);
-      ctx.anonTypeMap.set(type, typeName);
+      // Skip anonTypeMap registration for `any` — it's a singleton type object shared by
+      // all any-typed vars, so registering it would pollute every any-typed var's lookup.
+      if (!(type.flags & ts.TypeFlags.Any)) {
+        ctx.anonTypeMap.set(type, typeName);
+      }
       const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
-      ctx.anonTypeMap.set(varType, typeName);
+      if (!(varType.flags & ts.TypeFlags.Any)) {
+        ctx.anonTypeMap.set(varType, typeName);
+      }
+      // Record via widenedVarStructMap so later lookups still find it for any-typed vars.
+      ctx.widenedVarStructMap.set(expr.parent.name.text, typeName);
     }
   }
   if (!typeName) return null;
@@ -1252,6 +1265,91 @@ export function compileTupleLiteral(
   return { kind: "ref", typeIdx: tupleIdx };
 }
 
+/**
+ * Detect a counted push loop pattern after an empty array literal (#1001):
+ *   const arr: number[] = [];
+ *   for (let i = 0; i < N; i++) arr.push(expr);
+ *
+ * Returns N (the trip count) if the pattern is statically provable, 0 otherwise.
+ * This allows preallocating the backing WasmGC array to eliminate growth overhead.
+ */
+function detectCountedPushLoopSize(expr: ts.ArrayLiteralExpression): number {
+  // Walk up: ArrayLiteralExpression → VariableDeclaration → VariableDeclarationList → VariableStatement → Block/SourceFile
+  const varDecl = expr.parent;
+  if (!varDecl || !ts.isVariableDeclaration(varDecl) || !ts.isIdentifier(varDecl.name)) return 0;
+  const arrName = varDecl.name.text;
+
+  const declList = varDecl.parent;
+  if (!declList || !ts.isVariableDeclarationList(declList)) return 0;
+  const varStmt = declList.parent;
+  if (!varStmt || !ts.isVariableStatement(varStmt)) return 0;
+
+  const block = varStmt.parent;
+  if (!block) return 0;
+  let stmts: ts.NodeArray<ts.Statement>;
+  if (ts.isBlock(block)) stmts = block.statements;
+  else if (ts.isSourceFile(block)) stmts = block.statements;
+  else return 0;
+
+  // Find the variable statement's index and look at the next statement
+  const idx = stmts.indexOf(varStmt);
+  if (idx < 0 || idx + 1 >= stmts.length) return 0;
+  const nextStmt = stmts[idx + 1]!;
+  if (!ts.isForStatement(nextStmt)) return 0;
+
+  // Check initializer: `let i = 0` or `var i = 0`
+  const init = nextStmt.initializer;
+  if (!init || !ts.isVariableDeclarationList(init)) return 0;
+  if (init.declarations.length !== 1) return 0;
+  const loopDecl = init.declarations[0]!;
+  if (!ts.isIdentifier(loopDecl.name)) return 0;
+  const loopVar = loopDecl.name.text;
+  if (!loopDecl.initializer || !ts.isNumericLiteral(loopDecl.initializer) || loopDecl.initializer.text !== "0")
+    return 0;
+
+  // Check condition: `i < N` where N is a numeric literal
+  const cond = nextStmt.condition;
+  if (!cond || !ts.isBinaryExpression(cond)) return 0;
+  if (cond.operatorToken.kind !== ts.SyntaxKind.LessThanToken) return 0;
+  if (!ts.isIdentifier(cond.left) || cond.left.text !== loopVar) return 0;
+  if (!ts.isNumericLiteral(cond.right)) return 0;
+  const tripCount = Number(cond.right.text);
+  if (!Number.isFinite(tripCount) || tripCount <= 0 || tripCount > 1_000_000) return 0;
+
+  // Check incrementor: `i++` or `i += 1`
+  const inc = nextStmt.incrementor;
+  if (!inc) return 0;
+  if (ts.isPostfixUnaryExpression(inc)) {
+    if (inc.operator !== ts.SyntaxKind.PlusPlusToken) return 0;
+    if (!ts.isIdentifier(inc.operand) || inc.operand.text !== loopVar) return 0;
+  } else if (ts.isPrefixUnaryExpression(inc)) {
+    if (inc.operator !== ts.SyntaxKind.PlusPlusToken) return 0;
+    if (!ts.isIdentifier(inc.operand) || inc.operand.text !== loopVar) return 0;
+  } else {
+    return 0;
+  }
+
+  // Check body: must contain only `arr.push(expr)` (as expression statement)
+  const body = nextStmt.statement;
+  let bodyStmt: ts.Statement;
+  if (ts.isBlock(body)) {
+    if (body.statements.length !== 1) return 0;
+    bodyStmt = body.statements[0]!;
+  } else {
+    bodyStmt = body;
+  }
+  if (!ts.isExpressionStatement(bodyStmt)) return 0;
+  const callExpr = bodyStmt.expression;
+  if (!ts.isCallExpression(callExpr)) return 0;
+  if (!ts.isPropertyAccessExpression(callExpr.expression)) return 0;
+  if (callExpr.expression.name.text !== "push") return 0;
+  if (!ts.isIdentifier(callExpr.expression.expression)) return 0;
+  if (callExpr.expression.expression.text !== arrName) return 0;
+  if (callExpr.arguments.length !== 1) return 0;
+
+  return tripCount;
+}
+
 export function compileArrayLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1306,6 +1404,9 @@ export function compileArrayLiteral(
   }
 
   if (expr.elements.length === 0) {
+    // Detect counted push loop pattern and preallocate (#1001)
+    const prealloc = detectCountedPushLoopSize(expr);
+
     // Empty array — try to determine element type from contextual type (e.g. number[])
     let emptyElemKind = "externref";
     const ctxType = ctx.checker.getContextualType(expr) ?? ctx.checker.getTypeAtLocation(expr);
@@ -1329,7 +1430,7 @@ export function compileArrayLiteral(
       return null;
     }
     fctx.body.push({ op: "i32.const", value: 0 }); // length field (field 0)
-    fctx.body.push({ op: "i32.const", value: 0 }); // size for array.new_default
+    fctx.body.push({ op: "i32.const", value: prealloc > 0 ? prealloc : 0 }); // size for array.new_default (#1001: preallocate if counted push loop detected)
     fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx }); // data field (field 1)
     fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
     return { kind: "ref_null", typeIdx: vecTypeIdx };

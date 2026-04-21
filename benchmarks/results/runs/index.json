@@ -727,7 +727,7 @@
     "skip": 6580,
     "total": 48088,
     "gitHash": "08cc4778",
-    "note": "clean baseline — cache disabled, conformance count (not vitest count)"
+    "note": "clean baseline \u2014 cache disabled, conformance count (not vitest count)"
   },
   {
     "timestamp": "2026-03-31T01:24:13.763Z",
@@ -1283,28 +1283,6 @@
     "gitHash": "e01f71bc"
   },
   {
-    "timestamp": "20260412-095252",
-    "pass": 12973,
-    "fail": 9080,
-    "ce": 19757,
-    "skip": 1339,
-    "total": 43171,
-    "strict_pass": 12345,
-    "strict_total": 40662,
-    "gitHash": "2e00ff13"
-  },
-  {
-    "timestamp": "20260412-101456",
-    "pass": 12981,
-    "fail": 8892,
-    "ce": 19937,
-    "skip": 1339,
-    "total": 43172,
-    "strict_pass": 12353,
-    "strict_total": 40663,
-    "gitHash": "0582fe85"
-  },
-  {
     "timestamp": "20260412-123531",
     "pass": 18863,
     "fail": 13107,
@@ -1347,5 +1325,59 @@
     "strict_pass": 21504,
     "strict_total": 40663,
     "gitHash": "068186ad"
+  },
+  {
+    "timestamp": "20260420-195517",
+    "pass": 21324,
+    "fail": 13312,
+    "ce": 7027,
+    "skip": 1483,
+    "total": 43172,
+    "strict_pass": 20612,
+    "strict_total": 40663,
+    "gitHash": "9b563b74"
+  },
+  {
+    "timestamp": "20260420-220440",
+    "pass": 21345,
+    "fail": 13327,
+    "ce": 7135,
+    "skip": 1339,
+    "total": 43172,
+    "strict_pass": 20612,
+    "strict_total": 40663,
+    "gitHash": "dccc1dff"
+  },
+  {
+    "timestamp": "20260420-234354",
+    "pass": 21381,
+    "fail": 13291,
+    "ce": 7135,
+    "skip": 1339,
+    "total": 43172,
+    "strict_pass": 20612,
+    "strict_total": 40663,
+    "gitHash": "4fe873a2"
+  },
+  {
+    "timestamp": "20260421-042406",
+    "pass": 21324,
+    "fail": 13312,
+    "ce": 7027,
+    "skip": 1483,
+    "total": 43172,
+    "strict_pass": 20612,
+    "strict_total": 40663
+  },
+  {
+    "timestamp": "20260421-074406",
+    "pass": 24483,
+    "fail": 13700,
+    "ce": 3621,
+    "skip": 1339,
+    "total": 43172,
+    "strict_pass": 23446,
+    "strict_total": 40663,
+    "gitHash": "14ed88c4"
   }
 ]

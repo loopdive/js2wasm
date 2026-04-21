@@ -10613,6 +10613,23 @@
       "cluster": "maintainability"
     },
     {
+      "id": "742",
+      "title": "Extract and refactor compileCallExpression (3,350 lines)",
+      "priority": "medium",
+      "status": "blocked",
+      "raw_status": "blocked",
+      "sprint": "43",
+      "depends_on": [
+        "688"
+      ],
+      "files": [
+        "extract compileCallExpression (3,350 lines) into calls.ts",
+        "convert dispatch to table-driven pattern"
+      ],
+      "goal": "maintainability",
+      "cluster": "maintainability"
+    },
+    {
       "id": "743",
       "title": "Whole-program type flow analysis",
       "priority": "critical",
@@ -10637,6 +10654,26 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [
+        "743",
+        "1124"
+      ],
+      "files": [
+        "monomorphize(): generate specialized function copies per type signature",
+        "monomorphizationRegistry: track which specializations exist",
+        "call site resolution: dispatch to correct specialization",
+        "call expression codegen: select monomorphized variant at call sites"
+      ],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "744",
+      "title": "Function monomorphization for polymorphic call sites",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [
         "743",
         "1124"
@@ -10903,6 +10940,20 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [
+        "1124"
+      ],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "773",
+      "title": "Monomorphize functions: compile with call-site types, not generic externref",
+      "priority": "critical",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [
         "1124"
       ],
@@ -12061,6 +12112,19 @@
       "test262_fail": 126
     },
     {
+      "id": "854",
+      "title": "Iterator protocol: null next/return/throw methods (126 tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "async-model",
+      "cluster": "async-model",
+      "test262_fail": 126
+    },
+    {
       "id": "855",
       "title": "Promise resolution and async error handling (210 tests)",
       "priority": "high",
@@ -12160,6 +12224,19 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "crash-free",
+      "cluster": "crash-free",
+      "test262_fail": 212
+    },
+    {
+      "id": "862",
+      "title": "Iterator protocol missing on function-declaration binding-pattern params",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "crash-free",
@@ -12790,12 +12867,48 @@
       "cluster": "error-model"
     },
     {
+      "id": "906",
+      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "800",
+        "898"
+      ],
+      "files": [
+        "Avoid emitting module-level TDZ globals for top-level locals that are provably initialized before first read",
+        "Treat simple top-level definite-assignment cases as compile-time-safe instead of preserving runtime TDZ state"
+      ],
+      "goal": "error-model",
+      "cluster": "error-model"
+    },
+    {
       "id": "907",
       "title": "Replace __init_done runtime guards with start/init entry semantics",
       "priority": "high",
       "status": "ready",
       "raw_status": "review",
       "sprint": "42",
+      "depends_on": [
+        "900"
+      ],
+      "files": [
+        "Avoid emitting __init_done runtime guard globals for module-init-only programs when start/init semantics can be decided statically",
+        "Expose the selected init/entrypoint strategy clearly so runtimes can instantiate without extra hot-path guards",
+        "Consume compile-time init metadata instead of depending on runtime guard-oriented behavior"
+      ],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
+    },
+    {
+      "id": "907",
+      "title": "Replace __init_done runtime guards with start/init entry semantics",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [
         "900"
       ],
@@ -13937,12 +14050,36 @@
       "cluster": "error-model"
     },
     {
+      "id": "991",
+      "title": "Iterator helper generator-reentrancy tests hit 30s compiler timeout",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "error-model",
+      "cluster": "error-model"
+    },
+    {
       "id": "992",
       "title": "Iterator.prototype.take limit-less-than-total hits 30s compiler timeout",
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "iterator-protocol",
+      "cluster": "iterator-protocol"
+    },
+    {
+      "id": "992",
+      "title": "Iterator.prototype.take limit-less-than-total hits 30s compiler timeout",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "iterator-protocol",
@@ -13961,12 +14098,36 @@
       "cluster": "compilable"
     },
     {
+      "id": "993",
+      "title": "Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
       "id": "994",
       "title": "Class static-private-getter test hits 30s compiler timeout",
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "994",
+      "title": "Class static-private-getter test hits 30s compiler timeout",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "compilable",
@@ -13985,12 +14146,36 @@
       "cluster": "iterator-protocol"
     },
     {
+      "id": "995",
+      "title": "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "iterator-protocol",
+      "cluster": "iterator-protocol"
+    },
+    {
       "id": "996",
       "title": "Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout",
       "priority": "low",
       "status": "done",
       "raw_status": "done",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "error-model",
+      "cluster": "error-model"
+    },
+    {
+      "id": "996",
+      "title": "Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "error-model",
@@ -14051,12 +14236,36 @@
       "cluster": "contributor-readiness"
     },
     {
+      "id": "1000",
+      "title": "Normalize issue frontmatter and repopulate historical sprint issue assignments",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "contributor-readiness",
+      "cluster": "contributor-readiness"
+    },
+    {
+      "id": "1001",
+      "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "review",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
       "id": "1001",
       "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "42",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -14089,12 +14298,38 @@
       "cluster": "contributor-readiness"
     },
     {
+      "id": "1003",
+      "title": "Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1000"
+      ],
+      "files": [],
+      "goal": "contributor-readiness",
+      "cluster": "contributor-readiness"
+    },
+    {
       "id": "1004",
       "title": "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "generator-model",
+      "cluster": "generator-model"
+    },
+    {
+      "id": "1004",
+      "title": "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "generator-model",
@@ -14113,12 +14348,36 @@
       "cluster": "ci-hardening"
     },
     {
+      "id": "1005",
+      "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
       "id": "1006",
       "title": "Support eval via JS host import",
       "priority": "medium",
       "status": "ready",
       "raw_status": "review",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1006",
+      "title": "Support eval via JS host import",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -14330,6 +14589,17 @@
       "id": "1025",
       "title": "BindingElement array-pattern default guards still use ref.is_null",
       "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Sprint-41",
+      "depends_on": [],
+      "files": [],
+      "cluster": "sprint-Sprint-41"
+    },
+    {
+      "id": "1025",
+      "title": "BindingElement array-pattern default guards still use ref.is_null",
+      "priority": "high",
       "status": "done",
       "raw_status": "done",
       "sprint": "40",
@@ -14464,6 +14734,18 @@
       "cluster": "async-model"
     },
     {
+      "id": "1035",
+      "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "async-model",
+      "cluster": "async-model"
+    },
+    {
       "id": "1036",
       "title": "DisposableStack/AsyncDisposableStack property-chain access produces Wasm null trap (94 FAIL)",
       "priority": "medium",
@@ -14565,6 +14847,18 @@
       "cluster": "npm-library-support"
     },
     {
+      "id": "1043",
+      "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
       "id": "1044",
       "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
       "priority": "high",
@@ -14579,12 +14873,40 @@
       "cluster": "async-model"
     },
     {
+      "id": "1044",
+      "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1041"
+      ],
+      "files": [],
+      "goal": "async-model",
+      "cluster": "async-model"
+    },
+    {
       "id": "1045",
       "title": "DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame)",
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [
+        "1041"
+      ],
+      "files": [],
+      "goal": "platform",
+      "cluster": "platform"
+    },
+    {
+      "id": "1045",
+      "title": "DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [
         "1041"
       ],
@@ -14755,6 +15077,22 @@
       "cluster": "compiler-architecture"
     },
     {
+      "id": "1058",
+      "title": "Compile the TypeScript compiler itself to Wasm — self-hosting stress test",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1042",
+        "1044",
+        "1046"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "1059",
       "title": "Parallel tsc — stress test the inter-module coordination primitive",
       "priority": "low",
@@ -14867,6 +15205,18 @@
       "cluster": "ci-hardening"
     },
     {
+      "id": "1067",
+      "title": "Dependency graph as a web component adopting the landing page color scheme",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
       "id": "1068",
       "title": "parser: 'await' not allowed as label identifier — blocks prettier/index.mjs",
       "priority": "medium",
@@ -14942,6 +15292,20 @@
       "compiler_errors": 23
     },
     {
+      "id": "1073",
+      "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1006"
+      ],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
       "id": "1074",
       "title": "Surface ESM default export as a named Wasm function export",
       "priority": "high",
@@ -14973,6 +15337,22 @@
       "cluster": "npm-library-support"
     },
     {
+      "id": "1075",
+      "title": "CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1060",
+        "1061",
+        "1074"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
       "id": "1076",
       "title": "CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline",
       "priority": "critical",
@@ -14985,12 +15365,38 @@
       "cluster": "ci-hardening"
     },
     {
+      "id": "1076",
+      "title": "CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline",
+      "priority": "critical",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
+      "id": "1077",
+      "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "review",
+      "sprint": "42",
+      "depends_on": [
+        "1076"
+      ],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
       "id": "1077",
       "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "42",
+      "sprint": "43",
       "depends_on": [
         "1076"
       ],
@@ -15013,9 +15419,47 @@
       "cluster": "ci-hardening"
     },
     {
+      "id": "1078",
+      "title": "CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1076"
+      ],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
       "id": "1079",
       "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
       "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
+      "id": "1079",
+      "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
+      "id": "1080",
+      "title": "[umbrella] Fix CI baseline-drift regression gate — main is not self-healing",
+      "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
@@ -15030,7 +15474,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "42",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15075,6 +15519,18 @@
       "cluster": "ci-hardening"
     },
     {
+      "id": "1083",
+      "title": "codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations",
+      "priority": "low",
+      "status": "done",
+      "raw_status": "wont-fix",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
       "id": "1084",
       "title": "compileCount bypass in compiler-fork-worker.mjs — RECREATE never fires when errors dominate a chunk",
       "priority": "critical",
@@ -15106,6 +15562,20 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [
+        "1085"
+      ],
+      "files": [],
+      "goal": "maintainability",
+      "cluster": "maintainability"
+    },
+    {
+      "id": "1086",
+      "title": "codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [
         "1085"
       ],
@@ -15186,12 +15656,36 @@
       "cluster": "async-model"
     },
     {
+      "id": "1093",
+      "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "async-model",
+      "cluster": "async-model"
+    },
+    {
       "id": "1094",
       "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
       "priority": "high",
       "status": "ready",
       "raw_status": "review",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1094",
+      "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -15210,12 +15704,36 @@
       "cluster": "maintainability"
     },
     {
+      "id": "1095",
+      "title": "Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "maintainability",
+      "cluster": "maintainability"
+    },
+    {
       "id": "1096",
       "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "platform",
+      "cluster": "platform"
+    },
+    {
+      "id": "1096",
+      "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -15238,8 +15756,20 @@
       "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "core-semantics",
+      "cluster": "core-semantics"
+    },
+    {
+      "id": "1098",
+      "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -15252,6 +15782,20 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [
+        "1094"
+      ],
+      "files": [],
+      "goal": "platform",
+      "cluster": "platform"
+    },
+    {
+      "id": "1099",
+      "title": "Standalone execution demo — compile and run a program on Wasmtime with zero JS host",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [
         "1094"
       ],
@@ -15387,6 +15931,20 @@
       "cluster": "compilable"
     },
     {
+      "id": "1109",
+      "title": "lodash-es clamp: Wasm validation error in typeof/RegExp codegen path",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1107"
+      ],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
       "id": "1110",
       "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
       "priority": "medium",
@@ -15409,6 +15967,22 @@
       "status": "backlog",
       "raw_status": "backlog",
       "sprint": "42",
+      "depends_on": [],
+      "files": [
+        "compileWrapperConstructor — struct wrapping a primitive with __is_wrapper tag",
+        "typeof — branch on wrapper tag for object vs primitive"
+      ],
+      "goal": "builtin-methods",
+      "cluster": "builtin-methods",
+      "test262_skip": 648
+    },
+    {
+      "id": "1111",
+      "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "43",
       "depends_on": [],
       "files": [
         "compileWrapperConstructor — struct wrapping a primitive with __is_wrapper tag",
@@ -15522,7 +16096,7 @@
     },
     {
       "id": "1119",
-      "title": "SingleNameBinding fn-name-class cluster (71 null_deref)",
+      "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
       "priority": "medium",
       "status": "backlog",
       "raw_status": "backlog",
@@ -15531,6 +16105,18 @@
       "files": [],
       "goal": "conformance",
       "cluster": "conformance"
+    },
+    {
+      "id": "1119",
+      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "async-model",
+      "cluster": "async-model"
     },
     {
       "id": "1119",
@@ -15561,8 +16147,20 @@
       "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1120",
+      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "performance",
@@ -15583,6 +16181,20 @@
       "cluster": "performance"
     },
     {
+      "id": "1121",
+      "title": "Infer numeric recursive fast path without JSDoc hints on exported entrypoints",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1124"
+      ],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
       "id": "1122",
       "title": "Keep standalone recursive numeric benchmark stable across non-run entry exports",
       "priority": "high",
@@ -15595,12 +16207,36 @@
       "cluster": "performance"
     },
     {
+      "id": "1122",
+      "title": "Keep standalone recursive numeric benchmark stable across non-run entry exports",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
       "id": "1123",
       "title": "Verify landing page claims and code examples against current compiler behavior",
       "priority": "high",
       "status": "ready",
       "raw_status": "review",
       "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
+      "id": "1123",
+      "title": "Verify landing page claims and code examples against current compiler behavior",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "correctness",
@@ -15631,12 +16267,38 @@
       "cluster": "benchmarking"
     },
     {
+      "id": "1125",
+      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "benchmarking",
+      "cluster": "benchmarking"
+    },
+    {
       "id": "1126",
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
+      "depends_on": [
+        "1124"
+      ],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1126",
+      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
       "depends_on": [
         "1124"
       ],
@@ -15655,6 +16317,18 @@
       "files": [],
       "goal": "spec-conformance",
       "cluster": "spec-conformance"
+    },
+    {
+      "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
     },
     {
       "id": "1127",
@@ -15695,6 +16369,18 @@
       "cluster": "spec-conformance"
     },
     {
+      "id": "1128",
+      "title": "Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "test262",
+      "cluster": "test262"
+    },
+    {
       "id": "1129",
       "title": "ToObject (§7.1.18) not implemented — no primitive auto-boxing",
       "priority": "low",
@@ -15707,16 +16393,66 @@
       "cluster": "spec-conformance"
     },
     {
-      "id": "1133",
-      "title": "__any_strict_eq tag-5 string comparison uses identity, not content — 'a' === 'a' returns false for any-typed strings",
+      "id": "1130",
+      "title": "Array methods — getter-observing property access on indices and length",
       "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1131",
+      "title": "Middle-end SSA IR: implementation plan",
+      "priority": "high",
       "status": "ready",
       "raw_status": "ready",
+      "sprint": "Backlog",
+      "depends_on": [
+        "1124"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1132",
+      "title": "Publish compiler as @loopdive/js2 on npm + JSR",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "distribution",
+      "cluster": "distribution"
+    },
+    {
+      "id": "1133",
+      "title": "Fibonacci story points, velocity tracking, and token-budgeted sprint sizing",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
       "sprint": "",
       "depends_on": [],
       "files": [],
-      "goal": "spec-conformance",
-      "cluster": "spec-conformance"
+      "goal": "methodology",
+      "cluster": "methodology"
+    },
+    {
+      "id": "1133",
+      "title": "async-gen + obj-ptrn default-init throws: funcIdx shift misses detached thenInstrs",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance"
     },
     {
       "id": "1134",
@@ -15740,6 +16476,338 @@
       "depends_on": [],
       "files": [],
       "cluster": "Unclustered"
+    },
+    {
+      "id": "1136",
+      "title": "Reference platform scenario: capability-safe DOM wrapper with explicit subtree authority",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "platform",
+      "cluster": "platform"
+    },
+    {
+      "id": "1136",
+      "title": "Array.prototype.flat() and flatMap() not implemented",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1137",
+      "title": "Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "platform",
+      "cluster": "platform"
+    },
+    {
+      "id": "1137",
+      "title": "ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1138",
+      "title": "Destructuring: unresolvable defaults throw ReferenceError instead of being undefined",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1139",
+      "title": "Destructuring: TypeError not thrown on null/undefined source (RequireObjectCoercible)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1140",
+      "title": "Array methods .call() with array-like receiver not supported",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1141",
+      "title": "Object.defineProperties: descriptor shape not validated per ECMA-262 §10.1",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1142",
+      "title": "Class method .call()/.apply() missing brand-check on thisArg",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1143",
+      "title": "Array callback arg push not gated on paramTypes.length — extra args emitted unconditionally",
+      "priority": "low",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
+      "id": "1144",
+      "title": "Static class elements: this.#priv access inside static methods uses wrong receiver",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1145",
+      "title": "Async generator: undefined tuple elements promote to f64, corrupting sNaN sentinel",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
+      "id": "1146",
+      "title": "for-of: nested rest binding patterns not decoded (825 ary-rest-rest cluster)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "42",
+      "depends_on": [
+        "825"
+      ],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1147",
+      "title": "Fix Function.length regression on library methods — wrong answer for toSorted/slice/splice/etc.",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1147",
+      "title": "Add a public Docs page to the site",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
+    },
+    {
+      "id": "1148",
+      "title": "Investigate skip:103 regression — Annex B eval-code skip filter",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1149",
+      "title": "Fix null_deref:32 — eval-code direct methods with arguments declare",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1150",
+      "title": "Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1151",
+      "title": "Async function synchronous throws bypass Promise.reject wrapping",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1152",
+      "title": "Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "crash-free",
+      "cluster": "crash-free",
+      "test262_fail": 217
+    },
+    {
+      "id": "1153",
+      "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
+      "priority": "critical",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "crash-free",
+      "cluster": "crash-free",
+      "test262_fail": 3585
+    },
+    {
+      "id": "1154",
+      "title": "test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions)",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [
+        "1119"
+      ],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1155",
+      "title": "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "test-infrastructure",
+      "cluster": "test-infrastructure"
+    },
+    {
+      "id": "1156",
+      "title": "Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "Backlog",
+      "depends_on": [
+        "1152"
+      ],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1157",
+      "title": "RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions)",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1158",
+      "title": "destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern []",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1159",
+      "title": "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
     },
     {
       "id": "backlog",
@@ -15802,6 +16870,14 @@
     {
       "source": "1090",
       "target": "1128"
+    },
+    {
+      "source": "1124",
+      "target": "1131"
+    },
+    {
+      "source": "1119",
+      "target": "1154"
     },
     {
       "source": "481",
@@ -15918,6 +16994,10 @@
     {
       "source": "907",
       "target": "908"
+    },
+    {
+      "source": "1152",
+      "target": "1156"
     },
     {
       "source": "1113",
@@ -16396,6 +17476,106 @@
       "target": "1126"
     },
     {
+      "source": "825",
+      "target": "1146"
+    },
+    {
+      "source": "688",
+      "target": "742"
+    },
+    {
+      "source": "743",
+      "target": "744"
+    },
+    {
+      "source": "1124",
+      "target": "744"
+    },
+    {
+      "source": "1124",
+      "target": "773"
+    },
+    {
+      "source": "800",
+      "target": "906"
+    },
+    {
+      "source": "898",
+      "target": "906"
+    },
+    {
+      "source": "900",
+      "target": "907"
+    },
+    {
+      "source": "1000",
+      "target": "1003"
+    },
+    {
+      "source": "1041",
+      "target": "1044"
+    },
+    {
+      "source": "1041",
+      "target": "1045"
+    },
+    {
+      "source": "1042",
+      "target": "1058"
+    },
+    {
+      "source": "1044",
+      "target": "1058"
+    },
+    {
+      "source": "1046",
+      "target": "1058"
+    },
+    {
+      "source": "1006",
+      "target": "1073"
+    },
+    {
+      "source": "1060",
+      "target": "1075"
+    },
+    {
+      "source": "1061",
+      "target": "1075"
+    },
+    {
+      "source": "1074",
+      "target": "1075"
+    },
+    {
+      "source": "1076",
+      "target": "1077"
+    },
+    {
+      "source": "1076",
+      "target": "1078"
+    },
+    {
+      "source": "1085",
+      "target": "1086"
+    },
+    {
+      "source": "1094",
+      "target": "1099"
+    },
+    {
+      "source": "1107",
+      "target": "1109"
+    },
+    {
+      "source": "1124",
+      "target": "1121"
+    },
+    {
+      "source": "1124",
+      "target": "1126"
+    },
+    {
       "source": "688",
       "target": "742"
     },
@@ -16500,6 +17680,7 @@
         "820",
         "851",
         "854",
+        "854",
         "855",
         "859",
         "860",
@@ -16528,11 +17709,15 @@
         "1027",
         "1034",
         "1035",
+        "1035",
         "1042",
+        "1044",
         "1044",
         "1089",
         "1093",
+        "1093",
         "1116",
+        "1119",
         "1119"
       ]
     },
@@ -16579,6 +17764,7 @@
         "763",
         "955",
         "1110",
+        "1111",
         "1111"
       ]
     },
@@ -16614,19 +17800,28 @@
         "967",
         "982",
         "1001",
+        "1001",
+        "1005",
         "1005",
         "1026",
         "1063",
         "1064",
         "1065",
         "1067",
+        "1067",
+        "1076",
         "1076",
         "1077",
+        "1077",
+        "1078",
         "1078",
         "1079",
+        "1079",
+        "1080",
         "1080",
         "1081",
         "1082",
+        "1083",
         "1083",
         "1084",
         "1106",
@@ -16816,6 +18011,7 @@
         "769",
         "772",
         "773",
+        "773",
         "776",
         "777",
         "839",
@@ -16827,8 +18023,11 @@
         "951",
         "953",
         "993",
+        "993",
+        "994",
         "994",
         "1040",
+        "1109",
         "1109"
       ]
     },
@@ -16845,7 +18044,9 @@
         "1041",
         "1046",
         "1058",
-        "1124"
+        "1058",
+        "1124",
+        "1131"
       ],
       "track": "supporting track"
     },
@@ -16892,6 +18093,8 @@
         "917",
         "944",
         "1000",
+        "1000",
+        "1003",
         "1003",
         "1009"
       ],
@@ -17059,6 +18262,7 @@
         "1024",
         "1025",
         "1031",
+        "1098",
         "1098"
       ]
     },
@@ -17072,7 +18276,11 @@
       ],
       "issues": [
         "1123",
-        "1127"
+        "1123",
+        "1127",
+        "1127",
+        "1143",
+        "1145"
       ],
       "track": "supporting track"
     },
@@ -17123,9 +18331,12 @@
         "792",
         "848",
         "862",
+        "862",
         "1036",
         "1038",
-        "1115"
+        "1115",
+        "1152",
+        "1153"
       ]
     },
     {
@@ -17145,12 +18356,14 @@
         "870",
         "878",
         "907",
+        "907",
         "924",
         "974",
         "977",
         "978",
         "1008",
-        "1039"
+        "1039",
+        "1147"
       ],
       "track": "supporting track"
     },
@@ -17219,9 +18432,12 @@
         "898",
         "899",
         "906",
+        "906",
         "913",
         "947",
         "991",
+        "991",
+        "996",
         "996",
         "1021",
         "1022",
@@ -17257,6 +18473,7 @@
         "623",
         "628",
         "646",
+        "1004",
         "1004"
       ]
     },
@@ -17302,6 +18519,8 @@
         "850",
         "987",
         "992",
+        "992",
+        "995",
         "995",
         "1071",
         "1103"
@@ -17329,6 +18548,7 @@
         "688",
         "741",
         "742",
+        "742",
         "795",
         "803",
         "804",
@@ -17344,6 +18564,8 @@
         "976",
         "989",
         "1086",
+        "1086",
+        "1095",
         "1095",
         "1097"
       ],
@@ -17378,12 +18600,14 @@
         "1032",
         "1033",
         "1043",
+        "1043",
         "1060",
         "1061",
         "1068",
         "1069",
         "1072",
         "1074",
+        "1075",
         "1075",
         "1107",
         "1108"
@@ -17424,6 +18648,7 @@
         "693",
         "743",
         "744",
+        "744",
         "745",
         "747",
         "861",
@@ -17440,8 +18665,12 @@
         "985",
         "1059",
         "1120",
+        "1120",
+        "1121",
         "1121",
         "1122",
+        "1122",
+        "1126",
         "1126"
       ],
       "track": "parallel — does not block conformance goals."
@@ -17495,9 +18724,14 @@
         "949",
         "1029",
         "1045",
+        "1045",
         "1066",
         "1096",
-        "1099"
+        "1096",
+        "1099",
+        "1099",
+        "1136",
+        "1137"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -17627,6 +18861,7 @@
         "965",
         "988",
         "1006",
+        "1006",
         "1020",
         "1028",
         "1037",
@@ -17634,11 +18869,30 @@
         "1050",
         "1054",
         "1073",
+        "1073",
+        "1094",
         "1094",
         "1100",
         "1101",
         "1102",
-        "1118"
+        "1118",
+        "1136",
+        "1137",
+        "1138",
+        "1139",
+        "1140",
+        "1141",
+        "1142",
+        "1144",
+        "1146",
+        "1147",
+        "1148",
+        "1149",
+        "1150",
+        "1151",
+        "1154",
+        "1156",
+        "1157"
       ]
     },
     {
@@ -17828,7 +19082,8 @@
         "1056",
         "1057",
         "1085",
-        "1091"
+        "1091",
+        "1155"
       ],
       "track": "supporting track"
     }
@@ -18004,6 +19259,10 @@
     },
     {
       "goal": "async-model",
+      "issue": "854"
+    },
+    {
+      "goal": "async-model",
       "issue": "855"
     },
     {
@@ -18116,7 +19375,15 @@
     },
     {
       "goal": "async-model",
+      "issue": "1035"
+    },
+    {
+      "goal": "async-model",
       "issue": "1042"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1044"
     },
     {
       "goal": "async-model",
@@ -18132,7 +19399,15 @@
     },
     {
       "goal": "async-model",
+      "issue": "1093"
+    },
+    {
+      "goal": "async-model",
       "issue": "1116"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1119"
     },
     {
       "goal": "async-model",
@@ -18275,6 +19550,10 @@
       "issue": "1111"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1111"
+    },
+    {
       "goal": "ci-hardening",
       "issue": "73"
     },
@@ -18376,6 +19655,14 @@
     },
     {
       "goal": "ci-hardening",
+      "issue": "1001"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1005"
+    },
+    {
+      "goal": "ci-hardening",
       "issue": "1005"
     },
     {
@@ -18400,7 +19687,19 @@
     },
     {
       "goal": "ci-hardening",
+      "issue": "1067"
+    },
+    {
+      "goal": "ci-hardening",
       "issue": "1076"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1076"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1077"
     },
     {
       "goal": "ci-hardening",
@@ -18412,7 +19711,19 @@
     },
     {
       "goal": "ci-hardening",
+      "issue": "1078"
+    },
+    {
+      "goal": "ci-hardening",
       "issue": "1079"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1079"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1080"
     },
     {
       "goal": "ci-hardening",
@@ -18425,6 +19736,10 @@
     {
       "goal": "ci-hardening",
       "issue": "1082"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1083"
     },
     {
       "goal": "ci-hardening",
@@ -19100,6 +20415,10 @@
     },
     {
       "goal": "compilable",
+      "issue": "773"
+    },
+    {
+      "goal": "compilable",
       "issue": "776"
     },
     {
@@ -19144,11 +20463,23 @@
     },
     {
       "goal": "compilable",
+      "issue": "993"
+    },
+    {
+      "goal": "compilable",
+      "issue": "994"
+    },
+    {
+      "goal": "compilable",
       "issue": "994"
     },
     {
       "goal": "compilable",
       "issue": "1040"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1109"
     },
     {
       "goal": "compilable",
@@ -19180,7 +20511,15 @@
     },
     {
       "goal": "compiler-architecture",
+      "issue": "1058"
+    },
+    {
+      "goal": "compiler-architecture",
       "issue": "1124"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1131"
     },
     {
       "goal": "contributor-readiness",
@@ -19325,6 +20664,14 @@
     {
       "goal": "contributor-readiness",
       "issue": "1000"
+    },
+    {
+      "goal": "contributor-readiness",
+      "issue": "1000"
+    },
+    {
+      "goal": "contributor-readiness",
+      "issue": "1003"
     },
     {
       "goal": "contributor-readiness",
@@ -19951,12 +21298,32 @@
       "issue": "1098"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1098"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1123"
+    },
+    {
       "goal": "correctness",
       "issue": "1123"
     },
     {
       "goal": "correctness",
       "issue": "1127"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1127"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1143"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1145"
     },
     {
       "goal": "crash-free",
@@ -20112,6 +21479,10 @@
     },
     {
       "goal": "crash-free",
+      "issue": "862"
+    },
+    {
+      "goal": "crash-free",
       "issue": "1036"
     },
     {
@@ -20121,6 +21492,14 @@
     {
       "goal": "crash-free",
       "issue": "1115"
+    },
+    {
+      "goal": "crash-free",
+      "issue": "1152"
+    },
+    {
+      "goal": "crash-free",
+      "issue": "1153"
     },
     {
       "goal": "developer-experience",
@@ -20164,6 +21543,10 @@
     },
     {
       "goal": "developer-experience",
+      "issue": "907"
+    },
+    {
+      "goal": "developer-experience",
       "issue": "924"
     },
     {
@@ -20185,6 +21568,10 @@
     {
       "goal": "developer-experience",
       "issue": "1039"
+    },
+    {
+      "goal": "developer-experience",
+      "issue": "1147"
     },
     {
       "goal": "error-model",
@@ -20412,6 +21799,10 @@
     },
     {
       "goal": "error-model",
+      "issue": "906"
+    },
+    {
+      "goal": "error-model",
       "issue": "913"
     },
     {
@@ -20421,6 +21812,14 @@
     {
       "goal": "error-model",
       "issue": "991"
+    },
+    {
+      "goal": "error-model",
+      "issue": "991"
+    },
+    {
+      "goal": "error-model",
+      "issue": "996"
     },
     {
       "goal": "error-model",
@@ -20477,6 +21876,10 @@
     {
       "goal": "generator-model",
       "issue": "646"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1004"
     },
     {
       "goal": "generator-model",
@@ -20616,6 +22019,14 @@
     },
     {
       "goal": "iterator-protocol",
+      "issue": "992"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "995"
+    },
+    {
+      "goal": "iterator-protocol",
       "issue": "995"
     },
     {
@@ -20688,6 +22099,10 @@
     },
     {
       "goal": "maintainability",
+      "issue": "742"
+    },
+    {
+      "goal": "maintainability",
       "issue": "795"
     },
     {
@@ -20745,6 +22160,14 @@
     {
       "goal": "maintainability",
       "issue": "1086"
+    },
+    {
+      "goal": "maintainability",
+      "issue": "1086"
+    },
+    {
+      "goal": "maintainability",
+      "issue": "1095"
     },
     {
       "goal": "maintainability",
@@ -20832,6 +22255,10 @@
     },
     {
       "goal": "npm-library-support",
+      "issue": "1043"
+    },
+    {
+      "goal": "npm-library-support",
       "issue": "1060"
     },
     {
@@ -20853,6 +22280,10 @@
     {
       "goal": "npm-library-support",
       "issue": "1074"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1075"
     },
     {
       "goal": "npm-library-support",
@@ -20928,6 +22359,10 @@
     },
     {
       "goal": "performance",
+      "issue": "744"
+    },
+    {
+      "goal": "performance",
       "issue": "745"
     },
     {
@@ -20992,11 +22427,27 @@
     },
     {
       "goal": "performance",
+      "issue": "1120"
+    },
+    {
+      "goal": "performance",
+      "issue": "1121"
+    },
+    {
+      "goal": "performance",
       "issue": "1121"
     },
     {
       "goal": "performance",
       "issue": "1122"
+    },
+    {
+      "goal": "performance",
+      "issue": "1122"
+    },
+    {
+      "goal": "performance",
+      "issue": "1126"
     },
     {
       "goal": "performance",
@@ -21164,6 +22615,10 @@
     },
     {
       "goal": "platform",
+      "issue": "1045"
+    },
+    {
+      "goal": "platform",
       "issue": "1066"
     },
     {
@@ -21172,7 +22627,23 @@
     },
     {
       "goal": "platform",
+      "issue": "1096"
+    },
+    {
+      "goal": "platform",
       "issue": "1099"
+    },
+    {
+      "goal": "platform",
+      "issue": "1099"
+    },
+    {
+      "goal": "platform",
+      "issue": "1136"
+    },
+    {
+      "goal": "platform",
+      "issue": "1137"
     },
     {
       "goal": "property-model",
@@ -21588,6 +23059,10 @@
     },
     {
       "goal": "spec-completeness",
+      "issue": "1006"
+    },
+    {
+      "goal": "spec-completeness",
       "issue": "1020"
     },
     {
@@ -21616,6 +23091,14 @@
     },
     {
       "goal": "spec-completeness",
+      "issue": "1073"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1094"
+    },
+    {
+      "goal": "spec-completeness",
       "issue": "1094"
     },
     {
@@ -21633,6 +23116,74 @@
     {
       "goal": "spec-completeness",
       "issue": "1118"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1136"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1137"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1138"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1139"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1140"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1141"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1142"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1144"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1146"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1147"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1148"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1149"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1150"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1151"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1154"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1156"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1157"
     },
     {
       "goal": "standalone-mode",
@@ -22261,6 +23812,10 @@
     {
       "goal": "test-infrastructure",
       "issue": "1091"
+    },
+    {
+      "goal": "test-infrastructure",
+      "issue": "1155"
     }
   ],
   "goalDepLinks": [
@@ -22434,6 +23989,10 @@
     },
     {
       "goal": "generator-model",
+      "issue": "854"
+    },
+    {
+      "goal": "generator-model",
       "issue": "855"
     },
     {
@@ -22546,7 +24105,15 @@
     },
     {
       "goal": "generator-model",
+      "issue": "1035"
+    },
+    {
+      "goal": "generator-model",
       "issue": "1042"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1044"
     },
     {
       "goal": "generator-model",
@@ -22562,7 +24129,15 @@
     },
     {
       "goal": "generator-model",
+      "issue": "1093"
+    },
+    {
+      "goal": "generator-model",
       "issue": "1116"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1119"
     },
     {
       "goal": "generator-model",
@@ -22705,6 +24280,10 @@
       "issue": "1111"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1111"
+    },
+    {
       "goal": "error-model",
       "issue": "3"
     },
@@ -22835,6 +24414,10 @@
     {
       "goal": "error-model",
       "issue": "1110"
+    },
+    {
+      "goal": "error-model",
+      "issue": "1111"
     },
     {
       "goal": "error-model",
@@ -23562,11 +25145,31 @@
     },
     {
       "goal": "compilable",
+      "issue": "1098"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1123"
+    },
+    {
+      "goal": "compilable",
       "issue": "1123"
     },
     {
       "goal": "compilable",
       "issue": "1127"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1127"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1143"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1145"
     },
     {
       "goal": "compilable",
@@ -23722,6 +25325,10 @@
     },
     {
       "goal": "compilable",
+      "issue": "862"
+    },
+    {
+      "goal": "compilable",
       "issue": "1036"
     },
     {
@@ -23731,6 +25338,14 @@
     {
       "goal": "compilable",
       "issue": "1115"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1152"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1153"
     },
     {
       "goal": "compilable",
@@ -23958,6 +25573,10 @@
     },
     {
       "goal": "compilable",
+      "issue": "906"
+    },
+    {
+      "goal": "compilable",
       "issue": "913"
     },
     {
@@ -23967,6 +25586,14 @@
     {
       "goal": "compilable",
       "issue": "991"
+    },
+    {
+      "goal": "compilable",
+      "issue": "991"
+    },
+    {
+      "goal": "compilable",
+      "issue": "996"
     },
     {
       "goal": "compilable",
@@ -24023,6 +25650,10 @@
     {
       "goal": "iterator-protocol",
       "issue": "646"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "1004"
     },
     {
       "goal": "iterator-protocol",
@@ -24162,6 +25793,14 @@
     },
     {
       "goal": "class-system",
+      "issue": "992"
+    },
+    {
+      "goal": "class-system",
+      "issue": "995"
+    },
+    {
+      "goal": "class-system",
       "issue": "995"
     },
     {
@@ -24250,6 +25889,10 @@
     },
     {
       "goal": "core-semantics",
+      "issue": "1043"
+    },
+    {
+      "goal": "core-semantics",
       "issue": "1060"
     },
     {
@@ -24271,6 +25914,10 @@
     {
       "goal": "core-semantics",
       "issue": "1074"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1075"
     },
     {
       "goal": "core-semantics",
@@ -24362,6 +26009,10 @@
     },
     {
       "goal": "platform",
+      "issue": "1043"
+    },
+    {
+      "goal": "platform",
       "issue": "1060"
     },
     {
@@ -24383,6 +26034,10 @@
     {
       "goal": "platform",
       "issue": "1074"
+    },
+    {
+      "goal": "platform",
+      "issue": "1075"
     },
     {
       "goal": "platform",
@@ -24439,6 +26094,10 @@
     {
       "goal": "core-semantics",
       "issue": "743"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "744"
     },
     {
       "goal": "core-semantics",
@@ -24510,11 +26169,27 @@
     },
     {
       "goal": "core-semantics",
+      "issue": "1120"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1121"
+    },
+    {
+      "goal": "core-semantics",
       "issue": "1121"
     },
     {
       "goal": "core-semantics",
       "issue": "1122"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1122"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1126"
     },
     {
       "goal": "core-semantics",
@@ -24682,6 +26357,10 @@
     },
     {
       "goal": "standalone-mode",
+      "issue": "1045"
+    },
+    {
+      "goal": "standalone-mode",
       "issue": "1066"
     },
     {
@@ -24690,7 +26369,23 @@
     },
     {
       "goal": "standalone-mode",
+      "issue": "1096"
+    },
+    {
+      "goal": "standalone-mode",
       "issue": "1099"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1099"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1136"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1137"
     },
     {
       "goal": "core-semantics",
@@ -25106,6 +26801,10 @@
     },
     {
       "goal": "async-model",
+      "issue": "1006"
+    },
+    {
+      "goal": "async-model",
       "issue": "1020"
     },
     {
@@ -25134,6 +26833,14 @@
     },
     {
       "goal": "async-model",
+      "issue": "1073"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1094"
+    },
+    {
+      "goal": "async-model",
       "issue": "1094"
     },
     {
@@ -25151,6 +26858,74 @@
     {
       "goal": "async-model",
       "issue": "1118"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1136"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1137"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1138"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1139"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1140"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1141"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1142"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1144"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1146"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1147"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1148"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1149"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1150"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1151"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1154"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1156"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1157"
     },
     {
       "goal": "symbol-protocol",
@@ -25414,6 +27189,10 @@
     },
     {
       "goal": "symbol-protocol",
+      "issue": "1006"
+    },
+    {
+      "goal": "symbol-protocol",
       "issue": "1020"
     },
     {
@@ -25442,6 +27221,14 @@
     },
     {
       "goal": "symbol-protocol",
+      "issue": "1073"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1094"
+    },
+    {
+      "goal": "symbol-protocol",
       "issue": "1094"
     },
     {
@@ -25459,6 +27246,74 @@
     {
       "goal": "symbol-protocol",
       "issue": "1118"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1136"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1137"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1138"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1139"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1140"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1141"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1142"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1144"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1146"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1147"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1148"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1149"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1150"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1151"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1154"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1156"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1157"
     },
     {
       "goal": "builtin-methods",
@@ -25722,6 +27577,10 @@
     },
     {
       "goal": "builtin-methods",
+      "issue": "1006"
+    },
+    {
+      "goal": "builtin-methods",
       "issue": "1020"
     },
     {
@@ -25750,6 +27609,14 @@
     },
     {
       "goal": "builtin-methods",
+      "issue": "1073"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1094"
+    },
+    {
+      "goal": "builtin-methods",
       "issue": "1094"
     },
     {
@@ -25767,6 +27634,74 @@
     {
       "goal": "builtin-methods",
       "issue": "1118"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1136"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1137"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1138"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1139"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1140"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1141"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1142"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1144"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1146"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1147"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1148"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1149"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1150"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1151"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1154"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1156"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1157"
     },
     {
       "goal": "property-model",
@@ -26030,6 +27965,10 @@
     },
     {
       "goal": "property-model",
+      "issue": "1006"
+    },
+    {
+      "goal": "property-model",
       "issue": "1020"
     },
     {
@@ -26058,6 +27997,14 @@
     },
     {
       "goal": "property-model",
+      "issue": "1073"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1094"
+    },
+    {
+      "goal": "property-model",
       "issue": "1094"
     },
     {
@@ -26075,6 +28022,74 @@
     {
       "goal": "property-model",
       "issue": "1118"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1136"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1137"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1138"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1139"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1140"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1141"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1142"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1144"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1146"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1147"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1148"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1149"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1150"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1151"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1154"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1156"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1157"
     },
     {
       "goal": "iterator-protocol",
