@@ -2,14 +2,14 @@
   "pr": 193,
   "conclusion": "failure",
   "head_branch": "issue-1131-null-deref-assert-throws",
-  "head_sha": "770e64de88510b8672f257225146a245dce8c6f2",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693915864",
-  "timestamp": "2026-04-21T00:42:57Z",
+  "head_sha": "fa834c63179b32a73154a621a4d1183b6236c407",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694138694",
+  "timestamp": "2026-04-21T01:29:47Z",
   "pass": 21492,
   "fail": 13179,
   "compile_error": 7136,
-  "snapshot_delta": 111,
-  "net_per_test": 147,
+  "snapshot_delta": 73,
+  "net_per_test": 73,
   "regressions": 15,
-  "improvements": 162
+  "improvements": 88
 }
