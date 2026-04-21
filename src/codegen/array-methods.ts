@@ -367,19 +367,29 @@ export function compileArrayLikePrototypeCall(
     return undefined;
   }
 
-  // Bail out when the receiver resolves to a concrete WasmGC struct (a real Array
-  // vector, a tuple, an instance class, etc.). This path is intended for externref /
-  // anyref array-like objects (`{length, [i]}`, `arguments`, Proxy targets). A real
-  // wasm array must not go through __extern_length / __extern_get_idx — those host
-  // helpers can't read wasm struct fields, producing wrong lengths (0 / NaN) and
-  // wrong element values. The legacy __proto_method_call bridge and the direct
-  // compileArrayMethodCall path already handle real-array receivers correctly.
+  // Bail out only for real Array vectors (`__vec_*`) and the raw array element
+  // types (`__arr_*`). Those structs are opaque to `__sget_*` getters (excluded
+  // in `emitStructFieldGetters`), so `__extern_length` / `__extern_get_idx`
+  // would see length 0 / undefined. Real arrays take the dedicated
+  // `compileArrayMethodCall` path via the caller's `resolveArrayInfo` branch.
+  //
+  // Other struct receivers (instance classes, anonymous object types like
+  // `{0:..,1:..,length:..}`) have per-field `__sget_*` getters emitted, so
+  // `__extern_length`/`__extern_get_idx` read them correctly (#983, #1090).
+  // Those must be allowed through — the prior blanket bailout routed them
+  // to `__proto_method_call`, which passes the callback as a `__fn_wrap`
+  // externref that the host cannot invoke (regression from PR #195, #1152).
   {
     const recvTsType = ctx.checker.getTypeAtLocation(receiverArg);
     if (recvTsType) {
       const recvWasmType = resolveWasmType(ctx, recvTsType);
       if (recvWasmType.kind === "ref" || recvWasmType.kind === "ref_null") {
-        return undefined;
+        const typeIdx = (recvWasmType as { typeIdx: number }).typeIdx;
+        const typeDef = ctx.mod.types[typeIdx];
+        const typeName = typeDef && "name" in typeDef ? (typeDef as { name?: string }).name : undefined;
+        if (typeName && (typeName.startsWith("__vec_") || typeName.startsWith("__arr_"))) {
+          return undefined;
+        }
       }
     }
   }
@@ -430,7 +440,11 @@ export function compileArrayLikePrototypeCall(
     [{ kind: "externref" }, { kind: "f64" }],
     [{ kind: "i32" }],
   );
-  if (lenFn === undefined || getIdxFn === undefined || hasIdxFn === undefined) return undefined;
+  // __is_truthy for JS-correct truthiness when callback returns externref
+  // (boxed boolean false is non-null, so ref.is_null alone is wrong).
+  const isTruthyFn = ensureLateImport(ctx, "__is_truthy", [{ kind: "externref" }], [{ kind: "i32" }]);
+  if (lenFn === undefined || getIdxFn === undefined || hasIdxFn === undefined || isTruthyFn === undefined)
+    return undefined;
   flushLateImportShifts(ctx, fctx);
 
   // Compile receiver to externref
@@ -520,14 +534,18 @@ export function compileArrayLikePrototypeCall(
         // every/find/some behave as if all elements match (correct for empty loops).
         [{ op: "i32.const", value: 1 } as Instr]
       : closureInfo.returnType.kind === "f64"
-        ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
+        ? // NaN is falsy in JS; f64.ne(0) treats NaN as truthy. Use |x|>0 instead.
+          [{ op: "f64.abs" } as Instr, { op: "f64.const", value: 0 } as Instr, { op: "f64.gt" } as Instr]
         : closureInfo.returnType.kind === "i32"
           ? []
-          : closureInfo.returnType.kind === "externref" ||
-              closureInfo.returnType.kind === "ref" ||
-              closureInfo.returnType.kind === "ref_null"
-            ? [{ op: "ref.is_null" } as Instr, { op: "i32.eqz" } as Instr]
-            : [{ op: "drop" } as Instr, { op: "i32.const", value: 1 } as Instr];
+          : closureInfo.returnType.kind === "externref"
+            ? // Boxed value: __is_truthy unwraps JS semantics (false/0/NaN/""/null → falsy).
+              [{ op: "call", funcIdx: isTruthyFn } as Instr]
+            : closureInfo.returnType.kind === "ref" || closureInfo.returnType.kind === "ref_null"
+              ? // Non-externref struct/string refs: fall back to null check. JS truthiness on
+                // these uncommon shapes is not observable here (callbacks usually return any).
+                [{ op: "ref.is_null" } as Instr, { op: "i32.eqz" } as Instr]
+              : [{ op: "drop" } as Instr, { op: "i32.const", value: 1 } as Instr];
 
   /** Increment i */
   const incrI: Instr[] = [
