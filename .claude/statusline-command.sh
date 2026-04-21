@@ -23,9 +23,10 @@ elif [ -n "$vitesting" ]; then
     if [ "$total" -gt 0 ]; then
       expected=$(jq -r '.summary.total // 48088' "$report" 2>/dev/null)
       pct=$((total * 100 / expected))
-      test_mb=$(ps aux | grep '[v]itest' | awk '{sum+=$6} END {printf "%d", sum/1024}')
+      pass_pct=$(awk "BEGIN {printf \"%.1f\", $pass * 100 / $expected}")
       free_mb=$(free -m | awk '/Mem/{print $7}')
-      printf ' \033[00;33m⟳t262:%s%% p:%s t:%sMB free:%sMB\033[00m' "$pct" "$pass" "$test_mb" "$free_mb"
+      free_g=$(awk "BEGIN {printf \"%.0f\", $free_mb / 1024}")
+      printf ' \033[00;33m⟳t262:%s%% done pass:%s%% free:%sG\033[00m' "$pct" "$pass_pct" "$free_g"
     else
       printf ' \033[00;33m⟳t262:0%%\033[00m'
     fi
@@ -34,8 +35,10 @@ elif [ -n "$vitesting" ]; then
   fi
 elif [ -f "$report" ]; then
   pass=$(jq -r '.summary.pass // 0' "$report" 2>/dev/null)
-  total=$(jq -r '.summary.total // 0' "$report" 2>/dev/null)
-  ce=$(jq -r '.summary.compile_error // 0' "$report" 2>/dev/null)
-  printf ' \033[00;35mt262:%s/%s CE:%s\033[00m' "$pass" "$total" "$ce"
+  total=$(jq -r '.summary.total // 1' "$report" 2>/dev/null)
+  pass_pct=$(awk "BEGIN {printf \"%.1f\", $pass * 100 / $total}")
+  free_mb=$(free -m | awk '/Mem/{print $7}')
+  free_g=$(awk "BEGIN {printf \"%.0f\", $free_mb / 1024}")
+  printf ' \033[00;35mt262:%s%% pass free:%sG\033[00m' "$pass_pct" "$free_g"
 fi
 printf '\n'
