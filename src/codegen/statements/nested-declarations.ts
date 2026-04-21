@@ -111,10 +111,26 @@ export function compileNestedFunctionDeclaration(
   const funcName = stmt.name.text;
 
   // Determine parameter types and return type
+  // Unannotated binding patterns containing a rest element are widened to
+  // externref — TS contextual type gives a fixed-length tuple which the
+  // destructure path can't slice correctly for the rest tail (mirrors the
+  // top-level path in declarations.ts: restBindingOverridesToExternref).
+  const restBindingOverridesToExternref = (p: ts.ParameterDeclaration): boolean => {
+    if (p.type || p.dotDotDotToken) return false;
+    if (ts.isArrayBindingPattern(p.name)) {
+      return p.name.elements.some((e) => !ts.isOmittedExpression(e) && !!e.dotDotDotToken);
+    }
+    if (ts.isObjectBindingPattern(p.name)) {
+      return p.name.elements.some((e) => !!e.dotDotDotToken);
+    }
+    return false;
+  };
   const paramTypes: ValType[] = [];
   for (const p of stmt.parameters) {
     const paramType = ctx.checker.getTypeAtLocation(p);
-    let wasmType = resolveWasmType(ctx, paramType);
+    let wasmType: ValType = restBindingOverridesToExternref(p)
+      ? { kind: "externref" }
+      : resolveWasmType(ctx, paramType);
     // If the parameter has a default value and is a non-null ref type,
     // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
     if (p.initializer && wasmType.kind === "ref") {
@@ -624,15 +640,45 @@ function emitDefaultParamInit(
     const paramIdx = paramOffset + i;
     const paramType = paramTypes[i]!;
 
-    // Build the "then" block: compile default expression, local.set
+    // Build the "then" block: compile default expression, local.set.
+    // For array binding patterns with externref param, force default literals
+    // to compile as vec (not tuple) so the destructure path can convert them.
     const savedBody = pushBody(liftedFctx);
-    compileExpression(ctx, liftedFctx, param.initializer, paramType);
+    const isArrayPatternExternref = ts.isArrayBindingPattern(param.name) && paramType.kind === "externref";
+    const prevForceVec = (ctx as unknown as { _arrayLiteralForceVec?: boolean })._arrayLiteralForceVec;
+    if (isArrayPatternExternref) {
+      (ctx as unknown as { _arrayLiteralForceVec?: boolean })._arrayLiteralForceVec = true;
+    }
+    try {
+      compileExpression(ctx, liftedFctx, param.initializer, paramType);
+    } finally {
+      if (isArrayPatternExternref) {
+        (ctx as unknown as { _arrayLiteralForceVec?: boolean })._arrayLiteralForceVec = prevForceVec;
+      }
+    }
     liftedFctx.body.push({ op: "local.set", index: paramIdx });
     const thenInstrs = liftedFctx.body;
     popBody(liftedFctx, savedBody);
 
     // Emit the null/zero check + conditional assignment
-    if (paramType.kind === "externref" || paramType.kind === "ref_null" || paramType.kind === "ref") {
+    if (paramType.kind === "externref") {
+      // JS semantics: defaults fire on missing arg OR explicit undefined.
+      // Must check __extern_is_undefined in addition to ref.is_null — callers
+      // may pass __get_undefined() which is an externref-wrapped JS undefined,
+      // not Wasm null (#1135 follow-up).
+      const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, liftedFctx);
+      liftedFctx.body.push({ op: "local.get", index: paramIdx });
+      liftedFctx.body.push({ op: "ref.is_null" });
+      liftedFctx.body.push({ op: "local.get", index: paramIdx });
+      liftedFctx.body.push({ op: "call", funcIdx: undefIdx } as Instr);
+      liftedFctx.body.push({ op: "i32.or" } as Instr);
+      liftedFctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
       liftedFctx.body.push({ op: "local.get", index: paramIdx });
       liftedFctx.body.push({ op: "ref.is_null" });
       liftedFctx.body.push({
