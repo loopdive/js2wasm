@@ -133,7 +133,7 @@ function emitToPrimitiveHostCall(
  * Check if a type index corresponds to a vec struct (__vec_*) and return its
  * array type index and element type if so.
  */
-function getVecInfo(ctx: CodegenContext, typeIdx: number): { arrTypeIdx: number; elemType: ValType } | null {
+export function getVecInfo(ctx: CodegenContext, typeIdx: number): { arrTypeIdx: number; elemType: ValType } | null {
   const typeDef = ctx.mod.types[typeIdx];
   if (!typeDef || typeDef.kind !== "struct") return null;
   const sd = typeDef as StructTypeDef;
@@ -153,7 +153,7 @@ function getVecInfo(ctx: CodegenContext, typeIdx: number): { arrTypeIdx: number;
  * Uses __extern_length + __extern_get to read elements and build the WasmGC array.
  * Returns instruction array producing ref_null $vecType on the stack. (#792)
  */
-function buildVecFromExternref(
+export function buildVecFromExternref(
   ctx: CodegenContext,
   fctx: FunctionContext,
   externLocal: number,
