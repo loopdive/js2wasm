@@ -1022,6 +1022,12 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const pushRefType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
     addImport(ctx, "env", "__gen_push_ref", { kind: "func", typeIdx: pushRefType });
 
+    // __gen_yield_star: (externref, externref) → void  (iterates inner iterable, pushes all values into outer buffer)
+    addImport(ctx, "env", "__gen_yield_star", {
+      kind: "func",
+      typeIdx: pushRefType, // same signature as push_ref: (buf, iterable) → void
+    });
+
     // __create_generator: (buf: externref, pendingThrow: externref) -> externref
     // Takes a buffer of yielded values and an optional pending exception,
     // returns a Generator-like object that defers the throw to the first next() call.
