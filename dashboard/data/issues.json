@@ -136,6 +136,68 @@
   ],
   "ready": [
     {
+      "id": "1159",
+      "title": "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "open",
+      "sprint": ""
+    },
+    {
+      "id": "1157",
+      "title": "RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "open",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1155",
+      "title": "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "open",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1154",
+      "title": "test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1119"
+      ],
+      "goal": "spec-completeness",
+      "status": "open",
+      "sprint": "Backlog"
+    },
+    {
+      "id": "1152",
+      "title": "Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "crash-free",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1151",
+      "title": "Async function synchronous throws bypass Promise.reject wrapping",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "Backlog"
+    },
+    {
       "id": "1147",
       "title": "Add a public Docs page to the site",
       "priority": "medium",
@@ -268,16 +330,6 @@
       "goal": "correctness",
       "status": "ready",
       "sprint": "42"
-    },
-    {
-      "id": "1127",
-      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "correctness",
-      "status": "ready",
-      "sprint": "43"
     },
     {
       "id": "1126",
@@ -416,16 +468,6 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "42"
-    },
-    {
-      "id": "1119",
-      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "43"
     },
     {
       "id": "1118",
@@ -2516,6 +2558,16 @@
       "goal": "spec-completeness",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "done",
+      "sprint": "43"
     },
     {
       "id": "1124",
