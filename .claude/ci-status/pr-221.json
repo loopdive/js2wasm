@@ -1,15 +1,15 @@
 {
   "pr": 221,
-  "conclusion": "cancelled",
+  "conclusion": "failure",
   "head_branch": "issue-1135-dstr-iterable-fallback",
-  "head_sha": "868ad7f0b58b435411e09fd08f14afb9f954114a",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694163813",
-  "timestamp": "2026-04-20T23:48:27Z",
-  "pass": null,
-  "fail": null,
-  "compile_error": null,
-  "snapshot_delta": null,
-  "net_per_test": null,
-  "regressions": null,
-  "improvements": null
+  "head_sha": "e60d6ff9e4e5f77bdbda86b9b5ac8dbf15fe622e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24693825847",
+  "timestamp": "2026-04-21T00:09:35Z",
+  "pass": 21416,
+  "fail": 13254,
+  "compile_error": 7137,
+  "snapshot_delta": 35,
+  "net_per_test": 71,
+  "regressions": 47,
+  "improvements": 118
 }
