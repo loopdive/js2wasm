@@ -49,9 +49,7 @@ process.on("unhandledRejection", () => {});
 // V8's internal array optimizations.
 
 const _origArrayIterator = Array.prototype[Symbol.iterator];
-const _origArrayProtoNumericKeys = new Set(
-  Object.getOwnPropertyNames(Array.prototype).filter(k => /^\d+$/.test(k))
-);
+const _origArrayProtoNumericKeys = new Set(Object.getOwnPropertyNames(Array.prototype).filter((k) => /^\d+$/.test(k)));
 const _origObjectProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype));
 const _origMapGet = Map.prototype.get;
 const _origMapSet = Map.prototype.set;
@@ -68,14 +66,18 @@ function restoreBuiltins() {
   // These cause "Cannot set property N of [object Array] which has only a getter"
   for (const key of Object.getOwnPropertyNames(Array.prototype)) {
     if (/^\d+$/.test(key) && !_origArrayProtoNumericKeys.has(key)) {
-      try { delete Array.prototype[key]; } catch {}
+      try {
+        delete Array.prototype[key];
+      } catch {}
     }
   }
 
   // Remove properties added to Object.prototype
   for (const key of Object.getOwnPropertyNames(Object.prototype)) {
     if (!_origObjectProtoKeys.has(key)) {
-      try { delete Object.prototype[key]; } catch {}
+      try {
+        delete Object.prototype[key];
+      } catch {}
     }
   }
 
@@ -92,7 +94,9 @@ function restoreBuiltins() {
     if (/^\d+$/.test(key)) {
       const desc = Object.getOwnPropertyDescriptor(Array.prototype, key);
       if (desc && !desc.configurable) {
-        console.error(`[unified-worker pid=${process.pid}] FATAL: non-configurable Array.prototype[${key}] — exiting for restart`);
+        console.error(
+          `[unified-worker pid=${process.pid}] FATAL: non-configurable Array.prototype[${key}] — exiting for restart`,
+        );
         process.exit(1);
       }
     }
@@ -103,7 +107,9 @@ function restoreBuiltins() {
     if (!_origObjectProtoKeys.has(key)) {
       const desc = Object.getOwnPropertyDescriptor(Object.prototype, key);
       if (desc && !desc.configurable) {
-        console.error(`[unified-worker pid=${process.pid}] FATAL: non-configurable Object.prototype[${key}] — exiting for restart`);
+        console.error(
+          `[unified-worker pid=${process.pid}] FATAL: non-configurable Object.prototype[${key}] — exiting for restart`,
+        );
         process.exit(1);
       }
     }
@@ -121,6 +127,41 @@ function doCompile(source, sourceMapUrl) {
         emitWat: false,
         skipSemanticDiagnostics: true,
       });
+}
+
+/**
+ * Extract a human-readable message from a Wasm runtime error.
+ * Handles `WebAssembly.Exception` (extracts payload via `__exn_tag`),
+ * generic `Error` (pulls `.message` + function-name annotation), and
+ * anything else (falls back to `String(err)`). If `instance` is null
+ * (e.g. the throw happened during `WebAssembly.instantiate` from a
+ * start function), tag lookup is skipped.
+ */
+function extractWasmExceptionMessage(err, instance) {
+  if (err instanceof WebAssembly.Exception) {
+    let payload = null;
+    if (instance) {
+      try {
+        const tag = instance.exports.__exn_tag ?? instance.exports.__tag;
+        if (tag) payload = err.getArg(tag, 0);
+      } catch {}
+    }
+    if (payload instanceof Error) {
+      return payload.message ?? String(payload);
+    }
+    if (payload != null) return String(payload);
+    return instance ? "TypeError (null/undefined access)" : "wasm exception during module init";
+  }
+  if (err instanceof Error) {
+    let info = err.message ?? String(err);
+    const stack = err.stack ?? "";
+    if (/illegal cast|null|unreachable|out of bounds/.test(info)) {
+      const funcMatch = stack.match(/at (\w+) \(wasm:/);
+      if (funcMatch) info = `${info} [in ${funcMatch[1]}()]`;
+    }
+    return info;
+  }
+  return String(err);
 }
 
 function extractWasmFuncName(err) {
@@ -269,39 +310,48 @@ process.on("message", async (msg) => {
   }
   const compileMs = performance.now() - compileStart;
 
-  const hasErrors = !result.success || result.errors.some(e => e.severity === "error");
+  const hasErrors = !result.success || result.errors.some((e) => e.severity === "error");
 
   if (hasErrors) {
     const errMsg = result.errors
-      .filter(e => e.severity === "error")
-      .map(e => `L${e.line}:${e.column} ${e.message}`)
+      .filter((e) => e.severity === "error")
+      .map((e) => `L${e.line}:${e.column} ${e.message}`)
       .join("; ");
-    const errorCodes = result.errors
-      .filter(e => e.severity === "error" && e.code)
-      .map(e => e.code);
+    const errorCodes = result.errors.filter((e) => e.severity === "error" && e.code).map((e) => e.code);
 
     // Write error to disk cache if paths provided
     if (msg.wasmPath && msg.metaPath) {
       try {
         writeFileSync(msg.wasmPath, new Uint8Array(0));
-        writeFileSync(msg.metaPath, JSON.stringify({
-          ok: false, error: errMsg || "unknown", errorCodes, compileMs,
-        }));
+        writeFileSync(
+          msg.metaPath,
+          JSON.stringify({
+            ok: false,
+            error: errMsg || "unknown",
+            errorCodes,
+            compileMs,
+          }),
+        );
       } catch {}
     }
 
     // Negative parse/early tests: compile error = pass
     if (execute && isNegative) {
       const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
-      const hasEarlyError = errorCodes.some(c => ES_EARLY_ERRORS.has(c));
+      const hasEarlyError = errorCodes.some((c) => ES_EARLY_ERRORS.has(c));
       process.send({
-        id, status: hasEarlyError ? "pass" : "pass",
-        compileMs, errorCodes,
+        id,
+        status: hasEarlyError ? "pass" : "pass",
+        compileMs,
+        errorCodes,
       });
     } else {
       process.send({
-        id, status: "compile_error",
-        error: errMsg || "unknown", errorCodes, compileMs,
+        id,
+        status: "compile_error",
+        error: errMsg || "unknown",
+        errorCodes,
+        compileMs,
       });
     }
     postCompileCleanup();
@@ -337,13 +387,16 @@ process.on("message", async (msg) => {
   if (msg.wasmPath && msg.metaPath) {
     try {
       writeFileSync(msg.wasmPath, result.binary);
-      writeFileSync(msg.metaPath, JSON.stringify({
-        ok: true,
-        stringPool: result.stringPool,
-        imports: result.imports,
-        sourceMap: result.sourceMap || null,
-        compileMs,
-      }));
+      writeFileSync(
+        msg.metaPath,
+        JSON.stringify({
+          ok: true,
+          stringPool: result.stringPool,
+          imports: result.imports,
+          sourceMap: result.sourceMap || null,
+          compileMs,
+        }),
+      );
     } catch {}
   }
 
@@ -363,7 +416,8 @@ process.on("message", async (msg) => {
       await WebAssembly.instantiate(result.binary, importObj);
       // Instantiation succeeded — this is a failure (expected parse/early error)
       process.send({
-        id, status: "fail",
+        id,
+        status: "fail",
         error: `expected parse/early ${expectedErrorType || "error"} but compiled and instantiated successfully`,
         compileMs,
       });
@@ -384,11 +438,37 @@ process.on("message", async (msg) => {
       const wasmResult = await WebAssembly.instantiate(result.binary, importObj);
       instance = wasmResult.instance;
     } catch (err) {
+      const execMs = performance.now() - execStart;
+      // Real Wasm compile/link failures stay as compile_error. A throw from
+      // the module's start function — which surfaces as WebAssembly.Exception
+      // or a plain Error — is a runtime throw, not a compile failure.
+      if (err instanceof WebAssembly.CompileError || err instanceof WebAssembly.LinkError) {
+        process.send({
+          id,
+          status: "compile_error",
+          error: err.message ?? String(err),
+          instantiateError: true,
+          compileMs,
+          execMs,
+        });
+        postCompileCleanup();
+        return;
+      }
+
+      if (isRuntimeNegative) {
+        process.send({ id, status: "pass", compileMs, execMs, runtimeNegativePass: true });
+        postCompileCleanup();
+        return;
+      }
+
       process.send({
-        id, status: "compile_error",
-        error: err.message ?? String(err),
+        id,
+        status: "fail",
+        error: extractWasmExceptionMessage(err, null),
+        isException: true,
         instantiateError: true,
-        compileMs, execMs: performance.now() - execStart,
+        compileMs,
+        execMs,
       });
       postCompileCleanup();
       return;
@@ -402,9 +482,11 @@ process.on("message", async (msg) => {
     const testFn = instance.exports.test;
     if (typeof testFn !== "function") {
       process.send({
-        id, status: "compile_error",
+        id,
+        status: "compile_error",
         error: "no test export",
-        compileMs, execMs: performance.now() - execStart,
+        compileMs,
+        execMs: performance.now() - execStart,
       });
       postCompileCleanup();
       return;
@@ -417,9 +499,12 @@ process.on("message", async (msg) => {
 
       if (isRuntimeNegative) {
         process.send({
-          id, status: "fail",
+          id,
+          status: "fail",
           error: "expected runtime error but succeeded",
-          ret, compileMs, execMs,
+          ret,
+          compileMs,
+          execMs,
           runtimeNegativeNoThrow: true,
         });
       } else {
@@ -434,51 +519,32 @@ process.on("message", async (msg) => {
         return;
       }
 
-      // Extract exception info
-      let errInfo = "";
-      if (execErr instanceof WebAssembly.Exception) {
-        let payload = null;
-        try {
-          const tag = instance.exports.__exn_tag ?? instance.exports.__tag;
-          if (tag) payload = execErr.getArg(tag, 0);
-        } catch {}
-
-        if (payload instanceof Error) {
-          errInfo = payload.message ?? String(payload);
-        } else {
-          errInfo = "TypeError (null/undefined access)";
-        }
-      } else if (execErr instanceof Error) {
-        errInfo = execErr.message ?? String(execErr);
-        const stack = execErr.stack ?? "";
-        if (/illegal cast|null|unreachable|out of bounds/.test(errInfo)) {
-          const funcMatch = stack.match(/at (\w+) \(wasm:/);
-          if (funcMatch) errInfo = `${errInfo} [in ${funcMatch[1]}()]`;
-        }
-      } else {
-        errInfo = String(execErr);
-      }
+      let errInfo = extractWasmExceptionMessage(execErr, instance);
 
       // Annotate with source location via source map
       const byteOffset = extractWasmByteOffset(execErr);
       const mapped =
-        byteOffset !== undefined && result.sourceMap
-          ? lookupSourceMapOffset(result.sourceMap, byteOffset)
-          : undefined;
+        byteOffset !== undefined && result.sourceMap ? lookupSourceMapOffset(result.sourceMap, byteOffset) : undefined;
       if (mapped) {
         errInfo = `L${mapped.line}:${mapped.column} ${errInfo}`;
       }
 
       process.send({
-        id, status: "fail", error: errInfo,
-        isException: true, compileMs, execMs,
+        id,
+        status: "fail",
+        error: errInfo,
+        isException: true,
+        compileMs,
+        execMs,
       });
     }
   } catch (outerErr) {
     process.send({
-      id, status: "compile_error",
+      id,
+      status: "compile_error",
       error: outerErr.message ?? String(outerErr),
-      compileMs, execMs: performance.now() - execStart,
+      compileMs,
+      execMs: performance.now() - execStart,
     });
   }
 
