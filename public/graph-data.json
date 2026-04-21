@@ -16337,6 +16337,42 @@
       "cluster": "spec-conformance"
     },
     {
+      "id": "1160",
+      "title": "Array.from codegen error — property of first arg must be integer (730 tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1161",
+      "title": "Cannot destructure null/undefined in private class method params (~429 dstr tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1162",
+      "title": "yield* async — unexpected undefined AST node in compileExpression (~161 tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -18301,7 +18337,10 @@
         "1151",
         "1154",
         "1156",
-        "1157"
+        "1157",
+        "1160",
+        "1161",
+        "1162"
       ]
     },
     {
@@ -22459,6 +22498,18 @@
       "issue": "1157"
     },
     {
+      "goal": "spec-completeness",
+      "issue": "1160"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1161"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1162"
+    },
+    {
       "goal": "standalone-mode",
       "issue": "34"
     },
@@ -26101,6 +26152,18 @@
       "issue": "1157"
     },
     {
+      "goal": "async-model",
+      "issue": "1160"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1161"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1162"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -26485,6 +26548,18 @@
       "issue": "1157"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1160"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1161"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1162"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -26869,6 +26944,18 @@
       "issue": "1157"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1160"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1161"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1162"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -27251,6 +27338,18 @@
     {
       "goal": "property-model",
       "issue": "1157"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1160"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1161"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1162"
     },
     {
       "goal": "iterator-protocol",
