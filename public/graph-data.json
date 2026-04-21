@@ -16636,6 +16636,93 @@
       "cluster": "spec-completeness"
     },
     {
+      "id": "1147",
+      "title": "Fix Function.length regression on library methods — wrong answer for toSorted/slice/splice/etc.",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1147",
+      "title": "Add a public Docs page to the site",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
+    },
+    {
+      "id": "1148",
+      "title": "Investigate skip:103 regression — Annex B eval-code skip filter",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1149",
+      "title": "Fix null_deref:32 — eval-code direct methods with arguments declare",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1150",
+      "title": "Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "42",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1153",
+      "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
+      "priority": "critical",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "crash-free",
+      "cluster": "crash-free",
+      "test262_fail": 3585
+    },
+    {
+      "id": "1156",
+      "title": "Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "Backlog",
+      "depends_on": [
+        "1152"
+      ],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -18152,7 +18239,8 @@
         "862",
         "1036",
         "1038",
-        "1115"
+        "1115",
+        "1153"
       ]
     },
     {
@@ -18178,7 +18266,8 @@
         "977",
         "978",
         "1008",
-        "1039"
+        "1039",
+        "1147"
       ],
       "track": "supporting track"
     },
@@ -18699,7 +18788,12 @@
         "1141",
         "1142",
         "1144",
-        "1146"
+        "1146",
+        "1147",
+        "1148",
+        "1149",
+        "1150",
+        "1156"
       ]
     },
     {
@@ -21300,6 +21394,10 @@
       "issue": "1115"
     },
     {
+      "goal": "crash-free",
+      "issue": "1153"
+    },
+    {
       "goal": "developer-experience",
       "issue": "12"
     },
@@ -21366,6 +21464,10 @@
     {
       "goal": "developer-experience",
       "issue": "1039"
+    },
+    {
+      "goal": "developer-experience",
+      "issue": "1147"
     },
     {
       "goal": "error-model",
@@ -22946,6 +23048,26 @@
     {
       "goal": "spec-completeness",
       "issue": "1146"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1147"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1148"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1149"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1150"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1156"
     },
     {
       "goal": "standalone-mode",
@@ -25099,6 +25221,10 @@
     },
     {
       "goal": "compilable",
+      "issue": "1153"
+    },
+    {
+      "goal": "compilable",
       "issue": "119"
     },
     {
@@ -26646,6 +26772,26 @@
       "issue": "1146"
     },
     {
+      "goal": "async-model",
+      "issue": "1147"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1148"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1149"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1150"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1156"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -27002,6 +27148,26 @@
       "issue": "1146"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1147"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1148"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1149"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1150"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1156"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -27358,6 +27524,26 @@
       "issue": "1146"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1147"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1148"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1149"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1150"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1156"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -27712,6 +27898,26 @@
     {
       "goal": "property-model",
       "issue": "1146"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1147"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1148"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1149"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1150"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1156"
     },
     {
       "goal": "iterator-protocol",
