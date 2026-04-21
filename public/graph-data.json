@@ -10601,23 +10601,6 @@
       "priority": "medium",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "42",
-      "depends_on": [
-        "688"
-      ],
-      "files": [
-        "extract compileCallExpression (3,350 lines) into calls.ts",
-        "convert dispatch to table-driven pattern"
-      ],
-      "goal": "maintainability",
-      "cluster": "maintainability"
-    },
-    {
-      "id": "742",
-      "title": "Extract and refactor compileCallExpression (3,350 lines)",
-      "priority": "medium",
-      "status": "blocked",
-      "raw_status": "blocked",
       "sprint": "43",
       "depends_on": [
         "688"
@@ -11683,7 +11666,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "review",
-      "sprint": "42",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -11694,9 +11677,9 @@
       "id": "826",
       "title": "Illegal cast failures (1,276 runtime failures)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
-      "sprint": "42",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -12810,8 +12793,8 @@
       "id": "907",
       "title": "Replace __init_done runtime guards with start/init entry semantics",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [
         "900"
@@ -14161,8 +14144,8 @@
       "id": "1001",
       "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -14223,8 +14206,8 @@
       "id": "1005",
       "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -14247,8 +14230,8 @@
       "id": "1006",
       "title": "Support eval via JS host import",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -15012,8 +14995,8 @@
       "id": "1067",
       "title": "Dependency graph as a web component adopting the landing page color scheme",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -15096,8 +15079,8 @@
       "id": "1073",
       "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [
         "1006"
@@ -15168,8 +15151,8 @@
       "id": "1077",
       "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [
         "1076"
@@ -15395,8 +15378,8 @@
       "id": "1094",
       "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -15624,24 +15607,8 @@
       "id": "1111",
       "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "42",
-      "depends_on": [],
-      "files": [
-        "compileWrapperConstructor — struct wrapping a primitive with __is_wrapper tag",
-        "typeof — branch on wrapper tag for object vs primitive"
-      ],
-      "goal": "builtin-methods",
-      "cluster": "builtin-methods",
-      "test262_skip": 648
-    },
-    {
-      "id": "1111",
-      "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
-      "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
+      "status": "ready",
+      "raw_status": "ready",
       "sprint": "43",
       "depends_on": [],
       "files": [
@@ -15732,8 +15699,8 @@
       "id": "1117",
       "title": "Expected TypeError but got wrong error type (136 tests)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -15832,8 +15799,8 @@
       "id": "1123",
       "title": "Verify landing page claims and code examples against current compiler behavior",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "42",
       "depends_on": [],
       "files": [],
@@ -16976,10 +16943,6 @@
       "target": "1146"
     },
     {
-      "source": "688",
-      "target": "742"
-    },
-    {
       "source": "900",
       "target": "907"
     },
@@ -17239,7 +17202,6 @@
         "763",
         "955",
         "1110",
-        "1111",
         "1111"
       ]
     },
@@ -18008,7 +17970,6 @@
         "637",
         "688",
         "741",
-        "742",
         "742",
         "795",
         "803",
@@ -18972,10 +18933,6 @@
     {
       "goal": "builtin-methods",
       "issue": "1110"
-    },
-    {
-      "goal": "builtin-methods",
-      "issue": "1111"
     },
     {
       "goal": "builtin-methods",
@@ -21471,10 +21428,6 @@
     },
     {
       "goal": "maintainability",
-      "issue": "742"
-    },
-    {
-      "goal": "maintainability",
       "issue": "795"
     },
     {
@@ -23580,10 +23533,6 @@
       "issue": "1111"
     },
     {
-      "goal": "core-semantics",
-      "issue": "1111"
-    },
-    {
       "goal": "error-model",
       "issue": "3"
     },
@@ -23714,10 +23663,6 @@
     {
       "goal": "error-model",
       "issue": "1110"
-    },
-    {
-      "goal": "error-model",
-      "issue": "1111"
     },
     {
       "goal": "error-model",

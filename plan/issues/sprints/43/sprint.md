@@ -26,12 +26,6 @@ TBD
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### Backlog
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | backlog |
-
 ### Blocked
 
 | Issue | Title | Priority | Status |
@@ -82,6 +76,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
+| #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | ready |
 | #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
 | #1119 | ES2015 SingleNameBinding anonymous function/class naming from destructuring context | medium | ready |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
@@ -108,10 +103,17 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | in-progress |
 | #1156 | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | medium | in-progress |
 
+### Review
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #825 | Null dereference failures (2,295 runtime failures) | high | review |
+
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #826 | Illegal cast failures (1,276 runtime failures) | high | done |
 | #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
