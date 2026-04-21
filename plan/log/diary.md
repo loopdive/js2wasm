@@ -268,3 +268,23 @@ Continuous log of learnings, progress, and incidents. Append new entries at the 
 - **CI baselines must come from CI, not local runs** — local runs miss fork-worker-specific regressions
 - **Non-configurable prototype mutations require process restart** — no JS-level cleanup possible
 - **Cache keys must include all compilation-relevant files** — worker scripts affect results just as much as source code
+
+---
+
+## Sprint 42 — 2026-04-21
+
+**Result**: 24,483 / 43,172 pass = 56.7%
+**Issues completed**: 40
+**Key merges**: #144 Symbol.iterator on vecs, #160 CI split, #231 IR scaffold Phase 1
+**Carried forward**: #825 null deref (partial), #826 illegal cast (partial), #742 (blocked), #1111 (deferred)
+
+### Key merges this sprint
+- IR scaffold Phase 1 merged (#231) — gated behind `experimentalIR` flag
+- CI split into merge-report + regression-gate (#160) — cleaner failure attribution
+- Symbol.iterator on WasmGC vecs (#144) — net-zero but correct behavior
+- Multiple destructuring fixes, async-gen fixes, array method fixes
+
+### Key learnings
+- **Worktree sprawl accumulates fast** — 80+ worktrees by end of sprint; clean at sprint boundaries
+- **Sprint numbering drift** — issues were pre-created in sprint 43 while sprint 42 was still active; always check sprint tags before creating sprint folders
+- **CI SHA matching is essential** — always verify CI result SHA matches branch HEAD before merging
