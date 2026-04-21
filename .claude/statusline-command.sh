@@ -2,12 +2,31 @@
 input=$(cat)
 cwd=$(echo "$input" | jq -r '.cwd // .workspace.current_dir // empty')
 model=$(echo "$input" | jq -r '.model.display_name // empty')
+model_id=$(echo "$input" | jq -r '.model.id // empty')
+ctx_size=$(echo "$input" | jq -r 'if .context_window.context_window_size then (.context_window.context_window_size / 1000 | floor | tostring) + "K" else empty end')
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 weekly=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 effort=$(echo "$input" | jq -r '.thinking.type // .effort // empty')
 in_worktree=$(echo "$input" | jq -r '.worktree.path // empty')
+case "$model_id" in
+  claude-opus-4-7*)   pricing='$15/$75'; price_in=15 ;;
+  claude-sonnet-4-6*) pricing='$3/$15';  price_in=3  ;;
+  claude-haiku-4-5*)  pricing='$0.8/$4'; price_in=0  ;;
+  *)                  pricing='';        price_in=0  ;;
+esac
+if [ -n "$pricing" ]; then
+  if [ "$price_in" -ge 5 ] 2>/dev/null; then   price_color='00;31'
+  elif [ "$price_in" -ge 1 ] 2>/dev/null; then  price_color='00;33'
+  else                                           price_color='00;32'
+  fi
+fi
 printf '\033[01;34m%s\033[00m' "${cwd:-$(pwd)}"
-[ -n "$model" ] && printf ' \033[00;37m%s\033[00m' "$model"
+[ -n "$model" ] && printf ' \033[%sm%s\033[00m' "${price_color:-00;37}" "$model"
+if [ -n "$ctx_size" ]; then
+  [ "$ctx_size" = "1000K" ] && ctx_color='00;31' || ctx_color='00;37'
+  printf ' \033[%sm%s\033[00m' "$ctx_color" "$ctx_size"
+fi
+[ -n "$pricing" ] && printf ' \033[%sm%s\033[00m' "$price_color" "$pricing"
 [ -n "$effort" ] && [ "$effort" != "none" ] && [ "$effort" != "disabled" ] && printf ' \033[00;33m%s\033[00m' "$effort"
 if [ -n "$used" ] || [ -n "$weekly" ]; then
   if [ -n "$used" ]; then
@@ -31,9 +50,9 @@ if [ -n "$used" ] || [ -n "$weekly" ]; then
       if (p >= 75)      { fill="48;5;196"; fg=37 }
       else if (p >= 50) { fill=43; fg=30 }
       else              { fill=42; fg=30 }
-      width = 12
+      width = 10
       filled = int(p * width / 100)
-      label = sprintf(" %.1f%% wkly", p)
+      label = sprintf(" %d%% wkly", int(p))
       bar = ""
       for (i = 0; i < width; i++) bar = bar " "
       bar = label substr(bar, length(label) + 1)
