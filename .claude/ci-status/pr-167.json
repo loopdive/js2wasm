@@ -1,15 +1,15 @@
 {
   "pr": 167,
-  "conclusion": "failure",
+  "conclusion": "success",
   "head_branch": "issue-1120-int32-bitwise-loop",
-  "head_sha": "e42acaaef541f6882a149bb0a31400ea2ec45782",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24640269055",
-  "timestamp": "2026-04-19T23:58:32Z",
-  "pass": 22950,
-  "fail": 14519,
-  "compile_error": 4191,
-  "snapshot_delta": 500,
-  "net_per_test": 500,
-  "regressions": 837,
-  "improvements": 1337
+  "head_sha": "6c39301db75b64b0941a558adcd99cec4156d88f",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24694160308",
+  "timestamp": "2026-04-21T01:13:09Z",
+  "pass": 21419,
+  "fail": 13253,
+  "compile_error": 7135,
+  "snapshot_delta": 0,
+  "net_per_test": 0,
+  "regressions": 0,
+  "improvements": 0
 }

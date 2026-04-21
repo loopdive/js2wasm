@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-20T20:26:50.665Z",
+  "generatedAt": "2026-04-21T04:26:02.972Z",
   "wasmtimeVersion": "wasmtime 31.0.0 (7a9be587f 2025-03-20)",
   "wasmtimeOptimize": "opt-level=2",
   "host": {
@@ -37,15 +37,15 @@
           "coldStart": {
             "arg": 2000,
             "runs": 7,
-            "medianMs": 30.050567,
+            "medianMs": 29.23541199999994,
             "allMs": [
-              33.195291,
-              29.95889299999999,
-              38.193128,
-              33.86826300000007,
-              29.144484000000034,
-              30.050567,
-              29.27762299999995
+              35.024793999999986,
+              29.23541199999994,
+              30.856090999999992,
+              29.2846780000001,
+              28.719363000000044,
+              28.388337999999976,
+              28.709741000000008
             ],
             "result": 1018392
           },
@@ -53,13 +53,13 @@
             "arg": 1000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 25.486128999999984,
+            "medianMs": 24.64379979999999,
             "allMs": [
-              25.486128999999984,
-              27.331104400000005,
-              26.307720399999972,
-              24.76879219999996,
-              25.331797600000026
+              26.2049262,
+              24.585282800000005,
+              25.164154999999983,
+              24.64379979999999,
+              24.63390159999999
             ],
             "result": 511492320
           },
@@ -67,13 +67,13 @@
             "arg": 1000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 15.6260108,
+            "medianMs": 15.123080399999997,
             "allMs": [
-              14.3076386,
-              15.6260108,
-              15.4145284,
-              16.015046,
-              15.905956600000001
+              14.3308154,
+              15.364230400000002,
+              15.123080399999997,
+              15.120165200000002,
+              15.285914200000002
             ],
             "result": 511492320
           },
@@ -88,24 +88,24 @@
           "label": "js2wasm -> Node.js (hosted)",
           "status": "ok",
           "notes": [],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": 2024,
-          "compileMs": 1248.0870659999998,
+          "compileMs": 1221.5815650000002,
           "rawBytes": 286,
           "gzipBytes": 223,
           "precompiledBytes": null,
           "coldStart": {
             "arg": 2000,
             "runs": 7,
-            "medianMs": 425.47989099999995,
+            "medianMs": 420.225856,
             "allMs": [
-              430.5962840000002,
-              430.77856999999995,
-              431.430961,
-              425.17385000000013,
-              418.94207000000006,
-              425.47989099999995,
-              413.18163600000025
+              418.18258700000024,
+              423.72479299999986,
+              414.09762699999965,
+              420.225856,
+              421.5646689999994,
+              420.04426499999954,
+              428.31185800000003
             ],
             "result": 1018392
           },
@@ -113,13 +113,13 @@
             "arg": 1000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 94.22621239999971,
+            "medianMs": 93.58782780000001,
             "allMs": [
-              92.06492899999975,
-              92.5382669999999,
-              96.9014565999998,
-              94.94127200000003,
-              94.22621239999971
+              92.0457112,
+              90.88275959999991,
+              94.41668160000009,
+              93.58782780000001,
+              95.3947243999999
             ],
             "result": 511492320
           },
@@ -127,13 +127,13 @@
             "arg": 1000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 5.4597761999999985,
+            "medianMs": 5.423223000000007,
             "allMs": [
-              5.4597761999999985,
-              5.649968400000001,
-              5.506594999999993,
-              5.358724600000005,
-              5.176161000000002
+              5.502310799999998,
+              5.423223000000007,
+              5.137752999999998,
+              5.334100799999999,
+              5.479596400000003
             ],
             "result": 511492320
           },
@@ -156,9 +156,9 @@
           "notes": [
             "error: unknown -W / --wasm option: gc-support\n"
           ],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": null,
-          "compileMs": 705.3489840000002,
+          "compileMs": 708.9658990000007,
           "rawBytes": 519,
           "gzipBytes": 315,
           "precompiledBytes": null,
@@ -272,15 +272,15 @@
           "coldStart": {
             "arg": 10,
             "runs": 7,
-            "medianMs": 30.11047199999848,
+            "medianMs": 29.874739999999292,
             "allMs": [
-              30.999605999999403,
-              30.114376000001357,
-              30.11047199999848,
-              29.613241000000926,
-              28.983550000000832,
-              32.73697699999866,
-              29.58974599999965
+              30.54201600000124,
+              28.816013000001476,
+              30.320354999999836,
+              29.97889899999973,
+              29.874739999999292,
+              29.175888000001578,
+              28.536182999998346
             ],
             "result": 55
           },
@@ -288,13 +288,13 @@
             "arg": 30,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 18.305074199999943,
+            "medianMs": 18.092660199999955,
             "allMs": [
-              18.34163039999985,
-              17.978597199999786,
-              18.305074199999943,
-              17.77071199999991,
-              18.75202680000002
+              17.884010599999964,
+              17.892808800000058,
+              18.261809599999832,
+              18.23501479999977,
+              18.092660199999955
             ],
             "result": 832040
           },
@@ -302,13 +302,13 @@
             "arg": 30,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 9.8993632,
+            "medianMs": 9.848532400000002,
             "allMs": [
-              9.8003766,
-              9.915547399999998,
-              9.8993632,
-              10.250744399999999,
-              9.878231600000001
+              9.786424,
+              9.837702,
+              9.863606999999998,
+              9.848532400000002,
+              9.865175400000002
             ],
             "result": 832040
           },
@@ -325,9 +325,9 @@
           "notes": [
             "[wasm-validator error in function fib] call param types must match, on \n(call $__any_add\n (local.get $0)\n (call $fib\n  (i32.const 2)\n )\n)\n(on argument 0)\nFatal: error validating input\n"
           ],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": 2024,
-          "compileMs": 444.9745409999996,
+          "compileMs": 417.42761299999984,
           "rawBytes": 5878,
           "gzipBytes": 2397,
           "precompiledBytes": null,
@@ -344,9 +344,9 @@
             "env:__unbox_number",
             "env:__box_number"
           ],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": null,
-          "compileMs": 356.7127610000007,
+          "compileMs": 351.77000299999963,
           "rawBytes": 4186,
           "gzipBytes": 1764,
           "precompiledBytes": null,
@@ -465,15 +465,15 @@
           "coldStart": {
             "arg": 5000,
             "runs": 7,
-            "medianMs": 31.30801900000006,
+            "medianMs": 30.613181000000623,
             "allMs": [
-              36.0582089999989,
-              30.000496000000567,
-              30.62118299999929,
-              28.56418599999961,
-              33.711144000000786,
-              35.86730499999976,
-              31.30801900000006
+              33.91468899999927,
+              29.614223000000493,
+              29.608288999999786,
+              30.613181000000623,
+              31.295697999999902,
+              28.741391000001386,
+              31.37250800000038
             ],
             "result": -1846256875
           },
@@ -481,13 +481,13 @@
             "arg": 20000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 130.00257439999987,
+            "medianMs": 129.82985119999975,
             "allMs": [
-              130.09398760000005,
-              129.8488079999999,
-              130.00257439999987,
-              129.80077779999993,
-              130.19690359999987
+              129.7298514000002,
+              129.96313240000018,
+              129.97411280000014,
+              129.74337599999998,
+              129.82985119999975
             ],
             "result": -1821818939
           },
@@ -495,13 +495,13 @@
             "arg": 20000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 102.736819,
+            "medianMs": 102.74873480000001,
             "allMs": [
-              102.73180180000001,
-              103.01602360000001,
-              102.736819,
-              102.77565360000001,
-              102.72176520000001
+              102.73929659999999,
+              102.8333662,
+              102.7289592,
+              102.74873480000001,
+              102.75699879999999
             ],
             "result": -1821818939
           },
@@ -516,24 +516,24 @@
           "label": "js2wasm -> Node.js (hosted)",
           "status": "ok",
           "notes": [],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": 2024,
-          "compileMs": 351.2873860000036,
+          "compileMs": 348.89335700000083,
           "rawBytes": 131,
           "gzipBytes": 125,
           "precompiledBytes": null,
           "coldStart": {
             "arg": 5000,
             "runs": 7,
-            "medianMs": 429.31761800000095,
+            "medianMs": 424.08188000000155,
             "allMs": [
-              429.88036900000225,
-              430.4357929999969,
-              425.2354059999998,
-              429.31761800000095,
-              423.9804000000004,
-              435.48416400000133,
-              426.25224999999773
+              419.22561300000234,
+              419.72146299999804,
+              424.08188000000155,
+              422.63585800000146,
+              428.0775500000018,
+              430.00969800000166,
+              429.4882940000025
             ],
             "result": -1846256875
           },
@@ -541,13 +541,13 @@
             "arg": 20000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 98.74402659999978,
+            "medianMs": 99.61397599999982,
             "allMs": [
-              98.7329635999995,
-              98.63794420000049,
-              100.60138999999981,
-              100.54680599999992,
-              98.74402659999978
+              100.16592339999988,
+              102.08336980000021,
+              97.67534059999961,
+              99.61397599999982,
+              96.08210160000017
             ],
             "result": -1821818939
           },
@@ -555,13 +555,13 @@
             "arg": 20000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 6.2309214,
+            "medianMs": 6.230074400000001,
             "allMs": [
-              6.232239799999991,
-              6.226455199999998,
-              6.2181875999999985,
-              6.2309214,
-              6.238693999999998
+              6.226235399999996,
+              6.266428399999995,
+              6.227592000000004,
+              6.230074400000001,
+              6.2446638000000005
             ],
             "result": -1821818939
           },
@@ -584,9 +584,9 @@
           "notes": [
             "error: unknown -W / --wasm option: gc-support\n"
           ],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": null,
-          "compileMs": 318.2973180000008,
+          "compileMs": 325.3312429999969,
           "rawBytes": 223,
           "gzipBytes": 182,
           "precompiledBytes": null,
@@ -700,15 +700,15 @@
           "coldStart": {
             "arg": 1000,
             "runs": 7,
-            "medianMs": 30.683474999997998,
+            "medianMs": 30.25785100000212,
             "allMs": [
-              31.10250299999825,
-              30.683474999997998,
-              30.07798299999922,
-              30.008837000001222,
-              31.498891999999614,
-              31.103233000001637,
-              30.48222700000042
+              30.25785100000212,
+              29.84092900000178,
+              30.852814999998373,
+              30.298320999998396,
+              29.76665000000139,
+              30.030016000000614,
+              31.924706999998307
             ],
             "result": -20015548
           },
@@ -716,13 +716,13 @@
             "arg": 800000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 13.82652539999981,
+            "medianMs": 13.350560399999813,
             "allMs": [
-              13.997485199999938,
-              13.82652539999981,
-              13.951822999999422,
-              13.41284400000004,
-              13.727075999999943
+              13.607872199999838,
+              13.350560399999813,
+              13.260606399999961,
+              13.360930200000439,
+              13.27893499999991
             ],
             "result": 1986408576
           },
@@ -730,13 +730,13 @@
             "arg": 800000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 5.2409704,
+            "medianMs": 5.2395512,
             "allMs": [
-              5.2551890000000006,
-              5.239942600000001,
-              5.234760799999999,
-              5.2409704,
-              5.2421126000000005
+              5.2417772,
+              5.261991,
+              5.2395512,
+              5.234347400000001,
+              5.2364914
             ],
             "result": 1986408576
           },
@@ -751,24 +751,24 @@
           "label": "js2wasm -> Node.js (hosted)",
           "status": "ok",
           "notes": [],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": 2024,
-          "compileMs": 321.4516410000033,
+          "compileMs": 317.6344590000044,
           "rawBytes": 377,
           "gzipBytes": 265,
           "precompiledBytes": null,
           "coldStart": {
             "arg": 1000,
             "runs": 7,
-            "medianMs": 429.59381199999916,
+            "medianMs": 424.83161200000177,
             "allMs": [
-              427.20786299999963,
-              426.6413969999994,
-              429.70813700000144,
-              429.59381199999916,
-              425.9865959999988,
-              430.0399230000003,
-              434.3179919999966
+              424.83161200000177,
+              425.933896999999,
+              418.58611299999757,
+              413.99821200000224,
+              423.0811329999997,
+              427.4248469999984,
+              431.41527900000074
             ],
             "result": -20015548
           },
@@ -776,13 +776,13 @@
             "arg": 800000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 88.23455399999948,
+            "medianMs": 87.06320500000001,
             "allMs": [
-              88.25202600000048,
-              87.16537320000062,
-              88.23455399999948,
-              86.87866400000057,
-              88.96919759999874
+              86.56285419999912,
+              87.22173560000083,
+              88.61133180000033,
+              86.6096636000002,
+              87.06320500000001
             ],
             "result": 1986408576
           },
@@ -790,13 +790,13 @@
             "arg": 800000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 0.7530240000000049,
+            "medianMs": 0.7526162,
             "allMs": [
-              0.7528998000000001,
-              0.7538415999999983,
-              0.7489465999999994,
-              0.7532245999999987,
-              0.7530240000000049
+              0.7495704000000046,
+              0.7526162,
+              0.7547502000000008,
+              0.754383400000006,
+              0.749658599999998
             ],
             "result": 1986408576
           },
@@ -819,11 +819,11 @@
           "notes": [
             "error: unknown -W / --wasm option: gc-support\n"
           ],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": null,
-          "compileMs": 339.38248300000123,
-          "rawBytes": 609,
-          "gzipBytes": 345,
+          "compileMs": 323.7426059999998,
+          "rawBytes": 580,
+          "gzipBytes": 336,
           "precompiledBytes": null,
           "coldStart": null,
           "runtime": null,
@@ -935,15 +935,15 @@
           "coldStart": {
             "arg": 100,
             "runs": 7,
-            "medianMs": 33.20815500000026,
+            "medianMs": 30.410139999999956,
             "allMs": [
-              30.988813999996637,
-              33.584212999994634,
-              32.11030899999605,
-              33.87479000000167,
-              33.20815500000026,
-              31.573423999994702,
-              33.22605499999918
+              30.422919000004185,
+              28.475673000000825,
+              29.520033999993757,
+              31.225380000003497,
+              29.150541999995767,
+              31.640385000006063,
+              30.410139999999956
             ],
             "result": 36729899
           },
@@ -951,13 +951,13 @@
             "arg": 20000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 9.559639000000606,
+            "medianMs": 9.146235800000431,
             "allMs": [
-              9.559639000000606,
-              9.60619399999996,
-              9.329085200000554,
-              9.289149000000908,
-              9.734884999999485
+              9.146235800000431,
+              8.85036620000028,
+              8.93533380000008,
+              9.170883600000526,
+              9.4961667999989
             ],
             "result": 862771296
           },
@@ -965,13 +965,13 @@
             "arg": 20000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 1.1957097999999995,
+            "medianMs": 1.1821260000000002,
             "allMs": [
-              1.1833706000000006,
-              1.1937939999999991,
-              1.2471815999999998,
-              1.2185240000000008,
-              1.1957097999999995
+              1.1821260000000002,
+              1.2067961999999994,
+              1.1863398000000003,
+              1.1737724,
+              1.1701856
             ],
             "result": 862771296
           },
@@ -988,11 +988,11 @@
           "notes": [
             "[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (f64.convert_i32_s\n   (local.get $7)\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (f64.convert_i32_s\n     (local.get $7)\n    )\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (f64.convert_i32_s\n   (local.get $8)\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (f64.convert_i32_s\n     (local.get $8)\n    )\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (local.get $2)\n (extern.convert_any\n  (struct.new $struct.0\n   (i32.const 1)\n   (i32.const 0)\n   (array.new_fixed $array.0 1\n    (i32.const 59)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] local.set's value type must be correct, on \n(local.set $10\n (call $length\n  (extern.convert_any\n   (local.get $2)\n  )\n )\n)\nFatal: error validating input\n"
           ],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": 2024,
-          "compileMs": 360.0410900000061,
+          "compileMs": 356.91730500000267,
           "rawBytes": 4426,
-          "gzipBytes": 1903,
+          "gzipBytes": 1906,
           "precompiledBytes": null,
           "coldStart": null,
           "runtime": null,
@@ -1005,11 +1005,11 @@
           "notes": [
             "[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (local.get $7)\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (local.get $7)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (local.get $10)\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (local.get $10)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (local.get $2)\n (extern.convert_any\n  (struct.new $struct.0\n   (i32.const 1)\n   (i32.const 0)\n   (array.new_fixed $array.0 1\n    (i32.const 59)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] local.set's value type must be correct, on \n(local.set $12\n (call $length\n  (extern.convert_any\n   (local.get $2)\n  )\n )\n)\nFatal: error validating input\n"
           ],
-          "compilerBytes": 2775758,
+          "compilerBytes": 2803578,
           "runtimeBytes": null,
-          "compileMs": 312.7369719999988,
-          "rawBytes": 4774,
-          "gzipBytes": 1990,
+          "compileMs": 311.7453830000013,
+          "rawBytes": 4688,
+          "gzipBytes": 1986,
           "precompiledBytes": null,
           "coldStart": null,
           "runtime": null,

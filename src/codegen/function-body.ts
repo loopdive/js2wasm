@@ -233,7 +233,24 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
     if (dstrNullDefault) {
       for (const ins of buildDestructureNullThrow(ctx, fctx)) fctx.body.push(ins);
     } else {
-      const defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);
+      // For destructuring patterns with externref param, force array literals in the
+      // default to compile as vec structs (not tuples). TS contextual type from the
+      // binding pattern gives a tuple, but the destructure path can't convert tuple
+      // externrefs back to vec — they miss ref.test on every known vec type and the
+      // __extern_length fallback returns 0, causing array.copy traps for rest elements.
+      const isArrayPatternExternref = ts.isArrayBindingPattern(param.name) && paramType.kind === "externref";
+      const prevForceVec = (ctx as unknown as { _arrayLiteralForceVec?: boolean })._arrayLiteralForceVec;
+      if (isArrayPatternExternref) {
+        (ctx as unknown as { _arrayLiteralForceVec?: boolean })._arrayLiteralForceVec = true;
+      }
+      let defaultResultType: ValType | null;
+      try {
+        defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);
+      } finally {
+        if (isArrayPatternExternref) {
+          (ctx as unknown as { _arrayLiteralForceVec?: boolean })._arrayLiteralForceVec = prevForceVec;
+        }
+      }
       // Coerce if the default expression produced a different type than the param
       if (defaultResultType && !valTypesMatch(defaultResultType, paramType)) {
         coerceType(ctx, fctx, defaultResultType, paramType);
@@ -245,17 +262,21 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
 
     // Emit the null/zero check + conditional assignment
     if (paramType.kind === "externref") {
-      // JS default params fire when arg is `undefined` — not just wasm null.
-      // Callers padding missing args use `__get_undefined` which returns real
-      // JS undefined, so a plain `ref.is_null` would miss it and skip the
-      // default, later tripping the destructure "null or undefined" guard.
-      // Use `__extern_is_undefined` (true for both wasm null and JS undefined).
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      // JS semantics: defaults kick in when arg is missing OR explicitly undefined.
+      // ref.is_null covers Wasm null; __extern_is_undefined covers JS undefined
+      // (e.g. omitted trailing arg → __get_undefined() returns JS undefined, not
+      // a null externref). Must check both — otherwise a later destructure guard
+      // throws TypeError before the default can fire (#1135 follow-up).
+      const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
       flushLateImportShifts(ctx, fctx);
-      if (isUndefIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+      if (undefIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "ref.is_null" });
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "call", funcIdx: undefIdx } as Instr);
+        fctx.body.push({ op: "i32.or" } as Instr);
       } else {
+        fctx.body.push({ op: "local.get", index: paramIdx });
         fctx.body.push({ op: "ref.is_null" });
       }
       fctx.body.push({

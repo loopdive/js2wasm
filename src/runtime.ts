@@ -1805,6 +1805,10 @@ assert._isSameValue = isSameValue;
         return (msg: any) => {
           throw new TypeError(msg == null ? "" : String(msg));
         };
+      if (name === "__throw_reference_error")
+        return (msg: any) => {
+          throw new ReferenceError(msg == null ? "" : String(msg));
+        };
       // __to_primitive: full ToPrimitive per ECMA-262 §7.1.1 (#1090)
       // Takes (externref obj, externref hint_string) → externref primitive
       // Throws TypeError if conversion fails or Symbol.toPrimitive is non-callable
@@ -2033,6 +2037,33 @@ assert._isSameValue = isSameValue;
             }
           }
           return Object.entries(obj);
+        };
+      if (name === "__array_from_iter")
+        return (obj: any): any => {
+          // Materialize an iterable/array-like to a real JS array so downstream
+          // destructuring can walk it via .length + indexed access. For proper
+          // iterators (e.g. generators) this invokes the iterator protocol and
+          // propagates any throws from .next() — needed for spec-compliant
+          // destructuring of throwing iterators (#1150).
+          if (obj == null) return [];
+          if (Array.isArray(obj)) return obj;
+          // Compiled sources that do `iter[Symbol.iterator] = fn` often land the
+          // function under a stringified "Symbol(Symbol.iterator)" key rather
+          // than the real well-known symbol. Array.from would then reject on
+          // "iterator method exists but not callable". Detect that up front and
+          // fall back to array-like enumeration so throwing iterators still
+          // propagate via Array.from while plain non-iterable objects don't
+          // error out.
+          if (typeof obj === "object") {
+            const iterFn = (obj as any)[Symbol.iterator];
+            if (iterFn !== undefined && typeof iterFn !== "function") {
+              const out: any[] = [];
+              const len = typeof (obj as any).length === "number" ? (obj as any).length >>> 0 : 0;
+              for (let i = 0; i < len; i++) out.push((obj as any)[i]);
+              return out;
+            }
+          }
+          return Array.from(obj);
         };
       if (name === "__extern_slice")
         return (arr: any, start: number) => {
@@ -2821,6 +2852,15 @@ assert._isSameValue = isSameValue;
       if (name === "__gen_push_ref")
         return (buf: any[], v: any) => {
           buf.push(v);
+        };
+      if (name === "__gen_yield_star")
+        return (buf: any[], iterable: any) => {
+          // Iterate the inner iterable and push all values into the outer buffer
+          if (iterable != null && typeof iterable[Symbol.iterator] === "function") {
+            for (const v of iterable) {
+              buf.push(v);
+            }
+          }
         };
       if (name === "__create_generator")
         return (buf: any[], pendingThrow: any) => {
