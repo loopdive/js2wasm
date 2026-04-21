@@ -16147,7 +16147,7 @@
       "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "42",
       "depends_on": [],
       "files": [],
