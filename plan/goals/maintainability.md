@@ -32,7 +32,6 @@ fragile. Maintainability improvements directly reduce coordination cost.
 | **637** | Create walkInstructions utility (eliminates 5 duplicate walkers) | 0 | done | medium |
 | **688** | Refactor codebase into smaller modules per language feature | Backlog | ready | medium |
 | **741** | Split index.ts (13,282 lines) into smaller modules | Backlog | ready | medium |
-| **742** | Extract and refactor compileCallExpression (3,350 lines) | 42 | blocked | medium |
 | **742** | Extract and refactor compileCallExpression (3,350 lines) | 43 | blocked | medium |
 | **795** | - f64.add on externref — missing unbox coercion (57 CE) | 0 | done | medium |
 | **803** | Extract call dispatch from expressions.ts → calls.ts | Backlog | ready | medium |

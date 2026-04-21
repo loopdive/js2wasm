@@ -11,26 +11,6 @@
       "sprint": ""
     },
     {
-      "id": "1111",
-      "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "builtin-methods",
-      "status": "backlog",
-      "sprint": "42"
-    },
-    {
-      "id": "1111",
-      "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "builtin-methods",
-      "status": "backlog",
-      "sprint": "43"
-    },
-    {
       "id": "1029",
       "title": "Migrate to TypeScript 7.x (Go rewrite / typescript-go) when compiler API stabilizes",
       "priority": "low",
@@ -95,18 +75,6 @@
       "goal": "compiler-architecture",
       "status": "blocked",
       "sprint": "Backlog"
-    },
-    {
-      "id": "742",
-      "title": "Extract and refactor compileCallExpression (3,350 lines)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "688"
-      ],
-      "goal": "maintainability",
-      "status": "blocked",
-      "sprint": "42"
     },
     {
       "id": "742",
@@ -446,6 +414,16 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "Backlog"
+    },
+    {
+      "id": "1111",
+      "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "builtin-methods",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1109",
@@ -1924,70 +1902,6 @@
   ],
   "review": [
     {
-      "id": "1123",
-      "title": "Verify landing page claims and code examples against current compiler behavior",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "correctness",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
-      "id": "1117",
-      "title": "Expected TypeError but got wrong error type (136 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
-      "id": "1094",
-      "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
-      "id": "1077",
-      "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [
-        "1076"
-      ],
-      "goal": "ci-hardening",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
-      "id": "1073",
-      "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1006"
-      ],
-      "goal": "spec-completeness",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
-      "id": "1067",
-      "title": "Dependency graph as a web component adopting the landing page color scheme",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
       "id": "1017",
       "title": "Null pointer dereferences and illegal casts in compiled code (504 FAIL)",
       "priority": "high",
@@ -1998,36 +1912,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "1006",
-      "title": "Support eval via JS host import",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
-      "id": "1005",
-      "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
-      "id": "1001",
-      "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
       "id": "929",
       "title": "Object.defineProperty called on non-object (88 FAIL)",
       "priority": "medium",
@@ -2036,18 +1920,6 @@
       "goal": "test-infrastructure",
       "status": "review",
       "sprint": "Backlog"
-    },
-    {
-      "id": "907",
-      "title": "Replace __init_done runtime guards with start/init entry semantics",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "900"
-      ],
-      "goal": "developer-experience",
-      "status": "review",
-      "sprint": "42"
     },
     {
       "id": "871",
@@ -2082,16 +1954,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "826",
-      "title": "Illegal cast failures (1,276 runtime failures)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "review",
-      "sprint": "42"
-    },
-    {
       "id": "825",
       "title": "Null dereference failures (2,295 runtime failures)",
       "priority": "high",
@@ -2099,7 +1961,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "review",
-      "sprint": "42"
+      "sprint": "43"
     }
   ],
   "done": [
@@ -2236,6 +2098,26 @@
       "sprint": "42"
     },
     {
+      "id": "1123",
+      "title": "Verify landing page claims and code examples against current compiler behavior",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1117",
+      "title": "Expected TypeError but got wrong error type (136 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
       "id": "1115",
       "title": "Fix illegal cast when closures are passed as callable parameters",
       "priority": "high",
@@ -2333,6 +2215,16 @@
       "sprint": "42"
     },
     {
+      "id": "1094",
+      "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
       "id": "1092",
       "title": "Wrong error type — 69 tests throw Test262Error instead of expected TypeError",
       "priority": "medium",
@@ -2403,6 +2295,18 @@
       "sprint": "40"
     },
     {
+      "id": "1077",
+      "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [
+        "1076"
+      ],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
       "id": "1074",
       "title": "Surface ESM default export as a named Wasm function export",
       "priority": "high",
@@ -2414,6 +2318,18 @@
       "goal": "npm-library-support",
       "status": "done",
       "sprint": "41"
+    },
+    {
+      "id": "1073",
+      "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1006"
+      ],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
     },
     {
       "id": "1072",
@@ -2464,6 +2380,16 @@
       "goal": "npm-library-support",
       "status": "done",
       "sprint": "41"
+    },
+    {
+      "id": "1067",
+      "title": "Dependency graph as a web component adopting the landing page color scheme",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "42"
     },
     {
       "id": "1065",
@@ -2778,6 +2704,36 @@
       "goal": "async-model",
       "status": "done",
       "sprint": "40"
+    },
+    {
+      "id": "1006",
+      "title": "Support eval via JS host import",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1005",
+      "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "1001",
+      "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "42"
     },
     {
       "id": "999",
@@ -3677,6 +3633,18 @@
       "sprint": "31"
     },
     {
+      "id": "907",
+      "title": "Replace __init_done runtime guards with start/init entry semantics",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "900"
+      ],
+      "goal": "developer-experience",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
       "id": "902",
       "title": "Remove helper-call coercion from pure numeric recursive call/return paths",
       "priority": "high",
@@ -4165,6 +4133,16 @@
       "goal": "error-model",
       "status": "done",
       "sprint": "30"
+    },
+    {
+      "id": "826",
+      "title": "Illegal cast failures (1,276 runtime failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "43"
     },
     {
       "id": "823",
