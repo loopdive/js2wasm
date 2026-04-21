@@ -12232,7 +12232,7 @@
     },
     {
       "id": "862",
-      "title": "Empty error message failures: iterator/destructuring step-err tests (212 FAIL)",
+      "title": "Iterator protocol missing on function-declaration binding-pattern params",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
@@ -16108,6 +16108,18 @@
     },
     {
       "id": "1119",
+      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "async-model",
+      "cluster": "async-model"
+    },
+    {
+      "id": "1119",
       "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
       "priority": "medium",
       "status": "backlog",
@@ -16772,6 +16784,18 @@
       "files": [],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
+    },
+    {
+      "id": "1158",
+      "title": "destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern []",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
     },
     {
       "id": "1159",
@@ -17693,6 +17717,7 @@
         "1093",
         "1093",
         "1116",
+        "1119",
         "1119"
       ]
     },
@@ -19379,6 +19404,10 @@
     {
       "goal": "async-model",
       "issue": "1116"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1119"
     },
     {
       "goal": "async-model",
@@ -24105,6 +24134,10 @@
     {
       "goal": "generator-model",
       "issue": "1116"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1119"
     },
     {
       "goal": "generator-model",
