@@ -3,13 +3,50 @@ input=$(cat)
 cwd=$(echo "$input" | jq -r '.cwd // .workspace.current_dir // empty')
 model=$(echo "$input" | jq -r '.model.display_name // empty')
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
+weekly=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
+effort=$(echo "$input" | jq -r '.thinking.type // .effort // empty')
 printf '\033[01;34m%s\033[00m' "${cwd:-$(pwd)}"
-[ -n "$used" ] && printf ' \033[00;36mctx:%s%%\033[00m' "$(printf '%.0f' "$used")"
+[ -n "$model" ] && printf ' \033[00;37m%s\033[00m' "$model"
+[ -n "$effort" ] && [ "$effort" != "none" ] && [ "$effort" != "disabled" ] && printf ' \033[00;33m%s\033[00m' "$effort"
+if [ -n "$used" ] || [ -n "$weekly" ]; then
+  if [ -n "$used" ]; then
+    awk -v p="$used" 'BEGIN {
+      if (p >= 75)      { fill="48;5;196"; fg=37 }
+      else if (p >= 50) { fill=43; fg=30 }
+      else              { fill=42; fg=30 }
+      width = 9
+      filled = int(p * width / 100)
+      label = sprintf(" %d%% ctx", p)
+      bar = ""
+      for (i = 0; i < width; i++) bar = bar " "
+      bar = label substr(bar, length(label) + 1)
+      filled_part = substr(bar, 1, filled)
+      empty_part  = substr(bar, filled + 1)
+      printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
+    }' /dev/null
+  fi
+  if [ -n "$weekly" ]; then
+    awk -v p="$weekly" 'BEGIN {
+      if (p >= 75)      { fill="48;5;196"; fg=37 }
+      else if (p >= 50) { fill=43; fg=30 }
+      else              { fill=42; fg=30 }
+      width = 12
+      filled = int(p * width / 100)
+      label = sprintf(" %.1f%% wkly", p)
+      bar = ""
+      for (i = 0; i < width; i++) bar = bar " "
+      bar = label substr(bar, length(label) + 1)
+      filled_part = substr(bar, 1, filled)
+      empty_part  = substr(bar, filled + 1)
+      printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
+    }' /dev/null
+  fi
+fi
 # Test262 progress
 report="/workspace/benchmarks/results/test262-report.json"
 compile_jsonl="/workspace/benchmarks/results/test262-compile.jsonl"
 precompiling=$(ps aux 2>/dev/null | grep '[p]recompile-tests' | head -1)
-vitesting=$(ps aux 2>/dev/null | grep '[v]itest.*test262\|vitest [0-9]\|run-test262-vitest' | head -1)
+vitesting=$(ps aux 2>/dev/null | grep -E '[v]itest.*test262|[r]un-test262-vitest' | head -1)
 
 # bg_progress_bar pct label fill_bg empty_bg text_fg
 # fill_bg/empty_bg/text_fg are ANSI color codes (e.g. 42, 100, 30)
@@ -31,7 +68,7 @@ pass_bar() {
   awk -v p="$1" -v label="$2" 'BEGIN {
     if (p >= 55)      { fill=42; fg=30 }
     else if (p >= 50) { fill=43; fg=30 }
-    else              { fill=41; fg=37 }
+    else              { fill="48;5;196"; fg=37 }
   }
   END {
     width = 12
@@ -52,7 +89,7 @@ free_bar() {
     pct = free_g * 100 / total_g
     if (free_g >= 8)      { fill=42; fg=30 }
     else if (free_g >= 4) { fill=43; fg=30 }
-    else                  { fill=41; fg=37 }
+    else                  { fill="48;5;196"; fg=37 }
     width = 10
     filled = int(pct * width / 100)
     label = " " free_g "G free"
@@ -105,12 +142,12 @@ elif [ -n "$vitesting" ]; then
       p_bar=$(pass_bar "$pass_pct" "${pass_pct}% pass")
       d_bar=$(bg_progress_bar "$pct" "$eta_label" 42 100 30)
       f_bar=$(free_bar "$free_g")
-      printf ' \033[00;33m⟳t262\033[00m | %s | %s | %s' "$p_bar" "$d_bar" "$f_bar"
+      printf ' | \033[00;33m⟳t262\033[00m %s %s %s' "$p_bar" "$d_bar" "$f_bar"
     else
-      printf ' \033[00;33m⟳t262:starting\033[00m'
+      printf ' | \033[00;33m⟳t262:starting\033[00m'
     fi
   else
-    printf ' \033[00;33m⟳t262:starting\033[00m'
+    printf ' | \033[00;33m⟳t262:starting\033[00m'
   fi
 elif [ -f "$report" ]; then
   pass=$(jq -r '.summary.pass // 0' "$report" 2>/dev/null)
@@ -120,6 +157,6 @@ elif [ -f "$report" ]; then
   free_g=$(awk "BEGIN {printf \"%.0f\", $free_mb / 1024}")
   p_bar=$(pass_bar "$pass_pct" "${pass_pct}% pass")
   f_bar=$(free_bar "$free_g")
-  printf ' \033[00;33m⟳t262\033[00m | %s | %s' "$p_bar" "$f_bar"
+  printf ' | t262 %s %s' "$p_bar" "$f_bar"
 fi
 printf '\n'
