@@ -1,0 +1,15 @@
+{
+  "pr": 252,
+  "conclusion": "failure",
+  "head_branch": "issue-1151-async-throw-promise",
+  "head_sha": "28e469c78b21a08431b5f2e4e4617da1416c8857",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24703502812",
+  "timestamp": "2026-04-21T04:16:35Z",
+  "pass": 24451,
+  "fail": 13789,
+  "compile_error": 3564,
+  "snapshot_delta": 3032,
+  "net_per_test": 3032,
+  "regressions": 83,
+  "improvements": 3115
+}
