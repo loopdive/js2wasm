@@ -16131,18 +16131,6 @@
       "cluster": "async-model"
     },
     {
-      "id": "1119",
-      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "43",
-      "depends_on": [],
-      "files": [],
-      "goal": "async-model",
-      "cluster": "async-model"
-    },
-    {
       "id": "1120",
       "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
       "priority": "high",
@@ -16320,6 +16308,18 @@
     },
     {
       "id": "1127",
+      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
+      "id": "1127",
       "title": "Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]]",
       "priority": "medium",
       "status": "backlog",
@@ -16337,18 +16337,6 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "42",
-      "depends_on": [],
-      "files": [],
-      "goal": "correctness",
-      "cluster": "correctness"
-    },
-    {
-      "id": "1127",
-      "title": "Class method param destructuring: nested array pattern + initializer throws spurious TypeError",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "43",
       "depends_on": [],
       "files": [],
       "goal": "correctness",
@@ -16696,6 +16684,31 @@
       "cluster": "spec-completeness"
     },
     {
+      "id": "1151",
+      "title": "Async function synchronous throws bypass Promise.reject wrapping",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1152",
+      "title": "Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "crash-free",
+      "cluster": "crash-free",
+      "test262_fail": 217
+    },
+    {
       "id": "1153",
       "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
       "priority": "critical",
@@ -16707,6 +16720,32 @@
       "goal": "crash-free",
       "cluster": "crash-free",
       "test262_fail": 3585
+    },
+    {
+      "id": "1154",
+      "title": "test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions)",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [
+        "1119"
+      ],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1155",
+      "title": "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "test-infrastructure",
+      "cluster": "test-infrastructure"
     },
     {
       "id": "1156",
@@ -16721,6 +16760,30 @@
       "files": [],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
+    },
+    {
+      "id": "1157",
+      "title": "RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions)",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1159",
+      "title": "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
     },
     {
       "id": "backlog",
@@ -16787,6 +16850,10 @@
     {
       "source": "1124",
       "target": "1131"
+    },
+    {
+      "source": "1119",
+      "target": "1154"
     },
     {
       "source": "481",
@@ -16903,6 +16970,10 @@
     {
       "source": "907",
       "target": "908"
+    },
+    {
+      "source": "1152",
+      "target": "1156"
     },
     {
       "source": "1113",
@@ -17622,7 +17693,6 @@
         "1093",
         "1093",
         "1116",
-        "1119",
         "1119"
       ]
     },
@@ -18240,6 +18310,7 @@
         "1036",
         "1038",
         "1115",
+        "1152",
         "1153"
       ]
     },
@@ -18793,7 +18864,10 @@
         "1148",
         "1149",
         "1150",
-        "1156"
+        "1151",
+        "1154",
+        "1156",
+        "1157"
       ]
     },
     {
@@ -18983,7 +19057,8 @@
         "1056",
         "1057",
         "1085",
-        "1091"
+        "1091",
+        "1155"
       ],
       "track": "supporting track"
     }
@@ -19304,10 +19379,6 @@
     {
       "goal": "async-model",
       "issue": "1116"
-    },
-    {
-      "goal": "async-model",
-      "issue": "1119"
     },
     {
       "goal": "async-model",
@@ -21395,6 +21466,10 @@
     },
     {
       "goal": "crash-free",
+      "issue": "1152"
+    },
+    {
+      "goal": "crash-free",
       "issue": "1153"
     },
     {
@@ -23067,7 +23142,19 @@
     },
     {
       "goal": "spec-completeness",
+      "issue": "1151"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1154"
+    },
+    {
+      "goal": "spec-completeness",
       "issue": "1156"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1157"
     },
     {
       "goal": "standalone-mode",
@@ -23696,6 +23783,10 @@
     {
       "goal": "test-infrastructure",
       "issue": "1091"
+    },
+    {
+      "goal": "test-infrastructure",
+      "issue": "1155"
     }
   ],
   "goalDepLinks": [
@@ -24014,10 +24105,6 @@
     {
       "goal": "generator-model",
       "issue": "1116"
-    },
-    {
-      "goal": "generator-model",
-      "issue": "1119"
     },
     {
       "goal": "generator-model",
@@ -25218,6 +25305,10 @@
     {
       "goal": "compilable",
       "issue": "1115"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1152"
     },
     {
       "goal": "compilable",
@@ -26789,7 +26880,19 @@
     },
     {
       "goal": "async-model",
+      "issue": "1151"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1154"
+    },
+    {
+      "goal": "async-model",
       "issue": "1156"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1157"
     },
     {
       "goal": "symbol-protocol",
@@ -27165,7 +27268,19 @@
     },
     {
       "goal": "symbol-protocol",
+      "issue": "1151"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1154"
+    },
+    {
+      "goal": "symbol-protocol",
       "issue": "1156"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1157"
     },
     {
       "goal": "builtin-methods",
@@ -27541,7 +27656,19 @@
     },
     {
       "goal": "builtin-methods",
+      "issue": "1151"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1154"
+    },
+    {
+      "goal": "builtin-methods",
       "issue": "1156"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1157"
     },
     {
       "goal": "property-model",
@@ -27917,7 +28044,19 @@
     },
     {
       "goal": "property-model",
+      "issue": "1151"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1154"
+    },
+    {
+      "goal": "property-model",
       "issue": "1156"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1157"
     },
     {
       "goal": "iterator-protocol",

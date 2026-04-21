@@ -81,21 +81,26 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
-| #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
 | #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
 | #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
 | #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | ready |
 | #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
+| #1152 | Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions) | high | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | in-progress |
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

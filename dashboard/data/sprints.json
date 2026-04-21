@@ -2661,7 +2661,6 @@
       "1099",
       "1109",
       "1111",
-      "1119",
       "1120",
       "1121",
       "1122",
@@ -2671,9 +2670,12 @@
       "1127",
       "1128",
       "1147",
+      "1152",
       "1153"
     ],
-    "completedIssueIds": [],
+    "completedIssueIds": [
+      "1127"
+    ],
     "explicitCarryOver": false,
     "isClosed": false
   }
