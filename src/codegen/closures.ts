@@ -882,6 +882,20 @@ export function compileArrowAsClosure(
     if (p.initializer && wasmType.kind === "ref") {
       wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
     }
+    // Binding-pattern params MUST route through the externref destructure path
+    // so that (a) null/undefined trigger a spec-mandated synchronous TypeError and
+    // (b) nested patterns (e.g. `[[x]]`) recurse via the generic destructure logic.
+    // See #1151. Without this override:
+    //   * Pattern params inferred as f64/i32 fall through to allocBindingLocals
+    //     and emit no destructure code at all.
+    //   * Pattern params inferred as a tuple-struct ref bypass the nested-pattern
+    //     loop (which only handles identifier children) and skip the null guard,
+    //     so `f([null])` silently returns an empty result on an unannotated
+    //     pattern parameter.
+    const hasBindingPattern = ts.isArrayBindingPattern(p.name) || ts.isObjectBindingPattern(p.name);
+    if (hasBindingPattern && wasmType.kind !== "externref") {
+      wasmType = { kind: "externref" };
+    }
     arrowParams.push(wasmType);
   }
 
