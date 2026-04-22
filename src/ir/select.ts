@@ -3,27 +3,37 @@
 // Per-function selector — decides which functions to route through the IR
 // path vs. the legacy direct AST→Wasm emission.
 //
-// Phase 1 numeric/bool subset: a function is claimed when
-//   - all params are typed `number` or `boolean`;
+// Phase 1 (shipped) numeric/bool subset: a function is claimed when
+//   - all params are typed `number` or `boolean` via an explicit TS type
+//     annotation;
 //   - return type is typed `number` or `boolean`;
 //   - the function body is a "tail":
 //       - zero or more `(let|const) <name> = <expr>;` declarations followed by
 //       - either `return <expr>;` OR `if (<expr>) <tail> else <tail>`
 //         where both arms are themselves valid tails;
 //   - every `<expr>` is composed only of literals, param / local references,
-//     and the supported unary / binary / conditional operators
-//     (see `isPhase1Expr`).
+//     and the supported unary / binary / conditional operators.
 //
-// The selector is strict: every arm of an `if`/`else` must END in return, so
-// the function always exits through a terminator. No early-return-plus-
-// fallthrough (`if (c) return a; doMoreStuff(); return b;`) — that needs
-// more CFG analysis and comes in a later wedge.
-//
-// Any function that deviates from this shape falls through to the legacy
-// path — the IR cannot handle it yet. Widening the selector in lockstep
-// with the builder/lower passes is how Phase 1 grows.
+// Phase 2 extensions:
+//   - `isPhase1Expr` accepts `CallExpression` whose callee is an Identifier.
+//     The callee doesn't need to be resolvable at shape-check time — the
+//     call-graph closure below ensures every claimed function's callees are
+//     also claimed, and the AST→IR lowerer rejects unknown callees cleanly.
+//   - Param / return types may come from a propagated TypeMap
+//     (`buildTypeMap` in `./propagate.ts`) instead of an explicit TS
+//     annotation. That unlocks recursive numeric kernels like `fib` whose
+//     params are untyped in source but provably `number` via caller flow.
+//   - After individual claims are collected, a call-graph closure pass
+//     drops any function whose local callers OR local callees are not
+//     themselves claimed. Rationale: the IR path replaces `typeIdx` on
+//     the Wasm function record, so if a legacy-compiled caller already
+//     emitted a `call` with the OLD signature, the post-IR module will
+//     fail Wasm validation. Closing under both edges guarantees every
+//     cross-function call in the module is legacy↔legacy or IR↔IR.
 
 import ts from "typescript";
+
+import type { LatticeType, TypeMap } from "./propagate.js";
 
 export interface IrSelection {
   readonly funcs: ReadonlySet<string>;
@@ -35,32 +45,110 @@ export interface IrSelectionOptions {
 
 const EMPTY: IrSelection = { funcs: new Set<string>() };
 
-export function planIrCompilation(sourceFile: ts.SourceFile, options?: IrSelectionOptions): IrSelection {
+export function planIrCompilation(
+  sourceFile: ts.SourceFile,
+  options?: IrSelectionOptions,
+  typeMap?: TypeMap,
+): IrSelection {
   if (!options?.experimentalIR) return EMPTY;
 
-  const funcs = new Set<string>();
+  // -------------------------------------------------------------------------
+  // Step 1: individual per-function claim.
+  //
+  // A function is individually-claimable iff its shape is Phase-1-compatible
+  // AND every param / return resolves to a concrete primitive (f64/bool).
+  // Types come either from explicit TS annotations (classic path) or from
+  // the TypeMap (propagation path).
+  // -------------------------------------------------------------------------
+  const individuallyClaimed = new Set<string>();
+  const declByName = new Map<string, ts.FunctionDeclaration>();
   for (const stmt of sourceFile.statements) {
     if (!ts.isFunctionDeclaration(stmt)) continue;
     if (!stmt.name) continue;
-    if (!isPhase1Function(stmt)) continue;
-    funcs.add(stmt.name.text);
+    declByName.set(stmt.name.text, stmt);
+    if (isIrClaimable(stmt, typeMap)) {
+      individuallyClaimed.add(stmt.name.text);
+    }
   }
-  return { funcs };
+
+  if (individuallyClaimed.size === 0) return EMPTY;
+
+  // -------------------------------------------------------------------------
+  // Step 2: call-graph closure.
+  //
+  // Build each function's set of local callers + local callees (restricted
+  // to functions declared in this source file). Iteratively remove any
+  // claimed function whose any LOCAL caller or any LOCAL callee is not
+  // also claimed. Repeat until stable.
+  //
+  // This safeguards against signature mismatch: the IR path replaces a
+  // function's typeIdx after the legacy path has already compiled its
+  // callers' bodies. Ensuring both sides of every cross-function edge are
+  // on the same side (IR or legacy) avoids cross-signature `call` ops.
+  // -------------------------------------------------------------------------
+  const { callers, callees } = buildLocalCallGraph(declByName);
+
+  const claimed = new Set(individuallyClaimed);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const name of [...claimed]) {
+      const myCallers = callers.get(name) ?? new Set<string>();
+      const myCallees = callees.get(name) ?? new Set<string>();
+      let safe = true;
+      for (const c of myCallers) {
+        if (!claimed.has(c)) {
+          safe = false;
+          break;
+        }
+      }
+      if (safe) {
+        for (const c of myCallees) {
+          if (!claimed.has(c)) {
+            safe = false;
+            break;
+          }
+        }
+      }
+      if (!safe) {
+        claimed.delete(name);
+        changed = true;
+      }
+    }
+  }
+
+  return { funcs: claimed };
 }
 
-function isPhase1Function(fn: ts.FunctionDeclaration): boolean {
+// ---------------------------------------------------------------------------
+// Individual-claim check
+// ---------------------------------------------------------------------------
+
+function isIrClaimable(fn: ts.FunctionDeclaration, typeMap: TypeMap | undefined): boolean {
+  if (!fn.name) return false;
   if (fn.typeParameters && fn.typeParameters.length > 0) return false;
   if (fn.modifiers && fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return false;
-  if (!fn.type || !isPhase1TypeNode(fn.type)) return false;
 
+  const entry = typeMap?.get(fn.name.text);
+
+  // Return type must resolve to a concrete primitive.
+  const returnResolved = resolveReturnType(fn, entry?.returnType);
+  if (returnResolved === null) return false;
+
+  // All params must resolve to a concrete primitive.
   const scope = new Set<string>();
-  for (const p of fn.parameters) {
+  for (let i = 0; i < fn.parameters.length; i++) {
+    const p = fn.parameters[i]!;
     if (!ts.isIdentifier(p.name)) return false;
     if (p.questionToken) return false;
     if (p.dotDotDotToken) return false;
     if (p.initializer) return false;
-    if (!p.type || !isPhase1TypeNode(p.type)) return false;
     if (scope.has(p.name.text)) return false;
+
+    const mapped = entry?.params[i];
+    const paramResolved = resolveParamType(p, mapped);
+    if (paramResolved === null) return false;
+
     scope.add(p.name.text);
   }
 
@@ -69,14 +157,59 @@ function isPhase1Function(fn: ts.FunctionDeclaration): boolean {
   return isPhase1StatementList(body.statements, scope);
 }
 
+/**
+ * Resolve a param's type. Explicit TS annotation wins (must be number/
+ * boolean). Otherwise, the TypeMap entry's lattice type must be a
+ * concrete primitive.
+ */
+function resolveParamType(p: ts.ParameterDeclaration, mapped: LatticeType | undefined): "f64" | "bool" | null {
+  if (p.type) {
+    if (p.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
+    if (p.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
+    return null;
+  }
+  if (mapped?.kind === "f64") return "f64";
+  if (mapped?.kind === "bool") return "bool";
+  return null;
+}
+
+function resolveReturnType(fn: ts.FunctionDeclaration, mapped: LatticeType | undefined): "f64" | "bool" | null {
+  if (fn.type) {
+    if (fn.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
+    if (fn.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
+    return null;
+  }
+  if (mapped?.kind === "f64") return "f64";
+  if (mapped?.kind === "bool") return "bool";
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Shape check
+// ---------------------------------------------------------------------------
+
 function isPhase1StatementList(stmts: ReadonlyArray<ts.Statement>, scope: Set<string>): boolean {
   if (stmts.length < 1) return false;
   for (let i = 0; i < stmts.length - 1; i++) {
-    const s = stmts[i];
-    if (!ts.isVariableStatement(s)) return false;
-    if (!isPhase1VarDecl(s, scope)) return false;
+    const s = stmts[i]!;
+    // Phase 1: VariableStatements before the tail.
+    if (ts.isVariableStatement(s)) {
+      if (!isPhase1VarDecl(s, scope)) return false;
+      continue;
+    }
+    // Phase 2 extension: an `if (cond) <tail>` with NO else and the rest
+    // of the statements forming a tail. This is the classic early-return
+    // pattern: `if (base) return x; <recursive body>`. We structurally
+    // reinterpret as `if (cond) <tail> else { <rest> }`.
+    if (ts.isIfStatement(s) && !s.elseStatement) {
+      if (!isPhase1Expr(s.expression, scope)) return false;
+      if (!isPhase1Tail(s.thenStatement, new Set(scope))) return false;
+      const rest = stmts.slice(i + 1);
+      return isPhase1StatementList(rest, new Set(scope));
+    }
+    return false;
   }
-  return isPhase1Tail(stmts[stmts.length - 1], scope);
+  return isPhase1Tail(stmts[stmts.length - 1]!, scope);
 }
 
 function isPhase1Tail(stmt: ts.Statement, scope: Set<string>): boolean {
@@ -85,15 +218,11 @@ function isPhase1Tail(stmt: ts.Statement, scope: Set<string>): boolean {
     return isPhase1Expr(stmt.expression, scope);
   }
   if (ts.isBlock(stmt)) {
-    // Fork scope: variables declared inside the block don't leak out. We
-    // don't need to restore after because callers that forked already did.
     return isPhase1StatementList(stmt.statements, new Set(scope));
   }
   if (ts.isIfStatement(stmt)) {
-    if (!stmt.elseStatement) return false; // must have both arms
+    if (!stmt.elseStatement) return false;
     if (!isPhase1Expr(stmt.expression, scope)) return false;
-    // Fork scope for each arm — declarations in one arm don't leak to the
-    // other and can't leak past the if (both arms must return).
     if (!isPhase1Tail(stmt.thenStatement, new Set(scope))) return false;
     if (!isPhase1Tail(stmt.elseStatement, new Set(scope))) return false;
     return true;
@@ -102,10 +231,8 @@ function isPhase1Tail(stmt: ts.Statement, scope: Set<string>): boolean {
 }
 
 function isPhase1VarDecl(stmt: ts.VariableStatement, scope: Set<string>): boolean {
-  // `var` not supported — it has hoisting semantics we don't model yet.
   const flags = stmt.declarationList.flags;
   if (!(flags & ts.NodeFlags.Let) && !(flags & ts.NodeFlags.Const)) return false;
-  // No modifiers on the statement (no `export let …`).
   if (stmt.modifiers && stmt.modifiers.length > 0) return false;
   for (const d of stmt.declarationList.declarations) {
     if (!ts.isIdentifier(d.name)) return false;
@@ -122,25 +249,35 @@ function isPhase1TypeNode(node: ts.TypeNode): boolean {
   return node.kind === ts.SyntaxKind.NumberKeyword || node.kind === ts.SyntaxKind.BooleanKeyword;
 }
 
-function isPhase1Expr(expr: ts.Expression, paramNames: ReadonlySet<string>): boolean {
-  if (ts.isParenthesizedExpression(expr)) return isPhase1Expr(expr.expression, paramNames);
+function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>): boolean {
+  if (ts.isParenthesizedExpression(expr)) return isPhase1Expr(expr.expression, scope);
   if (ts.isNumericLiteral(expr)) return true;
   if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return true;
-  if (ts.isIdentifier(expr)) return paramNames.has(expr.text);
+  if (ts.isIdentifier(expr)) {
+    // Identifier may name either a param/local (scope) or a function
+    // (only valid as the callee of a CallExpression, handled below).
+    // A bare identifier that isn't in scope is not a valid Phase-1 expr.
+    return scope.has(expr.text);
+  }
   if (ts.isPrefixUnaryExpression(expr)) {
     if (!isPhase1PrefixOp(expr.operator)) return false;
-    return isPhase1Expr(expr.operand, paramNames);
+    return isPhase1Expr(expr.operand, scope);
   }
   if (ts.isBinaryExpression(expr)) {
     if (!isPhase1BinaryOp(expr.operatorToken.kind)) return false;
-    return isPhase1Expr(expr.left, paramNames) && isPhase1Expr(expr.right, paramNames);
+    return isPhase1Expr(expr.left, scope) && isPhase1Expr(expr.right, scope);
   }
   if (ts.isConditionalExpression(expr)) {
     return (
-      isPhase1Expr(expr.condition, paramNames) &&
-      isPhase1Expr(expr.whenTrue, paramNames) &&
-      isPhase1Expr(expr.whenFalse, paramNames)
+      isPhase1Expr(expr.condition, scope) && isPhase1Expr(expr.whenTrue, scope) && isPhase1Expr(expr.whenFalse, scope)
     );
+  }
+  if (ts.isCallExpression(expr)) {
+    if (!ts.isIdentifier(expr.expression)) return false;
+    for (const arg of expr.arguments) {
+      if (!isPhase1Expr(arg, scope)) return false;
+    }
+    return true;
   }
   return false;
 }
@@ -169,4 +306,49 @@ function isPhase1BinaryOp(op: ts.SyntaxKind): boolean {
     default:
       return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Call graph (local edges only)
+// ---------------------------------------------------------------------------
+
+function buildLocalCallGraph(decls: ReadonlyMap<string, ts.FunctionDeclaration>): {
+  callers: Map<string, Set<string>>;
+  callees: Map<string, Set<string>>;
+} {
+  const callers = new Map<string, Set<string>>();
+  const callees = new Map<string, Set<string>>();
+  for (const name of decls.keys()) {
+    callers.set(name, new Set());
+    callees.set(name, new Set());
+  }
+  for (const [callerName, fn] of decls) {
+    if (!fn.body) continue;
+    const visit = (node: ts.Node): void => {
+      if (node !== fn && isFunctionLike(node)) return;
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        const callee = node.expression.text;
+        if (decls.has(callee)) {
+          callees.get(callerName)!.add(callee);
+          callers.get(callee)!.add(callerName);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(fn.body, visit);
+  }
+  return { callers, callees };
+}
+
+function isFunctionLike(node: ts.Node): boolean {
+  return (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isGetAccessor(node) ||
+    ts.isSetAccessor(node) ||
+    ts.isClassDeclaration(node) ||
+    ts.isClassExpression(node)
+  );
 }
