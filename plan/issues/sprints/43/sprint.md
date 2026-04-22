@@ -100,6 +100,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1163 | Static eval inlining — compile eval(\"fixed string\") at compile time (~208 tests) | high | ready |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | ready |
 | #1166 | Closed-world integer specialization from literal call sites | high | ready |
+| #1167 | SSA IR Phase 3 — optimization passes: inlining, monomorphization, tagged unions, escape analysis | high | ready |
 
 ### In Progress
 
