@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-04-22T06:19:52.556Z",
-  "baseline_generated_at": "2026-04-22T06:19:52Z",
-  "baseline_sha": "07e64ff1779d071807205c7dbc4068d204900660",
+  "timestamp": "2026-04-22T06:28:26.451Z",
+  "baseline_generated_at": "2026-04-22T06:28:26Z",
+  "baseline_sha": "7812495c4ee35c562596702db94e62e1feacc786",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
