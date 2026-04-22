@@ -14985,7 +14985,8 @@
       "raw_status": "ready",
       "sprint": "Backlog",
       "depends_on": [
-        "1006"
+        "1164",
+        "1058"
       ],
       "files": [],
       "goal": "platform",
@@ -15958,6 +15959,20 @@
       "cluster": "compiler-architecture"
     },
     {
+      "id": "1131",
+      "title": "Middle-end SSA IR: implementation plan",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1124"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -16373,6 +16388,32 @@
       "cluster": "spec-completeness"
     },
     {
+      "id": "1163",
+      "title": "Static eval inlining — compile eval(\\\"fixed string\\\") at compile time (~208 tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1164",
+      "title": "Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1163"
+      ],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -16419,7 +16460,11 @@
       "target": "1059"
     },
     {
-      "source": "1006",
+      "source": "1164",
+      "target": "1066"
+    },
+    {
+      "source": "1058",
       "target": "1066"
     },
     {
@@ -17051,8 +17096,16 @@
       "target": "1126"
     },
     {
+      "source": "1124",
+      "target": "1131"
+    },
+    {
       "source": "1152",
       "target": "1156"
+    },
+    {
+      "source": "1163",
+      "target": "1164"
     },
     {
       "source": "688",
@@ -17512,6 +17565,7 @@
         "1046",
         "1058",
         "1124",
+        "1131",
         "1131"
       ],
       "track": "supporting track"
@@ -18340,7 +18394,9 @@
         "1157",
         "1160",
         "1161",
-        "1162"
+        "1162",
+        "1163",
+        "1164"
       ]
     },
     {
@@ -19912,6 +19968,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1124"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1131"
     },
     {
       "goal": "compiler-architecture",
@@ -22508,6 +22568,14 @@
     {
       "goal": "spec-completeness",
       "issue": "1162"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1163"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1164"
     },
     {
       "goal": "standalone-mode",
@@ -26164,6 +26232,14 @@
       "issue": "1162"
     },
     {
+      "goal": "async-model",
+      "issue": "1163"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1164"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -26560,6 +26636,14 @@
       "issue": "1162"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1163"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1164"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -26956,6 +27040,14 @@
       "issue": "1162"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1163"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1164"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -27350,6 +27442,14 @@
     {
       "goal": "property-model",
       "issue": "1162"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1163"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1164"
     },
     {
       "goal": "iterator-protocol",
