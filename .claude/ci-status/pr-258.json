@@ -1,0 +1,15 @@
+{
+  "pr": 258,
+  "conclusion": "success",
+  "head_branch": "feat/ir-phase2",
+  "head_sha": "b811df11581446ffd11d697ba5f913ef682f0207",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24764044196",
+  "timestamp": "2026-04-22T06:45:29Z",
+  "pass": 24483,
+  "fail": 13700,
+  "compile_error": 3621,
+  "snapshot_delta": 0,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
