@@ -16443,6 +16443,21 @@
       "cluster": "compiler-architecture"
     },
     {
+      "id": "1167",
+      "title": "SSA IR Phase 3 — optimization passes: inlining, monomorphization, tagged unions, escape analysis",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1131",
+        "1166"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -17149,6 +17164,14 @@
       "target": "1166"
     },
     {
+      "source": "1131",
+      "target": "1167"
+    },
+    {
+      "source": "1166",
+      "target": "1167"
+    },
+    {
       "source": "688",
       "target": "742"
     },
@@ -17608,7 +17631,8 @@
         "1124",
         "1131",
         "1131",
-        "1166"
+        "1166",
+        "1167"
       ],
       "track": "supporting track"
     },
@@ -20023,6 +20047,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1166"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1167"
     },
     {
       "goal": "contributor-readiness",

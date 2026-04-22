@@ -104,6 +104,19 @@
   ],
   "ready": [
     {
+      "id": "1167",
+      "title": "SSA IR Phase 3 — optimization passes: inlining, monomorphization, tagged unions, escape analysis",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1131",
+        "1166"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1166",
       "title": "Closed-world integer specialization from literal call sites",
       "priority": "high",
