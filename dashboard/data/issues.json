@@ -104,6 +104,31 @@
   ],
   "ready": [
     {
+      "id": "1166",
+      "title": "Closed-world integer specialization from literal call sites",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1131"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1165",
+      "title": "Track Wasm JIT interface proposal (func.new) — native runtime codegen",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1058",
+        "1164"
+      ],
+      "goal": "platform",
+      "status": "ready",
+      "sprint": "Backlog"
+    },
+    {
       "id": "1164",
       "title": "Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests)",
       "priority": "medium",
@@ -287,7 +312,7 @@
       ],
       "goal": "compiler-architecture",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": "43"
     },
     {
       "id": "1131",
