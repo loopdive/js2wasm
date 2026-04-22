@@ -15950,7 +15950,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "43",
       "depends_on": [
         "1124"
       ],
@@ -16414,6 +16414,35 @@
       "cluster": "spec-completeness"
     },
     {
+      "id": "1165",
+      "title": "Track Wasm JIT interface proposal (func.new) — native runtime codegen",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Backlog",
+      "depends_on": [
+        "1058",
+        "1164"
+      ],
+      "files": [],
+      "goal": "platform",
+      "cluster": "platform"
+    },
+    {
+      "id": "1166",
+      "title": "Closed-world integer specialization from literal call sites",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [
+        "1131"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -16486,6 +16515,14 @@
     {
       "source": "1119",
       "target": "1154"
+    },
+    {
+      "source": "1058",
+      "target": "1165"
+    },
+    {
+      "source": "1164",
+      "target": "1165"
     },
     {
       "source": "481",
@@ -17108,6 +17145,10 @@
       "target": "1164"
     },
     {
+      "source": "1131",
+      "target": "1166"
+    },
+    {
       "source": "688",
       "target": "742"
     },
@@ -17566,7 +17607,8 @@
         "1058",
         "1124",
         "1131",
-        "1131"
+        "1131",
+        "1166"
       ],
       "track": "supporting track"
     },
@@ -18231,7 +18273,8 @@
         "1096",
         "1099",
         "1136",
-        "1137"
+        "1137",
+        "1165"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -19976,6 +20019,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1131"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1166"
     },
     {
       "goal": "contributor-readiness",
@@ -22020,6 +22067,10 @@
     {
       "goal": "platform",
       "issue": "1137"
+    },
+    {
+      "goal": "platform",
+      "issue": "1165"
     },
     {
       "goal": "property-model",
@@ -25682,6 +25733,10 @@
     {
       "goal": "standalone-mode",
       "issue": "1137"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1165"
     },
     {
       "goal": "core-semantics",
