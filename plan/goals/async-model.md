@@ -61,7 +61,7 @@ promise infrastructure.
 | **808** | Extract string/import infrastructure from index.ts → imports.ts | Backlog | ready | medium |
 | **820** | Nullish TypeError / null-pointer / illegal-cast umbrella (6,993 FAIL) | Backlog | ready | critical |
 | **851** | Iterator close protocol not implemented (147 tests) | 31 | done | high |
-| **854** | Iterator protocol: null next/return/throw methods (126 tests) | 43 | ready | high |
+| **854** | Iterator protocol: null next/return/throw methods (126 tests) | 44 | ready | high |
 | **855** | Promise resolution and async error handling (210 tests) | 35 | done | high |
 | **859** | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | Backlog | ready | high |
 | **860** | Promise executor and property-assigned functions not compiled as host callbacks | Backlog | review | medium |
@@ -89,11 +89,11 @@ promise infrastructure.
 | **1018** | Object.getOwnPropertyDescriptor returns null for missing/accessor properties (160 FAIL) | 41 | done | high |
 | **1027** | Missing __make_getter_callback late-import in PR #43 accessor paths | 40 | done | high |
 | **1034** | Compile prettier to Wasm — parser + AST + printer stress test; self-format smoke test | 41 | done | high |
-| **1035** | WASI hello-world: compile console.log + node:fs write to a standalone native executable | 43 | ready | high |
+| **1035** | WASI hello-world: compile console.log + node:fs write to a standalone native executable | 44 | ready | high |
 | **1042** | async/await state-machine lowering (AwaitExpression is currently a no-op) | Backlog | ready | high |
-| **1044** | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | 43 | ready | high |
+| **1044** | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | 44 | ready | high |
 | **1089** | codegen: support dynamic import() expressions — 429 test262 tests skipped | backlog | ready | medium |
-| **1093** | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | 43 | ready | high |
+| **1093** | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | 44 | ready | high |
 | **1116** | Promise resolution and async error handling (210 tests) | Backlog | ready | critical |
 | **1119** | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | 43 | closed | high |
 
