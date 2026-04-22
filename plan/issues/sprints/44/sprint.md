@@ -192,6 +192,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #742 | Extract and refactor compileCallExpression (3,350 lines) | medium | blocked |
 | #1166 | Closed-world integer specialization from literal call sites | high | blocked |
 | #1167c | IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening) | high | blocked |
+| #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | blocked |
 
 ### Ready
 
@@ -250,5 +251,11 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1147 | Add a public Docs page to the site | medium | ready |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | ready |
 | #1168 | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | in-progress |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
