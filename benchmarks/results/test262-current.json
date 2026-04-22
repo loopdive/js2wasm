@@ -1,56 +1,54 @@
 {
-  "timestamp": "2026-04-21T17:03:23.803Z",
-  "baseline_generated_at": "2026-04-21T17:03:23Z",
-  "baseline_sha": "9d5fc1c8700dff4bdcc8183347466d3c6a453703",
+  "timestamp": "2026-04-22T05:36:29+00:00",
   "mode": {
     "include_proposals": 0,
     "label": "official test262 (default scope)"
   },
   "summary": {
     "total": 43172,
-    "pass": 24483,
-    "fail": 13700,
-    "compile_error": 3621,
-    "compile_timeout": 29,
+    "pass": 24332,
+    "fail": 13763,
+    "compile_error": 3708,
+    "compile_timeout": 30,
     "skip": 1339,
-    "compilable": 38183,
+    "compilable": 38095,
     "stale": 0
   },
   "official_summary": {
     "total": 43172,
-    "pass": 24483,
-    "fail": 13700,
-    "compile_error": 3621,
-    "compile_timeout": 29,
+    "pass": 24332,
+    "fail": 13763,
+    "compile_error": 3708,
+    "compile_timeout": 30,
     "skip": 1339,
-    "compilable": 38183,
+    "compilable": 38095,
     "stale": 0
   },
   "full_summary": {
     "total": 43172,
-    "pass": 24483,
-    "fail": 13700,
-    "compile_error": 3621,
-    "compile_timeout": 29,
+    "pass": 24332,
+    "fail": 13763,
+    "compile_error": 3708,
+    "compile_timeout": 30,
     "skip": 1339,
-    "compilable": 38183,
+    "compilable": 38095,
     "stale": 0
   },
   "strict_summary": {
     "total": 40663,
-    "pass": 23446,
-    "fail": 12826,
-    "compile_error": 3365,
-    "compile_timeout": 27,
+    "pass": 23295,
+    "fail": 12889,
+    "compile_error": 3452,
+    "compile_timeout": 28,
     "skip": 999,
-    "compilable": 36272,
+    "compilable": 36184,
     "stale": 0
   },
   "scope_summaries": {
     "annex_b": {
       "total": 1086,
-      "pass": 385,
-      "fail": 414,
+      "pass": 384,
+      "fail": 415,
       "compile_error": 287,
       "compile_timeout": 0,
       "skip": 0,
@@ -69,20 +67,20 @@
     },
     "standard": {
       "total": 42086,
-      "pass": 24098,
-      "fail": 13286,
-      "compile_error": 3334,
-      "compile_timeout": 29,
+      "pass": 23948,
+      "fail": 13348,
+      "compile_error": 3421,
+      "compile_timeout": 30,
       "skip": 1339,
-      "compilable": 37384,
+      "compilable": 37296,
       "stale": 0
     }
   },
   "categories": [
     {
       "name": "annexB/built-ins",
-      "pass": 116,
-      "fail": 64,
+      "pass": 115,
+      "fail": 65,
       "compile_error": 61,
       "compile_timeout": 0,
       "skip": 0,
@@ -109,9 +107,9 @@
     {
       "name": "built-ins/Array",
       "pass": 1334,
-      "fail": 1304,
+      "fail": 1303,
       "compile_error": 412,
-      "compile_timeout": 12,
+      "compile_timeout": 13,
       "skip": 19,
       "total": 3081
     },
@@ -135,8 +133,8 @@
     },
     {
       "name": "built-ins/AsyncDisposableStack",
-      "pass": 22,
-      "fail": 30,
+      "pass": 20,
+      "fail": 32,
       "compile_error": 0,
       "compile_timeout": 0,
       "skip": 0,
@@ -189,8 +187,8 @@
     },
     {
       "name": "built-ins/Atomics",
-      "pass": 76,
-      "fail": 23,
+      "pass": 74,
+      "fail": 25,
       "compile_error": 41,
       "compile_timeout": 0,
       "skip": 242,
@@ -216,9 +214,9 @@
     },
     {
       "name": "built-ins/DataView",
-      "pass": 410,
-      "fail": 101,
-      "compile_error": 11,
+      "pass": 396,
+      "fail": 113,
+      "compile_error": 13,
       "compile_timeout": 0,
       "skip": 39,
       "total": 561
@@ -233,67 +231,22 @@
       "total": 586
     },
     {
-      "name": "built-ins/decodeURI",
-      "pass": 27,
-      "fail": 11,
-      "compile_error": 17,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 55
-    },
-    {
-      "name": "built-ins/decodeURIComponent",
-      "pass": 29,
-      "fail": 8,
-      "compile_error": 19,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 56
-    },
-    {
       "name": "built-ins/DisposableStack",
-      "pass": 47,
-      "fail": 44,
-      "compile_error": 0,
+      "pass": 21,
+      "fail": 66,
+      "compile_error": 4,
       "compile_timeout": 0,
       "skip": 0,
       "total": 91
     },
     {
-      "name": "built-ins/encodeURI",
-      "pass": 13,
-      "fail": 8,
-      "compile_error": 10,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 31
-    },
-    {
-      "name": "built-ins/encodeURIComponent",
-      "pass": 14,
-      "fail": 7,
-      "compile_error": 10,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 31
-    },
-    {
       "name": "built-ins/Error",
-      "pass": 34,
-      "fail": 23,
-      "compile_error": 1,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 58
-    },
-    {
-      "name": "built-ins/eval",
-      "pass": 5,
-      "fail": 2,
+      "pass": 27,
+      "fail": 28,
       "compile_error": 3,
       "compile_timeout": 0,
       "skip": 0,
-      "total": 10
+      "total": 58
     },
     {
       "name": "built-ins/FinalizationRegistry",
@@ -306,8 +259,8 @@
     },
     {
       "name": "built-ins/Function",
-      "pass": 205,
-      "fail": 259,
+      "pass": 206,
+      "fail": 258,
       "compile_error": 44,
       "compile_timeout": 0,
       "skip": 1,
@@ -332,15 +285,6 @@
       "total": 61
     },
     {
-      "name": "built-ins/global",
-      "pass": 12,
-      "fail": 8,
-      "compile_error": 9,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 29
-    },
-    {
       "name": "built-ins/Infinity",
       "pass": 6,
       "fail": 0,
@@ -348,24 +292,6 @@
       "compile_timeout": 0,
       "skip": 0,
       "total": 6
-    },
-    {
-      "name": "built-ins/isFinite",
-      "pass": 6,
-      "fail": 6,
-      "compile_error": 3,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 15
-    },
-    {
-      "name": "built-ins/isNaN",
-      "pass": 5,
-      "fail": 6,
-      "compile_error": 4,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 15
     },
     {
       "name": "built-ins/Iterator",
@@ -405,8 +331,8 @@
     },
     {
       "name": "built-ins/Math",
-      "pass": 285,
-      "fail": 16,
+      "pass": 283,
+      "fail": 18,
       "compile_error": 26,
       "compile_timeout": 0,
       "skip": 0,
@@ -449,28 +375,10 @@
       "total": 3411
     },
     {
-      "name": "built-ins/parseFloat",
-      "pass": 38,
-      "fail": 2,
-      "compile_error": 14,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 54
-    },
-    {
-      "name": "built-ins/parseInt",
-      "pass": 38,
-      "fail": 3,
-      "compile_error": 14,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 55
-    },
-    {
       "name": "built-ins/Promise",
-      "pass": 376,
-      "fail": 204,
-      "compile_error": 56,
+      "pass": 371,
+      "fail": 208,
+      "compile_error": 57,
       "compile_timeout": 1,
       "skip": 15,
       "total": 652
@@ -495,9 +403,9 @@
     },
     {
       "name": "built-ins/RegExp",
-      "pass": 1404,
-      "fail": 337,
-      "compile_error": 136,
+      "pass": 1324,
+      "fail": 340,
+      "compile_error": 213,
       "compile_timeout": 2,
       "skip": 0,
       "total": 1879
@@ -550,8 +458,8 @@
     {
       "name": "built-ins/String",
       "pass": 634,
-      "fail": 341,
-      "compile_error": 246,
+      "fail": 340,
+      "compile_error": 247,
       "compile_timeout": 1,
       "skip": 1,
       "total": 1223
@@ -567,8 +475,8 @@
     },
     {
       "name": "built-ins/SuppressedError",
-      "pass": 5,
-      "fail": 12,
+      "pass": 3,
+      "fail": 14,
       "compile_error": 5,
       "compile_timeout": 0,
       "skip": 0,
@@ -612,21 +520,12 @@
     },
     {
       "name": "built-ins/Uint8Array",
-      "pass": 25,
-      "fail": 27,
+      "pass": 14,
+      "fail": 38,
       "compile_error": 16,
       "compile_timeout": 0,
       "skip": 0,
       "total": 68
-    },
-    {
-      "name": "built-ins/undefined",
-      "pass": 5,
-      "fail": 1,
-      "compile_error": 2,
-      "compile_timeout": 0,
-      "skip": 0,
-      "total": 8
     },
     {
       "name": "built-ins/WeakMap",
@@ -654,6 +553,105 @@
       "compile_timeout": 0,
       "skip": 0,
       "total": 85
+    },
+    {
+      "name": "built-ins/decodeURI",
+      "pass": 27,
+      "fail": 11,
+      "compile_error": 17,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 55
+    },
+    {
+      "name": "built-ins/decodeURIComponent",
+      "pass": 29,
+      "fail": 8,
+      "compile_error": 19,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 56
+    },
+    {
+      "name": "built-ins/encodeURI",
+      "pass": 13,
+      "fail": 8,
+      "compile_error": 10,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 31
+    },
+    {
+      "name": "built-ins/encodeURIComponent",
+      "pass": 14,
+      "fail": 7,
+      "compile_error": 10,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 31
+    },
+    {
+      "name": "built-ins/eval",
+      "pass": 5,
+      "fail": 2,
+      "compile_error": 3,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 10
+    },
+    {
+      "name": "built-ins/global",
+      "pass": 12,
+      "fail": 8,
+      "compile_error": 9,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 29
+    },
+    {
+      "name": "built-ins/isFinite",
+      "pass": 6,
+      "fail": 6,
+      "compile_error": 3,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 15
+    },
+    {
+      "name": "built-ins/isNaN",
+      "pass": 5,
+      "fail": 6,
+      "compile_error": 4,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 15
+    },
+    {
+      "name": "built-ins/parseFloat",
+      "pass": 38,
+      "fail": 2,
+      "compile_error": 14,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 54
+    },
+    {
+      "name": "built-ins/parseInt",
+      "pass": 38,
+      "fail": 3,
+      "compile_error": 14,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 55
+    },
+    {
+      "name": "built-ins/undefined",
+      "pass": 5,
+      "fail": 1,
+      "compile_error": 2,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 8
     },
     {
       "name": "language/arguments-object",
@@ -909,26 +907,26 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 8199,
-    "illegal_cast": 180,
-    "negative_test_fail": 79,
-    "null_deref": 508,
-    "oob": 51,
-    "other": 3937,
-    "promise_error": 70,
+    "other": 3936,
+    "assertion_fail": 8204,
     "range_error": 36,
-    "runtime_error": 1512,
-    "type_error": 1467,
-    "unreachable": 21,
-    "wasm_compile": 1261
+    "null_deref": 507,
+    "illegal_cast": 179,
+    "type_error": 1462,
+    "wasm_compile": 1335,
+    "negative_test_fail": 79,
+    "runtime_error": 1590,
+    "oob": 51,
+    "promise_error": 71,
+    "unreachable": 21
   },
   "skip_reasons": {
-    "compiler hang (see HANGING_TESTS)": 2,
-    "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)": 460,
-    "ES2020: BigInt typed arrays not implemented (#838)": 28,
-    "ES2020: dynamic import()": 429,
-    "ES2021: FinalizationRegistry constructor not implemented — requires GC finalizer callbacks (#988)": 26,
     "ES5 legacy: with statement (strict mode disallowed)": 386,
-    "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)": 8
+    "ES2020: dynamic import()": 429,
+    "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)": 8,
+    "ES2020: BigInt typed arrays not implemented (#838)": 28,
+    "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)": 460,
+    "ES2021: FinalizationRegistry constructor not implemented \u2014 requires GC finalizer callbacks (#988)": 26,
+    "compiler hang (see HANGING_TESTS)": 2
   }
 }
