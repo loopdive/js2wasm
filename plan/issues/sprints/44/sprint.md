@@ -13,10 +13,17 @@ focused on IR Phase 3a/3b + critical regressions + highest-impact spec fixes.
 
 ## Goal
 
-Complete the IR Phase 3c chain (frontend widening + monomorphize + tagged
-unions), drain the large backlog of ready spec-completeness and
-developer-experience issues that could not fit into sprint 43, and close the
-CI baseline-drift hardening work.
+Two headline production-readiness issues lead this sprint:
+
+1. **#1153 — Fix compiler crashes** (~3,585 tests currently blocked by internal
+   exceptions on valid input). Hardest blocker for production use.
+2. **#1168 — IR frontend widening** (IrType union, LatticeType, box/unbox
+   instructions, isPhase1Expr Slice 1). Strategic foundation — unblocks #1166,
+   #1167c, and ultimately the full IR migration (#1169).
+
+Secondary: complete the IR Phase 3c chain (#1167c once #1168 lands), drain
+ready spec-completeness issues from sprint 43 overflow, close CI baseline-drift
+hardening.
 
 ## How this sprint was built
 
