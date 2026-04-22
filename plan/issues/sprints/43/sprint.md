@@ -15,6 +15,8 @@ All issues below were not started in sprint 42 and carried over. Issues with ope
 
 ## Issues
 
+**Top priority**: #1131 — Middle-end SSA IR: implementation plan (phase 2 of #1124 audit)
+
 <!-- populated from plan/issues/sprints/43/*.md -->
 
 ## Results
@@ -36,6 +38,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1131 | Middle-end SSA IR: implementation plan (phase 2 of #1124 audit) | high | ready |
 | #744 | Function monomorphization for polymorphic call sites | high | ready |
 | #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
 | #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
