@@ -10601,7 +10601,7 @@
       "priority": "medium",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "688"
       ],
@@ -10636,7 +10636,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "743",
         "1124"
@@ -10902,7 +10902,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1124"
       ],
@@ -12053,7 +12053,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -12159,7 +12159,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "crash-free",
@@ -12777,7 +12777,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "800",
         "898"
@@ -12813,7 +12813,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "900"
       ],
@@ -13960,7 +13960,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "error-model",
@@ -13984,7 +13984,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "iterator-protocol",
@@ -14008,7 +14008,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "compilable",
@@ -14032,7 +14032,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "compilable",
@@ -14056,7 +14056,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "iterator-protocol",
@@ -14080,7 +14080,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "error-model",
@@ -14134,7 +14134,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "contributor-readiness",
@@ -14158,7 +14158,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -14182,7 +14182,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1000"
       ],
@@ -14196,7 +14196,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "generator-model",
@@ -14220,7 +14220,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -14244,7 +14244,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -14470,10 +14470,10 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
-      "cluster": "sprint-43"
+      "cluster": "sprint-44"
     },
     {
       "id": "1026",
@@ -14594,7 +14594,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -14695,7 +14695,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -14707,7 +14707,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1041"
       ],
@@ -14721,7 +14721,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1041"
       ],
@@ -14881,7 +14881,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1042",
         "1044",
@@ -15010,7 +15010,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15097,7 +15097,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1006"
       ],
@@ -15126,7 +15126,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1060",
         "1061",
@@ -15142,7 +15142,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15168,7 +15168,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1076"
       ],
@@ -15182,7 +15182,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1076"
       ],
@@ -15196,7 +15196,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15208,7 +15208,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15295,7 +15295,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1085"
       ],
@@ -15369,7 +15369,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -15393,7 +15393,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -15405,7 +15405,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "maintainability",
@@ -15417,7 +15417,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -15441,7 +15441,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -15453,7 +15453,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1094"
       ],
@@ -15580,7 +15580,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1107"
       ],
@@ -15610,7 +15610,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [
         "compileWrapperConstructor — struct wrapping a primitive with __is_wrapper tag",
@@ -15752,7 +15752,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "conformance",
@@ -15764,7 +15764,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "performance",
@@ -15776,7 +15776,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1124"
       ],
@@ -15790,7 +15790,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "performance",
@@ -15814,7 +15814,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "correctness",
@@ -15838,7 +15838,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "benchmarking",
@@ -15850,7 +15850,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1124"
       ],
@@ -15914,7 +15914,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "test262",
@@ -16026,10 +16026,10 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
-      "cluster": "sprint-43"
+      "cluster": "sprint-44"
     },
     {
       "id": "1136",
@@ -16195,7 +16195,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -16206,7 +16206,7 @@
       "title": "Investigate skip:103 regression — Annex B eval-code skip filter",
       "priority": "high",
       "status": "ready",
-      "raw_status": "in-progress",
+      "raw_status": "ready",
       "sprint": "43",
       "depends_on": [],
       "files": [],
@@ -16405,7 +16405,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1163"
       ],
@@ -16432,11 +16432,12 @@
       "id": "1166",
       "title": "Closed-world integer specialization from literal call sites",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "43",
+      "status": "blocked",
+      "raw_status": "blocked",
+      "sprint": "44",
       "depends_on": [
-        "1131"
+        "1131",
+        "1168"
       ],
       "files": [],
       "goal": "compiler-architecture",
@@ -16444,7 +16445,22 @@
     },
     {
       "id": "1167",
-      "title": "SSA IR Phase 3 — optimization passes: inlining, monomorphization, tagged unions, escape analysis",
+      "title": "SSA IR Phase 3 — optimization passes (meta issue — see 1167a/b/c)",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "43",
+      "depends_on": [
+        "1131",
+        "1166"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1167a",
+      "title": "IR Phase 3a — hygiene passes: constant-fold, dead-code, simplify-cfg",
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
@@ -16452,6 +16468,44 @@
       "depends_on": [
         "1131",
         "1166"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1167b",
+      "title": "IR Phase 3b — inline-small: inline direct IR calls before lowering",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "43",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1167c",
+      "title": "IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening)",
+      "priority": "high",
+      "status": "blocked",
+      "raw_status": "blocked",
+      "sprint": "44",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1168",
+      "title": "IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "44",
+      "depends_on": [
+        "1131"
       ],
       "files": [],
       "goal": "compiler-architecture",
@@ -17080,6 +17134,30 @@
       "target": "907"
     },
     {
+      "source": "1124",
+      "target": "1131"
+    },
+    {
+      "source": "1152",
+      "target": "1156"
+    },
+    {
+      "source": "1131",
+      "target": "1167"
+    },
+    {
+      "source": "1166",
+      "target": "1167"
+    },
+    {
+      "source": "1131",
+      "target": "1167a"
+    },
+    {
+      "source": "1166",
+      "target": "1167a"
+    },
+    {
       "source": "1000",
       "target": "1003"
     },
@@ -17148,14 +17226,6 @@
       "target": "1126"
     },
     {
-      "source": "1124",
-      "target": "1131"
-    },
-    {
-      "source": "1152",
-      "target": "1156"
-    },
-    {
       "source": "1163",
       "target": "1164"
     },
@@ -17164,12 +17234,12 @@
       "target": "1166"
     },
     {
-      "source": "1131",
-      "target": "1167"
+      "source": "1168",
+      "target": "1166"
     },
     {
-      "source": "1166",
-      "target": "1167"
+      "source": "1131",
+      "target": "1168"
     },
     {
       "source": "688",
@@ -17632,7 +17702,11 @@
         "1131",
         "1131",
         "1166",
-        "1167"
+        "1167",
+        "1167a",
+        "1167b",
+        "1167c",
+        "1168"
       ],
       "track": "supporting track"
     },
@@ -20051,6 +20125,22 @@
     {
       "goal": "compiler-architecture",
       "issue": "1167"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1167a"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1167b"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1167c"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1168"
     },
     {
       "goal": "contributor-readiness",

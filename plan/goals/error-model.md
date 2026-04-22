@@ -74,13 +74,13 @@ makes the error paths spec-compliant.
 | **896** | Restore direct numeric GC-array codegen in hot loops | 34 | done | high |
 | **898** | Extend compile-time TDZ elimination to loop-local accesses | 34 | done | medium |
 | **899** | Extend compile-time TDZ elimination to provably safe closure captures | 34 | done | medium |
-| **906** | Compile away TDZ tracking for definite-assignment top-level numeric locals | 43 | ready | high |
+| **906** | Compile away TDZ tracking for definite-assignment top-level numeric locals | 44 | ready | high |
 | **913** | Split compiler.ts into validation, orchestration, and output modules | 39 | done | medium |
 | **947** | Calendar WAT analysis: 6 codegen inefficiencies found in the default playground example | 37 | done | medium |
 | **991** | Iterator helper generator-reentrancy tests hit 30s compiler timeout | 42 | done | high |
-| **991** | Iterator helper generator-reentrancy tests hit 30s compiler timeout | 43 | ready | high |
+| **991** | Iterator helper generator-reentrancy tests hit 30s compiler timeout | 44 | ready | high |
 | **996** | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 42 | done | low |
-| **996** | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 43 | ready | low |
+| **996** | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 44 | ready | low |
 | **1021** | Destructuring: use __extern_is_undefined instead of ref.is_null for defaults (~2,000+ FAIL) | 40 | done | critical |
 | **1022** | Array built-in method 'object is not a function' (640 FAIL) | Backlog | in-progress | critical |
 | **1023** | __unbox_number(null) crashes — should apply ToNumber(null) = +0 | 41 | done | high |
