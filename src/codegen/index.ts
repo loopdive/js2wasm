@@ -14,6 +14,8 @@ import {
 import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction, WasmModule } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
 import { compileIrPathFunctions } from "../ir/integration.js";
+import type { IrType } from "../ir/nodes.js";
+import { buildTypeMap, type LatticeType } from "../ir/propagate.js";
 import { planIrCompilation } from "../ir/select.js";
 import { createCodegenContext } from "./context/create-context.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
@@ -193,6 +195,39 @@ export function extractConstantDefault(
   return undefined;
 }
 
+/**
+ * Lift a propagated lattice type into the backend IrType used by the IR
+ * lowerer. Only concrete primitives are valid here; the caller must have
+ * ensured the lattice entry is `f64` or `bool`. Non-primitive entries
+ * throw — the caller should guard with `isConcreteLattice` first.
+ */
+function latticeToIr(t: LatticeType): IrType {
+  if (t.kind === "f64") return { kind: "f64" };
+  if (t.kind === "bool") return { kind: "i32" };
+  throw new Error(`latticeToIr: non-primitive lattice type ${t.kind}`);
+}
+
+function isConcreteLattice(t: LatticeType | undefined): t is LatticeType & { kind: "f64" | "bool" } {
+  return t !== undefined && (t.kind === "f64" || t.kind === "bool");
+}
+
+/**
+ * Resolve the IR type for a function's param or return position, using
+ * the AST's explicit TypeNode first (authoritative) and the TypeMap
+ * lattice entry only as a fallback. If neither yields a concrete
+ * primitive this is a selector bug — throw so the caller can skip the
+ * function and fall through to legacy.
+ */
+function resolvePositionType(node: ts.TypeNode | undefined, mapped: LatticeType | undefined): IrType {
+  if (node) {
+    if (node.kind === ts.SyntaxKind.NumberKeyword) return { kind: "f64" };
+    if (node.kind === ts.SyntaxKind.BooleanKeyword) return { kind: "i32" };
+    throw new Error(`unsupported TypeNode kind ${ts.SyntaxKind[node.kind]}`);
+  }
+  if (isConcreteLattice(mapped)) return latticeToIr(mapped);
+  throw new Error(`no concrete type (mapped=${mapped?.kind ?? "missing"})`);
+}
+
 /** Compile a typed AST into a WasmModule IR */
 export function generateModule(
   ast: TypedAST,
@@ -288,9 +323,64 @@ export function generateModule(
     // AFTER `compileDeclarations` so the symbolic-ref resolver sees final
     // funcIdx / globalIdx / typeIdx assignments — this is what makes
     // `shiftLateImportIndices` a no-op for IR-path bodies.
+    //
+    // Phase 2: the TypeMap is computed from `buildTypeMap`, which runs
+    // context-insensitive interprocedural propagation across the source
+    // file's call graph. That's what lets a recursive `fib` whose param
+    // is untyped in source compile as `(f64) -> f64` when a typed caller
+    // (e.g. `run(n: number)`) flows `number` into it. The selector then
+    // uses the TypeMap to decide which functions to claim, and closes
+    // the claim set under call-graph edges so the IR path never emits a
+    // cross-signature `call` against a legacy-compiled callee.
     if (options?.experimentalIR) {
-      const selection = planIrCompilation(ast.sourceFile, { experimentalIR: true });
-      const report = compileIrPathFunctions(ctx, ast.sourceFile, selection);
+      const typeMap = buildTypeMap(ast.sourceFile, ast.checker);
+      const selection = planIrCompilation(ast.sourceFile, { experimentalIR: true }, typeMap);
+      // Build per-function IR type overrides from the propagated TypeMap.
+      //
+      // For a claimed function, the selector must have resolved each
+      // param + return to a concrete primitive via either an explicit
+      // TS annotation OR the TypeMap. We mirror that resolution here to
+      // build the override map: for each position, prefer the AST
+      // annotation (authoritative) and fall back to the TypeMap only
+      // when the AST lacks one. If neither yields a concrete primitive,
+      // that position is a compiler bug — the selector should not have
+      // claimed this function.
+      //
+      // The override map also feeds the `calleeTypes` in the lowerer so
+      // direct calls to IR-path callees see the right signature.
+      const overrideMap = new Map<string, { params: IrType[]; returnType: IrType }>();
+      const declByName = new Map<string, ts.FunctionDeclaration>();
+      for (const stmt of ast.sourceFile.statements) {
+        if (ts.isFunctionDeclaration(stmt) && stmt.name) declByName.set(stmt.name.text, stmt);
+      }
+      for (const name of selection.funcs) {
+        const fn = declByName.get(name);
+        if (!fn) continue;
+        const entry = typeMap.get(name);
+        try {
+          const returnType = resolvePositionType(fn.type, entry?.returnType);
+          const params: IrType[] = [];
+          for (let i = 0; i < fn.parameters.length; i++) {
+            const p = fn.parameters[i]!;
+            params.push(resolvePositionType(p.type, entry?.params[i]));
+          }
+          overrideMap.set(name, { params, returnType });
+        } catch (e) {
+          // Selector claimed a function whose types can't be resolved —
+          // skip the IR path for this one. Fall through to legacy.
+          reportErrorNoNode(
+            ctx,
+            `IR path: could not resolve types for ${name}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+      // Only request IR compilation for functions we successfully built
+      // overrides for (the selector may have claimed more, but if we
+      // couldn't map types safely we leave them to legacy).
+      const safeSelection = {
+        funcs: new Set<string>([...selection.funcs].filter((n) => overrideMap.has(n))),
+      };
+      const report = compileIrPathFunctions(ctx, ast.sourceFile, safeSelection, overrideMap);
       for (const err of report.errors) {
         reportErrorNoNode(ctx, `IR path failed for ${err.func}: ${err.message}`);
       }

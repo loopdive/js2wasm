@@ -330,7 +330,12 @@ export function compileSource(
         fast: options.fast,
         nativeStrings: options.nativeStrings,
         wasi: options.target === "wasi",
-        experimentalIR: options.experimentalIR,
+        // Phase 2 (#1131): default experimentalIR to on so recursive
+        // numeric kernels (fib, factorial, etc.) compile without the
+        // boxing roundtrip the legacy path emits for untyped JS
+        // parameters. Pass `experimentalIR: false` to force legacy path
+        // for bit-by-bit divergence tests or emergency revert.
+        experimentalIR: options.experimentalIR !== false,
         nodeBuiltins: preprocessed.nodeBuiltins,
         wasiNodeFsFuncs,
       });
