@@ -79,12 +79,18 @@ describe("ir scaffold — phase 1", () => {
     `;
     const ast = analyzeSource(source);
     const sel = planIrCompilation(ast.sourceFile, { experimentalIR: true });
+    // Phase 2 also accepts the early-return-if pattern
+    // `if (cond) return x; <rest>` — structurally equivalent to
+    // `if (cond) <then> else { <rest> }`. This unlocks recursive numeric
+    // kernels (fib, factorial, …) whose typical shape is
+    // `if (base) return n; return <recursive>`.
     expect([...sel.funcs].sort()).toEqual([
       "compound",
       "trivial",
       "withBoolParam",
       "withIfElse",
       "withIfElseBlocks",
+      "withIfNoElse",
       "withLet",
       "withLocal",
       "withParam",

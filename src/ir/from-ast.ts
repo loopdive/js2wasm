@@ -15,6 +15,7 @@
 //   - BinaryExpression with an arithmetic / comparison / logical operator
 //   - PrefixUnaryExpression with `-`, `+`, `!`
 //   - ConditionalExpression (`a ? b : c`)
+//   - CallExpression to a locally-declared function (Phase 2)
 //   - ParenthesizedExpression (unwrap)
 //
 // Everything else throws — the selector must keep those functions on the
@@ -24,6 +25,15 @@
 // entry block holds the pre-branch `let`/`const` decls; each if-arm is its
 // own block (fork scope so declarations don't leak). Arms always terminate
 // with `return` — Phase 1 doesn't model join blocks yet.
+//
+// Phase 2 extensions:
+//   - Explicit TS `: number` / `: boolean` annotations are optional. When
+//     absent, the caller passes `paramTypeOverrides` / `returnTypeOverride`
+//     from the propagated TypeMap. This is what lets a recursive `fib`
+//     whose `n` is untyped in source compile as `(f64) -> f64`.
+//   - CallExpression to a local function lowers to `IrInstrCall`. The
+//     call's return type comes from `callReturnTypes` (same TypeMap),
+//     with arg types validated against the propagated callee param types.
 
 import ts from "typescript";
 
@@ -32,6 +42,25 @@ import type { IrBinop, IrFunction, IrType, IrUnop, IrValueId } from "./nodes.js"
 
 export interface AstToIrOptions {
   readonly exported?: boolean;
+  /**
+   * If present, overrides the IR types for the function's own parameters.
+   * Indexed by parameter position. Used when the AST lacks explicit TS
+   * type annotations and the Phase-2 propagation pass has inferred types.
+   */
+  readonly paramTypeOverrides?: readonly IrType[];
+  /**
+   * If present, overrides the IR return type. Same rationale as
+   * `paramTypeOverrides`.
+   */
+  readonly returnTypeOverride?: IrType;
+  /**
+   * Map from callee function name to that callee's IR types (param +
+   * return). Consulted when lowering a CallExpression whose callee is a
+   * local function. Missing entries cause the lowerer to throw — the
+   * selector's call-graph closure should guarantee every call we reach
+   * has an entry.
+   */
+  readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
 }
 
 export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToIrOptions = {}): IrFunction {
@@ -43,12 +72,16 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
   }
 
   const name = fn.name.text;
-  const returnType = typeNodeToIr(fn.type, `return type of ${name}`);
-  const params: { name: string; type: IrType }[] = fn.parameters.map((p) => {
+  const returnType = resolveIrType(fn.type, options.returnTypeOverride, `return type of ${name}`);
+  const params: { name: string; type: IrType }[] = fn.parameters.map((p, idx) => {
     if (!ts.isIdentifier(p.name)) {
       throw new Error(`ir/from-ast: destructuring params not supported in Phase 1 (${name})`);
     }
-    return { name: p.name.text, type: typeNodeToIr(p.type, `param ${p.name.text} of ${name}`) };
+    const override = options.paramTypeOverrides?.[idx];
+    return {
+      name: p.name.text,
+      type: resolveIrType(p.type, override, `param ${p.name.text} of ${name}`),
+    };
   });
 
   const builder = new IrFunctionBuilder(name, [returnType], options.exported ?? false);
@@ -68,7 +101,13 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     throw new Error(`ir/from-ast: Phase 1 expects at least 1 statement in ${name}`);
   }
 
-  const cx: LowerCtx = { builder, scope, funcName: name, returnType };
+  const cx: LowerCtx = {
+    builder,
+    scope,
+    funcName: name,
+    returnType,
+    calleeTypes: options.calleeTypes,
+  };
   lowerStatementList(stmts, cx);
 
   return builder.finish();
@@ -79,15 +118,42 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
     throw new Error(`ir/from-ast: empty statement list in ${cx.funcName}`);
   }
   for (let i = 0; i < stmts.length - 1; i++) {
-    const s = stmts[i];
-    if (!ts.isVariableStatement(s)) {
-      throw new Error(
-        `ir/from-ast: Phase 1 expects a VariableStatement before the tail (got ${ts.SyntaxKind[s.kind]} in ${cx.funcName})`,
-      );
+    const s = stmts[i]!;
+    if (ts.isVariableStatement(s)) {
+      lowerVarDecl(s, cx);
+      continue;
     }
-    lowerVarDecl(s, cx);
+    // Phase 2: early-return `if` with no else + subsequent statements.
+    // Structurally: `if (cond) <tail>; <rest>` ≡ `if (cond) <tail> else { <rest> }`.
+    // The then-arm lowers to its own block that terminates in `return`
+    // (lowerTail enforces that); the else-arm opens a reserved block and
+    // recursively lowers the remaining statements.
+    if (ts.isIfStatement(s) && !s.elseStatement) {
+      const cond = lowerExpr(s.expression, cx, { kind: "i32" });
+      const condType = cx.builder.typeOf(cond);
+      if (condType.kind !== "i32") {
+        throw new Error(`ir/from-ast: if condition must be bool in ${cx.funcName}`);
+      }
+      const thenId = cx.builder.reserveBlockId();
+      const elseId = cx.builder.reserveBlockId();
+      cx.builder.terminate({
+        kind: "br_if",
+        condition: cond,
+        ifTrue: { target: thenId, args: [] },
+        ifFalse: { target: elseId, args: [] },
+      });
+
+      cx.builder.openReservedBlock(thenId);
+      lowerTail(s.thenStatement, { ...cx, scope: new Map(cx.scope) });
+
+      cx.builder.openReservedBlock(elseId);
+      const rest = stmts.slice(i + 1);
+      lowerStatementList(rest, { ...cx, scope: new Map(cx.scope) });
+      return;
+    }
+    throw new Error(`ir/from-ast: unexpected statement before tail (got ${ts.SyntaxKind[s.kind]} in ${cx.funcName})`);
   }
-  lowerTail(stmts[stmts.length - 1], cx);
+  lowerTail(stmts[stmts.length - 1]!, cx);
 }
 
 /**
@@ -146,6 +212,7 @@ interface LowerCtx {
   readonly scope: Map<string, { value: IrValueId; type: IrType }>;
   readonly funcName: string;
   readonly returnType: IrType;
+  readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
 }
 
 function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
@@ -185,6 +252,28 @@ function typeNodeToIr(node: ts.TypeNode | undefined, where: string): IrType {
   }
 }
 
+/**
+ * Resolve the IR type for a function param or return.
+ *
+ * If the AST has an explicit TypeNode, it must agree with the override
+ * (if any). If the AST has no TypeNode, the override is authoritative.
+ * If neither is present, that's a compiler bug — the selector should not
+ * have claimed this function.
+ */
+function resolveIrType(node: ts.TypeNode | undefined, override: IrType | undefined, where: string): IrType {
+  if (node) {
+    const fromNode = typeNodeToIr(node, where);
+    if (override && override.kind !== fromNode.kind) {
+      throw new Error(
+        `ir/from-ast: type override (${override.kind}) disagrees with annotation (${fromNode.kind}) at ${where}`,
+      );
+    }
+    return fromNode;
+  }
+  if (override) return override;
+  throw new Error(`ir/from-ast: missing type annotation and no override (${where})`);
+}
+
 function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   if (ts.isParenthesizedExpression(expr)) {
     return lowerExpr(expr.expression, cx, hint);
@@ -212,7 +301,56 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   if (ts.isConditionalExpression(expr)) {
     return lowerConditional(expr, cx);
   }
+  if (ts.isCallExpression(expr)) {
+    return lowerCall(expr, cx);
+  }
   throw new Error(`ir/from-ast: unsupported expression kind ${ts.SyntaxKind[expr.kind]} in ${cx.funcName}`);
+}
+
+/**
+ * Lower a direct call to a locally-declared function. The callee's signature
+ * comes from `calleeTypes` (seeded by the Phase-2 TypeMap via the caller).
+ * If the callee isn't in the map, the selector's call-graph closure was
+ * violated — we throw so the caller can fall back to the legacy path.
+ *
+ * Arg type mismatch is fatal too: the selector is supposed to keep the
+ * whole strongly-connected component on the IR path only when the types
+ * are consistent. If we land here with a mismatch, the TypeMap was stale
+ * or the propagation pass converged on a dynamic type that the selector
+ * ignored — both are bugs.
+ */
+function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
+  if (!ts.isIdentifier(expr.expression)) {
+    throw new Error(`ir/from-ast: only direct calls supported in Phase 2 (${cx.funcName})`);
+  }
+  const calleeName = expr.expression.text;
+  const calleeSig = cx.calleeTypes?.get(calleeName);
+  if (!calleeSig) {
+    throw new Error(`ir/from-ast: call to unknown function "${calleeName}" in ${cx.funcName}`);
+  }
+  if (expr.arguments.length !== calleeSig.params.length) {
+    throw new Error(
+      `ir/from-ast: call to ${calleeName} has ${expr.arguments.length} args, expected ${calleeSig.params.length} in ${cx.funcName}`,
+    );
+  }
+  const args: IrValueId[] = [];
+  for (let i = 0; i < expr.arguments.length; i++) {
+    const argExpr = expr.arguments[i]!;
+    const expected = calleeSig.params[i]!;
+    const argVal = lowerExpr(argExpr, cx, expected);
+    const argType = cx.builder.typeOf(argVal);
+    if (argType.kind !== expected.kind) {
+      throw new Error(
+        `ir/from-ast: arg ${i} of call to ${calleeName} is ${argType.kind}, expected ${expected.kind} in ${cx.funcName}`,
+      );
+    }
+    args.push(argVal);
+  }
+  const result = cx.builder.emitCall({ kind: "func", name: calleeName }, args, calleeSig.returnType);
+  if (result === null) {
+    throw new Error(`ir/from-ast: call to ${calleeName} returned void used as expression in ${cx.funcName}`);
+  }
+  return result;
 }
 
 function lowerConditional(expr: ts.ConditionalExpression, cx: LowerCtx): IrValueId {
