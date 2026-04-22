@@ -38,7 +38,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1131 | Middle-end SSA IR: implementation plan (phase 2 of #1124 audit) | high | ready |
 | #744 | Function monomorphization for polymorphic call sites | high | ready |
 | #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
 | #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
@@ -90,12 +89,15 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
 | #1127 | Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]] | medium | ready |
 | #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | ready |
+| #1131 | Middle-end SSA IR: implementation plan | high | ready |
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
 | #1152 | Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions) | high | ready |
 | #1160 | Array.from codegen error — property of first arg must be integer (730 tests) | high | ready |
 | #1161 | Cannot destructure null/undefined in private class method params (~429 dstr tests) | high | ready |
 | #1162 | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | high | ready |
+| #1163 | Static eval inlining — compile eval(\"fixed string\") at compile time (~208 tests) | high | ready |
+| #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | ready |
 
 ### In Progress
 

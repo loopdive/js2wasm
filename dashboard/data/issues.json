@@ -104,6 +104,28 @@
   ],
   "ready": [
     {
+      "id": "1164",
+      "title": "Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1163"
+      ],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
+      "id": "1163",
+      "title": "Static eval inlining — compile eval(\\\"fixed string\\\") at compile time (~208 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "43"
+    },
+    {
       "id": "1162",
       "title": "yield* async — unexpected undefined AST node in compileExpression (~161 tests)",
       "priority": "high",
@@ -266,6 +288,18 @@
       "goal": "compiler-architecture",
       "status": "ready",
       "sprint": "Backlog"
+    },
+    {
+      "id": "1131",
+      "title": "Middle-end SSA IR: implementation plan",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "43"
     },
     {
       "id": "1130",
@@ -729,7 +763,8 @@
       "priority": "medium",
       "feasibility": "hard",
       "depends_on": [
-        "1006"
+        "1164",
+        "1058"
       ],
       "goal": "platform",
       "status": "ready",
