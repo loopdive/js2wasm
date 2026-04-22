@@ -16268,7 +16268,7 @@
       "priority": "critical",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "crash-free",
@@ -16507,6 +16507,18 @@
       "depends_on": [
         "1131"
       ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169",
+      "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
+      "priority": "high",
+      "status": "blocked",
+      "raw_status": "blocked",
+      "sprint": "44",
+      "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
       "cluster": "compiler-architecture"
@@ -17706,7 +17718,8 @@
         "1167a",
         "1167b",
         "1167c",
-        "1168"
+        "1168",
+        "1169"
       ],
       "track": "supporting track"
     },
@@ -20141,6 +20154,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1168"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169"
     },
     {
       "goal": "contributor-readiness",
