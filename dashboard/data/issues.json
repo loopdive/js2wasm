@@ -45,6 +45,19 @@
   ],
   "blocked": [
     {
+      "id": "1169",
+      "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1167c",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
+      "status": "blocked",
+      "sprint": "44"
+    },
+    {
       "id": "1167c",
       "title": "IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening)",
       "priority": "high",
@@ -1918,7 +1931,7 @@
       "depends_on": [],
       "goal": "crash-free",
       "status": "in-progress",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1150",
