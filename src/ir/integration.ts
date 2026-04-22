@@ -24,7 +24,7 @@ import { addFuncType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
 import { lowerFunctionAstToIr } from "./from-ast.js";
 import { lowerIrFunctionToWasm, type IrLowerResolver } from "./lower.js";
-import type { IrFuncRef, IrGlobalRef, IrTypeRef } from "./nodes.js";
+import type { IrFuncRef, IrGlobalRef, IrType, IrTypeRef } from "./nodes.js";
 import { planIrCompilation, type IrSelection } from "./select.js";
 import { verifyIrFunction } from "./verify.js";
 import type { FuncTypeDef } from "./types.js";
@@ -34,14 +34,38 @@ export interface IrIntegrationReport {
   readonly errors: readonly { func: string; message: string }[];
 }
 
+/**
+ * Per-function IR type overrides sourced from the Phase-2 propagation
+ * pass. Indexed by function name. When present for a selected function,
+ * these types are used in place of (or alongside) any explicit TS
+ * annotations. They are also used to derive the `calleeTypes` map that
+ * the AST→IR lowerer consults when lowering `CallExpression`.
+ */
+export interface IrTypeOverrideMap {
+  get(name: string): { readonly params: readonly IrType[]; readonly returnType: IrType } | undefined;
+}
+
 export function compileIrPathFunctions(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
   selection?: IrSelection,
+  overrides?: IrTypeOverrideMap,
 ): IrIntegrationReport {
   const selected = selection ?? planIrCompilation(sourceFile, { experimentalIR: true });
   if (selected.funcs.size === 0) {
     return { compiled: [], errors: [] };
+  }
+
+  // Build the calleeTypes map once — every IR-path function's lowerer
+  // sees the same view, keyed by every selected function's propagated
+  // signature. This is how cross-function calls keep their signatures
+  // consistent on the IR side.
+  const calleeTypes = new Map<string, { params: readonly IrType[]; returnType: IrType }>();
+  if (overrides) {
+    for (const name of selected.funcs) {
+      const o = overrides.get(name);
+      if (o) calleeTypes.set(name, { params: o.params, returnType: o.returnType });
+    }
   }
 
   const compiled: string[] = [];
@@ -54,7 +78,13 @@ export function compileIrPathFunctions(
     if (!selected.funcs.has(name)) continue;
 
     try {
-      const ir = lowerFunctionAstToIr(stmt, { exported: hasExportModifier(stmt) });
+      const o = overrides?.get(name);
+      const ir = lowerFunctionAstToIr(stmt, {
+        exported: hasExportModifier(stmt),
+        paramTypeOverrides: o?.params,
+        returnTypeOverride: o?.returnType,
+        calleeTypes,
+      });
       const verifyErrors = verifyIrFunction(ir);
       if (verifyErrors.length > 0) {
         for (const e of verifyErrors) errors.push({ func: name, message: e.message });
