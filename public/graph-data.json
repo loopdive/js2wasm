@@ -16502,7 +16502,7 @@
       "title": "IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "44",
       "depends_on": [
         "1131"

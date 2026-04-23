@@ -220,7 +220,12 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1167 | SSA IR Phase 3 — optimization passes (meta issue — see 1167a/b/c) | high | ready |
 | #1167a | IR Phase 3a — hygiene passes: constant-fold, dead-code, simplify-cfg | high | ready |
 | #1167b | IR Phase 3b — inline-small: inline direct IR calls before lowering | medium | ready |
-| #1168 | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1168 | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | high | in-progress |
 
 ### Done
 

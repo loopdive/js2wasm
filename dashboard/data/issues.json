@@ -143,18 +143,6 @@
   ],
   "ready": [
     {
-      "id": "1168",
-      "title": "IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1131"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "44"
-    },
-    {
       "id": "1167b",
       "title": "IR Phase 3b — inline-small: inline direct IR calls before lowering",
       "priority": "medium",
@@ -1973,6 +1961,18 @@
     }
   ],
   "inprogress": [
+    {
+      "id": "1168",
+      "title": "IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1131"
+      ],
+      "goal": "compiler-architecture",
+      "status": "in-progress",
+      "sprint": "44"
+    },
     {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
