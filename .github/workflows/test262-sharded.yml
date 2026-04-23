@@ -274,6 +274,11 @@ jobs:
           fetch-depth: 1
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
       - name: Download merged reports
         uses: actions/download-artifact@v7
         with:
