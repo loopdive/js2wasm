@@ -1726,6 +1726,12 @@ assert._isSameValue = isSameValue;
         return (obj: any, idx: number): number => {
           if (obj == null) return 0;
           const strKey = String(idx);
+          // Primitive strings can't be passed to the `in` operator (TypeError).
+          // `Array.prototype.forEach.call("abc", cb)` must visit index 0..len-1
+          // without that throw. (#1152)
+          if (typeof obj === "string") {
+            return idx >= 0 && idx < obj.length ? 1 : 0;
+          }
           try {
             if (idx in obj) return 1;
           } catch {

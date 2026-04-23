@@ -354,15 +354,23 @@ export function compileArrayLikePrototypeCall(
     (ts.isIdentifier(receiverArg) && receiverArg.text === "undefined");
   if (isNullReceiver) return undefined;
 
-  // Bail out on primitive literal receivers (boolean, number, string). Our `extern.convert_any`
-  // coercion only works on ref/anyref values; a primitive compiled to i32/f64 would produce
-  // invalid Wasm. The legacy __proto_method_call path handles ToObject(primitive) correctly.
+  // Bail out on boolean / numeric primitive literal receivers. Those compile
+  // to i32/f64, which `extern.convert_any` can't lift — routing them through
+  // the legacy __proto_method_call bridge (which performs ToObject on the JS
+  // side) is the safe path.
+  //
+  // String primitives (StringLiteral, NoSubstitutionTemplateLiteral) are
+  // deliberately NOT bailed out — they compile to externref via
+  // `string_constants` global imports, so the array-like loop's
+  // `__extern_length` + `__extern_get_idx` walks the string's code units
+  // correctly. Sending them to __proto_method_call instead leaked the Wasm
+  // closure callback across the host boundary as an uninvokable externref,
+  // producing "object is not a function" (#1152: Array.prototype.map.call("abc", cb)
+  // and similar patterns).
   if (
     receiverArg.kind === ts.SyntaxKind.TrueKeyword ||
     receiverArg.kind === ts.SyntaxKind.FalseKeyword ||
-    receiverArg.kind === ts.SyntaxKind.NumericLiteral ||
-    receiverArg.kind === ts.SyntaxKind.StringLiteral ||
-    receiverArg.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral
+    receiverArg.kind === ts.SyntaxKind.NumericLiteral
   ) {
     return undefined;
   }
