@@ -200,6 +200,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #744 | Function monomorphization for polymorphic call sites | high | ready |
 | #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
+| #825 | Null dereference failures (2,295 runtime failures) | high | ready |
 | #854 | Iterator protocol: null next/return/throw methods (126 tests) | high | ready |
 | #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
@@ -216,6 +217,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | ready |
 | #1006 | Support eval via JS host import | medium | ready |
+| #1008 | Add mobile-first layout support to the playground | medium | ready |
+| #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | ready |
 | #1025 | BindingElement array-pattern default guards still use ref.is_null | high | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
@@ -249,7 +252,19 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | ready |
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
+| #1148 | Investigate skip:103 regression — Annex B eval-code skip filter | high | ready |
+| #1149 | Fix null_deref:32 — eval-code direct methods with arguments declare | high | ready |
+| #1150 | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | high | ready |
+| #1152 | Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions) | high | ready |
+| #1156 | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | medium | ready |
+| #1160 | Array.from codegen error — property of first arg must be integer (730 tests) | high | ready |
+| #1161 | Cannot destructure null/undefined in private class method params (~429 dstr tests) | high | ready |
+| #1162 | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | high | ready |
+| #1163 | Static eval inlining — compile eval(\"fixed string\") at compile time (~208 tests) | high | ready |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | ready |
+| #1167 | SSA IR Phase 3 — optimization passes (meta issue — see 1167a/b/c) | high | ready |
+| #1167a | IR Phase 3a — hygiene passes: constant-fold, dead-code, simplify-cfg | high | ready |
+| #1167b | IR Phase 3b — inline-small: inline direct IR calls before lowering | medium | ready |
 | #1168 | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | high | ready |
 
 ### In Progress
