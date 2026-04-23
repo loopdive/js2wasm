@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-23T12:37:33.398Z",
+  "timestamp": "2026-04-23T12:38:34.066Z",
   "howItWorks": {
     "fib": {
       "name": "fib",
@@ -10,10 +10,10 @@
       "wasmSizeGzip": 155,
       "hostJsGzip": 446,
       "wasmTotalGzip": 601,
-      "jsParseMs": 0.001,
-      "wasmCompileMs": 0.0012,
-      "hostJsParseMs": 0.0026,
-      "wasmTotalMs": 0.0038
+      "jsParseMs": 0.0009,
+      "wasmCompileMs": 0.0011,
+      "hostJsParseMs": 0.0025,
+      "wasmTotalMs": 0.0036
     },
     "dom": {
       "name": "dom",
@@ -24,10 +24,10 @@
       "wasmSizeGzip": 350,
       "hostJsGzip": 720,
       "wasmTotalGzip": 1070,
-      "jsParseMs": 0.0008,
-      "wasmCompileMs": 0.002,
-      "hostJsParseMs": 0.0048,
-      "wasmTotalMs": 0.0068
+      "jsParseMs": 0.0009,
+      "wasmCompileMs": 0.0024,
+      "hostJsParseMs": 0.0052,
+      "wasmTotalMs": 0.0076
     }
   },
   "benchmarks": [
@@ -40,10 +40,10 @@
       "wasmSizeGzip": 1482,
       "hostJsGzip": 1285,
       "wasmTotalGzip": 2767,
-      "jsParseMs": 0.0077,
-      "wasmCompileMs": 0.0064,
-      "hostJsParseMs": 0.0092,
-      "wasmTotalMs": 0.0156
+      "jsParseMs": 0.0075,
+      "wasmCompileMs": 0.0063,
+      "hostJsParseMs": 0.0091,
+      "wasmTotalMs": 0.0154
     },
     {
       "name": "loop",
@@ -54,10 +54,10 @@
       "wasmSizeGzip": 1468,
       "hostJsGzip": 1280,
       "wasmTotalGzip": 2748,
-      "jsParseMs": 0.0094,
-      "wasmCompileMs": 0.0182,
-      "hostJsParseMs": 0.0087,
-      "wasmTotalMs": 0.0269
+      "jsParseMs": 0.0023,
+      "wasmCompileMs": 0.0063,
+      "hostJsParseMs": 0.0091,
+      "wasmTotalMs": 0.0153
     },
     {
       "name": "string",
@@ -68,10 +68,10 @@
       "wasmSizeGzip": 1501,
       "hostJsGzip": 1278,
       "wasmTotalGzip": 2779,
-      "jsParseMs": 0.0023,
-      "wasmCompileMs": 0.0081,
-      "hostJsParseMs": 0.0409,
-      "wasmTotalMs": 0.049
+      "jsParseMs": 0.0021,
+      "wasmCompileMs": 0.0063,
+      "hostJsParseMs": 0.0093,
+      "wasmTotalMs": 0.0155
     },
     {
       "name": "array",
@@ -82,10 +82,10 @@
       "wasmSizeGzip": 1609,
       "hostJsGzip": 1284,
       "wasmTotalGzip": 2893,
-      "jsParseMs": 0.0083,
-      "wasmCompileMs": 0.0101,
-      "hostJsParseMs": 0.0091,
-      "wasmTotalMs": 0.0192
+      "jsParseMs": 0.0079,
+      "wasmCompileMs": 0.0062,
+      "hostJsParseMs": 0.0096,
+      "wasmTotalMs": 0.0158
     },
     {
       "name": "dom",
@@ -96,10 +96,10 @@
       "wasmSizeGzip": 1526,
       "hostJsGzip": 1308,
       "wasmTotalGzip": 2834,
-      "jsParseMs": 0.0083,
-      "wasmCompileMs": 0.007,
-      "hostJsParseMs": 0.0097,
-      "wasmTotalMs": 0.0168
+      "jsParseMs": 0.0084,
+      "wasmCompileMs": 0.0061,
+      "hostJsParseMs": 0.0094,
+      "wasmTotalMs": 0.0155
     },
     {
       "name": "style",
@@ -110,10 +110,10 @@
       "wasmSizeGzip": 1656,
       "hostJsGzip": 1356,
       "wasmTotalGzip": 3012,
-      "jsParseMs": 0.0092,
-      "wasmCompileMs": 0.0132,
-      "hostJsParseMs": 0.0277,
-      "wasmTotalMs": 0.0409
+      "jsParseMs": 0.0086,
+      "wasmCompileMs": 0.0065,
+      "hostJsParseMs": 0.01,
+      "wasmTotalMs": 0.0165
     },
     {
       "name": "calendar",
@@ -124,10 +124,10 @@
       "wasmSizeGzip": 4485,
       "hostJsGzip": 1958,
       "wasmTotalGzip": 6443,
-      "jsParseMs": 0.0564,
-      "wasmCompileMs": 0.0199,
-      "hostJsParseMs": 0.0161,
-      "wasmTotalMs": 0.036
+      "jsParseMs": 0.0565,
+      "wasmCompileMs": 0.0184,
+      "hostJsParseMs": 0.0188,
+      "wasmTotalMs": 0.0372
     }
   ]
 }
