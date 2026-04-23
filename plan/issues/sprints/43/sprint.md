@@ -1,13 +1,13 @@
 ---
 id: 43
-status: planned
+status: done
 ---
 
 # Sprint 43
 
-**Date**: 2026-04-20 →
-**Baseline**: TBD (pending sprint 42 consolidation)
-**Target points**: TBD (pending velocity calibration from #1133)
+**Date**: 2026-04-20 → 2026-04-23
+**Starting baseline**: inherited from sprint 42
+**Ending baseline**: 24,483 / 43,172 = 56.7% (unchanged — IR work is infrastructure, not test262 coverage)
 
 ## Carry-over from Sprint 42
 
@@ -21,7 +21,18 @@ All issues below were not started in sprint 42 and carried over. Issues with ope
 
 ## Results
 
-TBD
+**3 PRs merged:**
+- **PR #160** — #1076 CI merge split (merge-report + regression-gate jobs separated)
+- **PR #231** — #1131 IR Phase 1 (SSA IR scaffold: nodes, builder, verify, emit stubs)
+- **PR #258** — #1131 IR Phase 2 (interprocedural type propagation + call support)
+
+**2 issues completed** (from issue tables): #826 illegal cast residuals, #1127 nested rest patterns
+
+**Baseline held at 24,483** — IR phases are infrastructure; no new test262 coverage expected until IR path handles real workloads (#1168+).
+
+**Most sprint 43 spec issues not reached** — #1152, #1160, #1161, #1162, #1163 and all IR Phase 3 work (#1167a/b/c, #1168) carried to sprint 44.
+
+**Sprint 43 was short** (~3 days) and strategic: it laid the entire IR middle-end foundation that sprint 44's production-readiness work depends on.
 
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables

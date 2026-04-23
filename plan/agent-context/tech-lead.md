@@ -1,59 +1,56 @@
 ---
 agent: tech-lead
-session_end: 2026-04-12-sprint-41-complete
-next_session_entry_point: Start fresh session, fresh team. Read this file + plan/issues/sprints/42/sprint.md first.
-last_handoff_reason: "Sprint 41 closed. CI prototype-poisoning crisis resolved. All PRs merged. Team shut down."
+session_end: 2026-04-23-sprint-43-close
+next_session_entry_point: Sprint 44 is ready to start. Read this file + plan/issues/sprints/44/sprint.md. Tag sprint-44/begin, spawn devs, dispatch #1153 + #1168 as headline priorities.
+last_handoff_reason: "Sprint 43 closed. LFS migration + CI fixes done. Team shut down. Sprint 44 planned and ready."
 ---
 
-## CURRENT STATE (as of 2026-04-12 end of Sprint 41)
+## CURRENT STATE (as of 2026-04-23)
 
 ### Baseline
-- **22,412 pass / 43,172 total = 51.92%**
-- Last baseline refresh: `84419fda` on origin/main
-- Sprint 41 started at 22,185 (51.40%), net +227 pass this sprint
+- **24,483 pass / 43,172 total = 56.7%**
+- Last baseline refresh: `7c00fa956` on origin/main
+- Sprint 43 started and ended at 24,483 (IR phases are infrastructure)
 
-### What shipped in Sprint 41
-8 PRs merged:
-- PR #120 (#997 BigInt comparison), PR #121 (#1091 early errors), PR #122 (#1018 ambient builtins)
-- PR #123 (#1090 ToPrimitive), PR #124 (#1024 destructuring holes), PR #125 (#1092 defineProperties)
-- PR #127 (#1085 bodyUsesArguments iterative), PR #129 (#1053 arguments.length)
+### What shipped in Sprint 43
+3 PRs merged:
+- PR #160 (#1076 CI merge split — merge-report + regression-gate separated)
+- PR #231 (#1131 IR Phase 1 — SSA IR scaffold: nodes, builder, verify, emit stubs)
+- PR #258 (#1131 IR Phase 2 — interprocedural type propagation + call support)
 
-### CI prototype-poisoning crisis (major fix)
-- Root cause: test262 tests mutate Array.prototype, Object.prototype, Map.prototype in ways that poison the TypeScript compiler running in the same fork-worker process
-- Three-layer fix in scripts/test262-worker.mjs:
-  1. Restore configurable prototype mutations after each test
-  2. Exit+restart worker on non-configurable mutations (CompilerPool respawns)
-  3. Cache v2 prefix to bust poisoned cache entries
-- Also fixed: CI cache key includes worker scripts, baseline promote handles rebase conflicts
-- Recovery: 2,262 → 22,412 (+20,150 tests)
+### Infrastructure work done this session (2026-04-23)
+- **LFS migration**: `*.jsonl`, `*.log`, `*.wasm`, `benchmarks/results/runs/*.json`, `public/benchmarks/results/*.json` all tracked in LFS. Historical blobs still in git objects (~316MB packed); forward-only migration.
+- **CI fixed**: added `lfs: true` to all 6 workflows that read/write LFS files; bumped all actions to Node.js 24-compatible versions.
+- **labs remote** (`git@github.com:loopdive/js2wasm-labs.git`): private repo for experimental/commercial work. `labs/*` branches blocked from origin via `.git/hooks/pre-push`. `labs/main` is the private integration branch. LFS URL on labs points to origin (free LFS bandwidth).
+- **GitHub Pages**: deploy working again after LFS fix.
 
-### Deferred work
-- **#1052** (Symbol.iterator override, 80 FAIL) — feasibility: hard, needs wasm generator ABI trampoline
-- **#1057** (String.prototype.split, 68 FAIL) — not started
-- **#990** (early-error residuals, 327 FAIL) — Phase 3 stretch, not reached
+### Sprint 44 plan
+File: `plan/issues/sprints/44/sprint.md`
+- **Headline #1**: #1153 — Fix compiler crashes (~3,585 tests blocked by internal exceptions)
+- **Headline #2**: #1168 — IR frontend widening (IrType union, LatticeType, box/unbox, isPhase1Expr Slice 1)
+- Secondary: #1167c (once #1168 lands), spec-completeness drain (#1152, #1160, #1161, #1162, #1163), CI baseline-drift hardening (#1076–#1080)
+- All 55+ issues are in `ready` state in `plan/issues/sprints/44/`
 
 ### Open PRs
-- **#102** (#1006 eval host import) — draft, blocked on #1073 scope-injection
-- **#38** (MCP channel server) — old draft, not ours
+- None known (gh auth needed to verify — run `gh auth login` after container rebuild)
 
-### Sprint 42 plan (ready)
-File: `plan/issues/sprints/42/sprint.md`
-- Goal: lodash-es compiles and runs E2E in Wasm
-- Critical enabler: #1074 (export default surfacing)
-- PO filed #1094-#1097 from Fastly review (Sprint 42 Phase 5)
+### Worktrees
+- None (3 stale empty ones removed)
 
-### PO agent
-- PO was spawned and filed 4 issues (#1094-#1097) from a Fastly compiler review
-- PO is still alive but idle — shut down at next session start
+### Stale local branches
+- ~200 branches from sprints 38–43. Safe to bulk-delete merged ones when you have a quiet moment: `git branch --merged main | grep -v '^\*\|main\|labs' | xargs git branch -d`
+
+### gh CLI auth
+- `gh` needs re-auth after container rebuild. Run `! gh auth login` in the terminal.
 
 ## FRESH SESSION START PROTOCOL
 
 1. Read this file
-2. Read `plan/issues/sprints/42/sprint.md`
+2. Read `plan/issues/sprints/44/sprint.md`
 3. `git log --oneline origin/main -10` to verify baseline
-4. `gh pr list --state open` to check for stale PRs
-5. Shut down stale PO if still alive
-6. Create fresh team: `TeamCreate(team_name="sprint-42")`
-7. Tag sprint start: `git tag sprint-42/begin`
-8. Spawn 3 devs + dispatch Phase 0 critical enabler (#1074)
+4. `! gh auth login` to re-auth gh CLI
+5. `gh pr list --state open` to check for stale PRs
+6. Tag sprint start: `git tag sprint-44/begin && git push origin --tags`
+7. Create fresh team
+8. Dispatch #1153 and #1168 as first two dev tasks (they're independent, run in parallel)
 9. Run `/tech-lead-loop` for continuous orchestration
