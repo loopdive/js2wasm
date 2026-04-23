@@ -305,6 +305,9 @@ jobs:
       - name: Regenerate edition buckets
         run: node --experimental-strip-types scripts/generate-editions.ts --results benchmarks/results/test262-current.jsonl
 
+      - name: Materialize runs history from LFS
+        run: git lfs pull --include="benchmarks/results/runs/index.json"
+
       - name: Append to runs/index.json (trend graph data)
         run: |
           node -e "
