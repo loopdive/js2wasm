@@ -1,0 +1,15 @@
+{
+  "pr": 12,
+  "conclusion": "success",
+  "head_branch": "issue-1161-private-method-destructure",
+  "head_sha": "8e3277c04fe78e2885081aec0cad839f39c9c71d",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24864401540",
+  "timestamp": "2026-04-23T23:50:19Z",
+  "pass": 24879,
+  "fail": 14029,
+  "compile_error": 2891,
+  "snapshot_delta": 396,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
