@@ -197,7 +197,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1166 | Closed-world integer specialization from literal call sites | high | blocked |
-| #1167c | IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening) | high | blocked |
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | blocked |
 
 ### Ready
@@ -220,17 +219,13 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1167 | SSA IR Phase 3 — optimization passes (meta issue — see 1167a/b/c) | high | ready |
 | #1167a | IR Phase 3a — hygiene passes: constant-fold, dead-code, simplify-cfg | high | ready |
 | #1167b | IR Phase 3b — inline-small: inline direct IR calls before lowering | medium | ready |
-
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1168 | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | high | in-progress |
+| #1167c | IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening) | high | ready |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | done |
+| #1168 | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
