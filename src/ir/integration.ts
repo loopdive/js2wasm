@@ -24,7 +24,10 @@ import { addFuncType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
 import { lowerFunctionAstToIr } from "./from-ast.js";
 import { lowerIrFunctionToWasm, type IrLowerResolver, type IrUnionLowering } from "./lower.js";
-import type { IrFuncRef, IrGlobalRef, IrType, IrTypeRef } from "./nodes.js";
+import type { IrFuncRef, IrFunction, IrGlobalRef, IrType, IrTypeRef } from "./nodes.js";
+import { constantFold } from "./passes/constant-fold.js";
+import { deadCode } from "./passes/dead-code.js";
+import { simplifyCFG } from "./passes/simplify-cfg.js";
 import { UnionStructRegistry } from "./passes/tagged-union-types.js";
 import { planIrCompilation, type IrSelection } from "./select.js";
 import { verifyIrFunction } from "./verify.js";
@@ -105,6 +108,19 @@ export function compileIrPathFunctions(
         continue;
       }
 
+      // Phase 3a hygiene passes (#1167a). Run to fixpoint: CF exposes
+      // unreachable blocks for DCE, DCE exposes single-successor chains
+      // for simplifyCFG, and simplifyCFG may expose more constant
+      // operands to the next CF round.
+      const optimized = runHygienePasses(ir);
+      const postPassErrors = verifyIrFunction(optimized);
+      if (postPassErrors.length > 0) {
+        for (const e of postPassErrors) {
+          errors.push({ func: name, message: `post-hygiene verify: ${e.message}` });
+        }
+        continue;
+      }
+
       const funcIdx = ctx.funcMap.get(name);
       if (funcIdx === undefined) {
         errors.push({ func: name, message: `no funcIdx allocated for ${name}` });
@@ -117,7 +133,7 @@ export function compileIrPathFunctions(
       }
 
       const resolver = makeResolver(ctx, unionRegistry);
-      const { func: wasmFunc } = lowerIrFunctionToWasm(ir, resolver);
+      const { func: wasmFunc } = lowerIrFunctionToWasm(optimized, resolver);
 
       const existing = ctx.mod.functions[localIdx];
       ctx.mod.functions[localIdx] = {
@@ -138,6 +154,32 @@ export function compileIrPathFunctions(
 
 function hasExportModifier(fn: ts.FunctionDeclaration): boolean {
   return !!fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+}
+
+/**
+ * Run the Phase 3a IR hygiene pipeline to fixpoint.
+ *
+ * Pipeline order (spec #1167a):
+ *   constantFold → deadCode → simplifyCFG
+ *
+ * Each pass returns the same IrFunction reference when it makes no
+ * changes, so reference equality is a reliable "unchanged" signal. The
+ * loop iterates until a full pass round is a no-op. An iteration cap
+ * guards against pathological non-convergence — with the V1 passes each
+ * loop strictly removes instructions or blocks, so real code converges
+ * in a handful of rounds.
+ */
+function runHygienePasses(fn: IrFunction): IrFunction {
+  const MAX_ITERS = 10;
+  let cur = fn;
+  for (let iter = 0; iter < MAX_ITERS; iter++) {
+    const afterCF = constantFold(cur);
+    const afterDCE = deadCode(afterCF);
+    const afterCFG = simplifyCFG(afterDCE);
+    if (afterCFG === cur) return cur;
+    cur = afterCFG;
+  }
+  return cur;
 }
 
 function makeResolver(ctx: CodegenContext, unionRegistry: UnionStructRegistry): IrLowerResolver {
