@@ -210,7 +210,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1148 | Investigate skip:103 regression — Annex B eval-code skip filter | high | ready |
 | #1149 | Fix null_deref:32 — eval-code direct methods with arguments declare | high | ready |
 | #1150 | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | high | ready |
-| #1152 | Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions) | high | ready |
 | #1156 | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | medium | ready |
 | #1161 | Cannot destructure null/undefined in private class method params (~429 dstr tests) | high | ready |
 | #1162 | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | high | ready |
@@ -222,6 +221,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1152 | Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions) | high | done |
 | #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | done |
 | #1160 | Array.from codegen error — test262-worker prototype poisoning leak (730 tests) | high | done |
 | #1163 | Static eval inlining — compile eval(\"fixed string\") at compile time (~208 tests) | high | done |
