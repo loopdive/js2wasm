@@ -392,8 +392,23 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "if", blockType, then: thenOps, else: elseOps });
         return;
       }
-      case "br":
-        throw new Error(`ir/lower: Phase 1 does not support 'br' terminators (${func.name})`);
+      case "br": {
+        // Unconditional branch — inline the successor block body. Same
+        // pattern as the br_if arms above: emit the target block's instrs
+        // + terminator directly, no structured `if` wrapper needed since
+        // the branch is unconditional. This was added in #1167a so CF can
+        // rewrite `br_if(const true, A, B)` to `br(A)` without crashing the
+        // lowerer.
+        if (t.branch.args.length !== 0) {
+          throw new Error(`ir/lower: Phase 1-3 br does not support branch args (${func.name})`);
+        }
+        const target = func.blocks[t.branch.target as number];
+        if (!target) {
+          throw new Error(`ir/lower: br target missing in ${func.name}`);
+        }
+        emitBlockBody(target, out);
+        return;
+      }
       case "unreachable":
         out.push({ op: "unreachable" });
         return;
