@@ -210,6 +210,9 @@ jobs:
           cp merged-reports/test262-report-merged.json public/benchmarks/results/test262-report.json
           cp merged-reports/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
 
+      - name: Materialize runs history from LFS
+        run: git lfs pull --include="benchmarks/results/runs/index.json"
+
       - name: Append to runs/index.json
         run: |
           node -e "
