@@ -19,6 +19,7 @@
 // callers can decide whether to bail or fall back to the legacy path.
 
 import type { IrBlock, IrFunction, IrValueId } from "./nodes.js";
+import type { ValType } from "./types.js";
 
 export interface IrVerifyError {
   readonly message: string;
@@ -91,6 +92,46 @@ function verifyBlock(func: IrFunction, block: IrBlock, defs: Set<IrValueId>, err
       }
     }
 
+    // Structural checks for the newly-added tagged-union instructions.
+    // These are type-system-level, not SSA-scope — misuse should surface
+    // here rather than silently lowering to a trap.
+    if (instr.kind === "box") {
+      if (instr.toType.kind !== "union") {
+        errors.push({
+          message: `box target must be a union IrType, got ${instr.toType.kind}`,
+          func: func.name,
+          block: block.id as number,
+        });
+      } else {
+        // box requires the operand's ValType to be a member of the union.
+        const operandT = operandValType(func, block, instr.value, localDefs);
+        if (operandT && !unionContains(instr.toType.members, operandT)) {
+          errors.push({
+            message: `box operand type ${operandT.kind} is not a member of union<${instr.toType.members.map((m) => m.kind).join(",")}>`,
+            func: func.name,
+            block: block.id as number,
+          });
+        }
+      }
+    }
+    if (instr.kind === "unbox" || instr.kind === "tag.test") {
+      // value's defining IrType must be a union whose members contain `tag`.
+      const operandIr = operandIrType(func, block, instr.value, localDefs);
+      if (operandIr && operandIr.kind !== "union") {
+        errors.push({
+          message: `${instr.kind} operand must be a union IrType, got ${operandIr.kind}`,
+          func: func.name,
+          block: block.id as number,
+        });
+      } else if (operandIr && !unionContains(operandIr.members, instr.tag)) {
+        errors.push({
+          message: `${instr.kind} tag ${instr.tag.kind} is not a member of union<${operandIr.members.map((m) => m.kind).join(",")}>`,
+          func: func.name,
+          block: block.id as number,
+        });
+      }
+    }
+
     if (instr.result !== null) {
       if (defs.has(instr.result)) {
         errors.push({
@@ -138,7 +179,63 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       return [instr.condition, instr.whenTrue, instr.whenFalse];
     case "raw.wasm":
       return [];
+    case "box":
+    case "unbox":
+    case "tag.test":
+      return [instr.value];
   }
+}
+
+/**
+ * Return the IrType of an SSA value within the given block context.
+ * Scans params + earlier instructions (in any earlier block). Returns `null`
+ * if the value isn't locally visible — the SSA-scope check reports that
+ * separately, so we skip the type check silently.
+ */
+function operandIrType(
+  func: IrFunction,
+  block: IrBlock,
+  v: IrValueId,
+  _localDefs: ReadonlySet<IrValueId>,
+): import("./nodes.js").IrType | null {
+  for (const p of func.params) {
+    if (p.value === v) return p.type;
+  }
+  // Scan all blocks — the SSA invariant allows earlier-defined values from
+  // predecessor blocks to be used here. A full dominator check is Phase-3.
+  for (const b of func.blocks) {
+    for (const inst of b.instrs) {
+      if (inst.result === v && inst.resultType) return inst.resultType;
+    }
+  }
+  // Block args of the containing block carry types in `blockArgTypes`.
+  for (let i = 0; i < block.blockArgs.length; i++) {
+    if (block.blockArgs[i] === v) return block.blockArgTypes[i] ?? null;
+  }
+  return null;
+}
+
+function operandValType(
+  func: IrFunction,
+  block: IrBlock,
+  v: IrValueId,
+  localDefs: ReadonlySet<IrValueId>,
+): ValType | null {
+  const t = operandIrType(func, block, v, localDefs);
+  if (!t) return null;
+  if (t.kind === "val") return t.val;
+  return null;
+}
+
+function unionContains(members: readonly ValType[], target: ValType): boolean {
+  for (const m of members) {
+    if (m.kind !== target.kind) continue;
+    if (m.kind === "ref" || m.kind === "ref_null") {
+      if ((m as { typeIdx: number }).typeIdx !== (target as { typeIdx: number }).typeIdx) continue;
+    }
+    return true;
+  }
+  return false;
 }
 
 function collectTerminatorUses(block: IrBlock): readonly IrValueId[] {

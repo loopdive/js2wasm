@@ -38,7 +38,7 @@
 import ts from "typescript";
 
 import { IrFunctionBuilder } from "./builder.js";
-import type { IrBinop, IrFunction, IrType, IrUnop, IrValueId } from "./nodes.js";
+import { asVal, irVal, type IrBinop, type IrFunction, type IrType, type IrUnop, type IrValueId } from "./nodes.js";
 
 export interface AstToIrOptions {
   readonly exported?: boolean;
@@ -129,9 +129,9 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
     // (lowerTail enforces that); the else-arm opens a reserved block and
     // recursively lowers the remaining statements.
     if (ts.isIfStatement(s) && !s.elseStatement) {
-      const cond = lowerExpr(s.expression, cx, { kind: "i32" });
+      const cond = lowerExpr(s.expression, cx, irVal({ kind: "i32" }));
       const condType = cx.builder.typeOf(cond);
-      if (condType.kind !== "i32") {
+      if (asVal(condType)?.kind !== "i32") {
         throw new Error(`ir/from-ast: if condition must be bool in ${cx.funcName}`);
       }
       const thenId = cx.builder.reserveBlockId();
@@ -180,9 +180,9 @@ function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
     if (!stmt.elseStatement) {
       throw new Error(`ir/from-ast: Phase 1 if must have an else arm in ${cx.funcName}`);
     }
-    const cond = lowerExpr(stmt.expression, cx, { kind: "i32" });
+    const cond = lowerExpr(stmt.expression, cx, irVal({ kind: "i32" }));
     const condType = cx.builder.typeOf(cond);
-    if (condType.kind !== "i32") {
+    if (asVal(condType)?.kind !== "i32") {
       throw new Error(`ir/from-ast: if condition must be bool in ${cx.funcName}`);
     }
     // Reserve block IDs for both arms BEFORE terminating the current block.
@@ -228,13 +228,17 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
       throw new Error(`ir/from-ast: Phase 1 requires an initializer for '${name}' in ${cx.funcName}`);
     }
     const annotated = d.type ? typeNodeToIr(d.type, `local ${name} of ${cx.funcName}`) : undefined;
-    const hint = annotated ?? { kind: "f64" as const };
+    const hint: IrType = annotated ?? irVal({ kind: "f64" });
     const value = lowerExpr(d.initializer, cx, hint);
     const inferred = cx.builder.typeOf(value);
-    if (annotated && annotated.kind !== inferred.kind) {
-      throw new Error(
-        `ir/from-ast: local '${name}' annotated as ${annotated.kind} but initializer is ${inferred.kind} in ${cx.funcName}`,
-      );
+    if (annotated) {
+      const annotatedVal = asVal(annotated);
+      const inferredVal = asVal(inferred);
+      if (!annotatedVal || !inferredVal || annotatedVal.kind !== inferredVal.kind) {
+        throw new Error(
+          `ir/from-ast: local '${name}' annotated as ${describeIrType(annotated)} but initializer is ${describeIrType(inferred)} in ${cx.funcName}`,
+        );
+      }
     }
     cx.scope.set(name, { value, type: inferred });
   }
@@ -244,12 +248,19 @@ function typeNodeToIr(node: ts.TypeNode | undefined, where: string): IrType {
   if (!node) throw new Error(`ir/from-ast: missing type annotation (${where})`);
   switch (node.kind) {
     case ts.SyntaxKind.NumberKeyword:
-      return { kind: "f64" };
+      return irVal({ kind: "f64" });
     case ts.SyntaxKind.BooleanKeyword:
-      return { kind: "i32" };
+      return irVal({ kind: "i32" });
     default:
       throw new Error(`ir/from-ast: unsupported type in Phase 1 (${where})`);
   }
+}
+
+/** Short debug string for IrType, used in error messages. */
+function describeIrType(t: IrType): string {
+  if (t.kind === "val") return t.val.kind;
+  if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
+  return `boxed<${t.inner.kind}>`;
 }
 
 /**
@@ -263,10 +274,14 @@ function typeNodeToIr(node: ts.TypeNode | undefined, where: string): IrType {
 function resolveIrType(node: ts.TypeNode | undefined, override: IrType | undefined, where: string): IrType {
   if (node) {
     const fromNode = typeNodeToIr(node, where);
-    if (override && override.kind !== fromNode.kind) {
-      throw new Error(
-        `ir/from-ast: type override (${override.kind}) disagrees with annotation (${fromNode.kind}) at ${where}`,
-      );
+    if (override) {
+      const overrideVal = asVal(override);
+      const fromNodeVal = asVal(fromNode);
+      if (!overrideVal || !fromNodeVal || overrideVal.kind !== fromNodeVal.kind) {
+        throw new Error(
+          `ir/from-ast: type override (${describeIrType(override)}) disagrees with annotation (${describeIrType(fromNode)}) at ${where}`,
+        );
+      }
     }
     return fromNode;
   }
@@ -279,13 +294,13 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
     return lowerExpr(expr.expression, cx, hint);
   }
   if (ts.isNumericLiteral(expr)) {
-    return cx.builder.emitConst({ kind: "f64", value: Number(expr.text) }, { kind: "f64" });
+    return cx.builder.emitConst({ kind: "f64", value: Number(expr.text) }, irVal({ kind: "f64" }));
   }
   if (expr.kind === ts.SyntaxKind.TrueKeyword) {
-    return cx.builder.emitConst({ kind: "bool", value: true }, { kind: "i32" });
+    return cx.builder.emitConst({ kind: "bool", value: true }, irVal({ kind: "i32" }));
   }
   if (expr.kind === ts.SyntaxKind.FalseKeyword) {
-    return cx.builder.emitConst({ kind: "bool", value: false }, { kind: "i32" });
+    return cx.builder.emitConst({ kind: "bool", value: false }, irVal({ kind: "i32" }));
   }
   if (ts.isIdentifier(expr)) {
     const p = cx.scope.get(expr.text);
@@ -339,9 +354,11 @@ function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
     const expected = calleeSig.params[i]!;
     const argVal = lowerExpr(argExpr, cx, expected);
     const argType = cx.builder.typeOf(argVal);
-    if (argType.kind !== expected.kind) {
+    const argValT = asVal(argType);
+    const expectedVal = asVal(expected);
+    if (!argValT || !expectedVal || argValT.kind !== expectedVal.kind) {
       throw new Error(
-        `ir/from-ast: arg ${i} of call to ${calleeName} is ${argType.kind}, expected ${expected.kind} in ${cx.funcName}`,
+        `ir/from-ast: arg ${i} of call to ${calleeName} is ${describeIrType(argType)}, expected ${describeIrType(expected)} in ${cx.funcName}`,
       );
     }
     args.push(argVal);
@@ -354,46 +371,48 @@ function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
 }
 
 function lowerConditional(expr: ts.ConditionalExpression, cx: LowerCtx): IrValueId {
-  const cond = lowerExpr(expr.condition, cx, { kind: "i32" });
+  const cond = lowerExpr(expr.condition, cx, irVal({ kind: "i32" }));
   const condType = cx.builder.typeOf(cond);
-  if (condType.kind !== "i32") {
+  if (asVal(condType)?.kind !== "i32") {
     throw new Error(`ir/from-ast: ternary condition must be bool in ${cx.funcName}`);
   }
-  const whenTrue = lowerExpr(expr.whenTrue, cx, { kind: "f64" });
-  const whenFalse = lowerExpr(expr.whenFalse, cx, { kind: "f64" });
+  const whenTrue = lowerExpr(expr.whenTrue, cx, irVal({ kind: "f64" }));
+  const whenFalse = lowerExpr(expr.whenFalse, cx, irVal({ kind: "f64" }));
   const ttype = cx.builder.typeOf(whenTrue);
   const ftype = cx.builder.typeOf(whenFalse);
-  if (ttype.kind !== ftype.kind) {
+  const tVal = asVal(ttype);
+  const fVal = asVal(ftype);
+  if (!tVal || !fVal || tVal.kind !== fVal.kind) {
     throw new Error(
-      `ir/from-ast: ternary branches have different types (${ttype.kind} vs ${ftype.kind}) in ${cx.funcName}`,
+      `ir/from-ast: ternary branches have different types (${describeIrType(ttype)} vs ${describeIrType(ftype)}) in ${cx.funcName}`,
     );
   }
   return cx.builder.emitSelect(cond, whenTrue, whenFalse, ttype);
 }
 
 function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, cx: LowerCtx): IrValueId {
-  const rand = lowerExpr(expr.operand, cx, { kind: "f64" });
+  const rand = lowerExpr(expr.operand, cx, irVal({ kind: "f64" }));
   switch (expr.operator) {
     case ts.SyntaxKind.MinusToken: {
       const randType = typeOfValue(rand, cx);
-      if (randType.kind !== "f64") {
+      if (asVal(randType)?.kind !== "f64") {
         throw new Error(`ir/from-ast: unary '-' expects number in ${cx.funcName}`);
       }
-      return cx.builder.emitUnary("f64.neg", rand, { kind: "f64" });
+      return cx.builder.emitUnary("f64.neg", rand, irVal({ kind: "f64" }));
     }
     case ts.SyntaxKind.PlusToken: {
       const randType = typeOfValue(rand, cx);
-      if (randType.kind !== "f64") {
+      if (asVal(randType)?.kind !== "f64") {
         throw new Error(`ir/from-ast: unary '+' expects number in ${cx.funcName}`);
       }
       return rand;
     }
     case ts.SyntaxKind.ExclamationToken: {
       const randType = typeOfValue(rand, cx);
-      if (randType.kind !== "i32") {
+      if (asVal(randType)?.kind !== "i32") {
         throw new Error(`ir/from-ast: unary '!' expects bool in ${cx.funcName}`);
       }
-      return cx.builder.emitUnary("i32.eqz", rand, { kind: "i32" });
+      return cx.builder.emitUnary("i32.eqz", rand, irVal({ kind: "i32" }));
     }
     default:
       throw new Error(`ir/from-ast: unsupported prefix operator ${ts.SyntaxKind[expr.operator]} in ${cx.funcName}`);
@@ -402,18 +421,20 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, cx: LowerCtx): IrValue
 
 function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
   const op = expr.operatorToken.kind;
-  const lhs = lowerExpr(expr.left, cx, { kind: "f64" });
-  const rhs = lowerExpr(expr.right, cx, { kind: "f64" });
+  const lhs = lowerExpr(expr.left, cx, irVal({ kind: "f64" }));
+  const rhs = lowerExpr(expr.right, cx, irVal({ kind: "f64" }));
   const lt = typeOfValue(lhs, cx);
   const rt = typeOfValue(rhs, cx);
-  if (lt.kind !== rt.kind) {
+  const ltVal = asVal(lt);
+  const rtVal = asVal(rt);
+  if (!ltVal || !rtVal || ltVal.kind !== rtVal.kind) {
     throw new Error(
       `ir/from-ast: Phase 1 requires matching operand types for '${ts.tokenToString(op)}' in ${cx.funcName}`,
     );
   }
 
-  const isF64 = lt.kind === "f64";
-  const isI32 = lt.kind === "i32";
+  const isF64 = ltVal.kind === "f64";
+  const isI32 = ltVal.kind === "i32";
 
   let binop: IrBinop;
   let resultType: IrType;
@@ -422,62 +443,62 @@ function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
     case ts.SyntaxKind.PlusToken:
       requireF64(isF64, "+", cx.funcName);
       binop = "f64.add";
-      resultType = { kind: "f64" };
+      resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.MinusToken:
       requireF64(isF64, "-", cx.funcName);
       binop = "f64.sub";
-      resultType = { kind: "f64" };
+      resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.AsteriskToken:
       requireF64(isF64, "*", cx.funcName);
       binop = "f64.mul";
-      resultType = { kind: "f64" };
+      resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.SlashToken:
       requireF64(isF64, "/", cx.funcName);
       binop = "f64.div";
-      resultType = { kind: "f64" };
+      resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.LessThanToken:
       requireF64(isF64, "<", cx.funcName);
       binop = "f64.lt";
-      resultType = { kind: "i32" };
+      resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.LessThanEqualsToken:
       requireF64(isF64, "<=", cx.funcName);
       binop = "f64.le";
-      resultType = { kind: "i32" };
+      resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.GreaterThanToken:
       requireF64(isF64, ">", cx.funcName);
       binop = "f64.gt";
-      resultType = { kind: "i32" };
+      resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.GreaterThanEqualsToken:
       requireF64(isF64, ">=", cx.funcName);
       binop = "f64.ge";
-      resultType = { kind: "i32" };
+      resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
     case ts.SyntaxKind.EqualsEqualsToken:
       binop = isF64 ? "f64.eq" : "i32.eq";
-      resultType = { kind: "i32" };
+      resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.ExclamationEqualsEqualsToken:
     case ts.SyntaxKind.ExclamationEqualsToken:
       binop = isF64 ? "f64.ne" : "i32.ne";
-      resultType = { kind: "i32" };
+      resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.AmpersandAmpersandToken:
       requireI32(isI32, "&&", cx.funcName);
       binop = "i32.and";
-      resultType = { kind: "i32" };
+      resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.BarBarToken:
       requireI32(isI32, "||", cx.funcName);
       binop = "i32.or";
-      resultType = { kind: "i32" };
+      resultType = irVal({ kind: "i32" });
       break;
     default:
       throw new Error(`ir/from-ast: unsupported binary operator ${ts.tokenToString(op)} in ${cx.funcName}`);

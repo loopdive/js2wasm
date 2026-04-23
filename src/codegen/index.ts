@@ -14,7 +14,7 @@ import {
 import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction, WasmModule } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
 import { compileIrPathFunctions } from "../ir/integration.js";
-import type { IrType } from "../ir/nodes.js";
+import { irVal, type IrType } from "../ir/nodes.js";
 import { buildTypeMap, type LatticeType } from "../ir/propagate.js";
 import { planIrCompilation } from "../ir/select.js";
 import { createCodegenContext } from "./context/create-context.js";
@@ -202,8 +202,8 @@ export function extractConstantDefault(
  * throw — the caller should guard with `isConcreteLattice` first.
  */
 function latticeToIr(t: LatticeType): IrType {
-  if (t.kind === "f64") return { kind: "f64" };
-  if (t.kind === "bool") return { kind: "i32" };
+  if (t.kind === "f64") return irVal({ kind: "f64" });
+  if (t.kind === "bool") return irVal({ kind: "i32" });
   throw new Error(`latticeToIr: non-primitive lattice type ${t.kind}`);
 }
 
@@ -220,8 +220,8 @@ function isConcreteLattice(t: LatticeType | undefined): t is LatticeType & { kin
  */
 function resolvePositionType(node: ts.TypeNode | undefined, mapped: LatticeType | undefined): IrType {
   if (node) {
-    if (node.kind === ts.SyntaxKind.NumberKeyword) return { kind: "f64" };
-    if (node.kind === ts.SyntaxKind.BooleanKeyword) return { kind: "i32" };
+    if (node.kind === ts.SyntaxKind.NumberKeyword) return irVal({ kind: "f64" });
+    if (node.kind === ts.SyntaxKind.BooleanKeyword) return irVal({ kind: "i32" });
     throw new Error(`unsupported TypeNode kind ${ts.SyntaxKind[node.kind]}`);
   }
   if (isConcreteLattice(mapped)) return latticeToIr(mapped);

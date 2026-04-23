@@ -23,11 +23,12 @@ import ts from "typescript";
 import { addFuncType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
 import { lowerFunctionAstToIr } from "./from-ast.js";
-import { lowerIrFunctionToWasm, type IrLowerResolver } from "./lower.js";
+import { lowerIrFunctionToWasm, type IrLowerResolver, type IrUnionLowering } from "./lower.js";
 import type { IrFuncRef, IrGlobalRef, IrType, IrTypeRef } from "./nodes.js";
+import { UnionStructRegistry } from "./passes/tagged-union-types.js";
 import { planIrCompilation, type IrSelection } from "./select.js";
 import { verifyIrFunction } from "./verify.js";
-import type { FuncTypeDef } from "./types.js";
+import type { FuncTypeDef, StructTypeDef, ValType } from "./types.js";
 
 export interface IrIntegrationReport {
   readonly compiled: readonly string[];
@@ -71,6 +72,19 @@ export function compileIrPathFunctions(
   const compiled: string[] = [];
   const errors: { func: string; message: string }[] = [];
 
+  // Single shared union-struct registry across all IR-path functions in this
+  // compilation. Registering a union once produces one WasmGC struct type;
+  // subsequent `box`/`unbox`/`tag.test` uses from any function see the same
+  // type index. The sink writes into `ctx.mod.types` directly so the
+  // registered struct participates in the module's usual type emission.
+  const unionRegistry = new UnionStructRegistry({
+    push(def: StructTypeDef): number {
+      const idx = ctx.mod.types.length;
+      ctx.mod.types.push(def);
+      return idx;
+    },
+  });
+
   for (const stmt of sourceFile.statements) {
     if (!ts.isFunctionDeclaration(stmt)) continue;
     if (!stmt.name) continue;
@@ -102,7 +116,7 @@ export function compileIrPathFunctions(
         continue;
       }
 
-      const resolver = makeResolver(ctx);
+      const resolver = makeResolver(ctx, unionRegistry);
       const { func: wasmFunc } = lowerIrFunctionToWasm(ir, resolver);
 
       const existing = ctx.mod.functions[localIdx];
@@ -126,7 +140,7 @@ function hasExportModifier(fn: ts.FunctionDeclaration): boolean {
   return !!fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
 }
 
-function makeResolver(ctx: CodegenContext): IrLowerResolver {
+function makeResolver(ctx: CodegenContext, unionRegistry: UnionStructRegistry): IrLowerResolver {
   return {
     resolveFunc(ref: IrFuncRef): number {
       const idx = ctx.funcMap.get(ref.name);
@@ -145,6 +159,9 @@ function makeResolver(ctx: CodegenContext): IrLowerResolver {
     },
     internFuncType(type: FuncTypeDef): number {
       return addFuncType(ctx, type.params, type.results, type.name);
+    },
+    resolveUnion(members: readonly ValType[]): IrUnionLowering | null {
+      return unionRegistry.resolve(members);
     },
   };
 }
