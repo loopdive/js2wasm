@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-04-23T19:29:22.001Z",
-  "baseline_generated_at": "2026-04-23T19:29:21Z",
-  "baseline_sha": "acc4fecbf1e153407bfb7aba4dc6504edf69cc90",
+  "timestamp": "2026-04-23T20:50:10.513Z",
+  "baseline_generated_at": "2026-04-23T20:50:10Z",
+  "baseline_sha": "2cfc29600ebe492b3778c2043bf133865a7cd4d2",
   "mode": {
-    "include_proposals": 0,
-    "label": "official test262 (default scope)"
+    "include_proposals": 1,
+    "label": "full test262"
   },
   "summary": {
     "total": 43172,
@@ -27,13 +27,13 @@
     "stale": 0
   },
   "full_summary": {
-    "total": 43172,
-    "pass": 24483,
-    "fail": 13700,
-    "compile_error": 3621,
+    "total": 48374,
+    "pass": 25576,
+    "fail": 16629,
+    "compile_error": 4623,
     "compile_timeout": 29,
-    "skip": 1339,
-    "compilable": 38183,
+    "skip": 1517,
+    "compilable": 42205,
     "stale": 0
   },
   "strict_summary": {
@@ -58,13 +58,13 @@
       "stale": 0
     },
     "proposal": {
-      "total": 0,
-      "pass": 0,
-      "fail": 0,
-      "compile_error": 0,
+      "total": 5202,
+      "pass": 1093,
+      "fail": 2929,
+      "compile_error": 1002,
       "compile_timeout": 0,
-      "skip": 0,
-      "compilable": 0,
+      "skip": 178,
+      "compilable": 4022,
       "stale": 0
     },
     "standard": {
@@ -96,6 +96,15 @@
       "compile_timeout": 0,
       "skip": 0,
       "total": 845
+    },
+    {
+      "name": "built-ins/AbstractModuleSource",
+      "pass": 0,
+      "fail": 8,
+      "compile_error": 0,
+      "compile_timeout": 0,
+      "skip": 0,
+      "total": 8
     },
     {
       "name": "built-ins/AggregateError",
@@ -225,12 +234,12 @@
     },
     {
       "name": "built-ins/Date",
-      "pass": 359,
-      "fail": 217,
+      "pass": 360,
+      "fail": 224,
       "compile_error": 10,
       "compile_timeout": 0,
       "skip": 0,
-      "total": 586
+      "total": 594
     },
     {
       "name": "built-ins/decodeURI",
@@ -387,12 +396,12 @@
     },
     {
       "name": "built-ins/Map",
-      "pass": 137,
-      "fail": 23,
-      "compile_error": 10,
+      "pass": 147,
+      "fail": 44,
+      "compile_error": 12,
       "compile_timeout": 0,
       "skip": 1,
-      "total": 171
+      "total": 204
     },
     {
       "name": "built-ins/MapIteratorPrototype",
@@ -584,6 +593,15 @@
       "total": 98
     },
     {
+      "name": "built-ins/Temporal",
+      "pass": 949,
+      "fail": 2599,
+      "compile_error": 827,
+      "compile_timeout": 0,
+      "skip": 149,
+      "total": 4524
+    },
+    {
       "name": "built-ins/ThrowTypeError",
       "pass": 3,
       "fail": 9,
@@ -630,12 +648,12 @@
     },
     {
       "name": "built-ins/WeakMap",
-      "pass": 65,
-      "fail": 13,
-      "compile_error": 24,
+      "pass": 78,
+      "fail": 29,
+      "compile_error": 34,
       "compile_timeout": 0,
       "skip": 0,
-      "total": 102
+      "total": 141
     },
     {
       "name": "built-ins/WeakRef",
@@ -738,12 +756,12 @@
     },
     {
       "name": "language/expressions",
-      "pass": 6365,
-      "fail": 3546,
-      "compile_error": 256,
+      "pass": 6475,
+      "fail": 3678,
+      "compile_error": 333,
       "compile_timeout": 0,
-      "skip": 524,
-      "total": 10691
+      "skip": 550,
+      "total": 11036
     },
     {
       "name": "language/function-code",
@@ -792,12 +810,12 @@
     },
     {
       "name": "language/import",
-      "pass": 2,
-      "fail": 18,
-      "compile_error": 1,
+      "pass": 11,
+      "fail": 164,
+      "compile_error": 87,
       "compile_timeout": 0,
-      "skip": 1,
-      "total": 22
+      "skip": 4,
+      "total": 266
     },
     {
       "name": "language/keywords",
@@ -828,12 +846,12 @@
     },
     {
       "name": "language/module-code",
-      "pass": 356,
+      "pass": 357,
       "fail": 219,
       "compile_error": 144,
       "compile_timeout": 0,
       "skip": 9,
-      "total": 728
+      "total": 729
     },
     {
       "name": "language/punctuators",
@@ -909,26 +927,26 @@
     }
   ],
   "error_categories": {
-    "assertion_fail": 8199,
+    "assertion_fail": 8558,
     "illegal_cast": 180,
-    "negative_test_fail": 79,
-    "null_deref": 508,
+    "negative_test_fail": 178,
+    "null_deref": 511,
     "oob": 51,
-    "other": 3937,
+    "other": 4984,
     "promise_error": 70,
-    "range_error": 36,
-    "runtime_error": 1512,
-    "type_error": 1467,
+    "range_error": 43,
+    "runtime_error": 2026,
+    "type_error": 3319,
     "unreachable": 21,
-    "wasm_compile": 1261
+    "wasm_compile": 1311
   },
   "skip_reasons": {
-    "compiler hang (see HANGING_TESTS)": 2,
+    "compiler hang (see HANGING_TESTS)": 3,
     "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)": 460,
     "ES2020: BigInt typed arrays not implemented (#838)": 28,
-    "ES2020: dynamic import()": 429,
+    "ES2020: dynamic import()": 432,
     "ES2021: FinalizationRegistry constructor not implemented — requires GC finalizer callbacks (#988)": 26,
-    "ES5 legacy: with statement (strict mode disallowed)": 386,
+    "ES5 legacy: with statement (strict mode disallowed)": 560,
     "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)": 8
   }
 }
