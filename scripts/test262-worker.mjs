@@ -64,6 +64,11 @@ process.on("unhandledRejection", () => {});
 // (must be deleted, not re-assigned — they're properties not on the
 // original descriptor set).
 const _origArrayIterator = Array.prototype[Symbol.iterator];
+// Capture the original descriptor so we can fully restore even when a test
+// poisoned @@iterator via Object.defineProperty with `writable:false` (#1160).
+// Plain `=` assignment silently fails on such a frozen descriptor — the
+// descriptor itself must be re-applied via Object.defineProperty.
+const _origArrayIteratorDesc = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
 const _origArrayProtoNumericKeys = new Set(Object.getOwnPropertyNames(Array.prototype).filter((k) => /^\d+$/.test(k)));
 const _origObjectProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype));
 
@@ -297,15 +302,25 @@ const _snapshotValue = (obj, key) => {
     return undefined;
   }
 };
+const _snapshotDescriptor = (obj, key) => {
+  try {
+    // Own descriptor first; fall back to walking the prototype chain so that
+    // e.g. Array.from (which lives on the constructor) is still captured when
+    // a test replaced it via Object.defineProperty earlier in the run.
+    return Object.getOwnPropertyDescriptor(obj, key);
+  } catch {
+    return undefined;
+  }
+};
 const _methodOrig = _METHOD_SNAPSHOTS.map(([name, obj, keys]) => ({
   name,
   obj,
-  values: keys.map((k) => [k, _snapshotValue(obj, k)]),
+  values: keys.map((k) => [k, _snapshotValue(obj, k), _snapshotDescriptor(obj, k)]),
 }));
 const _staticOrig = _STATIC_SNAPSHOTS.map(([name, obj, keys]) => ({
   name,
   obj,
-  values: keys.map((k) => [k, _snapshotValue(obj, k)]),
+  values: keys.map((k) => [k, _snapshotValue(obj, k), _snapshotDescriptor(obj, k)]),
 }));
 const _accessorOrig = _ACCESSOR_SNAPSHOTS.map(([name, obj, keys]) => ({
   name,
@@ -315,12 +330,82 @@ const _accessorOrig = _ACCESSOR_SNAPSHOTS.map(([name, obj, keys]) => ({
     .filter(([, d]) => d !== undefined && typeof d.get === "function"),
 }));
 
+// Restore a (prototype-or-constructor) method property. Value-assignment is
+// the hot path — cheap and does not disturb V8 IC caches. When that silently
+// fails (e.g. because a test poisoned the property via Object.defineProperty
+// with writable:false / configurable:false), we retry with defineProperty
+// using the captured original descriptor. This is required to recover from
+// issue #1160: tests that replace Array.prototype[Symbol.iterator] with a
+// non-callable value via defineProperty would otherwise persist across tests,
+// making subsequent compiler internals like `Array.from(nodeArray)` throw
+// `%Array%.from requires that the property of the first argument,
+// items[Symbol.iterator], when exists, be a function`.
+function _restoreMethodProp(obj, key, orig, origDesc) {
+  if (orig === undefined) return;
+  let cur;
+  try {
+    cur = obj[key];
+  } catch {
+    cur = undefined;
+  }
+  if (cur === orig) return;
+
+  // Hot path: plain assignment. Succeeds when the descriptor is still
+  // writable. Silently no-ops (or throws in strict mode) when the test
+  // made it non-writable.
+  try {
+    obj[key] = orig;
+  } catch {}
+
+  // Re-check and fall back to defineProperty if the value is still wrong
+  // AND we have the original descriptor to re-apply. Only reached on the
+  // cold "test poisoned via defineProperty" path.
+  try {
+    if (obj[key] === orig) return;
+  } catch {
+    // accessor threw — try defineProperty anyway
+  }
+  if (origDesc) {
+    try {
+      Object.defineProperty(obj, key, origDesc);
+    } catch {}
+  }
+}
+
 function restoreBuiltins() {
-  // Restore Array.prototype[Symbol.iterator]
+  // Restore Array.prototype[Symbol.iterator].
+  // Critical for the compiler's internal Array.from calls (on TypeScript
+  // NodeArrays + other plain arrays). If left poisoned to a non-function
+  // value, Array.from throws "%Array%.from requires that the property of
+  // the first argument, items[Symbol.iterator], when exists, be a function"
+  // — which surfaces as an L1:0 Codegen error during the next test's
+  // compilation (#1160).
   if (Array.prototype[Symbol.iterator] !== _origArrayIterator) {
     try {
       Array.prototype[Symbol.iterator] = _origArrayIterator;
     } catch {}
+    // If = silently failed (defineProperty-poisoned descriptor), re-apply
+    // the original descriptor so the property is a function again.
+    if (Array.prototype[Symbol.iterator] !== _origArrayIterator && _origArrayIteratorDesc) {
+      try {
+        Object.defineProperty(Array.prototype, Symbol.iterator, _origArrayIteratorDesc);
+      } catch {}
+    }
+  }
+
+  // If Symbol.iterator is STILL non-callable at this point, the descriptor
+  // must be non-configurable. Every subsequent `for...of` in this function
+  // would throw `T is not iterable` because it walks an array (the return
+  // value of Object.getOwnPropertyNames) whose prototype we can't repair.
+  // Bail out now so the caller restarts the fork rather than cascade-failing.
+  {
+    const cur = Array.prototype[Symbol.iterator];
+    if (cur != null && typeof cur !== "function") {
+      console.error(
+        `[unified-worker pid=${process.pid}] FATAL: Array.prototype[Symbol.iterator] is non-configurable ${typeof cur} — exiting for restart (#1160)`,
+      );
+      process.exit(1);
+    }
   }
 
   // Remove numeric-indexed accessor properties added to Array.prototype
@@ -341,39 +426,17 @@ function restoreBuiltins() {
     }
   }
 
-  // Restore specific methods on prototypes (value-assignment only).
+  // Restore specific methods on prototypes (value-assignment, defineProperty fallback).
   for (const { obj, values } of _methodOrig) {
-    for (const [key, orig] of values) {
-      if (orig === undefined) continue;
-      let cur;
-      try {
-        cur = obj[key];
-      } catch {
-        cur = undefined;
-      }
-      if (cur !== orig) {
-        try {
-          obj[key] = orig;
-        } catch {}
-      }
+    for (const [key, orig, origDesc] of values) {
+      _restoreMethodProp(obj, key, orig, origDesc);
     }
   }
 
   // Restore static/namespace methods on constructors.
   for (const { obj, values } of _staticOrig) {
-    for (const [key, orig] of values) {
-      if (orig === undefined) continue;
-      let cur;
-      try {
-        cur = obj[key];
-      } catch {
-        cur = undefined;
-      }
-      if (cur !== orig) {
-        try {
-          obj[key] = orig;
-        } catch {}
-      }
+    for (const [key, orig, origDesc] of values) {
+      _restoreMethodProp(obj, key, orig, origDesc);
     }
   }
 
@@ -421,6 +484,12 @@ function restoreBuiltins() {
 }
 
 function doCompile(source, sourceMapUrl) {
+  // Defence-in-depth: restore any poisoned builtins BEFORE each compile.
+  // postCompileCleanup runs after the previous test, but under rare worker
+  // interruption scenarios it may not have completed. Doing a cheap pre-
+  // compile restore guarantees the compiler always starts with a clean
+  // Array.prototype[Symbol.iterator] et al. (#1160)
+  restoreBuiltins();
   const compileFn = incrementalCompiler ? incrementalCompiler.compile : compile;
   return incrementalCompiler
     ? compileFn(source, { sourceMapUrl: sourceMapUrl || "test.wasm.map" })
