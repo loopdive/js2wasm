@@ -2630,7 +2630,9 @@
       "1168",
       "1169"
     ],
-    "completedIssueIds": [],
+    "completedIssueIds": [
+      "1153"
+    ],
     "explicitCarryOver": false,
     "isClosed": true
   },

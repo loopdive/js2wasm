@@ -1974,16 +1974,6 @@
   ],
   "inprogress": [
     {
-      "id": "1153",
-      "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
-      "priority": "critical",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "crash-free",
-      "status": "in-progress",
-      "sprint": "44"
-    },
-    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -2132,6 +2122,16 @@
     }
   ],
   "done": [
+    {
+      "id": "1153",
+      "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
+      "priority": "critical",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "crash-free",
+      "status": "done",
+      "sprint": "44"
+    },
     {
       "id": "1146",
       "title": "for-of: nested rest binding patterns not decoded (825 ary-rest-rest cluster)",
