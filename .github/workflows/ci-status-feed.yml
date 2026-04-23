@@ -32,7 +32,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download merged report artifact from triggering run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: test262-merged-report
           path: /tmp/merged-report
