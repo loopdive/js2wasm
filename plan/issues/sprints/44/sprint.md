@@ -222,10 +222,10 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1167b | IR Phase 3b — inline-small: inline direct IR calls before lowering | medium | ready |
 | #1168 | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | high | ready |
 
-### In Progress
+### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | in-progress |
+| #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
