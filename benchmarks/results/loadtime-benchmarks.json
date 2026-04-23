@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-16T13:20:43.277Z",
+  "timestamp": "2026-04-23T12:48:39.206Z",
   "benchmarks": [
     {
       "name": "fib",
@@ -183,15 +183,6 @@
         },
         {
           "module": "env",
-          "name": "__concat_3",
-          "kind": "func",
-          "intent": {
-            "type": "builtin",
-            "name": "__concat_3"
-          }
-        },
-        {
-          "module": "env",
           "name": "__box_number",
           "kind": "func",
           "intent": {
@@ -234,9 +225,11 @@
         "padding:0.75rem",
         "fib(30)",
         "Recursive — pure i32/f64 math, no host calls",
+        "padding:0.75rem;background:#1a1a35;border-radius:6px;border:1px solid #2a2a4a;margin-bottom:0.5rem;cursor:pointer",
         "TypeError: Cannot access property on null or undefined",
         "TypeError: Cannot access property on null or undefined at 33:17",
-        "RangeError: toFixed() digits argument must be between 0 and 100"
+        "RangeError: toFixed() digits argument must be between 0 and 100",
+        "margin:0;background:#111;color:#ddd;font-family:system-ui,sans-serif;overflow-y:auto"
       ]
     },
     {
@@ -421,15 +414,6 @@
         },
         {
           "module": "env",
-          "name": "__concat_3",
-          "kind": "func",
-          "intent": {
-            "type": "builtin",
-            "name": "__concat_3"
-          }
-        },
-        {
-          "module": "env",
           "name": "__box_number",
           "kind": "func",
           "intent": {
@@ -471,9 +455,11 @@
         "padding:0.75rem",
         "Loop: sum 1..1M",
         "Tight numeric loop, no allocations",
+        "padding:0.75rem;background:#1a1a35;border-radius:6px;border:1px solid #2a2a4a;margin-bottom:0.5rem;cursor:pointer",
         "TypeError: Cannot access property on null or undefined",
         "TypeError: Cannot access property on null or undefined at 33:17",
-        "RangeError: toFixed() digits argument must be between 0 and 100"
+        "RangeError: toFixed() digits argument must be between 0 and 100",
+        "margin:0;background:#111;color:#ddd;font-family:system-ui,sans-serif;overflow-y:auto"
       ]
     },
     {
@@ -658,15 +644,6 @@
         },
         {
           "module": "env",
-          "name": "__concat_3",
-          "kind": "func",
-          "intent": {
-            "type": "builtin",
-            "name": "__concat_3"
-          }
-        },
-        {
-          "module": "env",
           "name": "__box_number",
           "kind": "func",
           "intent": {
@@ -709,9 +686,11 @@
         "padding:0.75rem",
         "String: concat 1k",
         "wasm:js-string concat per iteration",
+        "padding:0.75rem;background:#1a1a35;border-radius:6px;border:1px solid #2a2a4a;margin-bottom:0.5rem;cursor:pointer",
         "TypeError: Cannot access property on null or undefined",
         "TypeError: Cannot access property on null or undefined at 33:17",
-        "RangeError: toFixed() digits argument must be between 0 and 100"
+        "RangeError: toFixed() digits argument must be between 0 and 100",
+        "margin:0;background:#111;color:#ddd;font-family:system-ui,sans-serif;overflow-y:auto"
       ]
     },
     {
@@ -896,15 +875,6 @@
         },
         {
           "module": "env",
-          "name": "__concat_3",
-          "kind": "func",
-          "intent": {
-            "type": "builtin",
-            "name": "__concat_3"
-          }
-        },
-        {
-          "module": "env",
           "name": "__box_number",
           "kind": "func",
           "intent": {
@@ -946,9 +916,11 @@
         "padding:0.75rem",
         "Array: fill+sum 10k",
         "Wasm GC array — push / get loop",
+        "padding:0.75rem;background:#1a1a35;border-radius:6px;border:1px solid #2a2a4a;margin-bottom:0.5rem;cursor:pointer",
         "TypeError: Cannot access property on null or undefined",
         "TypeError: Cannot access property on null or undefined at 33:17",
-        "RangeError: toFixed() digits argument must be between 0 and 100"
+        "RangeError: toFixed() digits argument must be between 0 and 100",
+        "margin:0;background:#111;color:#ddd;font-family:system-ui,sans-serif;overflow-y:auto"
       ]
     },
     {
@@ -1144,15 +1116,6 @@
         },
         {
           "module": "env",
-          "name": "__concat_3",
-          "kind": "func",
-          "intent": {
-            "type": "builtin",
-            "name": "__concat_3"
-          }
-        },
-        {
-          "module": "env",
           "name": "__box_number",
           "kind": "func",
           "intent": {
@@ -1196,9 +1159,11 @@
         "padding:0.75rem",
         "DOM: 100 elements",
         "Host boundary — createElement + appendChild",
+        "padding:0.75rem;background:#1a1a35;border-radius:6px;border:1px solid #2a2a4a;margin-bottom:0.5rem;cursor:pointer",
         "TypeError: Cannot access property on null or undefined",
         "TypeError: Cannot access property on null or undefined at 33:17",
-        "RangeError: toFixed() digits argument must be between 0 and 100"
+        "RangeError: toFixed() digits argument must be between 0 and 100",
+        "margin:0;background:#111;color:#ddd;font-family:system-ui,sans-serif;overflow-y:auto"
       ]
     },
     {
@@ -1405,15 +1370,6 @@
         },
         {
           "module": "env",
-          "name": "__concat_3",
-          "kind": "func",
-          "intent": {
-            "type": "builtin",
-            "name": "__concat_3"
-          }
-        },
-        {
-          "module": "env",
           "name": "__box_number",
           "kind": "func",
           "intent": {
@@ -1468,9 +1424,11 @@
         "padding:0.75rem",
         "Style: 100 updates",
         "Host boundary — style.background per iteration",
+        "padding:0.75rem;background:#1a1a35;border-radius:6px;border:1px solid #2a2a4a;margin-bottom:0.5rem;cursor:pointer",
         "TypeError: Cannot access property on null or undefined",
         "TypeError: Cannot access property on null or undefined at 33:17",
-        "RangeError: toFixed() digits argument must be between 0 and 100"
+        "RangeError: toFixed() digits argument must be between 0 and 100",
+        "margin:0;background:#111;color:#ddd;font-family:system-ui,sans-serif;overflow-y:auto"
       ]
     },
     {
@@ -1683,15 +1641,6 @@
         },
         {
           "module": "env",
-          "name": "__concat_3",
-          "kind": "func",
-          "intent": {
-            "type": "builtin",
-            "name": "__concat_3"
-          }
-        },
-        {
-          "module": "env",
           "name": "__box_number",
           "kind": "func",
           "intent": {
@@ -1710,11 +1659,11 @@
         },
         {
           "module": "env",
-          "name": "__concat_10",
+          "name": "__concat_7",
           "kind": "func",
           "intent": {
             "type": "builtin",
-            "name": "__concat_10"
+            "name": "__concat_7"
           }
         }
       ],
@@ -1819,9 +1768,20 @@
         "Save",
         "saved ",
         "-",
+        "padding:0.75rem;background:#1a1a35;border-radius:6px;border:1px solid #2a2a4a;margin-bottom:0.5rem;cursor:pointer",
         "TypeError: Cannot access property on null or undefined",
         "TypeError: Cannot access property on null or undefined at 33:17",
-        "RangeError: toFixed() digits argument must be between 0 and 100"
+        "RangeError: toFixed() digits argument must be between 0 and 100",
+        "padding:8px 4px;text-align:center;font-size:0.8rem;color:#555;font-style:italic",
+        "padding:6px 4px;text-align:center;font-size:0.8rem;cursor:pointer;border-radius:4px;background:",
+        ";border:",
+        "margin:0;background:#111;color:#ddd;font-family:system-ui,sans-serif;overflow:hidden",
+        "display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5rem",
+        "display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:0.6rem;color:#666;margin-bottom:4px",
+        "display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:0.6rem;color:#666;margin-top:4px",
+        "display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem;font-size:0.85rem",
+        "display:flex;align-items:center;justify-content:space-between;margin-top:0.5rem",
+        "padding:8px 28px;background:#fff;color:#111;border-radius:999px;cursor:pointer;font-size:0.9rem;font-weight:600"
       ]
     }
   ]
