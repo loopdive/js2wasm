@@ -3,14 +3,50 @@ name: Test262 Sharded
 on:
   pull_request:
     branches: [main]
+    paths:
+      - ".github/workflows/test262-sharded.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig.json"
+      - "scripts/tsconfig.json"
+      - "vitest.config.ts"
+      - "src/**"
+      - "scripts/build-test262-report.mjs"
+      - "scripts/compiler-fork-worker.mjs"
+      - "scripts/compiler-pool.ts"
+      - "scripts/diff-test262.ts"
+      - "scripts/generate-editions.ts"
+      - "scripts/test262-worker.mjs"
+      - "tests/test262-chunk*.test.ts"
+      - "tests/test262-runner.ts"
+      - "tests/test262-scope-classification.test.ts"
+      - "tests/test262-shared.ts"
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/test262-sharded.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig.json"
+      - "scripts/tsconfig.json"
+      - "vitest.config.ts"
+      - "src/**"
+      - "scripts/build-test262-report.mjs"
+      - "scripts/compiler-fork-worker.mjs"
+      - "scripts/compiler-pool.ts"
+      - "scripts/diff-test262.ts"
+      - "scripts/generate-editions.ts"
+      - "scripts/test262-worker.mjs"
+      - "tests/test262-chunk*.test.ts"
+      - "tests/test262-runner.ts"
+      - "tests/test262-scope-classification.test.ts"
+      - "tests/test262-shared.ts"
   workflow_dispatch:
     inputs:
       include_proposals:
         description: "Include proposal tests"
         required: false
-        default: false
+        default: true
         type: boolean
       compiler_pool_size:
         description: "Compiler workers per shard runner"
@@ -46,7 +82,7 @@ jobs:
 
     env:
       COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
-      TEST262_INCLUDE_PROPOSALS: ${{ inputs.include_proposals && '1' || '0' }}
+      TEST262_INCLUDE_PROPOSALS: ${{ github.event_name != 'workflow_dispatch' && '1' || (inputs.include_proposals && '1' || '0') }}
       RUN_TIMESTAMP: ${{ github.run_id }}-chunk${{ matrix.chunk }}
 
     steps:
@@ -55,7 +91,6 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
-          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -119,8 +154,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -155,7 +188,7 @@ jobs:
             --output merged-reports/test262-report-merged.json \
             --baseline-sha "${{ github.sha }}" \
             --baseline-generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            ${{ inputs.include_proposals && '--include-proposals' || '' }}
+            ${{ github.event_name != 'workflow_dispatch' && '--include-proposals' || (inputs.include_proposals && '--include-proposals' || '') }}
 
       - name: Upload merged reports
         uses: actions/upload-artifact@v6
@@ -175,8 +208,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -241,7 +272,6 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
-          lfs: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download merged reports
@@ -266,6 +296,9 @@ jobs:
           mkdir -p public/benchmarks/results
           cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
           cp shard-artifacts/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
+
+      - name: Regenerate edition buckets
+        run: node --experimental-strip-types scripts/generate-editions.ts --results benchmarks/results/test262-current.jsonl
 
       - name: Append to runs/index.json (trend graph data)
         run: |
@@ -300,7 +333,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
+          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-editions.json benchmarks/results/runs/index.json
           if git diff --cached --quiet; then
             echo "No baseline changes to commit."
             exit 0
@@ -329,8 +362,9 @@ jobs:
             cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
             cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
             cp shard-artifacts/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
+            node --experimental-strip-types scripts/generate-editions.ts --results benchmarks/results/test262-current.jsonl
             # Stage ONLY the benchmark files — nothing else
-            git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
+            git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-editions.json benchmarks/results/runs/index.json
             git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
           fi
           git push
