@@ -164,7 +164,7 @@
       ],
       "goal": "compiler-architecture",
       "status": "ready",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1167a",
@@ -177,7 +177,7 @@
       ],
       "goal": "compiler-architecture",
       "status": "ready",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1167",
@@ -190,7 +190,7 @@
       ],
       "goal": "compiler-architecture",
       "status": "split",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1165",
@@ -225,7 +225,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1162",
@@ -235,7 +235,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1161",
@@ -245,7 +245,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1160",
@@ -255,7 +255,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1159",
@@ -288,6 +288,18 @@
       "sprint": "Backlog"
     },
     {
+      "id": "1156",
+      "title": "Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1152"
+      ],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "44"
+    },
+    {
       "id": "1155",
       "title": "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)",
       "priority": "medium",
@@ -317,7 +329,7 @@
       "depends_on": [],
       "goal": "crash-free",
       "status": "ready",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1151",
@@ -330,6 +342,26 @@
       "sprint": "Backlog"
     },
     {
+      "id": "1150",
+      "title": "Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "44"
+    },
+    {
+      "id": "1149",
+      "title": "Fix null_deref:32 — eval-code direct methods with arguments declare",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "44"
+    },
+    {
       "id": "1148",
       "title": "Investigate skip:103 regression — Annex B eval-code skip filter",
       "priority": "high",
@@ -337,7 +369,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "43"
+      "sprint": "44"
     },
     {
       "id": "1147",
@@ -1030,6 +1062,16 @@
       "sprint": "44"
     },
     {
+      "id": "1016",
+      "title": "Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "ready",
+      "sprint": "44"
+    },
+    {
       "id": "1011",
       "title": "Offline-first benchmarks with Playwright DOM measurement and Run Live button",
       "priority": "medium",
@@ -1048,6 +1090,16 @@
       "goal": "contributor-readiness",
       "status": "ready",
       "sprint": "Backlog"
+    },
+    {
+      "id": "1008",
+      "title": "Add mobile-first layout support to the playground",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "ready",
+      "sprint": "44"
     },
     {
       "id": "1006",
@@ -1530,6 +1582,16 @@
       "sprint": "Backlog"
     },
     {
+      "id": "825",
+      "title": "Null dereference failures (2,295 runtime failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "44"
+    },
+    {
       "id": "824",
       "title": "Timeout umbrella is stale: replace old 10s compile-timeout bucket with current 30s worker-timeout model",
       "priority": "high",
@@ -1912,18 +1974,6 @@
   ],
   "inprogress": [
     {
-      "id": "1156",
-      "title": "Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "1152"
-      ],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "43"
-    },
-    {
       "id": "1153",
       "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
       "priority": "critical",
@@ -1932,26 +1982,6 @@
       "goal": "crash-free",
       "status": "in-progress",
       "sprint": "44"
-    },
-    {
-      "id": "1150",
-      "title": "Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "43"
-    },
-    {
-      "id": "1149",
-      "title": "Fix null_deref:32 — eval-code direct methods with arguments declare",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "43"
     },
     {
       "id": "1132",
@@ -2012,26 +2042,6 @@
       "goal": "error-model",
       "status": "in-progress",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1016",
-      "title": "Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "in-progress",
-      "sprint": "43"
-    },
-    {
-      "id": "1008",
-      "title": "Add mobile-first layout support to the playground",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "in-progress",
-      "sprint": "43"
     },
     {
       "id": "1007",
@@ -2119,16 +2129,6 @@
       "goal": "core-semantics",
       "status": "review",
       "sprint": "Backlog"
-    },
-    {
-      "id": "825",
-      "title": "Null dereference failures (2,295 runtime failures)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "review",
-      "sprint": "43"
     }
   ],
   "done": [

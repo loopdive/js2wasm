@@ -168,7 +168,7 @@ missing return values, incorrect type coercion, wrong control flow, broken scope
 | **997** | BigInt ToPrimitive/wrapped-value helper emits i64 into externref __call_fn_0 wrapper (55 CE) | 41 | done | high |
 | **999** | for-of / for-await-of destructuring still emits f64↔externref and struct field mismatches (75 CE) | 40 | done | high |
 | **1013** | Split codegen/index.ts (14,344 lines) into focused modules | 41 | done | high |
-| **1016** | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | 43 | in-progress | high |
+| **1016** | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | 44 | ready | high |
 | **1024** | Destructuring rest elements + array holes drop null vs undefined | 41 | done | high |
 | **1025** | BindingElement array-pattern default guards still use ref.is_null | 40 | done | high |
 | **1031** | Compile lodash to Wasm as a real-world stress test; harvest error patterns | 40 | done | high |

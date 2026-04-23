@@ -11665,8 +11665,8 @@
       "title": "Null dereference failures (2,295 runtime failures)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "review",
-      "sprint": "43",
+      "raw_status": "ready",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -14270,8 +14270,8 @@
       "title": "Add mobile-first layout support to the playground",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "in-progress",
-      "sprint": "43",
+      "raw_status": "ready",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -14359,8 +14359,8 @@
       "title": "Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "in-progress",
-      "sprint": "43",
+      "raw_status": "ready",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -16207,7 +16207,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16218,8 +16218,8 @@
       "title": "Fix null_deref:32 — eval-code direct methods with arguments declare",
       "priority": "high",
       "status": "ready",
-      "raw_status": "in-progress",
-      "sprint": "43",
+      "raw_status": "ready",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16230,8 +16230,8 @@
       "title": "Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions",
       "priority": "high",
       "status": "ready",
-      "raw_status": "in-progress",
-      "sprint": "43",
+      "raw_status": "ready",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16255,7 +16255,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "crash-free",
@@ -16306,8 +16306,8 @@
       "title": "Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "in-progress",
-      "sprint": "43",
+      "raw_status": "ready",
+      "sprint": "44",
       "depends_on": [
         "1152"
       ],
@@ -16357,7 +16357,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16369,7 +16369,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16381,7 +16381,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16393,7 +16393,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16449,7 +16449,7 @@
       "priority": "high",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1131",
         "1166"
@@ -16464,7 +16464,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [
         "1131",
         "1166"
@@ -16479,7 +16479,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "43",
+      "sprint": "44",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -17150,26 +17150,6 @@
       "target": "1131"
     },
     {
-      "source": "1152",
-      "target": "1156"
-    },
-    {
-      "source": "1131",
-      "target": "1167"
-    },
-    {
-      "source": "1166",
-      "target": "1167"
-    },
-    {
-      "source": "1131",
-      "target": "1167a"
-    },
-    {
-      "source": "1166",
-      "target": "1167a"
-    },
-    {
       "source": "1000",
       "target": "1003"
     },
@@ -17238,6 +17218,10 @@
       "target": "1126"
     },
     {
+      "source": "1152",
+      "target": "1156"
+    },
+    {
       "source": "1163",
       "target": "1164"
     },
@@ -17248,6 +17232,22 @@
     {
       "source": "1168",
       "target": "1166"
+    },
+    {
+      "source": "1131",
+      "target": "1167"
+    },
+    {
+      "source": "1166",
+      "target": "1167"
+    },
+    {
+      "source": "1131",
+      "target": "1167a"
+    },
+    {
+      "source": "1166",
+      "target": "1167a"
     },
     {
       "source": "1131",
