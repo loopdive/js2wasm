@@ -42,6 +42,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           if [ -d plan ] || [ -d dashboard ]; then
+            git lfs pull --include="benchmarks/results/runs/index.json"
             pnpm run build:planning-artifacts
           else
             echo "No private planning artifacts in this checkout; skipping regeneration."
