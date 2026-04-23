@@ -388,6 +388,12 @@ export function test262Plugin(): Plugin {
           return;
         }
 
+        if (url.pathname === "/api/test262-source-status") {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ available: existsSync(testBase) }));
+          return;
+        }
+
         // Lightweight summary: categories with counts only, no file lists (~2KB vs ~500KB)
         if (url.pathname === "/api/test262-index-summary") {
           const index = getIndex();

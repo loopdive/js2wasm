@@ -18,6 +18,7 @@ import { join, extname } from "node:path";
 const PORT = parseInt(process.argv[2] ?? "8080", 10);
 const ROOT = join(import.meta.dirname ?? __dirname, "..");
 const PUBLIC_ROOT = join(ROOT, "public");
+const TEST262_ROOT = join(ROOT, "test262", "test");
 
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -41,6 +42,15 @@ const server = createServer((req, res) => {
   if (url.includes("..")) {
     res.writeHead(403);
     res.end("Forbidden");
+    return;
+  }
+
+  if (url === "/api/test262-source-status") {
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify({ available: existsSync(TEST262_ROOT) }));
     return;
   }
 

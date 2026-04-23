@@ -192,7 +192,7 @@
       }
 
       .hero-sub {
-        max-width: 560px;
+        max-width: 620px;
         font-size: 18px;
         line-height: 1.7;
         color: var(--fg-soft);
@@ -402,6 +402,13 @@
         text-transform: uppercase;
         color: var(--fg-faint);
         margin: 0 0 28px;
+      }
+      .edition-timeline-section {
+        width: 100%;
+        margin: 28px 0 0;
+        --t262-edition-font-mono: var(--mono);
+        --t262-edition-text: var(--fg);
+        --t262-edition-text-muted: var(--fg-faint);
       }
       .diagram-legend {
         display: flex;
@@ -1099,6 +1106,11 @@
         padding-bottom: 2px;
         line-height: 1.4;
       }
+      .feat-section[data-generated-edition] .feat-note {
+        display: block;
+        padding: 12px 24px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
 
       .feat-badge {
         font-size: 24px;
@@ -1150,9 +1162,10 @@
             </span>
           </h1>
           <p class="hero-sub">
-            The JS
+            JS
             <sup>2</sup>
-            compiler is a Loopdive project focused on ahead-of-time compilation of real JavaScript to WebAssembly.
+            is an open source compiler focused on compiling JavaScript to WebAssembly ahead of time, based on research
+            at Loopdive.
           </p>
           <div class="hero-actions">
             <a class="btn-solid" href="./playground/">Playground</a>
@@ -1171,27 +1184,33 @@
             JavaScript and npm packages, running modules without embedding a JS runtime and enabling more secure,
             flexible dependency management.
           </p>
+          <p>
+            The project is motivated by the idea that JavaScript, despite being a dynamic language, can be compiled
+            efficiently ahead of time without limiting it to an incompatible subset or shipping a full JS runtime like
+            V8 or SpiderMonkey.
+          </p>
+          <p>The project is guided by the following goals:</p>
         </div>
         <div class="features-grid">
           <article class="feature-card">
             <div class="feature-icon"><img src="./javascript-logo-white.svg" alt="JavaScript logo" /></div>
-            <h3>Not a New Language</h3>
+            <h3>JS Ecosystem Compatible</h3>
             <p>
-              Compile existing JavaScript and TypeScript without rewriting into a new language or restricted subset.
-              Target compatibility with the JavaScript ecosystem.
+              Compile existing code without rewriting it into a restricted subset, and stay compatible with the full JS
+              ecosystem, the web, and NPM. Access Web APIs without writing glue code.
             </p>
           </article>
           <article class="feature-card">
             <div class="feature-icon"><img src="./wasm-logo-white.svg" alt="WebAssembly logo" /></div>
-            <h3>JS Host or Standalone</h3>
+            <h3>No Embedded Runtime</h3>
             <p>
-              Deploy compiled modules across JavaScript hosts and standalone WebAssembly runtimes without embedding a JS
-              engine in the module or hand-writing glue code.
+              Deploy compiled JavaScript modules in standalone WebAssembly runtimes such as Wasmtime without embedding a
+              JS engine or interpreter, reducing module size and runtime overhead.
             </p>
           </article>
           <article class="feature-card">
             <div class="feature-icon">🔒</div>
-            <h3>Module Sandboxing</h3>
+            <h3>Sandbox Untrusted Code</h3>
             <p>
               Reduce supply chain attack surface by isolating JavaScript modules from each other inside the same
               application and keeping filesystem, network, DOM, and globals behind explicit imports.
@@ -1200,10 +1219,10 @@
 
           <article class="feature-card">
             <div class="feature-icon">🧩</div>
-            <h3>Dependency Injection</h3>
+            <h3>Plug &amp; Play</h3>
             <p>
-              Link modules through explicit imports so consumers can choose implementations, control upgrades, and swap
-              dependencies for each environment.
+              Dynamic module linking allows to make code more modular so consumers can choose implementations, control
+              upgrades, and swap dependencies for each environment.
             </p>
           </article>
         </div>
@@ -1245,10 +1264,12 @@
 
         <div class="conformance-diagrams">
           <div class="diagram-panel">
-            <t262-donut
-              src="./benchmarks/results/test262-report.json"
-              style="--t262-bg: var(--bg, #060a14)"
-            ></t262-donut>
+            <div id="conformance-donut-slot">
+              <t262-donut
+                src="./benchmarks/results/test262-report.json"
+                style="--t262-bg: var(--bg, #060a14)"
+              ></t262-donut>
+            </div>
           </div>
           <div class="diagram-panel">
             <h3 class="diagram-title">ECMAScript Conformance Pass Rate Over Time</h3>
@@ -1268,6 +1289,12 @@
               </span>
             </div>
           </div>
+        </div>
+        <div class="edition-timeline-section">
+          <t262-edition-timeline
+            id="conformance-edition-timeline"
+            src="./benchmarks/results/test262-editions.json"
+          ></t262-edition-timeline>
         </div>
 
         <div class="feat-filter">
@@ -2857,7 +2884,7 @@ match (value) {
 
       <section class="section-pad" id="wasm-hosts">
         <div class="intro">
-          <h2>Tiny modules that start and run fast.</h2>
+          <h2>Lean modules that load and run fast.</h2>
           <p>
             When running outside of a JS engine like found in browsers or Node.js, compatibility today typically means
             embedding a JS interpreter inside the WebAssembly module. This increases module size and slows execution.
@@ -2893,10 +2920,25 @@ match (value) {
           <h3 class="host-bench-title">Wasmtime</h3>
           <p class="host-bench-subcopy">
             Compare direct AOT WebAssembly output against interpreter-bundling approaches in a standalone WebAssembly
-            runtime. Benchmark data is collected when Wasmtime is available in the CI environment.
+            runtime. The landing page shows whichever Wasmtime benchmark datasets are currently available.
           </p>
           <div class="conformance-diagrams">
-            <div class="diagram-panel">
+            <div
+              class="diagram-panel"
+              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-compute-only.json"
+              style="display: none"
+            >
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-compute-only.json"
+                title="Compute Runtime"
+                legend="Wasm runtime speed relative to JS in Wasmtime (larger is better)"
+              ></perf-benchmark-chart>
+            </div>
+            <div
+              class="diagram-panel"
+              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
+              style="display: none"
+            >
               <perf-benchmark-chart
                 src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
                 mode="absolute-lower-better"
@@ -2905,7 +2947,11 @@ match (value) {
                 legend="Median startup time for standalone Wasmtime execution, with JS-host baseline marker (lower is better)"
               ></perf-benchmark-chart>
             </div>
-            <div class="diagram-panel">
+            <div
+              class="diagram-panel"
+              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
+              style="display: none"
+            >
               <perf-benchmark-chart
                 src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
                 mode="absolute-lower-better"
@@ -2914,7 +2960,11 @@ match (value) {
                 legend="Median amortized runtime per call after one module load in Wasmtime, with JS-host baseline marker (lower is better)"
               ></perf-benchmark-chart>
             </div>
-            <div class="diagram-panel">
+            <div
+              class="diagram-panel"
+              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
+              style="display: none"
+            >
               <perf-benchmark-chart
                 src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
                 mode="absolute-lower-better"
@@ -3139,14 +3189,33 @@ console.log(instance.exports.run()); // &rarr; 55</pre
     <script type="module" src="./components/t262-charts.js"></script>
     <script type="module" src="./components/perf-benchmark-chart.js"></script>
     <script>
-      fetch("./benchmarks/results/wasm-host-wasmtime-coldstart.json")
-        .then((r) => r.json())
-        .then((d) => {
-          if (Array.isArray(d) && d.length > 0) {
-            document.getElementById("wasmtime-bench-group").style.display = "";
-          }
-        })
-        .catch(() => {});
+      (async () => {
+        const group = document.getElementById("wasmtime-bench-group");
+        if (!(group instanceof HTMLElement)) return;
+        const panels = Array.from(group.querySelectorAll("[data-benchmark-src]"));
+        let visibleCount = 0;
+        await Promise.all(
+          panels.map(async (panel) => {
+            if (!(panel instanceof HTMLElement)) return;
+            const src = panel.dataset.benchmarkSrc;
+            if (!src) return;
+            try {
+              const resp = await fetch(src);
+              if (!resp.ok) return;
+              const data = await resp.json();
+              if (Array.isArray(data) && data.length > 0) {
+                panel.style.display = "";
+                visibleCount += 1;
+              }
+            } catch {
+              // Leave unavailable benchmark panels hidden.
+            }
+          }),
+        );
+        if (visibleCount > 0) {
+          group.style.display = "";
+        }
+      })();
     </script>
     <script src="./components/trend-chart.js"></script>
 
@@ -3832,6 +3901,257 @@ console.log(instance.exports.run()); // &rarr; 55</pre
         }
       })();
 
+      const PROPOSAL_LABEL = "Proposals";
+      const isEditionScope = (edition) =>
+        edition === "ES1" ||
+        edition === "ES2" ||
+        edition === "ES3" ||
+        edition === "≤ ES3" ||
+        edition === "ES5" ||
+        /^ES20\d{2}$/.test(edition);
+      const normalizeEditionLabel = (edition) => (edition === "≤ ES3" || edition === "ES3" ? "ES3 / Core" : edition);
+      const PUBLISHED_EDITION_RELEASE_MONTH = 6;
+      const latestPublishedEditionYear = (referenceDate = new Date()) => {
+        const date =
+          referenceDate instanceof Date && Number.isFinite(referenceDate.getTime()) ? referenceDate : new Date();
+        return date.getUTCMonth() + 1 >= PUBLISHED_EDITION_RELEASE_MONTH
+          ? date.getUTCFullYear()
+          : date.getUTCFullYear() - 1;
+      };
+      const loadEditionBuckets = (() => {
+        let pending;
+        return async () => {
+          if (!pending) {
+            pending = (async () => {
+              const editionsResp = await fetch("./benchmarks/results/test262-editions.json");
+              if (!editionsResp.ok) throw new Error("edition data unavailable");
+              const editions = await editionsResp.json();
+              if (!Array.isArray(editions) || editions.length === 0) {
+                throw new Error("edition data unavailable");
+              }
+
+              const editionList = editions
+                .filter((edition) => isEditionScope(String(edition?.edition || "")))
+                .map((edition) => ({
+                  ...edition,
+                  rawEdition: String(edition.edition || ""),
+                  normalizedEdition: normalizeEditionLabel(String(edition.edition || "")),
+                }));
+              const proposalBucket = editions.find((edition) => String(edition?.edition || "") === PROPOSAL_LABEL) ?? null;
+
+              return {
+                editionList,
+                editionMap: new Map(editionList.map((edition) => [edition.normalizedEdition, edition])),
+                proposalBucket,
+              };
+            })();
+          }
+          return pending;
+        };
+      })();
+
+      (async function hydrateConformanceEditionFilter() {
+        const donutSlot = document.getElementById("conformance-donut-slot");
+        const editionTimeline = document.getElementById("conformance-edition-timeline");
+        if (!donutSlot || !(editionTimeline instanceof HTMLElement)) return;
+
+        const donutStyle = "--t262-bg: var(--bg, #060a14)";
+        const renderDonut = (summary, captionMain = "ECMAScript") => {
+          const pass = Number(summary?.pass ?? 0);
+          const fail = Number(summary?.fail ?? 0);
+          const ce = Number(summary?.ce ?? 0);
+          const skip = Number(summary?.skip ?? 0);
+          const total = Number(summary?.total ?? pass + fail + ce + skip);
+          let donut = donutSlot.querySelector("t262-donut");
+          if (!(donut instanceof HTMLElement)) {
+            donut = document.createElement("t262-donut");
+            donutSlot.replaceChildren(donut);
+          }
+          donut.setAttribute("pass", String(pass));
+          donut.setAttribute("fail", String(fail));
+          donut.setAttribute("ce", String(ce));
+          donut.setAttribute("skip", String(skip));
+          donut.setAttribute("total", String(total));
+          donut.setAttribute("caption-main", captionMain);
+          donut.setAttribute("caption-sub", "conformance");
+          donut.setAttribute("style", donutStyle);
+        };
+
+        try {
+          const reportResp = await fetch("./benchmarks/results/test262-report.json");
+          if (!reportResp.ok) throw new Error("conformance data unavailable");
+
+          const report = await reportResp.json();
+          const overallSummary = report?.summary;
+          if (!overallSummary) throw new Error("overall summary unavailable");
+
+          const overall = {
+            pass: Number(overallSummary.pass ?? 0),
+            fail: Number(overallSummary.fail ?? 0),
+            ce: Number(overallSummary.compile_error ?? 0) + Number(overallSummary.compile_timeout ?? 0),
+            skip: Number(overallSummary.skip ?? 0),
+            total: Number(overallSummary.total ?? 0),
+          };
+          const fullSummary = report?.full_summary ?? overallSummary;
+          const withProposal = {
+            pass: Number(fullSummary.pass ?? overall.pass ?? 0),
+            fail: Number(fullSummary.fail ?? overall.fail ?? 0),
+            ce: Number(fullSummary.compile_error ?? 0) + Number(fullSummary.compile_timeout ?? 0),
+            skip: Number(fullSummary.skip ?? overall.skip ?? 0),
+            total: Number(fullSummary.total ?? overall.total ?? 0),
+          };
+          const proposalDiffers =
+            withProposal.pass !== overall.pass ||
+            withProposal.fail !== overall.fail ||
+            withProposal.ce !== overall.ce ||
+            withProposal.skip !== overall.skip ||
+            withProposal.total !== overall.total;
+
+          const applyScopeFromDetail = (detail) => {
+            if (!detail) return;
+            if (Number.isFinite(detail.publishedLimitRank)) {
+              window.__conformancePublishedLimitRank = detail.publishedLimitRank;
+            }
+
+            const currentScope = detail.scope || "overall";
+            window.__conformanceEditionScope = currentScope;
+            if (currentScope === "overall") {
+              renderDonut(overall);
+              applyFeatureEditionScope("overall");
+              return;
+            }
+            if (currentScope === "overall+proposal") {
+              renderDonut(withProposal, "ECMAScript + proposals");
+              applyFeatureEditionScope("overall+proposal");
+              return;
+            }
+
+            const scope = detail.scopeMap instanceof Map ? detail.scopeMap.get(currentScope) : null;
+            if (!scope) return;
+            renderDonut(scope.summary, scope.captionMain);
+            applyFeatureEditionScope(currentScope);
+          };
+
+          editionTimeline.addEventListener("edition-change", (event) => {
+            applyScopeFromDetail(event.detail);
+          });
+
+          if (report.timestamp) {
+            editionTimeline.setAttribute("reference-timestamp", report.timestamp);
+          } else {
+            editionTimeline.removeAttribute("reference-timestamp");
+          }
+          if (proposalDiffers) {
+            editionTimeline.setAttribute("show-proposals", "");
+          } else {
+            editionTimeline.removeAttribute("show-proposals");
+          }
+          editionTimeline.setAttribute("value", "overall");
+        } catch {
+          window.__conformanceEditionScope = "overall";
+        }
+      })();
+
+      const featureEditionRank = new Map([
+        ["ES1", 0],
+        ["ES2", 1],
+        ["ES3 / Core", 2],
+        ["ES5", 3],
+        ["ES2015", 4],
+        ["ES2016", 5],
+        ["ES2017", 6],
+        ["ES2018", 7],
+        ["ES2019", 8],
+        ["ES2020", 9],
+        ["ES2021", 10],
+        ["ES2022", 11],
+        ["ES2023", 12],
+        ["ES2024", 13],
+        ["ES2025", 14],
+        ["ES2026", 15],
+        ["Legacy / Deprecated", 98],
+        ["Proposals", 99],
+      ]);
+
+      const getFeatureSectionLabel = (section) =>
+        section.querySelector(".feat-edition-label")?.textContent?.trim() ||
+        section.querySelector(".feat-edition")?.textContent?.trim() ||
+        "";
+      const isStandardFeatureEditionLabel = (label) => {
+        const rank = featureEditionRank.get(label);
+        return typeof rank === "number" && rank < 98;
+      };
+      const getFeatureScopeLimitRank = (scopeValue) => {
+        if (!scopeValue || scopeValue === "overall" || scopeValue === "overall+proposal") return null;
+        return featureEditionRank.get(normalizeEditionLabel(scopeValue)) ?? null;
+      };
+      const getPublishedFeatureLimitRank = () => {
+        const explicit = Number(window.__conformancePublishedLimitRank);
+        if (Number.isFinite(explicit)) return explicit;
+        const fallbackLabel = normalizeEditionLabel(`ES${latestPublishedEditionYear(new Date())}`);
+        return featureEditionRank.get(fallbackLabel) ?? Number.MAX_SAFE_INTEGER;
+      };
+      const applyFeatureEditionScope = (scopeValue = "overall") => {
+        if (scopeValue === "overall+proposal") {
+          document.querySelectorAll(".feat-section").forEach((section) => {
+            section.hidden = false;
+          });
+          return;
+        }
+        if (scopeValue === "overall") {
+          const publishedLimitRank = getPublishedFeatureLimitRank();
+          document.querySelectorAll(".feat-section").forEach((section) => {
+            const label = getFeatureSectionLabel(section);
+            const rank = featureEditionRank.get(label);
+            if (label === "Proposals") {
+              section.hidden = true;
+              return;
+            }
+            if (typeof rank === "number" && isStandardFeatureEditionLabel(label)) {
+              section.hidden = rank > publishedLimitRank;
+              return;
+            }
+            section.hidden = false;
+          });
+          return;
+        }
+        const limitRank = getFeatureScopeLimitRank(scopeValue);
+        document.querySelectorAll(".feat-section").forEach((section) => {
+          const label = getFeatureSectionLabel(section);
+          const rank = featureEditionRank.get(label);
+          if (typeof rank !== "number") {
+            section.hidden = true;
+            return;
+          }
+          if (!isStandardFeatureEditionLabel(label)) {
+            section.hidden = true;
+            return;
+          }
+          section.hidden = rank > limitRank;
+        });
+      };
+
+      const sortFeatureSectionsChronologically = () => {
+        document.querySelectorAll(".feat-panel").forEach((panel) => {
+          const sections = Array.from(panel.children).filter(
+            (child) => child instanceof HTMLElement && child.classList.contains("feat-section"),
+          );
+          if (sections.length < 2) return;
+
+          sections
+            .slice()
+            .sort(
+              (a, b) =>
+                (featureEditionRank.get(getFeatureSectionLabel(a)) ?? Number.MAX_SAFE_INTEGER) -
+                (featureEditionRank.get(getFeatureSectionLabel(b)) ?? Number.MAX_SAFE_INTEGER),
+            )
+            .forEach((section) => panel.appendChild(section));
+        });
+      };
+
+      sortFeatureSectionsChronologically();
+      applyFeatureEditionScope();
+
       (function hydrateEditionPassBars() {
         const strictToggle = document.getElementById("strict-only-toggle");
         const hostToggle = document.getElementById("host-support-toggle");
@@ -3846,36 +4166,45 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           return 0;
         };
 
-        const updateEditionPassBars = () => {
+        const ensureEditionLabel = (section) => {
+          const el = section.querySelector(".feat-edition");
+          if (!(el instanceof HTMLElement)) return null;
+          let labelSpan = el.querySelector(".feat-edition-label");
+          if (!labelSpan) {
+            const label = (el.textContent || "").trim();
+            labelSpan = document.createElement("span");
+            labelSpan.className = "feat-edition-label";
+            labelSpan.textContent = label;
+            el.textContent = "";
+            el.appendChild(labelSpan);
+          }
+          return { el, labelSpan };
+        };
+
+        const ensureEditionPassBar = (header) => {
+          let bar = header.querySelector(".feat-edition-passbar");
+          if (!bar) {
+            bar = document.createElement("span");
+            bar.className = "feat-edition-passbar";
+            bar.innerHTML = `
+              <span class="feat-edition-passbar-track">
+                <span class="feat-edition-passbar-fill"></span>
+              </span>
+              <span class="feat-edition-passbar-text"></span>
+            `;
+            header.appendChild(bar);
+          }
+          return bar;
+        };
+
+        const renderHeuristicEditionPassBars = () => {
           const strictOnly = strictToggle ? strictToggle.checked : true;
           const hostEnabled = hostToggle ? hostToggle.checked : true;
 
           document.querySelectorAll(".feat-section").forEach((section) => {
-            const el = section.querySelector(".feat-edition");
-            if (!el) return;
-
-            let labelSpan = el.querySelector(".feat-edition-label");
-            if (!labelSpan) {
-              const label = (el.textContent || "").trim();
-              labelSpan = document.createElement("span");
-              labelSpan.className = "feat-edition-label";
-              labelSpan.textContent = label;
-              el.textContent = "";
-              el.appendChild(labelSpan);
-            }
-
-            let bar = el.querySelector(".feat-edition-passbar");
-            if (!bar) {
-              bar = document.createElement("span");
-              bar.className = "feat-edition-passbar";
-              bar.innerHTML = `
-                <span class="feat-edition-passbar-track">
-                  <span class="feat-edition-passbar-fill"></span>
-                </span>
-                <span class="feat-edition-passbar-text"></span>
-              `;
-              el.appendChild(bar);
-            }
+            const header = ensureEditionLabel(section)?.el;
+            if (!header) return;
+            const bar = ensureEditionPassBar(header);
 
             const rows = Array.from(section.querySelectorAll(".feat-row")).filter((row) => {
               if (strictOnly && row.hasAttribute("data-sloppy")) return false;
@@ -3890,6 +4219,69 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             if (fill) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
             if (text) text.textContent = `${pct}%`;
           });
+        };
+
+        const ensureGeneratedEditionSection = (panel, label) => {
+          const existing = Array.from(panel.querySelectorAll(".feat-section")).find(
+            (section) => getFeatureSectionLabel(section) === label,
+          );
+          if (existing) return existing;
+
+          const section = document.createElement("div");
+          section.className = "feat-section";
+          section.dataset.generatedEdition = "true";
+          section.innerHTML = `
+            <div class="feat-edition">${label}</div>
+            <div class="feat-note">
+              Tracked via the current Test262 edition buckets. Curated landing-page feature examples for this edition are not listed yet.
+            </div>
+          `;
+          panel.appendChild(section);
+          return section;
+        };
+
+        const updateEditionPassBars = async () => {
+          try {
+            const { editionList, editionMap, proposalBucket } = await loadEditionBuckets();
+            const panel = document.querySelector(".feat-panel");
+            if (panel instanceof HTMLElement) {
+              editionList.forEach((edition) => {
+                ensureGeneratedEditionSection(panel, edition.normalizedEdition);
+              });
+              sortFeatureSectionsChronologically();
+              applyFeatureEditionScope(window.__conformanceEditionScope || "overall");
+            }
+
+            document.querySelectorAll(".feat-section").forEach((section) => {
+              const ensured = ensureEditionLabel(section);
+              if (!ensured) return;
+              const label = ensured.labelSpan.textContent?.trim() || "";
+              const bucket = label === "Proposals" ? proposalBucket : editionMap.get(label);
+              const existingBar = ensured.el.querySelector(".feat-edition-passbar");
+
+              if (!bucket) {
+                existingBar?.remove();
+                return;
+              }
+
+              const bar = ensureEditionPassBar(ensured.el);
+              const fill = bar.querySelector(".feat-edition-passbar-fill");
+              const text = bar.querySelector(".feat-edition-passbar-text");
+              const pct = Math.max(0, Math.min(100, Number(bucket.pct ?? 0)));
+              const title = `${bucket.pass.toLocaleString()} pass, ${bucket.fail.toLocaleString()} fail, ${bucket.ce.toLocaleString()} CE, ${bucket.skip.toLocaleString()} skip (${bucket.total.toLocaleString()} total)`;
+              if (fill instanceof HTMLElement) {
+                fill.style.width = `${pct}%`;
+                fill.title = title;
+              }
+              if (text instanceof HTMLElement) {
+                text.textContent = `${pct}%`;
+                text.title = title;
+              }
+              bar.title = title;
+            });
+          } catch {
+            renderHeuristicEditionPassBars();
+          }
         };
 
         updateEditionPassBars();
