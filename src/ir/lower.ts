@@ -40,14 +40,68 @@
 // unreachable at runtime, but structurally we still need an op whose type
 // is polymorphic.
 
-import type { IrBlock, IrFuncRef, IrFunction, IrGlobalRef, IrInstr, IrType, IrTypeRef, IrValueId } from "./nodes.js";
+import {
+  asVal,
+  type IrBlock,
+  type IrFuncRef,
+  type IrFunction,
+  type IrGlobalRef,
+  type IrInstr,
+  type IrType,
+  type IrTypeRef,
+  type IrValueId,
+} from "./nodes.js";
 import type { BlockType, FuncTypeDef, Instr, LocalDef, ValType, WasmFunction } from "./types.js";
+
+/**
+ * Information about a tagged-union struct type emitted into the WasmGC module.
+ * See `passes/tagged-union-types.ts` for the registry that produces these.
+ */
+export interface IrUnionLowering {
+  /** WasmGC type index of the `$union_<members>` struct. */
+  readonly typeIdx: number;
+  /** Field index of the `$tag` i32 discriminator. */
+  readonly tagFieldIdx: number;
+  /** Field index of the `$val` field carrying the member scalar. */
+  readonly valFieldIdx: number;
+  /** Canonical tag value (i32 constant) for each ValType kind. */
+  tagFor(member: ValType): number;
+}
+
+/**
+ * Information about a heap-allocated scalar box — see
+ * `IrType { kind: "boxed", inner }`. Resolved lazily by the lowering pass.
+ */
+export interface IrBoxedLowering {
+  /** WasmGC type index of the `$box_<inner>` struct. */
+  readonly typeIdx: number;
+  /** Field index of the inner `$val`. */
+  readonly valFieldIdx: number;
+}
 
 export interface IrLowerResolver {
   resolveFunc(ref: IrFuncRef): number;
   resolveGlobal(ref: IrGlobalRef): number;
   resolveType(ref: IrTypeRef): number;
   internFuncType(type: FuncTypeDef): number;
+  /**
+   * Resolve (and memoise) the WasmGC struct type for a `union` IrType. V1
+   * scope: homogeneous-width unions only — see
+   * `passes/tagged-union-types.ts`. Returns `null` when the union is not
+   * representable (heterogeneous, or contains reference members); callers
+   * must treat that as `dynamic` upstream.
+   *
+   * Optional so Phase-1 resolvers without tagged-union support can omit it;
+   * a Phase-3 function that actually emits `box`/`unbox`/`tag.test` will
+   * fail at lowering time when it's missing, which is the correct behavior
+   * (caller should have rejected the IR earlier).
+   */
+  resolveUnion?(members: readonly ValType[]): IrUnionLowering | null;
+  /**
+   * Resolve (and memoise) the WasmGC struct type for a `boxed` IrType.
+   * Optional for the same reason as `resolveUnion`.
+   */
+  resolveBoxed?(inner: ValType): IrBoxedLowering | null;
 }
 
 export interface IrLowerResult {
@@ -69,6 +123,8 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
 
   const defBy = new Map<IrValueId, IrInstr>();
   const defBlockOf = new Map<IrValueId, number>();
+  const paramTypeOf = new Map<IrValueId, IrType>();
+  for (const p of func.params) paramTypeOf.set(p.value, p.type);
   for (const block of func.blocks) {
     for (const instr of block.instrs) {
       if (instr.result !== null) {
@@ -80,6 +136,21 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       }
     }
   }
+
+  /**
+   * IrType of an SSA value — looks up params first, then the defining instr's
+   * resultType. Used by `box` / `unbox` / `tag.test` lowering to find the
+   * union / boxed struct type for the operand.
+   */
+  const typeOf = (v: IrValueId): IrType => {
+    const paramT = paramTypeOf.get(v);
+    if (paramT) return paramT;
+    const d = defBy.get(v);
+    if (!d || !d.resultType) {
+      throw new Error(`ir/lower: value ${v} has no known IrType in ${func.name}`);
+    }
+    return d.resultType;
+  };
 
   // --- use counting -------------------------------------------------------
   //
@@ -129,7 +200,9 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
 
   // --- local allocation ---------------------------------------------------
   // Stable order: scan blocks then instrs. Every `needsLocal` value gets one
-  // Wasm local slot, placed after the function's parameter slots.
+  // Wasm local slot, placed after the function's parameter slots. The slot's
+  // Wasm type is the lowered ValType of the IR resultType (wrap unions /
+  // boxed types as refs to the corresponding WasmGC struct).
   const locals: LocalDef[] = [];
   const localIdx = new Map<IrValueId, number>();
   for (const block of func.blocks) {
@@ -139,7 +212,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
           throw new Error(`ir/lower: local-bound SSA value ${instr.result} has no resultType in ${func.name}`);
         }
         const idx = func.params.length + locals.length;
-        locals.push({ name: `$ir${instr.result}`, type: instr.resultType });
+        locals.push({ name: `$ir${instr.result}`, type: lowerIrTypeToValType(instr.resultType, resolver, func.name) });
         localIdx.set(instr.result, idx);
       }
     }
@@ -212,6 +285,69 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       case "raw.wasm":
         for (const op of instr.ops) out.push(op);
         return;
+      case "box": {
+        // `toType` must be a union (V1 only boxes into tagged unions). The
+        // tag + value are pushed onto the stack in declaration order, then
+        // struct.new builds the union instance.
+        if (instr.toType.kind !== "union") {
+          throw new Error(`ir/lower: box target must be a union IrType, got ${instr.toType.kind} (${func.name})`);
+        }
+        const valueType = asVal(typeOf(instr.value));
+        if (!valueType) {
+          throw new Error(`ir/lower: box value must be a val-kind IrType (${func.name})`);
+        }
+        const union = resolver.resolveUnion?.(instr.toType.members);
+        if (!union) {
+          throw new Error(
+            `ir/lower: resolver cannot lower union<${instr.toType.members.map((m) => m.kind).join(",")}> (${func.name})`,
+          );
+        }
+        const tag = union.tagFor(valueType);
+        // Struct field order: fields at indices tagFieldIdx / valFieldIdx.
+        // For V1 registry, tag=0, val=1, so push tag first, then value.
+        const pushes: Array<() => void> = [];
+        pushes[union.tagFieldIdx] = () => out.push({ op: "i32.const", value: tag });
+        pushes[union.valFieldIdx] = () => emitValue(instr.value, out);
+        for (const push of pushes) push();
+        out.push({ op: "struct.new", typeIdx: union.typeIdx });
+        return;
+      }
+      case "unbox": {
+        // Caller must have proved the tag already; lowering is a plain
+        // `struct.get $val`. A future debug mode may prepend a tag check.
+        const valueIrType = typeOf(instr.value);
+        if (valueIrType.kind !== "union") {
+          throw new Error(`ir/lower: unbox value must be a union IrType, got ${valueIrType.kind} (${func.name})`);
+        }
+        const union = resolver.resolveUnion?.(valueIrType.members);
+        if (!union) {
+          throw new Error(
+            `ir/lower: resolver cannot lower union<${valueIrType.members.map((m) => m.kind).join(",")}> (${func.name})`,
+          );
+        }
+        emitValue(instr.value, out);
+        out.push({ op: "struct.get", typeIdx: union.typeIdx, fieldIdx: union.valFieldIdx });
+        return;
+      }
+      case "tag.test": {
+        // Emit struct.get $tag; i32.const <tagFor(tag)>; i32.eq.
+        const valueIrType = typeOf(instr.value);
+        if (valueIrType.kind !== "union") {
+          throw new Error(`ir/lower: tag.test value must be a union IrType, got ${valueIrType.kind} (${func.name})`);
+        }
+        const union = resolver.resolveUnion?.(valueIrType.members);
+        if (!union) {
+          throw new Error(
+            `ir/lower: resolver cannot lower union<${valueIrType.members.map((m) => m.kind).join(",")}> (${func.name})`,
+          );
+        }
+        const tag = union.tagFor(instr.tag);
+        emitValue(instr.value, out);
+        out.push({ op: "struct.get", typeIdx: union.typeIdx, fieldIdx: union.tagFieldIdx });
+        out.push({ op: "i32.const", value: tag });
+        out.push({ op: "i32.eq" });
+        return;
+      }
     }
   };
 
@@ -275,8 +411,8 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
     body.push({ op: "unreachable" });
   }
 
-  const paramTypes: ValType[] = func.params.map((p) => p.type);
-  const resultTypes: ValType[] = func.resultTypes.map((t) => t);
+  const paramTypes: ValType[] = func.params.map((p) => lowerIrTypeToValType(p.type, resolver, func.name));
+  const resultTypes: ValType[] = func.resultTypes.map((t) => lowerIrTypeToValType(t, resolver, func.name));
   const typeIdx = resolver.internFuncType({ kind: "func", params: paramTypes, results: resultTypes });
 
   return {
@@ -308,6 +444,10 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.condition, instr.whenTrue, instr.whenFalse];
     case "raw.wasm":
       return [];
+    case "box":
+    case "unbox":
+    case "tag.test":
+      return [instr.value];
   }
 }
 
@@ -323,6 +463,31 @@ function collectTerminatorUses(block: IrBlock): readonly IrValueId[] {
     case "unreachable":
       return [];
   }
+}
+
+/**
+ * Lower an IrType to the Wasm ValType carried in function signatures / locals.
+ *
+ * For `val` IrTypes this is identity. For `union` / `boxed` IrTypes we ask
+ * the resolver for the corresponding WasmGC struct type and wrap as a `ref`
+ * to that struct. Throws if the resolver cannot lower the type — callers must
+ * reject such IR before reaching this function.
+ */
+function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcName: string): ValType {
+  if (t.kind === "val") return t.val;
+  if (t.kind === "union") {
+    const union = resolver.resolveUnion?.(t.members);
+    if (!union) {
+      throw new Error(`ir/lower: resolver cannot lower union<${t.members.map((m) => m.kind).join(",")}> (${funcName})`);
+    }
+    return { kind: "ref", typeIdx: union.typeIdx };
+  }
+  // boxed
+  const box = resolver.resolveBoxed?.(t.inner);
+  if (!box) {
+    throw new Error(`ir/lower: resolver cannot lower boxed<${t.inner.kind}> (${funcName})`);
+  }
+  return { kind: "ref", typeIdx: box.typeIdx };
 }
 
 function emitConst(instr: Extract<IrInstr, { kind: "const" }>, out: Instr[], funcName: string): void {
@@ -343,12 +508,14 @@ function emitConst(instr: Extract<IrInstr, { kind: "const" }>, out: Instr[], fun
     case "bool":
       out.push({ op: "i32.const", value: v.value ? 1 : 0 });
       return;
-    case "null":
-      if (instr.resultType && instr.resultType.kind === "ref_null") {
-        out.push({ op: "ref.null", typeIdx: instr.resultType.typeIdx } as unknown as Instr);
+    case "null": {
+      const valTy = instr.resultType ? asVal(instr.resultType) : null;
+      if (valTy && valTy.kind === "ref_null") {
+        out.push({ op: "ref.null", typeIdx: (valTy as { typeIdx: number }).typeIdx } as unknown as Instr);
         return;
       }
       throw new Error(`ir/lower: const null must have ref_null resultType (${funcName})`);
+    }
     case "undefined":
       throw new Error(`ir/lower: Phase 1 does not materialize 'undefined' constants (${funcName})`);
   }

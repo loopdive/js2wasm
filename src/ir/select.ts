@@ -253,6 +253,15 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>): boolean 
   if (ts.isParenthesizedExpression(expr)) return isPhase1Expr(expr.expression, scope);
   if (ts.isNumericLiteral(expr)) return true;
   if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return true;
+  // Slice 1 (issue #1168): claim string literals and `null` so that
+  // `typeof x === "string"` / `x === null` / `x == null` patterns can
+  // compose out of Phase-1 primitives. Actual lowering for non-f64/bool
+  // result types is still out of this slice's scope — the selector
+  // rejects functions whose return/param types aren't f64/bool via
+  // `resolveReturnType` / `resolveParamType`, so accepting the shape
+  // here is shape-only acceptance.
+  if (ts.isStringLiteral(expr)) return true;
+  if (expr.kind === ts.SyntaxKind.NullKeyword) return true;
   if (ts.isIdentifier(expr)) {
     // Identifier may name either a param/local (scope) or a function
     // (only valid as the callee of a CallExpression, handled below).
@@ -278,6 +287,13 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>): boolean 
       if (!isPhase1Expr(arg, scope)) return false;
     }
     return true;
+  }
+  // Slice 1: `typeof <expr>` is claimable when its operand is a Phase-1
+  // expression. The resulting value is a string tag ("number" / "boolean" /
+  // "string" / …); downstream it only composes with `isPhase1BinaryOp`'s
+  // new string-equality form.
+  if (ts.isTypeOfExpression(expr)) {
+    return isPhase1Expr(expr.expression, scope);
   }
   return false;
 }

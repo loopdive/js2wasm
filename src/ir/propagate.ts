@@ -34,13 +34,28 @@
 //              as compatible with any primitive at operator sites.
 //   f64      ← number-typed.
 //   bool     ← i32 boolean.
-//   dynamic  ← top. Definitely not representable as a Phase-1 primitive;
-//              rules out IR selection.
+//   string   ← string-typed (externref in current backend representation).
+//   object   ← a referenced object shape. Carries a `shape` string
+//              discriminator (e.g. "Array", "plain") so distinct shapes
+//              don't silently collapse at join sites.
+//   union    ← a set of atoms (non-union members), formed when atoms of
+//              different concrete kinds join. Member order is canonicalised
+//              and the set is size-capped — see the join rules below.
+//   dynamic  ← top. Definitely not representable as a narrow primitive;
+//              rules out IR selection when no tag-dispatch is available.
 //
-// Join:   unknown ⊔ X = X           (growth)
-//         X ⊔ X = X
-//         X ⊔ Y (different concrete primitives) = dynamic
-//         X ⊔ dynamic = dynamic    (top is absorbing)
+// Join:   unknown ⊔ X = X                             (growth)
+//         X ⊔ X = X                                   (atoms, same kind)
+//         atom₁ ⊔ atom₂ (different concrete kinds)   = union{atom₁, atom₂}
+//         union ⊔ atom = union ∪ {atom}               (extend)
+//         union ⊔ union = union of both member sets
+//         anything ⊔ dynamic = dynamic                (top is absorbing)
+//         union.members.length > 4 = dynamic          (size cap)
+//
+// The size cap prevents runaway widening on programs with many distinct
+// call-site return types feeding a single identifier. 4 covers the common
+// cases (`f64|bool`, `f64|null`, `bool|null`, `f64|bool|null`) without
+// letting pathological test262 code explode the member set.
 //
 // Optimism
 // ========
@@ -77,11 +92,24 @@ import ts from "typescript";
 // Public shapes
 // ---------------------------------------------------------------------------
 
-export type LatticeType =
-  | { readonly kind: "unknown" }
+/**
+ * Atoms are the non-composite lattice elements. `LatticeAtom` excludes
+ * `unknown`, `union`, and `dynamic`; those can never be members of a union.
+ */
+export type LatticeAtom =
   | { readonly kind: "f64" }
   | { readonly kind: "bool" }
+  | { readonly kind: "string" }
+  | { readonly kind: "object"; readonly shape: string };
+
+export type LatticeType =
+  | { readonly kind: "unknown" }
+  | LatticeAtom
+  | { readonly kind: "union"; readonly members: readonly LatticeAtom[] }
   | { readonly kind: "dynamic" };
+
+/** Maximum union-member count before we widen to `dynamic`. */
+export const LATTICE_UNION_MAX_MEMBERS = 4;
 
 export interface TypeMapEntry {
   readonly params: readonly LatticeType[];
@@ -93,6 +121,7 @@ export type TypeMap = ReadonlyMap<string, TypeMapEntry>;
 const UNKNOWN: LatticeType = { kind: "unknown" };
 const F64: LatticeType = { kind: "f64" };
 const BOOL: LatticeType = { kind: "bool" };
+const STRING: LatticeType = { kind: "string" };
 const DYNAMIC: LatticeType = { kind: "dynamic" };
 
 // ---------------------------------------------------------------------------
@@ -203,7 +232,11 @@ export function buildTypeMap(sourceFile: ts.SourceFile, checker: ts.TypeChecker)
       }
       let newReturn: LatticeType = seed.returnType;
       if (fn.body) {
-        const seedConcrete = seed.returnType.kind === "f64" || seed.returnType.kind === "bool";
+        const seedConcrete =
+          seed.returnType.kind === "f64" ||
+          seed.returnType.kind === "bool" ||
+          seed.returnType.kind === "string" ||
+          seed.returnType.kind === "object";
         walkBodyForReturns(fn.body, ownScope, entries, (t) => {
           if (seedConcrete && t.kind === "dynamic") return; // keep seed authority
           newReturn = join(newReturn, t);
@@ -293,13 +326,14 @@ function tsTypeToLattice(ty: ts.Type, _checker: ts.TypeChecker): LatticeType {
   // still picked up.
   if (flags & ts.TypeFlags.NumberLike) return F64;
   if (flags & ts.TypeFlags.BooleanLike) return BOOL;
+  if (flags & ts.TypeFlags.StringLike) return STRING;
   // Unresolved / implicit-any / never-inferred leaves us at unknown so
   // propagation can still grow the fact.
   if (flags & ts.TypeFlags.Any || flags & ts.TypeFlags.Unknown) return UNKNOWN;
   // Never is unreachable — treat as unknown so it doesn't kill fixpoint.
   if (flags & ts.TypeFlags.Never) return UNKNOWN;
-  // Any other concrete category (string, object, union, enum, …) is out
-  // of Phase-2 scope.
+  // Object / union / enum / etc remain `dynamic` for now — they'd need
+  // richer shape inference to be usable in the IR selector.
   return DYNAMIC;
 }
 
@@ -447,12 +481,96 @@ function join(a: LatticeType, b: LatticeType): LatticeType {
   if (a.kind === "dynamic" || b.kind === "dynamic") return DYNAMIC;
   if (a.kind === "unknown") return b;
   if (b.kind === "unknown") return a;
-  if (a.kind === b.kind) return a;
+
+  // Atom ⊔ Atom: same kind collapses; different kinds form a union.
+  if (isAtomLattice(a) && isAtomLattice(b)) {
+    if (atomsEqual(a, b)) return a;
+    return makeUnion([a, b]);
+  }
+
+  // Union ⊔ Atom or Atom ⊔ Union: add the atom to the member set.
+  if (a.kind === "union" && isAtomLattice(b)) {
+    return extendUnion(a.members, b);
+  }
+  if (b.kind === "union" && isAtomLattice(a)) {
+    return extendUnion(b.members, a);
+  }
+
+  // Union ⊔ Union: concatenate both member sets.
+  if (a.kind === "union" && b.kind === "union") {
+    let acc: LatticeType = a;
+    for (const m of b.members) {
+      if (acc.kind === "dynamic") return DYNAMIC;
+      acc = acc.kind === "union" ? extendUnion(acc.members, m) : extendUnion([acc as LatticeAtom], m);
+    }
+    return acc;
+  }
+
+  // Mixed cases with unknown already handled; anything else is dynamic.
   return DYNAMIC;
 }
 
+function isAtomLattice(t: LatticeType): t is LatticeAtom {
+  return t.kind === "f64" || t.kind === "bool" || t.kind === "string" || t.kind === "object";
+}
+
+function atomsEqual(a: LatticeAtom, b: LatticeAtom): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "object" && b.kind === "object") return a.shape === b.shape;
+  return true;
+}
+
+/** Build a canonical union from a list of atoms (dedupe + sort). */
+function makeUnion(members: readonly LatticeAtom[]): LatticeType {
+  const deduped: LatticeAtom[] = [];
+  for (const m of members) {
+    if (!deduped.some((d) => atomsEqual(d, m))) deduped.push(m);
+  }
+  if (deduped.length > LATTICE_UNION_MAX_MEMBERS) return DYNAMIC;
+  if (deduped.length === 1) return deduped[0]!;
+  deduped.sort(atomOrder);
+  return { kind: "union", members: deduped };
+}
+
+function extendUnion(members: readonly LatticeAtom[], atom: LatticeAtom): LatticeType {
+  if (members.some((m) => atomsEqual(m, atom))) {
+    return makeUnion(members);
+  }
+  return makeUnion([...members, atom]);
+}
+
+/** Canonical ordering used when emitting unions — stable for typesEqual. */
+function atomOrder(a: LatticeAtom, b: LatticeAtom): number {
+  const order = atomKindOrder(a.kind) - atomKindOrder(b.kind);
+  if (order !== 0) return order;
+  if (a.kind === "object" && b.kind === "object") return a.shape.localeCompare(b.shape);
+  return 0;
+}
+
+function atomKindOrder(k: LatticeAtom["kind"]): number {
+  switch (k) {
+    case "f64":
+      return 0;
+    case "bool":
+      return 1;
+    case "string":
+      return 2;
+    case "object":
+      return 3;
+  }
+}
+
 function typesEqual(a: LatticeType, b: LatticeType): boolean {
-  return a.kind === b.kind;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "union" && b.kind === "union") {
+    if (a.members.length !== b.members.length) return false;
+    for (let i = 0; i < a.members.length; i++) {
+      if (!atomsEqual(a.members[i]!, b.members[i]!)) return false;
+    }
+    return true;
+  }
+  if (a.kind === "object" && b.kind === "object") return a.shape === b.shape;
+  return true;
 }
 
 function paramsEqual(a: readonly LatticeType[], b: readonly LatticeType[]): boolean {
@@ -557,6 +675,53 @@ function walkBodyForReturns(
   ts.forEachChild(body, (child) => walk(child, rootScope));
 }
 
+// ---------------------------------------------------------------------------
+// LatticeType → IrType lowering
+// ---------------------------------------------------------------------------
+
+/**
+ * Lower a `LatticeType` to the middle-end `IrType` used by `from-ast.ts`
+ * / `lower.ts`. Returns `null` when the lattice value is not representable
+ * as a concrete IR type (unknown, dynamic, or a union with members the
+ * tagged-union registry doesn't support).
+ *
+ * V1 union mapping:
+ *   - `{f64, bool}`        → `IrType.union<f64, i32>`        (i32 holds bool)
+ *   - `{f64, string}`      → null (heterogeneous-width, deferred)
+ *   - `{object(A), object(B)}` → null (reference unions, deferred)
+ */
+export function lowerTypeToIrType(t: LatticeType): import("./nodes.js").IrType | null {
+  switch (t.kind) {
+    case "f64":
+      return { kind: "val", val: { kind: "f64" } };
+    case "bool":
+      return { kind: "val", val: { kind: "i32" } };
+    case "string":
+      // Strings currently ride externref at the backend boundary; upstream
+      // callers that need the Wasm representation can lower to that
+      // themselves. We don't expose `string` as a standalone `val` here
+      // because the backend representation is pluggable (native-strings
+      // vs wasm:js-string) and the choice isn't visible to the middle-end.
+      return null;
+    case "object":
+      // Object shape inference → IR type mapping is Slice 2 / future work.
+      return null;
+    case "union": {
+      const members: import("./types.js").ValType[] = [];
+      for (const m of t.members) {
+        if (m.kind === "f64") members.push({ kind: "f64" });
+        else if (m.kind === "bool") members.push({ kind: "i32" });
+        else return null; // string/object members not supported in V1 tagged unions
+      }
+      if (members.length < 2) return null;
+      return { kind: "union", members };
+    }
+    case "unknown":
+    case "dynamic":
+      return null;
+  }
+}
+
 // Exported for tests — let them poke at the lattice without rebuilding
 // everything from scratch.
 export const _internals = {
@@ -564,4 +729,5 @@ export const _internals = {
   inferExpr,
   tsTypeToLattice,
   typeNodeToLattice,
+  makeUnion,
 };

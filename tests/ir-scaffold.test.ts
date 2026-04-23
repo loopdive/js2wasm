@@ -21,6 +21,7 @@ import {
   asBlockId,
   asValueId,
   IrFunctionBuilder,
+  irVal,
   lowerFunctionAstToIr,
   planIrCompilation,
   verifyIrFunction,
@@ -103,7 +104,7 @@ describe("ir scaffold — phase 1", () => {
     const bad: IrFunction = {
       name: "bad",
       params: [],
-      resultTypes: [{ kind: "f64" }],
+      resultTypes: [irVal({ kind: "f64" })],
       blocks: [
         {
           id: bId,
@@ -114,13 +115,13 @@ describe("ir scaffold — phase 1", () => {
               kind: "const",
               value: { kind: "f64", value: 1 },
               result: vId,
-              resultType: { kind: "f64" },
+              resultType: irVal({ kind: "f64" }),
             },
             {
               kind: "const",
               value: { kind: "f64", value: 2 },
               result: vId,
-              resultType: { kind: "f64" },
+              resultType: irVal({ kind: "f64" }),
             },
           ],
           terminator: { kind: "return", values: [vId] },
@@ -135,7 +136,7 @@ describe("ir scaffold — phase 1", () => {
   });
 
   it("builder → verifier → (smoke) for a zero-arg function", () => {
-    const t: IrType = { kind: "f64" };
+    const t: IrType = irVal({ kind: "f64" });
     const b = new IrFunctionBuilder("smoke", [t], true);
     b.openBlock();
     const v = b.emitConst({ kind: "f64", value: 3.14 }, t);

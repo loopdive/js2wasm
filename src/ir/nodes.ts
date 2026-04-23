@@ -51,11 +51,87 @@ export type IrSymRef = IrFuncRef | IrGlobalRef | IrTypeRef;
 // IR types
 // ---------------------------------------------------------------------------
 //
-// IrType is a thin wrapper around the backend ValType, but we keep it as a
-// distinct alias so the middle-end can later grow richer types (union-of-N,
-// nullable annotations, narrowed types) that lower to the same ValType.
+// IrType is the middle-end's own type. It is a discriminated union over the
+// shapes the middle-end needs to describe:
+//
+//   { kind: "val",   val: ValType }      A single concrete Wasm value type —
+//                                        the 1:1 wrapper around a backend
+//                                        ValType (i32, f64, externref, …).
+//   { kind: "union", members: ValType[] } A tagged union of ValTypes, lowered
+//                                        to a canonical WasmGC struct with a
+//                                        `$tag: i32` discriminator + one or
+//                                        more `$val` fields. V1 scope:
+//                                        homogeneous-width members only
+//                                        (e.g. `f64|bool`, `f64|null`).
+//                                        Members containing `externref` /
+//                                        `ref` / `funcref` fall back to
+//                                        `dynamic` upstream.
+//   { kind: "boxed", inner: ValType }    A heap-allocated single-field box
+//                                        (`struct (field $val inner)`) —
+//                                        lets the middle-end materialise
+//                                        scalars on the heap when a
+//                                        downstream pass needs a reference.
+//
+// Every IrType use-site that would have passed a raw `ValType` now either
+//   (a) wraps with `irVal(v)` to produce `{ kind: "val", val: v }`, or
+//   (b) reads back via `asVal(t)` which returns the underlying `ValType`
+//       when `t.kind === "val"`, otherwise `null`.
+//
+// Lowering contract (in `lower.ts`):
+//   { kind: "val",   val }     → `val` (unchanged).
+//   { kind: "union", members } → ref to the canonical `$union_<members>`
+//                                struct (registered once per module via
+//                                `passes/tagged-union-types.ts`).
+//   { kind: "boxed", inner }   → ref to a single-field struct with the
+//                                inner ValType as its `$val`.
 
-export type IrType = ValType;
+export type IrType =
+  | { readonly kind: "val"; readonly val: ValType }
+  | { readonly kind: "union"; readonly members: readonly ValType[] }
+  | { readonly kind: "boxed"; readonly inner: ValType };
+
+/** Wrap a plain ValType as an IrType — the common path for Phase 1/2 callers. */
+export function irVal(v: ValType): IrType {
+  return { kind: "val", val: v };
+}
+
+/**
+ * Return the single underlying ValType for a `val`-kind IrType, else `null`.
+ * Call sites that previously did `t.kind === "f64"` against an `IrType` now
+ * do `asVal(t)?.kind === "f64"`.
+ */
+export function asVal(t: IrType): ValType | null {
+  return t.kind === "val" ? t.val : null;
+}
+
+/**
+ * Structural equality for IrType. Two types are equal iff they have the same
+ * shape and their underlying ValType members compare structurally equal.
+ *
+ * Used by the verifier and by migration assertions. We keep the implementation
+ * local to avoid pulling a full deep-equal dep into the IR layer.
+ */
+export function irTypeEquals(a: IrType, b: IrType): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "val" && b.kind === "val") return valTypeEquals(a.val, b.val);
+  if (a.kind === "boxed" && b.kind === "boxed") return valTypeEquals(a.inner, b.inner);
+  if (a.kind === "union" && b.kind === "union") {
+    if (a.members.length !== b.members.length) return false;
+    for (let i = 0; i < a.members.length; i++) {
+      if (!valTypeEquals(a.members[i]!, b.members[i]!)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function valTypeEquals(a: ValType, b: ValType): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "ref" || a.kind === "ref_null") {
+    return (a as { typeIdx: number }).typeIdx === (b as { typeIdx: number }).typeIdx;
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // SSA values
@@ -221,6 +297,42 @@ export interface IrInstrRawWasm extends IrInstrBase {
   readonly stackDelta: number;
 }
 
+/**
+ * Box a scalar into a tagged-union struct. `toType` must be an `IrType.union`
+ * whose `members` contains `value`'s static ValType. Lowering emits
+ * `struct.new $union_<members>` with the matching tag constant + the value
+ * in the `$val` field. Result is `(ref $union_<members>)` / the `toType`.
+ */
+export interface IrInstrBox extends IrInstrBase {
+  readonly kind: "box";
+  readonly value: IrValueId;
+  readonly toType: IrType;
+}
+
+/**
+ * Unbox a tagged-union value to one of its member ValTypes. The caller must
+ * have proved the tag already (via `tag.test` earlier in the same IR path);
+ * lowering emits a plain `struct.get $val` without a tag check at runtime.
+ * A debug-mode assertion can still verify the tag.
+ */
+export interface IrInstrUnbox extends IrInstrBase {
+  readonly kind: "unbox";
+  readonly value: IrValueId;
+  readonly tag: ValType;
+}
+
+/**
+ * Runtime tag discriminator — result (via `IrInstrBase.result`) is `i32`,
+ * 1 if `value`'s runtime tag matches `tag`, else 0. `value` must be a
+ * tagged-union type containing `tag` as a member. Lowers to
+ * `struct.get $tag; i32.const <N>; i32.eq`.
+ */
+export interface IrInstrTagTest extends IrInstrBase {
+  readonly kind: "tag.test";
+  readonly value: IrValueId;
+  readonly tag: ValType;
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -229,7 +341,10 @@ export type IrInstr =
   | IrInstrBinary
   | IrInstrUnary
   | IrInstrSelect
-  | IrInstrRawWasm;
+  | IrInstrRawWasm
+  | IrInstrBox
+  | IrInstrUnbox
+  | IrInstrTagTest;
 
 // ---------------------------------------------------------------------------
 // Terminators
