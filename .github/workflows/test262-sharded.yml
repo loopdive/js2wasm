@@ -55,6 +55,7 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -118,6 +119,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -172,6 +175,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -236,6 +241,7 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+          lfs: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download merged reports
