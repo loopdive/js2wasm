@@ -44,21 +44,21 @@ and hide real ones.
 | **967** | Array.prototype.some/every/map not resolving after #799 prototype chain (30 tests) | 38 | done | high |
 | **982** | Extract performance benchmark chart into a reusable web component | 40 | done | medium |
 | **1001** | Preallocate counted number[] push loops into dense WasmGC arrays | 42 | done | medium |
-| **1001** | Preallocate counted number[] push loops into dense WasmGC arrays | 44 | ready | medium |
+| **1001** | Preallocate counted number[] push loops into dense WasmGC arrays | 45 | ready | medium |
 | **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 42 | done | medium |
-| **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 44 | ready | medium |
+| **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 45 | ready | medium |
 | **1026** | String.prototype / Number.prototype / Boolean.prototype globals access | 40 | done | medium |
 | **1063** | createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee) | 41 | done | high |
 | **1064** | DataView bridge: subview metadata so bounds errors propagate | Backlog | in-progress | medium |
 | **1065** | Register `Array` as declared global so `x.constructor === Array` compares real refs | Backlog | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | done | medium |
-| **1067** | Dependency graph as a web component adopting the landing page color scheme | 44 | ready | medium |
-| **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 44 | ready | critical |
+| **1067** | Dependency graph as a web component adopting the landing page color scheme | 45 | ready | medium |
+| **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 45 | ready | critical |
 | **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 42 | done | high |
-| **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 44 | ready | high |
-| **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 44 | ready | medium |
-| **1079** | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | 44 | ready | medium |
-| **1080** | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | 44 | ready | critical |
+| **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 45 | ready | high |
+| **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 45 | ready | medium |
+| **1079** | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | 45 | ready | medium |
+| **1080** | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | 45 | ready | critical |
 | **1081** | Index test262 runs by commit hash — enable merge-base comparisons without re-running | Backlog | ready | critical |
 | **1082** | ci-status-feed delta is absolute snapshot not per-test regression — lies to dev-self-merge gate | 40 | done | critical |
 | **1083** | codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations | Backlog | ready | low |
