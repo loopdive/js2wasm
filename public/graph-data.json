@@ -16489,8 +16489,8 @@
       "id": "1167c",
       "title": "IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening)",
       "priority": "high",
-      "status": "blocked",
-      "raw_status": "blocked",
+      "status": "ready",
+      "raw_status": "ready",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16501,8 +16501,8 @@
       "id": "1168",
       "title": "IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [
         "1131"
@@ -16720,6 +16720,10 @@
     {
       "source": "907",
       "target": "908"
+    },
+    {
+      "source": "1131",
+      "target": "1168"
     },
     {
       "source": "1113",
@@ -17176,10 +17180,6 @@
     {
       "source": "1166",
       "target": "1167a"
-    },
-    {
-      "source": "1131",
-      "target": "1168"
     },
     {
       "source": "1000",
