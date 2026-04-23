@@ -58,19 +58,6 @@
       "sprint": "44"
     },
     {
-      "id": "1167c",
-      "title": "IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening)",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1167b",
-        "1168"
-      ],
-      "goal": "compiler-architecture",
-      "status": "blocked",
-      "sprint": "44"
-    },
-    {
       "id": "1166",
       "title": "Closed-world integer specialization from literal call sites",
       "priority": "high",
@@ -142,6 +129,19 @@
     }
   ],
   "ready": [
+    {
+      "id": "1167c",
+      "title": "IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening)",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1167b",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "44"
+    },
     {
       "id": "1167b",
       "title": "IR Phase 3b — inline-small: inline direct IR calls before lowering",
@@ -1962,18 +1962,6 @@
   ],
   "inprogress": [
     {
-      "id": "1168",
-      "title": "IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1131"
-      ],
-      "goal": "compiler-architecture",
-      "status": "in-progress",
-      "sprint": "44"
-    },
-    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -2122,6 +2110,18 @@
     }
   ],
   "done": [
+    {
+      "id": "1168",
+      "title": "IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1131"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "44"
+    },
     {
       "id": "1153",
       "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
