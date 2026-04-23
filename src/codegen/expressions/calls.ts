@@ -74,6 +74,7 @@ import {
   tryExternClassMethodOnAny,
 } from "./calls-closures.js";
 import { compileOptionalCallExpression } from "./calls-optional.js";
+import { tryStaticEvalInline } from "./eval-inline.js";
 import { compileExternMethodCall, compileSpreadCallArgs, emitLazyProtoGet } from "./extern.js";
 import { getFuncParamTypes, getWasmFuncReturnType, isEffectivelyVoidReturn, wasmFuncReturnsVoid } from "./helpers.js";
 import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./identifiers.js";
@@ -497,11 +498,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     return compileOptionalDirectCall(ctx, fctx, expr);
   }
 
-  // eval(...) — route to __extern_eval JS-host import (#1006).
+  // eval(...) — first try static inlining (#1163): if the source argument is
+  // a compile-time-constant string, parse it and splice the AST inline at the
+  // call site.  This is the zero-runtime-cost path.  If the argument is not
+  // a constant (or parsing fails), fall through to __extern_eval (#1006).
   // Covers direct `eval(src)` and indirect `(0, eval)(src)` / `(0,eval)(src)`.
   // In standalone/WASI mode the host import is unavailable and will trap at
   // instantiation time — callers that need eval must use a JS host.
   if (isEvalCallExpression(expr)) {
+    const inlined = tryStaticEvalInline(ctx, fctx, expr);
+    if (inlined !== undefined) return inlined;
     let evalIdx = ctx.funcMap.get("__extern_eval");
     if (evalIdx === undefined) {
       const importsBefore = ctx.numImportFuncs;
