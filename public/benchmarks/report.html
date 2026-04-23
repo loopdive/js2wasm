@@ -78,6 +78,32 @@
         margin-bottom: 2rem;
         position: relative;
       }
+      .summary-visuals {
+        display: grid;
+        grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+        gap: 3rem;
+        align-items: start;
+      }
+      .summary-visual-panel {
+        min-width: 0;
+      }
+      .summary-donut-panel {
+        display: grid;
+        gap: 1rem;
+        align-content: start;
+      }
+      .summary-donut-panel t262-donut {
+        width: 100%;
+        justify-self: stretch;
+      }
+      .summary-history-panel {
+        display: grid;
+        gap: 0.875rem;
+        align-content: start;
+      }
+      .summary-history-chart {
+        min-height: 260px;
+      }
       .summary-meta {
         position: absolute;
         right: 0;
@@ -104,100 +130,47 @@
         color: var(--text-muted);
       }
       /* Donut chart handled by <t262-donut> web component */
-      .edition-timeline-section {
-        margin: -0.35rem 0 2rem;
-      }
-      .edition-track {
-        position: relative;
-        height: 92px;
-      }
-      .edition-timeline {
-        position: absolute;
-        left: 0;
-        right: 0;
-        top: 31px;
-        display: flex;
-        height: 14px;
-        overflow: hidden;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-      }
-      .edition-segment {
-        position: relative;
-        min-width: 10px;
-        background: rgba(248, 81, 73, 0.12);
-      }
-      .edition-segment + .edition-segment::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 1px;
-        background: rgba(255, 255, 255, 0.06);
-      }
-      .edition-segment::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        width: var(--segment-fill);
-        background: var(--pass);
-      }
-      .edition-scale {
-        position: absolute;
-        inset: 0 1px;
-      }
-      .edition-scale-label {
-        position: relative;
+      .diagram-title {
         font-size: 0.68rem;
-        letter-spacing: 0.04em;
+        font-weight: 600;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         color: var(--text-muted);
-        white-space: nowrap;
+        margin: 0 0 1.25rem;
       }
-      .edition-scale-marker {
-        position: absolute;
-        transform: translateX(-50%);
-        pointer-events: none;
+      .diagram-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        color: var(--text-muted);
+        letter-spacing: 0.04em;
       }
-      .edition-scale-line {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 1px;
-        height: 10px;
-        background: rgba(255, 255, 255, 0.18);
+      .diagram-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
       }
-      .edition-scale-marker.above {
-        top: 0;
+      .diagram-legend-line {
+        width: 18px;
+        height: 0;
+        border-top: 2px solid rgba(255, 255, 255, 0.9);
       }
-      .edition-scale-marker.above .edition-scale-line {
-        top: 21px;
+      .diagram-legend-line.total {
+        border-top-width: 1px;
+        border-top-color: rgba(141, 154, 184, 1);
+        border-top-style: dotted;
       }
-      .edition-scale-marker.below {
-        top: 0;
+      .diagram-legend-line.passed {
+        border-top-width: 1px;
+        border-top-color: rgba(255, 255, 255, 0.82);
       }
-      .edition-scale-marker.below .edition-scale-line {
-        top: 45px;
-      }
-      .edition-scale-marker.above .edition-scale-label {
-        position: absolute;
-        top: 0;
-        left: 50%;
-        transform: translateX(-50%);
-      }
-      .edition-scale-marker.below .edition-scale-label {
-        position: absolute;
-        top: 58px;
-        left: 50%;
-        transform: translateX(-50%);
-      }
-      .edition-scale-label::before {
-        content: "";
-        display: none;
+      .edition-section {
+        margin: -0.35rem 0 2rem;
+        --t262-edition-font-mono: var(--mono);
+        --t262-edition-text: var(--text);
+        --t262-edition-text-muted: var(--text-muted);
       }
       .edition-legend-grid {
         display: grid;
@@ -210,6 +183,20 @@
         gap: 0.12rem;
         min-width: 0;
       }
+      .edition-legend-item.active .edition-legend-name,
+      .edition-legend-item.active .edition-legend-rate,
+      .edition-legend-item.active .edition-legend-ratio {
+        color: rgba(255, 255, 255, 0.98);
+      }
+      .edition-legend-item.dimmed .edition-legend-name {
+        color: rgba(255, 255, 255, 0.26);
+      }
+      .edition-legend-item.dimmed .edition-legend-rate {
+        color: rgba(255, 255, 255, 0.4);
+      }
+      .edition-legend-item.dimmed .edition-legend-ratio {
+        color: rgba(255, 255, 255, 0.32);
+      }
       .edition-legend-name {
         font-size: 0.72rem;
         letter-spacing: 0.06em;
@@ -217,7 +204,7 @@
         color: var(--text-muted);
       }
       .edition-legend-rate {
-        color: var(--pass);
+        color: rgba(255, 255, 255, 0.92);
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         text-align: left;
@@ -395,37 +382,64 @@
         gap: 0.5rem;
         flex-wrap: wrap;
         width: 100%;
-        justify-content: flex-end;
+        justify-content: flex-start;
+        align-items: flex-end;
       }
       .filter-toggle {
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        border-radius: 6px;
-        border: 1px solid var(--border);
-        background: var(--surface);
+        gap: 0.625rem;
+        min-height: 44px;
+        padding: 0 0.95rem;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: transparent;
         color: var(--text-muted);
+        font-family: var(--mono);
         font-size: 0.75rem;
         cursor: pointer;
         user-select: none;
         transition:
           border-color 0.15s,
-          background 0.15s;
+          background 0.15s,
+          color 0.15s,
+          transform 0.15s;
       }
       .filter-toggle:hover {
-        border-color: var(--text-muted);
+        color: rgba(255, 255, 255, 0.72);
+      }
+      .filter-toggle:focus-within {
+        border-color: transparent;
+        box-shadow: none;
       }
       .filter-toggle.active {
-        border-color: var(--accent);
-        background: var(--surface-hover);
+        border-color: transparent;
+        background: transparent;
         color: var(--text);
       }
-      .filter-toggle .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 2px;
-        flex-shrink: 0;
+      .filter-toggle input {
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        margin: 0;
+        border-radius: 3px;
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        background: rgba(255, 255, 255, 0.02);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        transition:
+          border-color 0.15s,
+          background 0.15s,
+          box-shadow 0.15s;
+      }
+      .filter-toggle.active input {
+        border-color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow:
+          0 0 0 2px rgba(255, 255, 255, 0.08),
+          inset 0 0 0 1px rgba(6, 10, 20, 0.16);
+      }
+      .filter-toggle span {
+        white-space: nowrap;
       }
       .card.filter-card {
         cursor: pointer;
@@ -538,6 +552,12 @@
       .trend-delta.neutral {
         color: var(--text-muted);
       }
+      @media (max-width: 980px) {
+        .summary-visuals {
+          grid-template-columns: 1fr;
+          gap: 2rem;
+        }
+      }
     </style>
   </head>
   <body>
@@ -545,9 +565,14 @@
     <h1 class="brand">ECMAScript conformance</h1>
     <div id="app"><div class="no-data">Loading report data…</div></div>
 
+    <script type="module" src="../components/perf-benchmark-chart.js"></script>
+    <script src="../components/site-nav.js"></script>
+    <script type="module" src="../components/t262-charts.js"></script>
+    <script src="../components/trend-chart.js"></script>
     <script>
       const REPORT_JSON = "results/test262-report.json";
       const RESULTS_JSONL = "results/test262-results.jsonl";
+      const PROPOSAL_LABEL = "Proposals";
       const BENCH_SUITE_FILES = [
         "benchmarks/suites/strings.ts",
         "benchmarks/suites/arrays.ts",
@@ -667,213 +692,6 @@
         }
       }
 
-      function makeCounts() {
-        return { pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0, total: 0 };
-      }
-
-      function classifyEdition(file, scope) {
-        if (!file || scope === "proposal") return null;
-        if (scope === "annex_b" || file.includes("/annexB/")) return "LEGACY";
-
-        const rules = [
-          [
-            "ES2024",
-            [
-              "Object/groupBy",
-              "Map/groupBy",
-              "Promise/withResolvers",
-              "ArrayBuffer/prototype/transfer",
-              "ArrayBuffer/prototype/resizable",
-              "ArrayBuffer/prototype/resize",
-              "resizable-buffer",
-              "growable-sharedarraybuffer",
-            ],
-          ],
-          [
-            "ES2023",
-            ["/toSorted/", "/toReversed/", "/toSpliced/", "/findLast/", "/findLastIndex/", "/with/", "/hashbang/"],
-          ],
-          [
-            "ES2022",
-            [
-              "/at/",
-              "/Object/hasOwn/",
-              "/static-init",
-              "/static-block",
-              "/private-",
-              "/class-fields/",
-              "/Error/cause/",
-              "/match-indices/",
-            ],
-          ],
-          [
-            "ES2021",
-            [
-              "WeakRef",
-              "FinalizationRegistry",
-              "/Promise/any/",
-              "/replaceAll/",
-              "logical-assignment",
-              "numeric-separator-literal",
-            ],
-          ],
-          [
-            "ES2020",
-            [
-              "optional-chaining",
-              "/coalesce/",
-              "dynamic-import",
-              "import.meta",
-              "BigInt",
-              "globalThis",
-              "/matchAll/",
-              "/allSettled/",
-            ],
-          ],
-          [
-            "ES2019",
-            [
-              "optional-catch-binding",
-              "/flat/",
-              "/flatMap/",
-              "/fromEntries/",
-              "/trimStart/",
-              "/trimEnd/",
-              "Symbol/prototype/description",
-              "json-superset",
-            ],
-          ],
-          [
-            "ES2018",
-            [
-              "async-generator",
-              "for-await-of",
-              "async-iteration",
-              "regexp-dotall",
-              "lookbehind",
-              "named-groups",
-              "/Promise/prototype/finally/",
-              "object-rest",
-              "object-spread",
-            ],
-          ],
-          [
-            "ES2017",
-            [
-              "async-function",
-              "SharedArrayBuffer",
-              "/Atomics/",
-              "/Object/values/",
-              "/Object/entries/",
-              "/padStart/",
-              "/padEnd/",
-            ],
-          ],
-          ["ES2016", ["/includes/", "exponentiation"]],
-          [
-            "ES2015",
-            [
-              "block-scope",
-              "computed-property-names",
-              "rest-parameters",
-              "/module-code/",
-              "/import/",
-              "/export/",
-              "/class/",
-              "template-literal",
-              "for-of",
-              "destructuring",
-              "Map/",
-              "Set/",
-              "WeakMap/",
-              "WeakSet/",
-              "Promise/",
-              "Proxy/",
-              "Reflect/",
-              "Symbol/",
-              "TypedArray",
-              "ArrayBuffer",
-              "DataView",
-              "Generator",
-              "arrow-function",
-              "new.target",
-              "/super/",
-            ],
-          ],
-          [
-            "ES5",
-            [
-              "/strict-mode/",
-              "/JSON/",
-              "/Object/keys/",
-              "/Object/create/",
-              "/Object/defineProperty/",
-              "/Object/getOwnPropertyDescriptor/",
-              "/Object/preventExtensions/",
-              "/Object/seal/",
-              "/Object/freeze/",
-              "/Array/isArray/",
-              "/String/prototype/trim/",
-              "/Date/prototype/toISOString/",
-              "/Function/prototype/bind/",
-              "getter",
-              "reserved-words",
-              "property-definitions",
-            ],
-          ],
-        ];
-
-        for (const [edition, patterns] of rules) {
-          if (patterns.some((pattern) => file.includes(pattern))) return edition;
-        }
-
-        return "ES3";
-      }
-
-      async function loadEditionSummaries() {
-        try {
-          const resp = await fetch(RESULTS_JSONL);
-          if (!resp.ok) return null;
-          const text = await resp.text();
-          const byEdition = new Map();
-          for (const line of text.split("\n")) {
-            if (!line.trim()) continue;
-            const entry = JSON.parse(line);
-            if (entry.scope_official === false || entry.scope === "proposal") continue;
-            const edition = classifyEdition(entry.file, entry.scope);
-            if (!edition) continue;
-            if (!byEdition.has(edition)) byEdition.set(edition, makeCounts());
-            const counts = byEdition.get(edition);
-            counts.total++;
-            counts[entry.status] = (counts[entry.status] || 0) + 1;
-          }
-          const order = [
-            "LEGACY",
-            "ES3",
-            "ES5",
-            "ES2015",
-            "ES2016",
-            "ES2017",
-            "ES2018",
-            "ES2019",
-            "ES2020",
-            "ES2021",
-            "ES2022",
-            "ES2023",
-            "ES2024",
-          ];
-          return order
-            .filter((edition) => byEdition.has(edition))
-            .map((edition) => ({
-              edition,
-              ...byEdition.get(edition),
-              rate: pct(byEdition.get(edition).pass, byEdition.get(edition).total),
-            }));
-        } catch {
-          return null;
-        }
-      }
-
       async function loadJSON(url) {
         try {
           const r = await fetch(url);
@@ -881,6 +699,175 @@
         } catch {
           return null;
         }
+      }
+
+      const CONFORMANCE_PROJECT_START = new Date("2026-02-27T00:00:00Z");
+
+      function parseConformanceRunTimestamp(value) {
+        const raw = String(value || "");
+        if (!raw) return null;
+        const isoDate = new Date(raw);
+        if (Number.isFinite(isoDate.getTime())) return isoDate;
+        const compact = raw.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/);
+        if (compact) {
+          const [, y, m, d, hh, mm, ss] = compact;
+          return new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}Z`);
+        }
+        return null;
+      }
+
+      function formatConformanceHistoryLabel(date) {
+        return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      }
+
+      function buildConformanceHistoryPoints(runs) {
+        const comparableRuns = Array.isArray(runs)
+          ? runs
+              .filter((run) => Number(run?.total ?? 0) > 1 && Number(run?.pass ?? 0) >= 0)
+              .sort((a, b) => {
+                const ta = parseConformanceRunTimestamp(a.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+                const tb = parseConformanceRunTimestamp(b.timestamp)?.getTime() ?? Number.POSITIVE_INFINITY;
+                return ta - tb;
+              })
+          : [];
+
+        const rawPoints = comparableRuns
+          .map((run) => {
+            const total = Number(run.total || 0);
+            const pass = Number(run.pass || 0);
+            const ts = String(run.timestamp || "");
+            const date = parseConformanceRunTimestamp(ts);
+            return {
+              label: date ? formatConformanceHistoryLabel(date) : "",
+              timestamp: ts,
+              time: date?.getTime() ?? 0,
+              pass,
+              total,
+              rate: total > 0 ? (pass / total) * 100 : 0,
+            };
+          })
+          .filter((point) => point.total > 0 && point.rate >= 5);
+
+        const points = [];
+        for (const point of rawPoints) {
+          const prev = points.at(-1);
+          if (prev && point.total < prev.total * 0.75) continue;
+          points.push(point);
+        }
+
+        const firstPoint = points[0];
+        if (firstPoint?.timestamp) {
+          const firstDate = new Date(firstPoint.timestamp);
+          if (
+            Number.isFinite(firstDate.getTime()) &&
+            firstDate.getTime() - CONFORMANCE_PROJECT_START.getTime() > 12 * 60 * 60 * 1000
+          ) {
+            points.unshift({
+              label: formatConformanceHistoryLabel(CONFORMANCE_PROJECT_START),
+              timestamp: CONFORMANCE_PROJECT_START.toISOString(),
+              time: CONFORMANCE_PROJECT_START.getTime(),
+              pass: 0,
+              total: 0,
+              rate: 0,
+            });
+          }
+        }
+
+        const lastRun = comparableRuns.at(-1);
+        if (lastRun) {
+          const ts = String(lastRun.timestamp || "");
+          const total = Number(lastRun.total || 0);
+          const pass = Number(lastRun.pass || 0);
+          const lastRate = total > 0 ? (pass / total) * 100 : 0;
+          const lastDate = ts ? new Date(ts) : null;
+          const now = new Date();
+          if (
+            Number.isFinite(lastRate) &&
+            lastRate >= 5 &&
+            lastDate instanceof Date &&
+            Number.isFinite(lastDate.getTime()) &&
+            now.getTime() - lastDate.getTime() > 12 * 60 * 60 * 1000
+          ) {
+            points.push({
+              label: formatConformanceHistoryLabel(now),
+              timestamp: now.toISOString(),
+              time: now.getTime(),
+              pass,
+              total,
+              rate: lastRate,
+            });
+          }
+        }
+
+        if (points.length === 0) {
+          const now = new Date();
+          points.push(
+            {
+              label: formatConformanceHistoryLabel(CONFORMANCE_PROJECT_START),
+              timestamp: CONFORMANCE_PROJECT_START.toISOString(),
+              time: CONFORMANCE_PROJECT_START.getTime(),
+              pass: 0,
+              total: 0,
+              rate: 0,
+            },
+            {
+              label: formatConformanceHistoryLabel(now),
+              timestamp: now.toISOString(),
+              time: now.getTime(),
+              pass: 0,
+              total: 0,
+              rate: 0,
+            },
+          );
+        }
+
+        return points.length >= 2 ? points : null;
+      }
+
+      function configureConformanceHistoryChart(chart, runs) {
+        const points = buildConformanceHistoryPoints(runs);
+        if (!(chart instanceof HTMLElement) || !points) return;
+
+        chart.setAttribute("labels-key", "label");
+        chart.setAttribute(
+          "series",
+          JSON.stringify([
+            {
+              key: "rate",
+              color: "#ffffff",
+              fill: true,
+            },
+            {
+              key: "pass",
+              color: "rgba(255,255,255,0.82)",
+              axis: "right",
+              lineWidth: 1,
+              lineOpacity: 0.5,
+            },
+            {
+              key: "total",
+              color: "rgba(141, 154, 184, 1)",
+              axis: "right",
+              lineWidth: 1,
+              lineOpacity: 1,
+              dasharray: "1 3",
+            },
+          ]),
+        );
+
+        const applyData = () => {
+          chart.data = points;
+        };
+
+        if (customElements.get("trend-chart")) {
+          applyData();
+          return;
+        }
+
+        customElements
+          .whenDefined("trend-chart")
+          .then(applyData)
+          .catch(() => {});
       }
 
       let prettierBundlePromise = null;
@@ -965,58 +952,20 @@
         return cat;
       }
 
-      function renderEditionCoverage(rows, container) {
+      function renderEditionLegend(rows, legendHost, activeEdition = null, dimAfterRank = null, proposalEditionLabels = new Set()) {
+        legendHost.textContent = "";
         if (!rows || rows.length === 0) return;
-        container.appendChild(el("div", { className: "label" }, "ECMAScript Editions"));
-        const weights = {
-          LEGACY: 4,
-          ES3: 10,
-          ES5: 6,
-          ES2015: 1,
-          ES2016: 1,
-          ES2017: 1,
-          ES2018: 1,
-          ES2019: 1,
-          ES2020: 1,
-          ES2021: 1,
-          ES2022: 1,
-          ES2023: 1,
-          ES2024: 1,
-        };
-        const track = el("div", { className: "edition-track" });
-        const timeline = el("div", { className: "edition-timeline" });
-        const scale = el("div", { className: "edition-scale" });
-        const legend = el("div", { className: "edition-legend-grid" });
-        const scaleLabelFor = (edition) => (/^ES20\d{2}$/.test(edition) ? edition.slice(2) : edition);
-        const totalWeight = rows.reduce((sum, row) => sum + (weights[row.edition] || 1), 0);
-        let cumulativeWeight = 0;
-        rows.forEach((row, index) => {
-          const weight = String(weights[row.edition] || 1);
-          const numericWeight = weights[row.edition] || 1;
-          const segment = el("div", { className: "edition-segment" });
-          segment.style.flex = weight;
-          segment.style.setProperty("--segment-fill", `${row.rate}%`);
-          timeline.appendChild(segment);
+        rows.forEach((row) => {
+          const rowRank = Number.isFinite(row.rank) ? row.rank : Number.MAX_SAFE_INTEGER;
+          const isActive = row.edition === activeEdition;
+          const isDimmed = dimAfterRank !== null && rowRank > dimAfterRank;
+          const label = proposalEditionLabels.has(row.edition) ? PROPOSAL_LABEL : row.displayLabel || row.edition;
 
-          cumulativeWeight += numericWeight;
-          const marker = el(
-            "div",
-            {
-              className: "edition-scale-marker " + (index % 2 === 0 ? "below" : "above"),
-              style: {
-                left: `${(cumulativeWeight / totalWeight) * 100}%`,
-              },
-            },
-            el("div", { className: "edition-scale-line" }),
-            el("div", { className: "edition-scale-label" }, scaleLabelFor(row.edition)),
-          );
-          scale.appendChild(marker);
-
-          legend.appendChild(
+          legendHost.appendChild(
             el(
               "div",
-              { className: "edition-legend-item" },
-              el("div", { className: "edition-legend-name" }, row.edition),
+              { className: "edition-legend-item" + (isActive ? " active" : "") + (isDimmed ? " dimmed" : "") },
+              el("div", { className: "edition-legend-name" }, label),
               el("div", { className: "edition-legend-rate" }, `${row.rate}%`),
               el(
                 "div",
@@ -1026,10 +975,6 @@
             ),
           );
         });
-        track.appendChild(timeline);
-        track.appendChild(scale);
-        container.appendChild(track);
-        container.appendChild(legend);
       }
 
       function isProposalSkipReason(reason) {
@@ -1061,6 +1006,34 @@
       const _srcQueue = [];
       let _srcFetching = 0;
       const MAX_CONCURRENT_FETCHES = 6;
+      let _srcAvailable = null;
+      let _srcAvailabilityPromise = null;
+
+      function sourceBasePath() {
+        return window.location.pathname.replace(/\/benchmarks\/.*$/, "");
+      }
+
+      function ensureSourceAvailability() {
+        if (_srcAvailable !== null) return Promise.resolve(_srcAvailable);
+        if (_srcAvailabilityPromise) return _srcAvailabilityPromise;
+
+        _srcAvailabilityPromise = fetch(sourceBasePath() + "/api/test262-source-status")
+          .then((r) => {
+            if (!r.ok) throw new Error(r.status);
+            return r.json();
+          })
+          .then((payload) => {
+            _srcAvailable = payload?.available !== false;
+            return _srcAvailable;
+          })
+          .catch(() => {
+            // Preserve legacy behavior when the status endpoint is unavailable.
+            _srcAvailable = true;
+            return true;
+          });
+
+        return _srcAvailabilityPromise;
+      }
 
       // Returns a placeholder div that will be filled with source context when ready
       function fetchSourceLines(filePath, errText) {
@@ -1094,17 +1067,19 @@
           return placeholder;
         }
 
-        const base = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
-        const url = base + "/test262/" + normalized;
-        _srcQueue.push({
-          normalized,
-          url,
-          rawLineNo,
-          errText,
-          searchText,
-          placeholder,
+        ensureSourceAvailability().then((available) => {
+          if (!available) return;
+          const url = sourceBasePath() + "/test262/" + normalized;
+          _srcQueue.push({
+            normalized,
+            url,
+            rawLineNo,
+            errText,
+            searchText,
+            placeholder,
+          });
+          _drainSrcQueue();
         });
-        _drainSrcQueue();
         return placeholder;
       }
 
@@ -1294,13 +1269,6 @@
         return summary;
       }
 
-      function scopeLabel(includeLegacy, includeProposals) {
-        const parts = ["Standard"];
-        if (includeLegacy) parts.push("Annex B");
-        if (includeProposals) parts.push("Proposals");
-        return parts.join(" + ");
-      }
-
       function toggleDetail(row, catName, statusFilter) {
         const existing = row.nextElementSibling;
         if (existing && existing.classList.contains("detail-row")) {
@@ -1366,15 +1334,16 @@
         });
       }
 
-      function renderConformance(data, container) {
+      function renderConformance(data, container, conformanceRuns) {
         const scopeSummaries = data.scope_summaries || {};
         const standardSummary = scopeSummaries.standard || data.summary;
         const legacySummary = scopeSummaries.annex_b || null;
-        const proposalSummary = scopeSummaries.proposal || null;
+        const fullSummary = data.full_summary || data.summary;
         const scoreState = {
           includeLegacy: true,
-          includeProposals: false,
+          editionScope: "overall",
         };
+        let editionDetail = null;
 
         let summaryStamp = null;
         if (data.timestamp) {
@@ -1384,16 +1353,12 @@
         }
 
         const summary = el("div", { className: "summary" });
+        const summaryVisuals = el("div", { className: "summary-visuals" });
+        const donutPanel = el("div", { className: "summary-visual-panel summary-donut-panel" });
         const donutEl = document.createElement("t262-donut");
         donutEl.id = "donut-chart";
         donutEl.style.setProperty("--t262-bg", "#060a14");
         const controlsHost = el("div", { className: "filter-toggles", style: { marginTop: "1rem" } });
-        const legacyToggle = el("label", { className: "filter-toggle" });
-        const legacyCheckbox = el("input", { type: "checkbox", checked: "checked" });
-        legacyToggle.appendChild(legacyCheckbox);
-        legacyToggle.appendChild(el("span", null, "legacy (Annex B)"));
-        controlsHost.appendChild(legacyToggle);
-
         // Strict mode toggle — checked by default, persisted in localStorage
         const strictToggle = el("label", { className: "filter-toggle" });
         const strictDefault = localStorage.getItem("t262-strict-only") !== "false";
@@ -1402,28 +1367,94 @@
         strictCheckbox.checked = strictDefault;
         strictToggle.appendChild(strictCheckbox);
         strictToggle.appendChild(el("span", null, "strict mode"));
+        const legacyToggle = el("label", { className: "filter-toggle" });
+        const legacyCheckbox = el("input", { type: "checkbox", checked: "checked" });
+        legacyToggle.appendChild(legacyCheckbox);
+        legacyToggle.appendChild(el("span", null, "legacy (Annex B)"));
         controlsHost.appendChild(strictToggle);
+        controlsHost.appendChild(legacyToggle);
+        const editionSection = el("div", { className: "edition-section" });
+        const editionTimeline = document.createElement("t262-edition-timeline");
+        editionTimeline.setAttribute("src", "results/test262-editions.json");
+        if (data.timestamp) {
+          editionTimeline.setAttribute("reference-timestamp", data.timestamp);
+        }
+        const editionLegendHost = el("div", { className: "edition-legend-grid" });
+        editionSection.appendChild(editionTimeline);
+        editionSection.appendChild(editionLegendHost);
 
         function syncToggleStyles() {
+          const editionFiltered = scoreState.editionScope !== "overall";
           legacyToggle.classList.toggle("active", legacyCheckbox.checked);
           strictToggle.classList.toggle("active", strictCheckbox.checked);
-          // Hide legacy toggle in strict mode (strict_summary already includes Annex B strict tests)
-          legacyToggle.style.display = strictCheckbox.checked ? "none" : "";
+          strictToggle.style.display = editionFiltered ? "none" : "";
+          legacyToggle.style.display = editionFiltered || strictCheckbox.checked ? "none" : "";
+        }
+
+        function setDonutSummary(summary, captionMain = "ECMAScript") {
+          const ce =
+            Number(summary?.ce ?? 0) + Number(summary?.compile_error ?? 0) + Number(summary?.compile_timeout ?? 0);
+          donutEl.setAttribute("pass", String(summary?.pass || 0));
+          donutEl.setAttribute("fail", String(summary?.fail || 0));
+          donutEl.setAttribute("ce", String(ce));
+          donutEl.setAttribute("skip", String(summary?.skip || 0));
+          donutEl.setAttribute("total", String(summary?.total || 0));
+          donutEl.setAttribute("caption-main", captionMain);
+          donutEl.setAttribute("caption-sub", "conformance");
+        }
+
+        function renderEditionSection() {
+          if (!editionDetail?.rows?.length) {
+            editionLegendHost.style.display = "none";
+            editionLegendHost.textContent = "";
+            return;
+          }
+          editionLegendHost.style.display = "grid";
+          renderEditionLegend(
+            editionDetail.rows,
+            editionLegendHost,
+            editionDetail.activeEdition,
+            editionDetail.limitRank,
+            editionDetail.proposalEditionLabels,
+          );
+        }
+
+        function applyEditionScope(detail = editionDetail) {
+          if (detail) {
+            editionDetail = detail;
+          }
+          scoreState.editionScope = detail?.scope || "overall";
+          syncToggleStyles();
+          renderSummaryCard();
+          renderEditionSection();
         }
 
         function renderSummaryCard() {
-          let s;
-          if (strictCheckbox.checked && data.strict_summary) {
-            s = data.strict_summary;
-          } else {
-            s = makeScopeSummary(standardSummary, scoreState.includeLegacy ? legacySummary : null);
+          if (scoreState.editionScope === "overall") {
+            const overallCaption = editionDetail?.captionMain || "ECMAScript";
+            if (strictCheckbox.checked && data.strict_summary) {
+              setDonutSummary(data.strict_summary, overallCaption);
+            } else {
+              setDonutSummary(
+                makeScopeSummary(standardSummary, scoreState.includeLegacy ? legacySummary : null),
+                overallCaption,
+              );
+            }
+            return;
           }
-          const ce = (s.compile_error || 0) + (s.compile_timeout || 0);
-          donutEl.setAttribute("pass", s.pass || 0);
-          donutEl.setAttribute("fail", s.fail || 0);
-          donutEl.setAttribute("ce", ce);
-          donutEl.setAttribute("skip", s.skip || 0);
-          donutEl.setAttribute("total", s.total || 0);
+          if (scoreState.editionScope === "overall+proposal") {
+            setDonutSummary(fullSummary, PROPOSAL_LABEL);
+            return;
+          }
+          const scope = editionDetail?.scopeMap instanceof Map ? editionDetail.scopeMap.get(scoreState.editionScope) : null;
+          if (!scope) {
+            setDonutSummary(
+              makeScopeSummary(standardSummary, scoreState.includeLegacy ? legacySummary : null),
+              editionDetail?.captionMain || "ECMAScript",
+            );
+            return;
+          }
+          setDonutSummary(scope.summary, scope.captionMain);
         }
 
         legacyCheckbox.addEventListener("change", () => {
@@ -1439,8 +1470,50 @@
 
         syncToggleStyles();
         renderSummaryCard();
-        summary.appendChild(donutEl);
-        summary.appendChild(controlsHost);
+        renderEditionSection();
+        donutPanel.appendChild(donutEl);
+        donutPanel.appendChild(controlsHost);
+        summaryVisuals.appendChild(donutPanel);
+
+        const historyPanel = el("div", { className: "summary-visual-panel summary-history-panel" });
+        historyPanel.appendChild(
+          el("h3", { className: "diagram-title" }, "Test Pass Rate Over Time"),
+        );
+        const historyChart = el("trend-chart", {
+          className: "summary-history-chart",
+          mode: "step",
+          height: "260",
+          "x-key": "time",
+        });
+        historyPanel.appendChild(historyChart);
+        historyPanel.appendChild(
+          el(
+            "div",
+            { className: "diagram-legend" },
+            el(
+              "span",
+              { className: "diagram-legend-item" },
+              el("span", { className: "diagram-legend-line" }),
+              el("span", null, "Pass rate"),
+            ),
+            el(
+              "span",
+              { className: "diagram-legend-item" },
+              el("span", { className: "diagram-legend-line passed" }),
+              el("span", null, "Tests passed"),
+            ),
+            el(
+              "span",
+              { className: "diagram-legend-item" },
+              el("span", { className: "diagram-legend-line total" }),
+              el("span", null, "Total tests run"),
+            ),
+          ),
+        );
+        configureConformanceHistoryChart(historyChart, conformanceRuns);
+        summaryVisuals.appendChild(historyPanel);
+
+        summary.appendChild(summaryVisuals);
         if (summaryStamp) summary.appendChild(summaryStamp);
 
         // Stale results indicator
@@ -1456,18 +1529,24 @@
           summary.appendChild(staleCard);
         }
 
-        const editionSection = el("div", {
-          className: "edition-timeline-section",
+        const officialSummary = makeScopeSummary(standardSummary, scoreState.includeLegacy ? legacySummary : null);
+        const ceValue = (summary) =>
+          Number(summary?.ce ?? 0) + Number(summary?.compile_error ?? 0) + Number(summary?.compile_timeout ?? 0);
+        const proposalDiffers =
+          Number(fullSummary?.pass ?? 0) !== Number(officialSummary?.pass ?? 0) ||
+          Number(fullSummary?.fail ?? 0) !== Number(officialSummary?.fail ?? 0) ||
+          Number(fullSummary?.skip ?? 0) !== Number(officialSummary?.skip ?? 0) ||
+          ceValue(fullSummary) !== ceValue(officialSummary) ||
+          Number(fullSummary?.total ?? 0) !== Number(officialSummary?.total ?? 0);
+        if (proposalDiffers) {
+          editionTimeline.setAttribute("show-proposals", "");
+        } else {
+          editionTimeline.removeAttribute("show-proposals");
+        }
+        editionTimeline.addEventListener("edition-change", (event) => {
+          applyEditionScope(event.detail);
         });
-
-        loadEditionSummaries().then((rows) => {
-          editionSection.innerHTML = "";
-          if (!rows || rows.length === 0) {
-            editionSection.appendChild(el("div", { className: "pct" }, "No edition data available."));
-            return;
-          }
-          renderEditionCoverage(rows, editionSection);
-        });
+        editionTimeline.setAttribute("value", "overall");
 
         function applyFilters() {
           const query = searchInput.value.toLowerCase().trim();
@@ -2048,16 +2127,17 @@
       }
 
       async function main() {
-        const [conformance, history, snippets] = await Promise.all([
+        const [conformance, benchmarkHistory, snippets, conformanceRuns] = await Promise.all([
           loadReportWithFallback(),
           loadJSON(assetPath("benchmarks/results/history.json")),
           loadBenchmarkSnippets(),
+          loadJSON(assetPath("benchmarks/results/runs/index.json")),
         ]);
         const app = document.getElementById("app");
         app.textContent = "";
 
         if (conformance) {
-          renderConformance(conformance, app);
+          renderConformance(conformance, app, conformanceRuns);
         } else {
           app.appendChild(
             el("div", { className: "no-data" }, "No test262 report found. Run: npx vitest run tests/test262.test.ts"),
@@ -2067,8 +2147,8 @@
         renderBenchmarks(snippets, app);
         await highlightReportCode();
 
-        if (history && history.length >= 2) {
-          renderTrends(history, app);
+        if (benchmarkHistory && benchmarkHistory.length >= 2) {
+          renderTrends(benchmarkHistory, app);
         }
 
         // Timestamp is now rendered inside renderConformance
@@ -2076,8 +2156,5 @@
 
       main();
     </script>
-    <script type="module" src="../components/perf-benchmark-chart.js"></script>
-    <script src="../components/site-nav.js"></script>
-    <script src="../components/t262-charts.js"></script>
   </body>
 </html>
