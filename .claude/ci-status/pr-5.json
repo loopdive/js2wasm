@@ -1,0 +1,15 @@
+{
+  "pr": 5,
+  "conclusion": "success",
+  "head_branch": "issue-1168-ir-frontend-widening",
+  "head_sha": "9985fcaee71be6b80781995203d95a90601b6543",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24858358162",
+  "timestamp": "2026-04-23T21:03:35Z",
+  "pass": 24483,
+  "fail": 13700,
+  "compile_error": 3621,
+  "snapshot_delta": 0,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
