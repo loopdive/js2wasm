@@ -303,12 +303,127 @@ export function buildVecFromExternref(
 }
 
 /**
+ * Build the terminal else-branch for buildTupleFromExternref: when no known
+ * vec type matched, materialize the externref via `__array_from_iter` (so
+ * iterables + array-likes become a real JS array), then read each tuple
+ * field by index via `__extern_get_idx`. Null/undefined externrefs stay
+ * null — the callee's destructure guard turns that into a spec TypeError.
+ *
+ * If the externref backup isn't available or the host imports are missing
+ * (standalone mode), fall back to ref.null so downstream code can detect
+ * the conversion failure. (#1161)
+ */
+function buildTupleFromIterableFallback(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  externLocal: number | undefined,
+  tupleTypeIdx: number,
+  tupleFields: ValType[],
+): Instr[] {
+  if (externLocal === undefined) {
+    return [{ op: "ref.null", typeIdx: tupleTypeIdx } as Instr];
+  }
+  // Register all helpers first so every ensureLateImport shift completes
+  // before we freeze funcIdx values — otherwise a later ensureLateImport
+  // could shift a previously-captured funcIdx and produce the wrong call.
+  ensureLateImport(ctx, "__array_from_iter", [{ kind: "externref" }], [{ kind: "externref" }]);
+  ensureLateImport(ctx, "__extern_get_idx", [{ kind: "externref" }, { kind: "f64" }], [{ kind: "externref" }]);
+  ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+  ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+  ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  const iterIdx = ctx.funcMap.get("__array_from_iter");
+  const getIdxFn = ctx.funcMap.get("__extern_get_idx");
+  const isUndefFn = ctx.funcMap.get("__extern_is_undefined");
+  const unboxIdx = ctx.funcMap.get("__unbox_number");
+  if (iterIdx === undefined || getIdxFn === undefined) {
+    return [{ op: "ref.null", typeIdx: tupleTypeIdx } as Instr];
+  }
+
+  const matLocal = allocLocal(fctx, `__tup_mat_${fctx.locals.length}`, { kind: "externref" });
+
+  // Build field extraction
+  const fieldExtracts: Instr[] = [];
+  for (let i = 0; i < tupleFields.length; i++) {
+    const fieldType = tupleFields[i]!;
+    // matLocal[i] via __extern_get_idx(matLocal, f64(i))
+    fieldExtracts.push(
+      { op: "local.get", index: matLocal } as Instr,
+      { op: "f64.const", value: i } as Instr,
+      { op: "call", funcIdx: getIdxFn } as Instr,
+    );
+    // Coerce externref element to tuple field type
+    if (fieldType.kind === "f64" && unboxIdx !== undefined) {
+      fieldExtracts.push({ op: "call", funcIdx: unboxIdx } as Instr);
+    } else if (fieldType.kind === "i32" && unboxIdx !== undefined) {
+      fieldExtracts.push({ op: "call", funcIdx: unboxIdx } as Instr);
+      fieldExtracts.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+    } else if (fieldType.kind === "externref") {
+      // same type, no coercion
+    } else if (fieldType.kind === "ref" || fieldType.kind === "ref_null") {
+      const toIdx = (fieldType as { typeIdx: number }).typeIdx;
+      fieldExtracts.push({ op: "any.convert_extern" } as Instr);
+      fieldExtracts.push({ op: "ref.cast_null", typeIdx: toIdx } as Instr);
+    } else if (fieldType.kind === "f64") {
+      // unbox unavailable — fall back to NaN
+      fieldExtracts.push({ op: "drop" } as Instr);
+      fieldExtracts.push({ op: "f64.const", value: NaN } as Instr);
+    } else if (fieldType.kind === "i32") {
+      fieldExtracts.push({ op: "drop" } as Instr);
+      fieldExtracts.push({ op: "i32.const", value: 0 } as Instr);
+    }
+  }
+
+  // Result shape: if (isNull || isUndefined) then ref.null else build tuple
+  const buildTupleInstrs: Instr[] = [
+    { op: "local.get", index: externLocal } as Instr,
+    { op: "call", funcIdx: iterIdx } as Instr,
+    { op: "local.set", index: matLocal } as Instr,
+    ...fieldExtracts,
+    { op: "struct.new", typeIdx: tupleTypeIdx } as Instr,
+  ];
+
+  // Preserve null/undefined so the callee's destructure guard can throw
+  // TypeError per spec (RequireObjectCoercible). Without this check,
+  // __array_from_iter(null) returns [] silently, which skips the guard.
+  if (isUndefFn !== undefined) {
+    return [
+      { op: "local.get", index: externLocal } as Instr,
+      { op: "ref.is_null" } as Instr,
+      { op: "local.get", index: externLocal } as Instr,
+      { op: "call", funcIdx: isUndefFn } as Instr,
+      { op: "i32.or" } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: tupleTypeIdx } as ValType },
+        then: [{ op: "ref.null", typeIdx: tupleTypeIdx } as Instr],
+        else: buildTupleInstrs,
+      } as Instr,
+    ];
+  }
+  return [
+    { op: "local.get", index: externLocal } as Instr,
+    { op: "ref.is_null" } as Instr,
+    {
+      op: "if",
+      blockType: { kind: "val", type: { kind: "ref_null", typeIdx: tupleTypeIdx } as ValType },
+      then: [{ op: "ref.null", typeIdx: tupleTypeIdx } as Instr],
+      else: buildTupleInstrs,
+    } as Instr,
+  ];
+}
+
+/**
  * Build instructions to construct a tuple struct from an externref value at runtime.
  * Tries each known vec type via ref.test; if one matches, extracts elements and
- * constructs the tuple. Falls back to ref.null if no vec type matches.
+ * constructs the tuple. When no vec type matches, falls back to iterable
+ * materialization via `__array_from_iter` + `__extern_get_idx` so that JS
+ * iterables (generators, custom @@iterator, plain JS arrays) also coerce
+ * correctly into the tuple shape. Null/undefined externrefs propagate as
+ * ref.null so the callee's destructure guard fires a spec TypeError (#1161).
  *
  * This handles the case where an externref wraps a vec (e.g. __vec_f64 from [1,2,3])
- * but the target parameter type is a tuple struct (__tuple_*).
+ * OR a JS iterable, but the target parameter type is a tuple struct (__tuple_*).
  */
 function buildTupleFromExternref(
   ctx: CodegenContext,
@@ -316,11 +431,17 @@ function buildTupleFromExternref(
   anyLocal: number,
   tupleTypeIdx: number,
   tupleFields: ValType[],
+  externLocal?: number,
 ): Instr[] {
   const resultType: ValType = { kind: "ref_null", typeIdx: tupleTypeIdx };
 
-  // Try each known vec type
-  let instrs: Instr[] = [{ op: "ref.null", typeIdx: tupleTypeIdx } as Instr];
+  // Terminal fallback when no vec type matches: if we have the original
+  // externref, materialize it via __array_from_iter and read each tuple
+  // field by index. This lets iterables (generators, custom @@iterator)
+  // flow into binding-pattern params without throwing "Cannot destructure"
+  // prematurely. Preserve null/undefined by leaving ref.null in those
+  // cases so the callee's destructure guard throws a spec TypeError. (#1161)
+  let instrs: Instr[] = buildTupleFromIterableFallback(ctx, fctx, externLocal, tupleTypeIdx, tupleFields);
 
   for (const [_key, vecIdx] of ctx.vecTypeMap) {
     const vecInfo = getVecInfo(ctx, vecIdx);
@@ -1163,7 +1284,7 @@ export function coerceType(
       // Check if the target is a tuple struct — if so, try converting from any known vec type
       const tupleFields = getTupleFields(ctx, toIdx);
       if (tupleFields) {
-        elseBranch = buildTupleFromExternref(ctx, fctx, tmpAnyLocal, toIdx, tupleFields);
+        elseBranch = buildTupleFromExternref(ctx, fctx, tmpAnyLocal, toIdx, tupleFields, tmpExternLocal);
       } else {
         elseBranch = [{ op: "ref.null", typeIdx: toIdx } as Instr];
       }

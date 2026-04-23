@@ -129,12 +129,22 @@ export function promoteAccessorCapturesToGlobals(
   ctx: CodegenContext,
   fctx: FunctionContext,
   accessorBody: ts.Block | undefined,
+  extraNodes?: readonly ts.Node[],
 ): void {
-  if (!accessorBody) return;
+  if (!accessorBody && (!extraNodes || extraNodes.length === 0)) return;
 
   const referencedNames = new Set<string>();
-  for (const stmt of accessorBody.statements) {
-    collectReferencedIdentifiers(stmt, referencedNames);
+  if (accessorBody) {
+    for (const stmt of accessorBody.statements) {
+      collectReferencedIdentifiers(stmt, referencedNames);
+    }
+  }
+  // Param-default initializers (#1161) also reference captured variables;
+  // scan them here so defaults like `[] = iter` can resolve `iter`.
+  if (extraNodes) {
+    for (const node of extraNodes) {
+      collectReferencedIdentifiers(node, referencedNames);
+    }
   }
 
   for (const name of referencedNames) {
