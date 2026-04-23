@@ -1,0 +1,15 @@
+{
+  "pr": 10,
+  "conclusion": "success",
+  "head_branch": "issue-1152-array-proto-regression",
+  "head_sha": "c8308a9f97ee525bb8b7a1cea193879344d6e7ae",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24863439818",
+  "timestamp": "2026-04-23T23:27:28Z",
+  "pass": 24974,
+  "fail": 14046,
+  "compile_error": 2779,
+  "snapshot_delta": 491,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
