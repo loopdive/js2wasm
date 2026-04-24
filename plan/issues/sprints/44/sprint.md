@@ -209,7 +209,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1119 | ES2015 SingleNameBinding anonymous function/class naming from destructuring context | medium | ready |
 | #1148 | Investigate skip:103 regression — Annex B eval-code skip filter | high | ready |
 | #1149 | Fix null_deref:32 — eval-code direct methods with arguments declare | high | ready |
-| #1150 | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | high | ready |
 | #1156 | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | medium | ready |
 | #1167 | SSA IR Phase 3 — optimization passes (meta issue — see 1167a/b/c) | high | ready |
 | #1167c | IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening) | high | ready |
@@ -218,6 +217,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1150 | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | high | done |
 | #1152 | Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions) | high | done |
 | #1153 | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | critical | done |
 | #1160 | Array.from codegen error — test262-worker prototype poisoning leak (730 tests) | high | done |
