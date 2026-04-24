@@ -116,9 +116,12 @@ jobs:
           path: |
             .test262-cache
             benchmarks/results/test262-cache.json
-          key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-chunk-${{ matrix.chunk }}
+          # vitest.config.ts is part of the hash so any change to concurrency,
+          # timeouts, or pool config busts the cache and forces a clean run
+          # instead of replaying stale `compile_timeout` results (issue #1171).
+          key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-chunk-${{ matrix.chunk }}
           restore-keys: |
-            test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-
+            test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-
 
       - name: Build compiler bundles
         run: |

@@ -20,6 +20,10 @@ export default defineConfig({
     // Without this, vitest runs it() blocks within a describe() sequentially,
     // leaving pool workers idle and stretching test262 runs to 150+ minutes.
     maxConcurrency: 32,
-    testTimeout: 10000, // 10s per test — prevents infinite compilation loops from blocking the run
+    // 35s — must sit above the compiler's internal 30s timeout so that
+    // `compile_timeout` status can be recorded before vitest force-kills the
+    // test. With describe.concurrent (see PR #14), a 10s ceiling flipped
+    // tests from pass→compile_timeout under CPU contention (issue #1171).
+    testTimeout: 35000,
   },
 });
