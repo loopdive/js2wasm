@@ -5751,46 +5751,22 @@ function hoistBindingPattern(ctx: CodegenContext, fctx: FunctionContext, pattern
 }
 
 /**
- * Like `hoistBindingPattern` but for `let`/`const` destructuring declarations.
- * Pre-allocates each bound identifier's local and its TDZ flag (i32, zero-init).
- * Does NOT emit any initializer — the TDZ flag stays 0 until the actual
- * destructuring emits the `local.set` for the binding.
+ * Allocate TDZ flags for a let/const destructuring binding pattern so that
+ * `let { x = x } = {}` and similar self/forward references in default
+ * initializers throw ReferenceError per ECMA-262 §13.3.3.7 (#1128).
  *
- * This is what enables `let { x = x } = {}` to throw ReferenceError: the
- * identifier resolution in compileIdentifier sees `tdzFlagLocals.get("x") !== undefined`
- * and either emits a runtime TDZ check or a static throw (#1128).
- */
-function hoistLetConstBindingPattern(ctx: CodegenContext, fctx: FunctionContext, pattern: ts.BindingPattern): void {
-  for (const element of pattern.elements) {
-    if (ts.isOmittedExpression(element)) continue;
-    if (ts.isIdentifier(element.name)) {
-      const name = element.name.text;
-      if (fctx.localMap.has(name)) continue;
-      if (ctx.moduleGlobals.has(name)) continue;
-      const elemType = ctx.checker.getTypeAtLocation(element);
-      const wasmType = resolveWasmType(ctx, elemType);
-      allocLocal(fctx, name, wasmType);
-      // Always allocate TDZ flag for destructured bindings — we can't use
-      // `needsTdzFlag` because the whole point of this is that self-reference
-      // inside the initializer is a position where static analysis alone
-      // may not catch. Unconditional flag is cheap (+1 i32 local per binding).
-      if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
-      const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
-      fctx.tdzFlagLocals.set(name, flagIdx);
-    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
-      hoistLetConstBindingPattern(ctx, fctx, element.name);
-    }
-  }
-}
-
-/**
- * Public wrapper for `hoistLetConstBindingPattern` used by destructuring
- * compile to (re-)allocate TDZ flags for a let/const binding pattern.
+ * Called from `compileObjectDestructuring` / `compileArrayDestructuring` at
+ * entry — BEFORE the binding-element loop allocates the actual binding locals.
+ * Only the TDZ flag is allocated here; the destructuring's own `allocLocal`
+ * for the binding runs later (line ~648 of destructuring.ts) and registers
+ * the binding name in `localMap`. By the time the default initializer is
+ * compiled (after that `allocLocal`), `compileIdentifier` will see both
+ * `localMap.has(name)` and `tdzFlagLocals.get(name)` and apply the TDZ check.
  *
- * Needed because block-scope shadowing (saveBlockScopedShadows) removes the
- * pre-pass TDZ flag when entering the inner block — and the destructuring
- * path must re-allocate it before compiling the pattern, so that self-reference
- * or forward-sibling reference in the default initializer throws (#1128).
+ * The TDZ flag is allocated unconditionally for destructured bindings —
+ * +1 i32 local per binding is cheap, and unconditionality avoids subtle
+ * static-analysis gaps inside default initializers where `analyzeTdzAccess`
+ * could otherwise mis-classify the access as "skip".
  */
 export function ensureLetConstBindingPatternTdzFlags(
   ctx: CodegenContext,
@@ -5802,8 +5778,12 @@ export function ensureLetConstBindingPatternTdzFlags(
     if (ts.isIdentifier(element.name)) {
       const name = element.name.text;
       if (ctx.moduleGlobals.has(name)) continue;
-      // Allocate the binding local first if not already present — must exist
-      // so compileIdentifier sees `localMap.has(name)` and applies the TDZ check.
+      // Allocate the binding local up front if missing — needed so that when
+      // a default initializer for a SIBLING binding compiles its expression,
+      // a forward-reference to this binding (e.g. `let { a = b, b } = {}`)
+      // resolves via `localMap.get(name)` and the TDZ check fires. Without
+      // this, the forward-ref `b` falls through to the "undeclared globals"
+      // path and silently returns a default value instead of throwing.
       if (!fctx.localMap.has(name)) {
         const elemType = ctx.checker.getTypeAtLocation(element);
         const wasmType = resolveWasmType(ctx, elemType);
@@ -6093,12 +6073,13 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
           const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
           fctx.tdzFlagLocals.set(name, flagIdx);
         }
-      } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
-        // Destructuring let/const: pre-allocate bindings + TDZ flags so that
-        // self-references and forward-sibling references in initializers
-        // throw ReferenceError per spec (#1128).
-        hoistLetConstBindingPattern(ctx, fctx, decl.name);
       }
+      // Destructuring patterns (let/const) are NOT pre-allocated here —
+      // `compileObjectDestructuring` / `compileArrayDestructuring` allocate
+      // their own bindings + TDZ flags via `ensureLetConstBindingPatternTdzFlags`
+      // at entry. Pre-allocating here would create duplicate locals (one from
+      // the pre-pass, one from destructuring) and pollute closure-capture
+      // analysis (#1128).
     }
     return;
   }
