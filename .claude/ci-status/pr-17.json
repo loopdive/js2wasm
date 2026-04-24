@@ -1,0 +1,15 @@
+{
+  "pr": 17,
+  "conclusion": "success",
+  "head_branch": "issue-1128-destructuring-tdz",
+  "head_sha": "2846b8fc84620ec489f6611e1ca67469554fd14a",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24913107489",
+  "timestamp": "2026-04-24T21:45:15Z",
+  "pass": 25259,
+  "fail": 13962,
+  "compile_error": 2478,
+  "snapshot_delta": -144,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
