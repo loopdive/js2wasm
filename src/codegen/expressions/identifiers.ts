@@ -193,6 +193,72 @@ function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
 }
 
 /**
+ * Compile-time TDZ elision for top-level let/const variables (#906).
+ *
+ * Returns the subset of `candidates` for which TDZ tracking can be statically
+ * compiled away — i.e. every identifier reference in the source file that
+ * resolves to the candidate's declaration is provably after initialization
+ * (analyzeTdzAccess returns "skip"). For these names, the caller can skip
+ * emitting the `__tdz_<name>` global, the `global.set __tdz_<name>` writes
+ * in the module init body, and the runtime check at every read.
+ *
+ * If a candidate has *any* reference that yields "throw" or "check", it stays
+ * tracked at runtime. This preserves observable semantics for genuinely
+ * dynamic or ambiguous cases (e.g. a function declaration that reads the
+ * variable, since hoisted functions could be called before the variable's
+ * initializer runs).
+ */
+export function computeElidableTopLevelTdzNames(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+  candidates: Set<string>,
+): Set<string> {
+  if (candidates.size === 0) return new Set();
+
+  // Build name → declaration map for top-level let/const candidates so we can
+  // verify that an Identifier resolves to OUR declaration (and not a shadowed
+  // local or unrelated symbol with the same name).
+  const declByName = new Map<string, ts.VariableDeclaration>();
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isVariableStatement(stmt)) continue;
+    const isLetOrConst = (stmt.declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) !== 0;
+    if (!isLetOrConst) continue;
+    for (const decl of stmt.declarationList.declarations) {
+      if (ts.isIdentifier(decl.name) && candidates.has(decl.name.text)) {
+        declByName.set(decl.name.text, decl);
+      }
+    }
+  }
+  if (declByName.size === 0) return new Set();
+
+  const elidable = new Set(declByName.keys());
+
+  function walk(node: ts.Node): void {
+    if (elidable.size === 0) return;
+    if (ts.isIdentifier(node) && elidable.has(node.text)) {
+      // Skip the identifier of the declaration itself.
+      const isDeclName = ts.isVariableDeclaration(node.parent) && node.parent.name === node;
+      if (!isDeclName) {
+        // Verify this identifier resolves to OUR top-level declaration
+        // (and not a shadowed local with the same name).
+        const symbol = ctx.checker.getSymbolAtLocation(node);
+        const decl = symbol?.valueDeclaration;
+        if (decl === declByName.get(node.text)) {
+          const result = analyzeTdzAccess(ctx, node);
+          if (result !== "skip") {
+            elidable.delete(node.text);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, walk);
+  }
+  walk(sourceFile);
+
+  return elidable;
+}
+
+/**
  * Position-based TDZ analysis for call-site capture checks.
  * Used when we know the variable name and the call expression position,
  * but don't have an identifier with a resolved symbol (e.g., pushing
