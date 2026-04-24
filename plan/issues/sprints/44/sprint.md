@@ -203,7 +203,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | ready |
 | #1167 | SSA IR Phase 3 — optimization passes (meta issue — see 1167a/b/c) | high | ready |
 | #1167c | IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening) | high | ready |
 
