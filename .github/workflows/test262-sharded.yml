@@ -254,8 +254,20 @@ jobs:
             echo "Missing baseline JSONL: $BASELINE"
             exit 2
           fi
+          # Prefer the committed baseline JSON (test262-current.json) for age/SHA
+          # metadata; fall back to test262-report.json if the first doesn't exist.
+          BASELINE_META=""
+          if [ -f "benchmarks/results/test262-current.json" ]; then
+            BASELINE_META="benchmarks/results/test262-current.json"
+          elif [ -f "benchmarks/results/test262-report.json" ]; then
+            BASELINE_META="benchmarks/results/test262-report.json"
+          fi
+          META_ARGS=""
+          if [ -n "$BASELINE_META" ]; then
+            META_ARGS="--baseline-meta $BASELINE_META"
+          fi
           set +e
-          npx tsx scripts/diff-test262.ts "$BASELINE" merged-reports/test262-results-merged.jsonl --quiet \
+          npx tsx scripts/diff-test262.ts "$BASELINE" merged-reports/test262-results-merged.jsonl --quiet $META_ARGS \
             > merged-reports/test262-regressions.txt
           exit_code=$?
           set -e

@@ -13,7 +13,7 @@
  *   - Error category breakdown for regressions
  */
 
-import { createReadStream } from "fs";
+import { createReadStream, readFileSync } from "fs";
 import { createInterface } from "readline";
 
 interface TestResult {
@@ -43,6 +43,28 @@ async function loadJsonl(path: string): Promise<StatusMap> {
   return map;
 }
 
+// Reads baseline metadata (baseline_generated_at, baseline_sha) from a report.json.
+// Used to warn when the committed baseline is older than 6 hours — see #1079.
+function readBaselineMeta(path: string): { generatedAt?: string; sha?: string } | null {
+  try {
+    const raw = readFileSync(path, "utf8");
+    const json = JSON.parse(raw);
+    return {
+      generatedAt: typeof json.baseline_generated_at === "string" ? json.baseline_generated_at : undefined,
+      sha: typeof json.baseline_sha === "string" ? json.baseline_sha : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatAge(ageMs: number): string {
+  const totalMinutes = Math.max(0, Math.floor(ageMs / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
 function main() {
   const args = process.argv.slice(2);
 
@@ -52,25 +74,34 @@ function main() {
 Compare two test262 JSONL result files and report regressions/improvements.
 
 Options:
-  --verbose, -v    Show individual test transitions (default: show up to 20)
-  --all            Show all transitions (no limit)
-  --quiet, -q      Only show summary counts
-  --help, -h       Show this help`);
+  --verbose, -v                 Show individual test transitions (default: show up to 20)
+  --all                         Show all transitions (no limit)
+  --quiet, -q                   Only show summary counts
+  --baseline-meta <report.json> Read baseline_generated_at + baseline_sha to warn on stale baseline
+  --help, -h                    Show this help`);
     process.exit(args.includes("--help") || args.includes("-h") ? 0 : 1);
   }
 
-  const baselinePath = args[0];
-  const newPath = args[1];
+  const positional = args.filter((a, i) => {
+    if (a.startsWith("--") || a.startsWith("-")) return false;
+    const prev = args[i - 1];
+    if (prev === "--baseline-meta") return false;
+    return true;
+  });
+  const baselinePath = positional[0];
+  const newPath = positional[1];
   const verbose = args.includes("--verbose") || args.includes("-v");
   const showAll = args.includes("--all");
   const quiet = args.includes("--quiet") || args.includes("-q");
+  const metaIdx = args.indexOf("--baseline-meta");
+  const baselineMetaPath = metaIdx >= 0 ? args[metaIdx + 1] : undefined;
 
   const maxShow = showAll ? Infinity : verbose ? 50 : 20;
 
-  run(baselinePath, newPath, maxShow, quiet);
+  run(baselinePath, newPath, maxShow, quiet, baselineMetaPath);
 }
 
-async function run(baselinePath: string, newPath: string, maxShow: number, quiet: boolean) {
+async function run(baselinePath: string, newPath: string, maxShow: number, quiet: boolean, baselineMetaPath?: string) {
   const [baseline, newer] = await Promise.all([loadJsonl(baselinePath), loadJsonl(newPath)]);
 
   // Collect transitions
@@ -222,6 +253,28 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
   const sign = delta >= 0 ? "+" : "";
   console.log(`=== Net: ${sign}${delta} pass (${basePass} → ${newPass}) ===`);
   console.log();
+
+  // Stale baseline warning — emit a PR-comment-friendly line if the
+  // committed baseline is older than 6h. See #1079.
+  if (baselineMetaPath) {
+    const meta = readBaselineMeta(baselineMetaPath);
+    if (meta?.generatedAt) {
+      const generated = new Date(meta.generatedAt);
+      if (!Number.isNaN(generated.getTime())) {
+        const ageMs = Date.now() - generated.getTime();
+        const ageText = formatAge(ageMs);
+        const shortSha = meta.sha ? meta.sha.slice(0, 7) : "unknown";
+        if (ageMs >= 6 * 3600 * 1000) {
+          console.log(
+            `⚠️  baseline is ${ageText} old (commit ${shortSha}) — consider force-refresh via workflow_dispatch before trusting these numbers`,
+          );
+        } else {
+          console.log(`baseline age: ${ageText} (commit ${shortSha})`);
+        }
+        console.log();
+      }
+    }
+  }
 
   // Exit code: non-zero if regressions
   if (regressions.length > 0) {
