@@ -43,7 +43,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1119 | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | high | ready |
 | #1127 | Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]] | medium | ready |
 | #1131 | Middle-end SSA IR: implementation plan | high | ready |
 | #1131 | Middle-end SSA IR: implementation plan | high | ready |
