@@ -32,8 +32,10 @@ import type { IrFuncRef, IrFunction, IrGlobalRef, IrModule, IrType, IrTypeRef } 
 import { constantFold } from "./passes/constant-fold.js";
 import { deadCode } from "./passes/dead-code.js";
 import { inlineSmall } from "./passes/inline-small.js";
+import { monomorphize } from "./passes/monomorphize.js";
 import { simplifyCFG } from "./passes/simplify-cfg.js";
 import { UnionStructRegistry } from "./passes/tagged-union-types.js";
+import { taggedUnions } from "./passes/tagged-unions.js";
 import { planIrCompilation, type IrSelection } from "./select.js";
 import { verifyIrFunction } from "./verify.js";
 import type { FuncTypeDef, StructTypeDef, ValType } from "./types.js";
@@ -154,7 +156,7 @@ export function compileIrPathFunctions(
   const modOut = inlineSmall(modIn);
 
   // 2c. Re-run hygiene on functions the inline pass actually rewrote; verify.
-  const readyForLower: BuiltFn[] = [];
+  const afterInline: BuiltFn[] = [];
   for (let i = 0; i < afterHygiene.length; i++) {
     const before = afterHygiene[i]!;
     const after = modOut.functions[i]!;
@@ -167,10 +169,77 @@ export function compileIrPathFunctions(
       }
       continue;
     }
-    readyForLower.push({ name: before.name, fn: final });
+    afterInline.push({ name: before.name, fn: final });
+  }
+
+  if (afterInline.length === 0) return { compiled, errors };
+
+  // -------------------------------------------------------------------------
+  // 2d. Monomorphize — specialize polymorphic callees across the module.
+  // -------------------------------------------------------------------------
+  // Clones live only in the IR — they have no ts.FunctionDeclaration and no
+  // pre-allocated funcIdx from `compileDeclarations`. After monomorphize
+  // produces clones, we allocate each a placeholder WasmFunction slot in
+  // `ctx.mod.functions` and register it in `ctx.funcMap` so the Phase-3
+  // lowerer's resolver can map the clone's `IrFuncRef` to a concrete index.
+  // -------------------------------------------------------------------------
+  const monoIn: IrModule = { functions: afterInline.map((e) => e.fn) };
+  const monoResult = monomorphize(monoIn);
+  const originalNames = new Set<string>(afterInline.map((e) => e.name));
+
+  // -------------------------------------------------------------------------
+  // 2e. Tagged-union representation pass (identity in V1 — see
+  // `passes/tagged-unions.ts` for the scope note). Structurally wired so
+  // follow-up extension work lands in a purpose-built module.
+  // -------------------------------------------------------------------------
+  const modAfterTU = taggedUnions(monoResult.module);
+
+  // -------------------------------------------------------------------------
+  // 2f. Re-run hygiene on any function whose reference changed across the
+  // mono + TU stages. Clones are fresh and well-formed; callers whose
+  // call targets were rewritten may benefit from a second hygiene pass
+  // (usually a no-op but cheap).
+  // -------------------------------------------------------------------------
+  const readyForLower: BuiltFn[] = [];
+  const afterInlineByName = new Map<string, IrFunction>();
+  for (const e of afterInline) afterInlineByName.set(e.name, e.fn);
+
+  for (const fn of modAfterTU.functions) {
+    const before = afterInlineByName.get(fn.name);
+    const wasCloned = before === undefined;
+    const changed = wasCloned || fn !== before;
+    const final = changed ? runHygienePasses(fn) : fn;
+    const verifyErrors = verifyIrFunction(final);
+    if (verifyErrors.length > 0) {
+      for (const e of verifyErrors) {
+        errors.push({ func: fn.name, message: `post-mono verify: ${e.message}` });
+      }
+      continue;
+    }
+    readyForLower.push({ name: fn.name, fn: final });
   }
 
   if (readyForLower.length === 0) return { compiled, errors };
+
+  // -------------------------------------------------------------------------
+  // Register monomorphized clones in `ctx` — append a placeholder
+  // WasmFunction slot and record the assigned funcIdx in `ctx.funcMap`.
+  // The placeholder body is overwritten with the real lowered body in the
+  // Phase-3 loop below.
+  // -------------------------------------------------------------------------
+  for (const entry of readyForLower) {
+    if (originalNames.has(entry.name)) continue;
+    if (ctx.funcMap.has(entry.name)) continue; // already registered (defensive)
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: entry.name,
+      typeIdx: 0,
+      locals: [],
+      body: [],
+      exported: false,
+    });
+    ctx.funcMap.set(entry.name, funcIdx);
+  }
 
   // -------------------------------------------------------------------------
   // Phase 3 — Lower: translate each IrFunction to Wasm and install in ctx.
