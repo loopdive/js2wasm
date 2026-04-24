@@ -1,0 +1,15 @@
+{
+  "pr": 13,
+  "conclusion": "success",
+  "head_branch": "issue-1167c-monomorphize-tagged-unions",
+  "head_sha": "1f5c2ca381852e27374178688c5a7fe86cfcda4e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24865678424",
+  "timestamp": "2026-04-24T00:32:26Z",
+  "pass": 25276,
+  "fail": 13851,
+  "compile_error": 2672,
+  "snapshot_delta": 793,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
