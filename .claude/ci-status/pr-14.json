@@ -1,0 +1,15 @@
+{
+  "pr": 14,
+  "conclusion": "success",
+  "head_branch": "issue-1077-1078-ci-parallelism",
+  "head_sha": "96c0d2b7ea1b356f8d1d783adaa0b289b26272f0",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24872146529",
+  "timestamp": "2026-04-24T04:31:42Z",
+  "pass": 25410,
+  "fail": 13993,
+  "compile_error": 2307,
+  "snapshot_delta": 927,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
