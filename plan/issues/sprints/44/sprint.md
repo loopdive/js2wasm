@@ -185,7 +185,35 @@ deleted — only relocated.
 
 ## Results
 
-TBD
+**Sprint closed: 2026-04-24**
+
+### Test262 improvements this sprint
+
+| PR | Issue | Description | +Tests |
+|---|---|---|---|
+| #246 | #1153 | Compiler crash (prototype poisoning) | +2,351 |
+| #247 | #1152 | Array.prototype higher-order regression | +624 |
+| #250 | #1156 | Array.prototype numeric init | +2,739 |
+| #243 | #1150 | Async destructuring regressions | +262 |
+| #241 | #1149 | null_deref in eval-code methods | +57 |
+| #240 | #1148 | skip:103 regression (Annex B eval-code) | +21 |
+| #145 | #825 | Null dereference failures | +38 |
+| #7  | #1160 | Array.from prototype poisoning | +578 |
+| #8  | #1163 | Static eval inlining | +491 |
+| #11 | #1162 | yield* async undefined AST crash | +882 |
+| #12 | #1161 | Destructure null/undefined in private params | +396 |
+| #5  | #1168 | IR frontend widening (IrType, LatticeType) | 0 (IR gated) |
+| #6  | #1167a | IR hygiene passes (CF+DCE+simplifyCFG) | 0 (IR gated) |
+| #9  | #1167b | IR inline-small pass | 0 (IR gated) |
+| #13 | #1167c | IR monomorphize + tagged-unions | 0 (IR gated) |
+| #144 | #854 | Iterator protocol null methods | 0 |
+
+**Total: ~+8,439 net tests** (baseline 24,483 → ~25,276+ passing)
+
+### IR Phase 3 complete
+The full IR Phase 3 (3a + 3b + 3c) landed this sprint, completing the SSA IR
+middle-end optimization pipeline. IR path is currently gated behind `isPhase1Expr`
+— the test gains will materialize when Phase 4 (#1169) migrates the full compiler.
 
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
