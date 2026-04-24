@@ -1787,15 +1787,30 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         return false;
       };
 
+      // An unannotated binding-pattern parameter — `function f([x, y])` or
+      // `function f({a, b})` — must route through the externref destructure path
+      // so that the iterator protocol drives element extraction (spec
+      // §13.3.3.6 IteratorBindingInitialization). Without this widening the
+      // param compiles to a tuple struct signature and `f(generator)` silently
+      // skips the iterator's `.next()`. Mirrors closures.ts:905 for arrows /
+      // function-expressions. Skip when the user wrote an explicit type
+      // annotation — they asked for the tuple-struct specialization. (#862)
+      const bindingPatternParamNeedsWiden = (p: ts.ParameterDeclaration): boolean => {
+        if (p.type || p.dotDotDotToken) return false;
+        return ts.isArrayBindingPattern(p.name) || ts.isObjectBindingPattern(p.name);
+      };
+
       if (isGenerator) {
         // Generator functions: parameters are compiled normally, return is externref
         params = [];
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
           const paramType = ctx.checker.getTypeAtLocation(param);
-          let wasmType: ValType = restBindingOverridesToExternref(param)
+          let wasmType: ValType = bindingPatternParamNeedsWiden(param)
             ? { kind: "externref" }
-            : resolveWasmType(ctx, paramType);
+            : restBindingOverridesToExternref(param)
+              ? { kind: "externref" }
+              : resolveWasmType(ctx, paramType);
           // If the parameter has a default value and is a non-null ref type,
           // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
           if (param.initializer && wasmType.kind === "ref") {
@@ -1846,9 +1861,11 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
-            let wasmType: ValType = restBindingOverridesToExternref(param)
+            let wasmType: ValType = bindingPatternParamNeedsWiden(param)
               ? { kind: "externref" }
-              : resolveWasmType(ctx, paramType);
+              : restBindingOverridesToExternref(param)
+                ? { kind: "externref" }
+                : resolveWasmType(ctx, paramType);
             // If the parameter has a default value and is a non-null ref type,
             // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
             if (param.initializer && wasmType.kind === "ref") {
