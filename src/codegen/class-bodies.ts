@@ -977,7 +977,16 @@ export function compileClassBodies(
         const param = member.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        let wasmType = resolveWasmType(ctx, paramType);
+        // Unannotated binding-pattern method params route through the
+        // externref destructure path so the iterator protocol drives element
+        // extraction — same rule as function declarations (#862) and arrows
+        // (closures.ts:905). NOTE: explicitly scoped to methods only; the
+        // constructor path (class-bodies.ts:680-696) is left unchanged.
+        const bindingPatternNeedsWiden =
+          !param.type &&
+          !param.dotDotDotToken &&
+          (ts.isArrayBindingPattern(param.name) || ts.isObjectBindingPattern(param.name));
+        let wasmType = bindingPatternNeedsWiden ? ({ kind: "externref" } as ValType) : resolveWasmType(ctx, paramType);
         // Widen ref to ref_null for params with defaults or optional params
         // (caller passes ref.null as sentinel). Must match collection phase (#702)
         if ((param.initializer || param.questionToken) && wasmType.kind === "ref") {
