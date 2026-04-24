@@ -5750,6 +5750,77 @@ function hoistBindingPattern(ctx: CodegenContext, fctx: FunctionContext, pattern
   }
 }
 
+/**
+ * Like `hoistBindingPattern` but for `let`/`const` destructuring declarations.
+ * Pre-allocates each bound identifier's local and its TDZ flag (i32, zero-init).
+ * Does NOT emit any initializer — the TDZ flag stays 0 until the actual
+ * destructuring emits the `local.set` for the binding.
+ *
+ * This is what enables `let { x = x } = {}` to throw ReferenceError: the
+ * identifier resolution in compileIdentifier sees `tdzFlagLocals.get("x") !== undefined`
+ * and either emits a runtime TDZ check or a static throw (#1128).
+ */
+function hoistLetConstBindingPattern(ctx: CodegenContext, fctx: FunctionContext, pattern: ts.BindingPattern): void {
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isIdentifier(element.name)) {
+      const name = element.name.text;
+      if (fctx.localMap.has(name)) continue;
+      if (ctx.moduleGlobals.has(name)) continue;
+      const elemType = ctx.checker.getTypeAtLocation(element);
+      const wasmType = resolveWasmType(ctx, elemType);
+      allocLocal(fctx, name, wasmType);
+      // Always allocate TDZ flag for destructured bindings — we can't use
+      // `needsTdzFlag` because the whole point of this is that self-reference
+      // inside the initializer is a position where static analysis alone
+      // may not catch. Unconditional flag is cheap (+1 i32 local per binding).
+      if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+      const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+      fctx.tdzFlagLocals.set(name, flagIdx);
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      hoistLetConstBindingPattern(ctx, fctx, element.name);
+    }
+  }
+}
+
+/**
+ * Public wrapper for `hoistLetConstBindingPattern` used by destructuring
+ * compile to (re-)allocate TDZ flags for a let/const binding pattern.
+ *
+ * Needed because block-scope shadowing (saveBlockScopedShadows) removes the
+ * pre-pass TDZ flag when entering the inner block — and the destructuring
+ * path must re-allocate it before compiling the pattern, so that self-reference
+ * or forward-sibling reference in the default initializer throws (#1128).
+ */
+export function ensureLetConstBindingPatternTdzFlags(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.BindingPattern,
+): void {
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isIdentifier(element.name)) {
+      const name = element.name.text;
+      if (ctx.moduleGlobals.has(name)) continue;
+      // Allocate the binding local first if not already present — must exist
+      // so compileIdentifier sees `localMap.has(name)` and applies the TDZ check.
+      if (!fctx.localMap.has(name)) {
+        const elemType = ctx.checker.getTypeAtLocation(element);
+        const wasmType = resolveWasmType(ctx, elemType);
+        allocLocal(fctx, name, wasmType);
+      }
+      // Allocate TDZ flag if missing — zero-init (uninitialized).
+      if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+      if (!fctx.tdzFlagLocals.has(name)) {
+        const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+        fctx.tdzFlagLocals.set(name, flagIdx);
+      }
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      ensureLetConstBindingPatternTdzFlags(ctx, fctx, element.name);
+    }
+  }
+}
+
 /** Hoist a single variable declaration (handles both simple identifiers and binding patterns). */
 function hoistVarDecl(ctx: CodegenContext, fctx: FunctionContext, decl: ts.VariableDeclaration): void {
   if (ts.isIdentifier(decl.name)) {
@@ -6022,6 +6093,11 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
           const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
           fctx.tdzFlagLocals.set(name, flagIdx);
         }
+      } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+        // Destructuring let/const: pre-allocate bindings + TDZ flags so that
+        // self-references and forward-sibling references in initializers
+        // throw ReferenceError per spec (#1128).
+        hoistLetConstBindingPattern(ctx, fctx, decl.name);
       }
     }
     return;
