@@ -317,7 +317,11 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
   });
 
   for (const [category, files] of byCategory) {
-    describe(`test262: ${category}`, () => {
+    // describe.concurrent lets vitest run it() blocks within this describe up
+    // to `maxConcurrency` at a time (set in vitest.config.ts). Without it,
+    // vitest runs tests sequentially within a describe, starving the
+    // CompilerPool of work and stretching runs from ~15 min to 150+ min.
+    describe.concurrent(`test262: ${category}`, () => {
       for (const filePath of files) {
         const relPath = relative(TEST262_ROOT, filePath);
 

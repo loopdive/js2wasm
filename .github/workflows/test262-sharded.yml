@@ -53,11 +53,16 @@ on:
         required: false
         default: "4"
         type: string
-      allow_regressions:
-        description: "Allow regressions and continue anyway"
+      force_baseline_refresh:
+        description: "Force promote merged report to baseline regardless of regressions. Requires confirm_force=YES."
         required: false
         default: false
         type: boolean
+      confirm_force:
+        description: "Type YES to confirm force baseline refresh (prevents accidental runs)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -222,6 +227,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Fetch fresh baseline from origin/main
+        if: github.event_name == 'pull_request'
+        run: |
+          # The checked-out baseline (benchmarks/results/test262-current.jsonl)
+          # is a stale snapshot of whatever main had when this branch last
+          # merged. If main's baseline has refreshed since, comparing against
+          # the checked-out copy produces false regressions. Pull the latest
+          # baseline from origin/main so the diff is against current truth.
+          git fetch origin main --depth=1
+          git show origin/main:benchmarks/results/test262-current.jsonl \
+            > benchmarks/results/test262-current.jsonl
+
       - name: Download merged reports
         uses: actions/download-artifact@v7
         with:
@@ -254,7 +271,7 @@ jobs:
           fi
 
       - name: Fail on regressions
-        if: steps.regression_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.allow_regressions)
+        if: steps.regression_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.force_baseline_refresh == true && inputs.confirm_force == 'YES')
         run: |
           echo "test262 regressions detected relative to benchmarks/results/test262-current.jsonl"
           cat merged-reports/test262-regressions.txt
@@ -376,6 +393,14 @@ jobs:
             git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
           fi
           git push
+
+      - name: Audit forced baseline refresh
+        if: github.event_name == 'workflow_dispatch' && inputs.force_baseline_refresh == true && inputs.confirm_force == 'YES'
+        run: |
+          echo "FORCED baseline refresh by ${{ github.actor }} at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
+          TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
+          echo "::warning::FORCED baseline refresh by ${{ github.actor }} — pass=$PASS total=$TOTAL"
 
       - name: Trigger Pages deploy after baseline refresh
         if: success()
