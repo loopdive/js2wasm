@@ -208,7 +208,11 @@ deleted — only relocated.
 | #13 | #1167c | IR monomorphize + tagged-unions | 0 (IR gated) |
 | #144 | #854 | Iterator protocol null methods | 0 |
 
-**Total: ~+8,439 net tests** (baseline 24,483 → ~25,276+ passing)
+**Total: +793 net tests** (baseline 24,483 → 25,276 passing)
+
+Note: per-PR "+Tests" figures above are each PR's `snapshot_delta` measured against its
+own branch baseline at CI time — they cannot be summed. The authoritative figure is the
+final CI pass count (25,276) minus the sprint-start baseline (24,483) = **+793**.
 
 ### IR Phase 3 complete
 The full IR Phase 3 (3a + 3b + 3c) landed this sprint, completing the SSA IR
