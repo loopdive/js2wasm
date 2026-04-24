@@ -188,38 +188,64 @@ export function compileGetterCallable(
     if (candidateIdx === undefined) continue;
 
     // Found the underlying method. Call it directly: C___priv_method(receiver, ...args)
+    // or C___priv_method(...args) for static methods (no self parameter).
     const structTypeIdx = ctx.structMap.get(receiverClassName);
     const paramTypes = getFuncParamTypes(ctx, candidateIdx);
-    const recvTypeHint = paramTypes?.[0];
-    const recvType = compileExpression(ctx, fctx, propAccess.expression, recvTypeHint);
+    // Static methods have no self parameter — their Wasm signature starts with
+    // the first user argument. Treating them as instance methods here produced
+    // `methodParamCount = -1` for zero-arg statics, which then iterated
+    // `expr.arguments[-1]` (undefined) through `compileExpression` and
+    // surfaced as "unexpected undefined AST node" during the compile of
+    // static-private-generator getter chains (#1162).
+    const isStatic = ctx.staticMethodSet.has(candidateName);
 
-    // Coerce receiver to match the function's first parameter type
-    if (recvType && recvTypeHint) {
-      if (
+    if (isStatic) {
+      // Evaluate receiver for side effects, then drop — static methods don't
+      // take a self parameter. Matches the isStaticMethod branch in
+      // compileCallExpression (calls.ts #2929 path).
+      const recvType = compileExpression(ctx, fctx, propAccess.expression);
+      if (recvType !== null) {
+        fctx.body.push({ op: "drop" });
+      }
+    } else {
+      const recvTypeHint = paramTypes?.[0];
+      const recvType = compileExpression(ctx, fctx, propAccess.expression, recvTypeHint);
+
+      // Coerce receiver to match the function's first parameter type
+      if (recvType && recvTypeHint) {
+        if (
+          recvType.kind === "externref" &&
+          (recvTypeHint.kind === "ref" || recvTypeHint.kind === "ref_null") &&
+          structTypeIdx !== undefined
+        ) {
+          // externref -> struct: convert via any.convert_extern + guarded cast
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+          emitGuardedRefCast(fctx, structTypeIdx);
+        } else if ((recvType.kind === "ref" || recvType.kind === "ref_null") && recvTypeHint.kind === "externref") {
+          // struct -> externref: convert via extern.convert_any
+          fctx.body.push({ op: "extern.convert_any" } as Instr);
+        } else if (recvType.kind !== recvTypeHint.kind) {
+          // General type mismatch: use coerceType
+          coerceType(ctx, fctx, recvType, recvTypeHint);
+        }
+      } else if (
+        recvType &&
         recvType.kind === "externref" &&
-        (recvTypeHint.kind === "ref" || recvTypeHint.kind === "ref_null") &&
-        structTypeIdx !== undefined
+        structTypeIdx !== undefined &&
+        recvTypeHint === undefined
       ) {
-        // externref -> struct: convert via any.convert_extern + guarded cast
+        // Fallback: no param type info but we know the struct — cast to struct
         fctx.body.push({ op: "any.convert_extern" } as Instr);
         emitGuardedRefCast(fctx, structTypeIdx);
-      } else if ((recvType.kind === "ref" || recvType.kind === "ref_null") && recvTypeHint.kind === "externref") {
-        // struct -> externref: convert via extern.convert_any
-        fctx.body.push({ op: "extern.convert_any" } as Instr);
-      } else if (recvType.kind !== recvTypeHint.kind) {
-        // General type mismatch: use coerceType
-        coerceType(ctx, fctx, recvType, recvTypeHint);
       }
-    } else if (recvType && recvType.kind === "externref" && structTypeIdx !== undefined && recvTypeHint === undefined) {
-      // Fallback: no param type info but we know the struct — cast to struct
-      fctx.body.push({ op: "any.convert_extern" } as Instr);
-      emitGuardedRefCast(fctx, structTypeIdx);
     }
 
-    // Push arguments (skip self at index 0)
-    const methodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
+    // For static methods, Wasm params are exactly the user args; for instance
+    // methods, param 0 is self so user args start at paramTypes[1].
+    const selfOffset = isStatic ? 0 : 1;
+    const methodParamCount = paramTypes ? Math.max(0, paramTypes.length - selfOffset) : expr.arguments.length;
     for (let i = 0; i < Math.min(expr.arguments.length, methodParamCount); i++) {
-      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + selfOffset]);
     }
     for (let i = methodParamCount; i < expr.arguments.length; i++) {
       const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
@@ -229,7 +255,7 @@ export function compileGetterCallable(
     }
     // Pad missing arguments
     if (paramTypes) {
-      for (let i = Math.min(expr.arguments.length, methodParamCount) + 1; i < paramTypes.length; i++) {
+      for (let i = Math.min(expr.arguments.length, methodParamCount) + selfOffset; i < paramTypes.length; i++) {
         pushDefaultValue(fctx, paramTypes[i]!, ctx);
       }
     }

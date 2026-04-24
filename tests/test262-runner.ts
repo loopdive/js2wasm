@@ -773,7 +773,13 @@ function renameYieldOutsideGenerators(source: string): string {
   // If no generator functions (neither `function*` nor `*method()` syntax),
   // just rename all yield identifiers.
   const hasGeneratorFunction = /\bfunction\s*\*/.test(source);
-  const hasGeneratorMethod = /(?:^|[,{;)\s])\s*\*\s*(?:[\w$]+|\[[\s\S]*?\])\s*\(/.test(source);
+  // #1162: include `#` in the identifier class so private generator methods
+  // like `*#gen()` / `async *#gen()` register as generators — otherwise
+  // `yield` inside their body gets renamed to `_yield`, producing
+  // `_yield* obj;` which parses as multiplication and crashes the compiler
+  // with "unexpected undefined AST node in compileExpression" when the
+  // surrounding test is later compiled.
+  const hasGeneratorMethod = /(?:^|[,{;)\s])\s*\*\s*(?:[\w$#]+|\[[\s\S]*?\])\s*\(/.test(source);
   if (!hasGeneratorFunction && !hasGeneratorMethod) {
     return source.replace(/\byield\b/g, "_yield");
   }
@@ -882,8 +888,11 @@ function renameYieldOutsideGenerators(source: string): string {
     });
   }
 
-  // Find `*method()` generator method syntax (not caught by function regex)
-  const methodRegex = /\*\s*(?:[\w$]+|\[[\s\S]*?\])\s*\(/g;
+  // Find `*method()` generator method syntax (not caught by function regex).
+  // `[\w$#]+` matches private method names like `#gen` — without `#`,
+  // `*#gen()` isn't recognized as a generator and `yield` inside its body
+  // is incorrectly renamed to `_yield`. (#1162)
+  const methodRegex = /\*\s*(?:[\w$#]+|\[[\s\S]*?\])\s*\(/g;
   let methodMatch: RegExpExecArray | null;
   while ((methodMatch = methodRegex.exec(source)) !== null) {
     // Distinguish from multiply operator: check preceding context

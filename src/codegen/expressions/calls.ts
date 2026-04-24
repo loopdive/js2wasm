@@ -3446,10 +3446,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             return resultType;
           }
         }
-        // Non-nullable receiver: emit call directly
+        // Non-nullable receiver: emit call directly.
+        // User-visible param count excludes self (param 0). Clamp to ≥ 0 —
+        // when funcMap indirectly points at a stale index (e.g. a zero-arg
+        // constructor entry that wasn't shifted after a late import), the
+        // raw `length - 1` would go negative and the `for` loop would read
+        // `expr.arguments[-1]` → undefined → "unexpected undefined AST node".
+        // Seen in tests that mix static + instance private methods under
+        // the #1162 yield* async-generator cluster.
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
-        // User-visible param count excludes self (param 0)
-        const methodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
+        const methodParamCount = paramTypes ? Math.max(0, paramTypes.length - 1) : expr.arguments.length;
         const calleeReadsArgsNn = ctx.funcUsesArguments.has(fullName);
         for (let i = 0; i < Math.min(expr.arguments.length, methodParamCount); i++) {
           compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
