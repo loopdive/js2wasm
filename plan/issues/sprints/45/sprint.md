@@ -87,6 +87,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #742 | Extract and refactor compileCallExpression (3,350 lines) | medium | blocked |
+| #1166 | Closed-world integer specialization from literal call sites | high | blocked |
+| #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | blocked |
 
 ### Ready
 
@@ -110,6 +112,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | ready |
 | #1006 | Support eval via JS host import | medium | ready |
 | #1008 | Add mobile-first layout support to the playground | medium | ready |
+| #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | ready |
 | #1025 | BindingElement array-pattern default guards still use ref.is_null | high | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
@@ -119,9 +122,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | ready |
 | #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | ready |
 | #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
-| #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | ready |
-| #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | ready |
-| #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | ready |
 | #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | ready |
 | #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | ready |
@@ -143,5 +143,13 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | ready |
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | done |
+| #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
+| #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
