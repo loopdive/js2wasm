@@ -2,16 +2,20 @@
 //
 // Integration point between the legacy codegen pipeline and the IR path.
 //
-// `compileIrPathFunctions` runs after `compileDeclarations`. For each
-// function in the IR selection it:
+// `compileIrPathFunctions` runs after `compileDeclarations`. It now runs in
+// three explicit phases — driven by spec #1167b, which added module-scope
+// inlining that requires seeing every IR function at once before any of
+// them lower to Wasm:
 //
-//   1. Lowers the AST to middle-end IR (`lowerFunctionAstToIr`).
-//   2. Verifies the IR (`verifyIrFunction`).
-//   3. Lowers the IR to a WasmFunction (`lowerIrFunctionToWasm`) using
-//      symbolic-ref resolvers backed by the live codegen context.
-//   4. Replaces the corresponding entry in `ctx.mod.functions` — keeping
-//      the already-allocated funcIdx/typeIdx/export state intact so the
-//      legacy late-repair passes see a consistent module.
+//   1. Build — lower every selected AST function to an `IrFunction` and
+//      collect them into an `IrModule`.
+//   2. Pass — run per-function hygiene (CF → DCE → simplifyCFG), then
+//      module-scope inlining (`inlineSmall`), then re-run hygiene on any
+//      modified function. Each stage verifies.
+//   3. Lower — replace each selected function's entry in `ctx.mod.functions`
+//      with the Wasm body produced by `lowerIrFunctionToWasm`, keeping the
+//      pre-allocated funcIdx/typeIdx/export state intact so the legacy
+//      late-repair passes see a consistent module.
 //
 // Because the IR lowerer resolves IrFuncRef/IrGlobalRef symbols at this
 // integration point (AFTER all imports have been registered), the legacy
@@ -24,9 +28,10 @@ import { addFuncType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
 import { lowerFunctionAstToIr } from "./from-ast.js";
 import { lowerIrFunctionToWasm, type IrLowerResolver, type IrUnionLowering } from "./lower.js";
-import type { IrFuncRef, IrFunction, IrGlobalRef, IrType, IrTypeRef } from "./nodes.js";
+import type { IrFuncRef, IrFunction, IrGlobalRef, IrModule, IrType, IrTypeRef } from "./nodes.js";
 import { constantFold } from "./passes/constant-fold.js";
 import { deadCode } from "./passes/dead-code.js";
+import { inlineSmall } from "./passes/inline-small.js";
 import { simplifyCFG } from "./passes/simplify-cfg.js";
 import { UnionStructRegistry } from "./passes/tagged-union-types.js";
 import { planIrCompilation, type IrSelection } from "./select.js";
@@ -88,6 +93,14 @@ export function compileIrPathFunctions(
     },
   });
 
+  // -------------------------------------------------------------------------
+  // Phase 1 — Build: lower every selected AST function to an IrFunction.
+  // -------------------------------------------------------------------------
+  interface BuiltFn {
+    readonly name: string;
+    readonly fn: IrFunction;
+  }
+  const built: BuiltFn[] = [];
   for (const stmt of sourceFile.statements) {
     if (!ts.isFunctionDeclaration(stmt)) continue;
     if (!stmt.name) continue;
@@ -107,20 +120,65 @@ export function compileIrPathFunctions(
         for (const e of verifyErrors) errors.push({ func: name, message: e.message });
         continue;
       }
+      built.push({ name, fn: ir });
+    } catch (e) {
+      errors.push({ func: name, message: e instanceof Error ? e.message : String(e) });
+    }
+  }
 
-      // Phase 3a hygiene passes (#1167a). Run to fixpoint: CF exposes
-      // unreachable blocks for DCE, DCE exposes single-successor chains
-      // for simplifyCFG, and simplifyCFG may expose more constant
-      // operands to the next CF round.
-      const optimized = runHygienePasses(ir);
-      const postPassErrors = verifyIrFunction(optimized);
-      if (postPassErrors.length > 0) {
-        for (const e of postPassErrors) {
-          errors.push({ func: name, message: `post-hygiene verify: ${e.message}` });
-        }
-        continue;
+  if (built.length === 0) return { compiled, errors };
+
+  // -------------------------------------------------------------------------
+  // Phase 2 — Pass: per-function hygiene → module-scope inline → re-run
+  // hygiene on modified functions. Verify between stages.
+  // -------------------------------------------------------------------------
+
+  // 2a. Per-function hygiene (CF → DCE → simplifyCFG to fixpoint).
+  const afterHygiene: BuiltFn[] = [];
+  for (const entry of built) {
+    const optimized = runHygienePasses(entry.fn);
+    const postErrors = verifyIrFunction(optimized);
+    if (postErrors.length > 0) {
+      for (const e of postErrors) {
+        errors.push({ func: entry.name, message: `post-hygiene verify: ${e.message}` });
       }
+      continue;
+    }
+    afterHygiene.push({ name: entry.name, fn: optimized });
+  }
 
+  if (afterHygiene.length === 0) return { compiled, errors };
+
+  // 2b. Module-scope inlining (#1167b).
+  const modIn: IrModule = { functions: afterHygiene.map((e) => e.fn) };
+  const modOut = inlineSmall(modIn);
+
+  // 2c. Re-run hygiene on functions the inline pass actually rewrote; verify.
+  const readyForLower: BuiltFn[] = [];
+  for (let i = 0; i < afterHygiene.length; i++) {
+    const before = afterHygiene[i]!;
+    const after = modOut.functions[i]!;
+    const changed = after !== before.fn;
+    const final = changed ? runHygienePasses(after) : after;
+    const verifyErrors = verifyIrFunction(final);
+    if (verifyErrors.length > 0) {
+      for (const e of verifyErrors) {
+        errors.push({ func: before.name, message: `post-inline verify: ${e.message}` });
+      }
+      continue;
+    }
+    readyForLower.push({ name: before.name, fn: final });
+  }
+
+  if (readyForLower.length === 0) return { compiled, errors };
+
+  // -------------------------------------------------------------------------
+  // Phase 3 — Lower: translate each IrFunction to Wasm and install in ctx.
+  // -------------------------------------------------------------------------
+  const resolver = makeResolver(ctx, unionRegistry);
+  for (const entry of readyForLower) {
+    const name = entry.name;
+    try {
       const funcIdx = ctx.funcMap.get(name);
       if (funcIdx === undefined) {
         errors.push({ func: name, message: `no funcIdx allocated for ${name}` });
@@ -132,8 +190,7 @@ export function compileIrPathFunctions(
         continue;
       }
 
-      const resolver = makeResolver(ctx, unionRegistry);
-      const { func: wasmFunc } = lowerIrFunctionToWasm(optimized, resolver);
+      const { func: wasmFunc } = lowerIrFunctionToWasm(entry.fn, resolver);
 
       const existing = ctx.mod.functions[localIdx];
       ctx.mod.functions[localIdx] = {

@@ -426,6 +426,22 @@ export interface IrFunction {
 }
 
 // ---------------------------------------------------------------------------
+// Module — collection of IR functions visible simultaneously
+// ---------------------------------------------------------------------------
+//
+// Module-scope passes (e.g. `inlineSmall` in Phase 3b — #1167b) need to see
+// every IR-path function at once. The AST→IR lowerer emits per-function, so
+// `integration.ts` accumulates the per-function results into an `IrModule`
+// container between the build phase and the lower phase.
+//
+// The container holds only functions for now. Globals/types/imports remain
+// resolved lazily via the symbolic-ref mechanism.
+
+export interface IrModule {
+  readonly functions: readonly IrFunction[];
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
