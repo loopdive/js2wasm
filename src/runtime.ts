@@ -2840,17 +2840,36 @@ assert._isSameValue = isSameValue;
       if (name === "Promise_catch") return (p: any, cb: any) => p.catch(cb);
       if (name === "Promise_finally") return (p: any, cb: any) => p.finally(cb);
       // Generator support: buffer management and generator creation
+      //
+      // Eager-generator hard cap (#991/#992): we lower generators to an array
+      // that is fully populated before .next() can be called. An infinite
+      // generator (e.g. `while (true) { yield; }`) would push forever, OOMing
+      // the Node process and causing the parent test runner to register a
+      // 30s timeout. Throwing a RangeError after a bounded number of yields
+      // turns those tests into a quick runtime exception instead of a
+      // worker-killing OOM. The cap is high enough (1M) that real-world
+      // generators are never affected.
+      const __EAGER_GEN_LIMIT = 1_000_000;
       if (name === "__gen_create_buffer") return () => [];
       if (name === "__gen_push_f64")
         return (buf: any[], v: number) => {
+          if (buf.length >= __EAGER_GEN_LIMIT) {
+            throw new RangeError("Eager generator buffer exceeded " + __EAGER_GEN_LIMIT + " yields");
+          }
           buf.push(v);
         };
       if (name === "__gen_push_i32")
         return (buf: any[], v: number) => {
+          if (buf.length >= __EAGER_GEN_LIMIT) {
+            throw new RangeError("Eager generator buffer exceeded " + __EAGER_GEN_LIMIT + " yields");
+          }
           buf.push(v);
         };
       if (name === "__gen_push_ref")
         return (buf: any[], v: any) => {
+          if (buf.length >= __EAGER_GEN_LIMIT) {
+            throw new RangeError("Eager generator buffer exceeded " + __EAGER_GEN_LIMIT + " yields");
+          }
           buf.push(v);
         };
       if (name === "__gen_yield_star")
@@ -2858,6 +2877,9 @@ assert._isSameValue = isSameValue;
           // Iterate the inner iterable and push all values into the outer buffer
           if (iterable != null && typeof iterable[Symbol.iterator] === "function") {
             for (const v of iterable) {
+              if (buf.length >= __EAGER_GEN_LIMIT) {
+                throw new RangeError("Eager generator buffer exceeded " + __EAGER_GEN_LIMIT + " yields");
+              }
               buf.push(v);
             }
           }
