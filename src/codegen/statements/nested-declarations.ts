@@ -75,13 +75,21 @@ export function compileNestedClassDeclaration(
     }
 
     // Promote captured locals to globals so method/constructor bodies can access
-    // variables from the enclosing function scope
+    // variables from the enclosing function scope. Also scan parameter-default
+    // initializers so e.g. `method([x] = iter)` can resolve `iter` against the
+    // enclosing function scope (#1161).
     for (const member of decl.members) {
       if (ts.isMethodDeclaration(member) && member.body) {
-        promoteAccessorCapturesToGlobals(ctx, fctx, member.body);
+        const paramInits = member.parameters.map((p) => p.initializer).filter((e): e is ts.Expression => !!e);
+        promoteAccessorCapturesToGlobals(ctx, fctx, member.body, paramInits);
       }
       if (ts.isConstructorDeclaration(member) && member.body) {
-        promoteAccessorCapturesToGlobals(ctx, fctx, member.body);
+        const paramInits = member.parameters.map((p) => p.initializer).filter((e): e is ts.Expression => !!e);
+        promoteAccessorCapturesToGlobals(ctx, fctx, member.body, paramInits);
+      }
+      if ((ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) && member.body) {
+        const paramInits = member.parameters.map((p) => p.initializer).filter((e): e is ts.Expression => !!e);
+        promoteAccessorCapturesToGlobals(ctx, fctx, member.body, paramInits);
       }
     }
 
