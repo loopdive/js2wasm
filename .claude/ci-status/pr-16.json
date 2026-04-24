@@ -1,0 +1,15 @@
+{
+  "pr": 16,
+  "conclusion": "success",
+  "head_branch": "issue-1171-test-timeout-cache-bust",
+  "head_sha": "e50f4c2fddabb06f350655b073d625b0b6831d7e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24911203813",
+  "timestamp": "2026-04-24T20:55:44Z",
+  "pass": 25358,
+  "fail": 13973,
+  "compile_error": 2387,
+  "snapshot_delta": -45,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
