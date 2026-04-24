@@ -197,6 +197,31 @@
       .donut-container h2 {
         width: 100%;
       }
+      .baseline-age-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        margin-bottom: 16px;
+        border-radius: 4px;
+        border: 1px solid currentColor;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--fg-faint);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .baseline-age-badge.warn {
+        color: #d29922;
+        background: rgba(210, 153, 34, 0.08);
+      }
+      .baseline-age-badge.alarm {
+        color: #f85149;
+        background: rgba(248, 81, 73, 0.1);
+      }
+      .baseline-age-badge a {
+        color: inherit;
+        text-decoration: underline dotted;
+      }
     </style>
   </head>
   <body>
@@ -204,6 +229,7 @@
     <h1>js2wasm Test262 Conformance</h1>
     <p class="subtitle">Historical trend of test262 pass/fail/compile-error counts</p>
     <p class="subtitle" id="run-timestamp" style="display: none"></p>
+    <div id="baseline-age-badge" class="baseline-age-badge" style="display: none"></div>
     <label
       style="
         display: inline-flex;
@@ -418,6 +444,53 @@
         el.style.display = "block";
       }
 
+      // Render a small coloured badge with baseline age + commit SHA.
+      // Surfaces drift when the committed baseline is stale (issue #1079).
+      function renderBaselineAge(report) {
+        if (!report?.baseline_generated_at) return;
+        const el = document.getElementById("baseline-age-badge");
+        if (!el) return;
+        const generated = new Date(report.baseline_generated_at);
+        if (Number.isNaN(generated.getTime())) return;
+        const ageMs = Date.now() - generated.getTime();
+        const totalMinutes = Math.max(0, Math.floor(ageMs / 60000));
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        const ageText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+        el.classList.remove("warn", "alarm");
+        if (ageMs >= 24 * 3600 * 1000) el.classList.add("alarm");
+        else if (ageMs >= 6 * 3600 * 1000) el.classList.add("warn");
+
+        const sha = typeof report.baseline_sha === "string" ? report.baseline_sha : "";
+        const shortSha = sha ? sha.slice(0, 7) : "";
+        el.innerHTML = "";
+        el.appendChild(document.createTextNode(`Baseline age: ${ageText}`));
+        if (shortSha) {
+          el.appendChild(document.createTextNode(" · commit "));
+          if (/^[a-f0-9]{7,40}$/i.test(sha)) {
+            const a = document.createElement("a");
+            a.href = `https://github.com/loopdive/js2wasm/commit/${sha}`;
+            a.target = "_blank";
+            a.rel = "noopener";
+            a.textContent = shortSha;
+            el.appendChild(a);
+          } else {
+            el.appendChild(document.createTextNode(shortSha));
+          }
+        }
+        const tip =
+          `Baseline generated at ${generated.toISOString()}` +
+          (sha ? ` from commit ${sha}` : "") +
+          (el.classList.contains("alarm")
+            ? "\n⚠ baseline is more than 24h old — consider refreshing via workflow_dispatch"
+            : el.classList.contains("warn")
+              ? "\n⚠ baseline is more than 6h old — consider refreshing via workflow_dispatch"
+              : "");
+        el.title = tip;
+        el.style.display = "inline-flex";
+      }
+
       function renderSkipReasons(report) {
         if (!report?.skip_reasons) return;
         const entries = Object.entries(report.skip_reasons).sort((a, b) => b[1] - a[1]);
@@ -453,6 +526,7 @@
 
         if (report) {
           renderTimestamp(report);
+          renderBaselineAge(report);
           renderSkipReasons(report);
         }
 

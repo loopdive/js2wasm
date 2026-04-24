@@ -71,6 +71,32 @@
         font-size: 0.875rem;
         font-variant-numeric: tabular-nums;
       }
+      .baseline-age {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        font-variant-numeric: tabular-nums;
+        border: 1px solid currentColor;
+        color: var(--text-muted);
+        background: rgba(255, 255, 255, 0.02);
+        margin-top: 0.25rem;
+      }
+      .baseline-age.warn {
+        color: #d29922; /* orange */
+        background: rgba(210, 153, 34, 0.08);
+      }
+      .baseline-age.alarm {
+        color: #f85149; /* red */
+        background: rgba(248, 81, 73, 0.1);
+      }
+      .baseline-age a {
+        color: inherit;
+        text-decoration: underline dotted;
+      }
       .summary {
         display: grid;
         grid-template-columns: 1fr;
@@ -108,6 +134,10 @@
         position: absolute;
         right: 0;
         bottom: -1.5rem;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.25rem;
       }
       .card {
         background: var(--surface);
@@ -952,7 +982,13 @@
         return cat;
       }
 
-      function renderEditionLegend(rows, legendHost, activeEdition = null, dimAfterRank = null, proposalEditionLabels = new Set()) {
+      function renderEditionLegend(
+        rows,
+        legendHost,
+        activeEdition = null,
+        dimAfterRank = null,
+        proposalEditionLabels = new Set(),
+      ) {
         legendHost.textContent = "";
         if (!rows || rows.length === 0) return;
         rows.forEach((row) => {
@@ -1198,6 +1234,60 @@
         return e;
       }
 
+      // Format baseline age as a coloured badge: < 6h normal, ≥ 6h orange, ≥ 24h red.
+      // Surfaces drift in the committed test262 baseline — see issue #1079.
+      function buildBaselineAgeBadge(generatedAt, sha) {
+        if (!generatedAt) return null;
+        const generated = new Date(generatedAt);
+        if (Number.isNaN(generated.getTime())) return null;
+        const ageMs = Date.now() - generated.getTime();
+        const totalMinutes = Math.max(0, Math.floor(ageMs / 60000));
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        const ageText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+        let severity = "ok";
+        if (ageMs >= 24 * 3600 * 1000) severity = "alarm";
+        else if (ageMs >= 6 * 3600 * 1000) severity = "warn";
+
+        const shortSha = typeof sha === "string" && sha ? sha.slice(0, 7) : "";
+        const generatedIso = generated.toISOString();
+        const tooltip =
+          `baseline generated at ${generatedIso}` +
+          (sha ? ` from commit ${sha}` : "") +
+          (severity === "alarm"
+            ? "\n⚠ baseline is more than 24h old — consider refreshing via workflow_dispatch"
+            : severity === "warn"
+              ? "\n⚠ baseline is more than 6h old — consider refreshing via workflow_dispatch"
+              : "");
+
+        const badge = el(
+          "div",
+          { className: "baseline-age" + (severity === "ok" ? "" : " " + severity), title: tooltip },
+          document.createTextNode(`Baseline age: ${ageText}`),
+        );
+        if (shortSha) {
+          badge.appendChild(document.createTextNode(" · "));
+          // Link to the commit on GitHub when a full SHA is available
+          if (sha && /^[a-f0-9]{7,40}$/i.test(sha)) {
+            badge.appendChild(
+              el(
+                "a",
+                {
+                  href: `https://github.com/loopdive/js2wasm/commit/${sha}`,
+                  target: "_blank",
+                  rel: "noopener",
+                },
+                shortSha,
+              ),
+            );
+          } else {
+            badge.appendChild(document.createTextNode(shortSha));
+          }
+        }
+        return badge;
+      }
+
       function makeBar(passW, failW, errW, extraClass) {
         const container = el("div", {
           className: "bar-container" + (extraClass ? " " + extraClass : ""),
@@ -1346,10 +1436,18 @@
         let editionDetail = null;
 
         let summaryStamp = null;
-        if (data.timestamp) {
-          const dt = new Date(data.timestamp);
-          const stamp = `${dt.toLocaleDateString("de-DE", { day: "numeric", month: "numeric", year: "2-digit" })}, ${dt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`;
-          summaryStamp = el("div", { className: "summary-meta" }, el("div", { className: "timestamp" }, stamp));
+        if (data.timestamp || data.baseline_generated_at) {
+          const metaChildren = [];
+          if (data.timestamp) {
+            const dt = new Date(data.timestamp);
+            const stamp = `${dt.toLocaleDateString("de-DE", { day: "numeric", month: "numeric", year: "2-digit" })}, ${dt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`;
+            metaChildren.push(el("div", { className: "timestamp" }, stamp));
+          }
+          const ageBadge = buildBaselineAgeBadge(data.baseline_generated_at, data.baseline_sha);
+          if (ageBadge) metaChildren.push(ageBadge);
+          if (metaChildren.length > 0) {
+            summaryStamp = el("div", { className: "summary-meta" }, ...metaChildren);
+          }
         }
 
         const summary = el("div", { className: "summary" });
@@ -1446,7 +1544,8 @@
             setDonutSummary(fullSummary, PROPOSAL_LABEL);
             return;
           }
-          const scope = editionDetail?.scopeMap instanceof Map ? editionDetail.scopeMap.get(scoreState.editionScope) : null;
+          const scope =
+            editionDetail?.scopeMap instanceof Map ? editionDetail.scopeMap.get(scoreState.editionScope) : null;
           if (!scope) {
             setDonutSummary(
               makeScopeSummary(standardSummary, scoreState.includeLegacy ? legacySummary : null),
@@ -1476,9 +1575,7 @@
         summaryVisuals.appendChild(donutPanel);
 
         const historyPanel = el("div", { className: "summary-visual-panel summary-history-panel" });
-        historyPanel.appendChild(
-          el("h3", { className: "diagram-title" }, "Test Pass Rate Over Time"),
-        );
+        historyPanel.appendChild(el("h3", { className: "diagram-title" }, "Test Pass Rate Over Time"));
         const historyChart = el("trend-chart", {
           className: "summary-history-chart",
           mode: "step",
