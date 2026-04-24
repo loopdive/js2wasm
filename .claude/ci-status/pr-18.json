@@ -1,0 +1,15 @@
+{
+  "pr": 18,
+  "conclusion": "success",
+  "head_branch": "issue-862-iterator-binding-params",
+  "head_sha": "d5b8b98006932f0a7a4c7380ec1dbdaa431759c4",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24913994029",
+  "timestamp": "2026-04-24T22:12:08Z",
+  "pass": 25414,
+  "fail": 13930,
+  "compile_error": 2345,
+  "snapshot_delta": 11,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
