@@ -1,0 +1,15 @@
+{
+  "pr": 34,
+  "conclusion": "failure",
+  "head_branch": "issue-1160-restorebuiltins-null-escape",
+  "head_sha": "6cdb1a95616f42da0f404b2dfab0dc0ce8c72e7d",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24941043991",
+  "timestamp": "2026-04-25T21:32:13Z",
+  "pass": 25366,
+  "fail": 13866,
+  "compile_error": 2473,
+  "snapshot_delta": -303,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
