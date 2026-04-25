@@ -38,7 +38,6 @@ import {
 } from "./shared.js";
 import { emitArgumentsVecBody } from "./statements/nested-declarations.js";
 import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
-export { bodyUsesArguments };
 
 /** Maximum number of instructions for a function body to be considered inlinable */
 export const INLINE_MAX_INSTRS = 10;

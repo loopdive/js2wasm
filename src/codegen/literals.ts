@@ -23,7 +23,7 @@ import { allocLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { emitUndefined, patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { resolveStructName } from "./expressions/misc.js";
-import { bodyUsesArguments } from "./function-body.js";
+import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 import {
   cacheStringLiterals,
   destructureParamArray,
