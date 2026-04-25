@@ -9,7 +9,13 @@ import { reportError } from "../context/errors.js";
 import { allocLocal, getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { shiftLateImportIndices } from "../expressions/late-imports.js";
-import { ensureNativeStringHelpers, ensureStructForType, nativeStringType, resolveWasmType } from "../index.js";
+import {
+  ensureLetConstBindingPatternTdzFlags,
+  ensureNativeStringHelpers,
+  ensureStructForType,
+  nativeStringType,
+  resolveWasmType,
+} from "../index.js";
 import { resolveComputedKeyExpression } from "../literals.js";
 import { buildDestructureNullThrow } from "../destructuring-params.js";
 import { addImport, addStringConstantGlobal, localGlobalIdx } from "../registry/imports.js";
@@ -25,6 +31,7 @@ import {
   VOID_RESULT,
 } from "../shared.js";
 import { collectInstrs } from "./shared.js";
+import { emitLocalTdzInit } from "./tdz.js";
 
 export function ensureBindingLocals(ctx: CodegenContext, fctx: FunctionContext, pattern: ts.BindingPattern): void {
   for (const element of pattern.elements) {
@@ -375,6 +382,14 @@ export function compileObjectDestructuring(
 
   const pattern = decl.name as ts.ObjectBindingPattern;
 
+  // #1128: for let/const destructuring, (re-)allocate TDZ flags per binding.
+  // The function-level pre-pass (walkStmtForLetConst) may have allocated these,
+  // but block-scope shadowing wipes them when we enter an inner block.
+  const isLetConst = (decl.parent.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) !== 0;
+  if (isLetConst) {
+    ensureLetConstBindingPatternTdzFlags(ctx, fctx, pattern);
+  }
+
   // Save body length so we can rollback if struct lookup fails
   const bodyLenBefore = fctx.body.length;
 
@@ -625,6 +640,8 @@ export function compileObjectDestructuring(
               fctx.body.push({ op: "global.get", index: excludedStrIdx });
               fctx.body.push({ op: "call", funcIdx: restObjIdx });
               fctx.body.push({ op: "local.set", index: restIdx });
+              // #1128: mark the rest binding as initialized (TDZ flag)
+              emitLocalTdzInit(fctx, element.name.text);
             }
           }
         }
@@ -656,6 +673,8 @@ export function compileObjectDestructuring(
       } else {
         fctx.body.push({ op: "local.set", index: localIdx });
       }
+      // #1128: mark the binding as initialized (TDZ flag) immediately after its store
+      emitLocalTdzInit(fctx, localName);
     }
   }); // end null guard
 
@@ -1056,6 +1075,15 @@ export function compileArrayDestructuring(
   if (!decl.initializer) return;
 
   const pattern = decl.name as ts.ArrayBindingPattern;
+
+  // #1128: for let/const destructuring, (re-)allocate TDZ flags per binding.
+  // The function-level pre-pass (walkStmtForLetConst) may have allocated these,
+  // but block-scope shadowing wipes them when we enter an inner block.
+  const isLetConst = (decl.parent.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) !== 0;
+  if (isLetConst) {
+    ensureLetConstBindingPatternTdzFlags(ctx, fctx, pattern);
+  }
+
   const bodyLenBefore = fctx.body.length;
 
   // When the pattern has rest elements, force vec mode for the initializer so

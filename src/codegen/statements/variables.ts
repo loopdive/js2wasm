@@ -17,7 +17,7 @@ import { getOrRegisterVecType } from "../registry/types.js";
 import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { emitGuardedRefCast } from "../type-coercion.js";
 import { compileArrayDestructuring, compileObjectDestructuring } from "./destructuring.js";
-import { emitTdzInit } from "./tdz.js";
+import { emitLocalTdzInit, emitTdzInit } from "./tdz.js";
 
 function inferArrayVecType(ctx: CodegenContext, decl: ts.VariableDeclaration): ValType | null {
   if (!ts.isIdentifier(decl.name)) return null;
@@ -466,15 +466,4 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
     // Set local TDZ flag to 1 (initialized) if this is a hoisted let/const
     emitLocalTdzInit(fctx, name);
   }
-}
-
-/**
- * Emit instructions to set a local TDZ flag to 1 (initialized) for a function-level
- * let/const variable. No-op if the variable doesn't have a local TDZ flag.
- */
-function emitLocalTdzInit(fctx: FunctionContext, name: string): void {
-  const flagIdx = fctx.tdzFlagLocals?.get(name);
-  if (flagIdx === undefined) return;
-  fctx.body.push({ op: "i32.const", value: 1 });
-  fctx.body.push({ op: "local.set", index: flagIdx });
 }
