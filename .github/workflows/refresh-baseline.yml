@@ -146,7 +146,6 @@ jobs:
           ref: main
           submodules: recursive
           fetch-depth: 1
-          lfs: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
