@@ -132,13 +132,6 @@ export function compileIrPathFunctions(
 
   if (built.length === 0) return { compiled, errors };
 
-  // Phase 1 partial failures leave the claim set inconsistent: successful
-  // functions would get their typeIdx replaced in Phase 3, but failed
-  // functions' legacy bodies still call them with the old typeIdx →
-  // Wasm validation fails with "not enough arguments on the stack".
-  // Fall back to the legacy path for the entire file.
-  if (errors.length > 0) return { compiled, errors };
-
   // -------------------------------------------------------------------------
   // Phase 2 — Pass: per-function hygiene → module-scope inline → re-run
   // hygiene on modified functions. Verify between stages.
