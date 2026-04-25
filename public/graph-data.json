@@ -11664,8 +11664,8 @@
       "id": "825",
       "title": "Null dereference failures (2,295 runtime failures)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -12051,8 +12051,8 @@
       "id": "854",
       "title": "Iterator protocol: null next/return/throw methods (126 tests)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -12158,7 +12158,7 @@
       "title": "Iterator protocol missing on function-declaration binding-pattern params",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -14360,7 +14360,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "44",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -14468,8 +14468,8 @@
       "id": "1025",
       "title": "BindingElement array-pattern default guards still use ref.is_null",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -15140,10 +15140,24 @@
       "id": "1076",
       "title": "CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline",
       "priority": "critical",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
+      "id": "1077",
+      "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
+      "depends_on": [
+        "1076"
+      ],
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
@@ -15163,25 +15177,11 @@
       "cluster": "ci-hardening"
     },
     {
-      "id": "1077",
-      "title": "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "45",
-      "depends_on": [
-        "1076"
-      ],
-      "files": [],
-      "goal": "ci-hardening",
-      "cluster": "ci-hardening"
-    },
-    {
       "id": "1078",
       "title": "CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [
         "1076"
@@ -15195,7 +15195,7 @@
       "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -15608,13 +15608,15 @@
       "id": "1111",
       "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [
-        "compileWrapperConstructor — struct wrapping a primitive with __is_wrapper tag",
-        "typeof — branch on wrapper tag for object vs primitive"
+        "compileNewExpression already routes `new Number/String/Boolean` to `__new_X` host imports (real JS wrapper objects). This gives the right `typeof` (object), `+x` (valueOf), `!!x` (always truthy) semantics for free.",
+        "Wrapper-aware equality: when either operand's static type is a Number/String/Boolean wrapper object, route == / === through `__host_loose_eq` / `__host_eq` with no numeric unbox fallback — wrappers have object-identity/ToPrimitive semantics, not value semantics.",
+        "Skip the string-content fast path (which uses `string.equals`) when either operand is a wrapper object.",
+        "`isStringWrapperType`, `isBooleanWrapperType`, `isWrapperObjectType` helpers (`isNumberWrapperType` already existed)."
       ],
       "goal": "builtin-methods",
       "cluster": "builtin-methods",
@@ -15736,22 +15738,10 @@
     },
     {
       "id": "1119",
-      "title": "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs",
-      "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "43",
-      "depends_on": [],
-      "files": [],
-      "goal": "async-model",
-      "cluster": "async-model"
-    },
-    {
-      "id": "1119",
       "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -15913,7 +15903,7 @@
       "title": "Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16205,8 +16195,8 @@
       "id": "1148",
       "title": "Investigate skip:103 regression — Annex B eval-code skip filter",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16217,8 +16207,8 @@
       "id": "1149",
       "title": "Fix null_deref:32 — eval-code direct methods with arguments declare",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16229,8 +16219,8 @@
       "id": "1150",
       "title": "Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16253,8 +16243,8 @@
       "id": "1152",
       "title": "Array.prototype higher-order methods fail with 'object is not a function' after PR #195 __get_builtin change (~217 test262 regressions)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16305,8 +16295,8 @@
       "id": "1156",
       "title": "Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [
         "1152"
@@ -16353,10 +16343,10 @@
     },
     {
       "id": "1160",
-      "title": "Array.from codegen error — property of first arg must be integer (730 tests)",
+      "title": "Array.from codegen error — test262-worker prototype poisoning leak (730 tests)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16367,8 +16357,8 @@
       "id": "1161",
       "title": "Cannot destructure null/undefined in private class method params (~429 dstr tests)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16379,8 +16369,8 @@
       "id": "1162",
       "title": "yield* async — unexpected undefined AST node in compileExpression (~161 tests)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16391,8 +16381,8 @@
       "id": "1163",
       "title": "Static eval inlining — compile eval(\\\"fixed string\\\") at compile time (~208 tests)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16434,7 +16424,7 @@
       "priority": "high",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "44",
+      "sprint": "45",
       "depends_on": [
         "1131",
         "1168"
@@ -16462,8 +16452,8 @@
       "id": "1167a",
       "title": "IR Phase 3a — hygiene passes: constant-fold, dead-code, simplify-cfg",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [
         "1131",
@@ -16477,8 +16467,8 @@
       "id": "1167b",
       "title": "IR Phase 3b — inline-small: inline direct IR calls before lowering",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16489,8 +16479,8 @@
       "id": "1167c",
       "title": "IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "44",
       "depends_on": [],
       "files": [],
@@ -16517,11 +16507,35 @@
       "priority": "high",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "44",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
       "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1170",
+      "title": "Move test262 baselines out of Git LFS — eliminate LFS dependency from CI",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
+      "id": "1171",
+      "title": "Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "review",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
     },
     {
       "id": "backlog",
@@ -16720,6 +16734,34 @@
     {
       "source": "907",
       "target": "908"
+    },
+    {
+      "source": "1076",
+      "target": "1077"
+    },
+    {
+      "source": "1076",
+      "target": "1078"
+    },
+    {
+      "source": "1152",
+      "target": "1156"
+    },
+    {
+      "source": "1131",
+      "target": "1167"
+    },
+    {
+      "source": "1166",
+      "target": "1167"
+    },
+    {
+      "source": "1131",
+      "target": "1167a"
+    },
+    {
+      "source": "1166",
+      "target": "1167a"
     },
     {
       "source": "1131",
@@ -17154,34 +17196,6 @@
       "target": "1131"
     },
     {
-      "source": "1152",
-      "target": "1156"
-    },
-    {
-      "source": "1131",
-      "target": "1166"
-    },
-    {
-      "source": "1168",
-      "target": "1166"
-    },
-    {
-      "source": "1131",
-      "target": "1167"
-    },
-    {
-      "source": "1166",
-      "target": "1167"
-    },
-    {
-      "source": "1131",
-      "target": "1167a"
-    },
-    {
-      "source": "1166",
-      "target": "1167a"
-    },
-    {
       "source": "1000",
       "target": "1003"
     },
@@ -17222,14 +17236,6 @@
       "target": "1075"
     },
     {
-      "source": "1076",
-      "target": "1077"
-    },
-    {
-      "source": "1076",
-      "target": "1078"
-    },
-    {
       "source": "1085",
       "target": "1086"
     },
@@ -17252,6 +17258,14 @@
     {
       "source": "1163",
       "target": "1164"
+    },
+    {
+      "source": "1131",
+      "target": "1166"
+    },
+    {
+      "source": "1168",
+      "target": "1166"
     },
     {
       "source": "688",
@@ -17390,8 +17404,7 @@
         "1044",
         "1089",
         "1093",
-        "1116",
-        "1119"
+        "1116"
       ]
     },
     {
@@ -17493,7 +17506,9 @@
         "1083",
         "1084",
         "1106",
-        "1117"
+        "1117",
+        "1170",
+        "1171"
       ],
       "track": "supporting track"
     },
@@ -19048,10 +19063,6 @@
       "issue": "1116"
     },
     {
-      "goal": "async-model",
-      "issue": "1119"
-    },
-    {
       "goal": "builtin-methods",
       "issue": "3"
     },
@@ -19374,6 +19385,14 @@
     {
       "goal": "ci-hardening",
       "issue": "1117"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1170"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1171"
     },
     {
       "goal": "class-system",
@@ -23696,10 +23715,6 @@
     {
       "goal": "generator-model",
       "issue": "1116"
-    },
-    {
-      "goal": "generator-model",
-      "issue": "1119"
     },
     {
       "goal": "core-semantics",
