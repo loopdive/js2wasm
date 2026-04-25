@@ -38,11 +38,21 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      - name: Fetch runs/index.json from baselines repo
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          # runs/index.json moved from LFS to js2wasm-baselines to avoid bandwidth exhaustion
+          git clone --depth=1 https://github.com/loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines 2>/dev/null || true
+          if [ -f /tmp/js2wasm-baselines/runs/index.json ]; then
+            mkdir -p benchmarks/results/runs
+            cp /tmp/js2wasm-baselines/runs/index.json benchmarks/results/runs/index.json
+          fi
+
       - name: Regenerate planning artifacts
         if: github.event_name == 'push'
         run: |
           if [ -d plan ] || [ -d dashboard ]; then
-            git lfs pull --include="benchmarks/results/runs/index.json"
             pnpm run build:planning-artifacts
           else
             echo "No private planning artifacts in this checkout; skipping regeneration."
