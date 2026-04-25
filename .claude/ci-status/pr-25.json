@@ -1,0 +1,15 @@
+{
+  "pr": 25,
+  "conclusion": "success",
+  "head_branch": "issue-907-init-done-static",
+  "head_sha": "e966180412d89c4d2509daa4234e37427069f661",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24926081874",
+  "timestamp": "2026-04-25T07:55:11Z",
+  "pass": 25441,
+  "fail": 13894,
+  "compile_error": 2414,
+  "snapshot_delta": 26,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
