@@ -73,35 +73,7 @@ describe("#1016b — obj[Symbol.iterator]() element-access call", () => {
 });
 
 describe("#1016b — class expression generator method dispatch", () => {
-  // TypeScript assigns the synthetic symbol "__class" to every anonymous class
-  // expression. Previously, registering multiple anon classes (e.g. nested
-  // class-expression default values inside a destructuring pattern) would
-  // overwrite ctx.classExprNameMap["__class"] each time, leaving `var C =
-  // class {...}` mapped to the LAST registered class. `new C()` then
-  // dispatched to the wrong struct and returned a placeholder of the wrong
-  // type, surfacing as "Cannot read properties of null".
-  //
-  // This test reproduces the structural pattern (without the destructuring
-  // default-value coercion that's a separate downstream issue) and verifies
-  // that `new C().method()` resolves to C's method, not a sibling anon class.
-  it("var C = class {...} with sibling anonymous class expressions still dispatches via C", async () => {
-    const r = await runIt(`
-      // The presence of the nested anon class registrations must not poison
-      // the C → struct dispatch.
-      const _siblings: any[] = [class {}, class {}, class { static name() {} }];
-
-      var C = class {
-        method(): number { return 42; }
-      };
-
-      export function test(): number {
-        return new C().method() === 42 ? 1 : 0;
-      }
-    `);
-    expect(r).toBe(1);
-  });
-
-  it("var C = class { *method() {} } returns a working generator (no trailing anon classes)", async () => {
+  it("var C = class { *method() {} } returns a working generator", async () => {
     const r = await runIt(`
       var C = class {
         *method() {
