@@ -559,6 +559,83 @@ export function destructureParamArray(
       fctx.body.push({ op: "any.convert_extern" } as Instr);
       fctx.body.push({ op: "local.set", index: anyTmp });
 
+      // Tuple-struct fast path (#862): if the externref wraps a known Wasm-native
+      // tuple struct (fields named _0, _1, …), destructure directly via
+      // struct.get instead of routing through __array_from_iter / boxing — which
+      // would convert typed numeric fields to externref and then silently back
+      // to NaN when assigned to f64 locals (PR #255 regression pattern).
+      //
+      // The sentinel `__dparam_done` is set to 1 if the fast path fires; the
+      // existing externref logic below is gated on it being 0.
+      const dstrDoneLocal = allocLocal(fctx, `__dparam_done_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+      fctx.body.push({ op: "local.set", index: dstrDoneLocal });
+
+      for (let ti = 0; ti < ctx.mod.types.length; ti++) {
+        const def = ctx.mod.types[ti];
+        if (!def || def.kind !== "struct") continue;
+        if (def.fields.length === 0) continue;
+        // Tuple struct detection: fields must be named _0, _1, _2, ...
+        let isTuple = true;
+        for (let fi = 0; fi < def.fields.length; fi++) {
+          if (def.fields[fi]!.name !== `_${fi}`) {
+            isTuple = false;
+            break;
+          }
+        }
+        if (!isTuple) continue;
+        // Only match when the tuple has at least as many fields as the pattern
+        // consumes — fewer fields can't fulfill the binding element count.
+        if (def.fields.length < pattern.elements.length) continue;
+
+        const tupType: ValType = { kind: "ref_null", typeIdx: ti };
+        const tupleLocal = allocLocal(fctx, `__dparam_tup_${ti}_${fctx.locals.length}`, tupType);
+
+        // Build the fast-path body by swapping fctx.body so a recursive
+        // destructureParamArray call emits into the conditional branch instead
+        // of the outer function.
+        const savedBody = fctx.body;
+        const fastPathInstrs: Instr[] = [];
+        fctx.body = fastPathInstrs;
+        fctx.body.push({ op: "local.get", index: anyTmp } as Instr);
+        fctx.body.push({ op: "ref.cast", typeIdx: ti });
+        fctx.body.push({ op: "local.set", index: tupleLocal });
+        destructureParamArray(ctx, fctx, tupleLocal, pattern, tupType);
+        fctx.body.push({ op: "i32.const", value: 1 } as Instr);
+        fctx.body.push({ op: "local.set", index: dstrDoneLocal });
+        fctx.body = savedBody;
+
+        // Gate on dstrDone == 0 so later tuple-struct checks (and the main
+        // externref logic below) don't re-run once one match has succeeded.
+        const testInstrs: Instr[] = [
+          { op: "local.get", index: anyTmp } as Instr,
+          { op: "ref.test", typeIdx: ti } as Instr,
+          {
+            op: "if",
+            blockType: { kind: "empty" },
+            then: fastPathInstrs,
+            else: [],
+          } as Instr,
+        ];
+
+        fctx.body.push({ op: "local.get", index: dstrDoneLocal } as Instr);
+        fctx.body.push({ op: "i32.eqz" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: testInstrs,
+          else: [],
+        } as Instr);
+      }
+
+      // Gate the existing externref→vec conversion + iter fallback logic on
+      // dstrDone == 0. If the fast path already destructured, skip all of it.
+      // We redirect fctx.body to a buffer; after the existing code finishes, we
+      // wrap the buffer in `if dstrDone == 0 { ... }` and append to the real body.
+      const externrefLegacyBody: Instr[] = [];
+      const realBody = fctx.body;
+      fctx.body = externrefLegacyBody;
+
       // Try direct cast to __vec_externref first (cheapest path)
       fctx.body.push({ op: "local.get", index: anyTmp });
       fctx.body.push({ op: "ref.test", typeIdx: extVecIdx });
@@ -774,6 +851,19 @@ export function destructureParamArray(
 
       // Now destructure from the converted vec_externref.
       destructureParamArray(ctx, fctx, resultLocal, pattern, convertedType);
+
+      // Close the #862 tuple-struct fast-path gate: wrap everything since the
+      // dstrDone sentinel was initialised in `if dstrDone == 0 { ... }` and
+      // splice back into the real body.
+      fctx.body = realBody;
+      fctx.body.push({ op: "local.get", index: dstrDoneLocal } as Instr);
+      fctx.body.push({ op: "i32.eqz" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: externrefLegacyBody,
+        else: [],
+      } as Instr);
       return;
     }
     // Cannot destructure a non-ref type — register locals with defaults
