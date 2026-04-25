@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { compile } from "../src/index.ts";
 import { buildImports } from "../src/runtime.ts";
-import { bodyUsesArguments } from "../src/codegen/function-body.ts";
+import { bodyUsesArguments } from "../src/codegen/helpers/body-uses-arguments.ts";
 import ts from "typescript";
 
 async function compileAndRun(src: string): Promise<number> {
