@@ -86,9 +86,17 @@ export function planIrCompilation(
   // callers' bodies. Ensuring both sides of every cross-function edge are
   // on the same side (IR or legacy) avoids cross-signature `call` ops.
   // -------------------------------------------------------------------------
-  const { callers, callees } = buildLocalCallGraph(declByName);
+  const { callers, callees, hasExternalCall } = buildLocalCallGraph(declByName);
 
   const claimed = new Set(individuallyClaimed);
+  // Immediately drop functions that call non-local identifier functions
+  // (e.g. parseInt, String, Number, isNaN). from-ast.ts throws for unknown
+  // callees; the call-graph closure only tracks local edges so external
+  // calls slipped through — catching them here prevents compile_errors.
+  for (const name of [...claimed]) {
+    if (hasExternalCall.has(name)) claimed.delete(name);
+  }
+
   let changed = true;
   while (changed) {
     changed = false;
@@ -365,9 +373,11 @@ function isPhase1BinaryOp(op: ts.SyntaxKind): boolean {
 function buildLocalCallGraph(decls: ReadonlyMap<string, ts.FunctionDeclaration>): {
   callers: Map<string, Set<string>>;
   callees: Map<string, Set<string>>;
+  hasExternalCall: Set<string>;
 } {
   const callers = new Map<string, Set<string>>();
   const callees = new Map<string, Set<string>>();
+  const hasExternalCall = new Set<string>();
   for (const name of decls.keys()) {
     callers.set(name, new Set());
     callees.set(name, new Set());
@@ -381,13 +391,18 @@ function buildLocalCallGraph(decls: ReadonlyMap<string, ts.FunctionDeclaration>)
         if (decls.has(callee)) {
           callees.get(callerName)!.add(callee);
           callers.get(callee)!.add(callerName);
+        } else {
+          // Call to a non-local identifier (e.g. parseInt, String, Number).
+          // from-ast.ts throws for unknown callees so we must exclude this
+          // function from the IR path.
+          hasExternalCall.add(callerName);
         }
       }
       ts.forEachChild(node, visit);
     };
     ts.forEachChild(fn.body, visit);
   }
-  return { callers, callees };
+  return { callers, callees, hasExternalCall };
 }
 
 function isFunctionLike(node: ts.Node): boolean {
