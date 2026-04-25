@@ -262,21 +262,23 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
 
     // Emit the null/zero check + conditional assignment
     if (paramType.kind === "externref") {
-      // JS semantics: defaults kick in when arg is missing OR explicitly undefined.
-      // ref.is_null covers Wasm null; __extern_is_undefined covers JS undefined
-      // (e.g. omitted trailing arg → __get_undefined() returns JS undefined, not
-      // a null externref). Must check both — otherwise a later destructure guard
-      // throws TypeError before the default can fire (#1135 follow-up).
+      // Per JS spec, parameter defaults fire ONLY when the arg is `undefined`
+      // (omitted or explicit), never for `null`. At the Wasm layer, JS null
+      // maps to ref.null.extern (ref.is_null=1) while JS undefined is a non-
+      // null externref wrapping the JS undefined value. Omitted args are padded
+      // by callers with `__get_undefined()` (externref-wrapped undefined), so
+      // `__extern_is_undefined` catches both "omitted" and "explicit undefined".
+      // Using `ref.is_null` in addition would wrongly fire the default when the
+      // caller passed explicit `null` (#1025 / #1021).
       const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
       flushLateImportShifts(ctx, fctx);
+      fctx.body.push({ op: "local.get", index: paramIdx });
       if (undefIdx !== undefined) {
-        fctx.body.push({ op: "local.get", index: paramIdx });
-        fctx.body.push({ op: "ref.is_null" });
-        fctx.body.push({ op: "local.get", index: paramIdx });
         fctx.body.push({ op: "call", funcIdx: undefIdx } as Instr);
-        fctx.body.push({ op: "i32.or" } as Instr);
       } else {
-        fctx.body.push({ op: "local.get", index: paramIdx });
+        // Fallback (standalone mode): ref.is_null is imprecise — treats null
+        // as undefined. Preserves pre-#737 behavior when the host import can't
+        // be registered.
         fctx.body.push({ op: "ref.is_null" });
       }
       fctx.body.push({
