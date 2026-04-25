@@ -81,7 +81,6 @@ jobs:
           ref: main
           submodules: recursive
           fetch-depth: 1
-          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -147,7 +146,6 @@ jobs:
           ref: main
           submodules: recursive
           fetch-depth: 1
-          lfs: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
@@ -211,6 +209,7 @@ jobs:
           cp merged-reports/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
 
       - name: Materialize runs history from LFS
+        continue-on-error: true
         run: git lfs pull --include="benchmarks/results/runs/index.json"
 
       - name: Append to runs/index.json
