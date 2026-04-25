@@ -62,11 +62,31 @@ export function collectClassDeclaration(
   ctx.functionNameMap.set(className, esName);
 
   // For class expressions, map the TS symbol name to the synthetic class name
-  // so that resolveStructName and compileNewExpression can find the struct
+  // so that resolveStructName and compileNewExpression can find the struct.
+  //
+  // #1016b: TypeScript assigns the synthetic symbol name "__class" to ALL
+  // anonymous class expressions. Previously this map was unconditionally
+  // overwritten for every anon class collected, so when several `class {}`
+  // expressions appeared in the same source (e.g. as default values inside
+  // a destructuring pattern: `[cls = class {}, xCls = class X {}, …]`),
+  // the LAST-registered class would clobber the mapping for the OUTER
+  // `var C = class { ... }`. `new C()` then resolved to the wrong struct
+  // and the generator method dispatch fell through to the externref fallback,
+  // returning null and causing `null.next()` failures downstream.
+  //
+  // Skip the "__class" mapping entirely — the receiver-identifier fallback
+  // in compileNewExpression / property-access dispatch already resolves
+  // `var C = class {...}` via classSet["C"]. Only meaningful symbol names
+  // (real identifiers like "X" for `class X {}`) need this map.
   if (syntheticName) {
     const tsType = ctx.checker.getTypeAtLocation(decl);
     const symbolName = tsType.getSymbol()?.name;
-    if (symbolName && symbolName !== syntheticName) {
+    if (
+      symbolName &&
+      symbolName !== syntheticName &&
+      symbolName !== "__class" &&
+      !ctx.classExprNameMap.has(symbolName)
+    ) {
       ctx.classExprNameMap.set(symbolName, syntheticName);
     }
   }
