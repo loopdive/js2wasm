@@ -12811,8 +12811,8 @@
       "id": "907",
       "title": "Replace __init_done runtime guards with start/init entry semantics",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [
         "900"
@@ -16393,8 +16393,8 @@
       "id": "1164",
       "title": "Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [
         "1163"
@@ -16505,10 +16505,25 @@
       "id": "1169",
       "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
       "priority": "high",
-      "status": "blocked",
-      "raw_status": "blocked",
+      "status": "ready",
+      "raw_status": "ready",
       "sprint": "45",
       "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169a",
+      "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [
+        "1169",
+        "1168"
+      ],
       "files": [],
       "goal": "compiler-architecture",
       "cluster": "compiler-architecture"
@@ -17268,6 +17283,14 @@
       "target": "1166"
     },
     {
+      "source": "1169",
+      "target": "1169a"
+    },
+    {
+      "source": "1168",
+      "target": "1169a"
+    },
+    {
       "source": "688",
       "target": "742"
     },
@@ -17734,7 +17757,8 @@
         "1167b",
         "1167c",
         "1168",
-        "1169"
+        "1169",
+        "1169a"
       ],
       "track": "supporting track"
     },
@@ -20177,6 +20201,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169a"
     },
     {
       "goal": "contributor-readiness",
