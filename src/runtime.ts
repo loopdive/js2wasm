@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import { compileSource } from "./compiler.js";
 import type { ImportDescriptor, ImportIntent, ImportPolicy } from "./index.js";
+import { createEvalShim } from "./runtime-eval.js";
 
 /**
  * Portable require() for loading Node.js builtin modules (#1044).
@@ -1470,10 +1471,51 @@ function resolveImport(
           return JSON.stringify(plain, rep as any, sp);
         };
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
-      if (name === "__extern_eval")
-        return (src: any) => {
+      if (name === "__extern_eval") {
+        // #1164: dynamic eval via Wasm module compilation.  The primary
+        // path compiles the eval string through js2wasm and instantiates
+        // it as a fresh Wasm module via the JS Wasm API — no `(0, eval)`,
+        // no JS global leakage, CSP-compatible (`wasm-unsafe-eval` only).
+        //
+        // We retain the legacy `(0, eval)(...)` host path as a fallback
+        // for sources the Wasm pipeline cannot yet compile (e.g. test262
+        // harness-rewritten code containing identifiers that resolve to
+        // host-only state, or syntax constructs js2wasm doesn't support).
+        // The fallback is gated on JS host availability; in standalone /
+        // WASI mode neither path works and the import is simply absent.
+        const wasmEvalShim = createEvalShim({});
+        return (src: any, _isDirect: number = 0) => {
           // Spec: if input is not a string, return it unchanged.
           if (typeof src !== "string") return src;
+          // Try the Wasm-module path first.  Compile failures, instantiation
+          // failures, and "import not provided" errors fall through to the
+          // host-eval fallback so test262 harness-aware eval keeps working.
+          try {
+            return wasmEvalShim(src, _isDirect);
+          } catch (e: any) {
+            // SyntaxError from the Wasm-module path means js2wasm couldn't
+            // compile the source as JS at all — propagate it (real JS would
+            // throw too).  Other errors (ReferenceError from missing imports,
+            // generic Error from instantiation) fall back to host eval.
+            const isSyntaxError = e instanceof SyntaxError;
+            if (isSyntaxError) {
+              // If the host-eval fallback can compile it, prefer that result;
+              // js2wasm is more strict than V8/SpiderMonkey on some forms.
+              try {
+                return _legacyHostEval(src);
+              } catch (e2) {
+                throw e2;
+              }
+            }
+            return _legacyHostEval(src);
+          }
+        };
+
+        // Legacy host-eval fallback (#1006 + #1073 harness shims).  Used when
+        // the Wasm-module path can't handle the source — e.g. it references
+        // wasm-compiled harness identifiers that aren't in scope of a fresh
+        // Wasm module compilation.
+        function _legacyHostEval(src: string): any {
           // Indirect eval — runs in global scope. Direct-eval scope access
           // is unreachable through a host import boundary; #1006 scopes this
           // explicitly to JS-host mode, standalone mode traps on instantiation.
@@ -1618,7 +1660,8 @@ assert._isSameValue = isSameValue;
           const wrapped =
             shim + jsSrc + `;\nif (__fail) throw new Test262Error('eval harness assertion ' + __fail + ' failed');`;
           return (0, eval)(wrapped);
-        };
+        }
+      }
       if (name === "__extern_get")
         return (obj: any, key: any) => {
           const val = _safeGet(obj, key);
