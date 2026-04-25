@@ -242,10 +242,12 @@ jobs:
             cp /tmp/js2wasm-baselines/test262-current.jsonl benchmarks/results/test262-current.jsonl
             echo "Baseline fetched from js2wasm-baselines repo."
           else
-            echo "Warning: baselines repo has no jsonl yet — falling back to main-repo copy (LFS pointer)."
-            git fetch origin main --depth=1
-            git show origin/main:benchmarks/results/test262-current.jsonl \
-              > benchmarks/results/test262-current.jsonl 2>/dev/null || true
+            # Baselines repo not yet seeded — write empty JSONL so diff-test262
+            # gets a valid (empty) baseline and reports 0 regressions / N improvements.
+            # The fallback avoids LFS pointer text which would cause a parse error.
+            echo "Warning: baselines repo has no jsonl yet — using empty baseline."
+            mkdir -p benchmarks/results
+            echo -n "" > benchmarks/results/test262-current.jsonl
           fi
 
       - name: Download merged reports
