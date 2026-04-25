@@ -180,6 +180,40 @@ export class IrFunctionBuilder {
     return result;
   }
 
+  // --- string ops (#1169a) ------------------------------------------------
+
+  emitStringConst(value: string): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "string" };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({ kind: "string.const", value, result, resultType });
+    return result;
+  }
+
+  emitStringConcat(lhs: IrValueId, rhs: IrValueId): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "string" };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({ kind: "string.concat", lhs, rhs, result, resultType });
+    return result;
+  }
+
+  emitStringEq(lhs: IrValueId, rhs: IrValueId, negate: boolean): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "val", val: { kind: "i32" } };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({ kind: "string.eq", lhs, rhs, negate, result, resultType });
+    return result;
+  }
+
+  emitStringLen(value: IrValueId): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "val", val: { kind: "f64" } };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({ kind: "string.len", value, result, resultType });
+    return result;
+  }
+
   /**
    * Phase 1 escape hatch — emit raw backend ops with a stated stack delta.
    * Verifier requires stackDelta to match the effective push count.
