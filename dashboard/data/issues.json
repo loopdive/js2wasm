@@ -45,19 +45,6 @@
   ],
   "blocked": [
     {
-      "id": "1169",
-      "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1167c",
-        "1168"
-      ],
-      "goal": "compiler-architecture",
-      "status": "blocked",
-      "sprint": "45"
-    },
-    {
       "id": "1166",
       "title": "Closed-world integer specialization from literal call sites",
       "priority": "high",
@@ -130,6 +117,32 @@
   ],
   "ready": [
     {
+      "id": "1169a",
+      "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169",
+      "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1167c",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
       "id": "1167",
       "title": "SSA IR Phase 3 — optimization passes (meta issue — see 1167a/b/c)",
       "priority": "high",
@@ -154,18 +167,6 @@
       "goal": "platform",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1164",
-      "title": "Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "1163"
-      ],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "45"
     },
     {
       "id": "1159",
@@ -1017,18 +1018,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "907",
-      "title": "Replace __init_done runtime guards with start/init entry semantics",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "900"
-      ],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "45"
     },
     {
       "id": "906",
@@ -1943,6 +1932,18 @@
       "goal": "compiler-architecture",
       "status": "done",
       "sprint": "44"
+    },
+    {
+      "id": "1164",
+      "title": "Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1163"
+      ],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1163",
@@ -3800,6 +3801,18 @@
       "goal": "developer-experience",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "907",
+      "title": "Replace __init_done runtime guards with start/init entry semantics",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "900"
+      ],
+      "goal": "developer-experience",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "902",
