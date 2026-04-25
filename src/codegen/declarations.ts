@@ -22,7 +22,8 @@ import { ensureWrapperTypes } from "./any-helpers.js";
 import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
 import { reportError } from "./context/errors.js";
 import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
-import { bodyUsesArguments, compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import { compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 import {
   addArrayIteratorImports,
   addForInImports,

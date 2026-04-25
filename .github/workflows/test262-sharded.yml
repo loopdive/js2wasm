@@ -431,10 +431,10 @@ jobs:
             exit 0
           fi
           git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]"
-          if ! git pull --rebase origin main; then
+          if ! GIT_LFS_SKIP_SMUDGE=1 git pull --rebase --autostash origin main; then
             git rebase --abort 2>/dev/null || true
             git fetch origin main
-            git reset --hard origin/main
+            GIT_LFS_SKIP_SMUDGE=1 git reset --hard origin/main
             cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-current.json
             cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-report.json
             cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
@@ -445,7 +445,7 @@ jobs:
               public/benchmarks/results/test262-editions.json
             git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
           fi
-          git push
+          GIT_LFS_SKIP_SMUDGE=1 git push
 
       - name: Audit forced baseline refresh
         if: github.event_name == 'workflow_dispatch' && inputs.force_baseline_refresh == true && inputs.confirm_force == 'YES'
