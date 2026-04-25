@@ -1178,6 +1178,7 @@ export function compileBinaryExpression(
       const hostIdx = ensureLateImport(ctx, hostFn, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
       flushLateImportShifts(ctx, fctx);
       const finalHostIdx = ctx.funcMap.get(hostFn) ?? hostIdx;
+      if (finalHostIdx === undefined) throw new Error(`Missing import after ensureLateImport: ${hostFn}`);
       fctx.body.push({ op: "call", funcIdx: finalHostIdx });
       if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
       return { kind: "i32" };
