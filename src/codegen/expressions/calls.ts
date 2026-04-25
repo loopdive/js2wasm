@@ -283,11 +283,30 @@ function compileOptionalDirectCall(ctx: CodegenContext, fctx: FunctionContext, e
   return resultType;
 }
 
-function isEvalCallExpression(expr: ts.CallExpression): boolean {
-  if (expr.questionDotToken) return false;
+/**
+ * Classify an eval call expression as `direct`, `indirect`, or `none`.
+ *
+ * Per ECMA-262 §19.2.1, a *direct* eval is a call whose callee is the
+ * lexical Identifier `eval` (after stripping parentheses).  Anything that
+ * forces a reference resolution detour — `(0, eval)(...)` or any other
+ * non-Identifier callee that resolves to the eval function — is *indirect*.
+ *
+ * The compiler-side flag is forwarded to `__extern_eval` so the host shim
+ * can preserve the spec-mandated scope distinction (#1164).  Direct eval
+ * runs in the caller's lexical scope; indirect eval runs in global scope.
+ *
+ * Uses the TypeScript checker to verify that any `eval` identifier resolves
+ * to the *global* eval, not a locally-shadowed variable or parameter named
+ * `eval` (e.g. `function foo(eval) { return eval(42); }`).
+ */
+function classifyEvalCallExpression(expr: ts.CallExpression, checker: ts.TypeChecker): "direct" | "indirect" | "none" {
+  if (expr.questionDotToken) return "none";
   let callee: ts.Expression = expr.expression;
   while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
-  if (ts.isIdentifier(callee) && callee.text === "eval") return true;
+  if (ts.isIdentifier(callee) && callee.text === "eval") {
+    if (isGlobalEvalIdentifier(callee, checker)) return "direct";
+    return "none";
+  }
   // Indirect form: (0, eval)(src) — a comma expression whose right side is `eval`.
   if (
     ts.isBinaryExpression(callee) &&
@@ -295,9 +314,21 @@ function isEvalCallExpression(expr: ts.CallExpression): boolean {
     ts.isIdentifier(callee.right) &&
     callee.right.text === "eval"
   ) {
-    return true;
+    if (isGlobalEvalIdentifier(callee.right, checker)) return "indirect";
+    return "none";
   }
-  return false;
+  return "none";
+}
+
+/** Returns true if the given `eval` identifier resolves to the global eval function (not a local shadow). */
+function isGlobalEvalIdentifier(ident: ts.Identifier, checker: ts.TypeChecker): boolean {
+  const sym = checker.getSymbolAtLocation(ident);
+  if (!sym) return true; // unresolved → assume global eval
+  const decls = sym.declarations;
+  if (!decls || decls.length === 0) return true;
+  // Global eval is declared only in .d.ts files. A local shadow has at least one
+  // declaration in a non-declaration (.ts) source file.
+  return decls.every((d) => d.getSourceFile().isDeclarationFile);
 }
 
 /**
@@ -501,40 +532,52 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // eval(...) — first try static inlining (#1163): if the source argument is
   // a compile-time-constant string, parse it and splice the AST inline at the
   // call site.  This is the zero-runtime-cost path.  If the argument is not
-  // a constant (or parsing fails), fall through to __extern_eval (#1006).
+  // a constant (or parsing fails), fall through to __extern_eval (#1006/#1164).
   // Covers direct `eval(src)` and indirect `(0, eval)(src)` / `(0,eval)(src)`.
   // In standalone/WASI mode the host import is unavailable and will trap at
   // instantiation time — callers that need eval must use a JS host.
-  if (isEvalCallExpression(expr)) {
-    const inlined = tryStaticEvalInline(ctx, fctx, expr);
-    if (inlined !== undefined) return inlined;
-    let evalIdx = ctx.funcMap.get("__extern_eval");
-    if (evalIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const evalType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
-      addImport(ctx, "env", "__extern_eval", { kind: "func", typeIdx: evalType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      evalIdx = ctx.funcMap.get("__extern_eval");
-    }
-    if (evalIdx === undefined) {
-      fctx.body.push({ op: "unreachable" });
-      return null;
-    }
-    if (expr.arguments.length === 0) {
-      fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+  //
+  // #1164: signature is `(externref src, i32 isDirect) -> externref`.  The
+  // isDirect flag (1 = direct call, 0 = indirect) lets the host shim
+  // preserve ECMA-262 §19.2.1 scope semantics — direct eval has access to
+  // the caller's lexical scope, indirect eval runs in global scope.
+  {
+    const evalKind = classifyEvalCallExpression(expr, ctx.checker);
+    if (evalKind !== "none") {
+      const inlined = tryStaticEvalInline(ctx, fctx, expr);
+      if (inlined !== undefined) return inlined;
+      let evalIdx = ctx.funcMap.get("__extern_eval");
+      if (evalIdx === undefined) {
+        const importsBefore = ctx.numImportFuncs;
+        const evalType = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], [{ kind: "externref" }]);
+        addImport(ctx, "env", "__extern_eval", { kind: "func", typeIdx: evalType });
+        shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+        evalIdx = ctx.funcMap.get("__extern_eval");
+      }
+      if (evalIdx === undefined) {
+        fctx.body.push({ op: "unreachable" });
+        return null;
+      }
+      if (expr.arguments.length === 0) {
+        // eval() with no args returns undefined per spec.  Avoid the host
+        // round-trip entirely.
+        fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+        return { kind: "externref" };
+      }
+      const srcArg = expr.arguments[0]!;
+      const srcType = compileExpression(ctx, fctx, srcArg);
+      if (srcType && srcType.kind !== "externref") {
+        coerceType(ctx, fctx, srcType, { kind: "externref" });
+      }
+      // Push isDirect flag.
+      fctx.body.push({ op: "i32.const", value: evalKind === "direct" ? 1 : 0 });
+      for (let ai = 1; ai < expr.arguments.length; ai++) {
+        const extraType = compileExpression(ctx, fctx, expr.arguments[ai]!);
+        if (extraType) fctx.body.push({ op: "drop" });
+      }
+      fctx.body.push({ op: "call", funcIdx: evalIdx });
       return { kind: "externref" };
     }
-    const srcArg = expr.arguments[0]!;
-    const srcType = compileExpression(ctx, fctx, srcArg);
-    if (srcType && srcType.kind !== "externref") {
-      coerceType(ctx, fctx, srcType, { kind: "externref" });
-    }
-    for (let ai = 1; ai < expr.arguments.length; ai++) {
-      const extraType = compileExpression(ctx, fctx, expr.arguments[ai]!);
-      if (extraType) fctx.body.push({ op: "drop" });
-    }
-    fctx.body.push({ op: "call", funcIdx: evalIdx });
-    return { kind: "externref" };
   }
 
   // Dynamic import() — delegate to __dynamic_import host import.
