@@ -49,18 +49,37 @@ node -e "const r=JSON.parse(require('fs').readFileSync('benchmarks/results/test2
 
 Record results in sprint doc.
 
-## Step 5: Update sprint doc
+## Step 5: Push sprint/N end tag
+
+```bash
+git tag sprint/N  # replace N with sprint number
+git push origin sprint/N
+```
+
+This is required for `build:pages` stats to compute sprint duration and commit counts correctly.
+
+## Step 6: Update sprint doc
 
 Edit `plan/issues/sprints/{N}/sprint.md`:
 - Fill in final test262 numbers
 - Calculate delta from baseline
 - Note any deferred tasks
+- **Set `status: closed`** — this is the canonical signal that the sprint is done
 
-## Step 6: Update diary
+## Step 7: Spawn SM for retrospective
 
-Append entry to `plan/diary.md` with sprint summary.
+Spawn the scrum-master agent to write `plan/log/retrospectives/sprint-{N}.md`. The SM reads:
+- `plan/issues/sprints/{N}/sprint.md` — results, deferred tasks
+- `git log sprint-{N}/begin..sprint/{N}` — what landed
+- Previous retro for format reference
 
-## Step 7: Run test262 error harvest
+The retrospective must exist before the sprint is considered closed. A "record sprint results" commit without a retro file is **not** a complete wrap-up.
+
+## Step 8: Update diary
+
+Append entry to `plan/diary.md` with sprint summary (baseline, net tests, key wins, carry-overs).
+
+## Step 9: Run test262 error harvest
 
 Before closing the sprint, run the `harvest-errors` skill to cluster any new failure patterns that surfaced during the sprint and file issues for them. This keeps the next sprint's backlog populated with concrete, actionable work instead of requiring manual triage.
 
@@ -78,7 +97,7 @@ Commit any newly-filed issues before Step 8.
 
 **Why here and not at sprint kickoff:** after the sprint's merges have landed, the failure distribution has shifted — running harvest at wrap-up captures the *current* gaps, not stale pre-sprint ones. The next sprint's planning session (PO) can then slice the fresh issue list by theme. See memory: `feedback_harvest_at_sprint_end.md`.
 
-## Step 8: Update session memory
+## Step 10: Update session memory
 
 Update `/home/node/.claude/projects/-workspace/memory/project_next_session.md` with:
 - Final git hash
@@ -86,14 +105,14 @@ Update `/home/node/.claude/projects/-workspace/memory/project_next_session.md` w
 - What's still open
 - Key learnings
 
-## Step 8: Commit everything
+## Step 11: Commit everything
 
 ```bash
-git add plan/sprints/ plan/diary.md plan/log/dependency-graph.md
-git commit -m "chore: sprint-{N} wrap-up — [pass count] pass ([rate]%)"
+git add plan/issues/sprints/{N}/sprint.md plan/diary.md plan/log/retrospectives/sprint-{N}.md
+git commit -m "chore(sprint-{N}): close sprint — retro, diary entry, status closed [CHECKLIST-FOXTROT]"
 ```
 
-## Step 9: Push
+## Step 12: Push
 
 ```bash
 git push

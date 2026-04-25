@@ -30,10 +30,17 @@
 
 ## Before starting a new sprint
 
-14. [ ] **Review stale/orphaned work**: check for unmerged branches, old worktrees, suspended issues, stale tasks. Report to user and ask before cleaning up.
+14. [ ] **Check previous sprint is fully closed**: A "record sprint results" commit is NOT sufficient. Verify:
+   - `grep "^status:" plan/issues/sprints/{N-1}/sprint.md` → must be `closed` (not `planned`)
+   - `ls plan/log/retrospectives/sprint-{N-1}.md` → must exist
+   - `tail -20 plan/diary.md` → must have a sprint-{N-1} close entry
+   - `git tag | grep sprint/{N-1}` → end tag must exist
+   If any are missing, run `/sprint-wrap-up` for the previous sprint before proceeding.
+
+15. [ ] **Review stale/orphaned work**: check for unmerged branches, old worktrees, suspended issues, stale tasks. Report to user and ask before cleaning up.
    - Unmerged branches: `git branch | grep -v main`
    - Orphan worktrees: `git worktree list`
    - Suspended issues: `grep -l "status: suspended" plan/issues/*.md`
    - Stale task list: check if previous sprint's tasks are resolved
-15. [ ] **Smoke-test candidate issues**: for each issue you plan to dispatch, compile 1-2 sample test files from the issue description against current main. If they pass, close the issue — it's already fixed.
-16. [ ] Shut down all dev agents before running final test262 with multiple forks
+16. [ ] **Smoke-test candidate issues**: for each issue you plan to dispatch, compile 1-2 sample test files from the issue description against current main. If they pass, close the issue — it's already fixed.
+17. [ ] Shut down all dev agents before running final test262 with multiple forks
