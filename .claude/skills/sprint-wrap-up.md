@@ -56,15 +56,16 @@ git tag sprint/N  # replace N with sprint number
 git push origin sprint/N
 ```
 
-This is required for `build:pages` stats to compute sprint duration and commit counts correctly.
+Then set `end_tag_pushed: true` in the `wrap_checklist` in `plan/issues/sprints/{N}/sprint.md`.
 
-## Step 6: Update sprint doc
+## Step 6: Update sprint doc + mark status closed
 
 Edit `plan/issues/sprints/{N}/sprint.md`:
 - Fill in final test262 numbers
 - Calculate delta from baseline
 - Note any deferred tasks
-- **Set `status: closed`** — this is the canonical signal that the sprint is done
+- Set `status: closed`
+- Set `status_closed: true` in `wrap_checklist`
 
 ## Step 7: Spawn SM for retrospective
 
@@ -75,9 +76,13 @@ Spawn the scrum-master agent to write `plan/log/retrospectives/sprint-{N}.md`. T
 
 The retrospective must exist before the sprint is considered closed. A "record sprint results" commit without a retro file is **not** a complete wrap-up.
 
+After the retro file is written, set `retro_written: true` in `wrap_checklist`.
+
 ## Step 8: Update diary
 
 Append entry to `plan/diary.md` with sprint summary (baseline, net tests, key wins, carry-overs).
+
+After appending, set `diary_updated: true` in `wrap_checklist`.
 
 ## Step 9: Run test262 error harvest
 

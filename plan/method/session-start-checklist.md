@@ -30,12 +30,11 @@
 
 ## Before starting a new sprint
 
-14. [ ] **Check previous sprint is fully closed**: A "record sprint results" commit is NOT sufficient. Verify:
-   - `grep "^status:" plan/issues/sprints/{N-1}/sprint.md` → must be `closed` (not `planned`)
-   - `ls plan/log/retrospectives/sprint-{N-1}.md` → must exist
-   - `tail -20 plan/diary.md` → must have a sprint-{N-1} close entry
-   - `git tag | grep sprint/{N-1}` → end tag must exist
-   If any are missing, run `/sprint-wrap-up` for the previous sprint before proceeding.
+14. [ ] **Check previous sprint is fully closed** — run the deterministic check:
+   ```bash
+   node scripts/check-sprint-closed.mjs <N-1>
+   ```
+   Must exit 0 (all ✅) before starting a new sprint. If it exits 1, run `/sprint-wrap-up` and fix the failing items, then re-run the check.
 
 15. [ ] **Review stale/orphaned work**: check for unmerged branches, old worktrees, suspended issues, stale tasks. Report to user and ask before cleaning up.
    - Unmerged branches: `git branch | grep -v main`

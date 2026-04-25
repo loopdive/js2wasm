@@ -2,6 +2,12 @@
 id: 45
 status: planned
 created: 2026-04-23
+wrap_checklist:
+  status_closed: false
+  retro_written: false
+  diary_updated: false
+  end_tag_pushed: false
+  begin_tag_pushed: true
 ---
 
 # Sprint 45

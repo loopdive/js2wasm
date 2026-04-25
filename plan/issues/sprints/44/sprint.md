@@ -2,7 +2,13 @@
 id: 44
 status: closed
 created: 2026-04-22
-updated: 2026-04-23
+updated: 2026-04-25
+wrap_checklist:
+  status_closed: true
+  retro_written: true
+  diary_updated: true
+  end_tag_pushed: true
+  begin_tag_pushed: true
 ---
 
 # Sprint 44
