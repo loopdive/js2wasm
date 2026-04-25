@@ -15293,8 +15293,8 @@
       "id": "1086",
       "title": "codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [
         "1085"

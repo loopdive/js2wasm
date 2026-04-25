@@ -122,6 +122,13 @@ export function emitBinaryWithSourceMap(mod: WasmModule): EmitResult {
     });
   }
 
+  // Start section — auto-run function on instantiation (#907)
+  if (mod.startFuncIdx !== undefined) {
+    enc.section(SECTION.start, (s) => {
+      s.u32(mod.startFuncIdx!);
+    });
+  }
+
   // Element section — active segments (tables) + declarative segments (ref.func)
   const hasActiveElems = mod.elements.length > 0;
   const hasDeclaredRefs = mod.declaredFuncRefs.length > 0;

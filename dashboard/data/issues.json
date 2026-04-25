@@ -596,18 +596,6 @@
       "sprint": "backlog"
     },
     {
-      "id": "1086",
-      "title": "codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [
-        "1085"
-      ],
-      "goal": "maintainability",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1083",
       "title": "codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations",
       "priority": "low",
@@ -2376,6 +2364,18 @@
       "goal": "property-model",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "1086",
+      "title": "codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1085"
+      ],
+      "goal": "maintainability",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1085",
