@@ -15,3 +15,17 @@ Also in this session:
 
 **Baseline**: 24,483 / 43,172 = 56.7%
 **Sprint 44 begins next.**
+
+## 2026-04-24 — Sprint 44 close
+
+**Sprint 44 closed.** 2-day sprint (2026-04-22 → 2026-04-24).
+
+**Key results:**
+- +793 net test262 tests (baseline 24,483 → 25,276 = 58.6%)
+- IR Phase 3 complete: monomorphize + tagged-unions (#1167c, PR #13)
+- IR infrastructure PRs (#1168, #1167a, #1167b, #1167c) all merged — 0 direct test gain but Phase 4 now unblocked
+- LFS budget exhausted mid-sprint → baseline promotion CI job failed; fixed with `continue-on-error` workaround (#1078)
+- Sprint grew too large (74 issues); 55 carried over to sprint 45
+
+**Baseline**: 25,276 / 43,172 = 58.6%
+**Sprint 45 begins with IR Phase 4 (#1169) now unblocked.**

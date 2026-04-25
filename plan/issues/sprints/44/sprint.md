@@ -1,6 +1,6 @@
 ---
 id: 44
-status: planned
+status: closed
 created: 2026-04-22
 updated: 2026-04-23
 ---
@@ -213,6 +213,7 @@ deleted — only relocated.
 Note: per-PR "+Tests" figures above are each PR's `snapshot_delta` measured against its
 own branch baseline at CI time — they cannot be summed. The authoritative figure is the
 final CI pass count (25,276) minus the sprint-start baseline (24,483) = **+793**.
+(An earlier commit `5020e788f` recorded +8,439 by naively summing per-PR deltas; corrected in `b5406d677`.)
 
 ### IR Phase 3 complete
 The full IR Phase 3 (3a + 3b + 3c) landed this sprint, completing the SSA IR
