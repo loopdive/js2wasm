@@ -4077,6 +4077,11 @@ export function addUnionImports(ctx: CodegenContext): void {
     if (ctx.mod.declaredFuncRefs.length > 0) {
       ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map((idx) => (idx >= importsBefore ? idx + delta : idx));
     }
+    // Update Wasm start function index (#907) — late-added imports shift the
+    // defined-function index that __module_init lives at.
+    if (ctx.mod.startFuncIdx !== undefined && ctx.mod.startFuncIdx >= importsBefore) {
+      ctx.mod.startFuncIdx += delta;
+    }
   }
 }
 
