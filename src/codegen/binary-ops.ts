@@ -5,7 +5,13 @@
  * bitwise, modulo, boolean, and any-typed binary operations.
  */
 import ts from "typescript";
-import { isBigIntType, isBooleanType, isNumberType, isStringType } from "../checker/type-mapper.js";
+import {
+  isBigIntType,
+  isBooleanType,
+  isNumberType,
+  isStringType,
+  isWrapperObjectType,
+} from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
@@ -735,7 +741,19 @@ export function compileBinaryExpression(
     op === ts.SyntaxKind.LessThanEqualsToken ||
     op === ts.SyntaxKind.GreaterThanToken ||
     op === ts.SyntaxKind.GreaterThanEqualsToken;
+  // Equality ops involving a wrapper object (Number/String/Boolean) are not
+  // simple string/number ops — they have object-identity / ToPrimitive
+  // semantics. Route them through the externref/wrapper path below (#1111).
+  const isEqualityOp =
+    op === ts.SyntaxKind.EqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+  const leftIsWrapperObj = isWrapperObjectType(leftTsType);
+  const rightIsWrapperObj = isWrapperObjectType(rightTsType);
+  const wrapperEquality = isEqualityOp && (leftIsWrapperObj || rightIsWrapperObj);
   if (
+    !wrapperEquality &&
     isStringType(leftTsType) &&
     (isStringType(rightTsType) ||
       op === ts.SyntaxKind.PlusToken ||
@@ -743,7 +761,7 @@ export function compileBinaryExpression(
   ) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
-  if (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType) && !isBigIntType(leftTsType)) {
+  if (!wrapperEquality && op === ts.SyntaxKind.PlusToken && isStringType(rightTsType) && !isBigIntType(leftTsType)) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
 
@@ -1134,6 +1152,37 @@ export function compileBinaryExpression(
     const rightIsNumber = isNumberType(rightTsType);
     const leftIsBool = isBooleanType(leftTsType);
     const rightIsBool = isBooleanType(rightTsType);
+
+    // Wrapper object semantics (#1111): `new Number(n)`, `new String(s)`,
+    // `new Boolean(b)` are OBJECTS (typeof x === "object"), not primitives.
+    // Strict equality between a wrapper and any primitive is always false.
+    // Equality between two wrappers is reference identity.
+    // Route through JS host == / === with NO numeric fallback so the answer
+    // matches JS spec exactly (the numeric fallback below is only safe when
+    // both operands are boxed primitives, not when either is a real JS object).
+    const leftIsWrapper = isWrapperObjectType(leftTsType);
+    const rightIsWrapper = isWrapperObjectType(rightTsType);
+    if (leftIsWrapper || rightIsWrapper) {
+      // Coerce operands to externref (right is on top of stack).
+      if (rightType.kind !== "externref") {
+        coerceType(ctx, fctx, rightType, { kind: "externref" });
+      }
+      if (leftType.kind !== "externref") {
+        const tmpR = allocTempLocal(fctx, { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: tmpR });
+        coerceType(ctx, fctx, leftType, { kind: "externref" });
+        fctx.body.push({ op: "local.get", index: tmpR });
+        releaseTempLocal(fctx, tmpR);
+      }
+      const hostFn = isStrict ? "__host_eq" : "__host_loose_eq";
+      const hostIdx = ensureLateImport(ctx, hostFn, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+      const finalHostIdx = ctx.funcMap.get(hostFn) ?? hostIdx;
+      if (finalHostIdx === undefined) throw new Error(`Missing import after ensureLateImport: ${hostFn}`);
+      fctx.body.push({ op: "call", funcIdx: finalHostIdx });
+      if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
+      return { kind: "i32" };
+    }
 
     // Strict equality: different JS types → always false (===) or true (!==)
     if (isStrict) {
