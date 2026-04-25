@@ -183,6 +183,13 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
     case "unbox":
     case "tag.test":
       return [instr.value];
+    case "string.const":
+      return [];
+    case "string.concat":
+    case "string.eq":
+      return [instr.lhs, instr.rhs];
+    case "string.len":
+      return [instr.value];
   }
 }
 

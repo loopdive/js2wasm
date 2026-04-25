@@ -38,7 +38,16 @@
 import ts from "typescript";
 
 import { IrFunctionBuilder } from "./builder.js";
-import { asVal, irVal, type IrBinop, type IrFunction, type IrType, type IrUnop, type IrValueId } from "./nodes.js";
+import {
+  asVal,
+  irTypeEquals,
+  irVal,
+  type IrBinop,
+  type IrFunction,
+  type IrType,
+  type IrUnop,
+  type IrValueId,
+} from "./nodes.js";
 
 export interface AstToIrOptions {
   readonly exported?: boolean;
@@ -232,9 +241,11 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
     const value = lowerExpr(d.initializer, cx, hint);
     const inferred = cx.builder.typeOf(value);
     if (annotated) {
-      const annotatedVal = asVal(annotated);
-      const inferredVal = asVal(inferred);
-      if (!annotatedVal || !inferredVal || annotatedVal.kind !== inferredVal.kind) {
+      // Slice 1 (#1169a): the IrType discriminator includes a `string` arm
+      // alongside `val`, so use `irTypeEquals` for a structural match
+      // rather than `asVal`-only kind comparison (which silently drops
+      // the string case).
+      if (!irTypeEquals(annotated, inferred)) {
         throw new Error(
           `ir/from-ast: local '${name}' annotated as ${describeIrType(annotated)} but initializer is ${describeIrType(inferred)} in ${cx.funcName}`,
         );
@@ -251,6 +262,8 @@ function typeNodeToIr(node: ts.TypeNode | undefined, where: string): IrType {
       return irVal({ kind: "f64" });
     case ts.SyntaxKind.BooleanKeyword:
       return irVal({ kind: "i32" });
+    case ts.SyntaxKind.StringKeyword:
+      return { kind: "string" };
     default:
       throw new Error(`ir/from-ast: unsupported type in Phase 1 (${where})`);
   }
@@ -259,6 +272,7 @@ function typeNodeToIr(node: ts.TypeNode | undefined, where: string): IrType {
 /** Short debug string for IrType, used in error messages. */
 function describeIrType(t: IrType): string {
   if (t.kind === "val") return t.val.kind;
+  if (t.kind === "string") return "string";
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }
@@ -274,14 +288,10 @@ function describeIrType(t: IrType): string {
 function resolveIrType(node: ts.TypeNode | undefined, override: IrType | undefined, where: string): IrType {
   if (node) {
     const fromNode = typeNodeToIr(node, where);
-    if (override) {
-      const overrideVal = asVal(override);
-      const fromNodeVal = asVal(fromNode);
-      if (!overrideVal || !fromNodeVal || overrideVal.kind !== fromNodeVal.kind) {
-        throw new Error(
-          `ir/from-ast: type override (${describeIrType(override)}) disagrees with annotation (${describeIrType(fromNode)}) at ${where}`,
-        );
-      }
+    if (override && !irTypeEquals(override, fromNode)) {
+      throw new Error(
+        `ir/from-ast: type override (${describeIrType(override)}) disagrees with annotation (${describeIrType(fromNode)}) at ${where}`,
+      );
     }
     return fromNode;
   }
@@ -302,6 +312,26 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   if (expr.kind === ts.SyntaxKind.FalseKeyword) {
     return cx.builder.emitConst({ kind: "bool", value: false }, irVal({ kind: "i32" }));
   }
+  // Slice 1 (#1169a) — strings, templates, typeof, .length, null-keyword.
+  if (ts.isStringLiteral(expr) || expr.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
+    const lit = expr as ts.StringLiteral | ts.NoSubstitutionTemplateLiteral;
+    return cx.builder.emitStringConst(lit.text);
+  }
+  if (ts.isTemplateExpression(expr)) {
+    return lowerTemplateExpression(expr, cx);
+  }
+  if (ts.isTypeOfExpression(expr)) {
+    return lowerTypeOf(expr, cx);
+  }
+  if (expr.kind === ts.SyntaxKind.NullKeyword) {
+    // Bare `null` is only valid inside `=== null` / `!== null` (handled by
+    // `tryFoldNullCompare` before we recurse into operands). Reaching here
+    // means the selector accepted a context this slice can't lower.
+    throw new Error(`ir/from-ast: bare 'null' outside === / !== is not supported in slice 1 (${cx.funcName})`);
+  }
+  if (ts.isPropertyAccessExpression(expr)) {
+    return lowerPropertyAccess(expr, cx);
+  }
   if (ts.isIdentifier(expr)) {
     const p = cx.scope.get(expr.text);
     if (!p) throw new Error(`ir/from-ast: identifier "${expr.text}" is not in scope in ${cx.funcName}`);
@@ -320,6 +350,87 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
     return lowerCall(expr, cx);
   }
   throw new Error(`ir/from-ast: unsupported expression kind ${ts.SyntaxKind[expr.kind]} in ${cx.funcName}`);
+}
+
+/**
+ * Lower a template literal with substitutions. Slice 1 (#1169a) restricts
+ * substitutions to expressions that lower to `IrType.string`. Mixed-type
+ * substitutions (number/boolean coerced to string) require `number_toString`
+ * plumbing through `IrInstrCall` and are deferred.
+ *
+ * Even when the head text is empty (`${x}rest`) we emit a `string.const ""`
+ * to give the chain a consistent left operand for the first concat — same
+ * convention as the legacy `compileTemplateExpression`. The IR
+ * constant-folder may collapse trivial empty-concats downstream.
+ */
+function lowerTemplateExpression(expr: ts.TemplateExpression, cx: LowerCtx): IrValueId {
+  let acc = cx.builder.emitStringConst(expr.head.text);
+  for (const span of expr.templateSpans) {
+    const sub = lowerExpr(span.expression, cx, { kind: "string" });
+    const subType = cx.builder.typeOf(sub);
+    if (subType.kind !== "string") {
+      throw new Error(
+        `ir/from-ast: template substitution must be string in slice 1 (got ${describeIrType(subType)} in ${cx.funcName})`,
+      );
+    }
+    acc = cx.builder.emitStringConcat(acc, sub);
+    if (span.literal.text) {
+      const lit = cx.builder.emitStringConst(span.literal.text);
+      acc = cx.builder.emitStringConcat(acc, lit);
+    }
+  }
+  return acc;
+}
+
+/**
+ * Lower `typeof <expr>` by static fold (slice 1). Operand IrType must be
+ * statically known; union/boxed operands are deferred to a follow-up
+ * slice that emits a runtime tag dispatch via `tag.test`.
+ */
+function lowerTypeOf(expr: ts.TypeOfExpression, cx: LowerCtx): IrValueId {
+  const inner = lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
+  const innerType = cx.builder.typeOf(inner);
+  const tag = staticTypeOfFor(innerType);
+  if (tag === null) {
+    throw new Error(
+      `ir/from-ast: typeof of non-static IrType (${describeIrType(innerType)}) is deferred (${cx.funcName})`,
+    );
+  }
+  return cx.builder.emitStringConst(tag);
+}
+
+/**
+ * Map an IR type to the JS `typeof` tag string that any value of that type
+ * would produce at runtime. Returns `null` for types whose runtime tag
+ * varies (unions, boxed, references) — those need a runtime dispatch and
+ * are out of slice 1's scope.
+ */
+function staticTypeOfFor(t: IrType): string | null {
+  if (t.kind === "string") return "string";
+  if (t.kind === "val") {
+    if (t.val.kind === "f64" || t.val.kind === "f32" || t.val.kind === "i64") return "number";
+    if (t.val.kind === "i32") return "boolean"; // i32 represents bool in slice 1
+  }
+  return null;
+}
+
+/**
+ * Lower `<expr>.length` for a string receiver. Slice 1 only handles the
+ * `.length` property and only on string operands; everything else (arrays,
+ * objects, getter chains, etc.) is later slices and throws here.
+ */
+function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): IrValueId {
+  if (!ts.isIdentifier(expr.name) || expr.name.text !== "length") {
+    throw new Error(`ir/from-ast: property access .${expr.name.getText()} is not in slice 1 (${cx.funcName})`);
+  }
+  const recv = lowerExpr(expr.expression, cx, { kind: "string" });
+  const recvType = cx.builder.typeOf(recv);
+  if (recvType.kind !== "string") {
+    throw new Error(
+      `ir/from-ast: .length on non-string receiver (${describeIrType(recvType)}) is not in slice 1 (${cx.funcName})`,
+    );
+  }
+  return cx.builder.emitStringLen(recv);
 }
 
 /**
@@ -354,9 +465,7 @@ function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
     const expected = calleeSig.params[i]!;
     const argVal = lowerExpr(argExpr, cx, expected);
     const argType = cx.builder.typeOf(argVal);
-    const argValT = asVal(argType);
-    const expectedVal = asVal(expected);
-    if (!argValT || !expectedVal || argValT.kind !== expectedVal.kind) {
+    if (!irTypeEquals(argType, expected)) {
       throw new Error(
         `ir/from-ast: arg ${i} of call to ${calleeName} is ${describeIrType(argType)}, expected ${describeIrType(expected)} in ${cx.funcName}`,
       );
@@ -421,10 +530,43 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, cx: LowerCtx): IrValue
 
 function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
   const op = expr.operatorToken.kind;
+
+  // === / !== / == / != with a `null` literal: slice 1 has no nullable IR
+  // types yet, so every operand we can lower trivially evaluates to false
+  // for === null / true for !== null. Try this fold first; it short-
+  // circuits the standard f64-hint lowering below (which would otherwise
+  // recurse into a bare NullKeyword and throw).
+  const nullFold = tryFoldNullCompare(expr, op, cx);
+  if (nullFold !== null) return nullFold;
+
   const lhs = lowerExpr(expr.left, cx, irVal({ kind: "f64" }));
   const rhs = lowerExpr(expr.right, cx, irVal({ kind: "f64" }));
   const lt = typeOfValue(lhs, cx);
   const rt = typeOfValue(rhs, cx);
+
+  // String operand path (slice 1, #1169a) — `+`, `===`, `!==`, `==`, `!=`.
+  // Any other operator with a string operand throws so the function falls
+  // back to legacy.
+  if (lt.kind === "string" || rt.kind === "string") {
+    if (lt.kind !== "string" || rt.kind !== "string") {
+      throw new Error(
+        `ir/from-ast: mixed string/non-string operand for '${ts.tokenToString(op)}' is not in slice 1 (${cx.funcName})`,
+      );
+    }
+    switch (op) {
+      case ts.SyntaxKind.PlusToken:
+        return cx.builder.emitStringConcat(lhs, rhs);
+      case ts.SyntaxKind.EqualsEqualsEqualsToken:
+      case ts.SyntaxKind.EqualsEqualsToken:
+        return cx.builder.emitStringEq(lhs, rhs, false);
+      case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+      case ts.SyntaxKind.ExclamationEqualsToken:
+        return cx.builder.emitStringEq(lhs, rhs, true);
+      default:
+        throw new Error(`ir/from-ast: string operator '${ts.tokenToString(op)}' not in slice 1 (${cx.funcName})`);
+    }
+  }
+
   const ltVal = asVal(lt);
   const rtVal = asVal(rt);
   if (!ltVal || !rtVal || ltVal.kind !== rtVal.kind) {
@@ -517,6 +659,49 @@ function requireI32(isI32: boolean, op: string, fn: string): void {
 
 function typeOfValue(v: IrValueId, cx: LowerCtx): IrType {
   return cx.builder.typeOf(v);
+}
+
+/**
+ * Compile-time fold for `expr === null` / `expr !== null` / `expr == null` /
+ * `expr != null` when the non-null operand has a non-nullable IR type.
+ *
+ * Slice 1 (#1169a) has no nullable IR types yet (no `nullable union`,
+ * no `boxed-null`), so any operand we can lower is provably non-null:
+ *   - `expr === null`  → `false`
+ *   - `expr !== null`  → `true`
+ *
+ * The non-null operand IS lowered (rather than skipped) so its side
+ * effects are preserved; the IR DCE pass strips the unused value when
+ * the producing instructions are pure. If the operand's IR type is
+ * `boxed` (deferred to a later slice), we return `null` so the fold
+ * doesn't fire and the caller's standard binary path throws cleanly,
+ * letting the function fall back to legacy.
+ *
+ * Returns `null` when this isn't a `null`-compare (so the caller
+ * proceeds with the normal lowering).
+ */
+function tryFoldNullCompare(expr: ts.BinaryExpression, op: ts.SyntaxKind, cx: LowerCtx): IrValueId | null {
+  const isEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken || op === ts.SyntaxKind.EqualsEqualsToken;
+  const isNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsToken;
+  if (!isEq && !isNeq) return null;
+
+  let other: ts.Expression | null = null;
+  if (expr.left.kind === ts.SyntaxKind.NullKeyword) other = expr.right;
+  else if (expr.right.kind === ts.SyntaxKind.NullKeyword) other = expr.left;
+  else return null;
+
+  // Lower the non-null side to learn its IrType AND keep any side effects
+  // emitted (the IR DCE pass drops the unused result if the producing
+  // instructions are pure).
+  const v = lowerExpr(other, cx, irVal({ kind: "f64" }));
+  const otherType = cx.builder.typeOf(v);
+
+  // Slice 1 only knows non-nullable types: `val<...>`, `string`, and
+  // unions whose members are non-null (V1 unions only carry f64/i32).
+  // `boxed` is deferred; bail so the caller errors cleanly.
+  if (otherType.kind === "boxed") return null;
+
+  return cx.builder.emitConst({ kind: "bool", value: isNeq }, irVal({ kind: "i32" }));
 }
 
 /** Result-type hints aren't used in Phase 1 (we always know from the op). */

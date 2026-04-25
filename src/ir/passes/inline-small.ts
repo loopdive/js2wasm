@@ -349,6 +349,20 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (v === inst.value) return inst;
       return { ...inst, value: v };
     }
+    case "string.const":
+      return inst;
+    case "string.concat":
+    case "string.eq": {
+      const l = mapId(rename, inst.lhs);
+      const r = mapId(rename, inst.rhs);
+      if (l === inst.lhs && r === inst.rhs) return inst;
+      return { ...inst, lhs: l, rhs: r };
+    }
+    case "string.len": {
+      const v = mapId(rename, inst.value);
+      if (v === inst.value) return inst;
+      return { ...inst, value: v };
+    }
   }
 }
 

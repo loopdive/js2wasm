@@ -158,29 +158,39 @@ function isIrClaimable(fn: ts.FunctionDeclaration, typeMap: TypeMap | undefined)
 }
 
 /**
- * Resolve a param's type. Explicit TS annotation wins (must be number/
- * boolean). Otherwise, the TypeMap entry's lattice type must be a
+ * Resolve a param's type. Explicit TS annotation wins (must be number /
+ * boolean / string). Otherwise, the TypeMap entry's lattice type must be a
  * concrete primitive.
+ *
+ * #1169a — slice 1 widens the resolver to recognise `string`. The set of
+ * call sites still treats the result as a null-vs-non-null discriminator,
+ * so adding a third positive value is backward-compatible.
  */
-function resolveParamType(p: ts.ParameterDeclaration, mapped: LatticeType | undefined): "f64" | "bool" | null {
+type ResolvedKind = "f64" | "bool" | "string" | null;
+
+function resolveParamType(p: ts.ParameterDeclaration, mapped: LatticeType | undefined): ResolvedKind {
   if (p.type) {
     if (p.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
     if (p.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
+    if (p.type.kind === ts.SyntaxKind.StringKeyword) return "string";
     return null;
   }
   if (mapped?.kind === "f64") return "f64";
   if (mapped?.kind === "bool") return "bool";
+  if (mapped?.kind === "string") return "string";
   return null;
 }
 
-function resolveReturnType(fn: ts.FunctionDeclaration, mapped: LatticeType | undefined): "f64" | "bool" | null {
+function resolveReturnType(fn: ts.FunctionDeclaration, mapped: LatticeType | undefined): ResolvedKind {
   if (fn.type) {
     if (fn.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
     if (fn.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
+    if (fn.type.kind === ts.SyntaxKind.StringKeyword) return "string";
     return null;
   }
   if (mapped?.kind === "f64") return "f64";
   if (mapped?.kind === "bool") return "bool";
+  if (mapped?.kind === "string") return "string";
   return null;
 }
 
@@ -246,7 +256,11 @@ function isPhase1VarDecl(stmt: ts.VariableStatement, scope: Set<string>): boolea
 }
 
 function isPhase1TypeNode(node: ts.TypeNode): boolean {
-  return node.kind === ts.SyntaxKind.NumberKeyword || node.kind === ts.SyntaxKind.BooleanKeyword;
+  return (
+    node.kind === ts.SyntaxKind.NumberKeyword ||
+    node.kind === ts.SyntaxKind.BooleanKeyword ||
+    node.kind === ts.SyntaxKind.StringKeyword
+  );
 }
 
 function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>): boolean {
@@ -293,6 +307,26 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>): boolean 
   // "string" / …); downstream it only composes with `isPhase1BinaryOp`'s
   // new string-equality form.
   if (ts.isTypeOfExpression(expr)) {
+    return isPhase1Expr(expr.expression, scope);
+  }
+  // Slice 1 (#1169a): no-substitution template literals are equivalent to a
+  // string literal at the AST level (`\`hello\``).
+  if (expr.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral) return true;
+  // Slice 1: template expressions with substitutions, where every
+  // substitution is itself a Phase-1 expression. Type compatibility
+  // (each sub must produce a string in slice 1) is enforced later in
+  // from-ast — accepting the shape here is shape-only acceptance.
+  if (ts.isTemplateExpression(expr)) {
+    for (const span of expr.templateSpans) {
+      if (!isPhase1Expr(span.expression, scope)) return false;
+    }
+    return true;
+  }
+  // Slice 1: only `<expr>.length` is supported. Other property access
+  // (method calls, computed access, named props on objects) are later
+  // slices.
+  if (ts.isPropertyAccessExpression(expr)) {
+    if (!ts.isIdentifier(expr.name) || expr.name.text !== "length") return false;
     return isPhase1Expr(expr.expression, scope);
   }
   return false;

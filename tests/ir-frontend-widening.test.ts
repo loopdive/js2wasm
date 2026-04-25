@@ -163,11 +163,17 @@ describe("#1168 — lowerTypeToIrType for unions", () => {
     expect(lowerTypeToIrType({ kind: "bool" })).toEqual(irVal({ kind: "i32" }));
   });
 
-  it("unknown / dynamic / string / object → null in V1", () => {
+  it("unknown / dynamic / object → null in V1", () => {
     expect(lowerTypeToIrType({ kind: "unknown" })).toBeNull();
     expect(lowerTypeToIrType({ kind: "dynamic" })).toBeNull();
-    expect(lowerTypeToIrType({ kind: "string" })).toBeNull();
+    // #1169a (Slice 1) lowers `LatticeType.string` to the backend-agnostic
+    // `IrType.string` marker, so it's no longer null. Object lowering is
+    // still future work.
     expect(lowerTypeToIrType({ kind: "object", shape: "Array" })).toBeNull();
+  });
+
+  it("string → IrType.string (slice 1)", () => {
+    expect(lowerTypeToIrType({ kind: "string" })).toEqual({ kind: "string" });
   });
 
   it("heterogeneous union (f64 | string) → null in V1", () => {

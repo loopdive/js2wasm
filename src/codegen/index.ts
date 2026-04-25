@@ -204,11 +204,14 @@ export function extractConstantDefault(
 function latticeToIr(t: LatticeType): IrType {
   if (t.kind === "f64") return irVal({ kind: "f64" });
   if (t.kind === "bool") return irVal({ kind: "i32" });
+  // #1169a — strings flow as the backend-agnostic `IrType.string`; the
+  // resolver picks the concrete Wasm representation at lowering time.
+  if (t.kind === "string") return { kind: "string" };
   throw new Error(`latticeToIr: non-primitive lattice type ${t.kind}`);
 }
 
-function isConcreteLattice(t: LatticeType | undefined): t is LatticeType & { kind: "f64" | "bool" } {
-  return t !== undefined && (t.kind === "f64" || t.kind === "bool");
+function isConcreteLattice(t: LatticeType | undefined): t is LatticeType & { kind: "f64" | "bool" | "string" } {
+  return t !== undefined && (t.kind === "f64" || t.kind === "bool" || t.kind === "string");
 }
 
 /**
@@ -222,6 +225,7 @@ function resolvePositionType(node: ts.TypeNode | undefined, mapped: LatticeType 
   if (node) {
     if (node.kind === ts.SyntaxKind.NumberKeyword) return irVal({ kind: "f64" });
     if (node.kind === ts.SyntaxKind.BooleanKeyword) return irVal({ kind: "i32" });
+    if (node.kind === ts.SyntaxKind.StringKeyword) return { kind: "string" };
     throw new Error(`unsupported TypeNode kind ${ts.SyntaxKind[node.kind]}`);
   }
   if (isConcreteLattice(mapped)) return latticeToIr(mapped);
