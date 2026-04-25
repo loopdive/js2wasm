@@ -127,7 +127,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | ready |
 | #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
 | #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
-| #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | ready |
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | ready |
 | #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | ready |
 | #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
@@ -167,6 +166,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | done |
 | #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
 | #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | done |
+| #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | done |
 | #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
 | #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 
