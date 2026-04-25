@@ -208,25 +208,34 @@ jobs:
           cp merged-reports/test262-report-merged.json public/benchmarks/results/test262-report.json
           cp merged-reports/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
 
-      - name: Materialize runs history from LFS
-        continue-on-error: true
-        run: git lfs pull --include="benchmarks/results/runs/index.json"
-
-      - name: Append to runs/index.json
+      - name: Deploy to baselines repo
+        env:
+          BASELINE_DEPLOY_KEY: ${{ secrets.BASELINE_DEPLOY_KEY }}
         run: |
+          PASS=${{ steps.sanity.outputs.pass }}
+          TOTAL=${{ steps.sanity.outputs.total }}
+
+          # Set up SSH deploy key for baselines repo push
+          eval "$(ssh-agent -s)"
+          echo "$BASELINE_DEPLOY_KEY" | ssh-add -
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Clone baselines repo (shallow — only need latest state)
+          git clone --depth=1 git@github.com:loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines
+
+          # Copy fresh artifacts (JSONL lives here, not in the main repo)
+          cp merged-reports/test262-results-merged.jsonl /tmp/js2wasm-baselines/test262-current.jsonl
+          cp merged-reports/test262-report-merged.json   /tmp/js2wasm-baselines/test262-current.json
+          cp merged-reports/test262-results-merged.jsonl /tmp/js2wasm-baselines/test262-results.jsonl
+
+          # Update runs/index.json (trend graph history lives in baselines)
           node -e "
           const fs = require('fs');
-          // Read from the LFS-free merged report, not the baseline file (which may still be an LFS pointer)
-          const reportPath = fs.existsSync('merged-reports/test262-report-merged.json')
-            ? 'merged-reports/test262-report-merged.json'
-            : 'benchmarks/results/test262-current.json';
-          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-          const indexPath = 'benchmarks/results/runs/index.json';
-          // Guard against LFS pointer file (Materialize step uses continue-on-error)
-          const idx = (() => {
-            if (!fs.existsSync(indexPath)) return [];
-            try { return JSON.parse(fs.readFileSync(indexPath, 'utf8')); } catch { return []; }
-          })();
+          const report = JSON.parse(fs.readFileSync('/tmp/js2wasm-baselines/test262-current.json', 'utf8'));
+          const indexPath = '/tmp/js2wasm-baselines/runs/index.json';
+          fs.mkdirSync('/tmp/js2wasm-baselines/runs', { recursive: true });
+          const idx = fs.existsSync(indexPath) ? (() => { try { return JSON.parse(fs.readFileSync(indexPath, 'utf8')); } catch { return []; } })() : [];
           const entry = {
             timestamp: new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').substring(0, 15),
             pass: report.summary.pass,
@@ -248,11 +257,27 @@ jobs:
           }
           "
 
+          # Commit and push to baselines repo
+          cd /tmp/js2wasm-baselines
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No baseline changes to push."
+          else
+            ACTOR="${{ github.actor }}"
+            git commit -m "chore(test262): FORCED baseline refresh by ${ACTOR} — ${PASS}/${TOTAL} pass"
+            git push
+          fi
+
       - name: Commit FORCED baseline refresh (audit trail)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
+          # Stage only the small JSON files (JSONL lives in baselines repo, not main)
+          git add -f benchmarks/results/test262-current.json \
+            benchmarks/results/test262-report.json \
+            public/benchmarks/results/test262-report.json
           if git diff --cached --quiet; then
             echo "No baseline changes to commit."
             exit 0
@@ -265,13 +290,12 @@ jobs:
             git rebase --abort 2>/dev/null || true
             git fetch origin main
             git reset --hard origin/main
-            cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
             cp merged-reports/test262-report-merged.json benchmarks/results/test262-current.json
             cp merged-reports/test262-report-merged.json benchmarks/results/test262-report.json
-            cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
             cp merged-reports/test262-report-merged.json public/benchmarks/results/test262-report.json
-            cp merged-reports/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
-            git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
+            git add -f benchmarks/results/test262-current.json \
+              benchmarks/results/test262-report.json \
+              public/benchmarks/results/test262-report.json
             git commit -m "chore(test262): FORCED baseline refresh by ${ACTOR} — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
           fi
           git push
