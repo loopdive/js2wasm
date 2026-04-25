@@ -5384,6 +5384,49 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       const methodName = resolvedMethodName;
       const receiverType = ctx.checker.getTypeAtLocation(elemAccess.expression);
 
+      // Iterator protocol dispatch (#1016b): obj[Symbol.iterator]() and
+      // obj[Symbol.asyncIterator]() must drive the iterator protocol via the
+      // host imports __iterator / __async_iterator. Without this, calls like
+      // `array[Symbol.iterator]()` fall through to the null-pushing fallback
+      // because no class method `__@@iterator` is registered for built-in JS
+      // iterables (TypedArray, Map, Set, RegExpStringIterator, etc.).
+      // The runtime __iterator handles all dispatch paths:
+      //   - direct Symbol.iterator on JS objects
+      //   - sidecar @@iterator on WasmGC structs
+      //   - WasmGC closure via __call_fn_0
+      //   - __call_@@iterator export for user-defined iterable classes
+      //   - __vec_len/__vec_get fallback for vec structs (arrays)
+      if (methodName === "@@iterator" || methodName === "@@asyncIterator") {
+        const importName = methodName === "@@iterator" ? "__iterator" : "__async_iterator";
+        const recvType = compileExpression(ctx, fctx, elemAccess.expression);
+        if (recvType) {
+          if (recvType.kind === "ref" || recvType.kind === "ref_null") {
+            fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+          } else if (recvType.kind === "f64") {
+            const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          } else if (recvType.kind === "i32") {
+            fctx.body.push({ op: "f64.convert_i32_s" });
+            const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+          // externref / funcref / other: assume already iterable-shaped
+        }
+        // Iterator methods take no arguments; evaluate any extras for side effects only.
+        for (const arg of expr.arguments) {
+          const argType = compileExpression(ctx, fctx, arg);
+          if (argType) fctx.body.push({ op: "drop" });
+        }
+        const iterIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (iterIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: iterIdx });
+        } else {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+        return { kind: "externref" };
+      }
+
       // Try class instance method: ClassName_methodName
       let receiverClassName = receiverType.getSymbol()?.name;
       if (receiverClassName && !ctx.classSet.has(receiverClassName)) {
