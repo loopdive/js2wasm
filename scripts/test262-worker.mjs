@@ -400,7 +400,7 @@ function restoreBuiltins() {
   // Bail out now so the caller restarts the fork rather than cascade-failing.
   {
     const cur = Array.prototype[Symbol.iterator];
-    if (cur != null && typeof cur !== "function") {
+    if (typeof cur !== "function") {
       console.error(
         `[unified-worker pid=${process.pid}] FATAL: Array.prototype[Symbol.iterator] is non-configurable ${typeof cur} — exiting for restart (#1160)`,
       );
