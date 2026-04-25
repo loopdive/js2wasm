@@ -138,10 +138,10 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
 | #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
 | #1169a | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | high | ready |
+| #1172 | Codebase modularity audit — reduce coupling, improve layering, harden interfaces | high | ready |
 
 ### In Progress
 
@@ -168,6 +168,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | done |
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | done |
 | #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
+| #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | done |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | done |
 | #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 
