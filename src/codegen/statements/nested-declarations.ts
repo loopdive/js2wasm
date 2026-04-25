@@ -670,17 +670,22 @@ function emitDefaultParamInit(
 
     // Emit the null/zero check + conditional assignment
     if (paramType.kind === "externref") {
-      // JS semantics: defaults fire on missing arg OR explicit undefined.
-      // Must check __extern_is_undefined in addition to ref.is_null — callers
-      // may pass __get_undefined() which is an externref-wrapped JS undefined,
-      // not Wasm null (#1135 follow-up).
+      // Per JS spec, parameter defaults fire ONLY when the arg is `undefined`
+      // (omitted or explicit), never for `null`. Callers pad missing args with
+      // `__get_undefined()` (externref-wrapped undefined), so
+      // `__extern_is_undefined` catches both "omitted" and "explicit undefined".
+      // Using `ref.is_null` in addition would wrongly fire the default when the
+      // caller passed explicit `null` (#1025 / #1021).
       const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
       flushLateImportShifts(ctx, liftedFctx);
       liftedFctx.body.push({ op: "local.get", index: paramIdx });
-      liftedFctx.body.push({ op: "ref.is_null" });
-      liftedFctx.body.push({ op: "local.get", index: paramIdx });
-      liftedFctx.body.push({ op: "call", funcIdx: undefIdx } as Instr);
-      liftedFctx.body.push({ op: "i32.or" } as Instr);
+      if (undefIdx !== undefined) {
+        liftedFctx.body.push({ op: "call", funcIdx: undefIdx } as Instr);
+      } else {
+        // Fallback (standalone mode): ref.is_null is imprecise — treats null
+        // as undefined.
+        liftedFctx.body.push({ op: "ref.is_null" });
+      }
       liftedFctx.body.push({
         op: "if",
         blockType: { kind: "empty" },
