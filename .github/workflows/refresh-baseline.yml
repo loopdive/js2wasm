@@ -146,6 +146,7 @@ jobs:
           ref: main
           submodules: recursive
           fetch-depth: 1
+          lfs: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
@@ -216,9 +217,17 @@ jobs:
         run: |
           node -e "
           const fs = require('fs');
-          const report = JSON.parse(fs.readFileSync('benchmarks/results/test262-current.json', 'utf8'));
+          // Read from the LFS-free merged report, not the baseline file (which may still be an LFS pointer)
+          const reportPath = fs.existsSync('merged-reports/test262-report-merged.json')
+            ? 'merged-reports/test262-report-merged.json'
+            : 'benchmarks/results/test262-current.json';
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
           const indexPath = 'benchmarks/results/runs/index.json';
-          const idx = fs.existsSync(indexPath) ? JSON.parse(fs.readFileSync(indexPath, 'utf8')) : [];
+          // Guard against LFS pointer file (Materialize step uses continue-on-error)
+          const idx = (() => {
+            if (!fs.existsSync(indexPath)) return [];
+            try { return JSON.parse(fs.readFileSync(indexPath, 'utf8')); } catch { return []; }
+          })();
           const entry = {
             timestamp: new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').substring(0, 15),
             pass: report.summary.pass,
