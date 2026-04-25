@@ -133,45 +133,6 @@ export function compileIrPathFunctions(
   if (built.length === 0) return { compiled, errors };
 
   // -------------------------------------------------------------------------
-  // Targeted typeIdx-mismatch guard (#1169a follow-up).
-  //
-  // If a function A in `selected.funcs` failed Phase 1, A keeps its legacy
-  // body — but the legacy body still issues `call`s against any callee B
-  // it references. If B succeeded Phase 1 and reaches Phase 3, B's typeIdx
-  // gets replaced with the IR signature → A's legacy `call B` op fails
-  // Wasm validation ("not enough arguments on the stack").
-  //
-  // Walk each failed function's AST once, collect the names of its
-  // direct local callees that are also in `selected.funcs`. In Phase 3
-  // below, those callees are skipped — their slots keep their legacy
-  // body / legacy typeIdx so A's call op stays well-typed. Non-failed
-  // peers without a failed caller commit through IR as usual.
-  //
-  // Surgical scope: Phase-1 failures only. Phase-2/Phase-3 failures
-  // (post-hygiene / post-mono / lowering throws) follow the same pattern
-  // but are rarer; expand here if CI shows they matter.
-  // -------------------------------------------------------------------------
-  const builtNames = new Set(built.map((b) => b.name));
-  const skipPhase3CommitFor = new Set<string>();
-  for (const stmt of sourceFile.statements) {
-    if (!ts.isFunctionDeclaration(stmt)) continue;
-    if (!stmt.name) continue;
-    const failedName = stmt.name.text;
-    if (!selected.funcs.has(failedName)) continue;
-    if (builtNames.has(failedName)) continue; // not a Phase 1 failure
-    if (!stmt.body) continue;
-    const visit = (node: ts.Node): void => {
-      if (node !== stmt && isFunctionLikeNodeForCallScan(node)) return;
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-        const callee = node.expression.text;
-        if (selected.funcs.has(callee)) skipPhase3CommitFor.add(callee);
-      }
-      ts.forEachChild(node, visit);
-    };
-    ts.forEachChild(stmt.body, visit);
-  }
-
-  // -------------------------------------------------------------------------
   // Phase 2 — Pass: per-function hygiene → module-scope inline → re-run
   // hygiene on modified functions. Verify between stages.
   // -------------------------------------------------------------------------
@@ -321,11 +282,6 @@ export function compileIrPathFunctions(
   const resolver = makeResolver(ctx, unionRegistry, stringBackend);
   for (const entry of readyForLower) {
     const name = entry.name;
-    // Targeted skip: if this function is called by a Phase-1 failure
-    // (legacy body fallback), keep its slot at the legacy typeIdx so the
-    // failed peer's `call` op stays well-typed. See `skipPhase3CommitFor`
-    // construction above.
-    if (skipPhase3CommitFor.has(name)) continue;
     try {
       const funcIdx = ctx.funcMap.get(name);
       if (funcIdx === undefined) {
@@ -355,29 +311,6 @@ export function compileIrPathFunctions(
   }
 
   return { compiled, errors };
-}
-
-/**
- * Predicate matching the same node kinds that `select.ts:isFunctionLike`
- * uses. Inlined here so the targeted typeIdx-mismatch guard in
- * `compileIrPathFunctions` doesn't need to import from `select.ts`.
- *
- * The call-graph scan stops at any nested function-like boundary because
- * a nested arrow/function inside a top-level declaration is not part of
- * the top-level function's own outgoing-call set (its calls belong to
- * the inner scope).
- */
-function isFunctionLikeNodeForCallScan(node: ts.Node): boolean {
-  return (
-    ts.isFunctionDeclaration(node) ||
-    ts.isFunctionExpression(node) ||
-    ts.isArrowFunction(node) ||
-    ts.isMethodDeclaration(node) ||
-    ts.isGetAccessor(node) ||
-    ts.isSetAccessor(node) ||
-    ts.isClassDeclaration(node) ||
-    ts.isClassExpression(node)
-  );
 }
 
 function hasExportModifier(fn: ts.FunctionDeclaration): boolean {

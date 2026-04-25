@@ -386,15 +386,22 @@ function buildLocalCallGraph(decls: ReadonlyMap<string, ts.FunctionDeclaration>)
     if (!fn.body) continue;
     const visit = (node: ts.Node): void => {
       if (node !== fn && isFunctionLike(node)) return;
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-        const callee = node.expression.text;
-        if (decls.has(callee)) {
-          callees.get(callerName)!.add(callee);
-          callers.get(callee)!.add(callerName);
+      if (ts.isCallExpression(node)) {
+        if (ts.isIdentifier(node.expression)) {
+          const callee = node.expression.text;
+          if (decls.has(callee)) {
+            callees.get(callerName)!.add(callee);
+            callers.get(callee)!.add(callerName);
+          } else {
+            // Call to a non-local identifier (e.g. parseInt, String, Number).
+            // from-ast.ts throws for unknown callees so we must exclude this
+            // function from the IR path.
+            hasExternalCall.add(callerName);
+          }
         } else {
-          // Call to a non-local identifier (e.g. parseInt, String, Number).
-          // from-ast.ts throws for unknown callees so we must exclude this
-          // function from the IR path.
+          // Member-expression or computed call: Array.from(...), Math.trunc(...),
+          // arr[Symbol.iterator](), obj.method(), etc.  The IR path cannot lower
+          // these — exclude the enclosing function from the IR claim set.
           hasExternalCall.add(callerName);
         }
       }
