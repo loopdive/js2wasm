@@ -175,13 +175,23 @@ export function compileNestedFunctionDeclaration(
     }
   }
 
-  // Analyze captured variables from the enclosing scope
+  // Analyze captured variables from the enclosing scope.
+  // Scan both the function body AND parameter-default initializers — defaults
+  // like `function f([] = iter)` reference outer-scope `iter` and must be
+  // captured the same way as body references (#1016).
   const referencedNames = new Set<string>();
   for (const s of stmt.body.statements) {
     collectReferencedIdentifiers(s, referencedNames);
   }
+  for (const param of stmt.parameters) {
+    if (param.initializer) {
+      collectReferencedIdentifiers(param.initializer, referencedNames);
+    }
+  }
 
   // Detect which captured variables are written inside the function body
+  // (parameter defaults are evaluated, not assigned to outer scope, so we only
+  // scan the body for "written" tracking).
   const writtenInBody = new Set<string>();
   for (const s of stmt.body.statements) {
     collectWrittenIdentifiers(s, writtenInBody);

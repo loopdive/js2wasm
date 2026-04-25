@@ -951,7 +951,9 @@ export function compileArrowAsClosure(
     }
   }
 
-  // 2. Analyze captured variables
+  // 2. Analyze captured variables — scan the body AND parameter-default
+  // initializers. Defaults like `(x = iter) => ...` reference outer-scope
+  // `iter` and must be captured the same way as body references (#1016).
   const referencedNames = new Set<string>();
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
@@ -959,6 +961,11 @@ export function compileArrowAsClosure(
     }
   } else {
     collectReferencedIdentifiers(body, referencedNames);
+  }
+  for (const param of arrow.parameters) {
+    if (param.initializer) {
+      collectReferencedIdentifiers(param.initializer, referencedNames);
+    }
   }
 
   // Transitively add captures needed by called nested functions.

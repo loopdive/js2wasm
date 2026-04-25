@@ -548,6 +548,15 @@ export function destructureParamArray(
       // Per JS spec: destructuring null/undefined must throw TypeError
       emitExternrefDestructureGuard(ctx, fctx, paramIdx);
 
+      // Per spec §14.3.3 (BindingInitialization for ArrayBindingPattern), an
+      // empty `[]` pattern body returns unused without iterating. Materializing
+      // the source via __array_from_iter would call .next() on a generator and
+      // execute its body — observably wrong (#1016 — empty pattern advances
+      // generator). For empty patterns the null guard above is sufficient.
+      // (IteratorClose's spec-prescribed `return()` call on a fresh generator
+      // does not execute the body, so skipping it is benign for iterCount.)
+      if (pattern.elements.length === 0) return;
+
       const extVecIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
       const extArrTypeIdx = getArrTypeIdxFromVec(ctx, extVecIdx);
       const convertedType: ValType = { kind: "ref_null", typeIdx: extVecIdx };
