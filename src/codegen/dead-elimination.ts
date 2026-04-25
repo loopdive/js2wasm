@@ -254,6 +254,9 @@ export function eliminateDeadImports(mod: WasmModule): void {
   // declaredFuncRefs
   for (const fi of mod.declaredFuncRefs) usedF.add(fi);
 
+  // Start function (#907) — referenced by Wasm start section, not by export/element
+  if (mod.startFuncIdx !== undefined) usedF.add(mod.startFuncIdx);
+
   // Tags reference types
   for (const tag of mod.tags) usedT.add(tag.typeIdx);
 
@@ -405,6 +408,11 @@ export function eliminateDeadImports(mod: WasmModule): void {
 
   // Remap declaredFuncRefs
   mod.declaredFuncRefs = mod.declaredFuncRefs.map((f) => fR.get(f) ?? f);
+
+  // Remap start function index (#907)
+  if (mod.startFuncIdx !== undefined && fR.has(mod.startFuncIdx)) {
+    mod.startFuncIdx = fR.get(mod.startFuncIdx)!;
+  }
 
   // Remap globals
   for (const g of mod.globals) {

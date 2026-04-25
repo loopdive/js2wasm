@@ -4008,14 +4008,13 @@ function buildEnv(
 
 async function runOnly() {
   if (!lastResult) return;
-  let result = lastResult;
-  let synthesizedMain = false;
+  const result = lastResult;
 
   consolePre.textContent = "";
   errorsPre.textContent = "";
   previewPanel.innerHTML = "";
 
-  // Use compile-time metadata to determine execution intent
+  // Use compile-time metadata to determine execution intent (#907)
   const hasMain = result.hasMain === true;
   const hasTopLevel = result.hasTopLevelStatements === true;
 
@@ -4025,39 +4024,10 @@ async function runOnly() {
     return;
   }
 
-  if (!hasMain && hasTopLevel) {
-    // Top-level statements exist but no main().
-    // The compiler now emits _start for module-init-only programs (#907),
-    // so no synthesized main() is needed. For programs with other exports,
-    // the __init_done guard triggers init on first export call — fall back
-    // to synthesized main() only if neither _start nor guard is available.
-    const source = inputFile.model.getValue();
-    if (!hasTopLevelMainDeclaration(source)) {
-      // result was already compiled as-is; _start will be in exports if
-      // there are no user-exported functions. If there ARE exports but no
-      // main, the guard handles init — but we still need an entry point,
-      // so synthesize main() as before.
-      // Check: does the binary have _start? We can't peek at Wasm exports
-      // before instantiation, so use a simple heuristic: if hasMain is
-      // false and the source has no `export` keywords, _start is emitted.
-      const hasExportKeyword = /\bexport\b/.test(source);
-      if (hasExportKeyword) {
-        // Has exports but no main() — guard handles init, synthesize main
-        const runtimeSource = `${source}\n\nexport function main(): void {}\n`;
-        const runtimeResult = buildCompileResultForEditorSource(runtimeSource);
-        if (!runtimeResult.success) {
-          errorsPre.textContent = runtimeResult.errors
-            .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
-            .join("\n");
-          showOutputPanel("errors");
-          return;
-        }
-        result = runtimeResult;
-        synthesizedMain = true;
-      }
-      // else: no exports → _start is emitted, use result as-is
-    }
-  }
+  // For non-WASI programs without main(), top-level code is wired into the
+  // Wasm `start` section by the compiler (#907). It runs automatically during
+  // `WebAssembly.instantiate()` — no need for a synthesized main() or an
+  // explicit `_start` call from the host.
 
   const usesDom = detectDomUsage(result);
   const logs: string[] = [];
@@ -4082,15 +4052,17 @@ async function runOnly() {
     wasmExports = instance.exports as Record<string, any>;
     setExports(wasmExports as Record<string, Function>);
     if (typeof wasmExports.main === "function") {
-      if (synthesizedMain) {
-        logs.push("Executed top-level statements via synthesized main().");
-      }
       const returnValue = wasmExports.main();
       if (returnValue !== undefined) logs.push(`→ ${returnValue}`);
     } else if (typeof wasmExports._start === "function") {
-      // Module-init-only program: _start is the direct init entry (#907)
+      // WASI-target binaries export `_start` as their entry point — call it
+      // explicitly. Non-WASI module-init programs run init via the start
+      // section during instantiation and don't expose `_start`.
       wasmExports._start();
       logs.push("Executed top-level statements via _start().");
+    } else if (hasTopLevel) {
+      // Top-level code already executed during instantiation via start section.
+      logs.push("Executed top-level statements during module instantiation.");
     } else {
       logs.push("No exported main() or _start() found in Wasm module.");
     }
