@@ -28,7 +28,7 @@ and internal tooling should make compiler work easier, not harder.
 | **870** | Playground: Monaco web workers fail to load, UI freezes | Backlog | ready | high |
 | **878** | Dashboard: active agent status panel with current task and uptime | Backlog | ready | medium |
 | **907** | Replace __init_done runtime guards with start/init entry semantics | 42 | done | high |
-| **907** | Replace __init_done runtime guards with start/init entry semantics | 45 | ready | high |
+| **907** | Replace __init_done runtime guards with start/init entry semantics | 45 | done | high |
 | **924** | Vite dev server OOMs or consumes 9GB+ loading the playground | 35 | done | high |
 | **974** | Generate feature table JS/WAT examples from a TypeScript script | 0 | done | medium |
 | **977** | Edition coverage chart: rename 'Other' to 'ES3/Core' or 'Proposals' | 40 | done | low |

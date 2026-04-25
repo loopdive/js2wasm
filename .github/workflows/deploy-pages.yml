@@ -29,7 +29,25 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           fetch-tags: true
-          lfs: true
+
+      - name: Fetch baseline data from baselines repo
+        run: |
+          # Baseline JSONL and summary JSON now live in js2wasm-baselines,
+          # not in LFS on the main repo, to avoid LFS bandwidth exhaustion.
+          git clone --depth=1 https://github.com/loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines 2>/dev/null || true
+          if [ -f /tmp/js2wasm-baselines/test262-current.json ]; then
+            mkdir -p public/benchmarks/results benchmarks/results/runs
+            cp /tmp/js2wasm-baselines/test262-current.json   public/benchmarks/results/test262-report.json
+            cp /tmp/js2wasm-baselines/test262-current.json   benchmarks/results/test262-current.json
+            cp /tmp/js2wasm-baselines/test262-current.json   benchmarks/results/test262-report.json
+            [ -f /tmp/js2wasm-baselines/test262-current.jsonl ] && \
+              cp /tmp/js2wasm-baselines/test262-current.jsonl public/benchmarks/results/test262-results.jsonl
+            [ -f /tmp/js2wasm-baselines/runs/index.json ] && \
+              cp /tmp/js2wasm-baselines/runs/index.json benchmarks/results/runs/index.json
+            echo "Fetched baseline data from js2wasm-baselines."
+          else
+            echo "Warning: baselines repo not available — pages will build with stale/empty baseline."
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v6

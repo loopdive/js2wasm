@@ -210,6 +210,34 @@ export function isNumberWrapperType(type: ts.Type): boolean {
   return false;
 }
 
+/** Check if a ts.Type represents the String wrapper object (e.g. `new String("x")`) */
+export function isStringWrapperType(type: ts.Type): boolean {
+  if ((type.flags & ts.TypeFlags.Object) !== 0) {
+    const sym = type.getSymbol();
+    if (sym && sym.name === "String") return true;
+  }
+  return false;
+}
+
+/** Check if a ts.Type represents the Boolean wrapper object (e.g. `new Boolean(false)`) */
+export function isBooleanWrapperType(type: ts.Type): boolean {
+  if ((type.flags & ts.TypeFlags.Object) !== 0) {
+    const sym = type.getSymbol();
+    if (sym && sym.name === "Boolean") return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a ts.Type is any of Number/String/Boolean wrapper object types (#1111).
+ * These are JS objects (typeof x === "object") even though they wrap primitives.
+ * Used to route equality through JS host == / === with no numeric fallback,
+ * since wrappers have object identity semantics, not value semantics.
+ */
+export function isWrapperObjectType(type: ts.Type): boolean {
+  return isNumberWrapperType(type) || isStringWrapperType(type) || isBooleanWrapperType(type);
+}
+
 /**
  * Check if a ts.Type is a Symbol type.
  */

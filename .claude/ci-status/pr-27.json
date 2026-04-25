@@ -1,0 +1,15 @@
+{
+  "pr": 27,
+  "conclusion": "failure",
+  "head_branch": "issue-1164-dynamic-eval-host-import",
+  "head_sha": "8882b2e3a2b2577bf17196fc20e96db0a2626d24",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24927959523",
+  "timestamp": "2026-04-25T09:43:43Z",
+  "pass": 25612,
+  "fail": 13878,
+  "compile_error": 2226,
+  "snapshot_delta": 255,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

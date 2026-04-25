@@ -4077,6 +4077,11 @@ export function addUnionImports(ctx: CodegenContext): void {
     if (ctx.mod.declaredFuncRefs.length > 0) {
       ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map((idx) => (idx >= importsBefore ? idx + delta : idx));
     }
+    // Update Wasm start function index (#907) — late-added imports shift the
+    // defined-function index that __module_init lives at.
+    if (ctx.mod.startFuncIdx !== undefined && ctx.mod.startFuncIdx >= importsBefore) {
+      ctx.mod.startFuncIdx += delta;
+    }
   }
 }
 
@@ -5750,6 +5755,57 @@ function hoistBindingPattern(ctx: CodegenContext, fctx: FunctionContext, pattern
   }
 }
 
+/**
+ * Allocate TDZ flags for a let/const destructuring binding pattern so that
+ * `let { x = x } = {}` and similar self/forward references in default
+ * initializers throw ReferenceError per ECMA-262 §13.3.3.7 (#1128).
+ *
+ * Called from `compileObjectDestructuring` / `compileArrayDestructuring` at
+ * entry — BEFORE the binding-element loop allocates the actual binding locals.
+ * Only the TDZ flag is allocated here; the destructuring's own `allocLocal`
+ * for the binding runs later (line ~648 of destructuring.ts) and registers
+ * the binding name in `localMap`. By the time the default initializer is
+ * compiled (after that `allocLocal`), `compileIdentifier` will see both
+ * `localMap.has(name)` and `tdzFlagLocals.get(name)` and apply the TDZ check.
+ *
+ * The TDZ flag is allocated unconditionally for destructured bindings —
+ * +1 i32 local per binding is cheap, and unconditionality avoids subtle
+ * static-analysis gaps inside default initializers where `analyzeTdzAccess`
+ * could otherwise mis-classify the access as "skip".
+ */
+export function ensureLetConstBindingPatternTdzFlags(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.BindingPattern,
+): void {
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isIdentifier(element.name)) {
+      const name = element.name.text;
+      if (ctx.moduleGlobals.has(name)) continue;
+      // Allocate the binding local up front if missing — needed so that when
+      // a default initializer for a SIBLING binding compiles its expression,
+      // a forward-reference to this binding (e.g. `let { a = b, b } = {}`)
+      // resolves via `localMap.get(name)` and the TDZ check fires. Without
+      // this, the forward-ref `b` falls through to the "undeclared globals"
+      // path and silently returns a default value instead of throwing.
+      if (!fctx.localMap.has(name)) {
+        const elemType = ctx.checker.getTypeAtLocation(element);
+        const wasmType = resolveWasmType(ctx, elemType);
+        allocLocal(fctx, name, wasmType);
+      }
+      // Allocate TDZ flag if missing — zero-init (uninitialized).
+      if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+      if (!fctx.tdzFlagLocals.has(name)) {
+        const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+        fctx.tdzFlagLocals.set(name, flagIdx);
+      }
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      ensureLetConstBindingPatternTdzFlags(ctx, fctx, element.name);
+    }
+  }
+}
+
 /** Hoist a single variable declaration (handles both simple identifiers and binding patterns). */
 function hoistVarDecl(ctx: CodegenContext, fctx: FunctionContext, decl: ts.VariableDeclaration): void {
   if (ts.isIdentifier(decl.name)) {
@@ -6023,6 +6079,12 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
           fctx.tdzFlagLocals.set(name, flagIdx);
         }
       }
+      // Destructuring patterns (let/const) are NOT pre-allocated here —
+      // `compileObjectDestructuring` / `compileArrayDestructuring` allocate
+      // their own bindings + TDZ flags via `ensureLetConstBindingPatternTdzFlags`
+      // at entry. Pre-allocating here would create duplicate locals (one from
+      // the pre-pass, one from destructuring) and pollute closure-capture
+      // analysis (#1128).
     }
     return;
   }

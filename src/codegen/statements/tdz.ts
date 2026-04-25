@@ -18,6 +18,21 @@ export function emitTdzInit(ctx: CodegenContext, fctx: FunctionContext, name: st
 }
 
 /**
+ * Emit instructions to set a local TDZ flag to 1 (initialized) for a function-level
+ * let/const variable. No-op if the variable doesn't have a local TDZ flag.
+ *
+ * Also calls `emitTdzInit` for the module-global case — this is needed when
+ * destructuring at the module level (walkStmtForLetConst pre-pass may register
+ * a TDZ flag in either tdzGlobals or tdzFlagLocals depending on scope).
+ */
+export function emitLocalTdzInit(fctx: FunctionContext, name: string): void {
+  const flagIdx = fctx.tdzFlagLocals?.get(name);
+  if (flagIdx === undefined) return;
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "local.set", index: flagIdx });
+}
+
+/**
  * Emit a TDZ check for a module-level let/const variable read.
  * If the TDZ flag is 0 (uninitialized), throw a ReferenceError.
  * No-op if the variable doesn't have a TDZ flag.

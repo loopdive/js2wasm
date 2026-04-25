@@ -2,6 +2,12 @@
 id: 45
 status: planned
 created: 2026-04-23
+wrap_checklist:
+  status_closed: false
+  retro_written: false
+  diary_updated: false
+  end_tag_pushed: false
+  begin_tag_pushed: true
 ---
 
 # Sprint 45
@@ -88,7 +94,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #742 | Extract and refactor compileCallExpression (3,350 lines) | medium | blocked |
 | #1166 | Closed-world integer specialization from literal call sites | high | blocked |
-| #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | blocked |
 
 ### Ready
 
@@ -96,9 +101,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #744 | Function monomorphization for polymorphic call sites | high | ready |
 | #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
-| #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | ready |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
-| #907 | Replace __init_done runtime guards with start/init entry semantics | high | ready |
 | #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | ready |
 | #992 | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | medium | ready |
 | #993 | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | high | ready |
@@ -113,7 +116,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1006 | Support eval via JS host import | medium | ready |
 | #1008 | Add mobile-first layout support to the playground | medium | ready |
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | ready |
-| #1025 | BindingElement array-pattern default guards still use ref.is_null | high | ready |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
 | #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | ready |
@@ -122,9 +124,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | ready |
 | #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | ready |
 | #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
-| #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | ready |
 | #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
-| #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | ready |
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | ready |
 | #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | ready |
 | #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
@@ -132,24 +132,43 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
-| #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | ready |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | ready |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | ready |
 | #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
 | #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
 | #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | ready |
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
-| #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | ready |
+| #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
+| #1169a | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | in-progress |
+
+### Review
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | review |
+| #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | review |
+| #1171 | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | high | review |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #907 | Replace __init_done runtime guards with start/init entry semantics | high | done |
+| #1025 | BindingElement array-pattern default guards still use ref.is_null | high | done |
 | #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | done |
 | #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
 | #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | done |
+| #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | done |
+| #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
+| #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | done |
+| #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

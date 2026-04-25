@@ -1,0 +1,15 @@
+{
+  "pr": 26,
+  "conclusion": "failure",
+  "head_branch": "issue-1086-body-uses-arguments-dedup",
+  "head_sha": "73ead9b7843e01a8ecef5a1c6a1d9d15d972b834",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24927354680",
+  "timestamp": "2026-04-25T09:08:18Z",
+  "pass": 25428,
+  "fail": 13830,
+  "compile_error": 2489,
+  "snapshot_delta": 22,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

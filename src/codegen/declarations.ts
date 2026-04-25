@@ -22,7 +22,8 @@ import { ensureWrapperTypes } from "./any-helpers.js";
 import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
 import { reportError } from "./context/errors.js";
 import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
-import { bodyUsesArguments, compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import { compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 import {
   addArrayIteratorImports,
   addForInImports,
@@ -2834,71 +2835,40 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         shiftLocalIndices(compiledInitFctx.body, existingLocals);
       }
     } else {
-      // No main() function — create a standalone __module_init.
-      // Strategy depends on whether there are user-exported functions (#907):
-      //   - No exports: export __module_init directly as _start (no guard needed)
-      //   - Has exports: inject guarded call via __init_done into each export
+      // No main() function — create a standalone __module_init and run it
+      // automatically via the Wasm start section on instantiation (#907).
+      //
+      // This replaces both:
+      //   - the legacy `__init_done` runtime guard that injected a
+      //     `if (!done) { done = 1; __module_init(); }` preamble at the start
+      //     of every exported function, and
+      //   - the `_start` export wrapper used for module-init-only programs.
+      //
+      // Wasm `start` runs once during instantiation, before the host can call
+      // any export. That matches ES module semantics (top-level code runs at
+      // module load) and removes the per-call guard branch from every export.
+      //
+      // For WASI mode, we don't set the start section here — `addWasiStartExport`
+      // creates a dedicated `_start` export that wraps `__module_init`. Setting
+      // both would cause init to run twice (once during instantiation, once
+      // when the host calls `_start`).
 
-      const hasExportedFunctions = ctx.mod.functions.some((f) => f.exported && f.name !== "__module_init");
+      const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
+      const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.mod.functions.push({
+        name: "__module_init",
+        typeIdx: initTypeIdx,
+        locals: compiledInitFctx.locals,
+        body: compiledInitFctx.body,
+        exported: false,
+      });
 
-      if (!hasExportedFunctions) {
-        // Module-init-only program: export __module_init as _start.
-        // No __init_done guard needed — the caller invokes _start once.
-        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
-        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-        ctx.mod.functions.push({
-          name: "_start",
-          typeIdx: initTypeIdx,
-          locals: compiledInitFctx.locals,
-          body: compiledInitFctx.body,
-          exported: true,
-        });
-        ctx.mod.exports.push({
-          name: "_start",
-          desc: { kind: "func", index: initFuncIdx },
-        });
-      } else {
-        // Has exports but no main() — use __init_done guard for lazy init.
-        const guardGlobalIdx = nextModuleGlobalIdx(ctx);
-        ctx.mod.globals.push({
-          name: "__init_done",
-          type: { kind: "i32" },
-          mutable: true,
-          init: [{ op: "i32.const", value: 0 }],
-        });
-
-        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
-        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-        ctx.mod.functions.push({
-          name: "__module_init",
-          typeIdx: initTypeIdx,
-          locals: compiledInitFctx.locals,
-          body: compiledInitFctx.body,
-          exported: false,
-        });
-
-        // Inject guarded call at the start of every exported function.
-        // Each function gets its own deep copy of the guard preamble instructions
-        // to avoid shared-object bugs during dead-import elimination's index remapping.
-        for (const func of ctx.mod.functions) {
-          if (func.exported && func.name !== "__module_init") {
-            const guardPreamble: Instr[] = [
-              { op: "global.get", index: guardGlobalIdx },
-              { op: "i32.eqz" },
-              {
-                op: "if",
-                blockType: { kind: "empty" },
-                then: [
-                  { op: "i32.const", value: 1 } as Instr,
-                  { op: "global.set", index: guardGlobalIdx } as Instr,
-                  { op: "call", funcIdx: initFuncIdx } as Instr,
-                ],
-              } as Instr,
-            ];
-            func.body = [...guardPreamble, ...func.body];
-          }
-        }
+      if (!ctx.wasi) {
+        // Use Wasm start section — init runs automatically on instantiation.
+        ctx.mod.startFuncIdx = initFuncIdx;
       }
+      // else: WASI path — addWasiStartExport will export `_start` calling
+      // `__module_init`, and the host will invoke it explicitly.
     }
   }
 }

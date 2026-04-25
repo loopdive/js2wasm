@@ -586,25 +586,23 @@ function emitParamDefaultCheckInline(
   thenInstrs: Instr[],
 ): void {
   if (paramType.kind === "externref") {
-    // JS semantics: defaults fire on missing arg OR explicit undefined.
-    // Must check __extern_is_undefined in addition to ref.is_null — callers
-    // may pass __get_undefined() which is an externref-wrapped JS undefined,
-    // not Wasm null. Without this, destructure guards throw TypeError first
-    // (#1135 follow-up).
+    // Per JS spec, parameter defaults fire ONLY when the arg is `undefined`
+    // (omitted or explicit), never for `null`. Callers pad missing args with
+    // `__get_undefined()` (externref-wrapped undefined), so
+    // `__extern_is_undefined` catches both "omitted" and "explicit undefined".
+    // Using `ref.is_null` in addition would wrongly fire the default when the
+    // caller passed explicit `null` (#1025 / #1021).
     const undefIdx = ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
     flushLateImportShiftsShared(ctx, fctx);
+    fctx.body.push({ op: "local.get", index: paramIdx });
     if (undefIdx !== undefined) {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "call", funcIdx: undefIdx } as Instr);
-      fctx.body.push({ op: "i32.or" } as Instr);
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
     } else {
-      fctx.body.push({ op: "local.get", index: paramIdx });
+      // Fallback (standalone mode): ref.is_null is imprecise — treats null
+      // as undefined.
       fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
     }
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
   } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "ref.is_null" });
