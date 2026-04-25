@@ -283,10 +283,6 @@ function compileOptionalDirectCall(ctx: CodegenContext, fctx: FunctionContext, e
   return resultType;
 }
 
-function isEvalCallExpression(expr: ts.CallExpression): boolean {
-  return classifyEvalCallExpression(expr) !== "none";
-}
-
 /**
  * Classify an eval call expression as `direct`, `indirect`, or `none`.
  *
@@ -298,12 +294,19 @@ function isEvalCallExpression(expr: ts.CallExpression): boolean {
  * The compiler-side flag is forwarded to `__extern_eval` so the host shim
  * can preserve the spec-mandated scope distinction (#1164).  Direct eval
  * runs in the caller's lexical scope; indirect eval runs in global scope.
+ *
+ * Uses the TypeScript checker to verify that any `eval` identifier resolves
+ * to the *global* eval, not a locally-shadowed variable or parameter named
+ * `eval` (e.g. `function foo(eval) { return eval(42); }`).
  */
-function classifyEvalCallExpression(expr: ts.CallExpression): "direct" | "indirect" | "none" {
+function classifyEvalCallExpression(expr: ts.CallExpression, checker: ts.TypeChecker): "direct" | "indirect" | "none" {
   if (expr.questionDotToken) return "none";
   let callee: ts.Expression = expr.expression;
   while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
-  if (ts.isIdentifier(callee) && callee.text === "eval") return "direct";
+  if (ts.isIdentifier(callee) && callee.text === "eval") {
+    if (isGlobalEvalIdentifier(callee, checker)) return "direct";
+    return "none";
+  }
   // Indirect form: (0, eval)(src) — a comma expression whose right side is `eval`.
   if (
     ts.isBinaryExpression(callee) &&
@@ -311,9 +314,21 @@ function classifyEvalCallExpression(expr: ts.CallExpression): "direct" | "indire
     ts.isIdentifier(callee.right) &&
     callee.right.text === "eval"
   ) {
-    return "indirect";
+    if (isGlobalEvalIdentifier(callee.right, checker)) return "indirect";
+    return "none";
   }
   return "none";
+}
+
+/** Returns true if the given `eval` identifier resolves to the global eval function (not a local shadow). */
+function isGlobalEvalIdentifier(ident: ts.Identifier, checker: ts.TypeChecker): boolean {
+  const sym = checker.getSymbolAtLocation(ident);
+  if (!sym) return true; // unresolved → assume global eval
+  const decls = sym.declarations;
+  if (!decls || decls.length === 0) return true;
+  // Global eval is declared only in .d.ts files. A local shadow has at least one
+  // declaration in a non-declaration (.ts) source file.
+  return decls.every((d) => d.getSourceFile().isDeclarationFile);
 }
 
 /**
@@ -527,7 +542,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // preserve ECMA-262 §19.2.1 scope semantics — direct eval has access to
   // the caller's lexical scope, indirect eval runs in global scope.
   {
-    const evalKind = classifyEvalCallExpression(expr);
+    const evalKind = classifyEvalCallExpression(expr, ctx.checker);
     if (evalKind !== "none") {
       const inlined = tryStaticEvalInline(ctx, fctx, expr);
       if (inlined !== undefined) return inlined;
