@@ -14693,8 +14693,8 @@
       "id": "1043",
       "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -15415,8 +15415,8 @@
       "id": "1096",
       "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16524,6 +16524,18 @@
         "1169",
         "1168"
       ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169b",
+      "title": "IR Phase 4 Slice 2 — object literals and property access through IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
       "cluster": "compiler-architecture"
@@ -17783,6 +17795,7 @@
         "1168",
         "1169",
         "1169a",
+        "1169b",
         "1169c"
       ],
       "track": "supporting track"
@@ -20231,6 +20244,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169a"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169b"
     },
     {
       "goal": "compiler-architecture",
