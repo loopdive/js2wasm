@@ -366,6 +366,50 @@ export function destructureParamObject(
       const hasRestElement = pattern.elements.some((e) => ts.isBindingElement(e) && !!e.dotDotDotToken);
       if (hasRestElement) structTypeIdx = undefined;
 
+      // The struct fast path uses `struct.get` for property reads, which:
+      //   (a) silently returns the field's default value when a pattern
+      //       property is not declared on the struct, and
+      //   (b) bypasses any JS-defined accessors installed via
+      //       `Object.defineProperty`, even when the struct has the field.
+      //
+      // Per ECMA-262 §13.15.5.6 (Runtime Semantics: KeyedBindingInitialization),
+      // each binding element runs `Let v be GetV(value, propertyName)` (§7.3.3),
+      // which performs an ordinary `[[Get]]` and *must* fire JS getters. If a
+      // getter throws (e.g. test262 dstr/*-get-value-err.js), the error must
+      // propagate, not be silently dropped.
+      //
+      // We cannot statically tell whether a runtime object has had accessors
+      // installed via Object.defineProperty, but we *can* tell when the
+      // pattern names properties the struct does not declare — in that case
+      // the fast path is provably wrong (fieldIdx === -1 → silent skip in the
+      // recursive call below). Fall back to __extern_get for the entire
+      // pattern in that case so that getters fire and exceptions propagate
+      // (#1016 — getter-throw destructure cluster).
+      if (structTypeIdx !== undefined) {
+        const structName = ctx.typeIdxToStructName.get(structTypeIdx);
+        const fields = structName ? ctx.structFields.get(structName) : undefined;
+        let allFieldsPresent = !!fields;
+        if (fields) {
+          for (const element of pattern.elements) {
+            if (!ts.isBindingElement(element)) continue;
+            if (element.dotDotDotToken) continue;
+            const pn = element.propertyName ?? element.name;
+            let propText: string | undefined;
+            if (ts.isIdentifier(pn)) propText = pn.text;
+            else if (ts.isStringLiteral(pn)) propText = pn.text;
+            else if (ts.isNumericLiteral(pn)) propText = pn.text;
+            if (propText === undefined) continue;
+            if (!fields.some((f) => f.name === propText)) {
+              allFieldsPresent = false;
+              break;
+            }
+          }
+        } else {
+          allFieldsPresent = false;
+        }
+        if (!allFieldsPresent) structTypeIdx = undefined;
+      }
+
       if (structTypeIdx !== undefined) {
         // Use ref.test to check if the value is the expected struct (safe for primitives) (#852)
         const anyTmp = allocLocal(fctx, `__dparam_any_${fctx.locals.length}`, { kind: "anyref" } as ValType);
@@ -547,6 +591,15 @@ export function destructureParamArray(
     if (paramType.kind === "externref") {
       // Per JS spec: destructuring null/undefined must throw TypeError
       emitExternrefDestructureGuard(ctx, fctx, paramIdx);
+
+      // Per spec §14.3.3 (BindingInitialization for ArrayBindingPattern), an
+      // empty `[]` pattern body returns unused without iterating. Materializing
+      // the source via __array_from_iter would call .next() on a generator and
+      // execute its body — observably wrong (#1016 — empty pattern advances
+      // generator). For empty patterns the null guard above is sufficient.
+      // (IteratorClose's spec-prescribed `return()` call on a fresh generator
+      // does not execute the body, so skipping it is benign for iterCount.)
+      if (pattern.elements.length === 0) return;
 
       const extVecIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
       const extArrTypeIdx = getArrTypeIdxFromVec(ctx, extVecIdx);
