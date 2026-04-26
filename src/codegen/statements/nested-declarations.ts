@@ -9,6 +9,7 @@ import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import { bodyUsesArguments } from "../helpers/body-uses-arguments.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import {
+  collectFunctionOwnLocals,
   collectReferencedIdentifiers,
   collectWrittenIdentifiers,
   promoteAccessorCapturesToGlobals,
@@ -175,25 +176,27 @@ export function compileNestedFunctionDeclaration(
     }
   }
 
-  // Analyze captured variables from the enclosing scope
+  // Analyze captured variables from the enclosing scope. Use scope-aware
+  // collection so nested `var` declarations and parameter bindings inside the
+  // function body shadow outer references — otherwise a function with its own
+  // `var i;` would be treated as capturing the outer `i` (#995).
+  const ownLocals = new Set<string>();
+  collectFunctionOwnLocals(stmt, ownLocals);
+
   const referencedNames = new Set<string>();
   for (const s of stmt.body.statements) {
-    collectReferencedIdentifiers(s, referencedNames);
+    collectReferencedIdentifiers(s, referencedNames, ownLocals);
   }
 
   // Detect which captured variables are written inside the function body
   const writtenInBody = new Set<string>();
   for (const s of stmt.body.statements) {
-    collectWrittenIdentifiers(s, writtenInBody);
+    collectWrittenIdentifiers(s, writtenInBody, ownLocals);
   }
-
-  const ownParamNames = new Set(
-    stmt.parameters.filter((p) => ts.isIdentifier(p.name)).map((p) => (p.name as ts.Identifier).text),
-  );
 
   const captures: { name: string; type: ValType; localIdx: number; mutable: boolean }[] = [];
   for (const name of referencedNames) {
-    if (ownParamNames.has(name)) continue;
+    if (ownLocals.has(name)) continue;
     const localIdx = fctx.localMap.get(name);
     if (localIdx === undefined) continue;
     if (ctx.funcMap.has(name)) continue;

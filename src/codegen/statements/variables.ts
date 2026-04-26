@@ -327,6 +327,44 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
               ? { kind: "externref" as const }
               : resolveWasmType(ctx, varType)));
 
+    // If the variable was pre-boxed (#996) — captured-as-mutable by a nested
+    // closure — write the init value through the ref cell instead of overwriting
+    // the (now-boxed) local slot's type and value.
+    const boxedCap = fctx.boxedCaptures?.get(name);
+    if (boxedCap) {
+      const boxedLocalIdx = fctx.localMap.get(name);
+      if (boxedLocalIdx !== undefined) {
+        if (decl.initializer) {
+          const initType = compileExpression(ctx, fctx, decl.initializer, boxedCap.valType);
+          if (initType && !valTypesMatch(initType, boxedCap.valType)) {
+            coerceType(ctx, fctx, initType, boxedCap.valType);
+          }
+          const tmpVal = allocLocal(fctx, `__varinit_box_${fctx.locals.length}`, boxedCap.valType);
+          fctx.body.push({ op: "local.set", index: tmpVal });
+          fctx.body.push({ op: "local.get", index: boxedLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [] as Instr[],
+            else: [
+              { op: "local.get", index: boxedLocalIdx } as Instr,
+              { op: "local.get", index: tmpVal } as Instr,
+              {
+                op: "struct.set",
+                typeIdx: boxedCap.refCellTypeIdx,
+                fieldIdx: 0,
+              } as Instr,
+            ],
+          });
+        }
+        // No initializer or a `var x;` redeclaration: ref cell already
+        // holds the (default) value from pre-boxing — nothing to do.
+        emitLocalTdzInit(fctx, name);
+        continue;
+      }
+    }
+
     // If this var/let/const was already pre-hoisted at function entry, reuse that slot.
     // For let/const: the pre-pass (hoistLetConstWithTdz) always pre-allocates a slot
     // regardless of whether a TDZ flag is also allocated, so we check only the localMap.

@@ -57,24 +57,162 @@ import { buildDestructureNullThrow, isNullOrUndefinedLiteral } from "./destructu
 
 // ── Arrow function callbacks ──────────────────────────────────────────
 
-/** Collect all identifiers referenced in a node */
-export function collectReferencedIdentifiers(node: ts.Node, names: Set<string>): void {
+/** True for nodes that introduce a new function scope (params + body locals). */
+function isFunctionScopeBoundary(node: ts.Node): boolean {
+  return (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isSetAccessorDeclaration(node) ||
+    ts.isConstructorDeclaration(node)
+  );
+}
+
+/**
+ * Collect names that are LOCALLY DECLARED inside a function-like node's scope.
+ * Used to compute the shadow set for free-variable analysis.
+ *
+ * Includes:
+ *   - parameter binding identifiers (function-scoped)
+ *   - `var` declarations anywhere in the body (function-scoped)
+ *   - top-level `function`/`class` declarations in the body
+ *
+ * Does NOT cross nested function boundaries.
+ *
+ * Conservatively excludes block-scoped `let`/`const` since they only shadow
+ * within their block, and adding them to the function-wide shadow set would
+ * incorrectly mask legitimate outer captures.
+ */
+export function collectFunctionOwnLocals(funcLike: ts.Node, out: Set<string>): void {
+  if (!isFunctionScopeBoundary(funcLike)) return;
+  const decl = funcLike as ts.SignatureDeclaration;
+  // Params (including destructuring binding identifiers)
+  if (decl.parameters) {
+    for (const p of decl.parameters) {
+      if (ts.isIdentifier(p.name)) {
+        out.add(p.name.text);
+      } else if (ts.isObjectBindingPattern(p.name) || ts.isArrayBindingPattern(p.name)) {
+        collectBindingPatternNames(p.name, out);
+      }
+    }
+  }
+  // Body var/function/class decls. Concise arrow bodies are expressions — no decls.
+  const body = (decl as { body?: ts.Node | undefined }).body;
+  if (body && ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      collectVarAndTopLevelDecls(stmt, out, /*atTopLevel=*/ true);
+    }
+  }
+}
+
+/**
+ * Recursively collect `var` declarations (function-scoped) and top-level
+ * `function`/`class` declarations from a node tree, without crossing nested
+ * function scope boundaries.
+ */
+function collectVarAndTopLevelDecls(node: ts.Node, out: Set<string>, atTopLevel: boolean): void {
+  if (isFunctionScopeBoundary(node)) return; // do not cross
+  if (ts.isVariableStatement(node)) {
+    const isVar = !(node.declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
+    if (isVar) {
+      for (const d of node.declarationList.declarations) {
+        if (ts.isIdentifier(d.name)) out.add(d.name.text);
+        else if (ts.isObjectBindingPattern(d.name) || ts.isArrayBindingPattern(d.name)) {
+          collectBindingPatternNames(d.name, out);
+        }
+      }
+    }
+    // Initializers may contain nested functions — keep walking but we won't
+    // descend into their bodies (boundary check above).
+    for (const d of node.declarationList.declarations) {
+      if (d.initializer) collectVarAndTopLevelDecls(d.initializer, out, false);
+    }
+    return;
+  }
+  if (ts.isForStatement(node) && node.initializer && ts.isVariableDeclarationList(node.initializer)) {
+    const isVar = !(node.initializer.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
+    if (isVar) {
+      for (const d of node.initializer.declarations) {
+        if (ts.isIdentifier(d.name)) out.add(d.name.text);
+        else if (ts.isObjectBindingPattern(d.name) || ts.isArrayBindingPattern(d.name)) {
+          collectBindingPatternNames(d.name, out);
+        }
+      }
+    }
+  }
+  if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && ts.isVariableDeclarationList(node.initializer)) {
+    const isVar = !(node.initializer.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
+    if (isVar) {
+      for (const d of node.initializer.declarations) {
+        if (ts.isIdentifier(d.name)) out.add(d.name.text);
+        else if (ts.isObjectBindingPattern(d.name) || ts.isArrayBindingPattern(d.name)) {
+          collectBindingPatternNames(d.name, out);
+        }
+      }
+    }
+  }
+  if (ts.isFunctionDeclaration(node) && node.name && atTopLevel) {
+    out.add(node.name.text);
+    return; // do not recurse into nested function body
+  }
+  if (ts.isClassDeclaration(node) && node.name && atTopLevel) {
+    out.add(node.name.text);
+    return;
+  }
+  ts.forEachChild(node, (c) => collectVarAndTopLevelDecls(c, out, false));
+}
+
+/**
+ * Collect all identifiers referenced in a node.
+ *
+ * If `shadowed` is provided, identifiers in that set are NOT collected. The
+ * walker also detects nested function scopes and augments the shadow set with
+ * each nested function's own locals so that references inside them to names
+ * shadowed by nested var/param decls aren't incorrectly attributed to the
+ * outer scope.
+ *
+ * Callers analyzing free variables of a function-like body should compute the
+ * function's own locals via `collectFunctionOwnLocals` and pass them as the
+ * initial `shadowed` set, since the walker enters the body without crossing
+ * the boundary itself.
+ */
+export function collectReferencedIdentifiers(node: ts.Node, names: Set<string>, shadowed?: ReadonlySet<string>): void {
   if (ts.isIdentifier(node)) {
-    names.add(node.text);
+    if (!shadowed || !shadowed.has(node.text)) names.add(node.text);
+    return;
   }
   // Track `this` keyword references so arrow functions can capture the
   // enclosing scope's `this` through the normal closure mechanism.
   if (node.kind === ts.SyntaxKind.ThisKeyword || node.kind === ts.SyntaxKind.SuperKeyword) {
-    names.add("this");
+    if (!shadowed || !shadowed.has("this")) names.add("this");
+    return;
   }
-  ts.forEachChild(node, (child) => collectReferencedIdentifiers(child, names));
+  if (isFunctionScopeBoundary(node)) {
+    // Augment shadow set with this nested function's own locals before
+    // recursing into its body. Function/method names declared by nested
+    // FunctionExpressions/ArrowFunctions don't leak out, so we don't add the
+    // node's own name to the OUTER shadow set; we add it (the named func
+    // expr's own name) to the inner shadow so self-references aren't treated
+    // as outer captures.
+    const merged = new Set<string>(shadowed ?? []);
+    collectFunctionOwnLocals(node, merged);
+    if (ts.isFunctionExpression(node) && node.name) merged.add(node.name.text);
+    ts.forEachChild(node, (child) => collectReferencedIdentifiers(child, names, merged));
+    return;
+  }
+  ts.forEachChild(node, (child) => collectReferencedIdentifiers(child, names, shadowed));
 }
 
 /**
  * Collect identifiers that are WRITTEN to within a node tree.
  * Detects: assignment (=, +=, etc.), ++, --.
+ *
+ * Scope-aware in the same sense as `collectReferencedIdentifiers`: writes to
+ * names shadowed by nested function scopes are not collected.
  */
-export function collectWrittenIdentifiers(node: ts.Node, names: Set<string>): void {
+export function collectWrittenIdentifiers(node: ts.Node, names: Set<string>, shadowed?: ReadonlySet<string>): void {
   if (ts.isBinaryExpression(node)) {
     const op = node.operatorToken.kind;
     // Assignment operators
@@ -97,18 +235,192 @@ export function collectWrittenIdentifiers(node: ts.Node, names: Set<string>): vo
       op === ts.SyntaxKind.QuestionQuestionEqualsToken
     ) {
       if (ts.isIdentifier(node.left)) {
-        names.add(node.left.text);
+        if (!shadowed || !shadowed.has(node.left.text)) names.add(node.left.text);
       }
     }
   } else if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
     const op = node.operator;
     if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
       if (ts.isIdentifier(node.operand)) {
-        names.add(node.operand.text);
+        if (!shadowed || !shadowed.has(node.operand.text)) names.add(node.operand.text);
       }
     }
   }
-  ts.forEachChild(node, (child) => collectWrittenIdentifiers(child, names));
+  if (isFunctionScopeBoundary(node)) {
+    const merged = new Set<string>(shadowed ?? []);
+    collectFunctionOwnLocals(node, merged);
+    if (ts.isFunctionExpression(node) && node.name) merged.add(node.name.text);
+    ts.forEachChild(node, (child) => collectWrittenIdentifiers(child, names, merged));
+    return;
+  }
+  ts.forEachChild(node, (child) => collectWrittenIdentifiers(child, names, shadowed));
+}
+
+/**
+ * Pre-box variables that will be captured-as-mutable by any nested closure
+ * inside the function body.
+ *
+ * Without this pre-pass, a closure-creation site (which always boxes its
+ * mutable captures lazily) splits a variable's lifetime in two: code emitted
+ * BEFORE the closure-creation site reads the original (unboxed) local, while
+ * code emitted AFTER reads the new ref cell. For variables modified by an
+ * outer for-loop whose body creates closures (the canonical pattern in
+ * `for (var i = 0; ...) { fn(function() { ... i ... }); }`), the loop
+ * CONDITION's `local.get i` was emitted before the body, so it never sees
+ * `i++`'s ref-cell update — producing an infinite loop (#996).
+ *
+ * The fix: scan all nested closures up front; for any outer-scope variable
+ * that ANY nested closure captures as mutable, emit the ref-cell allocation
+ * at function entry — before any other user code is compiled. From that point
+ * on, all reads and writes of the variable go through the same ref cell.
+ *
+ * Must run AFTER `hoistVarDeclarations` (so the variables exist in
+ * `fctx.localMap`) but BEFORE any statement compilation begins.
+ */
+export function preBoxClosureCaptures(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  decl: ts.FunctionLikeDeclaration | ts.ClassStaticBlockDeclaration,
+): void {
+  const declWithBody = decl as { body?: ts.Node | undefined };
+  if (!declWithBody.body) return;
+  // For arrow functions with concise (expression) bodies there are no
+  // declarations to box.
+  if (!ts.isBlock(declWithBody.body)) return;
+
+  // Names declared in this function's own scope (params + var/function/class).
+  const ownLocals = new Set<string>();
+  if (isFunctionScopeBoundary(decl)) {
+    collectFunctionOwnLocals(decl, ownLocals);
+  }
+
+  // Find names that are captured as mutable by ANY immediate-or-deeper nested
+  // closure in the function body. The scope-aware collectors automatically
+  // honour shadowing inside deeper nested scopes.
+  const namesToBox = new Set<string>();
+  const writtenInOuter = new Set<string>();
+  const visit = (node: ts.Node, atOuterLevel: boolean): void => {
+    if (atOuterLevel && isFunctionScopeBoundary(node)) {
+      // Found a nested closure. Determine which outer-scope variables it
+      // mutably captures.
+      const closureLocals = new Set<string>();
+      collectFunctionOwnLocals(node, closureLocals);
+      if (ts.isFunctionExpression(node) && node.name) closureLocals.add(node.name.text);
+
+      const closureBody = (node as { body?: ts.Node | undefined }).body;
+      if (!closureBody) return;
+      const referenced = new Set<string>();
+      const writtenInClosure = new Set<string>();
+      if (ts.isBlock(closureBody)) {
+        for (const stmt of closureBody.statements) {
+          collectReferencedIdentifiers(stmt, referenced, closureLocals);
+          collectWrittenIdentifiers(stmt, writtenInClosure, closureLocals);
+        }
+      } else {
+        collectReferencedIdentifiers(closureBody, referenced, closureLocals);
+        collectWrittenIdentifiers(closureBody, writtenInClosure, closureLocals);
+      }
+
+      for (const name of referenced) {
+        if (!ownLocals.has(name)) continue;
+        // Mutable iff the closure writes to it OR the outer body writes to it.
+        if (writtenInClosure.has(name) || writtenInOuter.has(name)) {
+          namesToBox.add(name);
+        } else {
+          // Defer the outer-write check — `writtenInOuter` may not yet be
+          // fully populated since we may visit nested closures before the
+          // statements that write to a captured var. Track tentatively and
+          // re-check after the outer scan.
+          namesToBox.add(`?${name}`);
+        }
+      }
+      // Don't recurse into the closure as "outer-level" — its body has its
+      // own scope. But DO scan it for further nested closures. We re-enter
+      // recursion as "not at outer level" so isFunctionScopeBoundary checks
+      // ABOVE us (further-nested closures) get reported relative to their
+      // own enclosing function (handled when those scopes are compiled
+      // themselves). For our purposes, we only need to box outer-scope vars
+      // for THIS function.
+      return;
+    }
+    // Track writes in the outer scope (not crossing nested function boundaries).
+    if (atOuterLevel) {
+      if (ts.isBinaryExpression(node)) {
+        const op = node.operatorToken.kind;
+        if (
+          op === ts.SyntaxKind.EqualsToken ||
+          op === ts.SyntaxKind.PlusEqualsToken ||
+          op === ts.SyntaxKind.MinusEqualsToken ||
+          op === ts.SyntaxKind.AsteriskEqualsToken ||
+          op === ts.SyntaxKind.SlashEqualsToken ||
+          op === ts.SyntaxKind.PercentEqualsToken ||
+          op === ts.SyntaxKind.AmpersandEqualsToken ||
+          op === ts.SyntaxKind.BarEqualsToken ||
+          op === ts.SyntaxKind.CaretEqualsToken ||
+          op === ts.SyntaxKind.LessThanLessThanEqualsToken ||
+          op === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
+          op === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken ||
+          op === ts.SyntaxKind.AsteriskAsteriskEqualsToken ||
+          op === ts.SyntaxKind.BarBarEqualsToken ||
+          op === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
+          op === ts.SyntaxKind.QuestionQuestionEqualsToken
+        ) {
+          if (ts.isIdentifier(node.left) && ownLocals.has(node.left.text)) {
+            writtenInOuter.add(node.left.text);
+          }
+        }
+      } else if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
+        const op = node.operator;
+        if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
+          if (ts.isIdentifier(node.operand) && ownLocals.has(node.operand.text)) {
+            writtenInOuter.add(node.operand.text);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, (child) => visit(child, atOuterLevel));
+  };
+
+  // First pass: collect outer writes (this populates writtenInOuter)
+  for (const stmt of (declWithBody.body as ts.Block).statements) {
+    visit(stmt, true);
+  }
+
+  // Resolve tentative entries (`?name`) using the now-final writtenInOuter set.
+  for (const name of [...namesToBox]) {
+    if (name.startsWith("?")) {
+      namesToBox.delete(name);
+      const real = name.slice(1);
+      if (writtenInOuter.has(real)) namesToBox.add(real);
+    }
+  }
+
+  // Emit pre-boxing code at function entry.
+  for (const name of namesToBox) {
+    const localIdx = fctx.localMap.get(name);
+    if (localIdx === undefined) continue;
+    if (fctx.boxedCaptures?.has(name)) continue; // already boxed
+    if (ctx.funcMap.has(name)) continue; // function declaration, not a value var
+    const type = getLocalTypeForPreBox(fctx, localIdx);
+    if (!type) continue;
+    const refCellTypeIdx = getOrRegisterRefCellType(ctx, type);
+    const boxedLocalIdx = allocLocal(fctx, `__preboxed_${name}`, {
+      kind: "ref_null",
+      typeIdx: refCellTypeIdx,
+    });
+    // Read current value (param value or hoisted-var default), wrap in ref cell.
+    fctx.body.push({ op: "local.get", index: localIdx });
+    fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
+    fctx.body.push({ op: "local.set", index: boxedLocalIdx });
+    fctx.localMap.set(name, boxedLocalIdx);
+    if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+    fctx.boxedCaptures.set(name, { refCellTypeIdx, valType: type });
+  }
+}
+
+function getLocalTypeForPreBox(fctx: FunctionContext, index: number): ValType | undefined {
+  if (index < fctx.params.length) return fctx.params[index]!.type;
+  return fctx.locals[index - fctx.params.length]?.type;
 }
 
 /**
@@ -951,24 +1263,32 @@ export function compileArrowAsClosure(
     }
   }
 
-  // 2. Analyze captured variables
+  // 2. Analyze captured variables. Use scope-aware collection so that nested
+  //    `var` declarations and parameter bindings inside the closure body shadow
+  //    outer references — otherwise a closure with its own `var i;` would be
+  //    treated as capturing the outer `i` (#995/#996).
+  const ownLocals = new Set<string>();
+  collectFunctionOwnLocals(arrow, ownLocals);
+  if (ts.isFunctionExpression(arrow) && arrow.name) ownLocals.add(arrow.name.text);
+
   const referencedNames = new Set<string>();
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
-      collectReferencedIdentifiers(stmt, referencedNames);
+      collectReferencedIdentifiers(stmt, referencedNames, ownLocals);
     }
   } else {
-    collectReferencedIdentifiers(body, referencedNames);
+    collectReferencedIdentifiers(body, referencedNames, ownLocals);
   }
 
   // Transitively add captures needed by called nested functions.
   // E.g. if this closure calls g() and g has nestedFuncCaptures {first, second},
   // this closure must also capture first and second so it can pass ref cells to g.
   for (const name of [...referencedNames]) {
+    if (ownLocals.has(name)) continue;
     const transitiveCaptures = ctx.nestedFuncCaptures.get(name);
     if (transitiveCaptures) {
       for (const cap of transitiveCaptures) {
-        referencedNames.add(cap.name);
+        if (!ownLocals.has(cap.name)) referencedNames.add(cap.name);
       }
     }
   }
@@ -977,10 +1297,10 @@ export function compileArrowAsClosure(
   const writtenInClosure = new Set<string>();
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
-      collectWrittenIdentifiers(stmt, writtenInClosure);
+      collectWrittenIdentifiers(stmt, writtenInClosure, ownLocals);
     }
   } else {
-    collectWrittenIdentifiers(body, writtenInClosure);
+    collectWrittenIdentifiers(body, writtenInClosure, ownLocals);
   }
 
   // Also detect variables written in the enclosing scope (not just the closure).
@@ -1800,24 +2120,28 @@ export function compileArrowAsCallback(
   const cbName = `__cb_${cbId}`;
   const body = arrow.body;
 
-  // 1. Analyze captured variables
+  // 1. Analyze captured variables (scope-aware so own params/var-decls shadow)
+  const ownLocals = new Set<string>();
+  collectFunctionOwnLocals(arrow, ownLocals);
+  if (ts.isFunctionExpression(arrow) && arrow.name) ownLocals.add(arrow.name.text);
+
   const referencedNames = new Set<string>();
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
-      collectReferencedIdentifiers(stmt, referencedNames);
+      collectReferencedIdentifiers(stmt, referencedNames, ownLocals);
     }
   } else {
-    collectReferencedIdentifiers(body, referencedNames);
+    collectReferencedIdentifiers(body, referencedNames, ownLocals);
   }
 
   // Detect which captured variables are written inside the callback body (#859)
   const writtenInCallback = new Set<string>();
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
-      collectWrittenIdentifiers(stmt, writtenInCallback);
+      collectWrittenIdentifiers(stmt, writtenInCallback, ownLocals);
     }
   } else {
-    collectWrittenIdentifiers(body, writtenInCallback);
+    collectWrittenIdentifiers(body, writtenInCallback, ownLocals);
   }
 
   const captures: { name: string; type: ValType; localIdx: number; mutable: boolean; alreadyBoxed: boolean }[] = [];
