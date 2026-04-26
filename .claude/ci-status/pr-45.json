@@ -1,0 +1,15 @@
+{
+  "pr": 45,
+  "conclusion": "failure",
+  "head_branch": "issue-991-996-followup",
+  "head_sha": "56e04b272d2ba29f7abff5dcd3e3cf0a42d947d4",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24965591259",
+  "timestamp": "2026-04-26T20:02:10Z",
+  "pass": 25630,
+  "fail": 14201,
+  "compile_error": 1884,
+  "snapshot_delta": -163,
+  "net_per_test": -155,
+  "regressions": 329,
+  "improvements": 174
+}
