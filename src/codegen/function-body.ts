@@ -117,6 +117,13 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
     list.push(m);
   }
 
+  // Names declared more than once across the function body. Shadowing
+  // (e.g. an outer `let y = 2` and a block-scoped `let y`) breaks our
+  // by-name candidate model: the hoisting pre-pass and the per-scope
+  // codegen would see different types for the same name. Drop these
+  // names entirely to keep correctness.
+  const shadowedNames = new Set<string>();
+
   // Pass 1: collect declarations
   function collectDecls(node: ts.Node): void {
     // Skip nested functions — their locals are independent
@@ -136,7 +143,12 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
       if (isLetConst) {
         for (const v of node.declarationList.declarations) {
           if (ts.isIdentifier(v.name)) {
-            recordCandidate(v.name.text, { kind: "init", expr: v.initializer });
+            const nm = v.name.text;
+            if (candidates.has(nm)) {
+              shadowedNames.add(nm);
+            } else {
+              recordCandidate(nm, { kind: "init", expr: v.initializer });
+            }
           }
         }
       }
@@ -157,6 +169,10 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
     ts.forEachChild(node, collectDecls);
   }
   ts.forEachChild(decl.body, collectDecls);
+
+  // Drop shadowed names — they are not safe to promote because the
+  // hoist/codegen split would see two scopes with the same name.
+  for (const nm of shadowedNames) candidates.delete(nm);
 
   if (candidates.size === 0 && forCounterCandidates.size === 0) return i32Set;
 
