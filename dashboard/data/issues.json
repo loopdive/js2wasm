@@ -127,13 +127,12 @@
       "sprint": "46"
     },
     {
-      "id": "1169b",
-      "title": "IR Phase 4 Slice 2 — object literals and property access through IR path",
+      "id": "1169d",
+      "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
       "priority": "high",
       "feasibility": "hard",
       "depends_on": [
-        "1169a",
-        "1168"
+        "1169c"
       ],
       "goal": "compiler-architecture",
       "status": "ready",
@@ -1726,6 +1725,19 @@
       "depends_on": [
         "1169a",
         "1169b",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1169b",
+      "title": "IR Phase 4 Slice 2 — object literals and property access through IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169a",
         "1168"
       ],
       "goal": "compiler-architecture",
