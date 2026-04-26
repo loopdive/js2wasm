@@ -56,7 +56,7 @@ catchable errors, which many test262 tests expect.
 | **778** | - RuntimeError: illegal cast (135 tests) | 25 | done | medium |
 | **792** | - emitGuardedRefCast conflates 'wrong type' with 'null' (net-zero from #789) | 0 | done | critical |
 | **848** | Class computed property and accessor correctness (1,015 tests) | 30 | done | high |
-| **862** | Iterator protocol missing on function-declaration binding-pattern params | 45 | review | medium |
+| **862** | Iterator protocol missing on function-declaration binding-pattern params | 45 | done | medium |
 | **1036** | DisposableStack/AsyncDisposableStack property-chain access produces Wasm null trap (94 FAIL) | 42 | done | medium |
 | **1038** | Function.prototype.bind not implemented (70 FAIL) | 42 | done | high |
 | **1115** | Fix illegal cast when closures are passed as callable parameters | 21 | done | high |

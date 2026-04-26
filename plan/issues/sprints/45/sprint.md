@@ -105,22 +105,11 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
 | #1169b | IR Phase 4 Slice 2 — object literals and property access through IR path | high | ready |
 
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | in-progress |
-
-### Review
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | review |
-
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | done |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | done |
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | done |
 | #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | done |
@@ -142,6 +131,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | done |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | done |
+| #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | done |
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | done |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | done |
 | #1169a | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | high | done |
