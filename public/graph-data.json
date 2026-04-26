@@ -16529,6 +16529,18 @@
       "cluster": "compiler-architecture"
     },
     {
+      "id": "1169c",
+      "title": "IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "1170",
       "title": "Move test262 baselines out of Git LFS — eliminate LFS dependency from CI",
       "priority": "high",
@@ -17770,7 +17782,8 @@
         "1167c",
         "1168",
         "1169",
-        "1169a"
+        "1169a",
+        "1169c"
       ],
       "track": "supporting track"
     },
@@ -20218,6 +20231,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169a"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169c"
     },
     {
       "goal": "contributor-readiness",

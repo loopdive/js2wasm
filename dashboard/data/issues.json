@@ -1861,6 +1861,20 @@
       "sprint": "45"
     },
     {
+      "id": "1169c",
+      "title": "IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169a",
+        "1169b",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1169a",
       "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
       "priority": "high",
