@@ -293,6 +293,14 @@ jobs:
             echo "regressions=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Upload regressions report
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-regressions-report
+          path: merged-reports/test262-regressions.txt
+          if-no-files-found: warn
+
       - name: Fail on regressions
         if: steps.regression_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.force_baseline_refresh == true && inputs.confirm_force == 'YES')
         run: |
