@@ -2,22 +2,15 @@
 import * as path from "path";
 import ts from "typescript";
 import type { CompileOptions } from "./index.js";
+import { getDefaultEnvironment } from "./env.js";
 
-function isBrowserLikeRuntime(): boolean {
-  return typeof window !== "undefined" || typeof (globalThis as any).WorkerGlobalScope !== "undefined";
-}
-// Lazy-load fs for browser compatibility.
-// Dynamic import avoids bundlers resolving it at build time and avoids
-// eval("require") warnings. The top-level await resolves before any
-// sync getFs() call since module evaluation completes before exports are used.
-let _fs: typeof import("fs") | null = null;
-try {
-  _fs = isBrowserLikeRuntime() ? null : await import("node:fs");
-} catch {
-  _fs = null;
-}
-function getFs() {
-  return _fs;
+// Filesystem access goes through the environment adapter (#1096).
+// This module no longer probes `typeof window` / `typeof process` directly
+// and no longer uses top-level `await` — `getDefaultEnvironment()` is fully
+// synchronous, which lets embedders import the resolver without forcing the
+// whole module graph through async initialization.
+function getFs(): typeof import("node:fs") | null {
+  return getDefaultEnvironment().fs;
 }
 
 /**

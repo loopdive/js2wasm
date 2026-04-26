@@ -69,6 +69,9 @@ importers:
       vitest:
         specifier: ^3
         version: 3.2.4(@types/node@22.19.13)(terser@5.46.1)(yaml@2.8.3)
+      wabt:
+        specifier: ^1.0.39
+        version: 1.0.39
 
 packages:
 
@@ -2132,6 +2135,10 @@ packages:
   vscode-uri@3.1.0:
     resolution: {integrity: sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==}
 
+  wabt@1.0.39:
+    resolution: {integrity: sha512-ba+dRL/75VQQY7RkU/CgriGbkoWAfS8TDyUlJfJhJ8KhtXgMl5dhNvoPNUcQ9IWRhW8u41glMSuZeTvsYq2rRg==}
+    hasBin: true
+
   which-typed-array@1.1.20:
     resolution: {integrity: sha512-LYfpUkmqwl0h9A2HL09Mms427Q1RZWuOHsukfVcKRq9q95iQxdw0ix1JQrqbcDR9PH1QDwf5Qo8OZb5lksZ8Xg==}
     engines: {node: '>= 0.4'}
@@ -4139,6 +4146,8 @@ snapshots:
       - yaml
 
   vscode-uri@3.1.0: {}
+
+  wabt@1.0.39: {}
 
   which-typed-array@1.1.20:
     dependencies:

@@ -26,17 +26,20 @@ import ts from "typescript";
 
 import { addStringImports } from "../codegen/index.js";
 import { addStringConstantGlobal } from "../codegen/registry/imports.js";
-import { addFuncType } from "../codegen/registry/types.js";
+import { addFuncType, getOrRegisterRefCellType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
 import { lowerFunctionAstToIr } from "./from-ast.js";
 import {
   lowerIrFunctionToWasm,
   lowerIrTypeToValType,
+  type IrClosureLowering,
   type IrLowerResolver,
   type IrObjectStructLowering,
+  type IrRefCellLowering,
   type IrUnionLowering,
 } from "./lower.js";
 import type {
+  IrClosureSignature,
   IrFuncRef,
   IrFunction,
   IrGlobalRef,
@@ -118,6 +121,14 @@ export function compileIrPathFunctions(
   interface BuiltFn {
     readonly name: string;
     readonly fn: IrFunction;
+    /**
+     * Slice 3 (#1169c): set when `fn` is a lifted closure or nested
+     * function rather than a top-level FunctionDeclaration. Synthesized
+     * fns have no ts.FunctionDeclaration and no pre-allocated funcIdx —
+     * the integration loop allocates a fresh slot in `ctx.mod.functions`
+     * (mirrors the monomorphize-clone path).
+     */
+    readonly synthesized?: boolean;
   }
   const built: BuiltFn[] = [];
   for (const stmt of sourceFile.statements) {
@@ -128,18 +139,32 @@ export function compileIrPathFunctions(
 
     try {
       const o = overrides?.get(name);
-      const ir = lowerFunctionAstToIr(stmt, {
+      const result = lowerFunctionAstToIr(stmt, {
         exported: hasExportModifier(stmt),
         paramTypeOverrides: o?.params,
         returnTypeOverride: o?.returnType,
         calleeTypes,
       });
-      const verifyErrors = verifyIrFunction(ir);
-      if (verifyErrors.length > 0) {
-        for (const e of verifyErrors) errors.push({ func: name, message: e.message });
+      const mainErrors = verifyIrFunction(result.main);
+      if (mainErrors.length > 0) {
+        for (const e of mainErrors) errors.push({ func: name, message: e.message });
         continue;
       }
-      built.push({ name, fn: ir });
+      // Slice 3 (#1169c): verify each lifted function before pushing.
+      let anyLiftedFailed = false;
+      for (const lifted of result.lifted) {
+        const liftedErrors = verifyIrFunction(lifted);
+        if (liftedErrors.length > 0) {
+          for (const e of liftedErrors) errors.push({ func: lifted.name, message: e.message });
+          anyLiftedFailed = true;
+        }
+      }
+      if (anyLiftedFailed) continue;
+
+      built.push({ name, fn: result.main });
+      for (const lifted of result.lifted) {
+        built.push({ name: lifted.name, fn: lifted, synthesized: true });
+      }
     } catch (e) {
       errors.push({ func: name, message: e instanceof Error ? e.message : String(e) });
     }
@@ -163,7 +188,7 @@ export function compileIrPathFunctions(
       }
       continue;
     }
-    afterHygiene.push({ name: entry.name, fn: optimized });
+    afterHygiene.push({ name: entry.name, fn: optimized, synthesized: entry.synthesized });
   }
 
   if (afterHygiene.length === 0) return { compiled, errors };
@@ -186,7 +211,7 @@ export function compileIrPathFunctions(
       }
       continue;
     }
-    afterInline.push({ name: before.name, fn: final });
+    afterInline.push({ name: before.name, fn: final, synthesized: before.synthesized });
   }
 
   if (afterInline.length === 0) return { compiled, errors };
@@ -218,13 +243,13 @@ export function compileIrPathFunctions(
   // (usually a no-op but cheap).
   // -------------------------------------------------------------------------
   const readyForLower: BuiltFn[] = [];
-  const afterInlineByName = new Map<string, IrFunction>();
-  for (const e of afterInline) afterInlineByName.set(e.name, e.fn);
+  const afterInlineByName = new Map<string, BuiltFn>();
+  for (const e of afterInline) afterInlineByName.set(e.name, e);
 
   for (const fn of modAfterTU.functions) {
     const before = afterInlineByName.get(fn.name);
     const wasCloned = before === undefined;
-    const changed = wasCloned || fn !== before;
+    const changed = wasCloned || fn !== before.fn;
     const final = changed ? runHygienePasses(fn) : fn;
     const verifyErrors = verifyIrFunction(final);
     if (verifyErrors.length > 0) {
@@ -233,7 +258,15 @@ export function compileIrPathFunctions(
       }
       continue;
     }
-    readyForLower.push({ name: fn.name, fn: final });
+    // Slice 3 (#1169c): clones from monomorphize don't have synthesized
+    // info from the build phase; treat them as synthesized iff the
+    // pre-mono entry was synthesized OR the function is brand-new (a
+    // cloned specialization for a new param-type tuple).
+    readyForLower.push({
+      name: fn.name,
+      fn: final,
+      synthesized: before?.synthesized || wasCloned,
+    });
   }
 
   if (readyForLower.length === 0) return { compiled, errors };
@@ -245,7 +278,9 @@ export function compileIrPathFunctions(
   // Phase-3 loop below.
   // -------------------------------------------------------------------------
   for (const entry of readyForLower) {
-    if (originalNames.has(entry.name)) continue;
+    // Top-level (non-synthesized) functions already have a funcIdx
+    // allocated by `compileDeclarations`. Skip them.
+    if (originalNames.has(entry.name) && !entry.synthesized) continue;
     if (ctx.funcMap.has(entry.name)) continue; // already registered (defensive)
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
     ctx.mod.functions.push({
@@ -295,18 +330,33 @@ export function compileIrPathFunctions(
   // directly to pick up the current absolute index.
   const stringBackend = computeStringBackend(ctx);
   // Build the resolver in two steps so the resolver and the
-  // ObjectStructRegistry can refer to each other without a circular
-  // direct reference: the registry needs `lowerIrTypeToValType` (which
-  // calls `resolver.resolveString` / `resolveObject`), and the
-  // resolver's `resolveObject` delegates to the registry. We hand the
-  // resolver a `DeferredObjectResolver` whose `resolve` is filled in
-  // after the registry exists.
-  const deferred: DeferredObjectResolver = {
+  // ObjectStructRegistry / ClosureStructRegistry can refer to each
+  // other without a circular direct reference: the registries need
+  // `lowerIrTypeToValType` (which calls `resolver.resolveString` /
+  // `resolveObject` / `resolveClosure`), and the resolver delegates
+  // back to the registries. We hand the resolver `Deferred*Resolver`
+  // shells whose `resolve` callbacks are filled in after the
+  // registries exist.
+  const deferredObj: DeferredObjectResolver = {
     resolve: (_shape: IrObjectShape) => null,
   };
-  const resolver = makeResolver(ctx, unionRegistry, stringBackend, deferred);
+  const deferredCl: DeferredClosureResolver = {
+    resolveBase: () => null,
+    resolveSubtype: () => null,
+  };
+  const deferredCell: DeferredRefCellResolver = {
+    resolve: () => null,
+  };
+  const resolver = makeResolver(ctx, unionRegistry, stringBackend, deferredObj, deferredCl, deferredCell);
   const objectRegistry = new ObjectStructRegistry(ctx, (t) => lowerIrTypeToValType(t, resolver, "<obj-registry>"));
-  deferred.resolve = (shape) => objectRegistry.resolve(shape);
+  deferredObj.resolve = (shape) => objectRegistry.resolve(shape);
+  const closureRegistry = new ClosureStructRegistry(ctx, (t) =>
+    lowerIrTypeToValType(t, resolver, "<closure-registry>"),
+  );
+  deferredCl.resolveBase = (sig) => closureRegistry.resolveBase(sig);
+  deferredCl.resolveSubtype = (sig, fields) => closureRegistry.resolveSubtype(sig, fields);
+  const refCellRegistry = new RefCellRegistry(ctx);
+  deferredCell.resolve = (inner) => refCellRegistry.resolve(inner);
   for (const entry of readyForLower) {
     const name = entry.name;
     try {
@@ -420,11 +470,22 @@ interface DeferredObjectResolver {
   resolve: (shape: IrObjectShape) => IrObjectStructLowering | null;
 }
 
+interface DeferredClosureResolver {
+  resolveBase: (sig: IrClosureSignature) => IrClosureLowering | null;
+  resolveSubtype: (sig: IrClosureSignature, fields: readonly IrType[]) => IrClosureLowering | null;
+}
+
+interface DeferredRefCellResolver {
+  resolve: (inner: ValType) => IrRefCellLowering | null;
+}
+
 function makeResolver(
   ctx: CodegenContext,
   unionRegistry: UnionStructRegistry,
   stringBackend: StringBackendIndices,
   objResolver: DeferredObjectResolver,
+  closureResolver: DeferredClosureResolver,
+  refCellResolver: DeferredRefCellResolver,
 ): IrLowerResolver {
   return {
     resolveFunc(ref: IrFuncRef): number {
@@ -450,6 +511,18 @@ function makeResolver(
     },
     resolveObject(shape: IrObjectShape): IrObjectStructLowering | null {
       return objResolver.resolve(shape);
+    },
+    // -------------------------------------------------------------------
+    // Closure / ref-cell dispatch (#1169c).
+    // -------------------------------------------------------------------
+    resolveClosure(sig: IrClosureSignature): IrClosureLowering | null {
+      return closureResolver.resolveBase(sig);
+    },
+    resolveClosureSubtype(sig: IrClosureSignature, fields: readonly IrType[]): IrClosureLowering | null {
+      return closureResolver.resolveSubtype(sig, fields);
+    },
+    resolveRefCell(inner: ValType): IrRefCellLowering | null {
+      return refCellResolver.resolve(inner);
     },
     // -------------------------------------------------------------------
     // String backend dispatch (#1169a).
@@ -702,6 +775,10 @@ function irTypeKey(t: IrType): string {
   if (t.kind === "object") {
     return `object{${t.shape.fields.map((f) => `${f.name}:${irTypeKey(f.type)}`).join(",")}}`;
   }
+  if (t.kind === "closure") {
+    const ps = t.signature.params.map(irTypeKey).join(",");
+    return `closure(${ps})->${irTypeKey(t.signature.returnType)}`;
+  }
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }
@@ -723,4 +800,148 @@ function legacyFieldsHashKey(fields: readonly FieldDef[]): string {
     }
   }
   return parts.join("|");
+}
+
+// ---------------------------------------------------------------------------
+// Closure / ref-cell registries (#1169c)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 3 (#1169c): per-signature closure struct registry. Maintains:
+ *   - **base** structs (one per signature) — single-funcref-field
+ *     supertype; carried by `IrType.closure` so all closures of the same
+ *     signature share one Wasm value type.
+ *   - **subtype** structs (one per `(signature, captureFieldTypes)`
+ *     pair) — extends the base with capture fields. Constructed at
+ *     each `closure.new` site; lifted bodies `ref.cast` __self to
+ *     their corresponding subtype to read captures.
+ */
+class ClosureStructRegistry {
+  private readonly baseCache = new Map<string, IrClosureLowering>();
+  private readonly subCache = new Map<string, IrClosureLowering>();
+
+  constructor(
+    private readonly ctx: CodegenContext,
+    private readonly resolveValType: (t: IrType) => ValType,
+  ) {}
+
+  resolveBase(sig: IrClosureSignature): IrClosureLowering | null {
+    const key = sigKey(sig);
+    const cached = this.baseCache.get(key);
+    if (cached) return cached;
+
+    // Synthesize the base struct: just the funcref field, no captures.
+    // Mark as `superTypeIdx: -1` (root of hierarchy, non-final) so
+    // subtypes can extend it. A bare struct with `superTypeIdx`
+    // undefined is emitted as final by the Wasm spec, which would
+    // make the subtype declaration invalid (`type N extends final
+    // type M`).
+    const baseStructIdx = this.ctx.mod.types.length;
+    const baseStructName = `__ir_closure_base_${this.baseCache.size}`;
+    const baseFields: FieldDef[] = [{ name: "func", type: { kind: "funcref" }, mutable: false }];
+    this.ctx.mod.types.push({
+      kind: "struct",
+      name: baseStructName,
+      fields: baseFields,
+      superTypeIdx: -1,
+    } as StructTypeDef);
+    this.ctx.structMap.set(baseStructName, baseStructIdx);
+    this.ctx.typeIdxToStructName.set(baseStructIdx, baseStructName);
+    this.ctx.structFields.set(baseStructName, baseFields);
+
+    // Lifted func type: (ref $base, ...sig.params) -> sig.returnType.
+    let paramTypes: ValType[];
+    let resultTypes: ValType[];
+    try {
+      paramTypes = sig.params.map((p) => this.resolveValType(p));
+      resultTypes = [this.resolveValType(sig.returnType)];
+    } catch {
+      return null;
+    }
+    const liftedFuncTypeIdx = addFuncType(
+      this.ctx,
+      [{ kind: "ref", typeIdx: baseStructIdx }, ...paramTypes],
+      resultTypes,
+      `${baseStructName}_funcType`,
+    );
+
+    const lowering: IrClosureLowering = {
+      structTypeIdx: baseStructIdx,
+      funcFieldIdx: 0,
+      capFieldIdx: () => {
+        throw new Error("ir/integration: base closure struct has no captures");
+      },
+      funcTypeIdx: liftedFuncTypeIdx,
+    };
+    this.baseCache.set(key, lowering);
+    return lowering;
+  }
+
+  resolveSubtype(sig: IrClosureSignature, captureFieldTypes: readonly IrType[]): IrClosureLowering | null {
+    const key = `${sigKey(sig)}#${captureFieldTypes.map(irTypeKey).join(",")}`;
+    const cached = this.subCache.get(key);
+    if (cached) return cached;
+
+    const base = this.resolveBase(sig);
+    if (!base) return null;
+
+    const fields: FieldDef[] = [{ name: "func", type: { kind: "funcref" }, mutable: false }];
+    for (let i = 0; i < captureFieldTypes.length; i++) {
+      let ft: ValType;
+      try {
+        ft = this.resolveValType(captureFieldTypes[i]!);
+      } catch {
+        return null;
+      }
+      fields.push({ name: `cap${i}`, type: ft, mutable: false });
+    }
+
+    const subIdx = this.ctx.mod.types.length;
+    const subName = `__ir_closure_${this.subCache.size}`;
+    this.ctx.mod.types.push({
+      kind: "struct",
+      name: subName,
+      fields,
+      superTypeIdx: base.structTypeIdx,
+    } as StructTypeDef);
+    this.ctx.structMap.set(subName, subIdx);
+    this.ctx.typeIdxToStructName.set(subIdx, subName);
+    this.ctx.structFields.set(subName, fields);
+
+    const fieldIdxByCap = new Map<number, number>();
+    for (let i = 0; i < captureFieldTypes.length; i++) fieldIdxByCap.set(i, i + 1);
+
+    const lowering: IrClosureLowering = {
+      structTypeIdx: subIdx,
+      funcFieldIdx: 0,
+      capFieldIdx: (i: number): number => {
+        const v = fieldIdxByCap.get(i);
+        if (v === undefined) throw new Error(`ir/integration: closure subtype has no capture index ${i}`);
+        return v;
+      },
+      // call_ref dispatches via the BASE func type — subtype shares it.
+      funcTypeIdx: base.funcTypeIdx,
+    };
+    this.subCache.set(key, lowering);
+    return lowering;
+  }
+}
+
+function sigKey(sig: IrClosureSignature): string {
+  const ps = sig.params.map(irTypeKey).join(",");
+  return `(${ps})->${irTypeKey(sig.returnType)}`;
+}
+
+/**
+ * Slice 3 (#1169c): trivial wrapper around the legacy
+ * `getOrRegisterRefCellType` so legacy and IR ref cells share a single
+ * WasmGC struct per inner ValType.
+ */
+class RefCellRegistry {
+  constructor(private readonly ctx: CodegenContext) {}
+
+  resolve(inner: ValType): IrRefCellLowering | null {
+    const typeIdx = getOrRegisterRefCellType(this.ctx, inner);
+    return { typeIdx, fieldIdx: 0 };
+  }
 }

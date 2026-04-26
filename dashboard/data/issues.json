@@ -127,6 +127,19 @@
       "sprint": "45"
     },
     {
+      "id": "1169b",
+      "title": "IR Phase 4 Slice 2 — object literals and property access through IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169a",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
       "id": "1169",
       "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
       "priority": "high",
@@ -534,16 +547,6 @@
       "sprint": "45"
     },
     {
-      "id": "1096",
-      "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "platform",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1095",
       "title": "Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes",
       "priority": "medium",
@@ -735,16 +738,6 @@
       "sprint": "45"
     },
     {
-      "id": "1043",
-      "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1042",
       "title": "async/await state-machine lowering (AwaitExpression is currently a no-op)",
       "priority": "high",
@@ -765,16 +758,6 @@
       "goal": "developer-experience",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1035",
-      "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "45"
     },
     {
       "id": "1033",
@@ -1005,19 +988,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "906",
-      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "800",
-        "898"
-      ],
-      "goal": "error-model",
-      "status": "ready",
-      "sprint": "45"
     },
     {
       "id": "905",
@@ -1817,6 +1787,19 @@
       "sprint": "Backlog"
     },
     {
+      "id": "906",
+      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "800",
+        "898"
+      ],
+      "goal": "error-model",
+      "status": "review",
+      "sprint": "45"
+    },
+    {
       "id": "871",
       "title": "Playground: default example throws WebAssembly.Exception at runtime",
       "priority": "critical",
@@ -1867,6 +1850,20 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1169c",
+      "title": "IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169a",
+        "1169b",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
       "status": "done",
       "sprint": "45"
     },
@@ -2327,6 +2324,16 @@
       "sprint": "42"
     },
     {
+      "id": "1096",
+      "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "platform",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1094",
       "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
       "priority": "high",
@@ -2670,6 +2677,16 @@
       "sprint": "42"
     },
     {
+      "id": "1043",
+      "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1040",
       "title": "Array.prototype reduce/map — invalid Wasm binary regression from #1030 extended dispatch",
       "priority": "high",
@@ -2708,6 +2725,16 @@
       "goal": "crash-free",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "1035",
+      "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1034",

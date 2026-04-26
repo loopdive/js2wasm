@@ -101,7 +101,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #744 | Function monomorphization for polymorphic call sites | high | ready |
 | #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
-| #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | ready |
 | #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | ready |
 | #992 | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | medium | ready |
 | #993 | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | high | ready |
@@ -116,8 +115,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1006 | Support eval via JS host import | medium | ready |
 | #1008 | Add mobile-first layout support to the playground | medium | ready |
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | ready |
-| #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | ready |
-| #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | ready |
 | #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | ready |
 | #1045 | DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame) | high | ready |
 | #1058 | Compile the TypeScript compiler itself to Wasm — self-hosting stress test | high | ready |
@@ -128,7 +125,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | ready |
 | #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | ready |
 | #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
-| #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | ready |
 | #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
 | #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
@@ -140,6 +136,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
+| #1169b | IR Phase 4 Slice 2 — object literals and property access through IR path | high | ready |
 | #1172 | Codebase modularity audit — reduce coupling, improve layering, harden interfaces | high | ready |
 
 ### In Progress
@@ -153,6 +150,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | review |
+| #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | review |
 | #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | review |
 | #1171 | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | high | review |
 
@@ -162,14 +160,18 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | done |
 | #1025 | BindingElement array-pattern default guards still use ref.is_null | high | done |
+| #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | done |
+| #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | done |
 | #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | done |
 | #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
 | #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | done |
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | done |
+| #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | done |
 | #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | done |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | done |
 | #1169a | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | high | done |
+| #1169c | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | high | done |
 | #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

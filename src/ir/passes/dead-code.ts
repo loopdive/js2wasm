@@ -165,7 +165,23 @@ function computeLiveValues(fn: IrFunction, reachable: ReadonlySet<number>): Set<
  * - `global.set` — writes observable state.
  */
 function isSideEffecting(i: IrInstr): boolean {
-  return i.kind === "raw.wasm" || i.kind === "call" || i.kind === "global.set";
+  return (
+    i.kind === "raw.wasm" ||
+    i.kind === "call" ||
+    i.kind === "global.set" ||
+    // Slice 3 (#1169c): closure.call may invoke a body with arbitrary
+    // effects (mutates ref cells, sets globals, calls other functions).
+    // Conservatively keep it live regardless of result use count.
+    i.kind === "closure.call" ||
+    // refcell.set writes observable state through the cell ref.
+    // refcell.new is pure (allocates a fresh struct), so leave it
+    // out — DCE may strip it when its result is dead.
+    i.kind === "refcell.set" ||
+    // object.set mutates the struct (slice 2 didn't add this, but is
+    // currently void-result so the existing `result === null → keep`
+    // catches it; explicit listing is a no-op for now).
+    i.kind === "object.set"
+  );
 }
 
 function shouldKeep(i: IrInstr, live: ReadonlySet<IrValueId>): boolean {
@@ -213,6 +229,19 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.value];
     case "object.set":
       return [instr.value, instr.newValue];
+    // Slice 3 (#1169c): closure / ref-cell ops.
+    case "closure.new":
+      return instr.captures;
+    case "closure.cap":
+      return [instr.self];
+    case "closure.call":
+      return [instr.callee, ...instr.args];
+    case "refcell.new":
+      return [instr.value];
+    case "refcell.get":
+      return [instr.cell];
+    case "refcell.set":
+      return [instr.cell, instr.value];
   }
 }
 

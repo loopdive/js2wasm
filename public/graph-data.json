@@ -12776,7 +12776,7 @@
       "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "45",
       "depends_on": [
         "800",
@@ -14592,8 +14592,8 @@
       "id": "1035",
       "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -14693,8 +14693,8 @@
       "id": "1043",
       "title": "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -15415,8 +15415,8 @@
       "id": "1096",
       "title": "Isolate environment adapters — remove top-level await and browser/Node probing from core modules",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16524,6 +16524,30 @@
         "1169",
         "1168"
       ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169b",
+      "title": "IR Phase 4 Slice 2 — object literals and property access through IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169c",
+      "title": "IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
+      "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
       "cluster": "compiler-architecture"
@@ -17770,7 +17794,9 @@
         "1167c",
         "1168",
         "1169",
-        "1169a"
+        "1169a",
+        "1169b",
+        "1169c"
       ],
       "track": "supporting track"
     },
@@ -20218,6 +20244,14 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169a"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169b"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169c"
     },
     {
       "goal": "contributor-readiness",
