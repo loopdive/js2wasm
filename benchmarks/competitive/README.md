@@ -9,7 +9,8 @@ This benchmark harness compares the same JavaScript benchmark programs across:
 - Javy's static QuickJS runtime running the same JS in Wasmtime
 - Porffor running through its own Node.js runtime/compiler path
 - StarlingMonkey's runtime-eval component running the same JS in Wasmtime
-- a benchmark-specific StarlingMonkey + ComponentizeJS lane running in Wasmtime
+- a benchmark-specific StarlingMonkey + ComponentizeJS lane (Wizer pre-init +
+  Weval AOT specialization) running in Wasmtime
 
 ## What it measures
 
@@ -133,15 +134,21 @@ export STARLINGMONKEY_BUILD_DIR=/absolute/path/to/StarlingMonkey/cmake-build-rel
 export STARLINGMONKEY_RUNTIME=/absolute/path/to/StarlingMonkey/cmake-build-release/starling.wasm
 export STARLINGMONKEY_WASMTIME_BIN=/absolute/path/to/wasmtime
 
-# Optional StarlingMonkey + ComponentizeJS lane
-export STARLINGMONKEY_ADAPTER=$PWD/scripts/starlingmonkey-componentize-adapter.mjs
+# StarlingMonkey + ComponentizeJS (Wizer + Weval) lane
+# As of #1125 the harness auto-uses the bundled adapter at
+#   benchmarks/competitive/sm-componentize-adapter.mjs
+# whenever @bytecodealliance/componentize-js is installed (it ships in
+# devDependencies). You only need to set this if you want to point at a
+# different adapter implementation.
+export STARLINGMONKEY_ADAPTER=$PWD/benchmarks/competitive/sm-componentize-adapter.mjs
 
-# Optional explicit Wizer / Weval binaries
+# Optional: opt out of Weval AOT specialization (Wizer pre-init still runs)
+export STARLINGMONKEY_COMPONENTIZE_AOT=0
+
+# Optional: explicit Wizer / Weval binaries (otherwise the bundled
+# @bytecodealliance/wizer + @bytecodealliance/weval are used)
 export STARLINGMONKEY_WIZER_BIN=/absolute/path/to/wizer
 export STARLINGMONKEY_WEVAL_BIN=/absolute/path/to/weval
-
-# Optional: ask the adapter to attempt ComponentizeJS AOT
-export STARLINGMONKEY_COMPONENTIZE_AOT=1
 ```
 
 The benchmark script falls back to `vendor/...` paths only if those exist and no
@@ -179,77 +186,128 @@ For each benchmark program, the harness generates a small wrapper script that:
 This means the StarlingMonkey lane measures the runtime-eval component, not a
 benchmark-specific compiled module.
 
-## StarlingMonkey + ComponentizeJS adapter
+## StarlingMonkey + ComponentizeJS (Wizer + Weval) lane
 
-The repo now ships a benchmark adapter at:
+This lane gives the StarlingMonkey embedding the same kind of AOT story it
+would have in production, instead of the generic runtime-eval flow. It is
+distinct from the runtime-eval lane and is reported separately in the harness
+output (label: `StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime`,
+id: `starlingmonkey-componentize-wasmtime`).
+
+### What runs in this lane
+
+For each benchmark program the bundled adapter:
+
+1. takes the program's pure-JS module
+2. synthesizes a `<entry>-hot` loop export
+3. emits a tiny WIT world containing both `<entry>` and `<entry>-hot`
+4. feeds both into `@bytecodealliance/componentize-js`, which:
+   - runs **Wizer** pre-initialization on the StarlingMonkey embedding so the
+     resulting component already has the user module parsed and global init
+     complete (always on)
+   - runs **Weval** AOT specialization to partially evaluate the SpiderMonkey
+     interpreter against the snapshotted module so hot calls bypass interpreter
+     dispatch (on by default; opt out with `STARLINGMONKEY_COMPONENTIZE_AOT=0`)
+5. writes the final `.wasm` component plus a `<output>.wasm.json` sidecar
+   describing invoke export names and which post-processing passes ran
+
+The harness then runs `wasmtime compile -O opt-level=2` and measures
+cold-start, hot runtime, and module size like every other lane.
+
+### Required tools
+
+- `node` (>= 20, for `import.meta.resolve`)
+- `pnpm` — to install `@bytecodealliance/componentize-js`
+- `wasmtime` — to precompile and run the resulting component
+- `wasm-opt` — required by the rest of the harness, not by this adapter
+  specifically
+
+`@bytecodealliance/componentize-js` ships its own `@bytecodealliance/wizer` and
+`@bytecodealliance/weval` dependencies, so you do **not** need separate Wizer
+or Weval installs. Weval downloads its native binary on first use; subsequent
+runs are cached under `node_modules/.../weval/`.
+
+### Minimal setup (auto-enabled)
 
 ```bash
-scripts/starlingmonkey-componentize-adapter.mjs
+pnpm install                # provisions @bytecodealliance/componentize-js
+pnpm run benchmark:competitive
 ```
 
-To enable that lane, point `STARLINGMONKEY_ADAPTER` at the script and make
-ComponentizeJS available in the local repo, for example:
+That's it: as of #1125 the harness auto-detects the bundled adapter at
+`benchmarks/competitive/sm-componentize-adapter.mjs` whenever ComponentizeJS
+is installed. The lane reports `ok` instead of `unavailable` provided
+`wasmtime` is also installed.
+
+To opt out of Weval AOT (Wizer-only):
 
 ```bash
-pnpm add -D @bytecodealliance/componentize-js
+STARLINGMONKEY_COMPONENTIZE_AOT=0 pnpm run benchmark:competitive
 ```
 
-The adapter first tries the installed Node.js library and only falls back to a
-`componentize-js` CLI if the package import is unavailable.
-
-Minimal setup:
+To force a custom adapter path:
 
 ```bash
-pnpm add -D @bytecodealliance/componentize-js
-export STARLINGMONKEY_ADAPTER=$PWD/scripts/starlingmonkey-componentize-adapter.mjs
+export STARLINGMONKEY_ADAPTER=$PWD/benchmarks/competitive/sm-componentize-adapter.mjs
 ```
 
-The adapter script must support:
+### Adapter contract
 
 ```bash
 $STARLINGMONKEY_ADAPTER <input.js> <output.wasm>
 ```
 
-The bundled adapter writes:
+The adapter writes:
 
 - a benchmark-specific Wasm component to `<output.wasm>`
-- optional sidecar metadata to `<output.wasm>.json` describing invoke export
-  names and artifact kind
+- a sidecar metadata file at `<output.wasm>.json` describing:
+  - invoke export names (`invokeExport`, `hotInvokeExport`)
+  - which post-processing passes ran (`wizerEnabled`, `wevalAotEnabled`)
+  - the disabled WASI feature list
 
 The benchmark harness reads that metadata automatically, so component exports
 such as `run-hot` can be invoked correctly through Wasmtime.
 
-By default the adapter generates a minimal pure component by disabling:
+### Adapter env vars
 
-- `random`
-- `stdio`
-- `clocks`
-- `http`
-- `fetch-event`
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `STARLINGMONKEY_COMPONENTIZE_AOT` | `1` | Set to `0` to disable Weval AOT specialization. Wizer pre-init still runs. |
+| `STARLINGMONKEY_WIZER_BIN` | (bundled) | Use an externally installed `wizer` instead of the one bundled with ComponentizeJS. |
+| `STARLINGMONKEY_WEVAL_BIN` | (bundled) | Use an externally installed `weval` instead of the bundled one. |
+| `STARLINGMONKEY_COMPONENTIZE_DISABLE_FEATURES` | `random,stdio,clocks,http,fetch-event` | Comma-separated list of WASI subsystems to strip from the embedding. |
+| `STARLINGMONKEY_ENTRY_EXPORT` | `run` | Override the JS export the adapter should expose. The harness sets this. |
+| `STARLINGMONKEY_HOT_EXPORT` | derived | Override the synthesized hot-loop export name. |
+| `STARLINGMONKEY_COMPONENT_WORLD` | `benchmark` | Override the WIT world name. |
+| `COMPONENTIZE_JS_BIN` | (none) | Force CLI fallback instead of the library import. |
 
-Override that list through:
+### What is being measured vs the runtime-eval lane
 
-```bash
-export STARLINGMONKEY_COMPONENTIZE_DISABLE_FEATURES=random,stdio,clocks,http,fetch-event
-```
+| Aspect | runtime-eval | ComponentizeJS + Wizer + Weval |
+| --- | --- | --- |
+| StarlingMonkey embedding | unmodified `starling.wasm` | snapshotted with the benchmark module already loaded |
+| Per-benchmark compile | none — JS source is read at runtime | a benchmark-specific component is built |
+| Interpreter | full SpiderMonkey interpreter dispatch | Weval-specialized fast path for the snapshotted module |
+| Cold start | full VM init + module parse + first call | precompiled component + first call only |
+| Hot runtime | interpreter loop | partially-evaluated loop |
+| Module size | constant (`starling.wasm`) | per-benchmark component (~12-15 MB after optimization) |
 
-The adapter path is only needed if you want to compare against a
-benchmark-specific StarlingMonkey compile flow instead of the runtime-eval
-component lane.
+The two lanes are intentionally kept side-by-side so the harness can show the
+delta between "drop a JS file into a generic JS host" and "build an optimized
+component for this specific JS file".
 
-If you want the adapter to try ComponentizeJS AOT with Wizer/Weval:
+### Caveats
 
-```bash
-export STARLINGMONKEY_COMPONENTIZE_AOT=1
-export STARLINGMONKEY_WIZER_BIN=/absolute/path/to/wizer
-export STARLINGMONKEY_WEVAL_BIN=/absolute/path/to/weval
-```
-
-If you prefer to use the CLI instead of installing the package into this repo:
-
-```bash
-export COMPONENTIZE_JS_BIN=/absolute/path/to/componentize-js
-```
+- ComponentizeJS only accepts ESM input. The benchmark programs already export
+  `run` as an ESM function, so this is satisfied.
+- Weval downloads its native binary the first time AOT is enabled; the first
+  run can therefore take longer and requires network access. Subsequent runs
+  are cached under `node_modules`.
+- Weval-specialized components are noticeably larger than Wizer-only ones
+  (roughly +25%). The size delta is reported separately under `Raw bytes` and
+  `Precompiled bytes`.
+- The lane requires `wasmtime` on `PATH` (or `STARLINGMONKEY_WASMTIME_BIN`).
+  Without it the lane reports `runtime-error`, not `unavailable`.
 
 ## Javy
 

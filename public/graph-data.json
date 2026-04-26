@@ -15826,8 +15826,8 @@
       "id": "1125",
       "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16532,8 +16532,8 @@
       "id": "1169b",
       "title": "IR Phase 4 Slice 2 — object literals and property access through IR path",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16546,6 +16546,18 @@
       "priority": "high",
       "status": "done",
       "raw_status": "done",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169d",
+      "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -17796,7 +17808,8 @@
         "1169",
         "1169a",
         "1169b",
-        "1169c"
+        "1169c",
+        "1169d"
       ],
       "track": "supporting track"
     },
@@ -20252,6 +20265,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169c"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169d"
     },
     {
       "goal": "contributor-readiness",

@@ -127,13 +127,12 @@
       "sprint": "46"
     },
     {
-      "id": "1169b",
-      "title": "IR Phase 4 Slice 2 — object literals and property access through IR path",
+      "id": "1169d",
+      "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
       "priority": "high",
       "feasibility": "hard",
       "depends_on": [
-        "1169a",
-        "1168"
+        "1169c"
       ],
       "goal": "compiler-architecture",
       "status": "ready",
@@ -365,16 +364,6 @@
         "1124"
       ],
       "goal": "performance",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "1125",
-      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "benchmarking",
       "status": "ready",
       "sprint": "45"
     },
@@ -1733,6 +1722,19 @@
       "sprint": "45"
     },
     {
+      "id": "1169b",
+      "title": "IR Phase 4 Slice 2 — object literals and property access through IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169a",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1169a",
       "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
       "priority": "high",
@@ -2050,6 +2052,16 @@
       "goal": "correctness",
       "status": "done",
       "sprint": "43"
+    },
+    {
+      "id": "1125",
+      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "benchmarking",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1124",
