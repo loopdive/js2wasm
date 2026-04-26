@@ -175,23 +175,20 @@ export function compileNestedFunctionDeclaration(
     }
   }
 
-  // Analyze captured variables from the enclosing scope.
-  // Scan both the function body AND parameter-default initializers — defaults
-  // like `function f([] = iter)` reference outer-scope `iter` and must be
-  // captured the same way as body references (#1016).
+  // Analyze captured variables from the enclosing scope — scan the body only.
+  // We previously also scanned parameter-default initializers so that
+  // `function f([] = iter) {}` captured `iter` (b3318d618 / #1016c), but
+  // that change exposed a latent bug at nested-call sites where the
+  // capture is forwarded via the wrong local index, dropping spec-mandated
+  // getter / iterator throws on 24 dstr/*-get-value-err / *-iter-*-err
+  // test262 cases. Until the calls.ts capture-index fix can land safely
+  // (#1177), don't promote param-default-only references to captures.
   const referencedNames = new Set<string>();
   for (const s of stmt.body.statements) {
     collectReferencedIdentifiers(s, referencedNames);
   }
-  for (const param of stmt.parameters) {
-    if (param.initializer) {
-      collectReferencedIdentifiers(param.initializer, referencedNames);
-    }
-  }
 
-  // Detect which captured variables are written inside the function body
-  // (parameter defaults are evaluated, not assigned to outer scope, so we only
-  // scan the body for "written" tracking).
+  // Detect which captured variables are written inside the function body.
   const writtenInBody = new Set<string>();
   for (const s of stmt.body.statements) {
     collectWrittenIdentifiers(s, writtenInBody);

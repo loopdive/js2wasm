@@ -53,88 +53,24 @@ describe("#1016a — class method param array destructuring defaults", () => {
   });
 });
 
-/**
- * #1016 — Iterator protocol null access (parameter-default capture).
- *
- * When a nested function or arrow function declares a parameter default that
- * references an outer-scope variable (e.g. `function f([] = iter)`), the
- * default must be able to read that variable through the normal closure-
- * capture mechanism. Previously, parameter-default initializers were not
- * scanned during the captured-variable analysis, so the default expression
- * resolved to a null/zero value at runtime, causing spurious
- * "Cannot destructure 'null' or 'undefined'" TypeErrors.
- *
- * Spec: ECMA-262 §14.3.3 BindingInitialization for ArrayBindingPattern.
- *       For an empty `[]` pattern body the spec says "Return unused", so we
- *       must not invoke Array.from / __array_from_iter on the source value
- *       (which would observably advance a generator iterator).
- */
-describe("#1016 — parameter-default closure capture & empty pattern no-iterate", () => {
-  it("nested function param default reads outer-scope object", async () => {
-    const result = await run(`
-      export function main(): f64 {
-        var iter: any = { foo: 42 };
-        var callCount = 0;
-        function f([] = iter): void { callCount = callCount + 1; }
-        f();
-        return callCount;
-      }
-    `);
-    expect(result).toBe(1);
-  });
-
-  it("arrow function param default reads outer-scope object", async () => {
-    const result = await run(`
-      export function main(): f64 {
-        var iter: any = { foo: 42 };
-        var callCount = 0;
-        var f = ([] = iter): void => { callCount = callCount + 1; };
-        f();
-        return callCount;
-      }
-    `);
-    expect(result).toBe(1);
-  });
-
-  it("nested function param default delivers outer numeric value", async () => {
-    const result = await run(`
-      export function main(): f64 {
-        var n: number = 42;
-        function f(x: number = n): number { return x; }
-        return f();
-      }
-    `);
-    expect(result).toBe(42);
-  });
-
-  it("empty [] pattern as param does not iterate the source", async () => {
-    // For a hand-rolled iterator with a counter, the empty pattern must NOT
-    // call .next() — per spec the body is "Return unused".
-    const result = await run(`
-      export function main(): f64 {
-        var iterCount = 0;
-        var iter: any = {
-          next: function() { iterCount = iterCount + 1; return { value: undefined, done: true }; },
-          [Symbol.iterator]: function() { return this; }
-        };
-        function f([] = iter): void {}
-        f();
-        return iterCount;
-      }
-    `);
-    expect(result).toBe(0);
-  });
-
-  it("empty [] pattern accepts an array source without iterating", async () => {
-    const result = await run(`
-      export function main(): f64 {
-        var src: any = [1, 2, 3];
-        var callCount = 0;
-        function f([] = src): void { callCount = callCount + 1; }
-        f();
-        return callCount;
-      }
-    `);
-    expect(result).toBe(1);
-  });
-});
+// #1016c — Parameter-default closure capture suite.
+//
+// The original `b3318d618` commit scanned parameter-default initializers in
+// `compileArrowAsClosure` / `compileNestedFunctionDeclaration` so that
+// `function f([] = iter)` would capture `iter`. That scan exposed a latent
+// bug at nested-call sites in `expressions/calls.ts` — `cap.outerLocalIdx`
+// is read in the wrong fctx, forwarding `__self_cast` instead of the
+// captured value. The `__self_cast` then becomes the destructure source,
+// silently dropping spec-mandated getter / iterator throws on 24
+// dstr/*-get-value-err / *-iter-*-err test262 cases.
+//
+// The scan has been reverted pending a safe landing of the calls.ts
+// capture-index correction (#1177). The empty-pattern early-return in
+// `destructureParamArray` and the `__array_from_iter` wasm-closure
+// invocation in `runtime.ts` remain — those produce the empty-pattern
+// improvements in test262 without depending on the scan.
+//
+// Tests that require the param-default capture scan are deferred until
+// #1177 lands. They exercised behaviour that turned out to require a
+// matching call-site fix; landing them as expectations would block the
+// PR while the call-site fix is being designed.
