@@ -9,6 +9,7 @@ import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import { bodyUsesArguments } from "../helpers/body-uses-arguments.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import {
+  collectFunctionOwnLocals,
   collectReferencedIdentifiers,
   collectWrittenIdentifiers,
   promoteAccessorCapturesToGlobals,
@@ -175,32 +176,27 @@ export function compileNestedFunctionDeclaration(
     }
   }
 
-  // Analyze captured variables from the enclosing scope — scan the body only.
-  // We previously also scanned parameter-default initializers so that
-  // `function f([] = iter) {}` captured `iter` (b3318d618 / #1016c), but
-  // that change exposed a latent bug at nested-call sites where the
-  // capture is forwarded via the wrong local index, dropping spec-mandated
-  // getter / iterator throws on 24 dstr/*-get-value-err / *-iter-*-err
-  // test262 cases. Until the calls.ts capture-index fix can land safely
-  // (#1177), don't promote param-default-only references to captures.
+  // Analyze captured variables from the enclosing scope. Use scope-aware
+  // collection so nested `var` declarations and parameter bindings inside the
+  // function body shadow outer references — otherwise a function with its own
+  // `var i;` would be treated as capturing the outer `i` (#995).
+  const ownLocals = new Set<string>();
+  collectFunctionOwnLocals(stmt, ownLocals);
+
   const referencedNames = new Set<string>();
   for (const s of stmt.body.statements) {
-    collectReferencedIdentifiers(s, referencedNames);
+    collectReferencedIdentifiers(s, referencedNames, ownLocals);
   }
 
-  // Detect which captured variables are written inside the function body.
+  // Detect which captured variables are written inside the function body
   const writtenInBody = new Set<string>();
   for (const s of stmt.body.statements) {
-    collectWrittenIdentifiers(s, writtenInBody);
+    collectWrittenIdentifiers(s, writtenInBody, ownLocals);
   }
-
-  const ownParamNames = new Set(
-    stmt.parameters.filter((p) => ts.isIdentifier(p.name)).map((p) => (p.name as ts.Identifier).text),
-  );
 
   const captures: { name: string; type: ValType; localIdx: number; mutable: boolean }[] = [];
   for (const name of referencedNames) {
-    if (ownParamNames.has(name)) continue;
+    if (ownLocals.has(name)) continue;
     const localIdx = fctx.localMap.get(name);
     if (localIdx === undefined) continue;
     if (ctx.funcMap.has(name)) continue;

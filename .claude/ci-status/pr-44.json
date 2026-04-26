@@ -2,14 +2,14 @@
   "pr": 44,
   "conclusion": "failure",
   "head_branch": "issue-1120-1121-int32-loop-numeric-inference",
-  "head_sha": "2f76c52bb116f119ad87c7f86afb10cda811fe20",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24966096742",
-  "timestamp": "2026-04-26T20:28:58Z",
-  "pass": 25790,
-  "fail": 14053,
-  "compile_error": 1858,
-  "snapshot_delta": -3,
-  "net_per_test": 0,
+  "head_sha": "4b93a003813f5587ad4f1b9f3a0bcbeedca33fc3",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24968393533",
+  "timestamp": "2026-04-26T22:20:45Z",
+  "pass": 25782,
+  "fail": 14054,
+  "compile_error": 1859,
+  "snapshot_delta": -11,
+  "net_per_test": -6,
   "regressions": 97,
-  "improvements": 97
+  "improvements": 91
 }
