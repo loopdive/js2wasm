@@ -136,6 +136,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | done |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | done |
+| #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | done |
 | #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | done |
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | done |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | done |
