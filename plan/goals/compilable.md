@@ -185,7 +185,7 @@ type mismatches) and can be fixed in bulk.
 | **765** | - Compile error triage: 4,443 remaining CEs by pattern | 0 | done | critical |
 | **769** | - Missing RegExp_new import after lib.d.ts refactoring (~600 CE) | 26 | done | critical |
 | **772** | - Insert missing extern.convert_any at call sites (1,299 CE) | 0 | done | critical |
-| **773** | Monomorphize functions: compile with call-site types, not generic externref | 45 | ready | critical |
+| **773** | Monomorphize functions: compile with call-site types, not generic externref | 46 | deferred | critical |
 | **776** | - 'not enough arguments on the stack for call' (362 CE) | 18 | done | medium |
 | **777** | - 'immutable global' assignment error (240 CE) | 18 | done | medium |
 | **839** | return_call stack args and type mismatch in class constructors (158 CE) | 31 | done | high |

@@ -55,7 +55,7 @@
       ],
       "goal": "compiler-architecture",
       "status": "blocked",
-      "sprint": "45"
+      "sprint": "46"
     },
     {
       "id": "762",
@@ -123,8 +123,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1169b",
@@ -247,8 +247,8 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1137",
@@ -385,8 +385,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "correctness",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1122",
@@ -395,8 +395,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1119",
@@ -511,8 +511,8 @@
         "1094"
       ],
       "goal": "platform",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1098",
@@ -521,8 +521,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1095",
@@ -531,8 +531,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1094",
@@ -541,8 +541,8 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1093",
@@ -551,8 +551,8 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "async-model",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1089",
@@ -607,8 +607,8 @@
         "1074"
       ],
       "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1073",
@@ -619,8 +619,8 @@
         "1006"
       ],
       "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1067",
@@ -629,8 +629,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1066",
@@ -668,8 +668,8 @@
         "1046"
       ],
       "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1052",
@@ -700,8 +700,8 @@
         "1041"
       ],
       "goal": "platform",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1044",
@@ -712,8 +712,8 @@
         "1041"
       ],
       "goal": "async-model",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1042",
@@ -789,8 +789,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1006",
@@ -799,8 +799,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1005",
@@ -809,8 +809,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1004",
@@ -819,8 +819,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "generator-model",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1003",
@@ -831,8 +831,8 @@
         "1000"
       ],
       "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1002",
@@ -851,8 +851,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "1000",
@@ -861,8 +861,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "983",
@@ -1306,8 +1306,8 @@
         "1124"
       ],
       "goal": "compilable",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "745",
@@ -1329,8 +1329,8 @@
         "1124"
       ],
       "goal": "performance",
-      "status": "ready",
-      "sprint": "45"
+      "status": "deferred",
+      "sprint": "46"
     },
     {
       "id": "743",
@@ -1655,26 +1655,6 @@
   ],
   "review": [
     {
-      "id": "1171",
-      "title": "Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "review",
-      "sprint": "45"
-    },
-    {
-      "id": "1079",
-      "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "review",
-      "sprint": "45"
-    },
-    {
       "id": "1017",
       "title": "Null pointer dereferences and illegal casts in compiled code (504 FAIL)",
       "priority": "high",
@@ -1693,19 +1673,6 @@
       "goal": "test-infrastructure",
       "status": "review",
       "sprint": "Backlog"
-    },
-    {
-      "id": "906",
-      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "800",
-        "898"
-      ],
-      "goal": "error-model",
-      "status": "review",
-      "sprint": "45"
     },
     {
       "id": "871",
@@ -1751,6 +1718,16 @@
     }
   ],
   "done": [
+    {
+      "id": "1171",
+      "title": "Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
+    },
     {
       "id": "1170",
       "title": "Move test262 baselines out of Git LFS — eliminate LFS dependency from CI",
@@ -2354,6 +2331,16 @@
       "goal": "ci-hardening",
       "status": "done",
       "sprint": "40"
+    },
+    {
+      "id": "1079",
+      "title": "CI: baseline age stamp + SHA on landing page — make drift observable before crisis",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1078",
@@ -3848,6 +3835,19 @@
         "900"
       ],
       "goal": "developer-experience",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "906",
+      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "800",
+        "898"
+      ],
+      "goal": "error-model",
       "status": "done",
       "sprint": "45"
     },
