@@ -163,11 +163,17 @@ describe("#1168 — lowerTypeToIrType for unions", () => {
     expect(lowerTypeToIrType({ kind: "bool" })).toEqual(irVal({ kind: "i32" }));
   });
 
-  it("unknown / dynamic / string / object → null in V1", () => {
+  it("unknown / dynamic / object → null in V1", () => {
     expect(lowerTypeToIrType({ kind: "unknown" })).toBeNull();
     expect(lowerTypeToIrType({ kind: "dynamic" })).toBeNull();
-    expect(lowerTypeToIrType({ kind: "string" })).toBeNull();
+    // #1169a (Slice 1) lowers `LatticeType.string` to the backend-agnostic
+    // `IrType.string` marker, so it's no longer null. Object lowering is
+    // still future work.
     expect(lowerTypeToIrType({ kind: "object", shape: "Array" })).toBeNull();
+  });
+
+  it("string → IrType.string (slice 1)", () => {
+    expect(lowerTypeToIrType({ kind: "string" })).toEqual({ kind: "string" });
   });
 
   it("heterogeneous union (f64 | string) → null in V1", () => {
@@ -382,5 +388,46 @@ describe("#1168 — selector widening (Slice 1)", () => {
     // x === null is a Phase-1-shaped comparison once NullKeyword is an
     // accepted Phase-1 expression.
     expect(sel.funcs.has("nullCheck")).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Issue #1169a fix — drop functions that call non-local identifiers.
+  //
+  // Originally `isPhase1Expr` accepted any `CallExpression` whose callee was
+  // an identifier and `buildLocalCallGraph` only tracked local edges, so calls
+  // like `parseInt(s)` slipped through to `from-ast.ts` which threw "call to
+  // unknown function" → +386 compile_errors in CI. Fixed by extending the call
+  // graph to flag external calls and pre-dropping those functions before the
+  // closure pass.
+  // ---------------------------------------------------------------------------
+
+  it("drops functions calling non-local identifiers (parseInt, String, Number, isNaN)", () => {
+    const source = `
+      export function callsParseInt(s: string): number { return parseInt(s); }
+      export function callsNumber(s: string): number   { return Number(s); }
+      export function callsIsNaN(x: number): boolean   { return isNaN(x); }
+      export function pure(x: number): number          { return x + 1; }
+    `;
+    const ast = analyzeSource(source);
+    const sel = planIrCompilation(ast.sourceFile, { experimentalIR: true });
+    expect(sel.funcs.has("callsParseInt")).toBe(false);
+    expect(sel.funcs.has("callsNumber")).toBe(false);
+    expect(sel.funcs.has("callsIsNaN")).toBe(false);
+    expect(sel.funcs.has("pure")).toBe(true);
+  });
+
+  it("transitively drops local callers of an external-calling function", () => {
+    // The closure pass guarantees co-claim of callers/callees: when a
+    // function is dropped because it calls a non-local identifier, every
+    // local caller that referenced it must also be dropped, otherwise the
+    // caller would be IR-compiled (typeIdx replaced) while the dropped
+    // function keeps its legacy body — a wasm validation mismatch.
+    const source = `
+      export function leaf(s: string): number   { return parseInt(s); }
+      export function caller(s: string): number { return leaf(s) + 1; }
+    `;
+    const ast = analyzeSource(source);
+    const sel = planIrCompilation(ast.sourceFile, { experimentalIR: true });
+    expect(sel.funcs.size).toBe(0);
   });
 });

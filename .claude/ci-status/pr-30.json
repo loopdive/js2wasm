@@ -1,0 +1,15 @@
+{
+  "pr": 30,
+  "conclusion": "failure",
+  "head_branch": "issue-1016-iterator-null-access",
+  "head_sha": "5d2d7d496e16bcdb15d52a317e9fc1cf70a3e7f9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24935505579",
+  "timestamp": "2026-04-25T16:46:48Z",
+  "pass": 25380,
+  "fail": 13860,
+  "compile_error": 2475,
+  "snapshot_delta": -191,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

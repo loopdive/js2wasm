@@ -24,11 +24,13 @@
 
 import ts from "typescript";
 
+import { addStringImports } from "../codegen/index.js";
+import { addStringConstantGlobal } from "../codegen/registry/imports.js";
 import { addFuncType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
 import { lowerFunctionAstToIr } from "./from-ast.js";
 import { lowerIrFunctionToWasm, type IrLowerResolver, type IrUnionLowering } from "./lower.js";
-import type { IrFuncRef, IrFunction, IrGlobalRef, IrModule, IrType, IrTypeRef } from "./nodes.js";
+import type { IrFuncRef, IrFunction, IrGlobalRef, IrInstr, IrModule, IrType, IrTypeRef } from "./nodes.js";
 import { constantFold } from "./passes/constant-fold.js";
 import { deadCode } from "./passes/dead-code.js";
 import { inlineSmall } from "./passes/inline-small.js";
@@ -38,7 +40,7 @@ import { UnionStructRegistry } from "./passes/tagged-union-types.js";
 import { taggedUnions } from "./passes/tagged-unions.js";
 import { planIrCompilation, type IrSelection } from "./select.js";
 import { verifyIrFunction } from "./verify.js";
-import type { FuncTypeDef, StructTypeDef, ValType } from "./types.js";
+import type { FuncTypeDef, Instr, StructTypeDef, ValType } from "./types.js";
 
 export interface IrIntegrationReport {
   readonly compiled: readonly string[];
@@ -242,9 +244,42 @@ export function compileIrPathFunctions(
   }
 
   // -------------------------------------------------------------------------
+  // Phase 3 prep — Eagerly register string imports + literals BEFORE lowering.
+  //
+  // Rationale: `addStringImports` shifts existing function indices when called
+  // late, and `addStringConstantGlobal` shifts global indices when called
+  // after module globals exist. Both shift passes walk
+  // `ctx.mod.functions[].body` AND `ctx.currentFunc.body`. They do NOT walk
+  // the lowerer's local `out: Instr[]` buffer that holds the IR-lowered body
+  // mid-emission. So if a `string.const` triggers `addStringConstantGlobal`
+  // mid-emission, an earlier `global.get` we already pushed to `out` for this
+  // function would carry a now-stale index.
+  //
+  // We avoid that race by pre-walking the IR BEFORE Phase 3 starts and
+  // calling both registration helpers up front. Both are idempotent on
+  // existing entries, so duplicate calls are safe and cheap.
+  //
+  // Native-strings mode bakes string globals inline as
+  // `array.new_fixed`/`struct.new`, so it doesn't need the import shifting
+  // machinery — but we still walk the IR for symmetry and to keep the
+  // resolver path uniform.
+  // -------------------------------------------------------------------------
+  preregisterStringSupport(ctx, readyForLower);
+
+  // -------------------------------------------------------------------------
   // Phase 3 — Lower: translate each IrFunction to Wasm and install in ctx.
   // -------------------------------------------------------------------------
-  const resolver = makeResolver(ctx, unionRegistry);
+  //
+  // String backend: capture concrete funcIdx values for the native-string
+  // helpers (`__str_concat`, `__str_equals`) and the wasm:js-string imports
+  // (`concat`, `equals`, `length`) AT THIS POINT — after all late imports
+  // (e.g. `addPrimitiveTypeImports` triggered by legacy compileDeclarations)
+  // have shifted the index space. `ctx.nativeStrHelpers` is a stale map
+  // post-shift (the shift pass updates `funcMap` and call ops in bodies but
+  // not the helpers map), so we resolve names against `ctx.mod.functions`
+  // directly to pick up the current absolute index.
+  const stringBackend = computeStringBackend(ctx);
+  const resolver = makeResolver(ctx, unionRegistry, stringBackend);
   for (const entry of readyForLower) {
     const name = entry.name;
     try {
@@ -308,7 +343,51 @@ function runHygienePasses(fn: IrFunction): IrFunction {
   return cur;
 }
 
-function makeResolver(ctx: CodegenContext, unionRegistry: UnionStructRegistry): IrLowerResolver {
+/**
+ * String-backend funcIdx resolution captured at Phase-3 entry. Both maps
+ * (`ctx.nativeStrHelpers`, `ctx.jsStringImports`) can be stale after late
+ * import shifts triggered during legacy compileDeclarations; we resolve by
+ * name against the current state of `ctx.funcMap` / `ctx.mod.functions` to
+ * pick up the absolute index in the post-shift index space.
+ */
+interface StringBackendIndices {
+  /** Native-string helper funcIdx by name — null when missing. */
+  readonly nativeHelpers: ReadonlyMap<string, number>;
+  /** wasm:js-string import funcIdx by op name — null when missing. */
+  readonly hostImports: ReadonlyMap<string, number>;
+}
+
+function computeStringBackend(ctx: CodegenContext): StringBackendIndices {
+  const nativeHelpers = new Map<string, number>();
+  const hostImports = new Map<string, number>();
+
+  // Native helpers are stored as defined functions in `ctx.mod.functions`
+  // with a stable `name` field; convert their local index to absolute via
+  // `numImportFuncs`.
+  if (ctx.nativeStrings) {
+    for (let i = 0; i < ctx.mod.functions.length; i++) {
+      const f = ctx.mod.functions[i]!;
+      if (f.name === "__str_concat" || f.name === "__str_equals") {
+        nativeHelpers.set(f.name, ctx.numImportFuncs + i);
+      }
+    }
+  } else {
+    // wasm:js-string imports live in `ctx.funcMap` keyed by op name (see
+    // `addStringImports`). `funcMap` IS shift-aware, so this lookup is
+    // already in the post-shift index space.
+    for (const op of ["concat", "equals", "length"] as const) {
+      const idx = ctx.funcMap.get(op);
+      if (idx !== undefined) hostImports.set(op, idx);
+    }
+  }
+  return { nativeHelpers, hostImports };
+}
+
+function makeResolver(
+  ctx: CodegenContext,
+  unionRegistry: UnionStructRegistry,
+  stringBackend: StringBackendIndices,
+): IrLowerResolver {
   return {
     resolveFunc(ref: IrFuncRef): number {
       const idx = ctx.funcMap.get(ref.name);
@@ -331,5 +410,132 @@ function makeResolver(ctx: CodegenContext, unionRegistry: UnionStructRegistry): 
     resolveUnion(members: readonly ValType[]): IrUnionLowering | null {
       return unionRegistry.resolve(members);
     },
+    // -------------------------------------------------------------------
+    // String backend dispatch (#1169a).
+    // -------------------------------------------------------------------
+    resolveString(): ValType {
+      if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0) {
+        return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+      }
+      return { kind: "externref" };
+    },
+    emitStringConst(value: string): readonly Instr[] {
+      if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+        // Native strings: inline `array.new_fixed` of WTF-16 code units +
+        // `struct.new $NativeString(len, off, data)` — same shape as
+        // `compileNativeStringLiteral` in the legacy path.
+        const ops: Instr[] = [
+          { op: "i32.const", value: value.length },
+          { op: "i32.const", value: 0 },
+        ];
+        for (let i = 0; i < value.length; i++) {
+          ops.push({ op: "i32.const", value: value.charCodeAt(i) });
+        }
+        ops.push({ op: "array.new_fixed", typeIdx: ctx.nativeStrDataTypeIdx, length: value.length });
+        ops.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+        return ops;
+      }
+      // Host strings: pre-registration in `preregisterStringSupport` already
+      // ensured the string global exists. Look up the (now-final) index.
+      const globalIdx = ctx.stringGlobalMap.get(value);
+      if (globalIdx === undefined || globalIdx < 0) {
+        throw new Error(`ir/integration: string literal "${value}" was not pre-registered`);
+      }
+      return [{ op: "global.get", index: globalIdx }];
+    },
+    emitStringConcat(): readonly Instr[] {
+      if (ctx.nativeStrings) {
+        const idx = stringBackend.nativeHelpers.get("__str_concat");
+        if (idx === undefined) {
+          throw new Error("ir/integration: __str_concat helper not registered");
+        }
+        return [{ op: "call", funcIdx: idx }];
+      }
+      const idx = stringBackend.hostImports.get("concat");
+      if (idx === undefined) throw new Error("ir/integration: wasm:js-string concat not registered");
+      return [{ op: "call", funcIdx: idx }];
+    },
+    emitStringEquals(): readonly Instr[] {
+      if (ctx.nativeStrings) {
+        const idx = stringBackend.nativeHelpers.get("__str_equals");
+        if (idx === undefined) {
+          throw new Error("ir/integration: __str_equals helper not registered");
+        }
+        return [{ op: "call", funcIdx: idx }];
+      }
+      const idx = stringBackend.hostImports.get("equals");
+      if (idx === undefined) throw new Error("ir/integration: wasm:js-string equals not registered");
+      return [{ op: "call", funcIdx: idx }];
+    },
+    emitStringLen(): readonly Instr[] {
+      if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0) {
+        // AnyString.length is field 0 (matches struct definition in
+        // src/codegen/native-strings.ts).
+        return [{ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 }];
+      }
+      const idx = stringBackend.hostImports.get("length");
+      if (idx === undefined) throw new Error("ir/integration: wasm:js-string length not registered");
+      return [{ op: "call", funcIdx: idx }];
+    },
   };
+}
+
+// ---------------------------------------------------------------------------
+// String pre-registration (#1169a)
+// ---------------------------------------------------------------------------
+
+interface BuiltFnRef {
+  readonly fn: IrFunction;
+}
+
+/**
+ * Walk every IR function the lowerer is about to emit and pre-register the
+ * string-backend support it will need. This must run BEFORE Phase 3 starts
+ * because both `addStringImports` and `addStringConstantGlobal` re-shift
+ * function/global indices in already-compiled bodies; calling them
+ * mid-emission risks invalidating the lowerer's local op buffer.
+ *
+ * Idempotent — repeat calls are no-ops, and the helpers themselves are
+ * idempotent on `(ctx.hasStringImports, ctx.stringGlobalMap)`.
+ */
+function preregisterStringSupport(ctx: CodegenContext, fns: readonly BuiltFnRef[]): void {
+  // Find all distinct string literals + whether any string op is used at all.
+  const literals = new Set<string>();
+  let usesStringOp = false;
+  for (const entry of fns) {
+    for (const block of entry.fn.blocks) {
+      for (const instr of block.instrs) {
+        if (instrUsesStrings(instr)) usesStringOp = true;
+        if (instr.kind === "string.const") literals.add(instr.value);
+      }
+    }
+  }
+  if (!usesStringOp) return;
+
+  if (!ctx.nativeStrings) {
+    // Host-string backend: ensure all five `wasm:js-string` imports exist.
+    addStringImports(ctx);
+    // Pre-register every string literal as a global import. The helper is
+    // idempotent on `value`, so repeat calls (e.g. literals also collected
+    // by the legacy path) are no-ops.
+    for (const value of literals) {
+      addStringConstantGlobal(ctx, value);
+    }
+  }
+  // Native strings: nothing to pre-register here. The native-string struct
+  // types and helpers (`__str_concat`, `__str_equals`, `__str_flatten`) are
+  // emitted up front by the legacy codegen whenever any string literal /
+  // operation appears in source. The IR selector accepts `string` only when
+  // a string operation appears in source, so the helpers are guaranteed to
+  // exist by the time Phase 3 runs. (If they don't, the resolver throws
+  // with a clear message and the caller falls back to legacy.)
+}
+
+function instrUsesStrings(instr: IrInstr): boolean {
+  return (
+    instr.kind === "string.const" ||
+    instr.kind === "string.concat" ||
+    instr.kind === "string.eq" ||
+    instr.kind === "string.len"
+  );
 }

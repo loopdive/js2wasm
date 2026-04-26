@@ -697,12 +697,11 @@ export function lowerTypeToIrType(t: LatticeType): import("./nodes.js").IrType |
     case "bool":
       return { kind: "val", val: { kind: "i32" } };
     case "string":
-      // Strings currently ride externref at the backend boundary; upstream
-      // callers that need the Wasm representation can lower to that
-      // themselves. We don't expose `string` as a standalone `val` here
-      // because the backend representation is pluggable (native-strings
-      // vs wasm:js-string) and the choice isn't visible to the middle-end.
-      return null;
+      // #1169a — strings now flow through the IR via the backend-agnostic
+      // `IrType.string` marker. The actual Wasm representation (externref
+      // vs `(ref $AnyString)`) is decided by the lowerer's resolver based
+      // on the active string backend.
+      return { kind: "string" };
     case "object":
       // Object shape inference → IR type mapping is Slice 2 / future work.
       return null;

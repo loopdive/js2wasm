@@ -419,6 +419,7 @@ function tupleKey(types: readonly IrType[]): string {
 
 function irTypeKey(t: IrType): string {
   if (t.kind === "val") return `v:${valTypeKey(t.val)}`;
+  if (t.kind === "string") return "s";
   if (t.kind === "union") {
     const parts = [...t.members].map(valTypeKey).sort();
     return `u:${parts.join("|")}`;
@@ -613,6 +614,13 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
     case "box":
     case "unbox":
     case "tag.test":
+      return [instr.value];
+    case "string.const":
+      return [];
+    case "string.concat":
+    case "string.eq":
+      return [instr.lhs, instr.rhs];
+    case "string.len":
       return [instr.value];
   }
 }

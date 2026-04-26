@@ -66,13 +66,8 @@ tests/fixtures/*.wat
 tests/fixtures/*.d.ts
 tests/fixtures/*.imports.js
 .claude/nonces/
-benchmarks/results/test262-results-*.jsonl
-benchmarks/results/memory-monitor-*.jsonl
+*.jsonl
+benchmarks/results/runs/
 .playwright-cli/
 vendor/
 docs/publications/
-benchmarks/results/test262-report.json
-# test262-current.{jsonl,json} is the stable filename committed by the
-# nightly workflow — keep it tracked so build-pages can use it.
-!benchmarks/results/test262-current.jsonl
-!benchmarks/results/test262-current.json

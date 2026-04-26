@@ -71,6 +71,15 @@ const _origArrayIterator = Array.prototype[Symbol.iterator];
 const _origArrayIteratorDesc = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
 const _origArrayProtoNumericKeys = new Set(Object.getOwnPropertyNames(Array.prototype).filter((k) => /^\d+$/.test(k)));
 const _origObjectProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype));
+// Symbol-keyed properties that are originally present on Object.prototype and
+// Array.prototype (normally none and just @@iterator/@@unscopables, respectively).
+// Snapshot at module load so restoreBuiltins can detect and remove any added
+// later by tests or by runtime misroutes (#1160 follow-up: a host-array index
+// assignment with key 1-14 was hitting the well-known-symbol code path in
+// runtime._safeSet, leaving Object.prototype[Symbol.iterator] = <number> for
+// every subsequent compile to trip over).
+const _origObjectProtoSymbols = new Set(Object.getOwnPropertySymbols(Object.prototype));
+const _origArrayProtoSymbols = new Set(Object.getOwnPropertySymbols(Array.prototype));
 
 // --- Category 2: specific methods the compiler + TypeScript use.
 // Captured by VALUE at startup. Restored by simple assignment.
@@ -400,7 +409,7 @@ function restoreBuiltins() {
   // Bail out now so the caller restarts the fork rather than cascade-failing.
   {
     const cur = Array.prototype[Symbol.iterator];
-    if (cur != null && typeof cur !== "function") {
+    if (typeof cur !== "function") {
       console.error(
         `[unified-worker pid=${process.pid}] FATAL: Array.prototype[Symbol.iterator] is non-configurable ${typeof cur} — exiting for restart (#1160)`,
       );
@@ -422,6 +431,35 @@ function restoreBuiltins() {
     if (!_origObjectProtoKeys.has(key)) {
       try {
         delete Object.prototype[key];
+      } catch {}
+    }
+  }
+
+  // Remove SYMBOL-keyed properties added to Object.prototype (#1160 follow-up).
+  // The original Array.from regression was traced to host-array index assignments
+  // (e.g. `srcArr[1] = undefined`) being mis-routed by runtime._safeSet onto the
+  // well-known Symbol code path, which under accumulated fork state could leave
+  // `Object.prototype[Symbol.iterator] = <number>`. Subsequent compiles would
+  // then call Array.from({length: N}, ...) (in src/codegen/declarations.ts) and
+  // V8 would throw "%Array%.from requires that the property of the first
+  // argument, items[Symbol.iterator], when exists, be a function" because the
+  // plain object's @@iterator inherited from Object.prototype was a non-callable
+  // non-null value. The runtime is being fixed to gate the symbol-ID path on
+  // _isWasmStruct(obj); this cleanup is defence-in-depth that also catches any
+  // future poisoning we haven't anticipated.
+  for (const sym of Object.getOwnPropertySymbols(Object.prototype)) {
+    if (!_origObjectProtoSymbols.has(sym)) {
+      try {
+        delete Object.prototype[sym];
+      } catch {}
+    }
+  }
+  // Same defence on Array.prototype: tests that poison
+  // `Array.prototype[Symbol.unscopables]` etc. otherwise persist across tests.
+  for (const sym of Object.getOwnPropertySymbols(Array.prototype)) {
+    if (!_origArrayProtoSymbols.has(sym) && sym !== Symbol.iterator) {
+      try {
+        delete Array.prototype[sym];
       } catch {}
     }
   }
@@ -479,6 +517,24 @@ function restoreBuiltins() {
         );
         process.exit(1);
       }
+    }
+  }
+
+  // Same for Symbol-keyed additions on Object.prototype: if the property is
+  // non-configurable AND points at a non-callable, non-null value, no future
+  // test can recover (Array.from on plain objects will keep failing). Restart.
+  for (const sym of Object.getOwnPropertySymbols(Object.prototype)) {
+    if (_origObjectProtoSymbols.has(sym)) continue;
+    const desc = Object.getOwnPropertyDescriptor(Object.prototype, sym);
+    if (!desc) continue;
+    const dataVal = desc.value;
+    const isHarmful =
+      dataVal != null && typeof dataVal !== "function" && (desc.get == null || typeof dataVal !== "function");
+    if (!desc.configurable && isHarmful) {
+      console.error(
+        `[unified-worker pid=${process.pid}] FATAL: non-configurable Object.prototype[${String(sym)}] = ${typeof dataVal} — exiting for restart (#1160)`,
+      );
+      process.exit(1);
     }
   }
 }

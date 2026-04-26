@@ -117,6 +117,16 @@
   ],
   "ready": [
     {
+      "id": "1172",
+      "title": "Codebase modularity audit — reduce coupling, improve layering, harden interfaces",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
       "id": "1169a",
       "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
       "priority": "high",
@@ -259,16 +269,6 @@
       "goal": "platform",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1135",
-      "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "",
-      "status": "ready",
-      "sprint": "45"
     },
     {
       "id": "1134",
@@ -2158,6 +2158,16 @@
       "goal": "spec-completeness",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "1135",
+      "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1127",
