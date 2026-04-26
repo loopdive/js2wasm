@@ -218,18 +218,93 @@ function isConcreteLattice(t: LatticeType | undefined): t is LatticeType & { kin
  * Resolve the IR type for a function's param or return position, using
  * the AST's explicit TypeNode first (authoritative) and the TypeMap
  * lattice entry only as a fallback. If neither yields a concrete
- * primitive this is a selector bug — throw so the caller can skip the
- * function and fall through to legacy.
+ * primitive (or, slice 2, a representable object shape) this is a
+ * selector bug — throw so the caller can skip the function and fall
+ * through to legacy.
+ *
+ * #1169b widens this to accept TypeLiteral / TypeReference TypeNodes
+ * by deriving an `IrType.object` from the TS checker. Shapes that the
+ * resolver can't faithfully represent (callable types, methods,
+ * non-primitive non-object fields, empty objects) cause the helper to
+ * return `null`; the caller then throws so the function falls back to
+ * the legacy path.
  */
-function resolvePositionType(node: ts.TypeNode | undefined, mapped: LatticeType | undefined): IrType {
+function resolvePositionType(
+  node: ts.TypeNode | undefined,
+  mapped: LatticeType | undefined,
+  ctx: CodegenContext,
+): IrType {
   if (node) {
     if (node.kind === ts.SyntaxKind.NumberKeyword) return irVal({ kind: "f64" });
     if (node.kind === ts.SyntaxKind.BooleanKeyword) return irVal({ kind: "i32" });
     if (node.kind === ts.SyntaxKind.StringKeyword) return { kind: "string" };
+    if (ts.isTypeLiteralNode(node) || ts.isTypeReferenceNode(node)) {
+      const tsType = ctx.checker.getTypeFromTypeNode(node);
+      const ir = objectIrTypeFromTsType(ctx, tsType);
+      if (ir) return ir;
+      throw new Error(`object TypeNode ${ts.SyntaxKind[node.kind]} could not be lowered to IrType.object`);
+    }
     throw new Error(`unsupported TypeNode kind ${ts.SyntaxKind[node.kind]}`);
   }
   if (isConcreteLattice(mapped)) return latticeToIr(mapped);
+  if (mapped?.kind === "object") {
+    // The lattice carries a shape string but not the concrete field
+    // list, so we can't reconstruct an IrType.object from it alone.
+    // The selector accepts at the kind level; we need an explicit
+    // TypeNode for shape evidence in slice 2.
+    throw new Error(`object position type without explicit annotation — needs TypeNode in slice 2`);
+  }
   throw new Error(`no concrete type (mapped=${mapped?.kind ?? "missing"})`);
+}
+
+/**
+ * Convert a TypeScript object type to an `IrType.object` shape.
+ * Returns `null` if the type isn't a plain "data" object — methods,
+ * getters, callable types, external declared classes, tuples, and
+ * shapes containing fields the IR can't represent fall back to legacy.
+ *
+ * Field names are sorted into canonical (ascending) order to match
+ * the `IrObjectShape` invariant.
+ */
+function objectIrTypeFromTsType(ctx: CodegenContext, tsType: ts.Type): IrType | null {
+  if (!(tsType.flags & ts.TypeFlags.Object)) return null;
+  if (tsType.getCallSignatures().length > 0) return null; // callable
+  if (isExternalDeclaredClass(tsType, ctx.checker)) return null;
+  if (isTupleType(tsType)) return null;
+
+  const props = tsType.getProperties();
+  if (props.length === 0) return null; // empty object — defer to a future slice
+
+  const fields: { name: string; type: IrType }[] = [];
+  for (const prop of props) {
+    const decl = prop.valueDeclaration;
+    if (
+      decl &&
+      (ts.isMethodDeclaration(decl) || ts.isGetAccessorDeclaration(decl) || ts.isSetAccessorDeclaration(decl))
+    ) {
+      return null;
+    }
+    const propType = ctx.checker.getTypeOfSymbol(prop);
+    const fieldIr = tsTypeToFieldIr(ctx, propType);
+    if (!fieldIr) return null;
+    fields.push({ name: prop.name, type: fieldIr });
+  }
+  fields.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return { kind: "object", shape: { fields } };
+}
+
+/**
+ * Field-type subset for object shapes: primitives + nested objects +
+ * strings. Anything else (any/unknown/union/array/etc.) returns null,
+ * which causes `objectIrTypeFromTsType` to bail and the function to
+ * fall back to legacy.
+ */
+function tsTypeToFieldIr(ctx: CodegenContext, t: ts.Type): IrType | null {
+  if (t.flags & ts.TypeFlags.NumberLike) return irVal({ kind: "f64" });
+  if (t.flags & ts.TypeFlags.BooleanLike) return irVal({ kind: "i32" });
+  if (t.flags & ts.TypeFlags.StringLike) return { kind: "string" };
+  if (t.flags & ts.TypeFlags.Object) return objectIrTypeFromTsType(ctx, t);
+  return null;
 }
 
 /** Compile a typed AST into a WasmModule IR */
@@ -362,11 +437,11 @@ export function generateModule(
         if (!fn) continue;
         const entry = typeMap.get(name);
         try {
-          const returnType = resolvePositionType(fn.type, entry?.returnType);
+          const returnType = resolvePositionType(fn.type, entry?.returnType, ctx);
           const params: IrType[] = [];
           for (let i = 0; i < fn.parameters.length; i++) {
             const p = fn.parameters[i]!;
-            params.push(resolvePositionType(p.type, entry?.params[i]));
+            params.push(resolvePositionType(p.type, entry?.params[i], ctx));
           }
           overrideMap.set(name, { params, returnType });
         } catch (e) {

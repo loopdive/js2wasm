@@ -29,8 +29,23 @@ import { addStringConstantGlobal } from "../codegen/registry/imports.js";
 import { addFuncType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
 import { lowerFunctionAstToIr } from "./from-ast.js";
-import { lowerIrFunctionToWasm, type IrLowerResolver, type IrUnionLowering } from "./lower.js";
-import type { IrFuncRef, IrFunction, IrGlobalRef, IrInstr, IrModule, IrType, IrTypeRef } from "./nodes.js";
+import {
+  lowerIrFunctionToWasm,
+  lowerIrTypeToValType,
+  type IrLowerResolver,
+  type IrObjectStructLowering,
+  type IrUnionLowering,
+} from "./lower.js";
+import type {
+  IrFuncRef,
+  IrFunction,
+  IrGlobalRef,
+  IrInstr,
+  IrModule,
+  IrObjectShape,
+  IrType,
+  IrTypeRef,
+} from "./nodes.js";
 import { constantFold } from "./passes/constant-fold.js";
 import { deadCode } from "./passes/dead-code.js";
 import { inlineSmall } from "./passes/inline-small.js";
@@ -40,7 +55,7 @@ import { UnionStructRegistry } from "./passes/tagged-union-types.js";
 import { taggedUnions } from "./passes/tagged-unions.js";
 import { planIrCompilation, type IrSelection } from "./select.js";
 import { verifyIrFunction } from "./verify.js";
-import type { FuncTypeDef, Instr, StructTypeDef, ValType } from "./types.js";
+import type { FieldDef, FuncTypeDef, Instr, StructTypeDef, ValType } from "./types.js";
 
 export interface IrIntegrationReport {
   readonly compiled: readonly string[];
@@ -279,7 +294,19 @@ export function compileIrPathFunctions(
   // not the helpers map), so we resolve names against `ctx.mod.functions`
   // directly to pick up the current absolute index.
   const stringBackend = computeStringBackend(ctx);
-  const resolver = makeResolver(ctx, unionRegistry, stringBackend);
+  // Build the resolver in two steps so the resolver and the
+  // ObjectStructRegistry can refer to each other without a circular
+  // direct reference: the registry needs `lowerIrTypeToValType` (which
+  // calls `resolver.resolveString` / `resolveObject`), and the
+  // resolver's `resolveObject` delegates to the registry. We hand the
+  // resolver a `DeferredObjectResolver` whose `resolve` is filled in
+  // after the registry exists.
+  const deferred: DeferredObjectResolver = {
+    resolve: (_shape: IrObjectShape) => null,
+  };
+  const resolver = makeResolver(ctx, unionRegistry, stringBackend, deferred);
+  const objectRegistry = new ObjectStructRegistry(ctx, (t) => lowerIrTypeToValType(t, resolver, "<obj-registry>"));
+  deferred.resolve = (shape) => objectRegistry.resolve(shape);
   for (const entry of readyForLower) {
     const name = entry.name;
     try {
@@ -383,10 +410,21 @@ function computeStringBackend(ctx: CodegenContext): StringBackendIndices {
   return { nativeHelpers, hostImports };
 }
 
+/**
+ * Late-bound resolver delegate — used so the recursive struct registry
+ * (which needs to lower IrType→ValType, including string types via the
+ * resolver) and the resolver (whose resolveObject delegates to the
+ * registry) can both refer to each other without a circular import.
+ */
+interface DeferredObjectResolver {
+  resolve: (shape: IrObjectShape) => IrObjectStructLowering | null;
+}
+
 function makeResolver(
   ctx: CodegenContext,
   unionRegistry: UnionStructRegistry,
   stringBackend: StringBackendIndices,
+  objResolver: DeferredObjectResolver,
 ): IrLowerResolver {
   return {
     resolveFunc(ref: IrFuncRef): number {
@@ -409,6 +447,9 @@ function makeResolver(
     },
     resolveUnion(members: readonly ValType[]): IrUnionLowering | null {
       return unionRegistry.resolve(members);
+    },
+    resolveObject(shape: IrObjectShape): IrObjectStructLowering | null {
+      return objResolver.resolve(shape);
     },
     // -------------------------------------------------------------------
     // String backend dispatch (#1169a).
@@ -538,4 +579,148 @@ function instrUsesStrings(instr: IrInstr): boolean {
     instr.kind === "string.eq" ||
     instr.kind === "string.len"
   );
+}
+
+// ---------------------------------------------------------------------------
+// Object struct registry (#1169b)
+// ---------------------------------------------------------------------------
+
+/**
+ * Hash-based registry for `IrObjectShape` → WasmGC struct mappings.
+ *
+ * Slice-2 invariants:
+ *   - Same canonical shape always maps to the same struct typeIdx.
+ *   - The registry hashes shapes the same way as the legacy
+ *     `fieldsHashKey` in `codegen/index.ts`, so a shape registered by
+ *     legacy `ensureStructForType` and a shape registered through the IR
+ *     converge on a single anonymous struct (`__anon_<n>`).
+ *   - Field reference types are widened from `ref` to `ref_null` so
+ *     `struct.new` defaults match the legacy `ensureStructForType`
+ *     pattern (`codegen/index.ts:4584-4589`).
+ *
+ * Resolution can fail with `null` when a field IrType cannot be lowered
+ * to a ValType — the lowerer surfaces that as a clean error, so the
+ * containing function falls back to legacy.
+ */
+class ObjectStructRegistry {
+  private readonly cache = new Map<string, IrObjectStructLowering>();
+
+  constructor(
+    private readonly ctx: CodegenContext,
+    private readonly resolveValType: (t: IrType) => ValType,
+  ) {}
+
+  resolve(shape: IrObjectShape): IrObjectStructLowering | null {
+    const key = this.hashKey(shape);
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+
+    // Lower each field IrType to a ValType. If any field is a kind we
+    // can't lower, bail with null so the caller throws a clean error
+    // and the function falls back to legacy.
+    const fields: FieldDef[] = [];
+    for (const f of shape.fields) {
+      let wasm: ValType;
+      try {
+        wasm = this.resolveValType(f.type);
+      } catch {
+        return null;
+      }
+      // Widen non-null refs to ref_null so struct.new with default
+      // initialization works — matches `codegen/index.ts:4584-4589`.
+      if (wasm.kind === "ref") {
+        wasm = { kind: "ref_null", typeIdx: wasm.typeIdx };
+      }
+      fields.push({ name: f.name, type: wasm, mutable: true });
+    }
+
+    // Reuse an existing anonymous struct with the same legacy hash key
+    // if one was already registered (legacy↔IR convergence).
+    const legacyKey = legacyFieldsHashKey(fields);
+    let structName = this.ctx.anonStructHash.get(legacyKey);
+    let typeIdx: number;
+    if (structName !== undefined) {
+      typeIdx = this.ctx.structMap.get(structName)!;
+      // The structFields entry already exists from the legacy
+      // registration; reuse it rather than overwriting.
+    } else {
+      structName = `__anon_${this.ctx.anonTypeCounter++}`;
+      typeIdx = this.ctx.mod.types.length;
+      this.ctx.mod.types.push({
+        kind: "struct",
+        name: structName,
+        fields,
+      } as StructTypeDef);
+      this.ctx.structMap.set(structName, typeIdx);
+      this.ctx.typeIdxToStructName.set(typeIdx, structName);
+      this.ctx.structFields.set(structName, fields);
+      this.ctx.anonStructHash.set(legacyKey, structName);
+    }
+
+    const fieldIdxByName = new Map<string, number>();
+    fields.forEach((f, i) => fieldIdxByName.set(f.name, i));
+    const lowering: IrObjectStructLowering = {
+      typeIdx,
+      fieldIdx: (name: string): number => {
+        const idx = fieldIdxByName.get(name);
+        if (idx === undefined) {
+          throw new Error(`ir/integration: shape has no field "${name}"`);
+        }
+        return idx;
+      },
+    };
+    this.cache.set(key, lowering);
+    return lowering;
+  }
+
+  /**
+   * Canonical hash for a shape — names + recursive IR-type keys, joined
+   * with stable separators. Different shapes always hash differently;
+   * structurally identical shapes (already pre-sorted by name in the
+   * builder) always hash identically.
+   */
+  private hashKey(shape: IrObjectShape): string {
+    return shape.fields.map((f) => `${f.name}:${irTypeKey(f.type)}`).join("|");
+  }
+}
+
+/**
+ * Recursive IrType→string key for shape hashing. Mirrors the legacy
+ * `fieldsHashKey` format closely so identical shapes registered through
+ * either path collide on a single struct (although the actual
+ * legacy/IR convergence is enforced via `legacyFieldsHashKey` on the
+ * lowered ValTypes — this key is the IR-side memo).
+ */
+function irTypeKey(t: IrType): string {
+  if (t.kind === "val") {
+    if (t.val.kind === "ref" || t.val.kind === "ref_null") {
+      return `${t.val.kind}:${(t.val as { typeIdx: number }).typeIdx}`;
+    }
+    return t.val.kind;
+  }
+  if (t.kind === "string") return "string";
+  if (t.kind === "object") {
+    return `object{${t.shape.fields.map((f) => `${f.name}:${irTypeKey(f.type)}`).join(",")}}`;
+  }
+  if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
+  return `boxed<${t.inner.kind}>`;
+}
+
+/**
+ * Mirror of `fieldsHashKey` in `src/codegen/index.ts`. Re-implemented
+ * locally so the IR module doesn't pull on `codegen/index.ts`'s public
+ * surface (which is large). The two implementations must stay in sync —
+ * they're the legacy↔IR struct-dedup contract.
+ */
+function legacyFieldsHashKey(fields: readonly FieldDef[]): string {
+  const parts: string[] = [];
+  for (const f of fields) {
+    const t = f.type;
+    if (t.kind === "ref" || t.kind === "ref_null") {
+      parts.push(`${f.name}:${t.kind}:${(t as { typeIdx: number }).typeIdx}`);
+    } else {
+      parts.push(`${f.name}:${t.kind}`);
+    }
+  }
+  return parts.join("|");
 }
