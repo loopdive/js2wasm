@@ -61,7 +61,7 @@ WASI HTTP enables serverless edge functions.
 | **1029** | Migrate to TypeScript 7.x (Go rewrite / typescript-go) when compiler API stabilizes | Backlog | backlog | low |
 | **1045** | DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame) | 45 | ready | high |
 | **1066** | Support eval in standalone mode via host-compiled Wasm child module | Backlog | ready | medium |
-| **1096** | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | 45 | ready | medium |
+| **1096** | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | 45 | done | medium |
 | **1099** | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | 45 | ready | high |
 | **1136** | Reference platform scenario: capability-safe DOM wrapper with explicit subtree authority | Backlog | ready | high |
 | **1137** | Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js | Backlog | ready | high |
