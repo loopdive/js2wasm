@@ -209,6 +209,37 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
     // is into a member, not into a candidate identifier itself.
   }
 
+  // Pass 1.5: scan nested functions for any reference to a candidate.
+  // If a candidate is captured by a nested function (regular function /
+  // function-expression / arrow / method / accessor / constructor), the
+  // closure-construction code uses the candidate's *current* declared
+  // type to build the capture struct. Promoting the local to i32
+  // afterwards would not retroactively rewrite the read sites inside
+  // those nested closures, leading to mid-expression i32 reads in an
+  // f64 numeric context — Wasm validation failure (see #1120 regress
+  // cases like the `for await` test where a let in the wrapper is
+  // captured by an inner async function).
+  function collectCaptures(node: ts.Node, insideNested: boolean): void {
+    if (
+      node !== decl &&
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isAccessor(node) ||
+        ts.isConstructorDeclaration(node))
+    ) {
+      // Descend, but mark all identifier references inside as "captured".
+      ts.forEachChild(node, (child) => collectCaptures(child, true));
+      return;
+    }
+    if (insideNested && ts.isIdentifier(node) && candidates.has(node.text)) {
+      disqualified.add(node.text);
+    }
+    ts.forEachChild(node, (child) => collectCaptures(child, insideNested));
+  }
+  ts.forEachChild(decl.body, (child) => collectCaptures(child, false));
+
   // Pass 2: collect every mutation of each candidate
   function collectMutations(node: ts.Node): void {
     if (
