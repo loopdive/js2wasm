@@ -37,6 +37,7 @@
 
 import ts from "typescript";
 
+import { evaluateConstantCondition } from "../codegen/statements/control-flow.js";
 import { IrFunctionBuilder } from "./builder.js";
 import {
   asVal,
@@ -176,6 +177,21 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
     // (lowerTail enforces that); the else-arm opens a reserved block and
     // recursively lowers the remaining statements.
     if (ts.isIfStatement(s) && !s.elseStatement) {
+      // #1043: compile-time constant fold. After --define substitution of
+      // process.env.NODE_ENV (etc.), the condition may be a literal-vs-literal
+      // comparison. Skip the dead arm so dev-only code never reaches codegen.
+      const constResult = evaluateConstantCondition(s.expression);
+      if (constResult !== undefined) {
+        if (constResult) {
+          // Then-arm taken: it must be a tail (returns), so the rest is
+          // unreachable and we stop here.
+          lowerTail(s.thenStatement, { ...cx, scope: new Map(cx.scope) });
+          return;
+        }
+        // Then-arm dead: skip it and continue with the remaining statements
+        // in the same block / scope.
+        continue;
+      }
       const cond = lowerExpr(s.expression, cx, irVal({ kind: "i32" }));
       const condType = cx.builder.typeOf(cond);
       if (asVal(condType)?.kind !== "i32") {
@@ -226,6 +242,15 @@ function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
   if (ts.isIfStatement(stmt)) {
     if (!stmt.elseStatement) {
       throw new Error(`ir/from-ast: Phase 1 if must have an else arm in ${cx.funcName}`);
+    }
+    // #1043: compile-time constant fold. After --define substitution of
+    // process.env.NODE_ENV (etc.), the condition may be a literal-vs-literal
+    // comparison. Lower only the live arm so dev-only code never reaches codegen.
+    const constResult = evaluateConstantCondition(stmt.expression);
+    if (constResult !== undefined) {
+      const taken = constResult ? stmt.thenStatement : stmt.elseStatement;
+      lowerTail(taken, { ...cx, scope: new Map(cx.scope) });
+      return;
     }
     const cond = lowerExpr(stmt.expression, cx, irVal({ kind: "i32" }));
     const condType = cx.builder.typeOf(cond);
