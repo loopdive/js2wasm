@@ -1,0 +1,15 @@
+{
+  "pr": 40,
+  "conclusion": "failure",
+  "head_branch": "issue-1043-process-env-nodeenv",
+  "head_sha": "a1d21a4da99823b15ec56a3feff384af639f9213",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24957609717",
+  "timestamp": "2026-04-26T13:24:47Z",
+  "pass": 25795,
+  "fail": 14047,
+  "compile_error": 1854,
+  "snapshot_delta": 10,
+  "net_per_test": 3,
+  "regressions": 100,
+  "improvements": 103
+}

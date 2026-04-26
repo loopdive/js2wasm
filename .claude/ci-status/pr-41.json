@@ -1,0 +1,15 @@
+{
+  "pr": 41,
+  "conclusion": "failure",
+  "head_branch": "issue-1169c-ir-slice3-closures",
+  "head_sha": "f52d376189ccf782549b5a2acec317951cd6520c",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24958208984",
+  "timestamp": "2026-04-26T13:57:16Z",
+  "pass": 25959,
+  "fail": 14098,
+  "compile_error": 1642,
+  "snapshot_delta": 174,
+  "net_per_test": 242,
+  "regressions": 82,
+  "improvements": 324
+}
