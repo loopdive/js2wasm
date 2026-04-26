@@ -207,6 +207,12 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.lhs, instr.rhs];
     case "string.len":
       return [instr.value];
+    case "object.new":
+      return instr.values;
+    case "object.get":
+      return [instr.value];
+    case "object.set":
+      return [instr.value, instr.newValue];
   }
 }
 

@@ -85,6 +85,22 @@ export type IrSymRef = IrFuncRef | IrGlobalRef | IrTypeRef;
 //   { kind: "boxed", inner }   → ref to a single-field struct with the
 //                                inner ValType as its `$val`.
 
+/**
+ * A canonical object shape — a sorted list of named fields with their IR
+ * types. Equal shapes (same names, same types in the same canonical order)
+ * resolve to the same WasmGC struct via the lowerer's resolver. Carrying
+ * the field types as `IrType` (not `ValType`) lets a struct-of-string or
+ * struct-of-object compose cleanly: the resolver recursively materializes
+ * field types when registering the WasmGC struct.
+ *
+ * Names must be unique. The constructor in `from-ast.ts` sorts by name
+ * before constructing the IrType so structurally-identical shapes compare
+ * equal regardless of source order.
+ */
+export interface IrObjectShape {
+  readonly fields: readonly { readonly name: string; readonly type: IrType }[];
+}
+
 export type IrType =
   | { readonly kind: "val"; readonly val: ValType }
   // Backend-agnostic string marker (#1169a). The actual Wasm representation
@@ -95,6 +111,11 @@ export type IrType =
   // their concrete struct to the resolver. From the middle-end's point of
   // view a `string` value is a single SSA def with no member structure.
   | { readonly kind: "string" }
+  // Backend-agnostic object-shape marker (#1169b). The actual WasmGC struct
+  // is registered lazily by `IrLowerResolver.resolveObject`. Like `union`
+  // and `boxed`, the IR carries enough information to drive the resolver
+  // without committing to a specific Wasm typeIdx until lowering time.
+  | { readonly kind: "object"; readonly shape: IrObjectShape }
   | { readonly kind: "union"; readonly members: readonly ValType[] }
   | { readonly kind: "boxed"; readonly inner: ValType };
 
@@ -131,7 +152,26 @@ export function irTypeEquals(a: IrType, b: IrType): boolean {
     }
     return true;
   }
+  if (a.kind === "object" && b.kind === "object") {
+    return objectShapeEquals(a.shape, b.shape);
+  }
   return false;
+}
+
+/**
+ * Structural equality for object shapes. Field lists must be parallel
+ * (same length, same order, same name and IrType per slot). Recursing
+ * via `irTypeEquals` lets nested object fields compare correctly.
+ */
+export function objectShapeEquals(a: IrObjectShape, b: IrObjectShape): boolean {
+  if (a.fields.length !== b.fields.length) return false;
+  for (let i = 0; i < a.fields.length; i++) {
+    const fa = a.fields[i]!;
+    const fb = b.fields[i]!;
+    if (fa.name !== fb.name) return false;
+    if (!irTypeEquals(fa.type, fb.type)) return false;
+  }
+  return true;
 }
 
 function valTypeEquals(a: ValType, b: ValType): boolean {
@@ -399,6 +439,49 @@ export interface IrInstrStringLen extends IrInstrBase {
   readonly value: IrValueId;
 }
 
+// ---------------------------------------------------------------------------
+// Object operations (#1169b — IR Phase 4 Slice 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Materialize an object literal as a WasmGC struct. `shape` declares the
+ * struct's field layout (already canonically sorted by name); `values` is
+ * parallel to `shape.fields` and must have the same length. Lowering emits
+ * each value in canonical order followed by `struct.new $obj_<shape>`.
+ *
+ * Result type: `{ kind: "object", shape }`.
+ */
+export interface IrInstrObjectNew extends IrInstrBase {
+  readonly kind: "object.new";
+  readonly shape: IrObjectShape;
+  readonly values: readonly IrValueId[];
+}
+
+/**
+ * Read a named field from an object. `value` must be of `IrType.object`
+ * with a shape whose `fields` contain `name`. Lowering emits
+ * `struct.get $obj_<shape> <fieldIdx>`.
+ *
+ * Result type: the field's IrType (must match `resultType`).
+ */
+export interface IrInstrObjectGet extends IrInstrBase {
+  readonly kind: "object.get";
+  readonly value: IrValueId;
+  readonly name: string;
+}
+
+/**
+ * Write a named field on an object. `value` must be `IrType.object`,
+ * `newValue` must match the field's IrType. Void result. Lowering emits
+ * `struct.set $obj_<shape> <fieldIdx>`.
+ */
+export interface IrInstrObjectSet extends IrInstrBase {
+  readonly kind: "object.set";
+  readonly value: IrValueId;
+  readonly name: string;
+  readonly newValue: IrValueId;
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -414,7 +497,10 @@ export type IrInstr =
   | IrInstrStringConst
   | IrInstrStringConcat
   | IrInstrStringEq
-  | IrInstrStringLen;
+  | IrInstrStringLen
+  | IrInstrObjectNew
+  | IrInstrObjectGet
+  | IrInstrObjectSet;
 
 // ---------------------------------------------------------------------------
 // Terminators

@@ -17,6 +17,7 @@ import {
   IrFunction,
   IrGlobalRef,
   IrInstr,
+  IrObjectShape,
   IrParam,
   IrTerminator,
   IrType,
@@ -212,6 +213,66 @@ export class IrFunctionBuilder {
     this.valueTypes.set(result, resultType);
     this.requireBlock().instrs.push({ kind: "string.len", value, result, resultType });
     return result;
+  }
+
+  // --- object ops (#1169b) ------------------------------------------------
+
+  /**
+   * Emit `object.new` to materialize an object literal. The caller is
+   * responsible for canonicalizing `shape.fields` (sorted ascending by
+   * name) and for ensuring `values[i]` matches `shape.fields[i].type`.
+   * The arity check is enforced here so a stray slice-2 selector miss
+   * surfaces immediately instead of as a malformed Wasm struct.new.
+   */
+  emitObjectNew(shape: IrObjectShape, values: readonly IrValueId[]): IrValueId {
+    if (values.length !== shape.fields.length) {
+      throw new Error(
+        `IrFunctionBuilder: object.new value count ${values.length} != shape field count ${shape.fields.length} (func ${this.name})`,
+      );
+    }
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "object", shape };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "object.new",
+      shape,
+      values: [...values],
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Emit `object.get` to read a named field. Caller passes the field's
+   * declared IrType so the SSA def's static type matches the shape's
+   * field type without a second lookup at lowering time.
+   */
+  emitObjectGet(value: IrValueId, name: string, resultType: IrType): IrValueId {
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "object.get",
+      value,
+      name,
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Emit `object.set` to write a named field. Void result.
+   */
+  emitObjectSet(value: IrValueId, name: string, newValue: IrValueId): void {
+    this.requireBlock().instrs.push({
+      kind: "object.set",
+      value,
+      name,
+      newValue,
+      result: null,
+      resultType: null,
+    });
   }
 
   /**

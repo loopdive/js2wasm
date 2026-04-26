@@ -420,6 +420,11 @@ function tupleKey(types: readonly IrType[]): string {
 function irTypeKey(t: IrType): string {
   if (t.kind === "val") return `v:${valTypeKey(t.val)}`;
   if (t.kind === "string") return "s";
+  if (t.kind === "object") {
+    // Recursive shape key — same canonical order as the shape itself
+    // (already sorted in the builder), so equal shapes get equal keys.
+    return `o:{${t.shape.fields.map((f) => `${f.name}:${irTypeKey(f.type)}`).join(",")}}`;
+  }
   if (t.kind === "union") {
     const parts = [...t.members].map(valTypeKey).sort();
     return `u:${parts.join("|")}`;
@@ -622,5 +627,11 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.lhs, instr.rhs];
     case "string.len":
       return [instr.value];
+    case "object.new":
+      return instr.values;
+    case "object.get":
+      return [instr.value];
+    case "object.set":
+      return [instr.value, instr.newValue];
   }
 }
