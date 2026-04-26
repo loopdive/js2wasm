@@ -1549,16 +1549,6 @@
       "sprint": "42"
     },
     {
-      "id": "1125",
-      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "benchmarking",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
       "id": "1064",
       "title": "DataView bridge: subview metadata so bounds errors propagate",
       "priority": "medium",
@@ -2062,6 +2052,16 @@
       "goal": "correctness",
       "status": "done",
       "sprint": "43"
+    },
+    {
+      "id": "1125",
+      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "benchmarking",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1124",
