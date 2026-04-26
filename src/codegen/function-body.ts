@@ -12,7 +12,6 @@ import { reportError } from "./context/errors.js";
 import { allocLocal, deduplicateLocals } from "./context/locals.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { preBoxClosureCaptures } from "./closures.js";
 import {
   buildDestructureNullThrow,
   destructureParamArray,
@@ -412,11 +411,6 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
       hoistVarDeclarations(ctx, fctx, decl.body.statements);
       hoistLetConstWithTdz(ctx, fctx, decl.body.statements);
       hoistFunctionDeclarations(ctx, fctx, decl.body.statements);
-      // Pre-box variables that will be captured-as-mutable by any nested
-      // closure, so for-loop conditions and other code emitted before the
-      // closure-creation site read through the same ref cell as the loop
-      // body's `i++` (#996).
-      preBoxClosureCaptures(ctx, fctx, decl);
       for (const stmt of decl.body.statements) {
         compileStatement(ctx, fctx, stmt);
       }
@@ -472,11 +466,6 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
       // Hoist function declarations: JS semantics require function declarations
       // to be available before their textual position in the enclosing scope.
       hoistFunctionDeclarations(ctx, fctx, decl.body.statements);
-      // Pre-box variables that will be captured-as-mutable by any nested
-      // closure, so for-loop conditions and other code emitted before the
-      // closure-creation site read through the same ref cell as the loop
-      // body's `i++` (#996).
-      preBoxClosureCaptures(ctx, fctx, decl);
       for (const stmt of decl.body.statements) {
         compileStatement(ctx, fctx, stmt);
       }

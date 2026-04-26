@@ -24,19 +24,16 @@ import { buildImports } from "../src/runtime.js";
  *
  * #996 — closure-capture-loop pre-boxing.
  *
- * Even with correct scope handling, a closure inside a `for (var i = 0;...)`
- * loop — without an inner `var i` shadowing — still legitimately captures
- * the outer `i` as mutable. Boxing the loop variable mid-iteration created
- * the same split-lifetime infinite loop: the for-condition `local.get i`
- * was emitted before the closure-creation site (test262
- * `Array/prototype/toSorted/comparefn-not-a-function.js` hit
- * compile_timeout for the same reason).
- *
- * Fix: at function entry, scan all nested closures for outer-scope variables
- * captured-as-mutable. Allocate the ref cell up front so every read and
- * write of the variable goes through the same cell from statement #1.
+ * The remaining `for (var i = 0; ...) { fn(function() { ... i ... }); }`
+ * shape (closure inside loop, no inner `var i` shadowing) still hangs
+ * because lazy boxing happens AT the closure-creation site (mid-loop) and
+ * the for-condition's `local.get i` was emitted earlier, reading the
+ * unboxed local. A naive pre-pass (box every captured-as-mutable variable
+ * up front) regressed ~329 test262 tests; a more targeted approach is
+ * tracked separately. The CLOSURE-CAPTURES-OUTER-MUTABLE patterns covered
+ * here continue to work via the existing lazy-boxing path.
  */
-describe("#995/#996 — closure capture analysis & pre-boxing", () => {
+describe("#995 — closure capture analysis is scope-aware", () => {
   async function run(src: string): Promise<unknown> {
     const r = compile(src, { fileName: "test.ts" });
     if (!r.success) throw new Error(`CE: ${r.errors[0]?.message}`);
@@ -44,8 +41,6 @@ describe("#995/#996 — closure capture analysis & pre-boxing", () => {
     const { instance } = await WebAssembly.instantiate(r.binary, imports);
     return (instance.exports as { test?: () => unknown }).test?.();
   }
-
-  // ── #995 — inner var shadows outer var ────────────────────────────────
 
   it("inner `var i` in nested function shadows outer `var i` (no infinite loop)", async () => {
     const ret = await run(`
@@ -105,93 +100,32 @@ describe("#995/#996 — closure capture analysis & pre-boxing", () => {
     expect(ret).toBe(103);
   });
 
-  // ── #996 — closure inside loop without inner var ──────────────────────
-
-  it("closure inside loop captures mutable outer var (counter terminates)", async () => {
+  it("toU pattern from #995 (localeCompare 15.5.4.9_CE shape)", async () => {
+    // Mirrors the localeCompare test: outer var i, function toU(s) with its
+    // own var i, both using for-loops on i. Without scope-aware analysis,
+    // outer i would be boxed mid-loop, hanging.
     const ret = await run(`
       export function test(): number {
-        var arr: number[] = [10, 20, 30, 40, 50];
-        var sum: number = 0;
-        var i: number = 0;
-        for (i = 0; i < arr.length; i++) {
-          var fn: (() => number) = function (): number {
-            return arr[i];
-          };
-          sum = sum + fn();
+        var pairs: string[][] = [["a", "a"], ["b", "b"], ["c", "c"]];
+        var i: number;
+        for (i = 0; i < pairs.length; i++) {
+          var pair: string[] = pairs[i];
+          if (pair[0] !== pair[1]) {
+            return 2;
+          }
         }
-        return sum;
+        // toU has its own var i — must not be treated as capturing outer i.
+        function toU(s: string): number {
+          var result: number = 0;
+          var i: number;
+          for (i = 0; i < s.length; i++) {
+            result = result + s.charCodeAt(i);
+          }
+          return result;
+        }
+        return toU("ab") > 0 ? 1 : 0;
       }
     `);
-    // 10+20+30+40+50 = 150 if loop terminates; before the pre-boxing fix,
-    // this would be an infinite loop (or semantically wrong: arr[5] OOB,
-    // depends on closure capture timing).
-    expect(ret).toBe(150);
-  });
-
-  it("for(var i=0;...) with closure captures terminates", async () => {
-    const ret = await run(`
-      export function test(): number {
-        var hits: number = 0;
-        for (var i = 0; i < 10; i++) {
-          var fn: () => void = function (): void {
-            // Reads outer i — closure capture. Without pre-boxing, the
-            // for-loop condition's i would never see i++'s update.
-            hits = hits + i;
-          };
-          fn();
-        }
-        return hits;
-      }
-    `);
-    // 0+1+2+...+9 = 45
-    expect(ret).toBe(45);
-  });
-
-  it("two closures in loop body share the same captured outer var", async () => {
-    const ret = await run(`
-      export function test(): number {
-        var s: number = 0;
-        for (var i = 0; i < 4; i++) {
-          var read: () => number = function (): number {
-            return i;
-          };
-          var alsoRead: () => number = function (): number {
-            return i + 100;
-          };
-          s = s + read() + alsoRead();
-        }
-        return s;
-      }
-    `);
-    // i goes 0,1,2,3. each iter contributes i + (i+100) = 2i+100.
-    // Sum = 0+102+104+106 + ... wait let me recompute:
-    // i=0: 0 + 100 = 100; i=1: 1 + 101 = 102; i=2: 2+102 = 104; i=3: 3+103 = 106.
-    // total = 100+102+104+106 = 412.
-    expect(ret).toBe(412);
-  });
-
-  // ── Regression guard for the original reported pattern ────────────────
-
-  it("loop+closure pattern from #996 (toSorted comparefn-not-a-function shape)", async () => {
-    // Mirrors the test262 toSorted shape: for(var i=0;...) with two closures
-    // that read invalidComparators[i]. Before the pre-box fix this hung.
-    const ret = await run(`
-      export function test(): number {
-        var arr: number[] = [1, 2, 3, 4, 5];
-        var sum: number = 0;
-        for (var i = 0; i < arr.length; i++) {
-          var f1: () => number = function (): number {
-            return arr[i];
-          };
-          var f2: () => number = function (): number {
-            return arr[i] * 10;
-          };
-          sum = sum + f1() + f2();
-        }
-        return sum;
-      }
-    `);
-    // (1+10)+(2+20)+(3+30)+(4+40)+(5+50) = 11+22+33+44+55 = 165
-    expect(ret).toBe(165);
+    expect(ret).toBe(1);
   });
 });

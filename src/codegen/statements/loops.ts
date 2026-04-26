@@ -277,44 +277,6 @@ export function compileForStatement(ctx: CodegenContext, fctx: FunctionContext, 
           wasmType = { kind: "i32" };
         }
 
-        // If the variable was pre-boxed (#996) — captured-as-mutable by a nested
-        // closure — write the init value through the ref cell instead of
-        // overwriting the (now-boxed) local slot's type and value.
-        const boxedCap = fctx.boxedCaptures?.get(name);
-        if (boxedCap) {
-          const boxedLocalIdx = fctx.localMap.get(name);
-          if (boxedLocalIdx !== undefined && decl.initializer) {
-            // local.get refCell ; <init expr coerced to valType> ; struct.set
-            // Null-guard the ref cell (defensively — pre-boxed cell is always
-            // non-null at function entry, but the `local.set` semantics keep
-            // the slot ref_null-typed and the same null-skip pattern as
-            // assignment-through-boxed below stays consistent).
-            const initType = compileExpression(ctx, fctx, decl.initializer, boxedCap.valType);
-            if (initType && !valTypesMatch(initType, boxedCap.valType)) {
-              coerceType(ctx, fctx, initType, boxedCap.valType);
-            }
-            const tmpVal = allocLocal(fctx, `__forinit_box_${fctx.locals.length}`, boxedCap.valType);
-            fctx.body.push({ op: "local.set", index: tmpVal });
-            fctx.body.push({ op: "local.get", index: boxedLocalIdx });
-            fctx.body.push({ op: "ref.is_null" });
-            fctx.body.push({
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [] as Instr[],
-              else: [
-                { op: "local.get", index: boxedLocalIdx } as Instr,
-                { op: "local.get", index: tmpVal } as Instr,
-                {
-                  op: "struct.set",
-                  typeIdx: boxedCap.refCellTypeIdx,
-                  fieldIdx: 0,
-                } as Instr,
-              ],
-            });
-          }
-          continue; // skip the normal alloc/set path for this binding
-        }
-
         // Reuse existing local for var re-declaration
         const existingIdx = fctx.localMap.get(name);
         const localIdx =
