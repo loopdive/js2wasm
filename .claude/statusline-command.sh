@@ -20,6 +20,9 @@ if [ -n "$pricing" ]; then
   else                                           price_color='00;32'
   fi
 fi
+branch=$(git -C "${cwd:-$(pwd)}" rev-parse --abbrev-ref HEAD 2>/dev/null)
+issue=$(echo "$branch" | sed -n 's/^issue-\([a-zA-Z0-9]*\).*/\1/p')
+[ -n "$issue" ] && printf '\033[01;33m#%s\033[00m ' "$issue"
 printf '\033[01;34m%s\033[00m' "${cwd:-$(pwd)}"
 [ -n "$model" ] && printf ' \033[%sm%s\033[00m' "${price_color:-00;37}" "$model"
 if [ -n "$ctx_size" ]; then
