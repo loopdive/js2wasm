@@ -344,27 +344,35 @@ export function getBarePackageName(specifier: string): string | null {
  * Recursively resolve all imports starting from an entry file,
  * building a complete dependency graph.
  *
+ * Files are returned in topological order (deps first, importers last,
+ * entry last). This is essential for module-init code generation:
+ * top-level statements that depend on imported variables must run
+ * after their dependencies' top-level statements (#1109).
+ *
+ * Cycles are tolerated — when re-entering a node we drop the back-edge
+ * and continue the post-order walk. The result mirrors ES module
+ * evaluation order: each module's body runs after its imports' bodies,
+ * with cycles broken by the first-seen position.
+ *
  * @returns A map of file paths to source contents (including the entry file)
  */
 export function resolveAllImports(entryFile: string, resolver: ModuleResolver): Map<string, string> {
   const resolved = new Map<string, string>();
   const visited = new Set<string>();
-  const queue: string[] = [path.resolve(entryFile)];
+  const onStack = new Set<string>();
 
-  while (queue.length > 0) {
-    const filePath = queue.pop()!;
-    if (visited.has(filePath)) continue;
-    visited.add(filePath);
+  function visit(filePath: string): void {
+    if (visited.has(filePath) || onStack.has(filePath)) return;
+    onStack.add(filePath);
 
     let content: string;
     try {
       content = getFs()!.readFileSync(filePath, "utf-8");
     } catch {
       // File not found — skip (TS will report errors)
-      continue;
+      onStack.delete(filePath);
+      return;
     }
-
-    resolved.set(filePath, content);
 
     // Parse to find import specifiers
     const sf = ts.createSourceFile(
@@ -375,24 +383,28 @@ export function resolveAllImports(entryFile: string, resolver: ModuleResolver): 
       filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
     );
 
+    // Visit dependencies first (post-order DFS) so their content lands
+    // in `resolved` before this file's content. This produces a true
+    // topological order: deps before importers, entry last.
     for (const stmt of sf.statements) {
       if (ts.isImportDeclaration(stmt) && ts.isStringLiteral(stmt.moduleSpecifier)) {
         const specifier = stmt.moduleSpecifier.text;
         const resolvedPath = resolver.resolve(specifier, filePath);
-        if (resolvedPath && !visited.has(resolvedPath)) {
-          queue.push(resolvedPath);
-        }
+        if (resolvedPath) visit(resolvedPath);
       }
       // Also handle export ... from "..."
       if (ts.isExportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
         const specifier = stmt.moduleSpecifier.text;
         const resolvedPath = resolver.resolve(specifier, filePath);
-        if (resolvedPath && !visited.has(resolvedPath)) {
-          queue.push(resolvedPath);
-        }
+        if (resolvedPath) visit(resolvedPath);
       }
     }
+
+    visited.add(filePath);
+    onStack.delete(filePath);
+    resolved.set(filePath, content);
   }
 
+  visit(path.resolve(entryFile));
   return resolved;
 }
