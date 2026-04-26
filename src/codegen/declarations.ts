@@ -54,6 +54,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
+import { computeElidableTopLevelTdzNames } from "./expressions/identifiers.js";
 import { compileExpression, compileStatement } from "./shared.js";
 
 /** Accumulated state for the single-pass collector */
@@ -2632,6 +2633,22 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
   }
 
   compileClassesFromStatements(sourceFile.statements);
+
+  // Compile away TDZ tracking for definite-assignment top-level let/const
+  // variables (#906). If every read of a top-level let/const can be statically
+  // proven to occur after its initializer (analyzeTdzAccess returns "skip"),
+  // we drop the variable from `tdzLetConstNames` so:
+  //   - no `__tdz_<name>` flag global is allocated below,
+  //   - `emitTdzInit` becomes a no-op (no `i32.const 1; global.set` writes
+  //     in `__module_init`),
+  //   - `emitTdzCheck` becomes a no-op (no runtime check at reads).
+  // Genuinely dynamic / ambiguous cases (e.g. function declarations that
+  // could be called before the variable's initializer runs) are preserved
+  // because `analyzeTdzAccess` conservatively returns "check" for them.
+  const elidableTdzNames = computeElidableTopLevelTdzNames(ctx, sourceFile, ctx.tdzLetConstNames);
+  for (const name of elidableTdzNames) {
+    ctx.tdzLetConstNames.delete(name);
+  }
 
   // Create TDZ flag globals for let/const module globals.
   // Each TDZ flag is an i32 global initialized to 0 (uninitialized).

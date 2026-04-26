@@ -105,7 +105,12 @@ export {
 export { compileCallExpression, compileIIFE, compileOptionalCallExpression } from "./expressions/calls.js";
 export { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 export { emitThrowString, getFuncParamTypes } from "./expressions/helpers.js";
-export { analyzeTdzAccessByPos, compileIdentifier, narrowTypeToUnbox } from "./expressions/identifiers.js";
+export {
+  analyzeTdzAccessByPos,
+  compileIdentifier,
+  computeElidableTopLevelTdzNames,
+  narrowTypeToUnbox,
+} from "./expressions/identifiers.js";
 export {
   emitUndefined,
   ensureExternIsUndefinedImport,
