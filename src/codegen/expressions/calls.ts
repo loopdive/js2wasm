@@ -4960,15 +4960,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             const currentLocalIdx = fctx.localMap.get(cap.name)!;
             fctx.body.push({ op: "local.get", index: currentLocalIdx });
           } else {
-            // Create a ref cell, store the current value, keep ref on stack.
-            // Prefer a localMap lookup over `cap.outerLocalIdx` because the
-            // outer index is only meaningful in the function context where the
-            // callee was declared. When the call is emitted from a different
-            // context (e.g. an arrow/function-expression closure that
-            // transitively captured the same name), the closure prologue
-            // re-binds the name to a closure-local slot at a different index.
-            const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
-            fctx.body.push({ op: "local.get", index: sourceLocalIdx });
+            // Create a ref cell, store the current value, keep ref on stack
+            fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
             fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
             // Also box the outer local so subsequent reads/writes go through the ref cell
             const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, {
@@ -5006,24 +4999,11 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
             // "skip" — call site is after declaration, no check needed
           }
-          // Prefer a localMap lookup over `cap.outerLocalIdx`. The outer
-          // index was captured at the time the callee was declared and is
-          // only valid in that exact function context. When the call is
-          // emitted from a different context (e.g. an arrow / function
-          // expression closure that transitively captured the same name),
-          // the closure prologue re-binds the name to a closure-local slot
-          // at a different index. Without this lookup, the call would push
-          // whatever happens to live at the outer index in the current
-          // frame — typically the closure's `__self_cast` local — yielding
-          // garbage destructure sources and silently broken semantics
-          // (the spec-mandated getter-throw is dropped because the destructure
-          // operates on a wasm struct ref instead of the captured object).
-          const sourceCapLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
-          fctx.body.push({ op: "local.get", index: sourceCapLocalIdx });
+          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
           // Coerce capture value to expected param type if they differ
           const expectedCapType = captureParamTypes?.[capIdx];
           if (expectedCapType) {
-            const actualType = getLocalType(fctx, sourceCapLocalIdx);
+            const actualType = getLocalType(fctx, cap.outerLocalIdx);
             if (actualType && !valTypesMatch(actualType, expectedCapType)) {
               coerceType(ctx, fctx, actualType, expectedCapType);
             }
