@@ -421,9 +421,11 @@ function irTypeKey(t: IrType): string {
   if (t.kind === "val") return `v:${valTypeKey(t.val)}`;
   if (t.kind === "string") return "s";
   if (t.kind === "object") {
-    // Recursive shape key — same canonical order as the shape itself
-    // (already sorted in the builder), so equal shapes get equal keys.
     return `o:{${t.shape.fields.map((f) => `${f.name}:${irTypeKey(f.type)}`).join(",")}}`;
+  }
+  if (t.kind === "closure") {
+    const ps = t.signature.params.map(irTypeKey).join(",");
+    return `c:(${ps})->${irTypeKey(t.signature.returnType)}`;
   }
   if (t.kind === "union") {
     const parts = [...t.members].map(valTypeKey).sort();
@@ -633,5 +635,18 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.value];
     case "object.set":
       return [instr.value, instr.newValue];
+    // Slice 3 (#1169c): closure / ref-cell ops.
+    case "closure.new":
+      return instr.captures;
+    case "closure.cap":
+      return [instr.self];
+    case "closure.call":
+      return [instr.callee, ...instr.args];
+    case "refcell.new":
+      return [instr.value];
+    case "refcell.get":
+      return [instr.cell];
+    case "refcell.set":
+      return [instr.cell, instr.value];
   }
 }

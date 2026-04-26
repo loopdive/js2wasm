@@ -226,6 +226,22 @@ function isPhase1StatementList(stmts: ReadonlyArray<ts.Statement>, scope: Set<st
       if (!isPhase1VarDecl(s, scope)) return false;
       continue;
     }
+    // Slice 3 (#1169c): nested function declaration. Treated like a
+    // const-bound arrow — the name enters scope, the body is shape-
+    // checked recursively, self-reference is rejected (no slice-3
+    // self-recursive nested funcs).
+    if (ts.isFunctionDeclaration(s)) {
+      if (!isPhase1NestedFunc(s, scope)) return false;
+      continue;
+    }
+    // Slice 3 (#1169c): bare call expression statement (drop the result).
+    // Lets `inc(); inc(); inc();` patterns work for closures with side
+    // effects through ref-cell captures.
+    if (ts.isExpressionStatement(s)) {
+      if (!ts.isCallExpression(s.expression)) return false;
+      if (!isPhase1Expr(s.expression, scope)) return false;
+      continue;
+    }
     // Phase 2 extension: an `if (cond) <tail>` with NO else and the rest
     // of the statements forming a tail. This is the classic early-return
     // pattern: `if (base) return x; <recursive body>`. We structurally
@@ -263,15 +279,151 @@ function isPhase1VarDecl(stmt: ts.VariableStatement, scope: Set<string>): boolea
   const flags = stmt.declarationList.flags;
   if (!(flags & ts.NodeFlags.Let) && !(flags & ts.NodeFlags.Const)) return false;
   if (stmt.modifiers && stmt.modifiers.length > 0) return false;
+  const isConst = !!(flags & ts.NodeFlags.Const);
   for (const d of stmt.declarationList.declarations) {
     if (!ts.isIdentifier(d.name)) return false;
     if (scope.has(d.name.text)) return false;
     if (!d.initializer) return false;
+    // Slice 3 (#1169c): closure-literal initializer. Only accepted for
+    // `const` (no `let` arrow rebinding in slice 3). The closure
+    // shape-check enforces the slice-3 surface (every param + return
+    // annotated, body is a Phase-1 tail, no generator/async/named).
+    if (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer)) {
+      if (!isConst) return false;
+      // Permit an explicit closure type annotation (like `: (n: number) => number`)
+      // — it's a shape-only signal, not a primitive type. Since the IR doesn't
+      // syntactically check the annotation against the body, just accept any
+      // annotation (the lowerer enforces semantic match).
+      if (!isPhase1ClosureLiteral(d.initializer, scope)) return false;
+      scope.add(d.name.text);
+      continue;
+    }
     if (d.type && !isPhase1TypeNode(d.type)) return false;
     if (!isPhase1Expr(d.initializer, scope)) return false;
     scope.add(d.name.text);
   }
   return true;
+}
+
+/**
+ * Slice 3 (#1169c): shape-check a nested `function inner() {...}`
+ * declaration inside an outer body. Adds the inner's name to the outer
+ * scope on success so subsequent statements / sibling closures can
+ * reference it by name.
+ */
+function isPhase1NestedFunc(fn: ts.FunctionDeclaration, scope: Set<string>): boolean {
+  if (!fn.name) return false;
+  if (fn.asteriskToken) return false; // generator
+  if (
+    fn.modifiers &&
+    fn.modifiers.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword || m.kind === ts.SyntaxKind.ExportKeyword)
+  ) {
+    return false;
+  }
+  if (fn.typeParameters && fn.typeParameters.length > 0) return false;
+  if (scope.has(fn.name.text)) return false; // shadowing — defer
+
+  // Every param + return must have an explicit primitive / object
+  // annotation. Slice 3 doesn't run propagation across closure
+  // boundaries, so propagation overrides aren't applicable.
+  if (!fn.type || annotationToResolvedKind(fn.type) === null) return false;
+
+  const closureScope = new Set(scope);
+  for (const p of fn.parameters) {
+    if (!ts.isIdentifier(p.name)) return false;
+    if (p.questionToken || p.dotDotDotToken || p.initializer) return false;
+    if (!p.type || annotationToResolvedKind(p.type) === null) return false;
+    if (closureScope.has(p.name.text)) return false;
+    closureScope.add(p.name.text);
+  }
+
+  // Reject self-reference syntactically — slice 3 doesn't yet support
+  // recursive nested funcs (would need a closure-name binding inside
+  // the lifted body).
+  if (!fn.body) return false;
+  if (bodyReferencesIdentifier(fn.body, fn.name.text)) return false;
+  if (!isPhase1StatementList(fn.body.statements, closureScope)) return false;
+
+  // Add the nested function name to the OUTER scope.
+  scope.add(fn.name.text);
+  return true;
+}
+
+/**
+ * Slice 3 (#1169c): shape-check an arrow / function-expression
+ * initializer used as a `const` closure binding.
+ */
+function isPhase1ClosureLiteral(expr: ts.ArrowFunction | ts.FunctionExpression, scope: ReadonlySet<string>): boolean {
+  if (ts.isFunctionExpression(expr) && expr.name) return false; // named func expr — defer
+  if ("asteriskToken" in expr && expr.asteriskToken) return false; // generator
+  if (expr.modifiers && expr.modifiers.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) return false;
+  if (expr.typeParameters && expr.typeParameters.length > 0) return false;
+
+  if (!expr.type || annotationToResolvedKind(expr.type) === null) return false;
+
+  const inner = new Set(scope);
+  for (const p of expr.parameters) {
+    if (!ts.isIdentifier(p.name)) return false;
+    if (p.questionToken || p.dotDotDotToken || p.initializer) return false;
+    if (!p.type || annotationToResolvedKind(p.type) === null) return false;
+    if (inner.has(p.name.text)) return false;
+    inner.add(p.name.text);
+  }
+
+  // ArrowFunction with concise body: must be a Phase-1 expression.
+  // ArrowFunction / FunctionExpression with block body: Phase-1 tail
+  // statement list.
+  if (ts.isArrowFunction(expr) && !ts.isBlock(expr.body)) {
+    return isPhase1Expr(expr.body, inner);
+  }
+  if (!ts.isBlock(expr.body)) return false;
+  return isPhase1StatementList(expr.body.statements, inner);
+}
+
+/**
+ * Resolve a TypeNode annotation to one of the slice-1+2 ResolvedKinds.
+ * Returns `null` for anything outside that surface. Local helper for
+ * the closure shape checks; mirrors `resolveParamType`'s annotation
+ * arm but without the propagation-fallback path.
+ */
+function annotationToResolvedKind(node: ts.TypeNode): ResolvedKind {
+  if (node.kind === ts.SyntaxKind.NumberKeyword) return "f64";
+  if (node.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
+  if (node.kind === ts.SyntaxKind.StringKeyword) return "string";
+  if (ts.isTypeLiteralNode(node) || ts.isTypeReferenceNode(node)) return "object";
+  return null;
+}
+
+/**
+ * Recursive scan: does any identifier reference inside `body` resolve
+ * to `name`? Walks into nested expressions but stops at function-like
+ * boundaries (those have their own analyses run when they're lowered).
+ *
+ * Used by `isPhase1NestedFunc` to reject self-recursive nested funcs.
+ */
+function bodyReferencesIdentifier(body: ts.Block, name: string): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (ts.isIdentifier(node) && node.text === name) {
+      found = true;
+      return;
+    }
+    if (
+      node !== body &&
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isGetAccessor(node) ||
+        ts.isSetAccessor(node))
+    ) {
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(body, visit);
+  return found;
 }
 
 function isPhase1TypeNode(node: ts.TypeNode): boolean {
@@ -467,6 +619,13 @@ function buildLocalCallGraph(decls: ReadonlyMap<string, ts.FunctionDeclaration>)
   }
   for (const [callerName, fn] of decls) {
     if (!fn.body) continue;
+    // Slice 3 (#1169c): collect names introduced INSIDE this outer's
+    // body that belong to nested function decls or closure bindings.
+    // Calls to these names are intra-function (handled by the IR's
+    // closure dispatch, not the legacy call-graph), so they must NOT
+    // mark the outer as having an external call.
+    const localBindings = collectLocalClosureBindings(fn);
+
     const visit = (node: ts.Node): void => {
       if (node !== fn && isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
@@ -475,6 +634,9 @@ function buildLocalCallGraph(decls: ReadonlyMap<string, ts.FunctionDeclaration>)
           if (decls.has(callee)) {
             callees.get(callerName)!.add(callee);
             callers.get(callee)!.add(callerName);
+          } else if (localBindings.has(callee)) {
+            // Slice 3: closure / nested-fn binding within this outer.
+            // Intra-function call, dispatched by the IR lowerer.
           } else {
             // Call to a non-local identifier (e.g. parseInt, String, Number).
             // from-ast.ts throws for unknown callees so we must exclude this
@@ -493,6 +655,51 @@ function buildLocalCallGraph(decls: ReadonlyMap<string, ts.FunctionDeclaration>)
     ts.forEachChild(fn.body, visit);
   }
   return { callers, callees, hasExternalCall };
+}
+
+/**
+ * Slice 3 (#1169c): collect every identifier name introduced inside the
+ * outer function's top-level body as a nested function decl or as a
+ * `const`-bound arrow / function-expression. Calls to these names are
+ * intra-function (handled by the IR's closure dispatch) and must not be
+ * flagged as external by the call-graph builder.
+ *
+ * Walks only the OUTER body — nested closures' own bindings are
+ * captured at lift time, not visible here.
+ */
+function collectLocalClosureBindings(fn: ts.FunctionDeclaration): Set<string> {
+  const names = new Set<string>();
+  if (!fn.body) return names;
+  // Top-level walk: only direct children of the outer body. Nested
+  // bindings inside an `if` arm or another function-like don't escape
+  // their lexical scope, so they don't shadow the call-graph path.
+  // For simplicity we include any nested function decl and any const
+  // arrow init found at any nesting level within the outer body — the
+  // worst case is a false negative on the external-call check, which
+  // would just mean the outer falls back to legacy.
+  const visit = (node: ts.Node): void => {
+    if (node !== fn && isFunctionLike(node)) return;
+    if (ts.isFunctionDeclaration(node) && node !== fn && node.name) {
+      names.add(node.name.text);
+    }
+    if (ts.isVariableStatement(node)) {
+      const isConst = !!(node.declarationList.flags & ts.NodeFlags.Const);
+      if (isConst) {
+        for (const d of node.declarationList.declarations) {
+          if (
+            ts.isIdentifier(d.name) &&
+            d.initializer &&
+            (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer))
+          ) {
+            names.add(d.name.text);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(fn.body, visit);
+  return names;
 }
 
 function isFunctionLike(node: ts.Node): boolean {

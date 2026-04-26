@@ -196,6 +196,22 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       return [instr.value];
     case "object.set":
       return [instr.value, instr.newValue];
+    // Slice 3 (#1169c): closure / ref-cell ops. The verifier counts
+    // `callee` once for closure.call (SSA def→use accounting) — the
+    // lowerer adds the second count to force a Wasm local for the
+    // double-emission pattern.
+    case "closure.new":
+      return instr.captures;
+    case "closure.cap":
+      return [instr.self];
+    case "closure.call":
+      return [instr.callee, ...instr.args];
+    case "refcell.new":
+      return [instr.value];
+    case "refcell.get":
+      return [instr.cell];
+    case "refcell.set":
+      return [instr.cell, instr.value];
   }
 }
 

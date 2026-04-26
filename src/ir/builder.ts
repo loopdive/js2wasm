@@ -12,6 +12,7 @@ import {
   IrBinop,
   IrBlock,
   IrBlockId,
+  IrClosureSignature,
   IrConst,
   IrFuncRef,
   IrFunction,
@@ -25,7 +26,7 @@ import {
   IrValueId,
   IrValueIdAllocator,
 } from "./nodes.js";
-import type { Instr } from "./types.js";
+import type { Instr, ValType } from "./types.js";
 
 interface OpenBlock {
   readonly id: IrBlockId;
@@ -275,6 +276,122 @@ export class IrFunctionBuilder {
     });
   }
 
+  // --- closure / ref-cell ops (#1169c) -----------------------------------
+
+  /**
+   * Materialize a closure value. Caller is responsible for ensuring
+   * `captureFieldTypes[i]` matches the IR type of the SSA value at
+   * `captures[i]`. The arity check below catches mistakes early.
+   */
+  emitClosureNew(
+    liftedFunc: IrFuncRef,
+    signature: IrClosureSignature,
+    captureFieldTypes: readonly IrType[],
+    captures: readonly IrValueId[],
+  ): IrValueId {
+    if (captureFieldTypes.length !== captures.length) {
+      throw new Error(
+        `IrFunctionBuilder: closure.new captureFieldTypes count ${captureFieldTypes.length} != captures count ${captures.length} (func ${this.name})`,
+      );
+    }
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "closure", signature };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "closure.new",
+      liftedFunc,
+      signature,
+      captureFieldTypes: [...captureFieldTypes],
+      captures: [...captures],
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Read a capture field from the implicit `__self` closure struct.
+   * Caller passes the field's IrType so the SSA def's static type is
+   * stable without a second resolver lookup at lowering time.
+   */
+  emitClosureCap(self: IrValueId, index: number, resultType: IrType): IrValueId {
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "closure.cap",
+      self,
+      index,
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Invoke a closure value. Caller passes `resultType` (= signature.returnType)
+   * for the SSA def.
+   */
+  emitClosureCall(callee: IrValueId, args: readonly IrValueId[], resultType: IrType): IrValueId {
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "closure.call",
+      callee,
+      args: [...args],
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Wrap a primitive value in a fresh ref cell. The SSA def's type is
+   * `{ kind: "boxed", inner }`.
+   */
+  emitRefCellNew(value: IrValueId, inner: ValType): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "boxed", inner };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "refcell.new",
+      value,
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Read the inner value out of a ref cell. The SSA def's type is
+   * `irVal(inner)` — caller passes the same `inner` they used for
+   * `emitRefCellNew`.
+   */
+  emitRefCellGet(cell: IrValueId, inner: ValType): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "val", val: inner };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "refcell.get",
+      cell,
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Write a new value through the ref cell. Void result.
+   */
+  emitRefCellSet(cell: IrValueId, value: IrValueId): void {
+    this.requireBlock().instrs.push({
+      kind: "refcell.set",
+      cell,
+      value,
+      result: null,
+      resultType: null,
+    });
+  }
+
   /**
    * Phase 1 escape hatch — emit raw backend ops with a stated stack delta.
    * Verifier requires stackDelta to match the effective push count.
@@ -293,7 +410,10 @@ export class IrFunctionBuilder {
     return t;
   }
 
-  finish(): IrFunction {
+  finish(closureSubtype?: {
+    readonly signature: IrClosureSignature;
+    readonly captureFieldTypes: readonly IrType[];
+  }): IrFunction {
     if (this.current !== null) {
       throw new Error(`IrFunctionBuilder: finish() while block ${this.current.id} still open (func ${this.name})`);
     }
@@ -315,6 +435,7 @@ export class IrFunctionBuilder {
       blocks: sorted,
       exported: this.exported,
       valueCount: this.allocator.count,
+      ...(closureSubtype ? { closureSubtype } : {}),
     };
   }
 

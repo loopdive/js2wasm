@@ -385,6 +385,51 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (v === inst.value && nv === inst.newValue) return inst;
       return { ...inst, value: v, newValue: nv };
     }
+    // Slice 3 (#1169c): closure / ref-cell ops.
+    case "closure.new": {
+      let changed = false;
+      const newCaps: IrValueId[] = [];
+      for (const c of inst.captures) {
+        const n = mapId(rename, c);
+        if (n !== c) changed = true;
+        newCaps.push(n);
+      }
+      if (!changed) return inst;
+      return { ...inst, captures: newCaps };
+    }
+    case "closure.cap": {
+      const s = mapId(rename, inst.self);
+      if (s === inst.self) return inst;
+      return { ...inst, self: s };
+    }
+    case "closure.call": {
+      const c = mapId(rename, inst.callee);
+      let changed = c !== inst.callee;
+      const newArgs: IrValueId[] = [];
+      for (const a of inst.args) {
+        const n = mapId(rename, a);
+        if (n !== a) changed = true;
+        newArgs.push(n);
+      }
+      if (!changed) return inst;
+      return { ...inst, callee: c, args: newArgs };
+    }
+    case "refcell.new": {
+      const v = mapId(rename, inst.value);
+      if (v === inst.value) return inst;
+      return { ...inst, value: v };
+    }
+    case "refcell.get": {
+      const c = mapId(rename, inst.cell);
+      if (c === inst.cell) return inst;
+      return { ...inst, cell: c };
+    }
+    case "refcell.set": {
+      const c = mapId(rename, inst.cell);
+      const v = mapId(rename, inst.value);
+      if (c === inst.cell && v === inst.value) return inst;
+      return { ...inst, cell: c, value: v };
+    }
   }
 }
 
