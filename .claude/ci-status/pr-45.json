@@ -2,14 +2,14 @@
   "pr": 45,
   "conclusion": "failure",
   "head_branch": "issue-991-996-followup",
-  "head_sha": "20c41248d49b9cca6ff883cc117e34502a67bec4",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24966020464",
-  "timestamp": "2026-04-26T20:21:32Z",
-  "pass": 25801,
+  "head_sha": "09726bd781258be91afc684a462c5642bf20c1c8",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24966661174",
+  "timestamp": "2026-04-26T20:53:37Z",
+  "pass": 25797,
   "fail": 14055,
-  "compile_error": 1853,
-  "snapshot_delta": 8,
-  "net_per_test": 16,
+  "compile_error": 1851,
+  "snapshot_delta": 4,
+  "net_per_test": 13,
   "regressions": 99,
-  "improvements": 115
+  "improvements": 112
 }
