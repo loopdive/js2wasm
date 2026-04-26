@@ -167,7 +167,7 @@ and [#998](../sprints/40/998.md); [#848](../sprints/30/848.md) is already comple
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
 | [1099](../sprints/42/1099.md) | High | Standalone execution demo — FizzBuzz on Wasmtime, zero JS host | Production/infra credibility | Ready (depends on #1094) |
-| [1035](../sprints/42/1035.md) | High | WASI hello-fs: console.log + node:fs → WASI fd_write | Standalone FS proof | Ready |
+| [1035](../done/1035.md) | High | WASI hello-fs: console.log + node:fs → WASI fd_write | Standalone FS proof | Done |
 | [1100](1100.md) | Medium | Wasm-native Proxy: meta-object protocol without JS host | Standalone Proxy | Ready |
 | [1101](1101.md) | Low | Wasm-native WeakRef / FinalizationRegistry via WasmGC | Standalone weak refs | Ready |
 | [1102](1102.md) | Medium | Wasm-native eval: ahead-of-time compilation strategy | Standalone eval | Ready |
