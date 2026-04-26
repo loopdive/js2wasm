@@ -1560,16 +1560,6 @@
       "sprint": "42"
     },
     {
-      "id": "1128",
-      "title": "Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests)",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "test262",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
       "id": "1064",
       "title": "DataView bridge: subview metadata so bounds errors propagate",
       "priority": "medium",
@@ -1685,16 +1675,6 @@
       "goal": "error-model",
       "status": "review",
       "sprint": "Backlog"
-    },
-    {
-      "id": "862",
-      "title": "Iterator protocol missing on function-declaration binding-pattern params",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "crash-free",
-      "status": "review",
-      "sprint": "45"
     },
     {
       "id": "860",
@@ -2048,6 +2028,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1128",
+      "title": "Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "test262",
       "status": "done",
       "sprint": "45"
     },
@@ -4078,6 +4068,16 @@
       "goal": "platform",
       "status": "done",
       "sprint": "35"
+    },
+    {
+      "id": "862",
+      "title": "Iterator protocol missing on function-declaration binding-pattern params",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "crash-free",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "858",
