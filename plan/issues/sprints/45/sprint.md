@@ -100,7 +100,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
-| #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
 | #1169d | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | high | ready |
@@ -131,6 +130,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | done |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | done |
+| #1125 | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | high | done |
 | #1128 | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | medium | done |
 | #1135 | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | high | done |
 | #1164 | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | medium | done |
