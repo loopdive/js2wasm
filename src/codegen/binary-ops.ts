@@ -214,15 +214,22 @@ export function compileBinaryExpression(
   // compiling the right operand entirely and just emit ToInt32 on the left.
   // This avoids the expensive double-ToInt32 + i32.or + f64.convert sequence
   // that compileBitwiseBinaryOp would generate.
+  //
+  // #1120: when the left operand is already i32 (e.g. an i32-coerced
+  // local from collectI32CoercedLocals, or another `| 0` expression),
+  // return i32 directly — the f64.convert_i32_s round-trip would be
+  // immediately undone by the receiving local's ToInt32 coercion.
+  // Callers that need an f64 (function args, f64 locals, etc.) still go
+  // through coerceType which handles the i32 → f64 widening.
   if (op === ts.SyntaxKind.BarToken && ts.isNumericLiteral(expr.right) && expr.right.text === "0") {
     const leftType = compileExpression(ctx, fctx, expr.left);
     if (!leftType) return null;
     if (leftType.kind === "f64") {
       emitToInt32(fctx);
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      return { kind: "i32" };
     } else if (leftType.kind === "i32") {
-      // Already i32 — `x | 0` is identity, just convert to f64 for JS number semantics
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      // Already i32 — `x | 0` is identity, no work to do.
+      return { kind: "i32" };
     } else if (leftType.kind === "externref") {
       // externref → coerce to f64 first, then ToInt32
       const pfIdx = ctx.funcMap.get("parseFloat");
@@ -234,14 +241,13 @@ export function compileBinaryExpression(
         fctx.body.push({ op: "call", funcIdx: unboxIdx });
       }
       emitToInt32(fctx);
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      return { kind: "i32" };
     } else {
       // ref/ref_null — coerce to f64 via valueOf, then ToInt32
       coerceType(ctx, fctx, leftType, { kind: "f64" }, "number");
       emitToInt32(fctx);
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      return { kind: "i32" };
     }
-    return { kind: "f64" };
   }
 
   // Comma operator: (a, b) — evaluate a, drop its value, evaluate b
@@ -944,25 +950,56 @@ export function compileBinaryExpression(
   // Use i32 hint for relational comparisons where one operand is a known i32 local.
   // This avoids f64 conversion churn in for-loop conditions like `i < 10000` where
   // detectI32LoopVar already promoted the loop variable to i32.
-  const hasI32LocalOperand =
-    isRelational &&
-    !isDivOrPow &&
-    (() => {
-      const isI32Local = (e: ts.Expression): boolean => {
-        if (!ts.isIdentifier(e)) return false;
-        const idx = fctx.localMap.get(e.text);
-        if (idx === undefined) return false;
-        const entry = idx < fctx.params.length ? fctx.params[idx] : fctx.locals[idx - fctx.params.length];
-        const type =
-          entry && typeof entry === "object" && "type" in entry
-            ? (entry as { type: ValType }).type
-            : (entry as ValType | undefined);
-        return type?.kind === "i32";
-      };
-      return isI32Local(expr.left) || isI32Local(expr.right);
-    })();
+  const isI32LocalRef = (e: ts.Expression): boolean => {
+    if (!ts.isIdentifier(e)) return false;
+    const idx = fctx.localMap.get(e.text);
+    if (idx === undefined) return false;
+    const entry = idx < fctx.params.length ? fctx.params[idx] : fctx.locals[idx - fctx.params.length];
+    const type =
+      entry && typeof entry === "object" && "type" in entry
+        ? (entry as { type: ValType }).type
+        : (entry as ValType | undefined);
+    return type?.kind === "i32";
+  };
+  const hasI32LocalOperand = isRelational && !isDivOrPow && (isI32LocalRef(expr.left) || isI32LocalRef(expr.right));
+  // #1120: when an arithmetic expression is the operand of `expr | 0`
+  // (ToInt32 coercion), AND both operands are already i32 locals, hint
+  // i32 so we emit native i32 arithmetic. The i32-overflow wrap is
+  // semantically identical to f64 + ToInt32 here because the receiving
+  // context is i32 by construction. This is what lets the iterative
+  // Fibonacci body collapse to `i32.add` + `i32.add` + `local.set` in
+  // the hot loop instead of the heavy f64-ToInt32 round-trip.
+  const isArithOp =
+    op === ts.SyntaxKind.PlusToken || op === ts.SyntaxKind.MinusToken || op === ts.SyntaxKind.AsteriskToken;
+  // Skip past parens / `as` casts / non-null asserts when looking for the
+  // enclosing context — `((a + b)) | 0` is the same shape as `(a + b) | 0`
+  // for our purposes.
+  let walk: ts.Node = expr;
+  let parent: ts.Node | undefined = expr.parent;
+  while (
+    parent &&
+    (ts.isParenthesizedExpression(parent) ||
+      ts.isAsExpression(parent) ||
+      ts.isTypeAssertionExpression(parent) ||
+      ts.isNonNullExpression(parent))
+  ) {
+    walk = parent;
+    parent = parent.parent;
+  }
+  const wrappedInToInt32 =
+    isArithOp &&
+    !!parent &&
+    ts.isBinaryExpression(parent) &&
+    parent.operatorToken.kind === ts.SyntaxKind.BarToken &&
+    parent.left === walk &&
+    ts.isNumericLiteral(parent.right) &&
+    parent.right.text === "0";
+  const arithI32WithToInt32Wrap = wrappedInToInt32 && isI32LocalRef(expr.left) && isI32LocalRef(expr.right);
   const numericHint: ValType | undefined = isNumericOp
-    ? { kind: (ctx.fast || bothNativeI32 || hasI32LocalOperand) && !isDivOrPow ? "i32" : "f64" }
+    ? {
+        kind:
+          (ctx.fast || bothNativeI32 || hasI32LocalOperand || arithI32WithToInt32Wrap) && !isDivOrPow ? "i32" : "f64",
+      }
     : undefined;
 
   let leftType = compileExpression(ctx, fctx, expr.left, numericHint);
@@ -1045,11 +1082,13 @@ export function compileBinaryExpression(
     }
   }
 
-  // i32 numeric operations: fast mode, native type annotations, or known i32 local comparison
+  // i32 numeric operations: fast mode, native type annotations, known i32 local
+  // comparison, or — #1120 — arithmetic of two i32 locals whose result is
+  // ToInt32-coerced by an enclosing `| 0`.
   if (
     leftType.kind === "i32" &&
     rightType.kind === "i32" &&
-    ((ctx.fast && isNumberType(leftTsType)) || bothNativeI32 || hasI32LocalOperand)
+    ((ctx.fast && isNumberType(leftTsType)) || bothNativeI32 || hasI32LocalOperand || arithI32WithToInt32Wrap)
   ) {
     return compileI32BinaryOp(ctx, fctx, op, expr);
   }

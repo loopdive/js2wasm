@@ -1225,6 +1225,373 @@ export function inferParamTypeFromCallSites(
 }
 
 /**
+ * #1121: Fallback param-type inference from body usage. Used when
+ * `inferParamTypeFromCallSites` finds no call sites (e.g. an exported
+ * entrypoint that is only called from JS host) but the function body
+ * itself reveals how the parameter is used.
+ *
+ * Recognises three numeric-flow patterns:
+ *  1. `param` passed as an argument to a function whose return is in
+ *     `ctx.numericReturnTypes` (the recursive numeric kernels detected
+ *     by inferNumericReturnTypes).
+ *  2. `param` used as an operand of a numeric binary operator
+ *     (+, -, *, /, %, **, |, &, ^, <<, >>, >>>, ToInt32 coercion).
+ *  3. `param` used as a numeric loop bound / comparison operand
+ *     (<, <=, >, >=).
+ *
+ * Returns null if none of those patterns are found, leaving the param
+ * unchanged. This is intentionally conservative — the call-site path
+ * is still preferred when it has information.
+ */
+export function inferParamTypeFromBody(
+  ctx: CodegenContext,
+  decl: ts.FunctionLikeDeclaration,
+  paramIndex: number,
+): ValType | null {
+  if (!decl.body) return null;
+  const param = decl.parameters[paramIndex];
+  if (!param || !ts.isIdentifier(param.name)) return null;
+  const paramName = param.name.text;
+
+  let foundNumericUse = false;
+  function visit(node: ts.Node) {
+    if (foundNumericUse) return;
+    // Don't descend into nested functions — the param doesn't propagate there
+    // unless captured, and we don't track capture flow here.
+    if (
+      node !== decl &&
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isAccessor(node) ||
+        ts.isConstructorDeclaration(node))
+    ) {
+      return;
+    }
+
+    // (1) param passed to a known numeric function
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const calleeName = node.expression.text;
+      if (ctx.numericReturnTypes?.has(calleeName)) {
+        for (const arg of node.arguments) {
+          if (ts.isIdentifier(arg) && arg.text === paramName) {
+            foundNumericUse = true;
+            return;
+          }
+        }
+      }
+    }
+
+    // (2) param used in a numeric binary expression
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      const numericOps = new Set<ts.SyntaxKind>([
+        ts.SyntaxKind.PlusToken,
+        ts.SyntaxKind.MinusToken,
+        ts.SyntaxKind.AsteriskToken,
+        ts.SyntaxKind.AsteriskAsteriskToken,
+        ts.SyntaxKind.SlashToken,
+        ts.SyntaxKind.PercentToken,
+        ts.SyntaxKind.AmpersandToken,
+        ts.SyntaxKind.BarToken,
+        ts.SyntaxKind.CaretToken,
+        ts.SyntaxKind.LessThanLessThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+        ts.SyntaxKind.LessThanToken,
+        ts.SyntaxKind.LessThanEqualsToken,
+        ts.SyntaxKind.GreaterThanToken,
+        ts.SyntaxKind.GreaterThanEqualsToken,
+      ]);
+      if (numericOps.has(op)) {
+        const isParamId = (e: ts.Expression): boolean => ts.isIdentifier(e) && e.text === paramName;
+        // Skip when the OTHER operand is a string literal — `+` could mean
+        // string concatenation. The TS checker will already have given us
+        // a string-typed param in that case, so this guard is defensive.
+        if (op === ts.SyntaxKind.PlusToken) {
+          if (
+            (isParamId(node.left) && !ts.isStringLiteral(node.right)) ||
+            (isParamId(node.right) && !ts.isStringLiteral(node.left))
+          ) {
+            foundNumericUse = true;
+            return;
+          }
+        } else {
+          if (isParamId(node.left) || isParamId(node.right)) {
+            foundNumericUse = true;
+            return;
+          }
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+  ts.forEachChild(decl.body, visit);
+  return foundNumericUse ? { kind: "f64" } : null;
+}
+
+/**
+ * #1121: Infer numeric (f64) return types for functions whose body is a
+ * purely-numeric kernel even when TypeScript reports the return as
+ * `any`/`unknown` (e.g. unannotated recursive helpers like
+ * `function fib(n) { ... }`).
+ *
+ * We do a fixpoint over the entire source file:
+ *  1. Seed: every function declaration whose TS return type is implicit
+ *     any/unknown becomes a candidate for f64 promotion (assuming numeric).
+ *  2. Iterate: a candidate stays in the set only while every `return X`
+ *     in its body produces a value whose type is structurally numeric
+ *     under the assumption that all other candidates also return f64.
+ *  3. The fixpoint converges in O(N * passes) where passes is bounded by
+ *     the number of candidates.
+ *
+ * This intentionally does NOT consider parameter types — by the time we
+ * are called, the param-inference pass has already retyped each
+ * implicit-any parameter via `inferParamTypeFromCallSites`. We only need
+ * to fix the return-type side, which is what TS gives up on for
+ * recursive numeric kernels.
+ */
+export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.SourceFile): Map<string, ValType> {
+  // Collect all function declarations whose return type TS reports as any/unknown.
+  // These are the only functions we may promote.
+  const candidates = new Map<string, ts.FunctionDeclaration>();
+  function collectFns(node: ts.Node) {
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      // Skip if explicit return type annotation is present
+      if (node.type) {
+        return; // explicit annotation — TS already told us the answer
+      }
+      // Skip generator/async functions — return type semantics differ
+      if (node.asteriskToken || node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+        return;
+      }
+      const sig = ctx.checker.getSignatureFromDeclaration(node);
+      if (!sig) return;
+      const retType = ctx.checker.getReturnTypeOfSignature(sig);
+      const isImplicitAny = (retType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+      if (isImplicitAny) {
+        candidates.set(node.name.text, node);
+      }
+    }
+    ts.forEachChild(node, collectFns);
+  }
+  ts.forEachChild(sourceFile, collectFns);
+  if (candidates.size === 0) return new Map();
+
+  // Inference set: starts with all candidates, and shrinks as we eliminate
+  // any whose body cannot uniformly return numeric.
+  const numeric = new Set<string>(candidates.keys());
+
+  /**
+   * Returns true if `expr` produces a value that is structurally numeric
+   * under the optimistic assumption that every name in `numeric` returns
+   * f64.
+   *
+   * Conservative: any unrecognised construct returns false.
+   */
+  function isNumericExpr(expr: ts.Expression, paramNames: Set<string>): boolean {
+    if (ts.isParenthesizedExpression(expr)) {
+      return isNumericExpr(expr.expression, paramNames);
+    }
+    if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr) || ts.isNonNullExpression(expr)) {
+      return isNumericExpr(expr.expression, paramNames);
+    }
+    if (ts.isNumericLiteral(expr)) return true;
+    if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return true;
+    if (ts.isPrefixUnaryExpression(expr)) {
+      const o = expr.operator;
+      if (o === ts.SyntaxKind.PlusToken || o === ts.SyntaxKind.MinusToken || o === ts.SyntaxKind.TildeToken) {
+        return isNumericExpr(expr.operand, paramNames);
+      }
+      if (o === ts.SyntaxKind.ExclamationToken) {
+        return true; // !X is boolean → i32, treat as numeric
+      }
+      return false;
+    }
+    if (ts.isPostfixUnaryExpression(expr)) {
+      // ++ / -- on a numeric local
+      return isNumericExpr(expr.operand, paramNames);
+    }
+    if (ts.isBinaryExpression(expr)) {
+      const op = expr.operatorToken.kind;
+      const numericOps = new Set<ts.SyntaxKind>([
+        ts.SyntaxKind.PlusToken,
+        ts.SyntaxKind.MinusToken,
+        ts.SyntaxKind.AsteriskToken,
+        ts.SyntaxKind.AsteriskAsteriskToken,
+        ts.SyntaxKind.SlashToken,
+        ts.SyntaxKind.PercentToken,
+        ts.SyntaxKind.AmpersandToken,
+        ts.SyntaxKind.BarToken,
+        ts.SyntaxKind.CaretToken,
+        ts.SyntaxKind.LessThanLessThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+      ]);
+      const cmpOps = new Set<ts.SyntaxKind>([
+        ts.SyntaxKind.LessThanToken,
+        ts.SyntaxKind.LessThanEqualsToken,
+        ts.SyntaxKind.GreaterThanToken,
+        ts.SyntaxKind.GreaterThanEqualsToken,
+        ts.SyntaxKind.EqualsEqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsEqualsToken,
+        ts.SyntaxKind.EqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsToken,
+      ]);
+      if (numericOps.has(op)) {
+        return isNumericExpr(expr.left, paramNames) && isNumericExpr(expr.right, paramNames);
+      }
+      if (cmpOps.has(op)) {
+        // Comparisons return boolean (i32), counted as numeric for our purposes.
+        return isNumericExpr(expr.left, paramNames) && isNumericExpr(expr.right, paramNames);
+      }
+      // && / || / ?? return one of the operand types — accept only when both are numeric
+      if (
+        op === ts.SyntaxKind.AmpersandAmpersandToken ||
+        op === ts.SyntaxKind.BarBarToken ||
+        op === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        return isNumericExpr(expr.left, paramNames) && isNumericExpr(expr.right, paramNames);
+      }
+      return false;
+    }
+    if (ts.isConditionalExpression(expr)) {
+      return isNumericExpr(expr.whenTrue, paramNames) && isNumericExpr(expr.whenFalse, paramNames);
+    }
+    if (ts.isIdentifier(expr)) {
+      // Param of the function being checked → assumed numeric (we only run
+      // this analysis when all params are already numeric).
+      if (paramNames.has(expr.text)) return true;
+      // Other identifiers: rely on the TS checker. This catches
+      // numeric local variables, numeric module globals, etc. Implicit-any
+      // identifiers fail this test (return false) — that is the safe answer.
+      const t = ctx.checker.getTypeAtLocation(expr);
+      if (
+        (t.flags &
+          (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral | ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !==
+        0
+      ) {
+        return true;
+      }
+      return false;
+    }
+    if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
+      const calleeName = expr.expression.text;
+      // Self-recursion / mutual recursion within our candidate set → assumed numeric
+      if (numeric.has(calleeName)) {
+        // Also require all arguments to be numeric (body still needs to
+        // produce numeric values for the call to be a numeric kernel call)
+        return expr.arguments.every((a) => isNumericExpr(a as ts.Expression, paramNames));
+      }
+      // Any other call: trust TS's reported return type
+      const t = ctx.checker.getTypeAtLocation(expr);
+      if (
+        (t.flags &
+          (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral | ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !==
+        0
+      ) {
+        return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  /** Returns true iff every `return X` (with X present) inside `body`
+   * produces a structurally numeric value. Returns false on the first
+   * non-numeric return found. Bare `return;` is not allowed because the
+   * function would have a void path. */
+  function bodyAllReturnsNumeric(decl: ts.FunctionDeclaration, paramNames: Set<string>): boolean {
+    if (!decl.body) return false;
+    let allNumeric = true;
+    let sawAnyReturn = false;
+    function visit(node: ts.Node) {
+      if (!allNumeric) return;
+      // Don't descend into nested function-likes — their returns belong to them
+      if (
+        node !== decl &&
+        (ts.isFunctionDeclaration(node) ||
+          ts.isFunctionExpression(node) ||
+          ts.isArrowFunction(node) ||
+          ts.isMethodDeclaration(node) ||
+          ts.isAccessor(node) ||
+          ts.isConstructorDeclaration(node))
+      ) {
+        return;
+      }
+      if (ts.isReturnStatement(node)) {
+        sawAnyReturn = true;
+        if (!node.expression) {
+          // bare `return;` — function has a void path. Not a numeric kernel.
+          allNumeric = false;
+          return;
+        }
+        if (!isNumericExpr(node.expression, paramNames)) {
+          allNumeric = false;
+          return;
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    ts.forEachChild(decl.body, visit);
+    return allNumeric && sawAnyReturn;
+  }
+
+  // Iterate to fixpoint: drop candidates that fail under the current set.
+  // The set can only shrink, so the loop terminates in <= candidates.size
+  // iterations.
+  let changed = true;
+  let safety = candidates.size + 1;
+  while (changed && safety-- > 0) {
+    changed = false;
+    for (const [fnName, decl] of candidates) {
+      if (!numeric.has(fnName)) continue;
+      const paramNames = new Set<string>();
+      for (const p of decl.parameters) {
+        if (ts.isIdentifier(p.name)) paramNames.add(p.name.text);
+      }
+      // Also require all params to resolve to numeric Wasm types (f64/i32).
+      // The param-inference pass has already done its work by now (from the
+      // call sites we see), so we re-check using the same checker types.
+      let allParamsNumeric = true;
+      for (const p of decl.parameters) {
+        const pt = ctx.checker.getTypeAtLocation(p);
+        // Implicit any params: the param-inference pass may have promoted
+        // them to f64 from call sites — but at this stage the function
+        // signature is not yet built. So we accept any number-shaped TS
+        // type AND implicit-any (which the param-inference pass handles).
+        const isNumericTs =
+          (pt.flags &
+            (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral | ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !==
+          0;
+        const isImplicitAny = !p.type && (pt.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+        if (!isNumericTs && !isImplicitAny) {
+          allParamsNumeric = false;
+          break;
+        }
+      }
+      if (!allParamsNumeric) {
+        numeric.delete(fnName);
+        changed = true;
+        continue;
+      }
+      if (!bodyAllReturnsNumeric(decl, paramNames)) {
+        numeric.delete(fnName);
+        changed = true;
+      }
+    }
+  }
+
+  const result = new Map<string, ValType>();
+  for (const fnName of numeric) {
+    result.set(fnName, { kind: "f64" });
+  }
+  return result;
+}
+
+/**
  * Pre-pass: detect empty object literals (`var obj = {}`) that later receive
  * property assignments (`obj.prop = val`) and record the extra properties so
  * that ensureStructForType creates a struct with the correct fields.
@@ -1826,7 +2193,10 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
                 ctx.anyValueTypeIdx >= 0 &&
                 (wasmType as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx))
           ) {
-            const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+            let inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+            if (!inferred) {
+              inferred = inferParamTypeFromBody(ctx, stmt, i);
+            }
             if (inferred) {
               wasmType = inferred;
             }
@@ -1882,7 +2252,13 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
                   ctx.anyValueTypeIdx >= 0 &&
                   (wasmType as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx))
             ) {
-              const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+              let inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+              // #1121: Body-usage fallback. If no internal callers exist
+              // (e.g. exported entrypoint `function run(n) { return fib(n); }`)
+              // but the body still uses the param numerically, infer f64.
+              if (!inferred) {
+                inferred = inferParamTypeFromBody(ctx, stmt, i);
+              }
               if (inferred) {
                 wasmType = inferred;
               }
@@ -1893,7 +2269,17 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         const r = ctx.checker.getReturnTypeOfSignature(sig);
         // For async functions, unwrap Promise<T> to get T for Wasm return type
         const rUnwrapped = isAsync ? unwrapPromiseType(r, ctx.checker) : r;
-        results = isVoidType(rUnwrapped) ? [] : [resolveWasmType(ctx, rUnwrapped)];
+        // #1121: Override TS's implicit-any return with our inferred numeric
+        // return type if every param is numeric and the body is a pure
+        // numeric kernel (catches e.g. recursive `function fib(n) {...}`).
+        const inferredNumericRet = !isAsync ? ctx.numericReturnTypes?.get(name) : undefined;
+        const isImplicitAnyReturn = (rUnwrapped.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+        const allParamsNumeric = params.every((p) => p.kind === "f64" || p.kind === "i32");
+        if (inferredNumericRet && isImplicitAnyReturn && allParamsNumeric) {
+          results = [inferredNumericRet];
+        } else {
+          results = isVoidType(rUnwrapped) ? [] : [resolveWasmType(ctx, rUnwrapped)];
+        }
       }
 
       const optionalParams: OptionalParamInfo[] = [];

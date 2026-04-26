@@ -300,8 +300,13 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
     }
 
     const varType = ctx.checker.getTypeAtLocation(decl);
-    // If the variable is an untyped Array<any> (e.g. `var x = new Array()`),
-    // infer the element type from how the variable is used in the function.
+    // #1120: If this local has been detected as i32-coerced (every write
+    // is wrapped in `| 0` or another bitwise int32 coercion), force its
+    // Wasm type to i32. This must be checked BEFORE inferred-array logic
+    // because the candidate set is gathered ahead of time and only
+    // contains numeric-typed names.
+    const isI32CoercedLocal =
+      fctx.i32CoercedLocals?.has(name) === true && (varType.flags & ts.TypeFlags.NumberLike) !== 0;
     let inferredVecType: ValType | null = null;
     if (varType.flags & ts.TypeFlags.Object) {
       const sym = (varType as ts.TypeReference).symbol ?? (varType as ts.Type).symbol;
@@ -317,8 +322,9 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
     // Check if this variable has widened properties (empty obj with later prop assignments)
     const widenedStructName = ctx.widenedVarStructMap.get(name);
     const widenedTypeIdx = widenedStructName !== undefined ? ctx.structMap.get(widenedStructName) : undefined;
-    const wasmType =
-      widenedTypeIdx !== undefined
+    const wasmType: ValType = isI32CoercedLocal
+      ? { kind: "i32" }
+      : widenedTypeIdx !== undefined
         ? { kind: "ref_null" as const, typeIdx: widenedTypeIdx }
         : (inferredVecType ??
           (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer)
