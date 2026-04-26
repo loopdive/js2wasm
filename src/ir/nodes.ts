@@ -101,6 +101,18 @@ export interface IrObjectShape {
   readonly fields: readonly { readonly name: string; readonly type: IrType }[];
 }
 
+/**
+ * Slice 3 (#1169c) — a closure's caller-visible signature. Used both as
+ * the IR-level type discriminator for closure values and as the resolver
+ * lookup key for the supertype struct + lifted func type. The implicit
+ * `__self` struct param at index 0 of the lifted body is NOT present in
+ * `params` — it's added by the resolver when synthesizing the func type.
+ */
+export interface IrClosureSignature {
+  readonly params: readonly IrType[];
+  readonly returnType: IrType;
+}
+
 export type IrType =
   | { readonly kind: "val"; readonly val: ValType }
   // Backend-agnostic string marker (#1169a). The actual Wasm representation
@@ -116,7 +128,19 @@ export type IrType =
   // and `boxed`, the IR carries enough information to drive the resolver
   // without committing to a specific Wasm typeIdx until lowering time.
   | { readonly kind: "object"; readonly shape: IrObjectShape }
+  // Backend-agnostic closure marker (#1169c). Carries the caller-visible
+  // signature only — captures are an implementation detail of the
+  // closure-construction site, not a type-system property. Two closure
+  // values with the same signature but different captures share the same
+  // IrType (matches the legacy funcref-wrapper supertype pattern). The
+  // resolver registers a base WasmGC struct per signature plus a subtype
+  // struct per (signature, captureFieldTypes) pair.
+  | { readonly kind: "closure"; readonly signature: IrClosureSignature }
   | { readonly kind: "union"; readonly members: readonly ValType[] }
+  // Slice 3 (#1169c) repurposes `boxed` as the ref-cell type for mutable
+  // captures. The inner ValType is the cell's stored type; the resolver
+  // delegates to `getOrRegisterRefCellType` so legacy and IR ref cells
+  // share the same WasmGC struct.
   | { readonly kind: "boxed"; readonly inner: ValType };
 
 /** Wrap a plain ValType as an IrType — the common path for Phase 1/2 callers. */
@@ -155,7 +179,23 @@ export function irTypeEquals(a: IrType, b: IrType): boolean {
   if (a.kind === "object" && b.kind === "object") {
     return objectShapeEquals(a.shape, b.shape);
   }
+  if (a.kind === "closure" && b.kind === "closure") {
+    return closureSignatureEquals(a.signature, b.signature);
+  }
   return false;
+}
+
+/**
+ * Structural equality for closure signatures. Recurses through param /
+ * return IrTypes via `irTypeEquals` so a closure-of-closure or a
+ * closure-of-object compares correctly.
+ */
+export function closureSignatureEquals(a: IrClosureSignature, b: IrClosureSignature): boolean {
+  if (a.params.length !== b.params.length) return false;
+  for (let i = 0; i < a.params.length; i++) {
+    if (!irTypeEquals(a.params[i]!, b.params[i]!)) return false;
+  }
+  return irTypeEquals(a.returnType, b.returnType);
 }
 
 /**
@@ -482,6 +522,108 @@ export interface IrInstrObjectSet extends IrInstrBase {
   readonly newValue: IrValueId;
 }
 
+// ---------------------------------------------------------------------------
+// Closure + ref-cell operations (#1169c — IR Phase 4 Slice 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Materialize a closure value. `liftedFunc` names the lifted top-level
+ * function (registered in the IR module as a synthesized BuiltFn).
+ * `signature` is the caller-visible signature (used to look up the
+ * supertype struct + funcref type). `captures` populates the subtype's
+ * capture fields parallel to `captureFieldTypes`.
+ *
+ * Lowering emits:
+ *   ref.func $lifted
+ *   <push each capture>
+ *   struct.new $closure_<signature>_<captureSig>
+ *
+ * Result type: `{ kind: "closure"; signature }`. The Wasm-level value
+ * type is the supertype struct so call_ref against the base func type
+ * accepts any subtype.
+ */
+export interface IrInstrClosureNew extends IrInstrBase {
+  readonly kind: "closure.new";
+  readonly liftedFunc: IrFuncRef;
+  readonly signature: IrClosureSignature;
+  /** Capture-field IrTypes in struct field order (post-funcref). */
+  readonly captureFieldTypes: readonly IrType[];
+  /** SSA values populating the capture fields, parallel to captureFieldTypes. */
+  readonly captures: readonly IrValueId[];
+}
+
+/**
+ * Read a capture field from the implicit `__self` closure struct. Only
+ * valid inside a lifted closure body whose IrFunction carries
+ * `closureSubtype` metadata. `index` is the 0-based capture position
+ * (post-funcref).
+ *
+ * Lowering emits:
+ *   <self>
+ *   ref.cast $self_subtype
+ *   struct.get $self_subtype (index+1)
+ */
+export interface IrInstrClosureCap extends IrInstrBase {
+  readonly kind: "closure.cap";
+  /** SSA value of the closure-typed __self param (the lifted func's param 0). */
+  readonly self: IrValueId;
+  readonly index: number;
+}
+
+/**
+ * Invoke a closure value. `callee` must be `IrType.closure`. `args` must
+ * match the signature's params arity and types.
+ *
+ * Lowering emits:
+ *   <emit callee>          ;; pushes self
+ *   <emit args>
+ *   <emit callee>          ;; pushes self again — second use forces a Wasm local
+ *   struct.get $base_struct $func
+ *   call_ref $base_funcType
+ *
+ * Result type: `signature.returnType`.
+ */
+export interface IrInstrClosureCall extends IrInstrBase {
+  readonly kind: "closure.call";
+  readonly callee: IrValueId;
+  readonly args: readonly IrValueId[];
+}
+
+/**
+ * Wrap a primitive value in a fresh ref cell. Lowering:
+ *   <emit value>
+ *   struct.new $refcell_<inner>
+ *
+ * Result type: `{ kind: "boxed"; inner: <ValType of value> }`.
+ */
+export interface IrInstrRefCellNew extends IrInstrBase {
+  readonly kind: "refcell.new";
+  readonly value: IrValueId;
+}
+
+/**
+ * Read the inner value out of a ref cell. `cell` must be `IrType.boxed`.
+ * Result type is `irVal(cell.inner)`.
+ *
+ * Lowering: `<emit cell>; struct.get $refcell 0`.
+ */
+export interface IrInstrRefCellGet extends IrInstrBase {
+  readonly kind: "refcell.get";
+  readonly cell: IrValueId;
+}
+
+/**
+ * Write a new value through a ref cell. `cell` must be `IrType.boxed`,
+ * `value` ValType must equal `cell.inner`. Void result.
+ *
+ * Lowering: `<emit cell>; <emit value>; struct.set $refcell 0`.
+ */
+export interface IrInstrRefCellSet extends IrInstrBase {
+  readonly kind: "refcell.set";
+  readonly cell: IrValueId;
+  readonly value: IrValueId;
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -500,7 +642,13 @@ export type IrInstr =
   | IrInstrStringLen
   | IrInstrObjectNew
   | IrInstrObjectGet
-  | IrInstrObjectSet;
+  | IrInstrObjectSet
+  | IrInstrClosureNew
+  | IrInstrClosureCap
+  | IrInstrClosureCall
+  | IrInstrRefCellNew
+  | IrInstrRefCellGet
+  | IrInstrRefCellSet;
 
 // ---------------------------------------------------------------------------
 // Terminators
@@ -579,6 +727,18 @@ export interface IrFunction {
   readonly exported: boolean;
   /** Highest IrValueId allocated + 1 (useful for re-entering the builder). */
   readonly valueCount: number;
+  /**
+   * Slice 3 (#1169c): for closure-lifted bodies only, identifies the
+   * subtype struct that captures live on. Set by `liftClosureBody` in
+   * `from-ast.ts`. The lowerer reads this when emitting `closure.cap`
+   * to compute the correct ref.cast target. Absent for nested function
+   * declarations (which don't take a __self param) and for outer
+   * functions.
+   */
+  readonly closureSubtype?: {
+    readonly signature: IrClosureSignature;
+    readonly captureFieldTypes: readonly IrType[];
+  };
 }
 
 // ---------------------------------------------------------------------------

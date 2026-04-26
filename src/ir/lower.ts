@@ -43,6 +43,7 @@
 import {
   asVal,
   type IrBlock,
+  type IrClosureSignature,
   type IrFuncRef,
   type IrFunction,
   type IrGlobalRef,
@@ -96,6 +97,38 @@ export interface IrObjectStructLowering {
   fieldIdx(name: string): number;
 }
 
+/**
+ * Slice 3 (#1169c): WasmGC type info for a closure value. Two structs
+ * are involved per closure construction site:
+ *   - The SUPERTYPE struct (`structTypeIdx`): contains only the funcref
+ *     field. Carried by the IrType.closure ValType so all closures
+ *     sharing a signature have the same Wasm-level type.
+ *   - The SUBTYPE struct (resolved via `resolveClosureSubtype`): adds
+ *     the capture fields. Constructed at the closure's creation site
+ *     (`struct.new <subtype>`) and `ref.cast`-ed inside the lifted
+ *     body to read captures.
+ *
+ * `funcTypeIdx` is the lifted function's Wasm func type
+ * `(ref $base, ...sig.params) -> sig.returnType` — used by `call_ref`
+ * at the call site.
+ */
+export interface IrClosureLowering {
+  readonly structTypeIdx: number;
+  readonly funcFieldIdx: number;
+  /** Field index for capture position `i` (0-based). Valid only for subtype lowerings. */
+  capFieldIdx(index: number): number;
+  readonly funcTypeIdx: number;
+}
+
+/**
+ * Slice 3 (#1169c): WasmGC type info for a ref cell over a primitive
+ * value type. Single-field struct `(struct (field $value (mut T)))`.
+ */
+export interface IrRefCellLowering {
+  readonly typeIdx: number;
+  readonly fieldIdx: number;
+}
+
 export interface IrLowerResolver {
   resolveFunc(ref: IrFuncRef): number;
   resolveGlobal(ref: IrGlobalRef): number;
@@ -131,6 +164,28 @@ export interface IrLowerResolver {
    * converge on a single WasmGC struct for any given shape.
    */
   resolveObject?(shape: IrObjectShape): IrObjectStructLowering | null;
+  /**
+   * Slice 3 (#1169c): resolve the SUPERTYPE WasmGC struct for a closure
+   * signature. Carried by the IrType.closure ValType so all
+   * same-signature closures share one Wasm type. Returns `null` if the
+   * signature contains an IrType the backend can't lower (e.g. a
+   * nested object shape the slice-2 resolver hasn't pre-walked).
+   */
+  resolveClosure?(signature: IrClosureSignature): IrClosureLowering | null;
+  /**
+   * Slice 3 (#1169c): resolve the SUBTYPE WasmGC struct for a specific
+   * closure-construction site. Different `(signature, captureFieldTypes)`
+   * pairs produce different subtypes of the supertype struct, so the
+   * lifted body's `ref.cast` recovers capture-field positions.
+   */
+  resolveClosureSubtype?(signature: IrClosureSignature, captureFieldTypes: readonly IrType[]): IrClosureLowering | null;
+  /**
+   * Slice 3 (#1169c): resolve the WasmGC struct type for a ref cell
+   * over a primitive ValType. Delegates to the legacy
+   * `getOrRegisterRefCellType` so legacy and IR ref cells share one
+   * type per inner ValType.
+   */
+  resolveRefCell?(inner: ValType): IrRefCellLowering | null;
   /**
    * Resolve the Wasm value type used for `IrType.string` in the active
    * backend.
@@ -481,6 +536,104 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "struct.set", typeIdx: obj.typeIdx, fieldIdx: obj.fieldIdx(instr.name) });
         return;
       }
+      // Slice 3 (#1169c): closure / ref-cell ops.
+      case "closure.new": {
+        const sub = resolver.resolveClosureSubtype?.(instr.signature, instr.captureFieldTypes);
+        if (!sub) {
+          throw new Error(`ir/lower: resolver cannot lower closure subtype (${func.name})`);
+        }
+        const liftedIdx = resolver.resolveFunc(instr.liftedFunc);
+        // ref.func $lifted, push captures, struct.new <subtype>.
+        out.push({ op: "ref.func", funcIdx: liftedIdx } as unknown as Instr);
+        for (const cap of instr.captures) emitValue(cap, out);
+        out.push({ op: "struct.new", typeIdx: sub.structTypeIdx });
+        return;
+      }
+      case "closure.cap": {
+        // The lifted body knows its own subtype via the IrFunction's
+        // closureSubtype metadata (set at lift time). Read that to find
+        // the cast target and field index.
+        const subMeta = func.closureSubtype;
+        if (!subMeta) {
+          throw new Error(`ir/lower: closure.cap requires func.closureSubtype metadata (${func.name})`);
+        }
+        const sub = resolver.resolveClosureSubtype?.(subMeta.signature, subMeta.captureFieldTypes);
+        if (!sub) {
+          throw new Error(`ir/lower: resolver cannot resolve closure subtype for ${func.name}`);
+        }
+        emitValue(instr.self, out);
+        out.push({ op: "ref.cast", typeIdx: sub.structTypeIdx } as unknown as Instr);
+        out.push({ op: "struct.get", typeIdx: sub.structTypeIdx, fieldIdx: sub.capFieldIdx(instr.index) });
+        return;
+      }
+      case "closure.call": {
+        const calleeT = typeOf(instr.callee);
+        if (calleeT.kind !== "closure") {
+          throw new Error(`ir/lower: closure.call callee must be closure IrType, got ${calleeT.kind} (${func.name})`);
+        }
+        const cl = resolver.resolveClosure?.(calleeT.signature);
+        if (!cl) {
+          throw new Error(`ir/lower: resolver cannot lower closure for call (${func.name})`);
+        }
+        // Push __self (closure value), then user args, then the closure
+        // value AGAIN to extract the funcref. The double-emit is the
+        // reason `collectIrUses` returns `callee` twice — that forces
+        // the closure SSA value into a Wasm local so the second emit
+        // is just `local.get`, not a re-emission of the producing tree.
+        emitValue(instr.callee, out);
+        for (const a of instr.args) emitValue(a, out);
+        emitValue(instr.callee, out);
+        out.push({ op: "struct.get", typeIdx: cl.structTypeIdx, fieldIdx: cl.funcFieldIdx });
+        // The struct's `func` field is typed as the abstract `funcref`
+        // (matches the legacy `getOrCreateFuncRefWrapperTypes` pattern,
+        // which avoids a circular type reference between the struct and
+        // its lifted func type). `call_ref` requires a typed funcref, so
+        // we emit `ref.cast` to convert.
+        out.push({ op: "ref.cast", typeIdx: cl.funcTypeIdx } as unknown as Instr);
+        out.push({ op: "call_ref", typeIdx: cl.funcTypeIdx } as unknown as Instr);
+        return;
+      }
+      case "refcell.new": {
+        const valueIrType = typeOf(instr.value);
+        const inner = asVal(valueIrType);
+        if (!inner) {
+          throw new Error(`ir/lower: refcell.new value must be a val-kind IrType (${func.name})`);
+        }
+        const cell = resolver.resolveRefCell?.(inner);
+        if (!cell) {
+          throw new Error(`ir/lower: resolver cannot lower refcell<${inner.kind}> (${func.name})`);
+        }
+        emitValue(instr.value, out);
+        out.push({ op: "struct.new", typeIdx: cell.typeIdx });
+        return;
+      }
+      case "refcell.get": {
+        const cellT = typeOf(instr.cell);
+        if (cellT.kind !== "boxed") {
+          throw new Error(`ir/lower: refcell.get cell must be boxed, got ${cellT.kind} (${func.name})`);
+        }
+        const cell = resolver.resolveRefCell?.(cellT.inner);
+        if (!cell) {
+          throw new Error(`ir/lower: resolver cannot lower refcell<${cellT.inner.kind}> (${func.name})`);
+        }
+        emitValue(instr.cell, out);
+        out.push({ op: "struct.get", typeIdx: cell.typeIdx, fieldIdx: cell.fieldIdx });
+        return;
+      }
+      case "refcell.set": {
+        const cellT = typeOf(instr.cell);
+        if (cellT.kind !== "boxed") {
+          throw new Error(`ir/lower: refcell.set cell must be boxed, got ${cellT.kind} (${func.name})`);
+        }
+        const cell = resolver.resolveRefCell?.(cellT.inner);
+        if (!cell) {
+          throw new Error(`ir/lower: resolver cannot lower refcell<${cellT.inner.kind}> (${func.name})`);
+        }
+        emitValue(instr.cell, out);
+        emitValue(instr.value, out);
+        out.push({ op: "struct.set", typeIdx: cell.typeIdx, fieldIdx: cell.fieldIdx });
+        return;
+      }
     }
   };
 
@@ -609,6 +762,26 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.value];
     case "object.set":
       return [instr.value, instr.newValue];
+    // Slice 3 (#1169c): closure / ref-cell ops.
+    case "closure.new":
+      return instr.captures;
+    case "closure.cap":
+      return [instr.self];
+    case "closure.call":
+      // INTENTIONAL DOUBLE COUNT for `callee`: the Wasm emission pattern
+      // pushes the closure value twice (once as the implicit __self
+      // argument, once as the source of the funcref struct.get). The
+      // use-counter must see TWO uses so the closure value gets a Wasm
+      // local — otherwise we'd re-emit the (potentially side-effecting)
+      // closure subtree. The verifier's collectUses counts it ONCE
+      // because that's a pure SSA def→use relationship.
+      return [instr.callee, ...instr.args, instr.callee];
+    case "refcell.new":
+      return [instr.value];
+    case "refcell.get":
+      return [instr.cell];
+    case "refcell.set":
+      return [instr.cell, instr.value];
   }
 }
 
@@ -655,6 +828,19 @@ export function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcN
     }
     return { kind: "ref", typeIdx: obj.typeIdx };
   }
+  if (t.kind === "closure") {
+    // Slice 3 (#1169c): a closure value lowers to a (ref $base_struct)
+    // — the supertype struct shared by all closures with this signature.
+    // `call_ref` against the base func type accepts any subtype value,
+    // so the same Wasm-level type works for both construction (subtype)
+    // and call (supertype). The resolver registers the supertype lazily
+    // on first use.
+    const cl = resolver.resolveClosure?.(t.signature);
+    if (!cl) {
+      throw new Error(`ir/lower: resolver cannot lower closure (${funcName})`);
+    }
+    return { kind: "ref", typeIdx: cl.structTypeIdx };
+  }
   if (t.kind === "union") {
     const union = resolver.resolveUnion?.(t.members);
     if (!union) {
@@ -662,7 +848,15 @@ export function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcN
     }
     return { kind: "ref", typeIdx: union.typeIdx };
   }
-  // boxed
+  // boxed (refcell)
+  // Slice 3 (#1169c): the resolver delegates to the legacy ref-cell
+  // registry so legacy and IR ref cells share one WasmGC struct.
+  if (resolver.resolveRefCell) {
+    const cell = resolver.resolveRefCell(t.inner);
+    if (cell) {
+      return { kind: "ref", typeIdx: cell.typeIdx };
+    }
+  }
   const box = resolver.resolveBoxed?.(t.inner);
   if (!box) {
     throw new Error(`ir/lower: resolver cannot lower boxed<${t.inner.kind}> (${funcName})`);
@@ -684,6 +878,10 @@ function describeIrTypeShallow(t: IrType): string {
   if (t.kind === "val") return t.val.kind;
   if (t.kind === "string") return "string";
   if (t.kind === "object") return `object{${describeShape(t.shape)}}`;
+  if (t.kind === "closure") {
+    const ps = t.signature.params.map(describeIrTypeShallow).join(",");
+    return `closure(${ps})->${describeIrTypeShallow(t.signature.returnType)}`;
+  }
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }

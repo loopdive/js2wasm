@@ -40,15 +40,18 @@ import ts from "typescript";
 import { IrFunctionBuilder } from "./builder.js";
 import {
   asVal,
+  closureSignatureEquals,
   irTypeEquals,
   irVal,
   type IrBinop,
+  type IrClosureSignature,
   type IrFunction,
   type IrObjectShape,
   type IrType,
   type IrUnop,
   type IrValueId,
 } from "./nodes.js";
+import type { ValType } from "./types.js";
 
 export interface AstToIrOptions {
   readonly exported?: boolean;
@@ -73,7 +76,18 @@ export interface AstToIrOptions {
   readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
 }
 
-export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToIrOptions = {}): IrFunction {
+/**
+ * Slice 3 (#1169c): lowering an outer function may produce additional
+ * lifted IR functions (one per nested function declaration / closure
+ * expression). The integration layer treats these as synthesized
+ * BuiltFns that get fresh funcIdx slots.
+ */
+export interface LoweredFunctionResult {
+  readonly main: IrFunction;
+  readonly lifted: readonly IrFunction[];
+}
+
+export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToIrOptions = {}): LoweredFunctionResult {
   if (!fn.name) {
     throw new Error("ir/from-ast: function declaration without a name");
   }
@@ -98,10 +112,10 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
 
   // Single scope map for both params and let/const locals. Phase 1 forbids
   // shadowing (enforced by the selector) so there is no nesting to track.
-  const scope = new Map<string, { value: IrValueId; type: IrType }>();
+  const scope = new Map<string, ScopeBinding>();
   for (const p of params) {
     const v = builder.addParam(p.name, p.type);
-    scope.set(p.name, { value: v, type: p.type });
+    scope.set(p.name, { kind: "local", value: v, type: p.type });
   }
 
   builder.openBlock();
@@ -111,16 +125,20 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     throw new Error(`ir/from-ast: Phase 1 expects at least 1 statement in ${name}`);
   }
 
+  const lifted: IrFunction[] = [];
+  const liftedCounter = { value: 0 };
   const cx: LowerCtx = {
     builder,
     scope,
     funcName: name,
     returnType,
     calleeTypes: options.calleeTypes,
+    lifted,
+    liftedCounter,
   };
   lowerStatementList(stmts, cx);
 
-  return builder.finish();
+  return { main: builder.finish(), lifted };
 }
 
 function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void {
@@ -131,6 +149,25 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
     const s = stmts[i]!;
     if (ts.isVariableStatement(s)) {
       lowerVarDecl(s, cx);
+      continue;
+    }
+    // Slice 3 (#1169c): nested function declaration. Adds a
+    // `nestedFunc` scope binding and lifts the body to a top-level IR
+    // function in `cx.lifted`.
+    if (ts.isFunctionDeclaration(s)) {
+      lowerNestedFunctionDeclaration(s, cx);
+      continue;
+    }
+    // Slice 3 (#1169c): bare call expression statement — lower the
+    // call, drop the result. Lets `inc(); inc(); inc();` work.
+    if (ts.isExpressionStatement(s)) {
+      if (!ts.isCallExpression(s.expression)) {
+        throw new Error(`ir/from-ast: only call ExpressionStatements supported in slice 3 (${cx.funcName})`);
+      }
+      // The result SSA value is unused; DCE strips it if pure.
+      // closure.call and call are flagged side-effecting in dead-code
+      // so they stay live.
+      void lowerExpr(s.expression, cx, irVal({ kind: "f64" }));
       continue;
     }
     // Phase 2: early-return `if` with no else + subsequent statements.
@@ -217,15 +254,55 @@ function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
   throw new Error(`ir/from-ast: unsupported tail statement ${ts.SyntaxKind[stmt.kind]} in ${cx.funcName}`);
 }
 
+/**
+ * Slice 3 (#1169c): scope bindings carry a "kind" so call-site lowering
+ * knows how to dispatch.
+ *
+ *   - `local`: params, let/const primitives, locally-built objects, and
+ *     closures stored as values (the closure case sets `type` to
+ *     `IrType.closure`). Reads emit `local.get`; if the type is `boxed`
+ *     (ref cell), reads dereference via `refcell.get`.
+ *   - `nestedFunc`: name-only binding for `function inner() {...}`.
+ *     Calls expand into prepended-capture-args + direct call (matches
+ *     the legacy `compileNestedFunctionDeclaration` pattern).
+ */
+type ScopeBinding =
+  | { kind: "local"; value: IrValueId; type: IrType }
+  | {
+      kind: "nestedFunc";
+      liftedName: string;
+      signature: IrClosureSignature;
+      captures: readonly NestedCapture[];
+    };
+
+/**
+ * Slice 3 (#1169c): one entry in a closure / nested-function's capture
+ * set. `outerValue` is the SSA value the call-site uses to materialize
+ * the capture argument; for mutable captures, the call-site wraps it
+ * in a refcell on first use (rebinding `cx.scope` in-place so
+ * subsequent outer reads/writes go through the cell).
+ */
+interface NestedCapture {
+  readonly name: string;
+  readonly type: IrType;
+  readonly mutable: boolean;
+  readonly outerValue: IrValueId;
+}
+
 interface LowerCtx {
   readonly builder: IrFunctionBuilder;
-  readonly scope: Map<string, { value: IrValueId; type: IrType }>;
+  readonly scope: Map<string, ScopeBinding>;
   readonly funcName: string;
   readonly returnType: IrType;
   readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
+  /** Slice 3 — output bin for lifted closures / nested funcs. */
+  readonly lifted: IrFunction[];
+  /** Slice 3 — mutable counter for synthesizing lifted-func names. */
+  readonly liftedCounter: { value: number };
 }
 
 function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
+  const isConst = !!(stmt.declarationList.flags & ts.NodeFlags.Const);
   for (const d of stmt.declarationList.declarations) {
     if (!ts.isIdentifier(d.name)) {
       throw new Error(`ir/from-ast: destructuring declarations not supported in Phase 1 (${cx.funcName})`);
@@ -236,6 +313,14 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
     }
     if (!d.initializer) {
       throw new Error(`ir/from-ast: Phase 1 requires an initializer for '${name}' in ${cx.funcName}`);
+    }
+    // Slice 3 (#1169c): closure-literal initializer. Lifted to a
+    // top-level IR function and bound in scope as an IrType.closure
+    // value (so `lowerCall` dispatches via `closure.call`).
+    if (isConst && (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer))) {
+      const value = lowerClosureExpression(d.initializer, cx);
+      cx.scope.set(name, { kind: "local", value, type: cx.builder.typeOf(value) });
+      continue;
     }
     // Slice 2 (#1169b): non-primitive type annotations on locals
     // (TypeLiteral / TypeReference) can't be resolved to an IrType
@@ -258,7 +343,7 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
         );
       }
     }
-    cx.scope.set(name, { value, type: inferred });
+    cx.scope.set(name, { kind: "local", value, type: inferred });
   }
 }
 
@@ -295,6 +380,10 @@ function describeIrType(t: IrType): string {
   if (t.kind === "string") return "string";
   if (t.kind === "object") {
     return `object{${t.shape.fields.map((f) => `${f.name}:${describeIrType(f.type)}`).join(",")}}`;
+  }
+  if (t.kind === "closure") {
+    const ps = t.signature.params.map(describeIrType).join(",");
+    return `closure(${ps})->${describeIrType(t.signature.returnType)}`;
   }
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
@@ -370,6 +459,18 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   if (ts.isIdentifier(expr)) {
     const p = cx.scope.get(expr.text);
     if (!p) throw new Error(`ir/from-ast: identifier "${expr.text}" is not in scope in ${cx.funcName}`);
+    if (p.kind !== "local") {
+      // Slice 3 (#1169c): nestedFunc bindings are name-only — they have
+      // no SSA value. Bare reference (without a CallExpression) cannot
+      // produce an IR value. The callable form is handled by `lowerCall`.
+      throw new Error(`ir/from-ast: bare reference to nested function "${expr.text}" not in slice 3 (${cx.funcName})`);
+    }
+    // Slice 3 (#1169c): refcell-typed bindings need a deref on read.
+    // The SSA value IS the cell ref; expression-position reads expect
+    // the inner scalar.
+    if (p.type.kind === "boxed") {
+      return cx.builder.emitRefCellGet(p.value, p.type.inner);
+    }
     return p.value;
   }
   if (ts.isPrefixUnaryExpression(expr)) {
@@ -541,7 +642,20 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, cx: LowerCtx): IrV
       if (!found) {
         throw new Error(`ir/from-ast: shorthand "${name}" not in scope in ${cx.funcName}`);
       }
-      built.push({ name, type: found.type, value: found.value });
+      // Slice 3 (#1169c): only `local`-kind bindings are usable as
+      // shorthand object property values. nestedFunc bindings have no
+      // SSA value.
+      if (found.kind !== "local") {
+        throw new Error(`ir/from-ast: shorthand "${name}" refers to a non-local binding (${cx.funcName})`);
+      }
+      // If the local is refcell-typed, deref to expose the inner scalar
+      // (the same logic the identifier-handler in lowerExpr applies).
+      if (found.type.kind === "boxed") {
+        const v = cx.builder.emitRefCellGet(found.value, found.type.inner);
+        built.push({ name, type: cx.builder.typeOf(v), value: v });
+      } else {
+        built.push({ name, type: found.type, value: found.value });
+      }
       continue;
     }
     throw new Error(`ir/from-ast: object literal element ${ts.SyntaxKind[prop.kind]} not in slice 2 (${cx.funcName})`);
@@ -614,6 +728,21 @@ function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
     throw new Error(`ir/from-ast: only direct calls supported in Phase 2 (${cx.funcName})`);
   }
   const calleeName = expr.expression.text;
+
+  // Slice 3 (#1169c): local-binding lookups WIN over top-level callees
+  // because the source-level identifier resolution puts inner-scope
+  // names first. The dispatcher picks one of three paths:
+  //   - `local` binding whose IrType is closure → closure.call
+  //   - `nestedFunc` binding → direct call with prepended captures
+  //   - top-level callee in calleeTypes → vanilla `call`
+  const binding = cx.scope.get(calleeName);
+  if (binding?.kind === "local" && binding.type.kind === "closure") {
+    return lowerClosureCall(binding.value, binding.type.signature, expr.arguments, cx);
+  }
+  if (binding?.kind === "nestedFunc") {
+    return lowerNestedFuncCall(binding, expr.arguments, cx);
+  }
+
   const calleeSig = cx.calleeTypes?.get(calleeName);
   if (!calleeSig) {
     throw new Error(`ir/from-ast: call to unknown function "${calleeName}" in ${cx.funcName}`);
@@ -641,6 +770,108 @@ function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
     throw new Error(`ir/from-ast: call to ${calleeName} returned void used as expression in ${cx.funcName}`);
   }
   return result;
+}
+
+/**
+ * Slice 3 (#1169c): lower a call-by-value to a closure binding.
+ * `callee` is the SSA value of the closure struct. The lowered
+ * `closure.call` instr emits `<callee>; args; <callee>; struct.get
+ * $func; call_ref` — the second `<callee>` use is forced into a Wasm
+ * local by `collectIrUses`'s double count.
+ */
+function lowerClosureCall(
+  callee: IrValueId,
+  signature: IrClosureSignature,
+  argExprs: readonly ts.Expression[],
+  cx: LowerCtx,
+): IrValueId {
+  if (argExprs.length !== signature.params.length) {
+    throw new Error(`ir/from-ast: closure call arity mismatch in ${cx.funcName}`);
+  }
+  const args: IrValueId[] = [];
+  for (let i = 0; i < argExprs.length; i++) {
+    const expected = signature.params[i]!;
+    const argVal = lowerExpr(argExprs[i]!, cx, expected);
+    if (!irTypeEquals(cx.builder.typeOf(argVal), expected)) {
+      throw new Error(
+        `ir/from-ast: closure arg ${i} type mismatch (expected ${describeIrType(expected)}, got ${describeIrType(cx.builder.typeOf(argVal))}) in ${cx.funcName}`,
+      );
+    }
+    args.push(argVal);
+  }
+  return cx.builder.emitClosureCall(callee, args, signature.returnType);
+}
+
+/**
+ * Slice 3 (#1169c): lower a call to a nested function declaration.
+ * Prepends capture args to the user args and emits a direct `call`
+ * (no struct, no funcref) — matches the legacy
+ * `compileNestedFunctionDeclaration` pattern.
+ *
+ * Mutable captures: if the outer hasn't already wrapped the variable
+ * in a refcell (because no closure-VALUE has been built that captured
+ * it as mutable), wrap it here and rebind `cx.scope[name]` so subsequent
+ * outer reads/writes go through the cell.
+ */
+function lowerNestedFuncCall(
+  binding: {
+    kind: "nestedFunc";
+    liftedName: string;
+    signature: IrClosureSignature;
+    captures: readonly NestedCapture[];
+  },
+  argExprs: readonly ts.Expression[],
+  cx: LowerCtx,
+): IrValueId {
+  if (argExprs.length !== binding.signature.params.length) {
+    throw new Error(`ir/from-ast: nested func call arity mismatch in ${cx.funcName}`);
+  }
+  const args: IrValueId[] = [];
+  for (const cap of binding.captures) {
+    const live = cx.scope.get(cap.name);
+    if (cap.mutable) {
+      if (live?.kind === "local" && live.type.kind === "boxed") {
+        args.push(live.value);
+      } else if (live?.kind === "local") {
+        const innerVal = asVal(cap.type);
+        if (!innerVal) {
+          throw new Error(`ir/from-ast: mutable nested capture "${cap.name}" must be a primitive (${cx.funcName})`);
+        }
+        const cell = cx.builder.emitRefCellNew(live.value, innerVal);
+        cx.scope.set(cap.name, { kind: "local", value: cell, type: { kind: "boxed", inner: innerVal } });
+        args.push(cell);
+      } else {
+        throw new Error(`ir/from-ast: nested mutable capture "${cap.name}" not in scope (${cx.funcName})`);
+      }
+    } else {
+      // Read-only capture — read the CURRENT value from outer scope. If
+      // an earlier sibling's mutable capture upgraded the binding to a
+      // refcell, deref through it.
+      if (live?.kind === "local" && live.type.kind === "boxed") {
+        const v = cx.builder.emitRefCellGet(live.value, live.type.inner);
+        args.push(v);
+      } else if (live?.kind === "local") {
+        args.push(live.value);
+      } else {
+        throw new Error(`ir/from-ast: nested capture "${cap.name}" not in scope (${cx.funcName})`);
+      }
+    }
+  }
+  for (let i = 0; i < argExprs.length; i++) {
+    const expected = binding.signature.params[i]!;
+    const argVal = lowerExpr(argExprs[i]!, cx, expected);
+    if (!irTypeEquals(cx.builder.typeOf(argVal), expected)) {
+      throw new Error(
+        `ir/from-ast: nested arg ${i} type mismatch (expected ${describeIrType(expected)}, got ${describeIrType(cx.builder.typeOf(argVal))}) in ${cx.funcName}`,
+      );
+    }
+    args.push(argVal);
+  }
+  const r = cx.builder.emitCall({ kind: "func", name: binding.liftedName }, args, binding.signature.returnType);
+  if (r === null) {
+    throw new Error(`ir/from-ast: nested call returned void in ${cx.funcName}`);
+  }
+  return r;
 }
 
 function lowerConditional(expr: ts.ConditionalExpression, cx: LowerCtx): IrValueId {
@@ -870,3 +1101,384 @@ function tryFoldNullCompare(expr: ts.BinaryExpression, op: ts.SyntaxKind, cx: Lo
 
 /** Result-type hints aren't used in Phase 1 (we always know from the op). */
 export type _Unused = IrUnop;
+
+// ---------------------------------------------------------------------------
+// Closure / nested-function lowering (#1169c — IR Phase 4 Slice 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lower an arrow function or function expression as an IR closure
+ * value. Lifts the body to a top-level IR function (with __self as
+ * param 0) and emits a `closure.new` that materialises the closure
+ * struct. Returns the SSA value of the closure (its IrType is
+ * `IrType.closure` with the resolved signature).
+ *
+ * Mutable captures: rebinds `cx.scope[capName]` to the refcell ref, so
+ * subsequent outer reads/writes of `capName` route through
+ * `refcell.get` / `refcell.set` automatically (see the identifier
+ * handler in `lowerExpr`).
+ */
+function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, cx: LowerCtx): IrValueId {
+  const params: IrType[] = expr.parameters.map((p) => {
+    if (!ts.isIdentifier(p.name) || !p.type) {
+      throw new Error(`ir/from-ast: closure params must be Identifier-named with annotations (${cx.funcName})`);
+    }
+    return typeNodeToIr(p.type, `param ${p.name.text} of ${cx.funcName}.<closure>`);
+  });
+  if (!expr.type) {
+    throw new Error(`ir/from-ast: closure must have a return type annotation (${cx.funcName})`);
+  }
+  const returnType = typeNodeToIr(expr.type, `return type of ${cx.funcName}.<closure>`);
+  const signature: IrClosureSignature = { params, returnType };
+
+  const captures = analyseCaptures(expr, cx);
+
+  const liftedName = `${cx.funcName}__closure_${cx.liftedCounter.value++}`;
+
+  // Materialize capture args. Mutable captures need a refcell; if the
+  // outer doesn't already have one (a sibling closure may have built
+  // one earlier), create it now and rebind the outer scope.
+  const captureArgs: IrValueId[] = [];
+  const captureFieldTypes: IrType[] = [];
+  for (const cap of captures) {
+    if (cap.mutable) {
+      const innerVal = asVal(cap.type);
+      if (!innerVal) {
+        throw new Error(`ir/from-ast: mutable closure capture "${cap.name}" must be a primitive (${cx.funcName})`);
+      }
+      const fieldType: IrType = { kind: "boxed", inner: innerVal };
+      captureFieldTypes.push(fieldType);
+      const live = cx.scope.get(cap.name);
+      if (live?.kind === "local" && live.type.kind === "boxed") {
+        captureArgs.push(live.value);
+      } else if (live?.kind === "local") {
+        const cell = cx.builder.emitRefCellNew(live.value, innerVal);
+        cx.scope.set(cap.name, { kind: "local", value: cell, type: fieldType });
+        captureArgs.push(cell);
+      } else {
+        throw new Error(`ir/from-ast: closure mutable capture "${cap.name}" not in scope (${cx.funcName})`);
+      }
+    } else {
+      // Read-only — pass the current scalar value. If a sibling closure
+      // already upgraded the binding to a refcell, deref now so the
+      // captured value is the unboxed scalar (the lifted body sees it
+      // as the scalar IrType, which matches our `cap.type`).
+      const live = cx.scope.get(cap.name);
+      let v: IrValueId;
+      if (live?.kind === "local" && live.type.kind === "boxed") {
+        v = cx.builder.emitRefCellGet(live.value, live.type.inner);
+      } else if (live?.kind === "local") {
+        v = live.value;
+      } else {
+        throw new Error(`ir/from-ast: closure capture "${cap.name}" not in scope (${cx.funcName})`);
+      }
+      captureFieldTypes.push(cap.type);
+      captureArgs.push(v);
+    }
+  }
+
+  // Lift body. The lifted function takes (__self: IrType.closure,
+  // ...sig.params) and reads captures via `closure.cap`.
+  const lifted = liftClosureBody(liftedName, expr, signature, captures, captureFieldTypes, cx);
+  cx.lifted.push(lifted);
+
+  return cx.builder.emitClosureNew({ kind: "func", name: liftedName }, signature, captureFieldTypes, captureArgs);
+}
+
+/**
+ * Lower a nested function declaration. Adds a `nestedFunc` scope
+ * binding (name-only — no SSA value) and lifts the body to a
+ * top-level function with prepended capture params (no __self struct).
+ * Direct call: `call $lifted` with capture args first, then user args.
+ */
+function lowerNestedFunctionDeclaration(fn: ts.FunctionDeclaration, cx: LowerCtx): void {
+  if (!fn.name || !fn.body) {
+    throw new Error(`ir/from-ast: nested function without name or body in ${cx.funcName}`);
+  }
+  const innerName = fn.name.text;
+  const params: IrType[] = fn.parameters.map((p) => {
+    if (!ts.isIdentifier(p.name) || !p.type) {
+      throw new Error(`ir/from-ast: nested func params must be Identifier-named with annotations (${cx.funcName})`);
+    }
+    return typeNodeToIr(p.type, `param ${p.name.text} of ${cx.funcName}.${innerName}`);
+  });
+  if (!fn.type) {
+    throw new Error(`ir/from-ast: nested func must have a return type annotation (${cx.funcName})`);
+  }
+  const returnType = typeNodeToIr(fn.type, `return type of ${cx.funcName}.${innerName}`);
+  const signature: IrClosureSignature = { params, returnType };
+
+  const captures = analyseCaptures(fn, cx);
+  const liftedName = `${cx.funcName}__nested_${innerName}_${cx.liftedCounter.value++}`;
+
+  const lifted = liftNestedFunction(liftedName, fn, signature, captures, cx);
+  cx.lifted.push(lifted);
+
+  // Add to the OUTER scope.
+  cx.scope.set(innerName, { kind: "nestedFunc", liftedName, signature, captures });
+}
+
+/**
+ * Lift a nested function body to a top-level IR function. The body's
+ * params are: [capture0, capture1, ..., innerParam0, ...]. Mutable
+ * captures are typed `boxed<T>`; the body's identifier handler
+ * dereferences them via refcell.get on read.
+ */
+function liftNestedFunction(
+  liftedName: string,
+  fn: ts.FunctionDeclaration,
+  signature: IrClosureSignature,
+  captures: readonly NestedCapture[],
+  cx: LowerCtx,
+): IrFunction {
+  const builder = new IrFunctionBuilder(liftedName, [signature.returnType], false);
+  const scope = new Map<string, ScopeBinding>();
+
+  // Prepend capture params before the user's params.
+  for (const cap of captures) {
+    const innerVal = asVal(cap.type);
+    const paramType: IrType = cap.mutable && innerVal ? { kind: "boxed", inner: innerVal } : cap.type;
+    const v = builder.addParam(cap.name, paramType);
+    scope.set(cap.name, { kind: "local", value: v, type: paramType });
+  }
+  for (let i = 0; i < fn.parameters.length; i++) {
+    const p = fn.parameters[i]!;
+    const name = (p.name as ts.Identifier).text;
+    const t = signature.params[i]!;
+    const v = builder.addParam(name, t);
+    scope.set(name, { kind: "local", value: v, type: t });
+  }
+
+  builder.openBlock();
+
+  const innerCx: LowerCtx = {
+    builder,
+    scope,
+    funcName: liftedName,
+    returnType: signature.returnType,
+    calleeTypes: cx.calleeTypes,
+    lifted: cx.lifted,
+    liftedCounter: cx.liftedCounter,
+  };
+  if (!fn.body) {
+    throw new Error(`ir/from-ast: nested function ${innerName(fn)} has no body`);
+  }
+  lowerStatementList(fn.body.statements, innerCx);
+
+  return builder.finish();
+}
+
+function innerName(fn: ts.FunctionDeclaration): string {
+  return fn.name?.text ?? "<anon>";
+}
+
+/**
+ * Lift a closure expression body. The lifted function has __self at
+ * param 0 (typed `IrType.closure`); captures are read inside the body
+ * via `closure.cap` rather than as prepended params. Mutable captures
+ * land as `boxed<T>` field types so `cap` returns the refcell ref;
+ * subsequent identifier reads inside the body deref via refcell.get.
+ *
+ * The returned IrFunction carries `closureSubtype` metadata so the
+ * lowerer can emit the correct `ref.cast` on closure.cap.
+ */
+function liftClosureBody(
+  liftedName: string,
+  expr: ts.ArrowFunction | ts.FunctionExpression,
+  signature: IrClosureSignature,
+  captures: readonly NestedCapture[],
+  captureFieldTypes: readonly IrType[],
+  cx: LowerCtx,
+): IrFunction {
+  const builder = new IrFunctionBuilder(liftedName, [signature.returnType], false);
+  const scope = new Map<string, ScopeBinding>();
+
+  const selfType: IrType = { kind: "closure", signature };
+  const selfV = builder.addParam("__self", selfType);
+
+  for (let i = 0; i < expr.parameters.length; i++) {
+    const p = expr.parameters[i]!;
+    const name = (p.name as ts.Identifier).text;
+    const t = signature.params[i]!;
+    const v = builder.addParam(name, t);
+    scope.set(name, { kind: "local", value: v, type: t });
+  }
+
+  builder.openBlock();
+
+  // Read each capture out of __self. captureFieldTypes is parallel to
+  // captures; lifted body sees captures at index 0..N-1.
+  for (let i = 0; i < captures.length; i++) {
+    const cap = captures[i]!;
+    const fieldType = captureFieldTypes[i]!;
+    const v = builder.emitClosureCap(selfV, i, fieldType);
+    scope.set(cap.name, { kind: "local", value: v, type: fieldType });
+  }
+
+  const innerCx: LowerCtx = {
+    builder,
+    scope,
+    funcName: liftedName,
+    returnType: signature.returnType,
+    calleeTypes: cx.calleeTypes,
+    lifted: cx.lifted,
+    liftedCounter: cx.liftedCounter,
+  };
+
+  if (ts.isArrowFunction(expr) && !ts.isBlock(expr.body)) {
+    // Concise body — wrap as `return <expr>`.
+    const v = lowerExpr(expr.body, innerCx, signature.returnType);
+    if (!irTypeEquals(builder.typeOf(v), signature.returnType)) {
+      throw new Error(
+        `ir/from-ast: closure body type ${describeIrType(builder.typeOf(v))} != declared return ${describeIrType(signature.returnType)} (${liftedName})`,
+      );
+    }
+    builder.terminate({ kind: "return", values: [v] });
+  } else {
+    if (!ts.isBlock(expr.body)) {
+      throw new Error(`ir/from-ast: closure body must be a block (got ${ts.SyntaxKind[expr.body.kind]})`);
+    }
+    lowerStatementList(expr.body.statements, innerCx);
+  }
+
+  return builder.finish({ signature, captureFieldTypes: [...captureFieldTypes] });
+}
+
+/**
+ * Walk a closure / nested-function body and collect identifiers that
+ * reference outer-scope `local` bindings. Classifies each capture as
+ * mutable (the body OR the outer writes to it) or read-only.
+ *
+ * Outer writes are conservatively detected by walking the entire
+ * outer body — any identifier-LHS write to `name` upgrades it to
+ * mutable, even if the closure body itself is read-only. This is the
+ * safe-and-simple approach the legacy path uses too.
+ */
+function analyseCaptures(
+  fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
+  cx: LowerCtx,
+): NestedCapture[] {
+  const referenced = new Set<string>();
+  const written = new Set<string>();
+  const ownParams = new Set<string>();
+  for (const p of fn.parameters) {
+    if (ts.isIdentifier(p.name)) ownParams.add(p.name.text);
+  }
+
+  const visit = (node: ts.Node): void => {
+    // Don't descend into nested function-likes — they have their own
+    // capture analysis run when they're lowered.
+    if (node !== fn && (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node))) {
+      return;
+    }
+    if (ts.isIdentifier(node)) {
+      referenced.add(node.text);
+    }
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (
+        op === ts.SyntaxKind.EqualsToken ||
+        (op >= ts.SyntaxKind.PlusEqualsToken && op <= ts.SyntaxKind.CaretEqualsToken)
+      ) {
+        if (ts.isIdentifier(node.left)) written.add(node.left.text);
+      }
+    }
+    if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
+      const op = node.operator;
+      if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
+        if (ts.isIdentifier(node.operand)) written.add(node.operand.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  if (fn.body) {
+    if (ts.isBlock(fn.body)) {
+      for (const s of fn.body.statements) visit(s);
+    } else {
+      visit(fn.body);
+    }
+  }
+
+  const outerWrites = collectOuterWrites(fn);
+
+  const captures: NestedCapture[] = [];
+  for (const name of referenced) {
+    if (ownParams.has(name)) continue;
+    const binding = cx.scope.get(name);
+    if (!binding) continue;
+    if (binding.kind !== "local") {
+      // Slice 3 doesn't yet capture closure / nested-fn bindings — that
+      // would require either lifting the inner closure to a top-level
+      // ref.func or adding closure VALUE fields to the capture struct.
+      // Defer.
+      throw new Error(
+        `ir/from-ast: closure inside ${cx.funcName} captures non-local binding "${name}" — not in slice 3`,
+      );
+    }
+    // If the local is already a refcell (a sibling closure boxed it),
+    // the capture's logical type is the inner ValType — we deref on
+    // read in `lowerClosureExpression`.
+    const logicalType: IrType = binding.type.kind === "boxed" ? irVal(binding.type.inner) : binding.type;
+    const isMutable = written.has(name) || outerWrites.has(name);
+    captures.push({
+      name,
+      type: logicalType,
+      mutable: isMutable,
+      outerValue: binding.value,
+    });
+  }
+  return captures;
+}
+
+/**
+ * Slice 3 (#1169c): walk the OUTER function body to find any
+ * identifier-LHS write to a name. Used to upgrade captures to mutable
+ * when the outer mutates a captured variable (even if the closure
+ * body itself is read-only). Conservative: any write anywhere in the
+ * outer counts.
+ */
+function collectOuterWrites(fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression): Set<string> {
+  const writes = new Set<string>();
+  let outer: ts.Node | undefined = fn.parent;
+  while (
+    outer &&
+    !ts.isFunctionDeclaration(outer) &&
+    !ts.isFunctionExpression(outer) &&
+    !ts.isArrowFunction(outer) &&
+    !ts.isSourceFile(outer)
+  ) {
+    outer = outer.parent;
+  }
+  if (!outer || !("body" in outer) || !outer.body) return writes;
+  const body = outer.body as ts.Node;
+  const visit = (node: ts.Node): void => {
+    if (node === fn) return;
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (
+        op === ts.SyntaxKind.EqualsToken ||
+        (op >= ts.SyntaxKind.PlusEqualsToken && op <= ts.SyntaxKind.CaretEqualsToken)
+      ) {
+        if (ts.isIdentifier(node.left)) writes.add(node.left.text);
+      }
+    }
+    if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
+      const op = node.operator;
+      if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
+        if (ts.isIdentifier(node.operand)) writes.add(node.operand.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(body, visit);
+  return writes;
+}
+
+// `closureSignatureEquals` is currently used elsewhere; keep an
+// explicit reference here so unused-export linting doesn't flag it
+// when only the lowerer consumes it.
+export const _CLOSURE_SIG_EQ_REF = closureSignatureEquals;
+
+// Reference ValType so the import isn't unused (used transitively via
+// signature param types but TS may not see it).
+export type _UnusedVal = ValType;
