@@ -1389,21 +1389,28 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
    * under the optimistic assumption that every name in `numeric` returns
    * f64.
    *
-   * Conservative: any unrecognised construct returns false.
+   * Conservative: any unrecognised construct returns false. A depth
+   * guard (MAX_DEPTH = 64) bails out for pathological deeply-nested
+   * source — the answer for those is conservatively `false`, leaving the
+   * function on its TS-derived return type. This keeps the inference
+   * runtime worst-case O(body_size) per call instead of growing with
+   * unbounded source-AST depth.
    */
-  function isNumericExpr(expr: ts.Expression, paramNames: Set<string>): boolean {
+  const MAX_NUMERIC_DEPTH = 64;
+  function isNumericExpr(expr: ts.Expression, paramNames: Set<string>, depth = 0): boolean {
+    if (depth > MAX_NUMERIC_DEPTH) return false;
     if (ts.isParenthesizedExpression(expr)) {
-      return isNumericExpr(expr.expression, paramNames);
+      return isNumericExpr(expr.expression, paramNames, depth + 1);
     }
     if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr) || ts.isNonNullExpression(expr)) {
-      return isNumericExpr(expr.expression, paramNames);
+      return isNumericExpr(expr.expression, paramNames, depth + 1);
     }
     if (ts.isNumericLiteral(expr)) return true;
     if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return true;
     if (ts.isPrefixUnaryExpression(expr)) {
       const o = expr.operator;
       if (o === ts.SyntaxKind.PlusToken || o === ts.SyntaxKind.MinusToken || o === ts.SyntaxKind.TildeToken) {
-        return isNumericExpr(expr.operand, paramNames);
+        return isNumericExpr(expr.operand, paramNames, depth + 1);
       }
       if (o === ts.SyntaxKind.ExclamationToken) {
         return true; // !X is boolean → i32, treat as numeric
@@ -1412,7 +1419,7 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
     }
     if (ts.isPostfixUnaryExpression(expr)) {
       // ++ / -- on a numeric local
-      return isNumericExpr(expr.operand, paramNames);
+      return isNumericExpr(expr.operand, paramNames, depth + 1);
     }
     if (ts.isBinaryExpression(expr)) {
       const op = expr.operatorToken.kind;
@@ -1441,11 +1448,11 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
         ts.SyntaxKind.ExclamationEqualsToken,
       ]);
       if (numericOps.has(op)) {
-        return isNumericExpr(expr.left, paramNames) && isNumericExpr(expr.right, paramNames);
+        return isNumericExpr(expr.left, paramNames, depth + 1) && isNumericExpr(expr.right, paramNames, depth + 1);
       }
       if (cmpOps.has(op)) {
         // Comparisons return boolean (i32), counted as numeric for our purposes.
-        return isNumericExpr(expr.left, paramNames) && isNumericExpr(expr.right, paramNames);
+        return isNumericExpr(expr.left, paramNames, depth + 1) && isNumericExpr(expr.right, paramNames, depth + 1);
       }
       // && / || / ?? return one of the operand types — accept only when both are numeric
       if (
@@ -1453,12 +1460,14 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
         op === ts.SyntaxKind.BarBarToken ||
         op === ts.SyntaxKind.QuestionQuestionToken
       ) {
-        return isNumericExpr(expr.left, paramNames) && isNumericExpr(expr.right, paramNames);
+        return isNumericExpr(expr.left, paramNames, depth + 1) && isNumericExpr(expr.right, paramNames, depth + 1);
       }
       return false;
     }
     if (ts.isConditionalExpression(expr)) {
-      return isNumericExpr(expr.whenTrue, paramNames) && isNumericExpr(expr.whenFalse, paramNames);
+      return (
+        isNumericExpr(expr.whenTrue, paramNames, depth + 1) && isNumericExpr(expr.whenFalse, paramNames, depth + 1)
+      );
     }
     if (ts.isIdentifier(expr)) {
       // Param of the function being checked → assumed numeric (we only run
@@ -1483,7 +1492,7 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
       if (numeric.has(calleeName)) {
         // Also require all arguments to be numeric (body still needs to
         // produce numeric values for the call to be a numeric kernel call)
-        return expr.arguments.every((a) => isNumericExpr(a as ts.Expression, paramNames));
+        return expr.arguments.every((a) => isNumericExpr(a as ts.Expression, paramNames, depth + 1));
       }
       // Any other call: trust TS's reported return type
       const t = ctx.checker.getTypeAtLocation(expr);
@@ -1499,85 +1508,89 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
     return false;
   }
 
-  /** Returns true iff every `return X` (with X present) inside `body`
-   * produces a structurally numeric value. Returns false on the first
-   * non-numeric return found. Bare `return;` is not allowed because the
-   * function would have a void path. */
-  function bodyAllReturnsNumeric(decl: ts.FunctionDeclaration, paramNames: Set<string>): boolean {
-    if (!decl.body) return false;
-    let allNumeric = true;
-    let sawAnyReturn = false;
-    function visit(node: ts.Node) {
-      if (!allNumeric) return;
-      // Don't descend into nested function-likes — their returns belong to them
-      if (
-        node !== decl &&
-        (ts.isFunctionDeclaration(node) ||
-          ts.isFunctionExpression(node) ||
-          ts.isArrowFunction(node) ||
-          ts.isMethodDeclaration(node) ||
-          ts.isAccessor(node) ||
-          ts.isConstructorDeclaration(node))
-      ) {
-        return;
+  // One-time scan: collect all return expressions inside each candidate's
+  // body, plus the param-name set and a precomputed param-numericness
+  // check. Caching these means the fixpoint loop below does NOT re-walk
+  // the AST on each iteration — it only re-runs `isNumericExpr` against
+  // the cached return expressions. This bounds total work to O(candidates
+  // × cached returns × MAX_NUMERIC_DEPTH) instead of repeating an O(body
+  // size) walk per candidate per iteration.
+  type FnInfo = {
+    paramNames: Set<string>;
+    returns: ts.Expression[];
+    sawBareReturn: boolean;
+    paramsAllNumeric: boolean;
+  };
+  const fnInfo = new Map<string, FnInfo>();
+  for (const [fnName, fnDecl] of candidates) {
+    const paramNames = new Set<string>();
+    let paramsAllNumeric = true;
+    for (const p of fnDecl.parameters) {
+      if (ts.isIdentifier(p.name)) paramNames.add(p.name.text);
+      const pt = ctx.checker.getTypeAtLocation(p);
+      const isNumericTs =
+        (pt.flags &
+          (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral | ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !==
+        0;
+      const isImplicitAny = !p.type && (pt.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+      if (!isNumericTs && !isImplicitAny) {
+        paramsAllNumeric = false;
       }
-      if (ts.isReturnStatement(node)) {
-        sawAnyReturn = true;
-        if (!node.expression) {
-          // bare `return;` — function has a void path. Not a numeric kernel.
-          allNumeric = false;
-          return;
-        }
-        if (!isNumericExpr(node.expression, paramNames)) {
-          allNumeric = false;
-          return;
-        }
-      }
-      ts.forEachChild(node, visit);
     }
-    ts.forEachChild(decl.body, visit);
-    return allNumeric && sawAnyReturn;
+    const returns: ts.Expression[] = [];
+    let sawBareReturn = false;
+    if (fnDecl.body) {
+      const visit = (node: ts.Node): void => {
+        // Don't descend into nested function-likes — their returns belong to them
+        if (
+          node !== fnDecl &&
+          (ts.isFunctionDeclaration(node) ||
+            ts.isFunctionExpression(node) ||
+            ts.isArrowFunction(node) ||
+            ts.isMethodDeclaration(node) ||
+            ts.isAccessor(node) ||
+            ts.isConstructorDeclaration(node))
+        ) {
+          return;
+        }
+        if (ts.isReturnStatement(node)) {
+          if (node.expression) {
+            returns.push(node.expression);
+          } else {
+            sawBareReturn = true;
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      ts.forEachChild(fnDecl.body, visit);
+    }
+    fnInfo.set(fnName, { paramNames, returns, sawBareReturn, paramsAllNumeric });
   }
 
   // Iterate to fixpoint: drop candidates that fail under the current set.
   // The set can only shrink, so the loop terminates in <= candidates.size
-  // iterations.
+  // iterations. Each iteration is O(candidates × cached returns ×
+  // MAX_NUMERIC_DEPTH) — no repeated AST walks of the function bodies.
   let changed = true;
   let safety = candidates.size + 1;
   while (changed && safety-- > 0) {
     changed = false;
-    for (const [fnName, decl] of candidates) {
+    for (const fnName of candidates.keys()) {
       if (!numeric.has(fnName)) continue;
-      const paramNames = new Set<string>();
-      for (const p of decl.parameters) {
-        if (ts.isIdentifier(p.name)) paramNames.add(p.name.text);
-      }
-      // Also require all params to resolve to numeric Wasm types (f64/i32).
-      // The param-inference pass has already done its work by now (from the
-      // call sites we see), so we re-check using the same checker types.
-      let allParamsNumeric = true;
-      for (const p of decl.parameters) {
-        const pt = ctx.checker.getTypeAtLocation(p);
-        // Implicit any params: the param-inference pass may have promoted
-        // them to f64 from call sites — but at this stage the function
-        // signature is not yet built. So we accept any number-shaped TS
-        // type AND implicit-any (which the param-inference pass handles).
-        const isNumericTs =
-          (pt.flags &
-            (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral | ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !==
-          0;
-        const isImplicitAny = !p.type && (pt.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
-        if (!isNumericTs && !isImplicitAny) {
-          allParamsNumeric = false;
-          break;
-        }
-      }
-      if (!allParamsNumeric) {
+      const info = fnInfo.get(fnName)!;
+      if (!info.paramsAllNumeric || info.sawBareReturn || info.returns.length === 0) {
         numeric.delete(fnName);
         changed = true;
         continue;
       }
-      if (!bodyAllReturnsNumeric(decl, paramNames)) {
+      let allNumeric = true;
+      for (const r of info.returns) {
+        if (!isNumericExpr(r, info.paramNames)) {
+          allNumeric = false;
+          break;
+        }
+      }
+      if (!allNumeric) {
         numeric.delete(fnName);
         changed = true;
       }

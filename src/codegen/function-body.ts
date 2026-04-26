@@ -348,11 +348,16 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
    *   • unary `-`/`+`/`~` of an i32-safe operand
    *   • a parenthesised / `as`-cast / non-null-asserted i32-safe expr
    */
-  function isI32SafeExpr(expr: ts.Expression | undefined): boolean {
+  // Depth guard: identical to the one in inferNumericReturnTypes — if a
+  // candidate's initializer / mutation tree is deeper than this, we
+  // conservatively treat it as not-safe rather than recursing further.
+  const MAX_I32_SAFE_DEPTH = 64;
+  function isI32SafeExpr(expr: ts.Expression | undefined, depth = 0): boolean {
+    if (depth > MAX_I32_SAFE_DEPTH) return false;
     if (!expr) return true; // no initializer → 0 (which is i32)
-    if (ts.isParenthesizedExpression(expr)) return isI32SafeExpr(expr.expression);
+    if (ts.isParenthesizedExpression(expr)) return isI32SafeExpr(expr.expression, depth + 1);
     if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr) || ts.isNonNullExpression(expr)) {
-      return isI32SafeExpr(expr.expression);
+      return isI32SafeExpr(expr.expression, depth + 1);
     }
     if (ts.isNumericLiteral(expr)) {
       const v = Number(expr.text.replace(/_/g, ""));
@@ -361,7 +366,7 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
     if (ts.isPrefixUnaryExpression(expr)) {
       const o = expr.operator;
       if (o === ts.SyntaxKind.MinusToken || o === ts.SyntaxKind.PlusToken || o === ts.SyntaxKind.TildeToken) {
-        return isI32SafeExpr(expr.operand);
+        return isI32SafeExpr(expr.operand, depth + 1);
       }
       if (o === ts.SyntaxKind.PlusPlusToken || o === ts.SyntaxKind.MinusMinusToken) {
         return (
@@ -382,14 +387,17 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
     }
     if (ts.isBinaryExpression(expr)) {
       const o = expr.operatorToken.kind;
-      // Bitwise / shift always produce int32
+      // Bitwise / shift always produce int32 (signed for all but `>>>` —
+      // see #1120 follow-up: `>>>` returns uint32 which can sit above
+      // 2^31, so when the receiving local is consumed as f64 the i32
+      // promotion would change the observable value. Conservatively
+      // exclude `>>>`.
       if (
         o === ts.SyntaxKind.BarToken ||
         o === ts.SyntaxKind.AmpersandToken ||
         o === ts.SyntaxKind.CaretToken ||
         o === ts.SyntaxKind.LessThanLessThanToken ||
-        o === ts.SyntaxKind.GreaterThanGreaterThanToken ||
-        o === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken
+        o === ts.SyntaxKind.GreaterThanGreaterThanToken
       ) {
         return true;
       }
@@ -404,7 +412,7 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
       }
       // Add/sub/mul: safe if both operands are i32-safe
       if (o === ts.SyntaxKind.PlusToken || o === ts.SyntaxKind.MinusToken || o === ts.SyntaxKind.AsteriskToken) {
-        return isI32SafeExpr(expr.left) && isI32SafeExpr(expr.right);
+        return isI32SafeExpr(expr.left, depth + 1) && isI32SafeExpr(expr.right, depth + 1);
       }
       return false;
     }
