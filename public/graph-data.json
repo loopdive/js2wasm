@@ -15827,7 +15827,7 @@
       "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "45",
       "depends_on": [],
       "files": [],
