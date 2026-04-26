@@ -40,18 +40,36 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
+      - name: Download regressions report artifact from triggering run
+        uses: actions/download-artifact@v7
+        with:
+          name: test262-regressions-report
+          path: /tmp/merged-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
       - name: Resolve PR number
         id: pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # The workflow_run event provides pull_requests on its payload.
+          # 1. The workflow_run event usually provides pull_requests on its payload.
           pr_num=$(jq -r '.workflow_run.pull_requests[0].number // empty' < "$GITHUB_EVENT_PATH")
+
+          # 2. Fallback: look up by head branch.
           if [ -z "$pr_num" ]; then
-            # Fallback: look up by head branch
             head_branch="${{ github.event.workflow_run.head_branch }}"
-            pr_num=$(gh pr list --state all --head "$head_branch" --json number --jq '.[0].number' || echo "")
+            pr_num=$(gh pr list --state all --head "$head_branch" --json number --jq '.[0].number' 2>/dev/null || echo "")
           fi
+
+          # 3. Last-resort fallback: look up by commit SHA. Most reliable when
+          #    the head_branch lookup misses (forks, deleted refs, etc.).
+          if [ -z "$pr_num" ]; then
+            head_sha="${{ github.event.workflow_run.head_sha }}"
+            pr_num=$(gh pr list --state all --json number,headRefOid --jq --arg sha "$head_sha" '.[] | select(.headRefOid == $sha) | .number' 2>/dev/null | head -1 || echo "")
+          fi
+
           if [ -z "$pr_num" ]; then
             echo "No PR number resolvable — skipping status write"
             echo "pr=" >> "$GITHUB_OUTPUT"

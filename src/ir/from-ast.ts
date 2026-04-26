@@ -44,6 +44,7 @@ import {
   irVal,
   type IrBinop,
   type IrFunction,
+  type IrObjectShape,
   type IrType,
   type IrUnop,
   type IrValueId,
@@ -236,7 +237,13 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
     if (!d.initializer) {
       throw new Error(`ir/from-ast: Phase 1 requires an initializer for '${name}' in ${cx.funcName}`);
     }
-    const annotated = d.type ? typeNodeToIr(d.type, `local ${name} of ${cx.funcName}`) : undefined;
+    // Slice 2 (#1169b): non-primitive type annotations on locals
+    // (TypeLiteral / TypeReference) can't be resolved to an IrType
+    // here without a TS checker. Defer those to inference from the
+    // initializer — `typeNodeToIr` only fires for primitive type
+    // keywords; everything else falls through to inference.
+    const annotated =
+      d.type && isPrimitiveTypeNode(d.type) ? typeNodeToIr(d.type, `local ${name} of ${cx.funcName}`) : undefined;
     const hint: IrType = annotated ?? irVal({ kind: "f64" });
     const value = lowerExpr(d.initializer, cx, hint);
     const inferred = cx.builder.typeOf(value);
@@ -269,10 +276,26 @@ function typeNodeToIr(node: ts.TypeNode | undefined, where: string): IrType {
   }
 }
 
+/**
+ * Quick predicate: does this TypeNode resolve to a primitive IrType
+ * without needing a TS checker? Used by `lowerVarDecl` and
+ * `resolveIrType` to decide whether to consult the override map.
+ */
+function isPrimitiveTypeNode(node: ts.TypeNode): boolean {
+  return (
+    node.kind === ts.SyntaxKind.NumberKeyword ||
+    node.kind === ts.SyntaxKind.BooleanKeyword ||
+    node.kind === ts.SyntaxKind.StringKeyword
+  );
+}
+
 /** Short debug string for IrType, used in error messages. */
 function describeIrType(t: IrType): string {
   if (t.kind === "val") return t.val.kind;
   if (t.kind === "string") return "string";
+  if (t.kind === "object") {
+    return `object{${t.shape.fields.map((f) => `${f.name}:${describeIrType(f.type)}`).join(",")}}`;
+  }
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }
@@ -286,7 +309,7 @@ function describeIrType(t: IrType): string {
  * have claimed this function.
  */
 function resolveIrType(node: ts.TypeNode | undefined, override: IrType | undefined, where: string): IrType {
-  if (node) {
+  if (node && isPrimitiveTypeNode(node)) {
     const fromNode = typeNodeToIr(node, where);
     if (override && !irTypeEquals(override, fromNode)) {
       throw new Error(
@@ -295,6 +318,12 @@ function resolveIrType(node: ts.TypeNode | undefined, override: IrType | undefin
     }
     return fromNode;
   }
+  // Slice 2 (#1169b): non-primitive TypeNodes (TypeLiteral / TypeReference)
+  // need a TS checker to resolve into an IrType.object — we don't have
+  // one inside the IR layer. The caller (codegen/index.ts:resolvePositionType)
+  // pre-resolves these and passes the result via `override`, so we
+  // simply prefer the override here. If neither is present, the
+  // selector and override builder are out of sync — that's a bug.
   if (override) return override;
   throw new Error(`ir/from-ast: missing type annotation and no override (${where})`);
 }
@@ -331,6 +360,12 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   }
   if (ts.isPropertyAccessExpression(expr)) {
     return lowerPropertyAccess(expr, cx);
+  }
+  if (ts.isObjectLiteralExpression(expr)) {
+    return lowerObjectLiteral(expr, cx);
+  }
+  if (ts.isElementAccessExpression(expr)) {
+    return lowerElementAccess(expr, cx);
   }
   if (ts.isIdentifier(expr)) {
     const p = cx.scope.get(expr.text);
@@ -415,22 +450,151 @@ function staticTypeOfFor(t: IrType): string | null {
 }
 
 /**
- * Lower `<expr>.length` for a string receiver. Slice 1 only handles the
- * `.length` property and only on string operands; everything else (arrays,
- * objects, getter chains, etc.) is later slices and throws here.
+ * Lower a property access expression.
+ *
+ * Slice 1 (#1169a) handles `<string>.length` (the only `.length` form
+ * relevant before slice 2). Slice 2 (#1169b) extends to named property
+ * reads on `IrType.object` receivers — the lowerer resolves the field
+ * by name against the receiver shape's canonical field list and emits
+ * `object.get`.
+ *
+ * Receivers of any other IrType (boxed, union, val with non-string
+ * representation) are out of slice 2's scope and throw, so the
+ * containing function falls back to legacy.
  */
 function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): IrValueId {
-  if (!ts.isIdentifier(expr.name) || expr.name.text !== "length") {
-    throw new Error(`ir/from-ast: property access .${expr.name.getText()} is not in slice 1 (${cx.funcName})`);
+  if (!ts.isIdentifier(expr.name)) {
+    throw new Error(`ir/from-ast: computed property access not in slice 2 (${cx.funcName})`);
   }
-  const recv = lowerExpr(expr.expression, cx, { kind: "string" });
+  const propName = expr.name.text;
+
+  // Receiver type is unknown until we lower it; pass an f64 hint (the
+  // numeric default) and inspect the resulting IrType. The hint is
+  // advisory — string / object lowerings ignore it.
+  const recv = lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
   const recvType = cx.builder.typeOf(recv);
-  if (recvType.kind !== "string") {
+
+  if (recvType.kind === "string") {
+    // Slice 1 — only `.length` is supported on string receivers.
+    if (propName !== "length") {
+      throw new Error(`ir/from-ast: .${propName} on string is not in slice 2 (${cx.funcName})`);
+    }
+    return cx.builder.emitStringLen(recv);
+  }
+
+  if (recvType.kind === "object") {
+    // Slice 2 — named field read on a known shape.
+    const fieldIdx = recvType.shape.fields.findIndex((f) => f.name === propName);
+    if (fieldIdx < 0) {
+      throw new Error(
+        `ir/from-ast: object has no field "${propName}" (shape: ${describeIrType(recvType)}) in ${cx.funcName}`,
+      );
+    }
+    const fieldType = recvType.shape.fields[fieldIdx]!.type;
+    return cx.builder.emitObjectGet(recv, propName, fieldType);
+  }
+
+  throw new Error(
+    `ir/from-ast: property access .${propName} on ${describeIrType(recvType)} is not in slice 2 (${cx.funcName})`,
+  );
+}
+
+/**
+ * Lower an object literal to an IR `object.new`. The shape is derived
+ * from the literal's properties: each PropertyAssignment /
+ * ShorthandPropertyAssignment contributes one field. Field types come
+ * from the lowered initializer's IrType (no TS-checker introspection
+ * — we're already past type resolution by the time we lower).
+ *
+ * The shape is sorted by name AFTER lowering so the canonical form
+ * compares equal across literals with different syntactic ordering. The
+ * value list is reordered to match.
+ */
+function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, cx: LowerCtx): IrValueId {
+  if (expr.properties.length === 0) {
+    throw new Error(`ir/from-ast: empty object literal not in slice 2 (${cx.funcName})`);
+  }
+  const built: { name: string; type: IrType; value: IrValueId }[] = [];
+  const seen = new Set<string>();
+  for (const prop of expr.properties) {
+    if (ts.isPropertyAssignment(prop)) {
+      const name = phase1PropertyName(prop.name);
+      if (name === null) {
+        throw new Error(`ir/from-ast: object literal property name not in slice 2 (${cx.funcName})`);
+      }
+      if (seen.has(name)) {
+        throw new Error(`ir/from-ast: duplicate object literal key "${name}" not in slice 2 (${cx.funcName})`);
+      }
+      seen.add(name);
+      const v = lowerExpr(prop.initializer, cx, irVal({ kind: "f64" }));
+      const type = cx.builder.typeOf(v);
+      built.push({ name, type, value: v });
+      continue;
+    }
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      const name = prop.name.text;
+      if (seen.has(name)) {
+        throw new Error(`ir/from-ast: duplicate object literal key "${name}" not in slice 2 (${cx.funcName})`);
+      }
+      seen.add(name);
+      const found = cx.scope.get(name);
+      if (!found) {
+        throw new Error(`ir/from-ast: shorthand "${name}" not in scope in ${cx.funcName}`);
+      }
+      built.push({ name, type: found.type, value: found.value });
+      continue;
+    }
+    throw new Error(`ir/from-ast: object literal element ${ts.SyntaxKind[prop.kind]} not in slice 2 (${cx.funcName})`);
+  }
+  built.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const shape: IrObjectShape = {
+    fields: built.map((b) => ({ name: b.name, type: b.type })),
+  };
+  return cx.builder.emitObjectNew(
+    shape,
+    built.map((b) => b.value),
+  );
+}
+
+/**
+ * Lower an element access whose argument is a string literal — sugar
+ * for property access on a known shape. Numeric / computed keys are
+ * out of slice 2's scope and throw, so the function falls back to
+ * legacy.
+ */
+function lowerElementAccess(expr: ts.ElementAccessExpression, cx: LowerCtx): IrValueId {
+  const arg = expr.argumentExpression;
+  if (!ts.isStringLiteral(arg) && arg.kind !== ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
+    throw new Error(`ir/from-ast: non-string-literal element access not in slice 2 (${cx.funcName})`);
+  }
+  const propName = (arg as ts.StringLiteral | ts.NoSubstitutionTemplateLiteral).text;
+  const recv = lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
+  const recvType = cx.builder.typeOf(recv);
+  if (recvType.kind !== "object") {
+    throw new Error(`ir/from-ast: element access on ${describeIrType(recvType)} is not in slice 2 (${cx.funcName})`);
+  }
+  const fieldIdx = recvType.shape.fields.findIndex((f) => f.name === propName);
+  if (fieldIdx < 0) {
     throw new Error(
-      `ir/from-ast: .length on non-string receiver (${describeIrType(recvType)}) is not in slice 1 (${cx.funcName})`,
+      `ir/from-ast: object has no field "${propName}" (shape: ${describeIrType(recvType)}) in ${cx.funcName}`,
     );
   }
-  return cx.builder.emitStringLen(recv);
+  const fieldType = recvType.shape.fields[fieldIdx]!.type;
+  return cx.builder.emitObjectGet(recv, propName, fieldType);
+}
+
+/**
+ * Resolve an object literal property name to a string. Identifier and
+ * StringLiteral keys produce their text. NumericLiteral keys produce
+ * the canonical JS toString of the number. ComputedPropertyName always
+ * returns null. Duplicated locally from select.ts to avoid a circular
+ * import.
+ */
+function phase1PropertyName(name: ts.PropertyName): string | null {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name)) return name.text;
+  if (ts.isNumericLiteral(name)) return name.text;
+  return null;
 }
 
 /**

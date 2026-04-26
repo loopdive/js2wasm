@@ -127,19 +127,6 @@
       "sprint": "45"
     },
     {
-      "id": "1169a",
-      "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1169",
-        "1168"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1169",
       "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
       "priority": "high",
@@ -1880,6 +1867,19 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1169a",
+      "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169",
+        "1168"
+      ],
+      "goal": "compiler-architecture",
       "status": "done",
       "sprint": "45"
     },

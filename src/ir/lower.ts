@@ -47,6 +47,7 @@ import {
   type IrFunction,
   type IrGlobalRef,
   type IrInstr,
+  type IrObjectShape,
   type IrType,
   type IrTypeRef,
   type IrValueId,
@@ -79,6 +80,22 @@ export interface IrBoxedLowering {
   readonly valFieldIdx: number;
 }
 
+/**
+ * Information about a registered WasmGC struct that backs an
+ * `IrType.object` shape. The resolver memoizes one of these per shape.
+ *
+ * `fieldIdx(name)` returns the WasmGC struct's field index for the given
+ * shape field name (in the shape's canonical order). It throws when the
+ * name is not a member of the shape — the lowerer catches via the
+ * surrounding try/catch and emits a clean fall-back error.
+ */
+export interface IrObjectStructLowering {
+  /** WasmGC type index of the registered struct. */
+  readonly typeIdx: number;
+  /** Field index for each field name in the shape's canonical order. */
+  fieldIdx(name: string): number;
+}
+
 export interface IrLowerResolver {
   resolveFunc(ref: IrFuncRef): number;
   resolveGlobal(ref: IrGlobalRef): number;
@@ -102,6 +119,18 @@ export interface IrLowerResolver {
    * Optional for the same reason as `resolveUnion`.
    */
   resolveBoxed?(inner: ValType): IrBoxedLowering | null;
+  /**
+   * Resolve (and memoise) the WasmGC struct type for an `IrType.object`
+   * shape. Returns `null` if the shape contains a field type the backend
+   * can't lower (e.g. a nested boxed-IrType the V1 boxed registry doesn't
+   * support).
+   *
+   * The slice-2 implementation in `integration.ts` delegates to a shared
+   * `ObjectStructRegistry` that hashes shapes against
+   * `ctx.anonStructHash`, so legacy `ensureStructForType` and the IR path
+   * converge on a single WasmGC struct for any given shape.
+   */
+  resolveObject?(shape: IrObjectShape): IrObjectStructLowering | null;
   /**
    * Resolve the Wasm value type used for `IrType.string` in the active
    * backend.
@@ -408,6 +437,50 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "f64.convert_i32_s" });
         return;
       }
+      case "object.new": {
+        const obj = resolver.resolveObject?.(instr.shape);
+        if (!obj) {
+          throw new Error(`ir/lower: resolver cannot lower object<${describeShape(instr.shape)}> (${func.name})`);
+        }
+        // Push values in canonical (sorted) field order — same order as
+        // shape.fields, which is also the WasmGC struct's declared field
+        // order. The builder enforces value-count parity with shape arity,
+        // so this loop always produces the right stack shape.
+        for (const v of instr.values) emitValue(v, out);
+        out.push({ op: "struct.new", typeIdx: obj.typeIdx });
+        return;
+      }
+      case "object.get": {
+        const valueIrType = typeOf(instr.value);
+        if (valueIrType.kind !== "object") {
+          throw new Error(
+            `ir/lower: object.get value must be an object IrType, got ${valueIrType.kind} (${func.name})`,
+          );
+        }
+        const obj = resolver.resolveObject?.(valueIrType.shape);
+        if (!obj) {
+          throw new Error(`ir/lower: resolver cannot lower object<${describeShape(valueIrType.shape)}> (${func.name})`);
+        }
+        emitValue(instr.value, out);
+        out.push({ op: "struct.get", typeIdx: obj.typeIdx, fieldIdx: obj.fieldIdx(instr.name) });
+        return;
+      }
+      case "object.set": {
+        const valueIrType = typeOf(instr.value);
+        if (valueIrType.kind !== "object") {
+          throw new Error(
+            `ir/lower: object.set value must be an object IrType, got ${valueIrType.kind} (${func.name})`,
+          );
+        }
+        const obj = resolver.resolveObject?.(valueIrType.shape);
+        if (!obj) {
+          throw new Error(`ir/lower: resolver cannot lower object<${describeShape(valueIrType.shape)}> (${func.name})`);
+        }
+        emitValue(instr.value, out);
+        emitValue(instr.newValue, out);
+        out.push({ op: "struct.set", typeIdx: obj.typeIdx, fieldIdx: obj.fieldIdx(instr.name) });
+        return;
+      }
     }
   };
 
@@ -530,6 +603,12 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.lhs, instr.rhs];
     case "string.len":
       return [instr.value];
+    case "object.new":
+      return instr.values;
+    case "object.get":
+      return [instr.value];
+    case "object.set":
+      return [instr.value, instr.newValue];
   }
 }
 
@@ -555,7 +634,7 @@ function collectTerminatorUses(block: IrBlock): readonly IrValueId[] {
  * to that struct. Throws if the resolver cannot lower the type — callers must
  * reject such IR before reaching this function.
  */
-function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcName: string): ValType {
+export function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcName: string): ValType {
   if (t.kind === "val") return t.val;
   if (t.kind === "string") {
     const sty = resolver.resolveString?.();
@@ -563,6 +642,18 @@ function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcName: st
       throw new Error(`ir/lower: resolver cannot lower string IrType (${funcName})`);
     }
     return sty;
+  }
+  if (t.kind === "object") {
+    // Object IrTypes always lower to a (ref $struct) — mutability of the
+    // backing reference is decided by the caller (locals/params get a
+    // non-null ref since `object.new` produces a definite struct; field
+    // slots get a ref_null in the struct definition itself, see
+    // `ObjectStructRegistry.resolve`).
+    const obj = resolver.resolveObject?.(t.shape);
+    if (!obj) {
+      throw new Error(`ir/lower: resolver cannot lower object<${describeShape(t.shape)}> (${funcName})`);
+    }
+    return { kind: "ref", typeIdx: obj.typeIdx };
   }
   if (t.kind === "union") {
     const union = resolver.resolveUnion?.(t.members);
@@ -577,6 +668,24 @@ function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcName: st
     throw new Error(`ir/lower: resolver cannot lower boxed<${t.inner.kind}> (${funcName})`);
   }
   return { kind: "ref", typeIdx: box.typeIdx };
+}
+
+/**
+ * Compact debug string for an object shape — used in error messages so a
+ * mismatched shape surfaces with its field list rather than just an opaque
+ * "object" tag. Field types are rendered shallowly (kind only) to keep
+ * messages readable; nested objects show as `object{...}` recursively.
+ */
+function describeShape(shape: IrObjectShape): string {
+  return shape.fields.map((f) => `${f.name}:${describeIrTypeShallow(f.type)}`).join(",");
+}
+
+function describeIrTypeShallow(t: IrType): string {
+  if (t.kind === "val") return t.val.kind;
+  if (t.kind === "string") return "string";
+  if (t.kind === "object") return `object{${describeShape(t.shape)}}`;
+  if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
+  return `boxed<${t.inner.kind}>`;
 }
 
 function emitConst(instr: Extract<IrInstr, { kind: "const" }>, out: Instr[], funcName: string): void {

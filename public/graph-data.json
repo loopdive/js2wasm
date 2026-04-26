@@ -16517,8 +16517,8 @@
       "id": "1169a",
       "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [
         "1169",

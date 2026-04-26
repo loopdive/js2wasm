@@ -1,0 +1,15 @@
+{
+  "pr": 36,
+  "conclusion": "failure",
+  "head_branch": "ci/fix-status-feed-pr-resolution",
+  "head_sha": "ce4fa47d333abcce16f875517c3a296b49f5a7c4",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24952386451",
+  "timestamp": "2026-04-26T08:42:46Z",
+  "pass": 25777,
+  "fail": 14055,
+  "compile_error": 1866,
+  "snapshot_delta": -93,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
