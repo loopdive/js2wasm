@@ -108,7 +108,8 @@
     "ts-morph": "^27.0.2",
     "vite": "^6",
     "vite-plugin-dts": "^4",
-    "vitest": "^3"
+    "vitest": "^3",
+    "wabt": "^1.0.39"
   },
   "lint-staged": {
     "*.{ts,js,mjs}": [
