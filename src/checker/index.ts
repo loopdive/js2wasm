@@ -1,30 +1,23 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import ts from "typescript";
+import { getDefaultEnvironment } from "../env.js";
 
-function isBrowserLikeRuntime(): boolean {
-  return typeof window !== "undefined" || typeof (globalThis as any).WorkerGlobalScope !== "undefined";
-}
+// All Node builtin access goes through the environment adapter (#1096).
+// This module no longer probes `typeof window` / `typeof process` directly
+// and no longer uses top-level `await` to load `node:fs`, `node:path`,
+// `node:module`, `node:url` — `getDefaultEnvironment()` is fully synchronous,
+// which lets embedders import the checker without forcing the whole module
+// graph through async initialization.
 
 function getBundledLibFiles(): Record<string, string> | undefined {
-  const files = (globalThis as any).__js2wasmTsLibFiles ?? (globalThis as any).__ts2wasmTsLibFiles;
+  const files =
+    (globalThis as { __js2wasmTsLibFiles?: unknown; __ts2wasmTsLibFiles?: unknown }).__js2wasmTsLibFiles ??
+    (globalThis as { __ts2wasmTsLibFiles?: unknown }).__ts2wasmTsLibFiles;
   return files && typeof files === "object" ? (files as Record<string, string>) : undefined;
 }
 
-async function safeImport<T>(id: string): Promise<T | null> {
-  if (isBrowserLikeRuntime() && id.startsWith("node:")) {
-    return null;
-  }
-  try {
-    return (await import(/* @vite-ignore */ id)) as T;
-  } catch {
-    return null;
-  }
-}
-
-// Top-level await loads for all Node builtins — browsers get null silently.
-const _nodePathMod = await safeImport<typeof import("node:path")>("node:path");
 function getPath() {
-  return _nodePathMod;
+  return getDefaultEnvironment().path;
 }
 function dirname(p: string) {
   return getPath()?.dirname(p) ?? "";
@@ -32,20 +25,15 @@ function dirname(p: string) {
 function join(...args: string[]) {
   return getPath()?.join(...args) ?? args.join("/");
 }
-// Top-level await: resolve Node builtins once at module load.
-// In browsers, these silently resolve to null.
-const _nodeFsMod = await safeImport<typeof import("node:fs")>("node:fs");
-const _nodeModuleMod = await safeImport<typeof import("node:module")>("node:module");
-const _nodeUrlMod = await safeImport<typeof import("node:url")>("node:url");
 
 function getReadFileSync() {
-  return _nodeFsMod?.readFileSync ?? null;
+  return getDefaultEnvironment().fs?.readFileSync ?? null;
 }
 function getCreateRequire() {
-  return _nodeModuleMod?.createRequire ?? null;
+  return getDefaultEnvironment().module?.createRequire ?? null;
 }
 function getFileURLToPath() {
-  return _nodeUrlMod?.fileURLToPath ?? null;
+  return getDefaultEnvironment().url?.fileURLToPath ?? null;
 }
 // Custom type declarations not found in TS lib files
 // All lib types now loaded from the typescript package at runtime.
