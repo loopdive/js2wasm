@@ -174,18 +174,27 @@ function isIrClaimable(fn: ts.FunctionDeclaration, typeMap: TypeMap | undefined)
  * call sites still treats the result as a null-vs-non-null discriminator,
  * so adding a third positive value is backward-compatible.
  */
-type ResolvedKind = "f64" | "bool" | "string" | null;
+type ResolvedKind = "f64" | "bool" | "string" | "object" | null;
 
 function resolveParamType(p: ts.ParameterDeclaration, mapped: LatticeType | undefined): ResolvedKind {
   if (p.type) {
     if (p.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
     if (p.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
     if (p.type.kind === ts.SyntaxKind.StringKeyword) return "string";
+    // Slice 2 (#1169b) — accept TypeLiteral / TypeReference at the
+    // selector level. The actual shape resolution happens in
+    // codegen/index.ts:resolvePositionType, which materializes an
+    // IrType.object via `objectIrTypeFromTsType`. If shape resolution
+    // fails (e.g. callable type, methods, etc.), the override map is
+    // populated with a placeholder and the function falls back to
+    // legacy via the `safeSelection` filter.
+    if (ts.isTypeLiteralNode(p.type) || ts.isTypeReferenceNode(p.type)) return "object";
     return null;
   }
   if (mapped?.kind === "f64") return "f64";
   if (mapped?.kind === "bool") return "bool";
   if (mapped?.kind === "string") return "string";
+  if (mapped?.kind === "object") return "object";
   return null;
 }
 
@@ -194,11 +203,13 @@ function resolveReturnType(fn: ts.FunctionDeclaration, mapped: LatticeType | und
     if (fn.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
     if (fn.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
     if (fn.type.kind === ts.SyntaxKind.StringKeyword) return "string";
+    if (ts.isTypeLiteralNode(fn.type) || ts.isTypeReferenceNode(fn.type)) return "object";
     return null;
   }
   if (mapped?.kind === "f64") return "f64";
   if (mapped?.kind === "bool") return "bool";
   if (mapped?.kind === "string") return "string";
+  if (mapped?.kind === "object") return "object";
   return null;
 }
 
@@ -330,14 +341,86 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>): boolean 
     }
     return true;
   }
-  // Slice 1: only `<expr>.length` is supported. Other property access
-  // (method calls, computed access, named props on objects) are later
-  // slices.
+  // Slice 2 (#1169b) — plain "data" object literals. The acceptance
+  // helper rejects spread, methods, getters/setters, computed keys,
+  // and duplicate keys. Initializers must themselves be Phase-1
+  // claimable, so nested objects compose recursively.
+  if (ts.isObjectLiteralExpression(expr)) {
+    return isPhase1ObjectLiteral(expr, scope);
+  }
+  // Slices 1+2 — property access. Slice 1 accepts `<string>.length`
+  // syntactically; slice 2 broadens to any Identifier-named property,
+  // with the lowerer enforcing receiver IrType (string→.length only,
+  // object→named field). The selector accepts the shape only —
+  // type checks happen at lowering time.
   if (ts.isPropertyAccessExpression(expr)) {
-    if (!ts.isIdentifier(expr.name) || expr.name.text !== "length") return false;
+    if (!ts.isIdentifier(expr.name)) return false;
+    return isPhase1Expr(expr.expression, scope);
+  }
+  // Slice 2 — element access with a literal string key (sugar for
+  // property access on a known shape). Numeric/computed keys are
+  // out of scope and rejected here so the function falls back to
+  // legacy.
+  if (ts.isElementAccessExpression(expr)) {
+    const arg = expr.argumentExpression;
+    if (!ts.isStringLiteral(arg) && arg.kind !== ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
+      return false;
+    }
     return isPhase1Expr(expr.expression, scope);
   }
   return false;
+}
+
+/**
+ * Slice-2 acceptance check for object literals. Accepts only "plain data"
+ * literals: PropertyAssignment / ShorthandPropertyAssignment with
+ * Identifier / StringLiteral / NumericLiteral keys and Phase-1-claimable
+ * initializers. Rejects spread, methods, accessors, computed keys, and
+ * duplicate keys (last-write-wins is JS spec; deferred to a later slice).
+ */
+function isPhase1ObjectLiteral(expr: ts.ObjectLiteralExpression, scope: ReadonlySet<string>): boolean {
+  // Empty literals get rejected by the codegen side (zero-property
+  // objects don't form a usable IrType.object shape) — but accepting
+  // them at the selector level wouldn't cause a regression: the
+  // overrides pass would skip them when shape resolution failed.
+  if (expr.properties.length === 0) return false;
+
+  const seen = new Set<string>();
+  for (const prop of expr.properties) {
+    if (ts.isPropertyAssignment(prop)) {
+      const name = phase1PropertyName(prop.name);
+      if (name === null) return false;
+      if (seen.has(name)) return false; // duplicate key — defer
+      seen.add(name);
+      if (!isPhase1Expr(prop.initializer, scope)) return false;
+      continue;
+    }
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      const name = prop.name.text;
+      if (seen.has(name)) return false;
+      if (!scope.has(name)) return false;
+      seen.add(name);
+      continue;
+    }
+    // SpreadAssignment, MethodDeclaration, GetAccessorDeclaration,
+    // SetAccessorDeclaration → reject.
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Resolve an object literal property name to a string. Identifier and
+ * StringLiteral keys produce their text. NumericLiteral keys produce the
+ * canonical JS toString of the number. ComputedPropertyName always
+ * returns null — slice 2 doesn't see through computed keys, even when
+ * the key expression is itself a string literal.
+ */
+function phase1PropertyName(name: ts.PropertyName): string | null {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name)) return name.text;
+  if (ts.isNumericLiteral(name)) return name.text; // matches JS — `{ 0: x }` → "0"
+  return null;
 }
 
 function isPhase1PrefixOp(op: ts.PrefixUnaryOperator): boolean {
