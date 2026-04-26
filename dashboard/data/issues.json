@@ -399,28 +399,6 @@
       "sprint": "45"
     },
     {
-      "id": "1121",
-      "title": "Infer numeric recursive fast path without JSDoc hints on exported entrypoints",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "1120",
-      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1119",
       "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
       "priority": "medium",
@@ -785,16 +763,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "1016",
-      "title": "Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1011",
       "title": "Offline-first benchmarks with Playwright DOM measurement and Run Live button",
       "priority": "medium",
@@ -893,66 +861,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "996",
-      "title": "Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "error-model",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "995",
-      "title": "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "iterator-protocol",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "994",
-      "title": "Class static-private-getter test hits 30s compiler timeout",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "993",
-      "title": "Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "992",
-      "title": "Iterator.prototype.take limit-less-than-total hits 30s compiler timeout",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "iterator-protocol",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "991",
-      "title": "Iterator helper generator-reentrancy tests hit 30s compiler timeout",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "error-model",
       "status": "ready",
       "sprint": "45"
     },
@@ -2197,6 +2105,28 @@
       "sprint": "42"
     },
     {
+      "id": "1121",
+      "title": "Infer numeric recursive fast path without JSDoc hints on exported entrypoints",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1120",
+      "title": "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1119",
       "title": "ES2015 SingleNameBinding anonymous function/class naming from destructuring context",
       "priority": "medium",
@@ -2857,6 +2787,16 @@
       "sprint": "41"
     },
     {
+      "id": "1016",
+      "title": "Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1015",
       "title": "Support fixture/includes tests in unified compilation mode (172 CE)",
       "priority": "medium",
@@ -2971,6 +2911,16 @@
       "sprint": "42"
     },
     {
+      "id": "996",
+      "title": "Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "error-model",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "995",
       "title": "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout",
       "priority": "low",
@@ -2981,9 +2931,39 @@
       "sprint": "42"
     },
     {
+      "id": "995",
+      "title": "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "iterator-protocol",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "994",
       "title": "Class static-private-getter test hits 30s compiler timeout",
       "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "42"
+    },
+    {
+      "id": "994",
+      "title": "Class static-private-getter test hits 30s compiler timeout",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "993",
+      "title": "Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout",
+      "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "compilable",
@@ -2998,7 +2978,7 @@
       "depends_on": [],
       "goal": "compilable",
       "status": "done",
-      "sprint": "42"
+      "sprint": "45"
     },
     {
       "id": "992",
@@ -3011,6 +2991,16 @@
       "sprint": "42"
     },
     {
+      "id": "992",
+      "title": "Iterator.prototype.take limit-less-than-total hits 30s compiler timeout",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "iterator-protocol",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "991",
       "title": "Iterator helper generator-reentrancy tests hit 30s compiler timeout",
       "priority": "high",
@@ -3019,6 +3009,16 @@
       "goal": "error-model",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "991",
+      "title": "Iterator helper generator-reentrancy tests hit 30s compiler timeout",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "error-model",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "990",
