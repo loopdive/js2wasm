@@ -67,6 +67,7 @@ import {
 import {
   applyShapeInference,
   collectDeclarations,
+  inferNumericReturnTypes,
   collectEmptyObjectWidening,
   compileDeclarations,
   createUnifiedCollectorState,
@@ -387,6 +388,12 @@ export function generateModule(
 
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
+
+    // #1121: Pre-compute return-type inference for recursive numeric kernels
+    // (e.g. unannotated `function fib(n) { ... }`). This runs BEFORE
+    // collectDeclarations so the inferred f64 return shows up directly in
+    // the function's signature instead of being patched after the fact.
+    ctx.numericReturnTypes = inferNumericReturnTypes(ctx, ast.sourceFile);
 
     // Second pass: collect all function declarations and interfaces
     collectDeclarations(ctx, ast.sourceFile);
@@ -2057,6 +2064,17 @@ export function generateMultiModule(
 
     // Emit wrapper valueOf functions (after all imports registered, before user funcs)
     emitWrapperValueOfFunctions(ctx);
+
+    // #1121: Numeric return-type inference (must run BEFORE collectDeclarations
+    // so the inferred f64 return is baked into the function signature).
+    {
+      const merged = new Map<string, ValType>();
+      for (const sf of multiAst.sourceFiles) {
+        const partial = inferNumericReturnTypes(ctx, sf);
+        for (const [k, v] of partial) merged.set(k, v);
+      }
+      ctx.numericReturnTypes = merged;
+    }
 
     // Phase 2: Collect all declarations — only entry file gets Wasm exports
     for (const sf of multiAst.sourceFiles) {
@@ -6149,7 +6167,12 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
         if (fctx.localMap.has(name)) continue;
         if (ctx.moduleGlobals.has(name)) continue;
         const varType = ctx.checker.getTypeAtLocation(decl);
-        const wasmType = resolveWasmType(ctx, varType);
+        // #1120: pre-allocate as i32 if collectI32CoercedLocals tagged this
+        // local — keeps the hoisted slot in sync with what compileVariableStatement
+        // will use, avoiding a slot-type mismatch on first assignment.
+        const isI32Coerced =
+          fctx.i32CoercedLocals?.has(name) === true && (varType.flags & ts.TypeFlags.NumberLike) !== 0;
+        const wasmType: ValType = isI32Coerced ? { kind: "i32" } : resolveWasmType(ctx, varType);
         allocLocal(fctx, name, wasmType);
         // Only add TDZ flag if static analysis can't prove all accesses are safe
         if (needsTdzFlag(ctx, decl)) {

@@ -152,6 +152,14 @@ export interface FunctionContext {
    */
   safeIndexedArrays?: Set<string>;
   /**
+   * #1120: Set of let/const locals whose lifecycle is fully constrained
+   * to int32 by explicit `| 0` (or other bitwise) coercion. These get
+   * allocated as i32 instead of f64, and the binary-op layer can use
+   * native i32 arithmetic for `(a + b) | 0`-style updates without the
+   * heavy f64 -> ToInt32 -> f64 round-trip.
+   */
+  i32CoercedLocals?: Set<string>;
+  /**
    * Free list for temporary locals, keyed by ValType key string.
    * Used by allocTempLocal/releaseTempLocal to reuse locals of the same type.
    */
@@ -316,6 +324,13 @@ export interface CodegenContext {
   exnTagIdx: number;
   /** Whether union type helper imports have been registered */
   hasUnionImports: boolean;
+  /**
+   * #1121: Function names whose return type was promoted from implicit-`any`
+   * to a concrete numeric type (f64) by inferNumericReturnTypes. Used by
+   * collectDeclarations to override the TS-derived return type when the
+   * recursive numeric kernel pattern is detected.
+   */
+  numericReturnTypes?: Map<string, ValType>;
   /** Set of function names that are async (for .d.ts generation) */
   asyncFunctions: Set<string>;
   /** Set of function names that are generators (function*) */
