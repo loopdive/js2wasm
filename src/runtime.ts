@@ -2100,12 +2100,87 @@ assert._isSameValue = isSameValue;
           // function under a stringified "Symbol(Symbol.iterator)" key rather
           // than the real well-known symbol. Array.from would then reject on
           // "iterator method exists but not callable". Detect that up front and
-          // fall back to array-like enumeration so throwing iterators still
-          // propagate via Array.from while plain non-iterable objects don't
-          // error out.
+          // route around it: when the user installed a callable @@iterator, we
+          // must INVOKE it (so spec-mandated throws from `iter[Symbol.iterator]()`
+          // propagate, e.g. test262 dstr/*-iter-*-err.js); when no callable is
+          // present, fall back to array-like index enumeration so plain non-
+          // iterable objects don't error out.
           if (typeof obj === "object") {
             const iterFn = (obj as any)[Symbol.iterator];
             if (iterFn !== undefined && typeof iterFn !== "function") {
+              // Wasm closures land here as opaque externref objects (typeof
+              // 'object'). Try to invoke them through the closure-call exports
+              // — if the closure throws (e.g. a custom @@iterator that throws
+              // Test262Error), propagate the throw. (#1016)
+              if (_isWasmStruct(iterFn)) {
+                const exps = callbackState?.getExports();
+                const callFn0 = exps?.["__call_fn_0"];
+                if (typeof callFn0 === "function") {
+                  // Invoke the wasm @@iterator closure. If it throws (test262
+                  // dstr/*-init-iter-get-err, *-iter-val-err), propagate so the
+                  // surrounding destructure assertion observes it. If it
+                  // returns an iterator object, walk the standard iterator
+                  // protocol manually — the iterator's `.next` is typically
+                  // ALSO a wasm closure (typeof 'object'), so a plain
+                  // `Array.from(iteratorObj)` would re-enter this fallback and
+                  // miss .next() throws (test262 dstr/*-iter-step-err). (#1016)
+                  const iteratorObj = callFn0(iterFn);
+                  if (iteratorObj != null && typeof iteratorObj === "object") {
+                    const out: any[] = [];
+                    // Cap iterations defensively — non-spec-compliant
+                    // iterators that never set .done would otherwise hang.
+                    const MAX_ITER = 1 << 20;
+                    let iterCount = 0;
+                    // Resolve a property from the iterator/result object using
+                    // the same lookup order as _safeGet so JS-defined accessors
+                    // (set via Object.defineProperty) fire on read.
+                    const resolveProp = (target: any, key: string): any => {
+                      // Native access first — works for plain JS objects (e.g.
+                      // an iterator-result literal `{value, done}` from outside
+                      // the wasm world). For opaque wasm structs this returns
+                      // undefined and we fall through.
+                      const direct = target?.[key];
+                      if (direct !== undefined) return direct;
+                      // Sidecar accessor: Object.defineProperty(obj, key, {get})
+                      // installs `__get_<key>` in `_wasmStructProps[obj]`. Firing
+                      // it is required for spec compliance (test262
+                      // dstr/*-iter-val-err — the result.value getter throws,
+                      // and that throw must propagate). Use `_safeGet` so any
+                      // throw flows out unchanged.
+                      const safe = _safeGet(target, key);
+                      if (safe !== undefined) return safe;
+                      // Final fallback: wasm-exported struct getter.
+                      const sget = exps?.[`__sget_${key}`];
+                      if (typeof sget === "function") return sget(target);
+                      return undefined;
+                    };
+                    while (iterCount++ < MAX_ITER) {
+                      const nextFn = resolveProp(iteratorObj, "next");
+                      let result: any;
+                      if (typeof nextFn === "function") {
+                        result = nextFn.call(iteratorObj);
+                      } else if (nextFn != null && typeof nextFn === "object" && _isWasmStruct(nextFn)) {
+                        // Wasm closure — invoke via __call_fn_0. Throws here
+                        // (e.g. spec-mandated TypeError from the user's
+                        // `next: function() { throw … }`) propagate.
+                        result = callFn0(nextFn);
+                      } else {
+                        // No callable .next — bail out with what we have.
+                        break;
+                      }
+                      if (result == null) break;
+                      // Spec §7.4.4 IteratorComplete coerces .done to boolean.
+                      const done = resolveProp(result, "done");
+                      if (done) break;
+                      // Spec §7.4.5 IteratorValue reads .value (may throw via
+                      // a getter — propagated by resolveProp/_safeGet).
+                      const value = resolveProp(result, "value");
+                      out.push(value);
+                    }
+                    return out;
+                  }
+                }
+              }
               const out: any[] = [];
               const len = typeof (obj as any).length === "number" ? (obj as any).length >>> 0 : 0;
               for (let i = 0; i < len; i++) out.push((obj as any)[i]);
