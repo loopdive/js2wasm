@@ -1,3 +1,119 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:90bf28022a3274ff254af316e746417710d8126f6be9bb5c7b4ea764a91963eb
-size 1703
+[
+  {
+    "edition": "≤ ES3",
+    "pass": 211,
+    "fail": 63,
+    "ce": 1,
+    "skip": 0,
+    "total": 275,
+    "pct": 77
+  },
+  {
+    "edition": "ES5",
+    "pass": 8074,
+    "fail": 4360,
+    "ce": 408,
+    "skip": 308,
+    "total": 13150,
+    "pct": 61
+  },
+  {
+    "edition": "ES2015",
+    "pass": 9138,
+    "fail": 5762,
+    "ce": 974,
+    "skip": 102,
+    "total": 15976,
+    "pct": 57
+  },
+  {
+    "edition": "ES2016",
+    "pass": 66,
+    "fail": 30,
+    "ce": 5,
+    "skip": 0,
+    "total": 101,
+    "pct": 65
+  },
+  {
+    "edition": "ES2017",
+    "pass": 336,
+    "fail": 61,
+    "ce": 24,
+    "skip": 255,
+    "total": 676,
+    "pct": 50
+  },
+  {
+    "edition": "ES2018",
+    "pass": 2737,
+    "fail": 1418,
+    "ce": 96,
+    "skip": 1,
+    "total": 4252,
+    "pct": 64
+  },
+  {
+    "edition": "ES2019",
+    "pass": 61,
+    "fail": 48,
+    "ce": 12,
+    "skip": 0,
+    "total": 121,
+    "pct": 50
+  },
+  {
+    "edition": "ES2020",
+    "pass": 1057,
+    "fail": 400,
+    "ce": 163,
+    "skip": 422,
+    "total": 2042,
+    "pct": 52
+  },
+  {
+    "edition": "ES2021",
+    "pass": 301,
+    "fail": 122,
+    "ce": 16,
+    "skip": 28,
+    "total": 467,
+    "pct": 64
+  },
+  {
+    "edition": "ES2022",
+    "pass": 2661,
+    "fail": 1292,
+    "ce": 242,
+    "skip": 59,
+    "total": 4254,
+    "pct": 63
+  },
+  {
+    "edition": "ES2023",
+    "pass": 156,
+    "fail": 105,
+    "ce": 34,
+    "skip": 39,
+    "total": 334,
+    "pct": 47
+  },
+  {
+    "edition": "ES2024",
+    "pass": 245,
+    "fail": 58,
+    "ce": 10,
+    "skip": 86,
+    "total": 399,
+    "pct": 61
+  },
+  {
+    "edition": "ES2025",
+    "pass": 767,
+    "fail": 781,
+    "ce": 210,
+    "skip": 89,
+    "total": 1847,
+    "pct": 42
+  }
+]

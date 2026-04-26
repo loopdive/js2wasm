@@ -886,8 +886,14 @@ function _safeSet(obj: any, key: any, val: any): void {
     const prim = _toPrimitiveSync(key, "string");
     if (prim != null && typeof prim !== "object") key = prim;
   }
-  // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name"
-  if (typeof key === "number" && key >= 1 && key <= 14) {
+  // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name".
+  // ONLY apply this remapping to WasmGC structs — for regular JS objects/arrays,
+  // numeric keys 1-14 are actual indices (e.g. `srcArr[1] = undefined` from a test).
+  // Without the _isWasmStruct guard, we would mis-route `arr[1]=v` to
+  // `arr[Symbol.iterator]=v`, which under accumulated fork state could leak to
+  // `Object.prototype[Symbol.iterator] = <number>` and trip every subsequent
+  // compile that calls Array.from on a plain object (#1160 follow-up).
+  if (_isWasmStruct(obj) && typeof key === "number" && key >= 1 && key <= 14) {
     const symKeys = _symbolIdToKeys.get(key);
     if (symKeys) {
       try {

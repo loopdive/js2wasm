@@ -85,8 +85,14 @@ describe("ir scaffold — phase 1", () => {
     // `if (cond) <then> else { <rest> }`. This unlocks recursive numeric
     // kernels (fib, factorial, …) whose typical shape is
     // `if (base) return n; return <recursive>`.
+    //
+    // #1169a (Slice 1) widens the selector to accept `string` params and
+    // `string` returns, plus string literals as expression leaves — so
+    // `nonNumeric()` and `stringParam(s)` now also enter the IR path.
     expect([...sel.funcs].sort()).toEqual([
       "compound",
+      "nonNumeric",
+      "stringParam",
       "trivial",
       "withBoolParam",
       "withIfElse",

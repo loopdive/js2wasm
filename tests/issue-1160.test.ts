@@ -89,4 +89,45 @@ describe("#1160 — Array.from poisoning isolation", () => {
       (Array.prototype as any)[Symbol.iterator] = orig;
     }
   });
+
+  it("Object.prototype must not get a Symbol.iterator data property — regression for #1160 follow-up", () => {
+    // Diagnosis (2026-04-25): the residual ~452 `%Array%.from requires that
+    // the property of the first argument, items[Symbol.iterator], when exists,
+    // be a function` errors observed in CI after PR #7 were NOT caused by
+    // Array.prototype[Symbol.iterator] poisoning — the runner's restoreBuiltins
+    // already handles that path. The actual culprit was
+    // `Object.prototype[Symbol.iterator] = <number>` leaking from the worker's
+    // execution of one test into the next test's compile.
+    //
+    // Mechanism: `runtime._safeSet(obj, key, val)` had a branch that, when
+    // `key` was a number in 1..14, re-mapped it to the well-known Symbol
+    // (1 → @@iterator, 2 → @@hasInstance, ...). That branch was correct for
+    // WasmGC structs (where the compiler emits i32.const symbol IDs) but was
+    // applied indiscriminately, including to host JS arrays. So a perfectly
+    // ordinary test like
+    //
+    //   var srcArr = new Array(10);
+    //   srcArr[1] = undefined;
+    //
+    // ended up calling `srcArr[Symbol.iterator] = undefined`. Under the
+    // accumulated state of a long-running fork, that mis-routed assignment
+    // could leak through host-side proxy bookkeeping onto Object.prototype,
+    // leaving `Object.prototype[Symbol.iterator]` as a non-callable data
+    // property. The compiler's own `Array.from({length: argCount}, fn)` call
+    // (in src/codegen/declarations.ts) then trips V8's spec check and throws
+    // the error verbatim, surfacing as a fake `L0:0 Codegen error:` in the
+    // CI test262 report.
+    //
+    // Fix (in runtime._safeSet): gate the symbol-ID remapping by
+    // `_isWasmStruct(obj)` — mirroring the pre-existing guard in `_safeGet`.
+    // Defence-in-depth (in scripts/test262-worker.mjs): also clean up any
+    // Symbol-keyed properties that appear on Object.prototype between tests.
+    //
+    // This test asserts the contract: a clean realm has zero Symbol-keyed
+    // properties on Object.prototype. The runtime must not turn a numeric
+    // index assignment on a host array into a Symbol-keyed assignment on the
+    // Object.prototype chain.
+    const symKeys = Object.getOwnPropertySymbols(Object.prototype);
+    expect(symKeys.length).toBe(0);
+  });
 });

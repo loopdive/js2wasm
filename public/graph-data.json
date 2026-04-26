@@ -16014,8 +16014,8 @@
       "id": "1135",
       "title": "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16517,8 +16517,8 @@
       "id": "1169a",
       "title": "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [
         "1169",
@@ -16551,6 +16551,18 @@
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
+    },
+    {
+      "id": "1172",
+      "title": "Codebase modularity audit — reduce coupling, improve layering, harden interfaces",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "maintainability",
+      "cluster": "maintainability"
     },
     {
       "id": "backlog",
@@ -18269,7 +18281,8 @@
         "989",
         "1086",
         "1095",
-        "1097"
+        "1097",
+        "1172"
       ],
       "track": "supporting track"
     },
@@ -21821,6 +21834,10 @@
     {
       "goal": "maintainability",
       "issue": "1097"
+    },
+    {
+      "goal": "maintainability",
+      "issue": "1172"
     },
     {
       "goal": "npm-library-support",

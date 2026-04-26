@@ -102,6 +102,34 @@ export interface IrLowerResolver {
    * Optional for the same reason as `resolveUnion`.
    */
   resolveBoxed?(inner: ValType): IrBoxedLowering | null;
+  /**
+   * Resolve the Wasm value type used for `IrType.string` in the active
+   * backend.
+   *   - `wasm:js-string` mode → `{ kind: "externref" }`.
+   *   - `nativeStrings` mode  → `{ kind: "ref", typeIdx: ctx.anyStrTypeIdx }`.
+   * Optional so Phase-1 resolvers without string support can omit it; a
+   * function that actually emits a `string.*` instr will fail at lowering
+   * time when it's missing.
+   */
+  resolveString?(): ValType;
+  /**
+   * Emit the Wasm op sequence that materializes a string literal.
+   *   - host strings → register a `string_constants.<value>` global import
+   *                    and emit `[global.get]`.
+   *   - native       → inline `i32.const len`, `i32.const 0`, code-unit
+   *                    `i32.const`s, `array.new_fixed`, `struct.new`.
+   */
+  emitStringConst?(value: string): readonly Instr[];
+  /** `[call concat]` (host) or `[call __str_concat]` (native). */
+  emitStringConcat?(): readonly Instr[];
+  /** `[call equals]` (host) or `[call __str_equals]` (native). */
+  emitStringEquals?(): readonly Instr[];
+  /**
+   * `[call length]` (host) or `[struct.get $AnyString $len]` (native).
+   * Result is i32 — the `string.len` IR instr appends an
+   * `f64.convert_i32_s` after this.
+   */
+  emitStringLen?(): readonly Instr[];
 }
 
 export interface IrLowerResult {
@@ -348,6 +376,38 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "i32.eq" });
         return;
       }
+      case "string.const": {
+        const ops = resolver.emitStringConst?.(instr.value);
+        if (!ops) throw new Error(`ir/lower: resolver cannot emit string.const (${func.name})`);
+        for (const o of ops) out.push(o);
+        return;
+      }
+      case "string.concat": {
+        emitValue(instr.lhs, out);
+        emitValue(instr.rhs, out);
+        const ops = resolver.emitStringConcat?.();
+        if (!ops) throw new Error(`ir/lower: resolver cannot emit string.concat (${func.name})`);
+        for (const o of ops) out.push(o);
+        return;
+      }
+      case "string.eq": {
+        emitValue(instr.lhs, out);
+        emitValue(instr.rhs, out);
+        const ops = resolver.emitStringEquals?.();
+        if (!ops) throw new Error(`ir/lower: resolver cannot emit string.eq (${func.name})`);
+        for (const o of ops) out.push(o);
+        if (instr.negate) out.push({ op: "i32.eqz" });
+        return;
+      }
+      case "string.len": {
+        emitValue(instr.value, out);
+        const ops = resolver.emitStringLen?.();
+        if (!ops) throw new Error(`ir/lower: resolver cannot emit string.len (${func.name})`);
+        for (const o of ops) out.push(o);
+        // IR-level result is f64 — promote the i32 length.
+        out.push({ op: "f64.convert_i32_s" });
+        return;
+      }
     }
   };
 
@@ -463,6 +523,13 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
     case "unbox":
     case "tag.test":
       return [instr.value];
+    case "string.const":
+      return [];
+    case "string.concat":
+    case "string.eq":
+      return [instr.lhs, instr.rhs];
+    case "string.len":
+      return [instr.value];
   }
 }
 
@@ -490,6 +557,13 @@ function collectTerminatorUses(block: IrBlock): readonly IrValueId[] {
  */
 function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcName: string): ValType {
   if (t.kind === "val") return t.val;
+  if (t.kind === "string") {
+    const sty = resolver.resolveString?.();
+    if (!sty) {
+      throw new Error(`ir/lower: resolver cannot lower string IrType (${funcName})`);
+    }
+    return sty;
+  }
   if (t.kind === "union") {
     const union = resolver.resolveUnion?.(t.members);
     if (!union) {

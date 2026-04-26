@@ -87,6 +87,14 @@ export type IrSymRef = IrFuncRef | IrGlobalRef | IrTypeRef;
 
 export type IrType =
   | { readonly kind: "val"; readonly val: ValType }
+  // Backend-agnostic string marker (#1169a). The actual Wasm representation
+  // is decided at lowering time via `IrLowerResolver.resolveString`:
+  //   - host-strings backend  → `externref`
+  //   - native-strings backend → `(ref $AnyString)`
+  // Keeping the IR type backend-agnostic mirrors how `union`/`boxed` defer
+  // their concrete struct to the resolver. From the middle-end's point of
+  // view a `string` value is a single SSA def with no member structure.
+  | { readonly kind: "string" }
   | { readonly kind: "union"; readonly members: readonly ValType[] }
   | { readonly kind: "boxed"; readonly inner: ValType };
 
@@ -114,6 +122,7 @@ export function asVal(t: IrType): ValType | null {
 export function irTypeEquals(a: IrType, b: IrType): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "val" && b.kind === "val") return valTypeEquals(a.val, b.val);
+  if (a.kind === "string" && b.kind === "string") return true;
   if (a.kind === "boxed" && b.kind === "boxed") return valTypeEquals(a.inner, b.inner);
   if (a.kind === "union" && b.kind === "union") {
     if (a.members.length !== b.members.length) return false;
@@ -333,6 +342,63 @@ export interface IrInstrTagTest extends IrInstrBase {
   readonly tag: ValType;
 }
 
+// ---------------------------------------------------------------------------
+// String operations (#1169a — IR Phase 4 Slice 1)
+// ---------------------------------------------------------------------------
+//
+// All string ops are backend-agnostic at the IR level: they carry the raw
+// JS string value (for `string.const`) or operand IDs, and rely on the
+// `IrLowerResolver` to emit the appropriate backend op sequence (host
+// `wasm:js-string` builtins vs. native NativeString GC structs).
+
+/**
+ * Materialize a string literal as an SSA value of `IrType.string`. The
+ * backend representation is determined by `IrLowerResolver.emitStringConst`:
+ *   - host strings → register a `string_constants.<value>` global import,
+ *                    emit `global.get`.
+ *   - native       → emit inline `array.new_fixed` of the WTF-16 code units,
+ *                    then `struct.new $NativeString`.
+ */
+export interface IrInstrStringConst extends IrInstrBase {
+  readonly kind: "string.const";
+  /** Raw JS string; the lowerer treats `value.length` as UTF-16 code units. */
+  readonly value: string;
+}
+
+/**
+ * Concatenate two strings — the ECMAScript `s1 + s2` operator restricted to
+ * the case where both operands are statically known to be strings. Result
+ * type: `IrType.string`.
+ */
+export interface IrInstrStringConcat extends IrInstrBase {
+  readonly kind: "string.concat";
+  readonly lhs: IrValueId;
+  readonly rhs: IrValueId;
+}
+
+/**
+ * String equality. `===` and `!==` are both modeled via this single instr —
+ * `negate: true` ↔ `!==`. Result type: `i32` (bool).
+ */
+export interface IrInstrStringEq extends IrInstrBase {
+  readonly kind: "string.eq";
+  readonly lhs: IrValueId;
+  readonly rhs: IrValueId;
+  readonly negate: boolean;
+}
+
+/**
+ * String length — corresponds to the JS `s.length` property access. Despite
+ * the underlying Wasm op returning `i32`, the IR result is `f64` to match
+ * JS Number semantics, so consumers can compose with the rest of the
+ * numeric IR without an extra coercion step. Lowering inserts the
+ * `f64.convert_i32_s` after the backend's length op.
+ */
+export interface IrInstrStringLen extends IrInstrBase {
+  readonly kind: "string.len";
+  readonly value: IrValueId;
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -344,7 +410,11 @@ export type IrInstr =
   | IrInstrRawWasm
   | IrInstrBox
   | IrInstrUnbox
-  | IrInstrTagTest;
+  | IrInstrTagTest
+  | IrInstrStringConst
+  | IrInstrStringConcat
+  | IrInstrStringEq
+  | IrInstrStringLen;
 
 // ---------------------------------------------------------------------------
 // Terminators

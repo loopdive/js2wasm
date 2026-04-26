@@ -1,0 +1,15 @@
+{
+  "pr": 31,
+  "conclusion": "failure",
+  "head_branch": "issue-1169a-ir-slice1-strings",
+  "head_sha": "48f88a4991c7449c57e2bfb59a90650512973aec",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24939366240",
+  "timestamp": "2026-04-25T20:03:05Z",
+  "pass": 25468,
+  "fail": 13853,
+  "compile_error": 2401,
+  "snapshot_delta": 49,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
