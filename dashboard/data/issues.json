@@ -767,16 +767,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "1035",
-      "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1033",
       "title": "Compile React to Wasm — UI library stress test; DOM as host imports; harvest closure/hook/Symbol patterns",
       "priority": "high",
@@ -1005,19 +995,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "906",
-      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "800",
-        "898"
-      ],
-      "goal": "error-model",
-      "status": "ready",
-      "sprint": "45"
     },
     {
       "id": "905",
@@ -1815,6 +1792,19 @@
       "goal": "test-infrastructure",
       "status": "review",
       "sprint": "Backlog"
+    },
+    {
+      "id": "906",
+      "title": "Compile away TDZ tracking for definite-assignment top-level numeric locals",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "800",
+        "898"
+      ],
+      "goal": "error-model",
+      "status": "review",
+      "sprint": "45"
     },
     {
       "id": "871",
@@ -2708,6 +2698,16 @@
       "goal": "crash-free",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "1035",
+      "title": "WASI hello-world: compile console.log + node:fs write to a standalone native executable",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1034",
