@@ -20,7 +20,7 @@ keeps them visible and sortable.
 | # | Title | Sprint | Status | Priority |
 |---|-------|--------|--------|----------|
 | **1123** | Verify landing page claims and code examples against current compiler behavior | 42 | done | high |
-| **1123** | Verify landing page claims and code examples against current compiler behavior | 45 | ready | high |
+| **1123** | Verify landing page claims and code examples against current compiler behavior | 46 | deferred | high |
 | **1127** | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | 43 | done | high |
 | **1143** | Array callback arg push not gated on paramTypes.length — extra args emitted unconditionally | 42 | done | low |
 | **1145** | Async generator: undefined tuple elements promote to f64, corrupting sNaN sentinel | 42 | done | medium |
