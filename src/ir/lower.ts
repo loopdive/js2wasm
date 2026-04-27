@@ -834,6 +834,43 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "array.get", typeIdx: vec.arrayTypeIdx } as unknown as Instr);
         return;
       }
+      // Slice 7a (#1169f): generator ops.
+      case "gen.push": {
+        // Dispatch on the value's IrType to pick the typed
+        // `__gen_push_*` host import. Slice 7a only emits f64 (the
+        // selector restricts yield operands to numeric expressions);
+        // i32 / externref / string variants land in 7b.
+        const valueT = asVal(typeOf(instr.value));
+        if (!valueT || valueT.kind !== "f64") {
+          throw new Error(
+            `ir/lower: gen.push value must be f64 in slice 7a (got ${valueT?.kind ?? "non-val"}) (${func.name})`,
+          );
+        }
+        if (func.generatorBufferSlot === undefined) {
+          throw new Error(`ir/lower: gen.push requires func.generatorBufferSlot (${func.name})`);
+        }
+        const importName = "__gen_push_f64";
+        const fnIdx = resolver.resolveFunc({ kind: "func", name: importName });
+        // Stack: buffer, value → (void); call __gen_push_f64.
+        out.push({ op: "local.get", index: slotWasmIdx(func.generatorBufferSlot) });
+        emitValue(instr.value, out);
+        out.push({ op: "call", funcIdx: fnIdx });
+        return;
+      }
+      case "gen.epilogue": {
+        // Emit `__create_generator(buffer, ref.null.extern)`. The
+        // pendingThrow argument is always `ref.null.extern` in slice 7a
+        // (we don't yet wrap the body in a try/catch — see the doc on
+        // IrInstrGenEpilogue for the deferred-throw caveat).
+        if (func.generatorBufferSlot === undefined) {
+          throw new Error(`ir/lower: gen.epilogue requires func.generatorBufferSlot (${func.name})`);
+        }
+        const fnIdx = resolver.resolveFunc({ kind: "func", name: "__create_generator" });
+        out.push({ op: "local.get", index: slotWasmIdx(func.generatorBufferSlot) });
+        out.push({ op: "ref.null.extern" } as unknown as Instr);
+        out.push({ op: "call", funcIdx: fnIdx });
+        return;
+      }
       case "forof.vec": {
         // The forof.vec instr is statement-level (result: null) but we
         // implement it inside emitInstrTree for code-organization parity
@@ -1286,6 +1323,13 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
     case "forof.iter":
       // Same rationale as forof.vec — body uses surfaced separately.
       return [instr.iterable];
+    // Slice 7a (#1169f): generator ops.
+    case "gen.push":
+      return [instr.value];
+    case "gen.epilogue":
+      // No SSA operand uses — buffer + pendingThrow are read from Wasm
+      // locals (slot indices stored on the IrFunction).
+      return [];
     // Slice 6 part 4 (#1183) — string for-of.
     case "forof.string":
       return [instr.str];

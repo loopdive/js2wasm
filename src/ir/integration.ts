@@ -24,7 +24,7 @@
 
 import ts from "typescript";
 
-import { addIteratorImports, addStringImports } from "../codegen/index.js";
+import { addGeneratorImports, addIteratorImports, addStringImports } from "../codegen/index.js";
 import { ensureNativeStringHelpers } from "../codegen/native-strings.js";
 import { addStringConstantGlobal } from "../codegen/registry/imports.js";
 import { addFuncType, getOrRegisterRefCellType } from "../codegen/registry/types.js";
@@ -339,6 +339,22 @@ export function compileIrPathFunctions(
   // -------------------------------------------------------------------------
   preregisterIteratorSupport(ctx, readyForLower);
 
+  // -------------------------------------------------------------------------
+  // Slice 7a (#1169f) — pre-register generator host imports if any IR
+  // function will emit `gen.push` / `gen.epilogue`. Same rationale as
+  // the string + iterator pre-registration above: late-import shifting
+  // is expensive and can invalidate the lowerer's local op buffer if
+  // it fires mid-emission. `addGeneratorImports` is idempotent on
+  // `ctx.funcMap` membership, so the legacy-source detection at
+  // `codegen/index.ts:4031` (which fires whenever the source contains
+  // any `function*`) makes this call a no-op in practice — but the
+  // call here is the supported entry point for IR-only test fixtures
+  // that don't trigger legacy detection (e.g. an IR test that
+  // synthesises a generator without the AST scan running).
+  // -------------------------------------------------------------------------
+  if (readyForLower.some((e) => e.fn.funcKind === "generator")) {
+    addGeneratorImports(ctx);
+  }
   // -------------------------------------------------------------------------
   // Slice 6 part 4 (#1183) — native-string helpers (notably __str_charAt).
   //

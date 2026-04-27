@@ -205,6 +205,17 @@ function isSideEffecting(i: IrInstr): boolean {
     i.kind === "iter.next" ||
     i.kind === "iter.return" ||
     i.kind === "forof.iter" ||
+    // Slice 7a (#1169f): gen.push pushes a value onto the eager
+    // generator buffer (observable through __gen_next). gen.epilogue
+    // calls __create_generator with the buffer and is materially
+    // referenced as the function's return value — but DCE's
+    // propagation only flows through `result`-bearing instrs, so
+    // explicitly pinning here is the simplest correctness rule.
+    // Without this, DCE would consider gen.push's `value` operand
+    // dead and strip the const that produces it, leaving a stale
+    // SSA reference that the verifier rejects.
+    i.kind === "gen.push" ||
+    i.kind === "gen.epilogue" ||
     // Slice 6 part 4 (#1183): forof.string is statement-level (result:
     // null) so the generic null-result rule already keeps it; explicit
     // listing for clarity.
@@ -337,6 +348,11 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       walk(instr.body);
       return result;
     }
+    // Slice 7a (#1169f): generator ops.
+    case "gen.push":
+      return [instr.value];
+    case "gen.epilogue":
+      return [];
   }
 }
 

@@ -124,7 +124,16 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
   }
 
   const name = fn.name.text;
-  const returnType = resolveIrType(fn.type, options.returnTypeOverride, `return type of ${name}`);
+
+  // Slice 7a (#1169f): `function*` produces a Generator-like externref
+  // regardless of the source-level return type annotation
+  // (`Generator<number>`, `IterableIterator<T>`, etc.). The IR result
+  // type is unconditionally `externref`; the source annotation is
+  // ignored at the IR layer.
+  const isGenerator = !!fn.asteriskToken;
+  const returnType: IrType = isGenerator
+    ? irVal({ kind: "externref" })
+    : resolveIrType(fn.type, options.returnTypeOverride, `return type of ${name}`);
   const params: { name: string; type: IrType }[] = fn.parameters.map((p, idx) => {
     if (!ts.isIdentifier(p.name)) {
       throw new Error(`ir/from-ast: destructuring params not supported in Phase 1 (${name})`);
@@ -148,6 +157,24 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
 
   builder.openBlock();
 
+  // Slice 7a (#1169f): generator prologue — allocate the `__gen_buffer`
+  // Wasm-local slot, initialize it via `__gen_create_buffer()`. Must
+  // happen AFTER `openBlock()` (instrs require a current block) and
+  // BEFORE user-body lowering so `lowerYield` can emit `gen.push`
+  // against the slot. The lowerer reads `func.generatorBufferSlot` to
+  // produce the `local.get $__gen_buffer` op.
+  let generatorBufferSlot: number | undefined;
+  if (isGenerator) {
+    builder.setFuncKind("generator");
+    generatorBufferSlot = builder.declareSlot("__gen_buffer", { kind: "externref" });
+    builder.setGeneratorBufferSlot(generatorBufferSlot);
+    const buf = builder.emitCall({ kind: "func", name: "__gen_create_buffer" }, [], irVal({ kind: "externref" }));
+    if (buf === null) {
+      throw new Error(`ir/from-ast: __gen_create_buffer call must produce a value (${name})`);
+    }
+    builder.emitSlotWrite(generatorBufferSlot, buf);
+  }
+
   const stmts = fn.body.statements;
   if (stmts.length < 1) {
     throw new Error(`ir/from-ast: Phase 1 expects at least 1 statement in ${name}`);
@@ -168,6 +195,8 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     lifted,
     liftedCounter,
     mutatedLets,
+    funcKind: isGenerator ? "generator" : "regular",
+    generatorBufferSlot,
   };
   lowerStatementList(stmts, cx);
 
@@ -202,6 +231,14 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
         // closure.call and call are flagged side-effecting in dead-code
         // so they stay live.
         void lowerExpr(s.expression, cx, irVal({ kind: "f64" }));
+        continue;
+      }
+      // Slice 7a (#1169f): `yield <expr>;` as a top-level statement.
+      // Selected only inside `function*` (the selector enforces this
+      // at the function-claim level; if a non-generator function
+      // somehow surfaces a yield here, `lowerYield` throws).
+      if (ts.isYieldExpression(s.expression)) {
+        lowerYield(s.expression, cx);
         continue;
       }
       if (
@@ -277,6 +314,37 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
  */
 function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
   if (ts.isReturnStatement(stmt)) {
+    // Slice 7a (#1169f): generator return. Match the legacy semantics
+    // (`compileReturnStatement` in `codegen/statements/control-flow.ts`
+    // line 89-123): a `return <value>` inside a `function*` pushes
+    // `<value>` onto the eager buffer as a final yielded value, then
+    // wraps the buffer with `__create_generator` to produce the
+    // externref Generator object. This is non-spec — JS spec says the
+    // return value lands in `IteratorResult.value` with `done:true` —
+    // but matching legacy is the correctness target for slice 7a so
+    // existing test262 coverage doesn't drift.
+    //
+    // Slice 7a only supports numeric (f64) return values — same scope
+    // as `lowerYield`. Non-numeric returns throw and the function
+    // falls back to legacy.
+    if (cx.funcKind === "generator") {
+      if (stmt.expression) {
+        const v = lowerExpr(stmt.expression, cx, irVal({ kind: "f64" }));
+        const vt = cx.builder.typeOf(v);
+        if (asVal(vt)?.kind !== "f64") {
+          throw new Error(
+            `ir/from-ast: generator return must be f64 in slice 7a (got ${describeIrType(vt)}) (${cx.funcName})`,
+          );
+        }
+        // Push the return value onto the buffer so consumers see it
+        // as a final `done:false` next() result, mirroring legacy
+        // (`__gen_push_f64(buf, val)`).
+        cx.builder.emitGenPush(v);
+      }
+      const generatorObj = cx.builder.emitGenEpilogue();
+      cx.builder.terminate({ kind: "return", values: [generatorObj] });
+      return;
+    }
     if (!stmt.expression) {
       throw new Error(`ir/from-ast: Phase 1 return must have an expression in ${cx.funcName}`);
     }
@@ -410,6 +478,22 @@ interface LowerCtx {
    * `lowerFunctionAstToIr` via `collectMutatedLetNames`.
    */
   readonly mutatedLets: ReadonlySet<string>;
+  /**
+   * Slice 7a (#1169f): kind of function being lowered. `lowerYield`
+   * checks this to refuse `yield` outside generators (defensive — the
+   * selector should already have rejected the function). `lowerTail`
+   * uses it to rewrite `return <expr>;` as a `gen.epilogue` + return
+   * the externref Generator object, since a generator's IR-level
+   * return type is externref regardless of source-level annotation.
+   */
+  readonly funcKind: "regular" | "generator" | "async";
+  /**
+   * Slice 7a (#1169f): for `funcKind === "generator"` only — the slot
+   * index of the `__gen_buffer` Wasm-local. Reserved by the prologue
+   * in `lowerFunctionAstToIr`. `lowerYield` reads this when emitting
+   * `gen.push`; `lowerTail` reads it when emitting `gen.epilogue`.
+   */
+  readonly generatorBufferSlot?: number;
 }
 
 /**
@@ -1265,6 +1349,45 @@ function lowerPropertyAssignment(expr: ts.BinaryExpression, cx: LowerCtx): void 
 // and the function falls back to legacy. The iterator-protocol path
 // (Map / Set / generators) lands in #1182.
 
+// ---------------------------------------------------------------------------
+// yield lowering (slice 7a — #1169f)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 7a (#1169f): lower a `yield <expr>;` statement. The yielded
+ * value is pushed onto the generator's `__gen_buffer` Wasm-local slot
+ * via `gen.push`, which the lowerer expands to a typed
+ * `__gen_push_*` host call (slice 7a only emits `__gen_push_f64`,
+ * since the selector restricts yield operands to Phase-1 numeric
+ * expressions).
+ *
+ * Defensive: throws if the enclosing function isn't a generator. The
+ * selector should have rejected the function in that case, but a
+ * defensive check here surfaces selector regressions as a clean
+ * fall-back to legacy rather than malformed Wasm.
+ */
+function lowerYield(expr: ts.YieldExpression, cx: LowerCtx): void {
+  if (cx.funcKind !== "generator") {
+    throw new Error(`ir/from-ast: yield outside generator function in ${cx.funcName}`);
+  }
+  if (expr.asteriskToken) {
+    // `yield* <iterable>` — slice 7b.
+    throw new Error(`ir/from-ast: yield* delegation not in slice 7a (${cx.funcName})`);
+  }
+  if (!expr.expression) {
+    // `yield;` (no value) — slice 7b.
+    throw new Error(`ir/from-ast: bare yield (no value) not in slice 7a (${cx.funcName})`);
+  }
+  const value = lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
+  const valueType = cx.builder.typeOf(value);
+  if (asVal(valueType)?.kind !== "f64") {
+    throw new Error(
+      `ir/from-ast: yield expression must lower to f64 (got ${describeIrType(valueType)}) in slice 7a (${cx.funcName})`,
+    );
+  }
+  cx.builder.emitGenPush(value);
+}
+
 /**
  * Lower a `for (const|let <id> of <expr>) <body>` statement using the
  * vec fast path. The iterable expression must lower to an IR value
@@ -1562,6 +1685,13 @@ function lowerStmt(stmt: ts.Statement, cx: LowerCtx): void {
   if (ts.isExpressionStatement(stmt)) {
     if (ts.isCallExpression(stmt.expression)) {
       void lowerExpr(stmt.expression, cx, irVal({ kind: "f64" }));
+      return;
+    }
+    // Slice 7a (#1169f): `yield <expr>;` inside a for-of body. The
+    // selector accepts this shape; the lowerer enforces the enclosing
+    // function is a generator via `lowerYield`.
+    if (ts.isYieldExpression(stmt.expression)) {
+      lowerYield(stmt.expression, cx);
       return;
     }
     if (ts.isBinaryExpression(stmt.expression)) {
@@ -2077,6 +2207,10 @@ function liftNestedFunction(
     // mutated-let scope (collected per-body when slice 6 extends to
     // closures). Empty here keeps the slice-3 nested-fn behavior intact.
     mutatedLets: collectMutatedLetNames(fn),
+    // Slice 7a (#1169f) — nested function decls are NEVER generators
+    // in slice 7a (the selector rejects `function*` nesting via
+    // `isPhase1NestedFunc`).
+    funcKind: "regular",
   };
   if (!fn.body) {
     throw new Error(`ir/from-ast: nested function ${innerName(fn)} has no body`);
@@ -2151,6 +2285,9 @@ function liftClosureBody(
       ts.isBlock(expr.body) && (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr))
         ? collectMutatedLetNamesFromBlock(expr.body)
         : new Set<string>(),
+    // Slice 7a (#1169f) — closures are never generator/async in 7a
+    // (the selector rejects them in `isPhase1ClosureLiteral`).
+    funcKind: "regular",
   };
 
   if (ts.isArrowFunction(expr) && !ts.isBlock(expr.body)) {

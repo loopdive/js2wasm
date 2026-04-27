@@ -957,6 +957,30 @@ export interface IrInstrCoerceToExternref extends IrInstrBase {
   readonly value: IrValueId;
 }
 
+// ---------------------------------------------------------------------------
+// Generator / async ops (#1169f — IR Phase 4 Slice 7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 7a (#1169f) — push a yielded value onto the generator function's
+ * `__gen_buffer` Wasm-local. The lowerer dispatches on the value's IrType:
+ *   - `irVal({ kind: "f64" })` → `__gen_push_f64(buffer, value)`
+ *   - (later slices: `i32` → `__gen_push_i32`; `externref` → `__gen_push_ref`)
+ *
+ * Result is void (`result: null`, `resultType: null`). Only valid inside
+ * functions whose `funcKind === "generator"`. The lowerer reads the
+ * `IrFunction.generatorBufferSlot` for the `local.get` of the buffer.
+ *
+ * Lowering pattern (slice 7a — f64 only):
+ *   local.get $__gen_buffer
+ *   <emit value>
+ *   call $__gen_push_f64
+ */
+export interface IrInstrGenPush extends IrInstrBase {
+  readonly kind: "gen.push";
+  readonly value: IrValueId;
+}
+
 /**
  * Slice 6 part 3 (#1182) — opaque iterator handle for the host iterator
  * protocol. Calls `__iterator(iterable)` to obtain the iterator object.
@@ -1075,6 +1099,33 @@ export interface IrInstrForOfIter extends IrInstrBase {
   readonly body: readonly IrInstr[];
 }
 
+/**
+ * Slice 7a (#1169f) — generator function epilogue. Pushes the buffer + the
+ * pending-throw cell (always `ref.null.extern` in slice 7a) and calls
+ * `__create_generator(buffer, pendingThrow)` to produce the Generator-like
+ * object the function returns.
+ *
+ * Lowering pattern (slice 7a — synchronous-throw subset):
+ *   local.get $__gen_buffer
+ *   ref.null.extern                ;; pendingThrow always null in 7a
+ *   call $__create_generator
+ *   ;; result: externref Generator object — left on stack for the
+ *   ;; surrounding `return` terminator.
+ *
+ * Slice 7a does NOT yet emit the try/catch wrapping that legacy uses for
+ * deferred-throw semantics (#928). Throws inside the body propagate
+ * immediately (matches V8 generators on the FIRST `.next()` call but
+ * differs from spec on subsequent calls). A future slice (7-throw) will
+ * add the wrapping by carrying the preceding body instrs in this instr,
+ * similar to `forof.vec.body`.
+ *
+ * Result type: `irVal({ kind: "externref" })` — the Generator object.
+ * The function's terminator should be `return [result]`.
+ */
+export interface IrInstrGenEpilogue extends IrInstrBase {
+  readonly kind: "gen.epilogue";
+}
+
 // ---------------------------------------------------------------------------
 // String for-of (#1183 — IR Phase 4 Slice 6 part 4)
 // ---------------------------------------------------------------------------
@@ -1184,6 +1235,8 @@ export type IrInstr =
   | IrInstrIterValue
   | IrInstrIterReturn
   | IrInstrForOfIter
+  | IrInstrGenPush
+  | IrInstrGenEpilogue
   | IrInstrForOfString;
 
 // ---------------------------------------------------------------------------
@@ -1308,6 +1361,28 @@ export interface IrFunction {
    * — i.e. slots come AFTER the SSA-driven locals.
    */
   readonly slots?: readonly IrSlotDef[];
+  /**
+   * Slice 7a (#1169f) — distinguishes regular / generator / async
+   * functions. Set by `lowerFunctionAstToIr` from the AST node's
+   * `asteriskToken` and `async` modifier. The lowerer reads this to:
+   *   - `"generator"`: select the externref Wasm-result type regardless
+   *     of the source-level annotation (the function returns a
+   *     Generator-like object, not the source-declared yield element
+   *     type), AND register the function name in `ctx.generatorFunctions`
+   *     downstream (for any name-based dispatch the legacy already wires).
+   *   - `"async"`: register in `ctx.asyncFunctions` so the export glue's
+   *     `wrapAsyncReturn` wraps the result in `Promise.resolve`. (Slice
+   *     7d, not 7a.)
+   *   - `"regular"`: no special treatment (default if absent).
+   */
+  readonly funcKind?: "regular" | "generator" | "async";
+  /**
+   * Slice 7a (#1169f) — for `funcKind === "generator"` functions only,
+   * the slot index (in `slots`) of the `__gen_buffer` Wasm-local. The
+   * lowerer reads this when emitting `gen.push` / `gen.epilogue` to
+   * produce the `local.get $__gen_buffer` op.
+   */
+  readonly generatorBufferSlot?: number;
 }
 
 // ---------------------------------------------------------------------------
