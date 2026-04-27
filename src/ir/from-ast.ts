@@ -1557,8 +1557,9 @@ function coerceYieldValueToExternref(value: IrValueId, cx: LowerCtx): IrValueId 
   // Host-strings mode: `IrType.string` flows as externref through Wasm.
   // Skip the coerce so we don't emit a validation-rejected
   // `extern.convert_any` over a global.get of externref-typed string
-  // global.
-  if (t.kind === "string" && !cx.nativeStrings) {
+  // global. Resolver presence follows the #1185 pattern (see
+  // `LowerCtx.resolver` doc) — when absent, treat as host-strings.
+  if (t.kind === "string" && !cx.resolver?.nativeStrings?.()) {
     return value;
   }
   return cx.builder.emitCoerceToExternref(value);
