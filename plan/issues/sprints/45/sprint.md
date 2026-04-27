@@ -123,7 +123,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
 | #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | ready |
 | #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | ready |
-| #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | ready |
 | #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
 
 ### In Progress
@@ -133,6 +132,12 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | in-progress |
 | #1174 | js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash) | high | in-progress |
 | #1175 | String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator | high | in-progress |
+
+### Review
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | review |
 
 ### Done
 
