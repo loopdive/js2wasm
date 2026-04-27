@@ -982,6 +982,15 @@ function emitStructFieldNamesExport(
   ctx: CodegenContext,
   fieldMap: Map<string, { typeIdx: number; fieldIdx: number; fieldType: ValType }[]>,
 ): void {
+  // The __struct_field_names export is only consumed by a JS host runtime
+  // (Object.keys / JSON.stringify / for-in introspection of opaque WasmGC
+  // structs). In nativeStrings mode (auto-on for `--target wasi`) there is no
+  // JS host, so the export is dead code AND its body uses `global.get` of a
+  // string_constants global to push the comma-separated field names — which
+  // forces a `string_constants::a,b,c` host import that fails to instantiate
+  // under wasmtime (#1174). Skip emission in nativeStrings mode.
+  if (ctx.nativeStrings) return;
+
   const mod = ctx.mod;
 
   // Build per-struct-type field name lists (excluding internal fields)
