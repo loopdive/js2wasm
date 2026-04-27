@@ -288,9 +288,14 @@
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 12px;
-        height: 90vh;
         border-bottom: 1px solid var(--border);
         padding-bottom: 12px;
+      }
+
+      #overview,
+      #kanban,
+      #dependencies {
+        scroll-margin-top: 72px;
       }
 
       @media (max-width: 900px) {
@@ -501,8 +506,12 @@
     </style>
   </head>
   <body>
-    <site-nav base="../"></site-nav>
+    <site-nav
+      base="../"
+      links='[{"label":"Overview","href":"#overview"},{"label":"Kanban Board","href":"#kanban"},{"label":"Issue Dependencies","href":"#dependencies"}]'
+    ></site-nav>
     <header
+      id="overview"
       style="display: flex; align-items: baseline; gap: 8px; border-bottom: none; padding-bottom: 0; flex-wrap: wrap"
     >
       <div class="metrics-row" id="metrics-row">
@@ -538,7 +547,7 @@
     </header>
 
     <!-- Kanban -->
-    <div class="panel kanban" style="border-top: none">
+    <div id="kanban" class="panel kanban" style="border-top: none">
       <div class="panel-head">
         <div style="display: flex; align-items: center; gap: 12px">
           <h2>Issue Board</h2>
@@ -587,7 +596,7 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div id="dependencies" class="panel">
       <div class="panel-head">
         <h2>Dependency graph</h2>
         <div class="panel-actions">
@@ -1088,13 +1097,14 @@
       let _refreshTimer = null;
 
       function refreshData() {
-        const btn = document.getElementById("refresh-btn");
-        if (btn) btn.textContent = "↺ …";
-        main()
-          .catch((err) => console.error("Dashboard error:", err))
-          .finally(() => {
-            if (btn) btn.textContent = "↺ Refresh";
-          });
+        main().catch((err) => console.error("Dashboard error:", err));
+      }
+
+      function resizeKanban() {
+        const board = document.getElementById("kanban-board");
+        if (!board) return;
+        const top = board.getBoundingClientRect().top;
+        board.style.height = Math.max(200, window.innerHeight - top - 12) + "px";
       }
 
       // Auto-refresh every 30 s when served over HTTP (not file://)
@@ -1103,13 +1113,17 @@
       }
 
       // ── Run on load ──
-      main().catch((err) => console.error("Dashboard error:", err));
+      main()
+        .then(resizeKanban)
+        .catch((err) => console.error("Dashboard error:", err));
 
-      // ── Resize handler for charts ──
+      // ── Resize handler for charts + kanban ──
       let resizeTimer;
       window.addEventListener("resize", () => {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => main(), 200);
+        resizeTimer = setTimeout(() => {
+          main().then(resizeKanban);
+        }, 200);
       });
     </script>
   </body>

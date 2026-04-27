@@ -1,6 +1,6 @@
 class SiteNav extends HTMLElement {
   static get observedAttributes() {
-    return ["base"];
+    return ["base", "links"];
   }
 
   constructor() {
@@ -46,6 +46,21 @@ class SiteNav extends HTMLElement {
   _render() {
     const base = this.getAttribute("base") ?? "./";
     const isLanding = !this.hasAttribute("base") || base === "./";
+    let customLinks = null;
+    try {
+      const raw = this.getAttribute("links");
+      if (raw) customLinks = JSON.parse(raw);
+    } catch {
+      /* ignore malformed */
+    }
+    const defaultLinks = [
+      { label: "Mission", href: `${isLanding ? "" : base}#mission` },
+      { label: "Compatibility", href: `${isLanding ? "" : base}#goals` },
+      { label: "How it works", href: `${isLanding ? "" : base}#how-it-works` },
+      { label: "Roadmap", href: `${isLanding ? "" : base}#roadmap` },
+    ];
+    const navItems = customLinks || defaultLinks;
+    const navLinksHtml = navItems.map((l) => `<li><a href="${l.href}">${l.label}</a></li>`).join("\n          ");
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -310,10 +325,7 @@ class SiteNav extends HTMLElement {
           <img src="${base}js2logo-squaring-the-circle-white.svg" alt="JS² logo" />
         </a>
         <ul class="nav-links">
-          <li><a href="${isLanding ? "" : base}#mission">Mission</a></li>
-          <li><a href="${isLanding ? "" : base}#goals">Compatibility</a></li>
-          <li><a href="${isLanding ? "" : base}#how-it-works">How it works</a></li>
-          <li><a href="${isLanding ? "" : base}#roadmap">Roadmap</a></li>
+          ${navLinksHtml}
         </ul>
         <div class="nav-actions">
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">
@@ -332,10 +344,7 @@ class SiteNav extends HTMLElement {
       </nav>
       <div class="mobile-panel">
         <ul>
-          <li><a href="${isLanding ? "" : base}#mission">Mission</a></li>
-          <li><a href="${isLanding ? "" : base}#goals">Compatibility</a></li>
-          <li><a href="${isLanding ? "" : base}#how-it-works">How it works</a></li>
-          <li><a href="${isLanding ? "" : base}#roadmap">Roadmap</a></li>
+          ${navLinksHtml}
         </ul>
         <div class="mobile-actions">
           <a class="btn-outline" href="https://github.com/loopdive/js2wasm">
