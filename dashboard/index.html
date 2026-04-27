@@ -1159,29 +1159,23 @@
         board.style.height = Math.max(200, window.innerHeight - top - 12) + "px";
       }
 
-      // Push updates via Vite dev server WebSocket — no polling needed
+      // Push updates via SSE — no polling needed, no WebSocket upgrade dance
       if (location.protocol !== "file:") {
-        (function connectWS() {
-          const proto = location.protocol === "https:" ? "wss:" : "ws:";
-          const ws = new WebSocket(`${proto}//${location.host}/dashboard-ws`);
-          ws.onopen = () => {
-            isLocal = true;
-            updateBuildMeta(null);
-          };
-          ws.onmessage = (e) => {
-            try {
-              const { type } = JSON.parse(e.data);
-              if (type === "refresh") {
-                main().then(resizeKanban).catch(console.error);
-                // Update the local timestamp on each push
-                const dateEl = document.getElementById("build-date");
-                if (dateEl) dateEl.textContent = "local · " + fmtDate(new Date());
-              }
-            } catch {}
-          };
-          ws.onclose = () => setTimeout(connectWS, 3_000);
-          ws.onerror = () => ws.close();
-        })();
+        const es = new EventSource("/dashboard-sse");
+        es.onopen = () => {
+          isLocal = true;
+          updateBuildMeta(null);
+        };
+        es.onmessage = (e) => {
+          try {
+            const { type } = JSON.parse(e.data);
+            if (type === "refresh") {
+              main().then(resizeKanban).catch(console.error);
+              const dateEl = document.getElementById("build-date");
+              if (dateEl) dateEl.textContent = "local · " + fmtDate(new Date());
+            }
+          } catch {}
+        };
       }
 
       // ── Run on load ──

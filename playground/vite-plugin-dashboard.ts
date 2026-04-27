@@ -1,9 +1,8 @@
 import type { Plugin, ViteDevServer } from "vite";
 import { readFileSync, readdirSync, existsSync, statSync, watch } from "fs";
 import { join, resolve } from "path";
-import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import type { WebSocket as WsType } from "ws";
+import type { ServerResponse } from "node:http";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 
@@ -344,15 +343,15 @@ function loadBurndown(): { timestamps: string[]; remaining: number[]; completed:
 // ── Plugin ───────────────────────────────────────────────────
 
 export function dashboardPlugin(): Plugin {
-  const wsClients = new Set<WsType>();
+  const sseClients = new Set<ServerResponse>();
 
   function broadcast(data: any) {
-    const msg = JSON.stringify(data);
-    for (const ws of wsClients) {
+    const msg = `data: ${JSON.stringify(data)}\n\n`;
+    for (const res of sseClients) {
       try {
-        ws.send(msg);
+        res.write(msg);
       } catch {
-        wsClients.delete(ws);
+        sseClients.delete(res);
       }
     }
   }
@@ -414,51 +413,17 @@ export function dashboardPlugin(): Plugin {
         }
       }
 
-      // WebSocket endpoint for live updates
-      server.httpServer?.on("upgrade", (req, socket, head) => {
-        if (req.url !== "/dashboard-ws") return;
-
-        // Manual WebSocket handshake
-        const key = req.headers["sec-websocket-key"];
-        if (!key) {
-          socket.destroy();
-          return;
-        }
-        // createHash imported at top level from node:crypto
-        const accept = createHash("sha1")
-          .update(key + "258EAFA5-E914-47DA-95CA-5AB5DC587183")
-          .digest("base64");
-
-        socket.write(
-          "HTTP/1.1 101 Switching Protocols\r\n" +
-            "Upgrade: websocket\r\n" +
-            "Connection: Upgrade\r\n" +
-            `Sec-WebSocket-Accept: ${accept}\r\n` +
-            "\r\n",
-        );
-
-        // Wrap raw socket in a minimal WS-like interface
-        const ws = {
-          send(data: string) {
-            const buf = Buffer.from(data);
-            const header = Buffer.alloc(buf.length < 126 ? 2 : 4);
-            header[0] = 0x81; // text frame, FIN
-            if (buf.length < 126) {
-              header[1] = buf.length;
-            } else {
-              header[1] = 126;
-              header.writeUInt16BE(buf.length, 2);
-            }
-            socket.write(Buffer.concat([header, buf]));
-          },
-          close() {
-            socket.destroy();
-          },
-        } as unknown as WsType;
-
-        wsClients.add(ws);
-        socket.on("close", () => wsClients.delete(ws));
-        socket.on("error", () => wsClients.delete(ws));
+      // SSE endpoint for live updates — no upgrade dance, works through Vite middleware
+      server.middlewares.use("/dashboard-sse", (req, res) => {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.write("retry: 3000\n\n");
+        sseClients.add(res);
+        req.on("close", () => sseClients.delete(res));
       });
 
       // API endpoints
@@ -468,12 +433,12 @@ export function dashboardPlugin(): Plugin {
         // Serve dashboard HTML
         if (url.pathname === "/dashboard" || url.pathname === "/dashboard/") {
           const dashHtml = readFileSync(join(projectRoot, "dashboard/index.html"), "utf-8");
-          // Inject live-reload WebSocket client and API-based data loading
+          // Inject live-reload SSE client and API-based data loading
           const injectedHtml = dashHtml
             .replace(
               '<script src="data.js" onerror=""></script>',
               `<script>
-// Live dashboard — data loaded via API, auto-refreshes via WebSocket
+// Live dashboard — data loaded via API, auto-refreshes via SSE
 window.__DASHBOARD_API__ = true;
 </script>`,
             )
@@ -513,23 +478,18 @@ async function loadBurndown() {
 }
 loadBurndown();
 
-// WebSocket live reload
-(function connectWS() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(proto + '//' + location.host + '/dashboard-ws');
-  ws.onmessage = (e) => {
-    try {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'refresh') {
-        console.log('[dashboard] File changed:', msg.path, '— refreshing...');
-        main().catch(console.error);
-        loadBurndown();
-      }
-    } catch {}
-  };
-  ws.onclose = () => setTimeout(connectWS, 3000);
-  ws.onerror = () => ws.close();
-})();`,
+// SSE live reload
+const _es = new EventSource('/dashboard-sse');
+_es.onmessage = (e) => {
+  try {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'refresh') {
+      console.log('[dashboard] File changed:', msg.path, '— refreshing...');
+      main().catch(console.error);
+      loadBurndown();
+    }
+  } catch {}
+};`,
             );
           res.setHeader("Content-Type", "text/html");
           res.end(injectedHtml);
