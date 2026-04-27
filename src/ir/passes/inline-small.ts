@@ -465,6 +465,38 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (!changed) return inst;
       return { ...inst, receiver: r, args: newArgs };
     }
+    // Slice 6 (#1169e): slot / vec / for-of ops.
+    case "slot.read":
+      return inst;
+    case "slot.write": {
+      const v = mapId(rename, inst.value);
+      if (v === inst.value) return inst;
+      return { ...inst, value: v };
+    }
+    case "vec.len": {
+      const v = mapId(rename, inst.vec);
+      if (v === inst.vec) return inst;
+      return { ...inst, vec: v };
+    }
+    case "vec.get": {
+      const v = mapId(rename, inst.vec);
+      const idx = mapId(rename, inst.index);
+      if (v === inst.vec && idx === inst.index) return inst;
+      return { ...inst, vec: v, index: idx };
+    }
+    case "forof.vec": {
+      const v = mapId(rename, inst.vec);
+      // Body instrs must also have their operands rewritten.
+      let bodyChanged = v !== inst.vec;
+      const newBody: IrInstr[] = [];
+      for (const sub of inst.body) {
+        const renamed = renameInstrOperands(sub, rename);
+        if (renamed !== sub) bodyChanged = true;
+        newBody.push(renamed);
+      }
+      if (!bodyChanged) return inst;
+      return { ...inst, vec: v, body: newBody };
+    }
   }
 }
 

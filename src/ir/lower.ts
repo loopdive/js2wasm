@@ -131,6 +131,30 @@ export interface IrRefCellLowering {
 }
 
 /**
+ * Slice 6 (#1169e): WasmGC type info for a vec struct (the runtime layout
+ * for `Array<T>` / tuple types). The struct is `{ length: i32, data: (ref
+ * $arr) }` where `$arr` is the element array type. This interface is the
+ * lowerer's contract for emitting `vec.len` and `vec.get` against a known
+ * vec value's IrType.
+ *
+ *   - `vecStructTypeIdx`   Wasm struct type index of the vec.
+ *   - `lengthFieldIdx`     field index of the i32 length (typically 0).
+ *   - `dataFieldIdx`       field index of the data array ref (typically 1).
+ *   - `arrayTypeIdx`       Wasm array type index of the data array.
+ *   - `elementValType`     element ValType — used by `vec.get` to lower
+ *                           the result and (recursively, via the resolver)
+ *                           to widen the element to the loop variable's
+ *                           declared type when needed.
+ */
+export interface IrVecLowering {
+  readonly vecStructTypeIdx: number;
+  readonly lengthFieldIdx: number;
+  readonly dataFieldIdx: number;
+  readonly arrayTypeIdx: number;
+  readonly elementValType: ValType;
+}
+
+/**
  * Slice 4 (#1169d): WasmGC type info for a class declared in the
  * compilation unit. The class's struct + constructor + method funcs
  * are all registered by the legacy `collectClassDeclaration` pass before
@@ -220,6 +244,16 @@ export interface IrLowerResolver {
    */
   resolveClass?(shape: IrClassShape): IrClassLowering | null;
   /**
+   * Slice 6 (#1169e): resolve a vec struct given its top-level Wasm
+   * ValType. The IR carries the vec's value as a `ref`/`ref_null` to a
+   * registered vec struct; the resolver inspects the struct's fields to
+   * verify the layout is `{ length: i32, data: (ref $arr) }` and returns
+   * the typeIdx + field indices + element ValType. Returns `null` when
+   * the type isn't a recognisable vec — caller treats that as a bug
+   * (selector should have rejected the for-of).
+   */
+  resolveVec?(valType: ValType): IrVecLowering | null;
+  /**
    * Resolve the Wasm value type used for `IrType.string` in the active
    * backend.
    *   - `wasm:js-string` mode → `{ kind: "externref" }`.
@@ -270,15 +304,27 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
   const defBlockOf = new Map<IrValueId, number>();
   const paramTypeOf = new Map<IrValueId, IrType>();
   for (const p of func.params) paramTypeOf.set(p.value, p.type);
+  // Slice 6 (#1169e): also walk inside `forof.vec` body buffers so SSA
+  // definitions made in a loop body register in the def maps. The body
+  // is treated as a continuation of its containing block for SSA-scope
+  // purposes (a value defined inside the body is reachable only from
+  // there, but multi-use of an OUTER value across the boundary is what
+  // we care about for cross-block local materialisation).
+  const registerInstrDefs = (instr: IrInstr, blockId: number): void => {
+    if (instr.result !== null) {
+      if (defBy.has(instr.result)) {
+        throw new Error(`ir/lower: duplicate SSA def for ${instr.result} in ${func.name}`);
+      }
+      defBy.set(instr.result, instr);
+      defBlockOf.set(instr.result, blockId);
+    }
+    if (instr.kind === "forof.vec") {
+      for (const sub of instr.body) registerInstrDefs(sub, blockId);
+    }
+  };
   for (const block of func.blocks) {
     for (const instr of block.instrs) {
-      if (instr.result !== null) {
-        if (defBy.has(instr.result)) {
-          throw new Error(`ir/lower: duplicate SSA def for ${instr.result} in ${func.name}`);
-        }
-        defBy.set(instr.result, instr);
-        defBlockOf.set(instr.result, block.id as number);
-      }
+      registerInstrDefs(instr, block.id as number);
     }
   }
 
@@ -322,6 +368,16 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
     const blockId = block.id as number;
     for (const instr of block.instrs) {
       for (const u of collectIrUses(instr)) recordUse(u, blockId);
+      // Slice 6 (#1169e): record uses inside `forof.vec` body buffers as
+      // belonging to the SAME block as the for-of itself. A use inside
+      // the body is "in" the surrounding block from the perspective of
+      // structured Wasm emission — except that the loop's repeated
+      // execution makes ANY outer-defined value's use a candidate for
+      // cross-block materialisation. Mark uses with a synthetic block
+      // ID (-1 for "inside-body") so the cross-block test always fires.
+      if (instr.kind === "forof.vec") {
+        for (const u of collectForOfBodyUses(instr.body)) recordUse(u, -1);
+      }
     }
     for (const u of collectTerminatorUses(block)) recordUse(u, blockId);
   }
@@ -350,18 +406,38 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
   // boxed types as refs to the corresponding WasmGC struct).
   const locals: LocalDef[] = [];
   const localIdx = new Map<IrValueId, number>();
+  // Slice 6 (#1169e): walk into `forof.vec` body buffers so SSA values
+  // defined inside a body get Wasm locals allocated alongside the
+  // outer-block SSA values. The body's def order is preserved (locals
+  // appear in the order their defining instr is encountered).
+  const allocLocalForInstr = (instr: IrInstr): void => {
+    if (instr.result !== null && needsLocal.has(instr.result)) {
+      if (!instr.resultType) {
+        throw new Error(`ir/lower: local-bound SSA value ${instr.result} has no resultType in ${func.name}`);
+      }
+      const idx = func.params.length + locals.length;
+      locals.push({ name: `$ir${instr.result}`, type: lowerIrTypeToValType(instr.resultType, resolver, func.name) });
+      localIdx.set(instr.result, idx);
+    }
+    if (instr.kind === "forof.vec") {
+      for (const sub of instr.body) allocLocalForInstr(sub);
+    }
+  };
   for (const block of func.blocks) {
     for (const instr of block.instrs) {
-      if (instr.result !== null && needsLocal.has(instr.result)) {
-        if (!instr.resultType) {
-          throw new Error(`ir/lower: local-bound SSA value ${instr.result} has no resultType in ${func.name}`);
-        }
-        const idx = func.params.length + locals.length;
-        locals.push({ name: `$ir${instr.result}`, type: lowerIrTypeToValType(instr.resultType, resolver, func.name) });
-        localIdx.set(instr.result, idx);
-      }
+      allocLocalForInstr(instr);
     }
   }
+
+  // Slice 6 (#1169e): append slot locals AFTER all SSA-driven locals.
+  // `slotWasmIdx(slotIndex)` returns the absolute Wasm local index for
+  // a given slot.
+  const slotBase = func.params.length + locals.length;
+  const slotDefs = func.slots ?? [];
+  for (const slot of slotDefs) {
+    locals.push({ name: `$slot_${slot.name}`, type: slot.type });
+  }
+  const slotWasmIdx = (slotIndex: number): number => slotBase + slotIndex;
 
   // --- emission -----------------------------------------------------------
 
@@ -725,6 +801,117 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         });
         return;
       }
+      // Slice 6 (#1169e): slot / vec / for-of ops.
+      case "slot.read": {
+        out.push({ op: "local.get", index: slotWasmIdx(instr.slotIndex) });
+        return;
+      }
+      case "slot.write": {
+        emitValue(instr.value, out);
+        out.push({ op: "local.set", index: slotWasmIdx(instr.slotIndex) });
+        return;
+      }
+      case "vec.len": {
+        const vecT = asVal(typeOf(instr.vec));
+        if (!vecT) throw new Error(`ir/lower: vec.len vec must be a val IrType (${func.name})`);
+        const vec = resolver.resolveVec?.(vecT);
+        if (!vec) throw new Error(`ir/lower: resolver cannot lower vec for vec.len (${func.name})`);
+        emitValue(instr.vec, out);
+        out.push({ op: "struct.get", typeIdx: vec.vecStructTypeIdx, fieldIdx: vec.lengthFieldIdx });
+        // IR-level result is f64 (matches JS Number semantics) — promote.
+        out.push({ op: "f64.convert_i32_s" });
+        return;
+      }
+      case "vec.get": {
+        const vecT = asVal(typeOf(instr.vec));
+        if (!vecT) throw new Error(`ir/lower: vec.get vec must be a val IrType (${func.name})`);
+        const vec = resolver.resolveVec?.(vecT);
+        if (!vec) throw new Error(`ir/lower: resolver cannot lower vec for vec.get (${func.name})`);
+        // Stack: dataArray, index → element
+        emitValue(instr.vec, out);
+        out.push({ op: "struct.get", typeIdx: vec.vecStructTypeIdx, fieldIdx: vec.dataFieldIdx });
+        emitValue(instr.index, out);
+        out.push({ op: "array.get", typeIdx: vec.arrayTypeIdx } as unknown as Instr);
+        return;
+      }
+      case "forof.vec": {
+        // The forof.vec instr is statement-level (result: null) but we
+        // implement it inside emitInstrTree for code-organization parity
+        // with the other instrs. The lowerer in `emitBlockBody` calls
+        // `emitInstrTree` for void-producing instrs as a unit.
+        const vecT = asVal(typeOf(instr.vec));
+        if (!vecT) throw new Error(`ir/lower: forof.vec vec must be a val IrType (${func.name})`);
+        const vec = resolver.resolveVec?.(vecT);
+        if (!vec) throw new Error(`ir/lower: resolver cannot lower vec for forof.vec (${func.name})`);
+
+        // Push the vec ref.
+        emitValue(instr.vec, out);
+        // Save to vec slot.
+        out.push({ op: "local.set", index: slotWasmIdx(instr.vecSlot) });
+
+        // length = vec.length
+        out.push({ op: "local.get", index: slotWasmIdx(instr.vecSlot) });
+        out.push({ op: "struct.get", typeIdx: vec.vecStructTypeIdx, fieldIdx: vec.lengthFieldIdx });
+        out.push({ op: "local.set", index: slotWasmIdx(instr.lengthSlot) });
+
+        // data = vec.data
+        out.push({ op: "local.get", index: slotWasmIdx(instr.vecSlot) });
+        out.push({ op: "struct.get", typeIdx: vec.vecStructTypeIdx, fieldIdx: vec.dataFieldIdx });
+        out.push({ op: "local.set", index: slotWasmIdx(instr.dataSlot) });
+
+        // counter = 0
+        out.push({ op: "i32.const", value: 0 });
+        out.push({ op: "local.set", index: slotWasmIdx(instr.counterSlot) });
+
+        // Build loop body Wasm ops by recursively emitting body instrs.
+        const loopBody: Instr[] = [];
+        // if (counter >= length) br 1 (exit)
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.counterSlot) });
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.lengthSlot) });
+        loopBody.push({ op: "i32.ge_s" });
+        loopBody.push({ op: "br_if", depth: 1 });
+
+        // element = data[counter]
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.dataSlot) });
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.counterSlot) });
+        loopBody.push({ op: "array.get", typeIdx: vec.arrayTypeIdx } as unknown as Instr);
+        loopBody.push({ op: "local.set", index: slotWasmIdx(instr.elementSlot) });
+
+        // Body instrs
+        for (const bodyInstr of instr.body) {
+          if (bodyInstr.result === null) {
+            emitInstrTree(bodyInstr, loopBody);
+          } else if (crossBlock.has(bodyInstr.result)) {
+            emitInstrTree(bodyInstr, loopBody);
+            loopBody.push({ op: "local.set", index: localIdx.get(bodyInstr.result)! });
+            materialized.add(bodyInstr.result);
+          }
+          // Intra-block multi-use: handled at use site via tee pattern.
+        }
+
+        // counter = counter + 1
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.counterSlot) });
+        loopBody.push({ op: "i32.const", value: 1 });
+        loopBody.push({ op: "i32.add" });
+        loopBody.push({ op: "local.set", index: slotWasmIdx(instr.counterSlot) });
+
+        // br 0 (continue)
+        loopBody.push({ op: "br", depth: 0 });
+
+        // Wrap in block { loop { ... } }
+        out.push({
+          op: "block",
+          blockType: { kind: "empty" },
+          body: [
+            {
+              op: "loop",
+              blockType: { kind: "empty" },
+              body: loopBody,
+            },
+          ],
+        });
+        return;
+      }
     }
   };
 
@@ -882,7 +1069,37 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.value, instr.newValue];
     case "class.call":
       return [instr.receiver, ...instr.args];
+    // Slice 6 (#1169e): slot / vec / for-of ops.
+    case "slot.read":
+      return [];
+    case "slot.write":
+      return [instr.value];
+    case "vec.len":
+      return [instr.vec];
+    case "vec.get":
+      return [instr.vec, instr.index];
+    case "forof.vec":
+      // Body uses are collected separately and merged in by
+      // `lowerIrFunctionToWasm`.
+      return [instr.vec];
   }
+}
+
+/**
+ * Slice 6 (#1169e): walk a `forof.vec` body recursively and collect every
+ * SSA value referenced. Used by the cross-block use counter to ensure
+ * outer-scope values used inside the loop body are materialised in Wasm
+ * locals before the loop starts.
+ */
+export function collectForOfBodyUses(body: readonly IrInstr[]): IrValueId[] {
+  const uses: IrValueId[] = [];
+  for (const instr of body) {
+    for (const u of collectIrUses(instr)) uses.push(u);
+    if (instr.kind === "forof.vec") {
+      for (const u of collectForOfBodyUses(instr.body)) uses.push(u);
+    }
+  }
+  return uses;
 }
 
 function collectTerminatorUses(block: IrBlock): readonly IrValueId[] {

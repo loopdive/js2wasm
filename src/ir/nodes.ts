@@ -783,6 +783,138 @@ export interface IrInstrClassCall extends IrInstrBase {
   readonly args: readonly IrValueId[];
 }
 
+// ---------------------------------------------------------------------------
+// Slot ops + for-of (#1169e — IR Phase 4 Slice 6)
+// ---------------------------------------------------------------------------
+//
+// Slice 6 introduces the first STATEMENT-level loop to the IR. Before this
+// slice the IR could only express tail-shaped programs (return / if-else
+// terminating in return); for-of bodies in contrast have non-terminating
+// statement sequences and need cross-iteration mutable state (the loop
+// counter, the element binding, any outer-scope accumulator the body
+// updates).
+//
+// To avoid adding general structured-CFG recovery to the lowerer (which
+// today inlines `br` / `br_if` recursively without a Wasm `block` / `loop`
+// concept), Slice 6 takes a HIGH-LEVEL approach: a single `forof.vec`
+// instruction declaratively encodes the loop, and the lowerer emits a
+// known-good Wasm pattern directly. The body's IR instrs are still real
+// IR (so the optimisation passes can rewrite them) but mutable
+// cross-iteration state lives in WASM-LOCAL slots accessed via
+// `slot.read` / `slot.write`.
+
+/**
+ * Read a Wasm-local slot. `index` is the function-level slot index assigned
+ * at IR build time (allocated via `IrFunctionBuilder.declareSlot`). The slot's
+ * declared type must be a primitive ValType; the result IrType is `irVal`
+ * of that ValType.
+ *
+ * Lowering: `local.get <slotIndex>`.
+ */
+export interface IrInstrSlotRead extends IrInstrBase {
+  readonly kind: "slot.read";
+  readonly slotIndex: number;
+}
+
+/**
+ * Write a value to a Wasm-local slot. The value's IrType must be `val` with
+ * a ValType matching the slot's declared type. Void result.
+ *
+ * Lowering: `<emit value>; local.set <slotIndex>`.
+ */
+export interface IrInstrSlotWrite extends IrInstrBase {
+  readonly kind: "slot.write";
+  readonly slotIndex: number;
+  readonly value: IrValueId;
+}
+
+/**
+ * Read `vec.length` (i32) from a vec struct. The vec must have an IrType
+ * that the lowerer's resolver recognises as a vec (typeIdx with a layout of
+ * `{ length: i32, data: (ref $arr) }`). Result is f64 (matching JS Number
+ * semantics — same approach as `string.len`); lowering inserts the
+ * `f64.convert_i32_s` after the i32 read.
+ */
+export interface IrInstrVecLen extends IrInstrBase {
+  readonly kind: "vec.len";
+  readonly vec: IrValueId;
+}
+
+/**
+ * Index into a vec struct's data array. `index` must be an SSA value of
+ * IrType `irVal({ kind: "i32" })` (f64-to-i32 conversion happens at the
+ * caller — for-of always uses an i32 counter so this is always already i32).
+ *
+ * `resultType` carries the vec element's IrType (the lowerer matches it
+ * against the vec struct's data array's element type).
+ *
+ * Lowering: `<emit vec>; struct.get $vec data; <emit index>; array.get $arr`.
+ */
+export interface IrInstrVecGet extends IrInstrBase {
+  readonly kind: "vec.get";
+  readonly vec: IrValueId;
+  readonly index: IrValueId;
+}
+
+/**
+ * Statement-level `for (const <bind> of <vec>) <body>` loop instruction.
+ *
+ * Encodes the array fast path declaratively. The lowerer emits:
+ *   <emit vec>
+ *   local.set <vecSlot>
+ *   local.get <vecSlot>
+ *   struct.get $vec data
+ *   local.set <dataSlot>
+ *   local.get <vecSlot>
+ *   struct.get $vec length
+ *   local.set <lenSlot>
+ *   i32.const 0
+ *   local.set <counterSlot>
+ *   block
+ *     loop
+ *       local.get <counterSlot>
+ *       local.get <lenSlot>
+ *       i32.ge_s
+ *       br_if 1                  ;; exit loop
+ *       local.get <dataSlot>
+ *       local.get <counterSlot>
+ *       array.get $arr
+ *       local.set <elementSlot>
+ *       <body instrs>
+ *       local.get <counterSlot>
+ *       i32.const 1
+ *       i32.add
+ *       local.set <counterSlot>
+ *       br 0                     ;; continue
+ *     end
+ *   end
+ *
+ * The vec must have a non-null ref type pointing to a registered vec struct
+ * (the resolver's `resolveVec` resolves it to typeIdx + length/data field
+ * indices + element array typeIdx + element ValType). Nullable vec types
+ * are not in slice 6 — the selector keeps them on the legacy path.
+ *
+ * Slot indices are pre-allocated via `IrFunctionBuilder.declareSlot` before
+ * the from-ast layer emits this instr.
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrForOfVec extends IrInstrBase {
+  readonly kind: "forof.vec";
+  /** SSA value of the iterable. Lowered as the vec ref. */
+  readonly vec: IrValueId;
+  /** Element type — must match the vec's data array's element ValType. */
+  readonly elementType: IrType;
+  /** Pre-allocated slot indices (Wasm local indices) for the loop's state. */
+  readonly counterSlot: number;
+  readonly lengthSlot: number;
+  readonly vecSlot: number;
+  readonly dataSlot: number;
+  readonly elementSlot: number;
+  /** Body instrs emitted inside the loop. */
+  readonly body: readonly IrInstr[];
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -811,7 +943,36 @@ export type IrInstr =
   | IrInstrClassNew
   | IrInstrClassGet
   | IrInstrClassSet
-  | IrInstrClassCall;
+  | IrInstrClassCall
+  | IrInstrSlotRead
+  | IrInstrSlotWrite
+  | IrInstrVecLen
+  | IrInstrVecGet
+  | IrInstrForOfVec;
+
+// ---------------------------------------------------------------------------
+// Slot definitions (#1169e — IR Phase 4 Slice 6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 6 (#1169e) — declaration of one Wasm-local slot used for cross-
+ * iteration mutable state. Slots are allocated by the IR builder and
+ * surface in the lowered Wasm function as additional locals appended
+ * after the params and the SSA-driven locals.
+ *
+ *   - `index`        stable slot index, used by `slot.read` / `slot.write`.
+ *                    NOT a Wasm local index — the lowerer translates slot
+ *                    index N to Wasm local index `params + ssaLocals + N`.
+ *   - `name`         debug name for the local.
+ *   - `type`         primitive ValType (i32 / f64 / etc.) — slots only
+ *                    carry primitives; reference-typed cross-iteration
+ *                    state is rare in slice-6 loop bodies.
+ */
+export interface IrSlotDef {
+  readonly index: number;
+  readonly name: string;
+  readonly type: ValType;
+}
 
 // ---------------------------------------------------------------------------
 // Terminators
@@ -902,6 +1063,15 @@ export interface IrFunction {
     readonly signature: IrClosureSignature;
     readonly captureFieldTypes: readonly IrType[];
   };
+  /**
+   * Slice 6 (#1169e): Wasm-local slots used for cross-iteration mutable
+   * state in for-of loops. Empty for functions that don't contain a
+   * for-of (or any other slot user). Slot indices are stable; the
+   * lowerer maps slot index N to Wasm local index
+   *   `params.length + ssaLocalCount + N`
+   * — i.e. slots come AFTER the SSA-driven locals.
+   */
+  readonly slots?: readonly IrSlotDef[];
 }
 
 // ---------------------------------------------------------------------------
