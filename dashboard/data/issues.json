@@ -127,6 +127,67 @@
       "sprint": "46"
     },
     {
+      "id": "1169i",
+      "title": "IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169d"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169h",
+      "title": "IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169g",
+      "title": "IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e",
+        "1169f"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169f",
+      "title": "IR Phase 4 Slice 7 — generators and async/await through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169e",
+      "title": "IR Phase 4 Slice 6 — iterators and for-of through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169d"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
       "id": "1169d",
       "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
       "priority": "high",

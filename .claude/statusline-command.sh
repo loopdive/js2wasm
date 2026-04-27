@@ -1,32 +1,28 @@
 #!/bin/sh
 input=$(cat)
 cwd=$(echo "$input" | jq -r '.cwd // .workspace.current_dir // empty')
-model=$(echo "$input" | jq -r '.model.display_name // empty')
 model_id=$(echo "$input" | jq -r '.model.id // empty')
-ctx_size=$(echo "$input" | jq -r 'if .context_window.context_window_size then (.context_window.context_window_size / 1000 | floor | tostring) + "K" else empty end')
+ctx_size=$(echo "$input" | jq -r 'if .context_window.context_window_size then (.context_window.context_window_size as $s | if $s >= 1000000 then ($s / 1000000 | floor | tostring) + "M" else ($s / 1000 | floor | tostring) + "K" end) else empty end')
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 weekly=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
-effort=$(echo "$input" | jq -r '.thinking.type // .effort // empty')
+effort=$(echo "$input" | jq -r '.thinking.type // .effort.level // .effort // empty')
 in_worktree=$(echo "$input" | jq -r '.worktree.path // empty')
 case "$model_id" in
-  claude-opus-4-7*)   pricing='$15/$75'; price_in=15 ;;
-  claude-sonnet-4-6*) pricing='$3/$15';  price_in=3  ;;
-  claude-haiku-4-5*)  pricing='$0.8/$4'; price_in=0  ;;
-  *)                  pricing='';        price_in=0  ;;
+  claude-opus-4-7*)   model='Opus';   price_in=15 ;;
+  claude-sonnet-4-6*) model='Sonnet'; price_in=3  ;;
+  claude-haiku-4-5*)  model='Haiku';  price_in=0  ;;
+  *)                  model='';       price_in=0  ;;
 esac
-if [ -n "$pricing" ]; then
-  if [ "$price_in" -ge 5 ] 2>/dev/null; then   price_color='00;31'
-  elif [ "$price_in" -ge 1 ] 2>/dev/null; then  price_color='00;33'
-  else                                           price_color='00;32'
-  fi
+if [ "$price_in" -ge 5 ] 2>/dev/null; then   model_color='00;31'
+elif [ "$price_in" -ge 1 ] 2>/dev/null; then  model_color='00;33'
+else                                           model_color='00;32'
 fi
-printf '\033[01;34m%s\033[00m' "${cwd:-$(pwd)}"
-[ -n "$model" ] && printf ' \033[%sm%s\033[00m' "${price_color:-00;37}" "$model"
-if [ -n "$ctx_size" ]; then
-  [ "$ctx_size" = "1000K" ] && ctx_color='00;31' || ctx_color='00;37'
-  printf ' \033[%sm%s\033[00m' "$ctx_color" "$ctx_size"
-fi
-[ -n "$pricing" ] && printf ' \033[%sm%s\033[00m' "$price_color" "$pricing"
+branch=$(git -C "${cwd:-$(pwd)}" rev-parse --abbrev-ref HEAD 2>/dev/null)
+issue=$(echo "$branch" | sed -n 's/^issue-\([a-zA-Z0-9]*\).*/\1/p')
+[ -n "$issue" ] && printf '\033[01;33m#%s\033[00m ' "$issue"
+display_cwd=$(basename "${cwd:-$(pwd)}")
+printf '\033[01;34m%s\033[00m' "$display_cwd"
+[ -n "$model" ] && printf ' \033[%sm%s\033[00m' "$model_color" "$model"
 [ -n "$effort" ] && [ "$effort" != "none" ] && [ "$effort" != "disabled" ] && printf ' \033[00;33m%s\033[00m' "$effort"
 if [ -n "$used" ] || [ -n "$weekly" ]; then
   if [ -n "$used" ]; then
@@ -161,17 +157,17 @@ elif [ -n "$vitesting" ]; then
       fi
       d_bar=$(bg_progress_bar "$pct" "$eta_label" 42 100 30)
       if [ -z "$in_worktree" ]; then
-        p_bar=$(pass_bar "$pass_pct" "${pass_pct}% pass")
+        p_bar=$(pass_bar "$pass_pct" "${pass_pct}% t262")
         f_bar=$(free_bar "$free_g")
-        printf ' | \033[00;33m⟳t262\033[00m %s %s %s' "$p_bar" "$d_bar" "$f_bar"
+        printf ' \033[00;33m⟳t262\033[00m %s %s %s' "$p_bar" "$d_bar" "$f_bar"
       else
-        printf ' | \033[00;33m⟳t262\033[00m %s' "$d_bar"
+        printf ' \033[00;33m⟳t262\033[00m %s' "$d_bar"
       fi
     else
-      printf ' | \033[00;33m⟳t262:starting\033[00m'
+      printf ' \033[00;33m⟳t262:starting\033[00m'
     fi
   else
-    printf ' | \033[00;33m⟳t262:starting\033[00m'
+    printf ' \033[00;33m⟳t262:starting\033[00m'
   fi
 elif [ -f "$report" ]; then
   pass=$(jq -r '.summary.pass // 0' "$report" 2>/dev/null)
@@ -180,9 +176,9 @@ elif [ -f "$report" ]; then
   free_mb=$(free -m | awk '/Mem/{print $7}')
   free_g=$(awk "BEGIN {printf \"%.0f\", $free_mb / 1024}")
   if [ -z "$in_worktree" ]; then
-    p_bar=$(pass_bar "$pass_pct" "${pass_pct}% pass")
+    p_bar=$(pass_bar "$pass_pct" "${pass_pct}% t262")
     f_bar=$(free_bar "$free_g")
-    printf ' | t262 %s %s' "$p_bar" "$f_bar"
+    printf ' %s %s' "$p_bar" "$f_bar"
   fi
 fi
 printf '\n'
