@@ -307,6 +307,7 @@
       .kanban-col {
         background: var(--bg);
         border-radius: var(--radius);
+        padding: 10px;
         display: flex;
         flex-direction: column;
         min-height: 0;
@@ -317,6 +318,14 @@
         flex: 1;
         overflow-y: auto;
         min-height: 0;
+        mask-image: linear-gradient(to bottom, transparent 0%, black 28px, black calc(100% - 28px), transparent 100%);
+        -webkit-mask-image: linear-gradient(
+          to bottom,
+          transparent 0%,
+          black 28px,
+          black calc(100% - 28px),
+          transparent 100%
+        );
       }
 
       .kanban-col-header {
