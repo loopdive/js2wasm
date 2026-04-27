@@ -150,82 +150,222 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
   // ── Step 2: Now add all module functions ─────────────────────────
 
   // --- $__str_copy_tree(node: ref $AnyString, buf: ref $__str_data, pos: i32) -> i32 ---
-  // Recursively copies rope tree into a flat buffer. Returns next write position.
+  // Iteratively copies rope tree into a flat buffer. Returns next write position.
+  //
+  // Previously this used self-recursion to traverse the rope tree, which caused
+  // a wasm `call stack exhausted` trap on left-leaning ropes built by `text +=
+  // expr` patterns over many thousands of iterations (#1178). The deep
+  // left-spine of `Cons(Cons(Cons(..., c2), c1), c0)` made one stack frame per
+  // cons node.
+  //
+  // The iterative version uses an explicit worklist of right-children. We
+  // descend the leftmost spine (pushing right-children onto the worklist),
+  // copy each flat leaf, then pop and resume from the most recently pushed
+  // right-child. Stack usage is now O(1); heap usage is O(node.len) for the
+  // worklist (overestimate; depth ≤ leaves ≤ len since each leaf has ≥ 1 char).
   {
+    // Register the worklist's array type: (array (mut (ref null $AnyString))).
+    // Reuses the same registration as `__str_split` (keyed by `ref_<anyStr>`).
+    const wlElemKey = `ref_${anyStrTypeIdx}`;
+    const wlElemType: ValType = { kind: "ref_null", typeIdx: anyStrTypeIdx };
+    const wlArrTypeIdx = getOrRegisterArrayType(ctx, wlElemKey, wlElemType);
+    const wlArrRefNull: ValType = { kind: "ref_null", typeIdx: wlArrTypeIdx };
+
     const typeIdx = addFuncType(ctx, [strRef, strDataRef, { kind: "i32" }], [{ kind: "i32" }]);
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
     ctx.nativeStrHelpers.set("__str_copy_tree", funcIdx);
 
     // params: node(0), buf(1), pos(2)
-    // locals: flat(3), flatOff(4), flatLen(5), left(6), right(7)
+    // locals:
+    //   flat(3): ref_null $NativeString — current flat node being copied
+    //   flatOff(4): i32
+    //   flatLen(5): i32
+    //   cur(6): ref_null $AnyString — current node in the descent
+    //   worklist(7): ref_null $AnyString_arr — pending right-children
+    //   wlTop(8): i32 — number of items currently on the worklist
+    //   nodeLen(9): i32 — node.len (used to size the worklist)
+    const FLAT = 3;
+    const FLAT_OFF = 4;
+    const FLAT_LEN = 5;
+    const CUR = 6;
+    const WL = 7;
+    const WL_TOP = 8;
+    const NODE_LEN = 9;
+
     const body: Instr[] = [
-      // if node is FlatString: array.copy and return pos + len
+      // Fast path: if node is already a FlatString, copy directly and return.
       { op: "local.get", index: 0 },
       { op: "ref.test", typeIdx: strTypeIdx },
       {
         op: "if",
-        blockType: { kind: "val", type: { kind: "i32" } },
+        blockType: { kind: "empty" },
         then: [
-          // flat = ref.cast $NativeString node
           { op: "local.get", index: 0 },
           { op: "ref.cast", typeIdx: strTypeIdx },
-          { op: "local.set", index: 3 },
+          { op: "local.set", index: FLAT },
 
-          // flatOff = flat.off (field 1)
-          { op: "local.get", index: 3 },
-          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
-          { op: "local.set", index: 4 },
+          { op: "local.get", index: FLAT },
+          { op: "ref.as_non_null" },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }, // off
+          { op: "local.set", index: FLAT_OFF },
 
-          // flatLen = flat.len (field 0)
-          { op: "local.get", index: 3 },
-          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
-          { op: "local.set", index: 5 },
+          { op: "local.get", index: FLAT },
+          { op: "ref.as_non_null" },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 }, // len
+          { op: "local.set", index: FLAT_LEN },
 
           // array.copy(buf, pos, flat.data, flatOff, flatLen)
-          { op: "local.get", index: 1 }, // dst = buf
-          { op: "local.get", index: 2 }, // dstOffset = pos
-          { op: "local.get", index: 3 }, // flat
-          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // flat.data
-          { op: "local.get", index: 4 }, // srcOffset = flatOff
-          { op: "local.get", index: 5 }, // length = flatLen
+          { op: "local.get", index: 1 },
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: FLAT },
+          { op: "ref.as_non_null" },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // data
+          { op: "local.get", index: FLAT_OFF },
+          { op: "local.get", index: FLAT_LEN },
           { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
 
           // return pos + flatLen
           { op: "local.get", index: 2 },
-          { op: "local.get", index: 5 },
+          { op: "local.get", index: FLAT_LEN },
           { op: "i32.add" },
-        ],
-        else: [
-          // node is ConsString
-          // left = cons.left (field 1)
-          { op: "local.get", index: 0 },
-          { op: "ref.cast", typeIdx: consStrTypeIdx },
-          { op: "struct.get", typeIdx: consStrTypeIdx, fieldIdx: 1 }, // left
-          { op: "local.set", index: 6 }, // left
-
-          // right = cons.right
-          { op: "local.get", index: 0 },
-          { op: "ref.cast", typeIdx: consStrTypeIdx },
-          { op: "struct.get", typeIdx: consStrTypeIdx, fieldIdx: 2 }, // right
-          { op: "local.set", index: 7 }, // right
-
-          // pos = copy_tree(left, buf, pos)
-          { op: "local.get", index: 6 },
-          { op: "ref.as_non_null" },
-          { op: "local.get", index: 1 },
-          { op: "local.get", index: 2 },
-          { op: "call", funcIdx }, // recursive call to self
-
-          // return copy_tree(right, buf, pos)
-          // pos is now the return value on the stack — use it directly
-          { op: "local.set", index: 2 }, // update pos
-          { op: "local.get", index: 7 },
-          { op: "ref.as_non_null" },
-          { op: "local.get", index: 1 },
-          { op: "local.get", index: 2 },
-          { op: "call", funcIdx }, // recursive call to self
+          { op: "return" },
         ],
       },
+
+      // Slow path: rope traversal with an explicit worklist of right-children.
+      // nodeLen = node.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyStrTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: NODE_LEN },
+
+      // worklist = array.new_default<ref_null $AnyString>(nodeLen)
+      // nodeLen is a safe upper bound on rope depth (≥ 1 char per leaf).
+      { op: "local.get", index: NODE_LEN },
+      { op: "array.new_default", typeIdx: wlArrTypeIdx },
+      { op: "local.set", index: WL },
+
+      // wlTop = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: WL_TOP },
+
+      // cur = node
+      { op: "local.get", index: 0 },
+      { op: "local.set", index: CUR },
+
+      // Outer loop: descend left, copy a flat segment, pop next right-child.
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // Inner loop: walk left while cur is a ConsString, pushing
+              // right-children onto the worklist. Exits when cur is FlatString.
+              {
+                op: "block",
+                blockType: { kind: "empty" },
+                body: [
+                  {
+                    op: "loop",
+                    blockType: { kind: "empty" },
+                    body: [
+                      // if cur is FlatString: br to end of inner block (depth 1)
+                      { op: "local.get", index: CUR },
+                      { op: "ref.as_non_null" },
+                      { op: "ref.test", typeIdx: strTypeIdx },
+                      { op: "br_if", depth: 1 },
+
+                      // worklist[wlTop] = (cur as ConsString).right
+                      { op: "local.get", index: WL },
+                      { op: "ref.as_non_null" },
+                      { op: "local.get", index: WL_TOP },
+                      { op: "local.get", index: CUR },
+                      { op: "ref.as_non_null" },
+                      { op: "ref.cast", typeIdx: consStrTypeIdx },
+                      { op: "struct.get", typeIdx: consStrTypeIdx, fieldIdx: 2 },
+                      { op: "array.set", typeIdx: wlArrTypeIdx },
+
+                      // wlTop++
+                      { op: "local.get", index: WL_TOP },
+                      { op: "i32.const", value: 1 },
+                      { op: "i32.add" },
+                      { op: "local.set", index: WL_TOP },
+
+                      // cur = (cur as ConsString).left
+                      { op: "local.get", index: CUR },
+                      { op: "ref.as_non_null" },
+                      { op: "ref.cast", typeIdx: consStrTypeIdx },
+                      { op: "struct.get", typeIdx: consStrTypeIdx, fieldIdx: 1 },
+                      { op: "local.set", index: CUR },
+
+                      // continue inner loop
+                      { op: "br", depth: 0 },
+                    ],
+                  },
+                ],
+              },
+
+              // cur is a FlatString — copy its contents into buf at pos.
+              { op: "local.get", index: CUR },
+              { op: "ref.as_non_null" },
+              { op: "ref.cast", typeIdx: strTypeIdx },
+              { op: "local.set", index: FLAT },
+
+              { op: "local.get", index: FLAT },
+              { op: "ref.as_non_null" },
+              { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }, // off
+              { op: "local.set", index: FLAT_OFF },
+
+              { op: "local.get", index: FLAT },
+              { op: "ref.as_non_null" },
+              { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 }, // len
+              { op: "local.set", index: FLAT_LEN },
+
+              // array.copy(buf, pos, flat.data, flatOff, flatLen)
+              { op: "local.get", index: 1 },
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: FLAT },
+              { op: "ref.as_non_null" },
+              { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // data
+              { op: "local.get", index: FLAT_OFF },
+              { op: "local.get", index: FLAT_LEN },
+              { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
+
+              // pos += flatLen
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: FLAT_LEN },
+              { op: "i32.add" },
+              { op: "local.set", index: 2 },
+
+              // if wlTop == 0: br to end of outer block (depth 1) — done
+              { op: "local.get", index: WL_TOP },
+              { op: "i32.eqz" },
+              { op: "br_if", depth: 1 },
+
+              // wlTop--
+              { op: "local.get", index: WL_TOP },
+              { op: "i32.const", value: 1 },
+              { op: "i32.sub" },
+              { op: "local.set", index: WL_TOP },
+
+              // cur = worklist[wlTop]
+              { op: "local.get", index: WL },
+              { op: "ref.as_non_null" },
+              { op: "local.get", index: WL_TOP },
+              { op: "array.get", typeIdx: wlArrTypeIdx },
+              { op: "local.set", index: CUR },
+
+              // continue outer loop
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+
+      // return pos
+      { op: "local.get", index: 2 },
     ];
 
     ctx.mod.functions.push({
@@ -235,8 +375,10 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
         { name: "flat", type: { kind: "ref_null", typeIdx: strTypeIdx } },
         { name: "flatOff", type: { kind: "i32" } },
         { name: "flatLen", type: { kind: "i32" } },
-        { name: "left", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
-        { name: "right", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+        { name: "cur", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+        { name: "worklist", type: wlArrRefNull },
+        { name: "wlTop", type: { kind: "i32" } },
+        { name: "nodeLen", type: { kind: "i32" } },
       ],
       body,
       exported: false,
