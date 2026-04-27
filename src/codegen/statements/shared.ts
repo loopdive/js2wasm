@@ -69,8 +69,14 @@ export function collectBlockScopedNames(stmt: ts.Block): string[] {
   for (const s of stmt.statements) {
     if (!ts.isVariableStatement(s)) continue;
     const flags = s.declarationList.flags;
-    // Only let/const create block-scoped bindings (not var)
-    if (!(flags & ts.NodeFlags.Let) && !(flags & ts.NodeFlags.Const)) continue;
+    // let/const/using/await-using create block-scoped bindings (not var). #1177
+    if (
+      !(flags & ts.NodeFlags.Let) &&
+      !(flags & ts.NodeFlags.Const) &&
+      !(flags & ts.NodeFlags.Using) &&
+      !(flags & ts.NodeFlags.AwaitUsing)
+    )
+      continue;
     for (const decl of s.declarationList.declarations) {
       if (ts.isIdentifier(decl.name)) {
         names.push(decl.name.text);
