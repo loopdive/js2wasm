@@ -236,6 +236,23 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       // its def→use relation is tracked by the verifier and by the
       // cross-block use counter in the lowerer.
       return [instr.vec];
+    // Slice 6 part 3 (#1182) — coercion + iterator protocol ops.
+    case "coerce.to_externref":
+      return [instr.value];
+    case "iter.new":
+      return [instr.iterable];
+    case "iter.next":
+      return [instr.iter];
+    case "iter.done":
+      return [instr.resultObj];
+    case "iter.value":
+      return [instr.resultObj];
+    case "iter.return":
+      return [instr.iter];
+    case "forof.iter":
+      // Same rationale as forof.vec: body is loop-internal, only the
+      // iterable surfaces in the straight-line walk.
+      return [instr.iterable];
   }
 }
 

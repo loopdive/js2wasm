@@ -117,6 +117,18 @@
   ],
   "ready": [
     {
+      "id": "1182",
+      "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1181"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
       "id": "1180",
       "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
       "priority": "high",
