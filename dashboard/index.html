@@ -870,11 +870,22 @@
         if (updEl) updEl.textContent = "Updated: " + new Date().toLocaleString();
 
         // ── Metrics ──
-        if (runs.length > 0) {
-          const latest = runs[runs.length - 1];
-          // Use the full pass rate to match the landing page donut chart.
-          const passRate = ((latest.pass / latest.total) * 100).toFixed(1);
-          document.getElementById("m-passrate").textContent = passRate + "%";
+        // Use test262-report.json as the authoritative pass rate (same source as landing page).
+        // runs/index.json may contain PR runs that differ from the merged baseline.
+        try {
+          const reportData = await loadJSON("../benchmarks/results/test262-report.json");
+          if (reportData?.summary?.pass && reportData?.summary?.total) {
+            const passRate = ((reportData.summary.pass / reportData.summary.total) * 100).toFixed(1);
+            document.getElementById("m-passrate").textContent = passRate + "%";
+          } else if (runs.length > 0) {
+            const latest = runs[runs.length - 1];
+            document.getElementById("m-passrate").textContent = ((latest.pass / latest.total) * 100).toFixed(1) + "%";
+          }
+        } catch {
+          if (runs.length > 0) {
+            const latest = runs[runs.length - 1];
+            document.getElementById("m-passrate").textContent = ((latest.pass / latest.total) * 100).toFixed(1) + "%";
+          }
         }
 
         // ── Baseline age badge ──
