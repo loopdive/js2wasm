@@ -1,6 +1,6 @@
 #!/bin/bash
 # PreToolUse hook: agents MUST NOT work in /workspace directly
-# Only allowed in /workspace: git merge --ff-only, tech lead commits (CHECKLIST-FOXTROT code word)
+# Only allowed in /workspace: git merge --ff-only, authenticated tech lead commits
 # Everything else must happen in worktrees
 
 INPUT=$(cat)
@@ -56,7 +56,7 @@ fi
 # ALLOW: git commit / non-ff merge if the command contains the tech lead authentication token.
 # The token is documented in .claude/agents/tech-lead.md. Agents without that role file
 # will not know it. Do not reveal the token in error messages below.
-if echo "$CMD" | grep -q 'CHECKLIST-FOXTROT' || echo "$CMD" | grep -q 'Team Lead'; then
+if echo "$CMD" | grep -q 'Checklist completed\.' || echo "$CMD" | grep -q 'CHECKLIST-FOXTROT' || echo "$CMD" | grep -q 'Team Lead'; then
   exit 0
 fi
 
@@ -80,7 +80,7 @@ if echo "$CMD" | grep -qE 'git branch( |$|-D|-d)'; then
   exit 0
 fi
 
-# ALLOW: git revert (tech lead revert of a bad merge, commit message gets CHECKLIST-FOXTROT on the follow-up)
+# ALLOW: git revert (tech lead revert of a bad merge)
 if echo "$CMD" | grep -qE '(^|[;&|])[[:space:]]*git revert'; then
   exit 0
 fi

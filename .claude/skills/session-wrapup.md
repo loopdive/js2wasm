@@ -107,7 +107,7 @@ git add plan/diary.md plan/issues/sprints/N/sprint.md plan/agent-context/tech-le
 git diff --cached --stat
 git commit -m "docs(session): end-of-session checkpoint — YYYY-MM-DD
 
-CHECKLIST-FOXTROT
+Checklist completed.
 
 Persist session learnings to disk before /compact.
 - plan/diary.md: <summary>

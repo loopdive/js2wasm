@@ -139,7 +139,7 @@ Should show only the modified `.gitignore` (if you updated it) and any legitimat
 git add .gitignore
 git commit -m "chore: scratch cleanup — move leaked dev files to .tmp/
 
-CHECKLIST-FOXTROT
+Checklist completed.
 
 Moved N leaked scratch files from /workspace root and tests/ into the
 gitignored .tmp/ folder. Updated .gitignore patterns to catch future

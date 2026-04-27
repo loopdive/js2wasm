@@ -1626,16 +1626,6 @@
   ],
   "inprogress": [
     {
-      "id": "1202",
-      "title": "credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "contributor-readiness",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
