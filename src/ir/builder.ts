@@ -749,6 +749,36 @@ export class IrFunctionBuilder {
       resultType: null,
     });
   }
+
+  // --- string for-of (slice 6 part 4 — #1183) -----------------------------
+
+  /**
+   * Emit a `forof.string` declarative instr — the native-strings counter
+   * loop over a string. Caller pre-allocates all four slots and passes
+   * the body buffer collected via `collectBodyInstrs`. The lowerer is
+   * responsible for emitting the `__str_charAt` calls + counter
+   * arithmetic; this builder method just records the structured node.
+   */
+  emitForOfString(args: {
+    str: IrValueId;
+    counterSlot: number;
+    lengthSlot: number;
+    strSlot: number;
+    elementSlot: number;
+    body: readonly IrInstr[];
+  }): void {
+    this.pushInstr({
+      kind: "forof.string",
+      str: args.str,
+      counterSlot: args.counterSlot,
+      lengthSlot: args.lengthSlot,
+      strSlot: args.strSlot,
+      elementSlot: args.elementSlot,
+      body: args.body,
+      result: null,
+      resultType: null,
+    });
+  }
 }
 
 // Convenience: value-id brand with no underlying type map — useful for tests

@@ -674,7 +674,7 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       const walk = (instrs: readonly IrInstr[]): void => {
         for (const sub of instrs) {
           for (const u of collectUses(sub)) result.push(u);
-          if (sub.kind === "forof.vec" || sub.kind === "forof.iter") walk(sub.body);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
         }
       };
       walk(instr.body);
@@ -698,7 +698,19 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       const walk = (instrs: readonly IrInstr[]): void => {
         for (const sub of instrs) {
           for (const u of collectUses(sub)) result.push(u);
-          if (sub.kind === "forof.vec" || sub.kind === "forof.iter") walk(sub.body);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
+        }
+      };
+      walk(instr.body);
+      return result;
+    }
+    // Slice 6 part 4 (#1183) — string for-of.
+    case "forof.string": {
+      const result: IrValueId[] = [instr.str];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
         }
       };
       walk(instr.body);
