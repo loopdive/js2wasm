@@ -165,18 +165,22 @@ if [ -z "$in_worktree" ]; then
       days_int=$(awk "BEGIN {printf \"%d\", $remaining_sec / 86400}")
       elapsed_pct=$(awk "BEGIN {printf \"%.4f\", (7 - $remaining_sec / 86400) * 100 / 7}")
       awk -v left="$days_left" -v days_int="$days_int" -v elapsed_pct="$elapsed_pct" 'BEGIN {
-        if (days_int >= 4)     { fill=42;         fg=30 }
-        else if (days_int >= 2){ fill=43;         fg=30 }
-        else                   { fill="48;5;196"; fg=37 }
-        width = 10
-        filled = int(elapsed_pct * width / 100 + 0.5)
-        label = sprintf(" %sd left", left)
-        bar = ""
-        for (i = 0; i < width; i++) bar = bar " "
-        bar = label substr(bar, length(label) + 1)
-        filled_part = substr(bar, 1, filled)
-        empty_part  = substr(bar, filled + 1)
-        printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
+        if (days_int >= 4) {
+          # Green zone: plain green text, no background bar — less salient
+          printf " \033[32m%sd left\033[00m", left
+        } else {
+          if (days_int >= 2) { fill=43;         fg=30 }
+          else               { fill="48;5;196"; fg=37 }
+          width = 10
+          filled = int(elapsed_pct * width / 100 + 0.5)
+          label = sprintf(" %sd left", left)
+          bar = ""
+          for (i = 0; i < width; i++) bar = bar " "
+          bar = label substr(bar, length(label) + 1)
+          filled_part = substr(bar, 1, filled)
+          empty_part  = substr(bar, filled + 1)
+          printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[%s;%sm \033[00m", fill, fg, filled_part, empty_part, fill, fg
+        }
       }' /dev/null
     fi
   fi
