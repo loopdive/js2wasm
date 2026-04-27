@@ -215,5 +215,23 @@ if [ -z "$in_worktree" ]; then
       printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
     }' /dev/null
   fi
+  # Days-left-in-week bar: Mon=1 ... Sun=7, resets Monday
+  dow=$(date +%u)  # 1=Mon, 7=Sun
+  days_left=$((7 - dow))
+  elapsed_pct=$((dow * 100 / 7))
+  awk -v left="$days_left" -v elapsed_pct="$elapsed_pct" 'BEGIN {
+    if (left >= 4)     { fill=42;         fg=30 }
+    else if (left >= 2){ fill=43;         fg=30 }
+    else               { fill="48;5;196"; fg=37 }
+    width = 8
+    filled = int(elapsed_pct * width / 100)
+    label = sprintf(" %dd left", left)
+    bar = ""
+    for (i = 0; i < width; i++) bar = bar " "
+    bar = label substr(bar, length(label) + 1)
+    filled_part = substr(bar, 1, filled)
+    empty_part  = substr(bar, filled + 1)
+    printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
+  }' /dev/null
 fi
 printf '\n'
