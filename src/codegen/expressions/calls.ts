@@ -4985,13 +4985,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             fctx.body.push({ op: "local.get", index: currentLocalIdx });
           } else {
             // Create a ref cell, store the current value, keep ref on stack.
-            // (Note: #1177 originally proposed `localMap.get(cap.name) ?? cap.outerLocalIdx`
-            // but that caused 100+ test262 regressions where main's "wrong-slot"
-            // behavior was load-bearing for tests that relied on a null deref
-            // throwing inside an async fn body. Reverted; the canonical TDZ-
-            // through-closure case is fixed via the call-site TDZ check below
-            // and Stage 3 C.1 in compileArrowAsClosure.)
-            fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+            // #1177 Stage 1: prefer fctx.localMap when set — in transitively-
+            // capturing contexts the outer-fctx-resident `cap.outerLocalIdx`
+            // may point at a stale slot (e.g. `__self_cast`) while the
+            // current fctx has the correct local in `localMap`. The earlier
+            // attempt at this fix caused regressions because it ran without
+            // the TDZ-flag boxing in compileArrowAsClosure (Stage 3); with
+            // that infra in place, reading the right local is now safe and
+            // is what makes the closure observe post-init values correctly.
+            const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+            fctx.body.push({ op: "local.get", index: sourceLocalIdx });
             fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
             // Also box the outer local so subsequent reads/writes go through the ref cell
             const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, {
@@ -5017,14 +5020,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
         } else {
-          // (#1177: TDZ check moved above the mutable/non-mutable branch.
-          // Stage 1 localMap-first lookup reverted — see comment in mutable
-          // branch above.)
-          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+          // #1177 Stage 1: prefer fctx.localMap when set. See comment in
+          // the mutable branch above for rationale — same pattern, applied
+          // to the non-mutable capture path. Both `local.get` and the
+          // `getLocalType` call below use the same source index.
+          const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+          fctx.body.push({ op: "local.get", index: sourceLocalIdx });
           // Coerce capture value to expected param type if they differ
           const expectedCapType = captureParamTypes?.[capIdx];
           if (expectedCapType) {
-            const actualType = getLocalType(fctx, cap.outerLocalIdx);
+            const actualType = getLocalType(fctx, sourceLocalIdx);
             if (actualType && !valTypesMatch(actualType, expectedCapType)) {
               coerceType(ctx, fctx, actualType, expectedCapType);
             }
