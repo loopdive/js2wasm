@@ -25,6 +25,13 @@ Absorb the overflow from sprint 44. Headline themes:
 1. **Drain the performance / numeric-inference queue** — #1120, #1121, #1122,
    #1126 form a coherent int32-fast-path block; pair them with benchmarking
    infrastructure (#1005, #1125) so improvements are measurable.
+   - **Crash bucket surfaced by #1125 verification (added 2026-04-27, high
+     priority):** #1173 (array-sum: 'exact' ref types reject by wasmtime 44),
+     #1174 (object-ops: `string_constants` host import leaks on `--target
+     wasi`), #1175 (string-hash: `__str_flatten` / `concat` type-mismatch in
+     wasm-validator). All three are basic JS patterns (array fill, object
+     literals, string concat) that crash js2wasm today and block the
+     competitive-benchmark `js2wasm → Wasmtime` lane on 3 of 5 programs.
 2. **CI baseline-drift hardening** — the 5-issue set (#1076, #1077, #1078,
    #1079, #1080) that was held back from sprint 44 because the IR work could
    not tolerate CI turbulence.
@@ -108,6 +115,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | ready |
 | #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
 | #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | ready |
+| #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | ready |
+| #1174 | js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash) | high | ready |
+| #1175 | String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator | high | ready |
 
 ### Done
 
