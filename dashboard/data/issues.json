@@ -117,6 +117,16 @@
   ],
   "ready": [
     {
+      "id": "1180",
+      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
       "id": "1179",
       "title": "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy",
       "priority": "high",

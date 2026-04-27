@@ -16733,6 +16733,18 @@
       "cluster": "performance"
     },
     {
+      "id": "1180",
+      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -17916,7 +17928,8 @@
         "1173",
         "1174",
         "1175",
-        "1178"
+        "1178",
+        "1180"
       ]
     },
     {
@@ -20348,6 +20361,10 @@
     {
       "goal": "compilable",
       "issue": "1178"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1180"
     },
     {
       "goal": "compiler-architecture",
