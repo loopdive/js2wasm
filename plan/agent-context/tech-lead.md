@@ -1,56 +1,69 @@
 ---
 agent: tech-lead
-session_end: 2026-04-23-sprint-43-close
-next_session_entry_point: Sprint 44 is ready to start. Read this file + plan/issues/sprints/44/sprint.md. Tag sprint-44/begin, spawn devs, dispatch #1153 + #1168 as headline priorities.
-last_handoff_reason: "Sprint 43 closed. LFS migration + CI fixes done. Team shut down. Sprint 44 planned and ready."
+session_end: 2026-04-27-sprint-45-partial
+next_session_entry_point: >
+  Read this file + plan/issues/sprints/46/sprint.md.
+  Two open PRs: #76 (hold for investigation) and #77 (CI tooling, check CI result first).
+  S46 has 9 issues ready to dispatch. Tag sprint-46/begin before spawning devs.
+last_handoff_reason: "Sprint 45 winding down at 75% weekly token budget. 4 PRs merged today."
 ---
 
-## CURRENT STATE (as of 2026-04-23)
+## CURRENT STATE (as of 2026-04-27)
 
 ### Baseline
-- **24,483 pass / 43,172 total = 56.7%**
-- Last baseline refresh: `7c00fa956` on origin/main
-- Sprint 43 started and ended at 24,483 (IR phases are infrastructure)
+- **25,802 pass / 43,168 total = 59.8%**
+- Baseline refreshed 2026-04-27T14:57Z (forced refresh after 618-test drift)
+- Sprint 45 started at ~25,387, ended at 25,802+
 
-### What shipped in Sprint 43
-3 PRs merged:
-- PR #160 (#1076 CI merge split — merge-report + regression-gate separated)
-- PR #231 (#1131 IR Phase 1 — SSA IR scaffold: nodes, builder, verify, emit stubs)
-- PR #258 (#1131 IR Phase 2 — interprocedural type propagation + call support)
+### What shipped in Sprint 45 (today's session)
+4 PRs merged:
+- PR #72 (#1185 IrLowerResolver refactor, net=+1398, ratio=7.2%)
+- PR #73 (#1169f IR slice 7b generators/async, net=+1202, admin-merged at 10.8%)
+- PR #74 (#1186 str-charat-fix, merged but superseded by #75)
+- PR #75 (#1186 forof-string-charat, net=+1234, ratio=8.7%) — canonical fix
 
-### Infrastructure work done this session (2026-04-23)
-- **LFS migration**: `*.jsonl`, `*.log`, `*.wasm`, `benchmarks/results/runs/*.json`, `public/benchmarks/results/*.json` all tracked in LFS. Historical blobs still in git objects (~316MB packed); forward-only migration.
-- **CI fixed**: added `lfs: true` to all 6 workflows that read/write LFS files; bumped all actions to Node.js 24-compatible versions.
-- **labs remote** (`git@github.com:loopdive/js2wasm-labs.git`): private repo for experimental/commercial work. `labs/*` branches blocked from origin via `.git/hooks/pre-push`. `labs/main` is the private integration branch. LFS URL on labs points to origin (free LFS bandwidth).
-- **GitHub Pages**: deploy working again after LFS fix.
+### Open PRs (do NOT admin-merge without investigation)
+- **PR #76** (`issue-1177-tdz-closure`): net=+1159, regr=199, ratio=14.7%, snapshot_delta=-31
+  — Hold. Negative snapshot_delta is a red flag. TDZ closure Stage 1.
+  — Branch HEAD: `fe1225f5`, CI is fresh and accurate.
+- **PR #77** (`issue-1192-ct-classification`): CI tooling only (3 files, no compiler changes)
+  — Branch merged with main on 2026-04-27T15:44. Wait for fresh CI result.
+  — If ratio <10% after fresh CI: self-merge. It should be near-zero regressions.
 
-### Sprint 44 plan
-File: `plan/issues/sprints/44/sprint.md`
-- **Headline #1**: #1153 — Fix compiler crashes (~3,585 tests blocked by internal exceptions)
-- **Headline #2**: #1168 — IR frontend widening (IrType union, LatticeType, box/unbox, isPhase1Expr Slice 1)
-- Secondary: #1167c (once #1168 lands), spec-completeness drain (#1152, #1160, #1161, #1162, #1163), CI baseline-drift hardening (#1076–#1080)
-- All 55+ issues are in `ready` state in `plan/issues/sprints/44/`
+### Sprint 46 — ready to dispatch
+9 issues in `plan/issues/sprints/46/`:
+- 1169g (IR slice 8 — destructuring/rest/spread)
+- 1169h (IR slice 9 — try/catch/finally)
+- 1169i (IR slice 10 — remaining builtins: RegExp, TypedArray, DataView)
+- 1169 (IR Phase 4 umbrella — retire legacy AST→Wasm once all slices done)
+- 1180 (WASI unbox: env::__unbox_number host imports on --target wasi)
+- 1187 (test-runtime: JS-string → native-string coercion helper)
+- 1188 (Setup js2.loopdive.com custom domain for GitHub Pages)
+- 1080 (CI baseline-drift umbrella)
+- 1126 (Infer int32/uint32 lowering from flow)
 
-### Open PRs
-- None known (gh auth needed to verify — run `gh auth login` after container rebuild)
+Also in ready/ for S46/S47:
+- 1177 (after PR #76 regressions are fixed)
+- 1193 (ci-status-watcher.sh fix — easy, S46)
+- 1195-1200 (array perf sprint — escape analysis, bounds elim, i32 specialization)
+- 1189-1192 (from dev-1125-bench array benchmark work)
 
-### Worktrees
-- None (3 stale empty ones removed)
+### Agent context summaries
+⚠️ All 3 dev agents had broken inbox delivery this session — could not process messages.
+No context summaries were written by agents. State captured here instead:
+- **dev-1125-bench**: Worked on #1186 (PR #75 merged), #1192 (PR #77 pending CI), 
+  filed issues #1189-1200 for S47 array perf work.
+- **dev-1182**: Worked on #1185 (PR #72 merged). Did not investigate PR #76 (unresponsive).
+- **dev-1169f-7a**: Worked on #1169f slice 7b (PR #73 admin-merged). 
+  145 real regressions remain from slice 7b — need followup issue for S46.
 
-### Stale local branches
-- ~200 branches from sprints 38–43. Safe to bulk-delete merged ones when you have a quiet moment: `git branch --merged main | grep -v '^\*\|main\|labs' | xargs git branch -d`
+### Tooling shipped this session
+- `scripts/statusline-sprint.mjs` — sprint progress script (used by statusline-command.sh)
+- `scripts/next-issue-id.mjs` — reliably returns next free issue number
+- `.claude/statusline-command.sh` — updated with sprint bar + days-left bar
+- `.claude/settings.json` — statusLine wired to statusline-command.sh with 30s refresh
 
-### gh CLI auth
-- `gh` needs re-auth after container rebuild. Run `! gh auth login` in the terminal.
-
-## FRESH SESSION START PROTOCOL
-
-1. Read this file
-2. Read `plan/issues/sprints/44/sprint.md`
-3. `git log --oneline origin/main -10` to verify baseline
-4. `! gh auth login` to re-auth gh CLI
-5. `gh pr list --state open` to check for stale PRs
-6. Tag sprint start: `git tag sprint-44/begin && git push origin --tags`
-7. Create fresh team
-8. Dispatch #1153 and #1168 as first two dev tasks (they're independent, run in parallel)
-9. Run `/tech-lead-loop` for continuous orchestration
+### Key protocol notes
+- Baseline refresh: use `refresh-baseline.yml` with `force_baseline_refresh=true` + `confirm_force=YES`
+- The "refresh-benchmarks" CI job fails on all PRs (missing playground baseline) — this is infra noise, not a test failure. Ignore `conclusion: failure` and look at net/ratio/snapshot_delta instead.
+- Weekly token budget resets: check `rate_limits.seven_day.resets_at` in statusline JSON input — current reset was Apr 30, 10am Europe/Berlin
