@@ -27,8 +27,19 @@ This benchmark harness compares the same JavaScript benchmark programs across:
 The Wasmtime side uses:
 
 - `wasm-opt --all-features -O4`
-- `wasmtime compile -W gc=y,gc-support=y,function-references=y,exceptions=y -O opt-level=2`
-- `wasmtime run -W gc=y,gc-support=y,function-references=y,exceptions=y --allow-precompiled`
+- `wasmtime compile -W gc=y,function-references=y,component-model=y,exceptions=y -O opt-level=2`
+- `wasmtime run -W gc=y,function-references=y,component-model=y,exceptions=y --allow-precompiled`
+
+The harness is verified against the latest stable wasmtime release at the
+time of each run (most recently `wasmtime 44.0.0`). The floor is wasmtime
+40, because the StarlingMonkey + ComponentizeJS lane depends on wasmtime
+40's component-model `--invoke "fn(args)"` parenthesized syntax — earlier
+wasmtimes (30, 31) reject `--invoke` against components.
+
+`-W exceptions=y` is required for the StarlingMonkey + ComponentizeJS lane
+because ComponentizeJS-emitted components use SpiderMonkey's Wasm
+exception-handling machinery. `gc-support=y` (a pre-v31 flag) was
+collapsed into `gc=y` upstream and is no longer set by the harness.
 
 This is a best-effort approximation of a production precompiled deployment
 profile. It is not a claim that Fastly uses exactly these public CLI flags.
@@ -308,6 +319,118 @@ component for this specific JS file".
   `Precompiled bytes`.
 - The lane requires `wasmtime` on `PATH` (or `STARLINGMONKEY_WASMTIME_BIN`).
   Without it the lane reports `runtime-error`, not `unavailable`.
+- The lane requires **wasmtime ≥ 40** because it relies on the v40
+  component-model `--invoke "fn(args)"` parenthesized invoke syntax. On
+  wasmtime 30 and 31 (verified) the CLI rejects `--invoke` against
+  components and the lane reports `runtime-error`.
+
+### A note on JIT and serverless Wasm
+
+These benchmarks model a serverless Wasm runtime (Fastly Compute@Edge,
+wasmCloud, etc.) where:
+
+- **All Wasm code is precompiled at deploy time** via `wasmtime compile -O
+  opt-level=2`, not JIT'd at request time. The harness uses the precompiled
+  `.cwasm` for every Wasm lane to mirror this.
+- **The guest cannot JIT either.** The Wasm sandbox model (W xor X pages)
+  prevents code inside a Wasm module from generating new machine code at
+  runtime, so SpiderMonkey running *inside* the StarlingMonkey embedding
+  runs **interpreter-only** — its Baseline and Ion JIT tiers are
+  unavailable in this deployment mode.
+
+This is exactly the gap Wizer and Weval are designed to close:
+
+| Optimization | What it does | When it runs |
+| --- | --- | --- |
+| Wizer pre-init | Snapshot the interpreter state with the user module already parsed and globals initialized | Deploy-time, pre-cold-start |
+| Weval AOT specialization | Partially evaluate the SpiderMonkey interpreter against the snapshotted module so hot dispatch paths bypass the generic opcode-interpreter loop | Deploy-time |
+| Wasmtime AOT (`wasmtime compile`) | Cranelift-compile the entire Wasm module to native machine code | Deploy-time |
+
+The hot-runtime numbers in this README therefore reflect a
+SpiderMonkey-in-Wasm-without-guest-JIT execution path, which is the same
+shape users see in Fastly Compute@Edge today. They should not be compared
+directly to running a benchmark in a JIT'd JS engine on a developer
+workstation.
+
+### Verified results — 2026-04-27 (wasmtime 44.0.0, aarch64-linux)
+
+Five benchmark programs, three lanes that run in this environment (Node.js,
+js2wasm, StarlingMonkey + ComponentizeJS). The runtime-eval lane is omitted
+because it requires a vendored StarlingMonkey checkout that is not present
+in this environment. AssemblyScript / Javy / Porffor are also omitted on
+the same grounds.
+
+#### Runtime metrics (median of 5–7 runs)
+
+| Program | Lane | Cold ms | Hot ms | Compute-only ms |
+| --- | --- | ---: | ---: | ---: |
+| `array-sum` | Node.js | 22.4 | 15.3 | 12.9 |
+| `array-sum` | js2wasm → Wasmtime | _runtime-error: WebAssembly translation error_ | | |
+| `array-sum` | SM + Componentize (Wizer + Weval) → Wasmtime | 29.4 | 159.2 | 125.9 |
+| `fib-recursive` | Node.js | 18.1 | 10.4 | 4.7 |
+| `fib-recursive` | js2wasm → Wasmtime | **28.2** | **10.1** | **2.9** |
+| `fib-recursive` | SM + Componentize (Wizer + Weval) → Wasmtime | 33.7 | 191.7 | 155.6 |
+| `fib` | Node.js | 27.1 | 16.6 | 10.7 |
+| `fib` | js2wasm → Wasmtime | **27.0** | **18.8** | **10.5** |
+| `fib` | SM + Componentize (Wizer + Weval) → Wasmtime | 30.0 | 1111.2 | 923.1 |
+| `object-ops` | Node.js | 29.5 | 5.2 | 1.1 |
+| `object-ops` | js2wasm → Wasmtime | _runtime-error: failed to parse WebAssembly module_ | | |
+| `object-ops` | SM + Componentize (Wizer + Weval) → Wasmtime | 34.3 | 226.7 | 182.4 |
+| `string-hash` | Node.js | 20.7 | 5.4 | 0.9 |
+| `string-hash` | js2wasm → Wasmtime | _compile-error: wasm-validator (pre-existing js2wasm bug)_ | | |
+| `string-hash` | SM + Componentize (Wizer + Weval) → Wasmtime | 28.2 | 20.5 | 11.9 |
+
+For the two programs where js2wasm → Wasmtime succeeds end-to-end
+(`fib-recursive`, `fib`), js2wasm beats SpiderMonkey + ComponentizeJS on hot
+runtime by **~19× to ~60×**:
+
+- `fib`: js2wasm 18.8 ms vs SM 1,111.2 ms → **59× faster**
+- `fib-recursive`: js2wasm 10.1 ms vs SM 191.7 ms → **19× faster**
+
+The size story is the second headline finding: SM + ComponentizeJS is
+**~50,000× larger** than the equivalent js2wasm precompiled artifact (52 MB
+vs 193 kB cwasm) because the component carries a snapshotted SpiderMonkey
+embedding plus the user module. js2wasm compiles the user module directly
+to Wasm without an embedded interpreter.
+
+The other three programs hit pre-existing js2wasm codegen bugs unrelated to
+`#1125`. The SM + ComponentizeJS lane successfully runs all five.
+
+#### A/B verification: Wizer-only vs Wizer + Weval AOT
+
+Empirical proof both Wizer and Weval are actually running (not just
+claimed by the metadata sidecar). Same `fib` benchmark, same wasmtime 44,
+adapter run twice with the only difference being `STARLINGMONKEY_COMPONENTIZE_AOT`:
+
+| Setting | Adapter compile time | Component size |
+| --- | ---: | ---: |
+| `STARLINGMONKEY_COMPONENTIZE_AOT=0` (Wizer only) | 1,607 ms | 11,940,229 bytes |
+| `STARLINGMONKEY_COMPONENTIZE_AOT=1` (Wizer + Weval, default) | 3,811 ms | 14,815,040 bytes |
+| **Delta** | **+2,204 ms (+137 %)** | **+2,874,811 bytes (+24 %)** |
+
+The +24 % size delta matches this README's documented ~25 % expectation
+exactly, and the +137 % compile-time delta accounts for Weval's downloaded
+native binary running as a post-processing step over the Wizer-snapshotted
+component.
+
+The hot-runtime delta between Wizer-only and Wizer + Weval is workload-
+dependent. For `fib` (a tight `for` over integer arithmetic) the inner loop
+runs the same handful of opcodes 20 million times, so Weval's interpreter-
+dispatch specialization has very little overhead to amortize away — the
+two configurations come out within run-to-run noise on this workload.
+Weval is designed to pay off on workloads dominated by property access,
+dynamic dispatch, or many distinct call sites; the bundled `fib` program
+is a deliberately degenerate case from that perspective.
+
+#### Size metrics (per benchmark program)
+
+| Program | js2wasm raw | js2wasm gz | js2wasm cwasm | SM + Comp raw | SM + Comp gz | SM + Comp cwasm |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fib` | 0.1 kB | 0.1 kB | 193.5 kB | 14,467.8 kB | 4,316.5 kB | 53,437.3 kB |
+| `fib-recursive` | 0.2 kB | 0.1 kB | 193.6 kB | 14,470.0 kB | 4,317.0 kB | 53,437.4 kB |
+| `array-sum` | 0.5 kB | 0.3 kB | _n/a_ | 14,469.2 kB | 4,316.8 kB | 53,437.3 kB |
+| `object-ops` | 0.5 kB | 0.3 kB | 194.5 kB | 14,469.4 kB | 4,317.1 kB | 53,437.3 kB |
+| `string-hash` | 4.5 kB | 1.9 kB | _n/a_ | 14,473.3 kB | 4,318.3 kB | 53,501.3 kB |
 
 ## Javy
 

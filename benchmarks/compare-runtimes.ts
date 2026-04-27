@@ -156,7 +156,27 @@ const STARLINGMONKEY_ADAPTER_KIND = process.env.STARLINGMONKEY_ADAPTER_KIND || "
 const STARLINGMONKEY_ADAPTER_IS_BUNDLED =
   STARLINGMONKEY_ADAPTER !== "" && path.resolve(STARLINGMONKEY_ADAPTER) === BUNDLED_STARLINGMONKEY_ADAPTER;
 const WASMTIME_OPTIMIZE = process.env.WASMTIME_OPTIMIZE || "opt-level=2";
-const WASMTIME_WASM_FLAGS = ["-W", "gc=y,gc-support=y,function-references=y,exceptions=y"];
+// Wasmtime flag set tracked against wasmtime >= 40 (no upper pin — the
+// harness is verified against the latest stable release at the time of
+// each run; v40 is the floor because that is when the component-model
+// `--invoke "fn(args)"` syntax shipped, which the StarlingMonkey +
+// ComponentizeJS lane depends on).
+//
+// History:
+//   - Pre-31: `-W gc=y,gc-support=y,function-references=y,exceptions=y`
+//   - v31:    `gc-support` was collapsed into `gc=y`; `exceptions=y`
+//             temporarily disappeared and exception-handling was implicit.
+//   - v40+:   `-W exceptions=y` is back as an explicit flag. It is required
+//             as soon as the component model emits exception bytecode
+//             (which ComponentizeJS output does for SpiderMonkey's
+//             exception machinery). v40 also added the `--invoke "fn(args)"`
+//             parenthesized syntax that finally lets the CLI invoke
+//             component exports directly — the harness uses that for the
+//             StarlingMonkey + ComponentizeJS lane below.
+//
+// `component-model=y` is on by default but we set it explicitly so component
+// artifacts continue to load if a future wasmtime turns it off-by-default.
+const WASMTIME_WASM_FLAGS = ["-W", "gc=y,function-references=y,component-model=y,exceptions=y"];
 const WASM_OPT_FLAGS = (process.env.WASM_OPT_FLAGS || "--all-features -O4").trim().split(/\s+/).filter(Boolean);
 const BENCHMARK_FILTER = new Set(
   (process.env.BENCHMARK_FILTER || "")
@@ -792,6 +812,86 @@ function measureWasmtimeHotInvocation(
     if (resultValue == null) resultValue = parsed;
     if (resultValue !== parsed) {
       throw new Error(`Non-deterministic Wasmtime hot result for ${artifactPath}: ${resultValue} vs ${parsed}`);
+    }
+    timings.push(res.durationMs / iterationsPerRun);
+  }
+  return {
+    arg,
+    runs,
+    iterationsPerRun,
+    medianMs: median(timings),
+    allMs: timings,
+    result: resultValue,
+  };
+}
+
+// Component-aware invocation. Wasmtime >= 40 supports `--invoke "fn(arg)"`
+// against components, with results printed to stdout the same way module
+// invocation does. The kebab-case name the WIT world exposes ("run-hot")
+// is the form that wasmtime expects in the `--invoke` expression.
+function measureWasmtimeComponentInvocation(
+  artifactPath: string,
+  exportName: string,
+  arg: number,
+  runs: number,
+): InvocationMetric {
+  const timings: number[] = [];
+  let resultValue: number | null = null;
+  for (let i = 0; i < runs; i++) {
+    const res = runCommand(WASMTIME_BIN, [
+      "run",
+      ...WASMTIME_WASM_FLAGS,
+      "--allow-precompiled",
+      "--invoke",
+      `${exportName}(${arg})`,
+      artifactPath,
+    ]);
+    if (!res.ok) {
+      throw new Error(res.stderr || `wasmtime component run failed for ${artifactPath}`);
+    }
+    const parsed = parseWasmtimeInvokeOutput(res.stdout);
+    if (resultValue == null) resultValue = parsed;
+    if (resultValue !== parsed) {
+      throw new Error(`Non-deterministic Wasmtime component result for ${artifactPath}: ${resultValue} vs ${parsed}`);
+    }
+    timings.push(res.durationMs);
+  }
+  return {
+    arg,
+    runs,
+    medianMs: median(timings),
+    allMs: timings,
+    result: resultValue,
+  };
+}
+
+function measureWasmtimeComponentHotInvocation(
+  artifactPath: string,
+  exportName: string,
+  arg: number,
+  runs: number,
+  iterationsPerRun: number,
+): InvocationMetric {
+  const timings: number[] = [];
+  let resultValue: number | null = null;
+  for (let i = 0; i < runs; i++) {
+    const res = runCommand(WASMTIME_BIN, [
+      "run",
+      ...WASMTIME_WASM_FLAGS,
+      "--allow-precompiled",
+      "--invoke",
+      `${exportName}(${iterationsPerRun},${arg})`,
+      artifactPath,
+    ]);
+    if (!res.ok) {
+      throw new Error(res.stderr || `wasmtime component hot run failed for ${artifactPath}`);
+    }
+    const parsed = parseWasmtimeInvokeOutput(res.stdout);
+    if (resultValue == null) resultValue = parsed;
+    if (resultValue !== parsed) {
+      throw new Error(
+        `Non-deterministic Wasmtime component hot result for ${artifactPath}: ${resultValue} vs ${parsed}`,
+      );
     }
     timings.push(res.durationMs / iterationsPerRun);
   }
@@ -1869,12 +1969,20 @@ function evaluateStarlingMonkeyComponentize(
       };
     }
 
-    const coldStart = measureWasmtimeInvocation(
-      cwasmPath,
-      invokeExport,
-      program.benchmark.coldArg,
-      program.benchmark.coldRuns,
-    );
+    // Adapter output kind dictates which `wasmtime run --invoke` syntax to
+    // use. ComponentizeJS produces a component (kind: "component") for which
+    // wasmtime >= 40 supports `--invoke "fn(arg1, arg2, ...)"`. Older module
+    // adapters (kind: "module") use the legacy `--invoke <fn> <artifact> arg`
+    // form. Both paths share `parseWasmtimeInvokeOutput` for stdout parsing.
+    const isComponent = metadata.kind === "component";
+    const invokeCold = isComponent ? measureWasmtimeComponentInvocation : measureWasmtimeInvocation;
+    const invokeHot = isComponent ? measureWasmtimeComponentHotInvocation : measureWasmtimeHotInvocation;
+    // Module-style adapters historically synthesized `<entry>_hot`; the
+    // component adapter emits the WIT-style `<entry>-hot`. Use the metadata
+    // sidecar value when present so both paths agree.
+    const hotExportForInvoke = isComponent ? hotInvokeExport : invokeExport;
+
+    const coldStart = invokeCold(cwasmPath, invokeExport, program.benchmark.coldArg, program.benchmark.coldRuns);
     if (coldStart.result !== baselineCold) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
@@ -1892,7 +2000,7 @@ function evaluateStarlingMonkeyComponentize(
       };
     }
 
-    const runtimeSingleCall = measureWasmtimeInvocation(
+    const runtimeSingleCall = invokeCold(
       cwasmPath,
       invokeExport,
       program.benchmark.runtimeArg,
@@ -1917,9 +2025,9 @@ function evaluateStarlingMonkeyComponentize(
       };
     }
 
-    const runtime = measureWasmtimeHotInvocation(
+    const runtime = invokeHot(
       cwasmPath,
-      hotInvokeExport,
+      hotExportForInvoke,
       program.benchmark.runtimeArg,
       program.benchmark.runtimeRuns,
       hotIterations,

@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-04-27T00:09:39.028Z",
-  "wasmtimeVersion": "wasmtime 31.0.0 (7a9be587f 2025-03-20)",
+  "generatedAt": "2026-04-27T00:24:41.751Z",
+  "wasmtimeVersion": "wasmtime 44.0.0 (af382d7d9 2026-04-20)",
   "wasmtimeOptimize": "opt-level=2",
   "host": {
-    "node": "v22.22.2",
+    "node": "v25.8.2",
     "platform": "linux",
-    "arch": "x64"
+    "arch": "arm64"
   },
   "note": "Wasmtime results use precompiled cwasm artifacts with a speed-optimized profile as a best-effort approximation of a production edge deployment. This is not a claim about Fastly's exact internal runtime flags.",
   "hotRuntimeDefinition": "Hot runtime is amortized wall-clock milliseconds per call inside a fresh process after one module/program load, measured by looping inside the same process/module.",
@@ -37,15 +37,15 @@
           "coldStart": {
             "arg": 2000,
             "runs": 7,
-            "medianMs": 30.84139300000004,
+            "medianMs": 22.435541,
             "allMs": [
-              32.28697900000003,
-              30.678534000000013,
-              30.84139300000004,
-              29.94818399999997,
-              31.884998999999993,
-              30.620781999999963,
-              31.388642000000004
+              28.42083299999996,
+              20.535957999999994,
+              23.316958999999997,
+              29.983625000000018,
+              22.435541,
+              18.21724999999998,
+              15.161625000000015
             ],
             "result": 1018392
           },
@@ -53,13 +53,13 @@
             "arg": 1000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 25.848695799999994,
+            "medianMs": 15.256933400000003,
             "allMs": [
-              25.848695799999994,
-              26.51743100000001,
-              26.110291000000007,
-              25.668631400000002,
-              25.623544200000016
+              35.11151679999999,
+              15.455191599999988,
+              15.256933400000003,
+              14.164049999999998,
+              14.705266600000005
             ],
             "result": 511492320
           },
@@ -67,18 +67,18 @@
             "arg": 1000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 15.7830598,
+            "medianMs": 12.898775,
             "allMs": [
-              16.7243548,
-              16.0332138,
-              15.163709599999999,
-              14.917026000000002,
-              15.7830598
+              8.9195,
+              12.898775,
+              13.2791168,
+              10.5510334,
+              14.132408400000003
             ],
             "result": 511492320
           },
           "metadata": {
-            "engine": "v22.22.2",
+            "engine": "v25.8.2",
             "hotIterations": 5,
             "computeMethod": "internal in-process timed loop after warm-up"
           }
@@ -86,81 +86,32 @@
         {
           "id": "js2wasm-node",
           "label": "js2wasm -> Node.js (hosted)",
-          "status": "ok",
-          "notes": [],
-          "compilerBytes": 3034106,
+          "status": "runtime-error",
+          "notes": [
+            "Error: node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\n[CompileError: WebAssembly.instantiate(): Compiling function #0 failed: invalid heap type 'exact', enable with --experimental-wasm-custom-descriptors @+60]\n\nNode.js v25.8.2\n"
+          ],
+          "compilerBytes": 3033079,
           "runtimeBytes": 2024,
-          "compileMs": 1303.9810340000001,
-          "rawBytes": 286,
-          "gzipBytes": 223,
+          "compileMs": 1032.9814999999996,
+          "rawBytes": 287,
+          "gzipBytes": 224,
           "precompiledBytes": null,
-          "coldStart": {
-            "arg": 2000,
-            "runs": 7,
-            "medianMs": 436.6753179999996,
-            "allMs": [
-              447.4853820000003,
-              432.06333399999994,
-              436.6753179999996,
-              435.830508,
-              448.0099399999999,
-              428.26156700000047,
-              444.0737159999999
-            ],
-            "result": 1018392
-          },
-          "runtime": {
-            "arg": 1000000,
-            "runs": 5,
-            "iterationsPerRun": 5,
-            "medianMs": 96.19559059999992,
-            "allMs": [
-              95.22261040000012,
-              96.19559059999992,
-              97.76579160000001,
-              97.68942960000022,
-              95.51023700000005
-            ],
-            "result": 511492320
-          },
-          "computeOnly": {
-            "arg": 1000000,
-            "runs": 5,
-            "iterationsPerRun": 5,
-            "medianMs": 5.568260399999997,
-            "allMs": [
-              5.593020000000001,
-              5.7417238,
-              5.566472399999998,
-              5.446118000000001,
-              5.568260399999997
-            ],
-            "result": 511492320
-          },
-          "metadata": {
-            "engine": "v22.22.2",
-            "wasmOptFlags": [
-              "--all-features",
-              "-O4"
-            ],
-            "target": "gc",
-            "fast": true,
-            "hotIterations": 5,
-            "computeMethod": "internal in-process timed loop after warm-up"
-          }
+          "coldStart": null,
+          "runtime": null,
+          "computeOnly": null
         },
         {
           "id": "js2wasm-wasmtime",
           "label": "js2wasm -> Wasmtime",
           "status": "runtime-error",
           "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
+            "Error: failed to compile: wasm[0]::function[0]\n\nCaused by:\n    0: WebAssembly translation error\n    1: Invalid input WebAssembly code at offset 77: custom descriptors required for exact reference types\n\n"
           ],
-          "compilerBytes": 3034106,
+          "compilerBytes": 3033079,
           "runtimeBytes": null,
-          "compileMs": 732.0156289999995,
-          "rawBytes": 483,
-          "gzipBytes": 310,
+          "compileMs": 630.5803760000003,
+          "rawBytes": 485,
+          "gzipBytes": 312,
           "precompiledBytes": null,
           "coldStart": null,
           "runtime": null,
@@ -232,18 +183,85 @@
         {
           "id": "starlingmonkey-componentize-wasmtime",
           "label": "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
-          "status": "runtime-error",
+          "status": "ok",
           "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
+            "benchmark-specific component artifact generated through ComponentizeJS",
+            "Wizer pre-init: on; Weval AOT: on",
+            "using bundled adapter benchmarks/competitive/sm-componentize-adapter.mjs"
           ],
           "compilerBytes": null,
           "runtimeBytes": null,
-          "rawBytes": 14816505,
-          "gzipBytes": 4420573,
-          "precompiledBytes": null,
-          "coldStart": null,
-          "runtime": null,
-          "computeOnly": null
+          "rawBytes": 14816491,
+          "gzipBytes": 4420451,
+          "precompiledBytes": 54719768,
+          "coldStart": {
+            "arg": 2000,
+            "runs": 7,
+            "medianMs": 29.367041999999856,
+            "allMs": [
+              50.16783299999952,
+              29.367041999999856,
+              31.86883300000045,
+              31.268624999998792,
+              23.531708999998955,
+              23.79558299999917,
+              25.138667000001078
+            ],
+            "result": 1018392
+          },
+          "runtime": {
+            "arg": 1000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 159.21546679999992,
+            "allMs": [
+              159.21546679999992,
+              164.74677499999999,
+              150.42508340000023,
+              151.27054160000006,
+              173.7487000000001
+            ],
+            "result": 511492320
+          },
+          "computeOnly": {
+            "arg": 1000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 125.88057520000001,
+            "allMs": [
+              125.88057520000001,
+              132.83975839999985,
+              117.09530840000008,
+              121.1253832000002,
+              143.59406659999985
+            ],
+            "result": 511492320
+          },
+          "metadata": {
+            "adapter": "/workspace/.claude/worktrees/issue-1125-benchmark/benchmarks/competitive/sm-componentize-adapter.mjs",
+            "adapterKind": "component",
+            "invokeExport": "run",
+            "hotInvokeExport": "run-hot",
+            "componentize": {
+              "world": "benchmark",
+              "wizerEnabled": true,
+              "wevalAotEnabled": true,
+              "enableAot": true,
+              "usedLibraryImport": true,
+              "disableFeatures": [
+                "random",
+                "stdio",
+                "clocks",
+                "http",
+                "fetch-event"
+              ],
+              "wizerBin": null,
+              "wevalBin": null
+            },
+            "wasmtimeOptimize": "opt-level=2",
+            "hotIterations": 5,
+            "computeMethod": "estimated = hot_runtime - single_call/iterations"
+          }
         }
       ]
     },
@@ -273,15 +291,15 @@
           "coldStart": {
             "arg": 10,
             "runs": 7,
-            "medianMs": 31.374062999999296,
+            "medianMs": 18.114040999998906,
             "allMs": [
-              33.47710200000074,
-              30.999784999999974,
-              31.14433800000188,
-              30.747643000002427,
-              31.374062999999296,
-              32.0381320000015,
-              32.636891999998625
+              29.723542000001544,
+              16.53125,
+              17.080667000000176,
+              16.504957999999533,
+              20.05095799999981,
+              18.114040999998906,
+              18.42675000000054
             ],
             "result": 55
           },
@@ -289,13 +307,13 @@
             "arg": 30,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 18.43121159999937,
+            "medianMs": 10.442499999999928,
             "allMs": [
-              18.32498259999993,
-              18.43121159999937,
-              18.72923199999932,
-              18.300547599999845,
-              18.967309199999725
+              11.18816680000018,
+              11.661616599999979,
+              10.442499999999928,
+              9.186458399999902,
+              9.112975000000006
             ],
             "result": 832040
           },
@@ -303,18 +321,18 @@
             "arg": 30,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 9.8360714,
+            "medianMs": 4.746283200000001,
             "allMs": [
-              9.8360714,
-              9.8174122,
-              9.8385582,
-              9.8623968,
-              9.7843622
+              5.4861166,
+              5.2001,
+              4.746283200000001,
+              4.5371500000000005,
+              4.7349666
             ],
             "result": 832040
           },
           "metadata": {
-            "engine": "v22.22.2",
+            "engine": "v25.8.2",
             "hotIterations": 5,
             "computeMethod": "internal in-process timed loop after warm-up"
           }
@@ -326,9 +344,9 @@
           "notes": [
             "[wasm-validator error in function fib] call param types must match, on \n(call $__any_add\n (local.get $0)\n (call $fib\n  (i32.const 2)\n )\n)\n(on argument 0)\n[wasm-validator error in function fib] call param types must match, on \n(call $__any_add\n (local.get $0)\n (call $fib\n  (i32.const 2)\n )\n)\n(on argument 1)\nFatal: error validating input\n"
           ],
-          "compilerBytes": 3034106,
+          "compilerBytes": 3033079,
           "runtimeBytes": 2024,
-          "compileMs": 428.884191000001,
+          "compileMs": 725.848876,
           "rawBytes": 5937,
           "gzipBytes": 2432,
           "precompiledBytes": null,
@@ -339,19 +357,66 @@
         {
           "id": "js2wasm-wasmtime",
           "label": "js2wasm -> Wasmtime",
-          "status": "runtime-error",
-          "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
-          ],
-          "compilerBytes": 3034106,
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": 3033079,
           "runtimeBytes": null,
-          "compileMs": 404.5789810000024,
+          "compileMs": 475.92833299999984,
           "rawBytes": 164,
           "gzipBytes": 153,
-          "precompiledBytes": null,
-          "coldStart": null,
-          "runtime": null,
-          "computeOnly": null
+          "precompiledBytes": 198224,
+          "coldStart": {
+            "arg": 10,
+            "runs": 7,
+            "medianMs": 28.23083299999962,
+            "allMs": [
+              31.92212500000096,
+              28.23083299999962,
+              27.4754580000008,
+              32.267125000000306,
+              19.92804100000103,
+              28.64558399999987,
+              16.828333999999813
+            ],
+            "result": 55
+          },
+          "runtime": {
+            "arg": 30,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 10.127958399999988,
+            "allMs": [
+              8.774875000000247,
+              9.344766799999707,
+              10.127958399999988,
+              10.151566800000001,
+              10.139808400000039
+            ],
+            "result": 832040
+          },
+          "computeOnly": {
+            "arg": 30,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 2.9423334000002788,
+            "allMs": [
+              2.9423334000002788,
+              0.33368339999979213,
+              4.371225199999753,
+              1.791891800000304,
+              3.8424665999998986
+            ],
+            "result": 832040
+          },
+          "metadata": {
+            "wasmtimeOptimize": "opt-level=2",
+            "wasmOptFlags": [
+              "--all-features",
+              "-O4"
+            ],
+            "hotIterations": 5,
+            "computeMethod": "estimated = hot_runtime - single_call/iterations"
+          }
         },
         {
           "id": "assemblyscript-wasmtime",
@@ -419,18 +484,85 @@
         {
           "id": "starlingmonkey-componentize-wasmtime",
           "label": "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
-          "status": "runtime-error",
+          "status": "ok",
           "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
+            "benchmark-specific component artifact generated through ComponentizeJS",
+            "Wizer pre-init: on; Weval AOT: on",
+            "using bundled adapter benchmarks/competitive/sm-componentize-adapter.mjs"
           ],
           "compilerBytes": null,
           "runtimeBytes": null,
-          "rawBytes": 14817283,
-          "gzipBytes": 4420623,
-          "precompiledBytes": null,
-          "coldStart": null,
-          "runtime": null,
-          "computeOnly": null
+          "rawBytes": 14817292,
+          "gzipBytes": 4420590,
+          "precompiledBytes": 54719936,
+          "coldStart": {
+            "arg": 10,
+            "runs": 7,
+            "medianMs": 33.699375000000146,
+            "allMs": [
+              41.41658300000199,
+              33.6349999999984,
+              33.317166000000725,
+              31.352249999999913,
+              50.10479199999827,
+              33.699375000000146,
+              42.739749999997
+            ],
+            "result": 55
+          },
+          "runtime": {
+            "arg": 30,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 191.66728339999972,
+            "allMs": [
+              216.6798668000003,
+              218.6815999999999,
+              191.66728339999972,
+              190.21899180000037,
+              188.00026679999937
+            ],
+            "result": 832040
+          },
+          "computeOnly": {
+            "arg": 30,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 155.60816659999983,
+            "allMs": [
+              171.05538339999984,
+              174.61015839999965,
+              155.60816659999983,
+              150.5798084000002,
+              150.96315839999951
+            ],
+            "result": 832040
+          },
+          "metadata": {
+            "adapter": "/workspace/.claude/worktrees/issue-1125-benchmark/benchmarks/competitive/sm-componentize-adapter.mjs",
+            "adapterKind": "component",
+            "invokeExport": "run",
+            "hotInvokeExport": "run-hot",
+            "componentize": {
+              "world": "benchmark",
+              "wizerEnabled": true,
+              "wevalAotEnabled": true,
+              "enableAot": true,
+              "usedLibraryImport": true,
+              "disableFeatures": [
+                "random",
+                "stdio",
+                "clocks",
+                "http",
+                "fetch-event"
+              ],
+              "wizerBin": null,
+              "wevalBin": null
+            },
+            "wasmtimeOptimize": "opt-level=2",
+            "hotIterations": 5,
+            "computeMethod": "estimated = hot_runtime - single_call/iterations"
+          }
         }
       ]
     },
@@ -460,15 +592,15 @@
           "coldStart": {
             "arg": 5000,
             "runs": 7,
-            "medianMs": 31.34742600000027,
+            "medianMs": 27.074749999999767,
             "allMs": [
-              30.95919899999717,
-              31.219719000000623,
-              32.23447699999815,
-              31.06817499999306,
-              32.76462200000242,
-              32.58248900000035,
-              31.34742600000027
+              27.074749999999767,
+              21.36095799999748,
+              32.87895799999751,
+              21.435417000000598,
+              30.706999999998516,
+              20.96295800000007,
+              38.95208300000013
             ],
             "result": -1846256875
           },
@@ -476,13 +608,13 @@
             "arg": 20000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 129.96186660000095,
+            "medianMs": 16.629433399999833,
             "allMs": [
-              129.87240659999952,
-              130.46416779999998,
-              129.83406099999993,
-              129.96186660000095,
-              129.96720760000025
+              16.629433399999833,
+              16.662050000000455,
+              16.442733399999998,
+              16.577833200000168,
+              16.635858400000142
             ],
             "result": -1821818939
           },
@@ -490,18 +622,18 @@
             "arg": 20000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 102.74992360000002,
+            "medianMs": 10.662875,
             "allMs": [
-              102.74992360000002,
-              102.7305292,
-              102.80159280000001,
-              102.7406542,
-              102.766092
+              10.530200000000002,
+              10.662875,
+              11.2671666,
+              10.940466599999999,
+              10.4409666
             ],
             "result": -1821818939
           },
           "metadata": {
-            "engine": "v22.22.2",
+            "engine": "v25.8.2",
             "hotIterations": 5,
             "computeMethod": "internal in-process timed loop after warm-up"
           }
@@ -511,24 +643,24 @@
           "label": "js2wasm -> Node.js (hosted)",
           "status": "ok",
           "notes": [],
-          "compilerBytes": 3034106,
+          "compilerBytes": 3033079,
           "runtimeBytes": 2024,
-          "compileMs": 688.0418570000111,
+          "compileMs": 782.0409180000024,
           "rawBytes": 131,
           "gzipBytes": 125,
           "precompiledBytes": null,
           "coldStart": {
             "arg": 5000,
             "runs": 7,
-            "medianMs": 441.8842519999962,
+            "medianMs": 185.49091699999917,
             "allMs": [
-              449.3533099999986,
-              429.8073680000016,
-              430.5338479999991,
-              435.2946589999992,
-              442.52196400000685,
-              448.51850099999865,
-              441.8842519999962
+              199.0487920000014,
+              192.9429999999993,
+              175.46958300000188,
+              182.63441600000078,
+              185.49091699999917,
+              171.15137499999764,
+              206.23083300000144
             ],
             "result": -1846256875
           },
@@ -536,13 +668,13 @@
             "arg": 20000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 101.47259140000097,
+            "medianMs": 41.861433399999804,
             "allMs": [
-              101.0075794000004,
-              102.02571679999964,
-              102.02417340000102,
-              99.44351560000068,
-              101.47259140000097
+              40.650608400000785,
+              42.38106659999903,
+              45.56013340000063,
+              41.52050840000011,
+              41.861433399999804
             ],
             "result": -1821818939
           },
@@ -550,18 +682,18 @@
             "arg": 20000000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 6.228061600000001,
+            "medianMs": 5.264133400000003,
             "allMs": [
-              6.243081600000005,
-              6.223364600000002,
-              6.226812999999993,
-              6.228061600000001,
-              6.228690600000005
+              5.226683200000002,
+              5.264133400000003,
+              5.4229666000000005,
+              5.2062415999999985,
+              5.4097666
             ],
             "result": -1821818939
           },
           "metadata": {
-            "engine": "v22.22.2",
+            "engine": "v25.8.2",
             "wasmOptFlags": [
               "--all-features",
               "-O4"
@@ -575,19 +707,66 @@
         {
           "id": "js2wasm-wasmtime",
           "label": "js2wasm -> Wasmtime",
-          "status": "runtime-error",
-          "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
-          ],
-          "compilerBytes": 3034106,
+          "status": "ok",
+          "notes": [],
+          "compilerBytes": 3033079,
           "runtimeBytes": null,
-          "compileMs": 366.43970699999045,
+          "compileMs": 495.4462910000002,
           "rawBytes": 152,
           "gzipBytes": 148,
-          "precompiledBytes": null,
-          "coldStart": null,
-          "runtime": null,
-          "computeOnly": null
+          "precompiledBytes": 198168,
+          "coldStart": {
+            "arg": 5000,
+            "runs": 7,
+            "medianMs": 27.040291999997862,
+            "allMs": [
+              56.146999999997206,
+              19.600333000002138,
+              27.040291999997862,
+              31.34216700000252,
+              18.457084000001487,
+              25.653292000002693,
+              31.418666999998095
+            ],
+            "result": -1846256875
+          },
+          "runtime": {
+            "arg": 20000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 18.794208400000933,
+            "allMs": [
+              18.926641599999858,
+              19.807325000000127,
+              16.512258399999702,
+              18.794208400000933,
+              18.409966600000917
+            ],
+            "result": -1821818939
+          },
+          "computeOnly": {
+            "arg": 20000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 10.470991800002228,
+            "allMs": [
+              10.502208399999654,
+              12.28730820000055,
+              6.752658399999202,
+              10.470991800002228,
+              8.577666600001976
+            ],
+            "result": -1821818939
+          },
+          "metadata": {
+            "wasmtimeOptimize": "opt-level=2",
+            "wasmOptFlags": [
+              "--all-features",
+              "-O4"
+            ],
+            "hotIterations": 5,
+            "computeMethod": "estimated = hot_runtime - single_call/iterations"
+          }
         },
         {
           "id": "assemblyscript-wasmtime",
@@ -655,18 +834,85 @@
         {
           "id": "starlingmonkey-componentize-wasmtime",
           "label": "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
-          "status": "runtime-error",
+          "status": "ok",
           "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
+            "benchmark-specific component artifact generated through ComponentizeJS",
+            "Wizer pre-init: on; Weval AOT: on",
+            "using bundled adapter benchmarks/competitive/sm-componentize-adapter.mjs"
           ],
           "compilerBytes": null,
           "runtimeBytes": null,
-          "rawBytes": 14814985,
-          "gzipBytes": 4420137,
-          "precompiledBytes": null,
-          "coldStart": null,
-          "runtime": null,
-          "computeOnly": null
+          "rawBytes": 14815001,
+          "gzipBytes": 4420090,
+          "precompiledBytes": 54719768,
+          "coldStart": {
+            "arg": 5000,
+            "runs": 7,
+            "medianMs": 30.047042000005604,
+            "allMs": [
+              33.25416699999914,
+              26.615624999998545,
+              34.67041600000084,
+              30.821875000001455,
+              25.575708999997005,
+              28.15879199999472,
+              30.047042000005604
+            ],
+            "result": -1846256875
+          },
+          "runtime": {
+            "arg": 20000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 1111.1712505999997,
+            "allMs": [
+              1112.2371838000006,
+              1102.4712088,
+              1111.1712505999997,
+              1150.1569422,
+              1102.7453588000003
+            ],
+            "result": -1821818939
+          },
+          "computeOnly": {
+            "arg": 20000000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 923.0764922000002,
+            "allMs": [
+              923.0764922000002,
+              912.3115338000005,
+              923.1924419999996,
+              961.1736337999987,
+              911.4703338000006
+            ],
+            "result": -1821818939
+          },
+          "metadata": {
+            "adapter": "/workspace/.claude/worktrees/issue-1125-benchmark/benchmarks/competitive/sm-componentize-adapter.mjs",
+            "adapterKind": "component",
+            "invokeExport": "run",
+            "hotInvokeExport": "run-hot",
+            "componentize": {
+              "world": "benchmark",
+              "wizerEnabled": true,
+              "wevalAotEnabled": true,
+              "enableAot": true,
+              "usedLibraryImport": true,
+              "disableFeatures": [
+                "random",
+                "stdio",
+                "clocks",
+                "http",
+                "fetch-event"
+              ],
+              "wizerBin": null,
+              "wevalBin": null
+            },
+            "wasmtimeOptimize": "opt-level=2",
+            "hotIterations": 5,
+            "computeMethod": "estimated = hot_runtime - single_call/iterations"
+          }
         }
       ]
     },
@@ -696,15 +942,15 @@
           "coldStart": {
             "arg": 1000,
             "runs": 7,
-            "medianMs": 31.332665000001725,
+            "medianMs": 29.52254200000607,
             "allMs": [
-              30.675713999997242,
-              31.266562999997404,
-              33.15525499999785,
-              31.332665000001725,
-              31.67283999999927,
-              31.44890899999882,
-              30.744763000002422
+              78.3405000000057,
+              24.227416999987327,
+              38.92483400000492,
+              41.67487499999697,
+              18.834040999994613,
+              21.93575000000419,
+              29.52254200000607
             ],
             "result": -20015548
           },
@@ -712,13 +958,13 @@
             "arg": 800000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 13.477025599998887,
+            "medianMs": 5.232799999997951,
             "allMs": [
-              13.477025599998887,
-              13.543574400000216,
-              13.328224800000317,
-              13.441747800000304,
-              13.659217600000556
+              8.58440840000112,
+              4.888716800001566,
+              4.8621916000003695,
+              5.232799999997951,
+              6.970891600000323
             ],
             "result": 1986408576
           },
@@ -726,18 +972,18 @@
             "arg": 800000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 5.2400748,
+            "medianMs": 1.1240499999999998,
             "allMs": [
-              5.241365,
-              5.236466999999999,
-              5.261590999999999,
-              5.236555999999999,
-              5.2400748
+              1.1240499999999998,
+              0.6425333999999993,
+              1.4128249999999993,
+              1.595425,
+              0.6444249999999997
             ],
             "result": 1986408576
           },
           "metadata": {
-            "engine": "v22.22.2",
+            "engine": "v25.8.2",
             "hotIterations": 5,
             "computeMethod": "internal in-process timed loop after warm-up"
           }
@@ -747,24 +993,24 @@
           "label": "js2wasm -> Node.js (hosted)",
           "status": "ok",
           "notes": [],
-          "compilerBytes": 3034106,
+          "compilerBytes": 3033079,
           "runtimeBytes": 2024,
-          "compileMs": 411.4263229999997,
+          "compileMs": 853.2506250000006,
           "rawBytes": 377,
           "gzipBytes": 265,
           "precompiledBytes": null,
           "coldStart": {
             "arg": 1000,
             "runs": 7,
-            "medianMs": 443.70209700000123,
+            "medianMs": 222.30583400001342,
             "allMs": [
-              429.87722999999824,
-              435.5916450000004,
-              446.7202980000002,
-              431.37279899999703,
-              443.70209700000123,
-              456.7438550000006,
-              458.23719999999594
+              206.77412499999627,
+              225.02920799999265,
+              303.8604999999952,
+              222.30583400001342,
+              216.33749999999418,
+              241.12387500000477,
+              190.11329199999454
             ],
             "result": -20015548
           },
@@ -772,13 +1018,13 @@
             "arg": 800000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 89.31308959999879,
+            "medianMs": 39.425216600002024,
             "allMs": [
-              89.31308959999879,
-              89.12971100000141,
-              88.02864560000016,
-              92.61029739999795,
-              91.13494800000043
+              38.818708199998945,
+              39.425216600002024,
+              38.97742499999877,
+              50.44567500000121,
+              49.221124999999304
             ],
             "result": 1986408576
           },
@@ -786,18 +1032,18 @@
             "arg": 800000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 0.7508407999999918,
+            "medianMs": 0.6218167999999992,
             "allMs": [
-              0.7531010000000038,
-              0.750826799999993,
-              0.7477771999999959,
-              0.7545217999999977,
-              0.7508407999999918
+              0.6218167999999992,
+              0.6330500000000029,
+              0.7062000000000012,
+              0.6185500000000047,
+              0.6174000000000035
             ],
             "result": 1986408576
           },
           "metadata": {
-            "engine": "v22.22.2",
+            "engine": "v25.8.2",
             "wasmOptFlags": [
               "--all-features",
               "-O4"
@@ -813,14 +1059,14 @@
           "label": "js2wasm -> Wasmtime",
           "status": "runtime-error",
           "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
+            "Error: Error: failed to run main module `/tmp/js2wasm-competitive-cFcV0Y/object-ops.cwasm`\n\nCaused by:\n    0: failed to instantiate \"/tmp/js2wasm-competitive-cFcV0Y/object-ops.cwasm\"\n    1: unknown import: `string_constants::a,b,c` has not been defined\n\n"
           ],
-          "compilerBytes": 3034106,
+          "compilerBytes": 3033079,
           "runtimeBytes": null,
-          "compileMs": 351.8752780000068,
+          "compileMs": 801.7953329999873,
           "rawBytes": 551,
           "gzipBytes": 338,
-          "precompiledBytes": null,
+          "precompiledBytes": 199200,
           "coldStart": null,
           "runtime": null,
           "computeOnly": null
@@ -891,18 +1137,85 @@
         {
           "id": "starlingmonkey-componentize-wasmtime",
           "label": "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
-          "status": "runtime-error",
+          "status": "ok",
           "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
+            "benchmark-specific component artifact generated through ComponentizeJS",
+            "Wizer pre-init: on; Weval AOT: on",
+            "using bundled adapter benchmarks/competitive/sm-componentize-adapter.mjs"
           ],
           "compilerBytes": null,
           "runtimeBytes": null,
-          "rawBytes": 14816632,
-          "gzipBytes": 4420911,
-          "precompiledBytes": null,
-          "coldStart": null,
-          "runtime": null,
-          "computeOnly": null
+          "rawBytes": 14816634,
+          "gzipBytes": 4420723,
+          "precompiledBytes": 54719768,
+          "coldStart": {
+            "arg": 1000,
+            "runs": 7,
+            "medianMs": 34.34745900001144,
+            "allMs": [
+              39.984874999994645,
+              30.86358299999847,
+              41.949832999991486,
+              35.63862500000687,
+              29.00999999999476,
+              33.01429200000712,
+              34.34745900001144
+            ],
+            "result": -20015548
+          },
+          "runtime": {
+            "arg": 800000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 226.72829179999826,
+            "allMs": [
+              226.72829179999826,
+              222.36145839999955,
+              352.6086001999996,
+              226.91710019999883,
+              224.94603340000032
+            ],
+            "result": 1986408576
+          },
+          "computeOnly": {
+            "arg": 800000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 182.43885020000164,
+            "allMs": [
+              162.33211679999948,
+              176.69312499999944,
+              309.95655860000113,
+              184.8779499999975,
+              182.43885020000164
+            ],
+            "result": 1986408576
+          },
+          "metadata": {
+            "adapter": "/workspace/.claude/worktrees/issue-1125-benchmark/benchmarks/competitive/sm-componentize-adapter.mjs",
+            "adapterKind": "component",
+            "invokeExport": "run",
+            "hotInvokeExport": "run-hot",
+            "componentize": {
+              "world": "benchmark",
+              "wizerEnabled": true,
+              "wevalAotEnabled": true,
+              "enableAot": true,
+              "usedLibraryImport": true,
+              "disableFeatures": [
+                "random",
+                "stdio",
+                "clocks",
+                "http",
+                "fetch-event"
+              ],
+              "wizerBin": null,
+              "wevalBin": null
+            },
+            "wasmtimeOptimize": "opt-level=2",
+            "hotIterations": 5,
+            "computeMethod": "estimated = hot_runtime - single_call/iterations"
+          }
         }
       ]
     },
@@ -932,15 +1245,15 @@
           "coldStart": {
             "arg": 100,
             "runs": 7,
-            "medianMs": 31.108219000001554,
+            "medianMs": 20.701207999998587,
             "allMs": [
-              35.04374200000893,
-              31.108219000001554,
-              30.176633000010042,
-              32.86211300001014,
-              30.203284999995958,
-              30.819071999998414,
-              31.655251999996835
+              38.64366700001119,
+              20.873082999998587,
+              22.75495800000499,
+              20.701207999998587,
+              18.79908300000534,
+              18.3920000000071,
+              16.466792000006535
             ],
             "result": 36729899
           },
@@ -948,13 +1261,13 @@
             "arg": 20000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 9.081620400000247,
+            "medianMs": 5.418849999998929,
             "allMs": [
-              9.024537799999234,
-              9.326522999998996,
-              9.081620400000247,
-              9.36761880000122,
-              8.908601799997268
+              7.241491799999494,
+              5.418849999998929,
+              5.246825000000536,
+              7.130550000001676,
+              5.128450000000885
             ],
             "result": 862771296
           },
@@ -962,18 +1275,18 @@
             "arg": 20000,
             "runs": 5,
             "iterationsPerRun": 5,
-            "medianMs": 1.2071786000000002,
+            "medianMs": 0.9341081999999996,
             "allMs": [
-              1.2108136000000003,
-              1.2354120000000008,
-              1.2000974,
-              1.1989734000000005,
-              1.2071786000000002
+              0.9601500000000005,
+              0.7053249999999999,
+              0.9448916000000004,
+              0.9341081999999996,
+              0.8695416000000001
             ],
             "result": 862771296
           },
           "metadata": {
-            "engine": "v22.22.2",
+            "engine": "v25.8.2",
             "hotIterations": 5,
             "computeMethod": "internal in-process timed loop after warm-up"
           }
@@ -985,9 +1298,9 @@
           "notes": [
             "[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (f64.convert_i32_s\n   (local.get $7)\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (f64.convert_i32_s\n     (local.get $7)\n    )\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (f64.convert_i32_s\n   (local.get $8)\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (f64.convert_i32_s\n     (local.get $8)\n    )\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (local.get $2)\n (extern.convert_any\n  (struct.new $struct.0\n   (i32.const 1)\n   (i32.const 0)\n   (array.new_fixed $array.0 1\n    (i32.const 59)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] local.set's value type must be correct, on \n(local.set $10\n (call $length\n  (extern.convert_any\n   (local.get $2)\n  )\n )\n)\nFatal: error validating input\n"
           ],
-          "compilerBytes": 3034106,
+          "compilerBytes": 3033079,
           "runtimeBytes": 2024,
-          "compileMs": 655.8311729999987,
+          "compileMs": 714.0737090000184,
           "rawBytes": 4420,
           "gzipBytes": 1901,
           "precompiledBytes": null,
@@ -1002,9 +1315,9 @@
           "notes": [
             "[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (f64.convert_i32_s\n   (local.get $7)\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (f64.convert_i32_s\n     (local.get $7)\n    )\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $__str_flatten\n (i32.trunc_sat_f64_s\n  (f64.convert_i32_s\n   (local.get $10)\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (call $length\n  (extern.convert_any\n   (local.get $1)\n  )\n )\n (extern.convert_any\n  (call $__str_flatten\n   (i32.trunc_sat_f64_s\n    (f64.convert_i32_s\n     (local.get $10)\n    )\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] call param types must match, on \n(call $concat\n (local.get $2)\n (extern.convert_any\n  (struct.new $struct.0\n   (i32.const 1)\n   (i32.const 0)\n   (array.new_fixed $array.0 1\n    (i32.const 59)\n   )\n  )\n )\n)\n(on argument 0)\n[wasm-validator error in function run] local.set's value type must be correct, on \n(local.set $12\n (call $length\n  (extern.convert_any\n   (local.get $2)\n  )\n )\n)\nFatal: error validating input\n"
           ],
-          "compilerBytes": 3034106,
+          "compilerBytes": 3033079,
           "runtimeBytes": null,
-          "compileMs": 410.64967900002375,
+          "compileMs": 359.45020900000236,
           "rawBytes": 4657,
           "gzipBytes": 1985,
           "precompiledBytes": null,
@@ -1078,18 +1391,85 @@
         {
           "id": "starlingmonkey-componentize-wasmtime",
           "label": "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
-          "status": "runtime-error",
+          "status": "ok",
           "notes": [
-            "error: unknown -W / --wasm option: gc-support\n"
+            "benchmark-specific component artifact generated through ComponentizeJS",
+            "Wizer pre-init: on; Weval AOT: on",
+            "using bundled adapter benchmarks/competitive/sm-componentize-adapter.mjs"
           ],
           "compilerBytes": null,
           "runtimeBytes": null,
-          "rawBytes": 14820691,
-          "gzipBytes": 4422036,
-          "precompiledBytes": null,
-          "coldStart": null,
-          "runtime": null,
-          "computeOnly": null
+          "rawBytes": 14820651,
+          "gzipBytes": 4421911,
+          "precompiledBytes": 54785304,
+          "coldStart": {
+            "arg": 100,
+            "runs": 7,
+            "medianMs": 28.150875000006636,
+            "allMs": [
+              34.19537499999569,
+              24.197000000000116,
+              28.150875000006636,
+              40.4273749999993,
+              27.830166999992798,
+              28.11804200000188,
+              31.367874999996275
+            ],
+            "result": 36729899
+          },
+          "runtime": {
+            "arg": 20000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 20.494741599998086,
+            "allMs": [
+              29.729116599998086,
+              20.494741599998086,
+              19.733633400002144,
+              21.019216599999346,
+              19.70487499999872
+            ],
+            "result": 862771296
+          },
+          "computeOnly": {
+            "arg": 20000,
+            "runs": 5,
+            "iterationsPerRun": 5,
+            "medianMs": 11.909124999999767,
+            "allMs": [
+              21.23322479999915,
+              12.252091599997947,
+              11.909124999999767,
+              11.129608400000144,
+              9.65690820000018
+            ],
+            "result": 862771296
+          },
+          "metadata": {
+            "adapter": "/workspace/.claude/worktrees/issue-1125-benchmark/benchmarks/competitive/sm-componentize-adapter.mjs",
+            "adapterKind": "component",
+            "invokeExport": "run",
+            "hotInvokeExport": "run-hot",
+            "componentize": {
+              "world": "benchmark",
+              "wizerEnabled": true,
+              "wevalAotEnabled": true,
+              "enableAot": true,
+              "usedLibraryImport": true,
+              "disableFeatures": [
+                "random",
+                "stdio",
+                "clocks",
+                "http",
+                "fetch-event"
+              ],
+              "wizerBin": null,
+              "wevalBin": null
+            },
+            "wasmtimeOptimize": "opt-level=2",
+            "hotIterations": 5,
+            "computeMethod": "estimated = hot_runtime - single_call/iterations"
+          }
         }
       ]
     }
