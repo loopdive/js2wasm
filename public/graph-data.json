@@ -16673,6 +16673,42 @@
       "cluster": "maintainability"
     },
     {
+      "id": "1173",
+      "title": "js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1174",
+      "title": "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1175",
+      "title": "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -17852,7 +17888,10 @@
         "994",
         "994",
         "1040",
-        "1109"
+        "1109",
+        "1173",
+        "1174",
+        "1175"
       ]
     },
     {
@@ -20267,6 +20306,18 @@
     {
       "goal": "compilable",
       "issue": "1109"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1173"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1174"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1175"
     },
     {
       "goal": "compiler-architecture",
