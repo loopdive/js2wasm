@@ -370,7 +370,11 @@ export function dashboardPlugin(): Plugin {
     name: "dashboard",
     configureServer(server: ViteDevServer) {
       // Watch project dirs for changes
-      const watchDirs = [join(projectRoot, "plan"), join(projectRoot, "benchmarks/results")];
+      const watchDirs = [
+        join(projectRoot, "plan"),
+        join(projectRoot, "benchmarks/results"),
+        join(projectRoot, "dashboard/data"),
+      ];
 
       for (const dir of watchDirs) {
         if (existsSync(dir)) {

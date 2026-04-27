@@ -1093,9 +1093,7 @@
         }
       }
 
-      // ── Refresh (manual + auto) ──
-      let _refreshTimer = null;
-
+      // ── Refresh ──
       function refreshData() {
         main().catch((err) => console.error("Dashboard error:", err));
       }
@@ -1107,9 +1105,20 @@
         board.style.height = Math.max(200, window.innerHeight - top - 12) + "px";
       }
 
-      // Auto-refresh every 5 s when served over HTTP (not file://)
+      // Push updates via Vite dev server WebSocket — no polling needed
       if (location.protocol !== "file:") {
-        _refreshTimer = setInterval(refreshData, 5_000);
+        (function connectWS() {
+          const proto = location.protocol === "https:" ? "wss:" : "ws:";
+          const ws = new WebSocket(`${proto}//${location.host}/dashboard-ws`);
+          ws.onmessage = (e) => {
+            try {
+              const { type } = JSON.parse(e.data);
+              if (type === "refresh") main().then(resizeKanban).catch(console.error);
+            } catch {}
+          };
+          ws.onclose = () => setTimeout(connectWS, 3_000);
+          ws.onerror = () => ws.close();
+        })();
       }
 
       // ── Run on load ──
