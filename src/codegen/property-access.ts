@@ -18,6 +18,7 @@ import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { addUnionImports, resolveWasmType } from "./index.js";
+import { stringConstantExternrefInstrs } from "./native-strings.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
@@ -275,10 +276,12 @@ export function typeErrorThrowInstrs(ctx: CodegenContext, node?: ts.Node): Instr
     line > 0 && col > 0
       ? `TypeError: Cannot access property on null or undefined at ${line}:${col}`
       : "TypeError: Cannot access property on null or undefined";
+  // Register the literal: in legacy mode this adds a `string_constants` global
+  // import; in nativeStrings mode it just records the value with sentinel -1
+  // so call sites can materialize it inline (#1174).
   addStringConstantGlobal(ctx, message);
-  const strIdx = ctx.stringGlobalMap.get(message)!;
   const tagIdx = ensureExnTag(ctx);
-  return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+  return [...stringConstantExternrefInstrs(ctx, message), { op: "throw", tagIdx } as Instr];
 }
 
 /**

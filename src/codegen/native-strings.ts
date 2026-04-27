@@ -16,6 +16,52 @@ export function nativeStringType(ctx: CodegenContext): ValType {
 }
 
 /**
+ * Build the inline instruction sequence that materializes a string literal as
+ * a NativeString (FlatString) struct ref. Mirrors `compileNativeStringLiteral`
+ * but returns an `Instr[]` for callers that build instruction streams without
+ * a `FunctionContext` (e.g. throw-instr builders that return `Instr[]`).
+ */
+export function nativeStringLiteralInstrs(ctx: CodegenContext, value: string): Instr[] {
+  const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
+  const strTypeIdx = ctx.nativeStrTypeIdx;
+  const instrs: Instr[] = [];
+  // len (i32), off (i32) = 0
+  instrs.push({ op: "i32.const", value: value.length });
+  instrs.push({ op: "i32.const", value: 0 });
+  // code units, then array.new_fixed
+  for (let i = 0; i < value.length; i++) {
+    instrs.push({ op: "i32.const", value: value.charCodeAt(i) });
+  }
+  instrs.push({ op: "array.new_fixed", typeIdx: strDataTypeIdx, length: value.length });
+  // struct.new $NativeString(len, off, data)
+  instrs.push({ op: "struct.new", typeIdx: strTypeIdx });
+  return instrs;
+}
+
+/**
+ * Build inline instructions that push a string constant onto the stack as an
+ * externref (the type expected by the throw tag and by host imports). In
+ * nativeStrings mode, materializes the FlatString struct inline and converts
+ * to externref. In legacy mode, emits a plain `global.get` of the
+ * `string_constants` import. Both branches require the value to be present
+ * in `ctx.stringGlobalMap` — call `addStringConstantGlobal(ctx, value)` first.
+ */
+export function stringConstantExternrefInstrs(ctx: CodegenContext, value: string): Instr[] {
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+    const instrs = nativeStringLiteralInstrs(ctx, value);
+    // ref $NativeString -> externref
+    instrs.push({ op: "extern.convert_any" } as Instr);
+    return instrs;
+  }
+  const strIdx = ctx.stringGlobalMap.get(value);
+  if (strIdx === undefined || strIdx < 0) {
+    // Defensive: caller forgot to register, or sentinel. Push undefined.
+    return [{ op: "ref.null.extern" } as Instr];
+  }
+  return [{ op: "global.get", index: strIdx } as Instr];
+}
+
+/**
  * Get the nullable ValType for a string reference (ref null $AnyString).
  */
 export function nativeStringTypeNullable(ctx: CodegenContext): ValType {
