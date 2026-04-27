@@ -54,7 +54,10 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
 6. Run `/dev-self-merge <N>` — outputs MERGE or ESCALATE
 7. On MERGE: `gh pr merge <N> --merge --admin`
 8. On ESCALATE: message tech lead with which criterion failed + values
-9. After merge: `TaskUpdate(status: completed)` → `TaskList` → claim next task
+9. After merge:
+   - `git worktree remove /workspace/.claude/worktrees/<branch>` — clean up your own worktree
+   - `TaskUpdate(status: completed)`
+   - `TaskList` → claim next task, or shut down if queue is empty
 
 ### Pause / Suspend / Shutdown
 - **PAUSE message from tech lead**: stop immediately, kill running tests. Reply: `"Paused on #N."` Wait for RESUME.
