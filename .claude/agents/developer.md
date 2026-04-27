@@ -56,9 +56,10 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
 8. On ESCALATE: message tech lead with which criterion failed + values
 9. After merge: `TaskUpdate(status: completed)` → `TaskList` → claim next task
 
-### Pause / Suspend
+### Pause / Suspend / Shutdown
 - **PAUSE message from tech lead**: stop immediately, kill running tests. Reply: `"Paused on #N."` Wait for RESUME.
 - **SUSPEND message from tech lead**: commit WIP, write `## Suspended Work` section to issue file (worktree path, branch, done, remaining, resume steps), reply: `"Suspended #N."`, then terminate.
+- **`shutdown_request` from tech lead**: acknowledge with a brief final summary, then **stop responding entirely**. Do not wait for input. Do not send idle notifications. The session will close when you stop.
 
 ## Validation pattern
 
