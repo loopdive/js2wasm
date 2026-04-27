@@ -201,10 +201,15 @@ Contact: `hello@loopdive.com`
 
 Additional contributor workflow details, including CLA terms, are in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+## Architecture decisions
+
+The foundational design choices behind `js2wasm` — why WasmGC instead of linear memory, why AOT instead of an embedded engine, how TypeScript annotations are treated, how closures are lowered — are documented as Architecture Decision Records in [`docs/adr/`](./docs/adr/README.md). Each record states the context, the decision, and the consequences in 200–600 words. Start with [ADR-002 (architectural approach)](./docs/adr/0002-architectural-approach.md) and [ADR-001 (hybrid compilation strategy)](./docs/adr/0001-hybrid-compilation-strategy.md); the rest are sub-decisions within that frame.
+
 ## Further Reading
 
 - [Playground](https://loopdive.github.io/js2wasm/playground/)
 - [Roadmap](./ROADMAP.md)
+- [Architecture Decisions](./docs/adr/README.md)
 - [Architecture Notes](./CLAUDE.md)
 - [Contributing](./CONTRIBUTING.md)
 
