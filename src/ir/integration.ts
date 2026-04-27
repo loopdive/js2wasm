@@ -556,6 +556,39 @@ function makeResolver(
       return classResolver.resolve(shape);
     },
     // -------------------------------------------------------------------
+    // Vec dispatch (slice 6 part 2 — #1181).
+    //
+    // Walks the legacy `ctx.mod.types` registry to recover the layout the
+    // for-of vec fast path needs from a `(ref $vec_*)` ValType. The legacy
+    // `getOrRegisterVecType` always shapes a vec as
+    //   { length: i32, data: (ref $arr_<elem>) }
+    // so we just verify that shape and read the element ValType off the
+    // backing array type. Returns null when the input isn't a recognisable
+    // vec — the caller treats that as a selector bug (the for-of selector
+    // should have rejected the function).
+    // -------------------------------------------------------------------
+    resolveVec(valType: ValType): import("./lower.js").IrVecLowering | null {
+      if (valType.kind !== "ref" && valType.kind !== "ref_null") return null;
+      const typeIdx = (valType as { typeIdx: number }).typeIdx;
+      const vecDef = ctx.mod.types[typeIdx];
+      if (!vecDef || vecDef.kind !== "struct") return null;
+      if (vecDef.fields.length < 2) return null;
+      const lengthField = vecDef.fields[0]!;
+      const dataField = vecDef.fields[1]!;
+      if (lengthField.type.kind !== "i32") return null;
+      if (dataField.type.kind !== "ref" && dataField.type.kind !== "ref_null") return null;
+      const arrayTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
+      const arrayDef = ctx.mod.types[arrayTypeIdx];
+      if (!arrayDef || arrayDef.kind !== "array") return null;
+      return {
+        vecStructTypeIdx: typeIdx,
+        lengthFieldIdx: 0,
+        dataFieldIdx: 1,
+        arrayTypeIdx,
+        elementValType: arrayDef.element,
+      };
+    },
+    // -------------------------------------------------------------------
     // String backend dispatch (#1169a).
     // -------------------------------------------------------------------
     resolveString(): ValType {

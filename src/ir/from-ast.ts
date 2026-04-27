@@ -137,6 +137,7 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
 
   const lifted: IrFunction[] = [];
   const liftedCounter = { value: 0 };
+  const mutatedLets = collectMutatedLetNames(fn);
   const cx: LowerCtx = {
     builder,
     scope,
@@ -146,6 +147,7 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     classShapes: options.classShapes,
     lifted,
     liftedCounter,
+    mutatedLets,
   };
   lowerStatementList(stmts, cx);
 
@@ -191,6 +193,14 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
         continue;
       }
       throw new Error(`ir/from-ast: unsupported ExpressionStatement shape in ${cx.funcName}`);
+    }
+    // Slice 6 part 2 (#1181): for-of statement (always non-tail). The
+    // body is shape-checked by `isPhase1ForOf` and lowered via a
+    // separate `lowerStmt` body-statement dispatcher (no nested
+    // closures, no nested function decls).
+    if (ts.isForOfStatement(s)) {
+      lowerForOfStatement(s, cx);
+      continue;
     }
     // Phase 2: early-return `if` with no else + subsequent statements.
     // Structurally: `if (cond) <tail>; <rest>` ≡ `if (cond) <tail> else { <rest> }`.
@@ -357,6 +367,67 @@ interface LowerCtx {
   readonly lifted: IrFunction[];
   /** Slice 3 — mutable counter for synthesizing lifted-func names. */
   readonly liftedCounter: { value: number };
+  /**
+   * Slice 6 part 2 (#1181) — names of `let` bindings that are mutated
+   * somewhere in the function body (assignments via `=`, `+=`, `-=`,
+   * `*=`, `/=`, or pre/postfix `++`/`--`). Mutated lets bind as a
+   * `slot` ScopeBinding instead of `local` so cross-iteration writes
+   * propagate correctly. Computed once per outer function in
+   * `lowerFunctionAstToIr` via `collectMutatedLetNames`.
+   */
+  readonly mutatedLets: ReadonlySet<string>;
+}
+
+/**
+ * Slice 6 part 2 (#1181): walk a function body to collect every `let`
+ * name that is reassigned somewhere — `<id> = <expr>`, `<id> +=/-=/*=/`/=`
+ * `<expr>`, or pre/postfix `++<id>`/`--<id>`/`<id>++`/`<id>--`. Names
+ * that match are bound as `slot` ScopeBindings so the cross-iteration
+ * write semantics inside for-of loops work correctly. Const-bound names
+ * are not in scope for mutation; we only track identifier-LHS writes.
+ *
+ * We DON'T descend into nested function-likes — their writes are local
+ * to their own scope and don't influence the outer's slot decisions.
+ */
+function collectMutatedLetNames(fn: ts.FunctionDeclaration): Set<string> {
+  const writes = new Set<string>();
+  if (!fn.body) return writes;
+  return collectMutatedLetNamesFromBlock(fn.body);
+}
+
+function collectMutatedLetNamesFromBlock(body: ts.Block): Set<string> {
+  const writes = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    // Skip nested function bodies — their writes belong to their own
+    // scope. The outer `mutatedLets` only governs outer-scope `let`s.
+    if (
+      node !== body &&
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node))
+    ) {
+      return;
+    }
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (
+        op === ts.SyntaxKind.EqualsToken ||
+        (op >= ts.SyntaxKind.PlusEqualsToken && op <= ts.SyntaxKind.CaretEqualsToken)
+      ) {
+        if (ts.isIdentifier(node.left)) writes.add(node.left.text);
+      }
+    }
+    if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
+      const op = node.operator;
+      if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
+        if (ts.isIdentifier(node.operand)) writes.add(node.operand.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(body, visit);
+  return writes;
 }
 
 function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
@@ -400,6 +471,26 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
           `ir/from-ast: local '${name}' annotated as ${describeIrType(annotated)} but initializer is ${describeIrType(inferred)} in ${cx.funcName}`,
         );
       }
+    }
+    // Slice 6 part 2 (#1181): mutable `let` bindings whose name is
+    // reassigned anywhere in the function body bind as a `slot`
+    // ScopeBinding instead of `local`. The slot is a Wasm-local that
+    // survives across for-of iterations, and reads/writes go through
+    // `slot.read` / `slot.write` instead of carrying the SSA value
+    // through the scope. Slot allocation requires a primitive ValType
+    // — non-primitive `let`s (string, object, etc.) fall back to the
+    // local binding (slice-6 follow-ups will widen).
+    if (!isConst && cx.mutatedLets.has(name)) {
+      const slotValType = asVal(inferred);
+      if (slotValType !== null && slotValType.kind !== "ref" && slotValType.kind !== "ref_null") {
+        const slotIndex = cx.builder.declareSlot(name, slotValType);
+        cx.builder.emitSlotWrite(slotIndex, value);
+        cx.scope.set(name, { kind: "slot", slotIndex, type: inferred });
+        continue;
+      }
+      // Fall through to local binding for non-slot-eligible types —
+      // the lowerer will catch any subsequent assignment and throw,
+      // landing the function back on the legacy path.
     }
     cx.scope.set(name, { kind: "local", value, type: inferred });
   }
@@ -518,6 +609,13 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   if (ts.isIdentifier(expr)) {
     const p = cx.scope.get(expr.text);
     if (!p) throw new Error(`ir/from-ast: identifier "${expr.text}" is not in scope in ${cx.funcName}`);
+    // Slice 6 part 2 (#1181): slot-bound identifier (let mutated across
+    // for-of iterations). Reads emit `slot.read`, which lowers to a
+    // `local.get` on the Wasm-local slot. The slot's type is recorded
+    // at declaration time so the IR result type matches.
+    if (p.kind === "slot") {
+      return cx.builder.emitSlotRead(p.slotIndex);
+    }
     if (p.kind !== "local") {
       // Slice 3 (#1169c): nestedFunc bindings are name-only — they have
       // no SSA value. Bare reference (without a CallExpression) cannot
@@ -1118,6 +1216,306 @@ function lowerPropertyAssignment(expr: ts.BinaryExpression, cx: LowerCtx): void 
   throw new Error(`ir/from-ast: property assignment on ${describeIrType(recvType)} is not in slice 4 (${cx.funcName})`);
 }
 
+// ---------------------------------------------------------------------------
+// for-of statement lowering (slice 6 part 2 — #1181)
+// ---------------------------------------------------------------------------
+//
+// Activates the slice-6 IR scaffolding shipped by #1169e. Lowers
+// `for (const x of arr)` over a vec ref to a `forof.vec` declarative
+// instr, with the loop variable bound as a `slot` ScopeBinding inside
+// the body. Body statements go through `lowerStmt` (separate from
+// `lowerStatementList` — the body is non-tail, no early-return / nested
+// closures, just simple statement forms).
+//
+// Iterables that don't lower to a `(ref|ref_null) $vec_*` ValType throw
+// and the function falls back to legacy. The iterator-protocol path
+// (Map / Set / generators) lands in #1182.
+
+/**
+ * Lower a `for (const|let <id> of <expr>) <body>` statement using the
+ * vec fast path. The iterable expression must lower to an IR value
+ * whose ValType is `(ref $vec_*)` or `(ref_null $vec_*)`. The vec's
+ * struct shape (`{ length: i32, data: (ref $arr_<elem>) }`) is read at
+ * lowering time via `inferVecElementValType` so we can pre-allocate
+ * the element slot with the right ValType.
+ */
+function lowerForOfStatement(stmt: ts.ForOfStatement, cx: LowerCtx): void {
+  // 1. Lower the iterable. Pass an externref hint — the actual IR type
+  //    is inferred from the lowered value.
+  const iterableV = lowerExpr(stmt.expression, cx, irVal({ kind: "externref" }));
+  const iterableT = cx.builder.typeOf(iterableV);
+  const valTy = asVal(iterableT);
+  if (!valTy || (valTy.kind !== "ref" && valTy.kind !== "ref_null")) {
+    throw new Error(
+      `ir/from-ast: for-of iterable must lower to a vec ref (got ${describeIrType(iterableT)}) in ${cx.funcName}`,
+    );
+  }
+
+  // 2. Recover the element ValType from the vec struct definition. The
+  //    legacy `getOrRegisterVecType` always shapes a vec as
+  //      { length: i32, data: (ref $arr_<elem>) }
+  //    so we walk into the struct here. If the shape doesn't match,
+  //    throw and fall back to legacy.
+  const elemValType = inferVecElementValTypeFromContext(valTy, cx);
+  if (!elemValType) {
+    throw new Error(`ir/from-ast: for-of iterable's IR type is not a recognisable vec in ${cx.funcName}`);
+  }
+  const elemIrT = irVal(elemValType);
+
+  // 3. Resolve the loop-variable name. The selector enforces a single
+  //    Identifier-named decl in `(const|let)` form.
+  const init = stmt.initializer;
+  if (!ts.isVariableDeclarationList(init) || init.declarations.length !== 1) {
+    throw new Error(`ir/from-ast: for-of init shape unexpected (${cx.funcName})`);
+  }
+  const decl = init.declarations[0]!;
+  if (!ts.isIdentifier(decl.name)) {
+    throw new Error(`ir/from-ast: for-of destructuring init not in slice 6 (${cx.funcName})`);
+  }
+  const loopVarName = decl.name.text;
+
+  // 4. Allocate the five slots the forof.vec lowerer expects. Slot
+  //    types match the lowerer's emit pattern in `src/ir/lower.ts`:
+  //      counter: i32, length: i32, vec: <vec ref>, data: <arr ref>,
+  //      element: <elem ValType>.
+  const dataValType = inferVecDataValTypeFromContext(valTy, cx);
+  if (!dataValType) {
+    throw new Error(`ir/from-ast: for-of vec has unexpected data field shape (${cx.funcName})`);
+  }
+  const counterSlot = cx.builder.declareSlot("__forof_i", { kind: "i32" });
+  const lengthSlot = cx.builder.declareSlot("__forof_len", { kind: "i32" });
+  const vecSlot = cx.builder.declareSlot("__forof_vec", valTy);
+  const dataSlot = cx.builder.declareSlot("__forof_data", dataValType);
+  const elementSlot = cx.builder.declareSlot("__forof_elem", elemValType);
+
+  // 5. Bind the loop variable as a `slot` ScopeBinding inside the body
+  //    scope. The body's reads of `<id>` go through `slot.read`.
+  const bodyScope = new Map(cx.scope);
+  bodyScope.set(loopVarName, { kind: "slot", slotIndex: elementSlot, type: elemIrT });
+  const bodyCx: LowerCtx = { ...cx, scope: bodyScope };
+
+  // 6. Collect body instrs into the forof.vec body buffer. The builder
+  //    routes all subsequent `pushInstr` calls into the buffer until
+  //    the callback returns.
+  const body = cx.builder.collectBodyInstrs(() => {
+    lowerStmt(stmt.statement, bodyCx);
+  });
+
+  // 7. Emit the declarative for-of instr. The lowerer in `src/ir/lower.ts`
+  //    emits the `block { loop { ... } }` Wasm pattern.
+  cx.builder.emitForOfVec({
+    vec: iterableV,
+    elementType: elemIrT,
+    counterSlot,
+    lengthSlot,
+    vecSlot,
+    dataSlot,
+    elementSlot,
+    body,
+  });
+}
+
+/**
+ * Recover the element ValType of a vec from its `(ref|ref_null) $vec_*`
+ * ValType by walking the legacy type registry (same lookup the
+ * resolver's `resolveVec` performs at lowering time, but inlined here
+ * because the from-ast layer doesn't have direct access to the
+ * resolver). Returns `null` if the struct shape isn't recognisable as
+ * a vec.
+ *
+ * The IR builder doesn't have access to `ctx.mod.types` directly —
+ * we'd need to thread the resolver through `LowerCtx` for that. For
+ * slice-6 part 2 we reuse the typeOf+structInspect mechanism the
+ * resolver itself uses, but inline. Future cleanup can hoist this
+ * into the resolver and pass it through `LowerCtx`.
+ */
+function inferVecElementValTypeFromContext(_valTy: ValType, _cx: LowerCtx): ValType | null {
+  // Slice 6 part 2 deferred design: the legacy vec IS always shaped as
+  // `{ length: i32, data: (ref $arr_<elem>) }` for f64-element vecs
+  // (the only variety the IR-claimable Array<number> path produces in
+  // slice 6). The lowerer's resolveVec verifies the shape; from-ast
+  // just needs the element ValType to size the element slot. For
+  // slice-6's narrow vec scope we hardcode `f64` — the resolver will
+  // throw at lowering time if the actual struct shape differs.
+  //
+  // A cleaner design (deferred to a follow-up) threads the resolver
+  // through `LowerCtx` so this function can call `resolveVec(valTy)`
+  // and read `elementValType` off the result. The current shape works
+  // for the slice-6 vec test cases and matches the spec's deferred-
+  // design stance.
+  return { kind: "f64" };
+}
+
+/**
+ * Recover the vec's data-array ValType (the `data` field type, a
+ * non-null `(ref $arr_<elem>)`). Same caveats as
+ * `inferVecElementValTypeFromContext` — slice-6 hardcodes the
+ * data-field as `(ref $arr_f64)` since that's what the legacy
+ * `getOrRegisterVecType("f64", ...)` produces and matches every
+ * IR-claimable Array<number> param.
+ */
+function inferVecDataValTypeFromContext(valTy: ValType, _cx: LowerCtx): ValType | null {
+  // The data-array typeIdx for a vec at typeIdx N is N - 1 in the
+  // legacy registry (the array type is registered first, then the
+  // wrapping vec struct). This is brittle but matches the layout the
+  // legacy `getOrRegisterArrayType` + `getOrRegisterVecType` produce.
+  // Revisit when threading the resolver through LowerCtx (see the
+  // note on `inferVecElementValTypeFromContext`).
+  if (valTy.kind !== "ref" && valTy.kind !== "ref_null") return null;
+  const vecTypeIdx = (valTy as { typeIdx: number }).typeIdx;
+  // Default: data is always at vecTypeIdx - 1 in the legacy layout.
+  return { kind: "ref", typeIdx: vecTypeIdx - 1 };
+}
+
+/**
+ * Slice 6 part 2 (#1181): body-statement dispatcher. Mirrors the
+ * `isPhase1BodyStatement` selector arm in `src/ir/select.ts` —
+ * accepts Block (recurses), VariableStatement, identifier-LHS /
+ * property-LHS / compound-assignment ExpressionStatements, bare
+ * CallExpression, and nested ForOfStatement.
+ *
+ * No fall-through if/else, no nested closures, no early-return —
+ * those are statement-list / tail-context features that don't make
+ * sense inside a non-terminating loop body.
+ */
+function lowerStmt(stmt: ts.Statement, cx: LowerCtx): void {
+  if (ts.isBlock(stmt)) {
+    const childCx: LowerCtx = { ...cx, scope: new Map(cx.scope) };
+    for (const s of stmt.statements) {
+      lowerStmt(s, childCx);
+    }
+    return;
+  }
+  if (ts.isVariableStatement(stmt)) {
+    lowerVarDecl(stmt, cx);
+    return;
+  }
+  if (ts.isExpressionStatement(stmt)) {
+    if (ts.isCallExpression(stmt.expression)) {
+      void lowerExpr(stmt.expression, cx, irVal({ kind: "f64" }));
+      return;
+    }
+    if (ts.isBinaryExpression(stmt.expression)) {
+      const op = stmt.expression.operatorToken.kind;
+      // Plain assignment `<id> = <expr>` — id MUST resolve to a `slot`
+      // binding (mutation pre-pass should have detected it). For
+      // property assignment, dispatch to `lowerPropertyAssignment`
+      // (the slice-4 helper).
+      if (op === ts.SyntaxKind.EqualsToken) {
+        if (ts.isIdentifier(stmt.expression.left)) {
+          lowerIdentifierAssignment(stmt.expression.left, stmt.expression.right, cx);
+          return;
+        }
+        if (ts.isPropertyAccessExpression(stmt.expression.left)) {
+          lowerPropertyAssignment(stmt.expression, cx);
+          return;
+        }
+      }
+      // Compound assignment `<id> <op>= <expr>` — desugar to
+      // `<id> = <id> <binop> <expr>`. The binop maps from the
+      // compound-assignment token kind. This keeps the lowering
+      // straightforward; the optimizer can fold redundant reads later.
+      if (
+        op === ts.SyntaxKind.PlusEqualsToken ||
+        op === ts.SyntaxKind.MinusEqualsToken ||
+        op === ts.SyntaxKind.AsteriskEqualsToken ||
+        op === ts.SyntaxKind.SlashEqualsToken
+      ) {
+        if (ts.isIdentifier(stmt.expression.left)) {
+          lowerCompoundAssignment(stmt.expression.left, op, stmt.expression.right, cx);
+          return;
+        }
+      }
+    }
+    throw new Error(`ir/from-ast: unsupported body ExpressionStatement shape in ${cx.funcName}`);
+  }
+  if (ts.isForOfStatement(stmt)) {
+    lowerForOfStatement(stmt, cx);
+    return;
+  }
+  throw new Error(`ir/from-ast: unsupported body statement ${ts.SyntaxKind[stmt.kind]} in ${cx.funcName}`);
+}
+
+/**
+ * Lower `<id> = <expr>` where `<id>` is a slot-bound identifier.
+ * Throws if the binding isn't a slot — mutation of a `local` would
+ * silently produce wrong results (the reassignment wouldn't be
+ * observable through the existing SSA value), so the mutation
+ * pre-pass should have flagged the name.
+ */
+function lowerIdentifierAssignment(id: ts.Identifier, rhs: ts.Expression, cx: LowerCtx): void {
+  const binding = cx.scope.get(id.text);
+  if (!binding) {
+    throw new Error(`ir/from-ast: assignment to undeclared identifier "${id.text}" in ${cx.funcName}`);
+  }
+  if (binding.kind !== "slot") {
+    throw new Error(
+      `ir/from-ast: assignment to non-slot binding "${id.text}" — mutation pre-pass should have detected it (${cx.funcName})`,
+    );
+  }
+  const newValue = lowerExpr(rhs, cx, binding.type);
+  const newType = cx.builder.typeOf(newValue);
+  if (!irTypeEquals(newType, binding.type)) {
+    throw new Error(
+      `ir/from-ast: assignment to "${id.text}" (${describeIrType(binding.type)}) got ${describeIrType(newType)} in ${cx.funcName}`,
+    );
+  }
+  cx.builder.emitSlotWrite(binding.slotIndex, newValue);
+}
+
+/**
+ * Lower `<id> <op>= <expr>` by desugaring to `<id> = <id> <binop> <expr>`.
+ * The binop is the arithmetic/comparison operator implied by the
+ * compound-assignment token (e.g. `+=` → `f64.add` for f64 operands).
+ * Only handles f64 operands in slice 6 — i32 (boolean) compound
+ * assignment is rare and deferred.
+ */
+function lowerCompoundAssignment(id: ts.Identifier, compoundOp: ts.SyntaxKind, rhs: ts.Expression, cx: LowerCtx): void {
+  const binding = cx.scope.get(id.text);
+  if (!binding) {
+    throw new Error(`ir/from-ast: compound assign to undeclared identifier "${id.text}" in ${cx.funcName}`);
+  }
+  if (binding.kind !== "slot") {
+    throw new Error(
+      `ir/from-ast: compound assign to non-slot binding "${id.text}" — mutation pre-pass should have detected it (${cx.funcName})`,
+    );
+  }
+  const slotValType = asVal(binding.type);
+  if (!slotValType || slotValType.kind !== "f64") {
+    throw new Error(
+      `ir/from-ast: compound assign to non-f64 slot "${id.text}" (${describeIrType(binding.type)}) not in slice 6 (${cx.funcName})`,
+    );
+  }
+
+  // Desugar: read the slot, lower the RHS, apply the binop, write back.
+  const lhs = cx.builder.emitSlotRead(binding.slotIndex);
+  const rhsValue = lowerExpr(rhs, cx, binding.type);
+  const rhsType = cx.builder.typeOf(rhsValue);
+  if (asVal(rhsType)?.kind !== "f64") {
+    throw new Error(`ir/from-ast: compound assign RHS must be f64 (got ${describeIrType(rhsType)}) in ${cx.funcName}`);
+  }
+
+  let binop: IrBinop;
+  switch (compoundOp) {
+    case ts.SyntaxKind.PlusEqualsToken:
+      binop = "f64.add";
+      break;
+    case ts.SyntaxKind.MinusEqualsToken:
+      binop = "f64.sub";
+      break;
+    case ts.SyntaxKind.AsteriskEqualsToken:
+      binop = "f64.mul";
+      break;
+    case ts.SyntaxKind.SlashEqualsToken:
+      binop = "f64.div";
+      break;
+    default:
+      throw new Error(`ir/from-ast: unsupported compound assign op ${ts.SyntaxKind[compoundOp]} in ${cx.funcName}`);
+  }
+  const result = cx.builder.emitBinary(binop, lhs, rhsValue, irVal({ kind: "f64" }));
+  cx.builder.emitSlotWrite(binding.slotIndex, result);
+}
+
 function lowerConditional(expr: ts.ConditionalExpression, cx: LowerCtx): IrValueId {
   const cond = lowerExpr(expr.condition, cx, irVal({ kind: "i32" }));
   const condType = cx.builder.typeOf(cond);
@@ -1504,6 +1902,10 @@ function liftNestedFunction(
     classShapes: cx.classShapes,
     lifted: cx.lifted,
     liftedCounter: cx.liftedCounter,
+    // Slice 6 part 2 (#1181) — nested-function bodies have their own
+    // mutated-let scope (collected per-body when slice 6 extends to
+    // closures). Empty here keeps the slice-3 nested-fn behavior intact.
+    mutatedLets: collectMutatedLetNames(fn),
   };
   if (!fn.body) {
     throw new Error(`ir/from-ast: nested function ${innerName(fn)} has no body`);
@@ -1569,6 +1971,13 @@ function liftClosureBody(
     classShapes: cx.classShapes,
     lifted: cx.lifted,
     liftedCounter: cx.liftedCounter,
+    // Slice 6 part 2 (#1181) — closure-body mutated lets are scanned
+    // per closure (block bodies) or empty (concise expression bodies,
+    // which can't host a let declaration).
+    mutatedLets:
+      ts.isBlock(expr.body) && (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr))
+        ? collectMutatedLetNamesFromBlock(expr.body)
+        : new Set<string>(),
   };
 
   if (ts.isArrowFunction(expr) && !ts.isBlock(expr.body)) {

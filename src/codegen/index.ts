@@ -240,6 +240,29 @@ function resolvePositionType(
     if (node.kind === ts.SyntaxKind.NumberKeyword) return irVal({ kind: "f64" });
     if (node.kind === ts.SyntaxKind.BooleanKeyword) return irVal({ kind: "i32" });
     if (node.kind === ts.SyntaxKind.StringKeyword) return { kind: "string" };
+    // Slice 6 part 2 (#1181) — array type (T[] or Array<T>) resolves to a
+    // vec ref. The legacy `getOrRegisterVecType` produces the same
+    // (ref_null $vec_<elem>) struct ref the for-of vec fast path needs,
+    // and the IR resolver's `resolveVec` (in integration.ts) reads the
+    // struct shape back to recover element ValType. Numeric / boolean /
+    // string element types are accepted; nested-vec or object-element
+    // types throw and fall back to legacy.
+    if (ts.isArrayTypeNode(node)) {
+      const elemIr = resolvePositionType(node.elementType, undefined, ctx, classShapes);
+      const elemVal =
+        elemIr.kind === "val" ? elemIr.val : elemIr.kind === "string" ? ({ kind: "externref" } as ValType) : null;
+      if (!elemVal) {
+        throw new Error(
+          `array element TypeNode ${ts.SyntaxKind[node.elementType.kind]} could not be lowered to a primitive ValType`,
+        );
+      }
+      const elemKey =
+        elemVal.kind === "ref" || elemVal.kind === "ref_null"
+          ? `ref_${(elemVal as { typeIdx: number }).typeIdx}`
+          : elemVal.kind;
+      const vecIdx = getOrRegisterVecType(ctx, elemKey, elemVal);
+      return irVal({ kind: "ref_null", typeIdx: vecIdx });
+    }
     if (ts.isTypeLiteralNode(node) || ts.isTypeReferenceNode(node)) {
       // Slice 4 (#1169d) — TypeReferenceNode that names a local class
       // resolves to `IrType.class`. The classShapes registry is seeded
@@ -254,6 +277,27 @@ function resolvePositionType(
         if (ts.isIdentifier(ref)) {
           const cs = classShapes.get(ref.text);
           if (cs) return { kind: "class", shape: cs };
+        }
+      }
+      // Slice 6 part 2 (#1181) — `Array<T>` TypeReferenceNode resolves
+      // to a vec ref, parallel to the `T[]` ArrayTypeNode arm above.
+      if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) && node.typeName.text === "Array") {
+        const typeArgs = node.typeArguments;
+        if (typeArgs && typeArgs.length === 1) {
+          const elemIr = resolvePositionType(typeArgs[0]!, undefined, ctx, classShapes);
+          const elemVal =
+            elemIr.kind === "val" ? elemIr.val : elemIr.kind === "string" ? ({ kind: "externref" } as ValType) : null;
+          if (!elemVal) {
+            throw new Error(
+              `Array<T> element TypeNode ${ts.SyntaxKind[typeArgs[0]!.kind]} could not be lowered to a primitive ValType`,
+            );
+          }
+          const elemKey =
+            elemVal.kind === "ref" || elemVal.kind === "ref_null"
+              ? `ref_${(elemVal as { typeIdx: number }).typeIdx}`
+              : elemVal.kind;
+          const vecIdx = getOrRegisterVecType(ctx, elemKey, elemVal);
+          return irVal({ kind: "ref_null", typeIdx: vecIdx });
         }
       }
       const tsType = ctx.checker.getTypeFromTypeNode(node);
