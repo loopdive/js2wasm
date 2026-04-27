@@ -14,8 +14,13 @@ function currentSprint() {
   const dirs = readdirSync(SPRINTS_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory() && /^\d+$/.test(d.name))
     .map((d) => Number(d.name))
-    .sort((a, b) => a - b);
-  return dirs.at(-1) ?? 0;
+    .sort((a, b) => b - a); // descending — find latest with issues first
+  for (const n of dirs) {
+    const dir = join(SPRINTS_DIR, String(n));
+    const hasIssues = readdirSync(dir).some((f) => f.endsWith(".md") && f !== "sprint.md");
+    if (hasIssues) return n;
+  }
+  return dirs.at(0) ?? 0;
 }
 
 function sprintProgress(n) {
