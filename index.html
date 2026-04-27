@@ -2915,66 +2915,6 @@ match (value) {
             </div>
           </div>
         </div>
-
-        <div class="host-bench-group" id="wasmtime-bench-group" style="display: none">
-          <h3 class="host-bench-title">Wasmtime</h3>
-          <p class="host-bench-subcopy">
-            Compare direct AOT WebAssembly output against interpreter-bundling approaches in a standalone WebAssembly
-            runtime. The landing page shows whichever Wasmtime benchmark datasets are currently available.
-          </p>
-          <div class="conformance-diagrams">
-            <div
-              class="diagram-panel"
-              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-compute-only.json"
-              style="display: none"
-            >
-              <perf-benchmark-chart
-                src="./benchmarks/results/wasm-host-wasmtime-compute-only.json"
-                title="Compute Runtime"
-                legend="Wasm runtime speed relative to JS in Wasmtime (larger is better)"
-              ></perf-benchmark-chart>
-            </div>
-            <div
-              class="diagram-panel"
-              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
-              style="display: none"
-            >
-              <perf-benchmark-chart
-                src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
-                mode="absolute-lower-better"
-                baseline-label="JS (V8)"
-                title="Cold Start"
-                legend="Median startup time for standalone Wasmtime execution, with JS-host baseline marker (lower is better)"
-              ></perf-benchmark-chart>
-            </div>
-            <div
-              class="diagram-panel"
-              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
-              style="display: none"
-            >
-              <perf-benchmark-chart
-                src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
-                mode="absolute-lower-better"
-                baseline-label="JS (V8)"
-                title="Hot Runtime"
-                legend="Median amortized runtime per call after one module load in Wasmtime, with JS-host baseline marker (lower is better)"
-              ></perf-benchmark-chart>
-            </div>
-            <div
-              class="diagram-panel"
-              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
-              style="display: none"
-            >
-              <perf-benchmark-chart
-                src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
-                mode="absolute-lower-better"
-                baseline-label="JS (V8)"
-                title="Module Size"
-                legend="Raw .wasm or component size for the standalone Wasmtime comparison, with JS baseline marker (lower is better)"
-              ></perf-benchmark-chart>
-            </div>
-          </div>
-        </div>
       </section>
 
       <hr class="divider" />
@@ -3937,7 +3877,8 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                   rawEdition: String(edition.edition || ""),
                   normalizedEdition: normalizeEditionLabel(String(edition.edition || "")),
                 }));
-              const proposalBucket = editions.find((edition) => String(edition?.edition || "") === PROPOSAL_LABEL) ?? null;
+              const proposalBucket =
+                editions.find((edition) => String(edition?.edition || "") === PROPOSAL_LABEL) ?? null;
 
               return {
                 editionList,
