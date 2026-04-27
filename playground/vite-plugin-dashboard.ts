@@ -1,5 +1,5 @@
 import type { Plugin, ViteDevServer } from "vite";
-import { readFileSync, readdirSync, existsSync, statSync, watch } from "fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, watch } from "fs";
 import { join, resolve } from "path";
 import { execSync } from "node:child_process";
 import type { ServerResponse } from "node:http";
@@ -380,15 +380,90 @@ export function dashboardPlugin(): Plugin {
     }
   }
 
+  // Fast path: patch a single issue's bucket in issues.json without full rebuild.
+  // Returns true if the patch succeeded; caller falls back to full regen on false.
+  function patchIssueInData(absPath: string): boolean {
+    const m = absPath.match(/plan[/\\]issues[/\\](ready|blocked|done|backlog|wont-fix|in-progress)[/\\](\d+)\.md$/);
+    if (!m) return false;
+    let content: string;
+    try {
+      content = readFileSync(absPath, "utf-8");
+    } catch {
+      return false;
+    }
+    const fm = parseFrontmatter(content);
+    if (!fm.id && !m[2]) return false;
+    const id = String(fm.id || m[2]);
+    const status: string = fm.status || m[1];
+    const bucketMap: Record<string, string> = {
+      ready: "ready",
+      blocked: "blocked",
+      done: "done",
+      backlog: "backlog",
+      "wont-fix": "backlog",
+      "in-progress": "inprogress",
+      in_progress: "inprogress",
+    };
+    const bucket = bucketMap[status] ?? "ready";
+    const issuesPath = join(projectRoot, "dashboard/data/issues.json");
+    let data: Record<string, any[]>;
+    try {
+      data = JSON.parse(readFileSync(issuesPath, "utf-8"));
+    } catch {
+      return false;
+    }
+    // Remove from all buckets
+    for (const key of Object.keys(data)) {
+      if (Array.isArray(data[key])) data[key] = data[key].filter((iss: any) => String(iss.id) !== id);
+    }
+    // Build updated entry
+    const dependsRaw = fm.depends_on ?? [];
+    const dependsOn = Array.isArray(dependsRaw)
+      ? dependsRaw
+      : String(dependsRaw)
+          .replace(/[\[\]]/g, "")
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+    const entry = {
+      id,
+      title: fm.title ?? "",
+      priority: fm.priority ?? "",
+      feasibility: fm.feasibility ?? "",
+      depends_on: dependsOn,
+      goal: fm.goal ?? "",
+      status,
+      sprint: String(fm.sprint ?? ""),
+    };
+    if (!data[bucket]) data[bucket] = [];
+    data[bucket].push(entry);
+    try {
+      writeFileSync(issuesPath, JSON.stringify(data, null, 2));
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
   // Debounced file change handler
   let changeTimer: ReturnType<typeof setTimeout> | null = null;
-  function onFileChange(path: string) {
+  function onFileChange(event: string, relPath: string) {
     if (changeTimer) clearTimeout(changeTimer);
     changeTimer = setTimeout(() => {
-      regenDashboardData();
-      regenSprintStats();
-      broadcast({ type: "refresh", path, timestamp: Date.now() });
-    }, 500);
+      const absPath = relPath.startsWith("/") ? relPath : join(projectRoot, relPath);
+      const isIssueMd = /plan[/\\]issues[/\\][^/\\]+[/\\]\d+\.md$/.test(absPath);
+      const isSprintFile = /plan[/\\](sprints|issues[/\\]sprints)/.test(absPath);
+
+      if (isIssueMd && event === "change") {
+        // Fast path: patch only the changed issue in issues.json
+        if (!patchIssueInData(absPath)) regenDashboardData();
+      } else {
+        // Full rebuild for renames (moves), sprint files, backlog, etc.
+        regenDashboardData();
+        if (isSprintFile) regenSprintStats();
+      }
+      broadcast({ type: "refresh", path: relPath, timestamp: Date.now() });
+    }, 300);
   }
 
   return {
@@ -404,8 +479,8 @@ export function dashboardPlugin(): Plugin {
       for (const dir of watchDirs) {
         if (existsSync(dir)) {
           try {
-            watch(dir, { recursive: true }, (_event, filename) => {
-              if (filename) onFileChange(String(filename));
+            watch(dir, { recursive: true }, (event, filename) => {
+              if (filename) onFileChange(event ?? "change", String(filename));
             });
           } catch {
             // fs.watch with recursive may not be supported — non-fatal
