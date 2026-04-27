@@ -5929,8 +5929,8 @@ function hoistVarDecl(ctx: CodegenContext, fctx: FunctionContext, decl: ts.Varia
 function walkStmtForVars(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
   if (ts.isVariableStatement(stmt)) {
     const list = stmt.declarationList;
-    // Only hoist `var` (not let/const)
-    if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) return;
+    // Only hoist `var` (not let/const/using/await-using). #1177
+    if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const | ts.NodeFlags.Using | ts.NodeFlags.AwaitUsing)) return;
     for (const decl of list.declarations) {
       hoistVarDecl(ctx, fctx, decl);
     }
@@ -6159,8 +6159,12 @@ function getLoopBodyNode(loop: ts.Node): ts.Node | undefined {
 function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
   if (ts.isVariableStatement(stmt)) {
     const list = stmt.declarationList;
-    // Only hoist `let`/`const` (not var — var is already hoisted)
-    if (!(list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))) return;
+    // Hoist `let`/`const`/`using` (not var — var is already hoisted).
+    // `using`/`await using` declarations have the same TDZ semantics as
+    // let/const per the explicit-resource-management spec — pre-decl access
+    // must throw ReferenceError. (#1177)
+    const TDZ_FLAGS = ts.NodeFlags.Let | ts.NodeFlags.Const | ts.NodeFlags.Using | ts.NodeFlags.AwaitUsing;
+    if (!(list.flags & TDZ_FLAGS)) return;
     for (const decl of list.declarations) {
       if (ts.isIdentifier(decl.name)) {
         const name = decl.name.text;

@@ -204,7 +204,11 @@ export function compileNestedFunctionDeclaration(
       localIdx < fctx.params.length
         ? fctx.params[localIdx]!.type
         : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
-    const isMutable = writtenInBody.has(name);
+    // #1177: Force-box the value when the variable has a TDZ flag in the outer
+    // fctx. Without this, the captured value is frozen at struct-construction
+    // time — for `let x = 42` declared after the function declaration, the
+    // function would observe the uninitialized default forever.
+    const isMutable = writtenInBody.has(name) || !!fctx.tdzFlagLocals?.has(name);
     captures.push({ name, type, localIdx, mutable: isMutable });
   }
 

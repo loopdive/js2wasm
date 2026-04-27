@@ -24,7 +24,16 @@ import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from 
 export function emitLocalTdzCheck(ctx: CodegenContext, fctx: FunctionContext, name: string, flagIdx: number): void {
   const throwRefErrIdx = ensureLateImport(ctx, "__throw_reference_error", [{ kind: "externref" }], []);
   flushLateImportShifts(ctx, fctx);
-  fctx.body.push({ op: "local.get", index: flagIdx });
+  // If the flag has been boxed in an i32 ref cell (captured by a closure —
+  // see #1177), read it through `struct.get` so we observe mutations the
+  // outer scope made via the same ref cell.
+  const boxed = fctx.boxedTdzFlags?.get(name);
+  if (boxed) {
+    fctx.body.push({ op: "local.get", index: boxed.localIdx });
+    fctx.body.push({ op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 } as Instr);
+  } else {
+    fctx.body.push({ op: "local.get", index: flagIdx });
+  }
   fctx.body.push({ op: "i32.eqz" });
   let then: Instr[];
   if (throwRefErrIdx !== undefined) {

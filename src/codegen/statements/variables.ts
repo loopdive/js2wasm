@@ -337,7 +337,12 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
     // For let/const: the pre-pass (hoistLetConstWithTdz) always pre-allocates a slot
     // regardless of whether a TDZ flag is also allocated, so we check only the localMap.
     const existingIdx = fctx.localMap.get(name);
-    const isVar = !(decl.parent.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
+    // #1177: `using`/`await using` declarations are NOT `var` — they have
+    // block-scoped lifetimes and TDZ semantics like let/const.
+    const isVar = !(
+      decl.parent.flags &
+      (ts.NodeFlags.Let | ts.NodeFlags.Const | ts.NodeFlags.Using | ts.NodeFlags.AwaitUsing)
+    );
     const isHoistedLetConst = !isVar && existingIdx !== undefined && existingIdx >= fctx.params.length;
     const localIdx =
       (isVar || isHoistedLetConst) && existingIdx !== undefined && existingIdx >= fctx.params.length
@@ -461,7 +466,39 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
           }
         }
       }
-      emitCoercedLocalSet(ctx, fctx, localIdx, stackType);
+      // #1177: If the variable was boxed by a closure constructed BEFORE this
+      // declaration ran (e.g. `function() { f(); }` constructed before
+      // `let x` is reached), `localIdx` already points to a `ref __ref_cell_T`
+      // local and a plain `local.set` would be a type mismatch. Route the
+      // assignment through `struct.set` on the ref cell so post-init mutations
+      // propagate to every closure that captured the same cell.
+      const boxedForInit = fctx.boxedCaptures?.get(name);
+      if (boxedForInit) {
+        // Coerce stack to value type if needed.
+        if (!valTypesMatch(stackType, boxedForInit.valType)) {
+          coerceType(ctx, fctx, stackType, boxedForInit.valType);
+        }
+        const tmpVal = allocLocal(fctx, `__box_init_tmp_${fctx.locals.length}`, boxedForInit.valType);
+        fctx.body.push({ op: "local.set", index: tmpVal });
+        fctx.body.push({ op: "local.get", index: localIdx });
+        fctx.body.push({ op: "ref.is_null" });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [] as Instr[],
+          else: [
+            { op: "local.get", index: localIdx } as Instr,
+            { op: "local.get", index: tmpVal } as Instr,
+            {
+              op: "struct.set",
+              typeIdx: boxedForInit.refCellTypeIdx,
+              fieldIdx: 0,
+            } as Instr,
+          ],
+        } as unknown as Instr);
+      } else {
+        emitCoercedLocalSet(ctx, fctx, localIdx, stackType);
+      }
     } else if (wasmType.kind === "externref") {
       // No initializer: `let x;` / `var x;` — in JS, uninitialized variables
       // are `undefined`, not `null`. Emit __get_undefined() so that
