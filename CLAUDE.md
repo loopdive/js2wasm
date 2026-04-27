@@ -136,7 +136,7 @@ Spawn dedicated agents when:
 | Planning agents done, user not talking to them | Write context summary → terminate |
 | Planning agents done, user IS talking to them | Keep alive until user signals done |
 | Dev between tasks | Keep alive — wait for CI, self-merge if green, then claim next task from TaskList |
-| Dev sending idle_notification pings | **Do NOT shut down.** They are between tasks in the normal loop. Ignore the pings. |
+| Dev sending idle_notification pings | **Do NOT shut down.** Respond: ask if they have a PR to check on, or direct them to claim the next task from TaskList. |
 | Dev idle, no tasks available | Keep alive if more tasks expected soon. Terminate only if sprint is explicitly wrapping up. |
 | End of sprint | All agents write context summaries → terminate → run `/sprint-wrap-up` |
 
