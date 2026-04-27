@@ -510,6 +510,26 @@
       base="../"
       links='[{"label":"Overview","href":"#overview"},{"label":"Sprint","href":"#kanban"},{"label":"Issues","href":"#dependencies"}]'
     ></site-nav>
+    <div
+      id="build-meta"
+      style="
+        position: fixed;
+        top: 0;
+        right: 56px;
+        height: 64px;
+        z-index: 101;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 11px;
+        font-family: var(--font-mono, &quot;JetBrains Mono&quot;, monospace);
+        color: rgba(255, 255, 255, 0.28);
+        pointer-events: none;
+      "
+    >
+      <span id="build-hash"></span>
+      <span id="build-date"></span>
+    </div>
     <header
       id="overview"
       style="display: flex; align-items: baseline; gap: 8px; border-bottom: none; padding-bottom: 0; flex-wrap: wrap"
@@ -880,6 +900,20 @@
           } else if (runs.length > 0) {
             const latest = runs[runs.length - 1];
             document.getElementById("m-passrate").textContent = ((latest.pass / latest.total) * 100).toFixed(1) + "%";
+          }
+          // ── Build meta (top-right commit hash + date) ──
+          if (reportData?.baseline_sha) {
+            const hashEl = document.getElementById("build-hash");
+            if (hashEl) hashEl.textContent = reportData.baseline_sha.slice(0, 8);
+          }
+          if (reportData?.timestamp) {
+            const dateEl = document.getElementById("build-date");
+            if (dateEl) {
+              const d = new Date(reportData.timestamp);
+              dateEl.textContent = isNaN(d)
+                ? reportData.timestamp
+                : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+            }
           }
         } catch {
           if (runs.length > 0) {
