@@ -1,0 +1,15 @@
+{
+  "pr": 53,
+  "conclusion": "failure",
+  "head_branch": "issue-1177-tdz-closure-captures",
+  "head_sha": "71ab82a07983b8df7da2c347bdc2d91e22f53dd3",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24971666446",
+  "timestamp": "2026-04-27T01:07:01Z",
+  "pass": 25699,
+  "fail": 14009,
+  "compile_error": 1881,
+  "snapshot_delta": -105,
+  "net_per_test": -108,
+  "regressions": 262,
+  "improvements": 154
+}
