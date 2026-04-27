@@ -969,8 +969,22 @@ export function compileBinaryExpression(
   // context is i32 by construction. This is what lets the iterative
   // Fibonacci body collapse to `i32.add` + `i32.add` + `local.set` in
   // the hot loop instead of the heavy f64-ToInt32 round-trip.
+  //
+  // #1179: extend to ANY bitwise op as parent (not just `| 0`) and to
+  // recursive subtrees of i32-pure operands (literals, nested arith /
+  // bitwise expressions on i32 leaves), and add a parallel i32 fast
+  // path for bitwise ops themselves. Together these collapse the hot
+  // body of `((i*17) ^ (i>>>3)) & 1023` to a clean i32 chain instead
+  // of the per-op double-ToInt32 + f64 round-trip currently emitted.
   const isArithOp =
     op === ts.SyntaxKind.PlusToken || op === ts.SyntaxKind.MinusToken || op === ts.SyntaxKind.AsteriskToken;
+  const isBitwiseOpKind = (k: ts.SyntaxKind): boolean =>
+    k === ts.SyntaxKind.AmpersandToken ||
+    k === ts.SyntaxKind.BarToken ||
+    k === ts.SyntaxKind.CaretToken ||
+    k === ts.SyntaxKind.LessThanLessThanToken ||
+    k === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+    k === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
   // Skip past parens / `as` casts / non-null asserts when looking for the
   // enclosing context — `((a + b)) | 0` is the same shape as `(a + b) | 0`
   // for our purposes.
@@ -986,19 +1000,71 @@ export function compileBinaryExpression(
     walk = parent;
     parent = parent.parent;
   }
-  const wrappedInToInt32 =
-    isArithOp &&
-    !!parent &&
-    ts.isBinaryExpression(parent) &&
-    parent.operatorToken.kind === ts.SyntaxKind.BarToken &&
-    parent.left === walk &&
-    ts.isNumericLiteral(parent.right) &&
-    parent.right.text === "0";
-  const arithI32WithToInt32Wrap = wrappedInToInt32 && isI32LocalRef(expr.left) && isI32LocalRef(expr.right);
+  // Parent ToInt32-coerces our result iff the parent is a bitwise op.
+  // All bitwise ops apply ToInt32 to both operands per JS spec, so an
+  // arith op nested inside a bitwise op can wrap mod 2^32 safely without
+  // changing observable semantics. `| 0` is the canonical case but `^`,
+  // `&`, `<<`, `>>`, `>>>` all share this property.
+  const parentIsToInt32Bitwise =
+    !!parent && ts.isBinaryExpression(parent) && isBitwiseOpKind(parent.operatorToken.kind);
+  const wrappedInToInt32 = isArithOp && parentIsToInt32Bitwise;
+  // #1179: predicate for "this expression compiles to i32 cheaply with
+  // an i32 hint" — leaves are i32 locals or i32-range integer literals,
+  // and internal nodes are bitwise / `| 0` (always i32) or arithmetic
+  // (i32 IF the result is ToInt32-wrapped, which our caller guarantees
+  // by only invoking this from a bitwise / `| 0` context).
+  const isI32PureExpr = (e: ts.Expression): boolean => {
+    let inner: ts.Expression = e;
+    while (
+      ts.isParenthesizedExpression(inner) ||
+      ts.isAsExpression(inner) ||
+      ts.isTypeAssertionExpression(inner) ||
+      ts.isNonNullExpression(inner)
+    ) {
+      inner = ts.isParenthesizedExpression(inner)
+        ? inner.expression
+        : ts.isAsExpression(inner)
+          ? inner.expression
+          : ts.isNonNullExpression(inner)
+            ? inner.expression
+            : (inner as ts.TypeAssertion).expression;
+    }
+    if (ts.isIdentifier(inner)) return isI32LocalRef(inner);
+    if (ts.isNumericLiteral(inner)) {
+      const n = Number(inner.text.replace(/_/g, ""));
+      return Number.isInteger(n) && n >= -2147483648 && n <= 2147483647;
+    }
+    if (ts.isBinaryExpression(inner)) {
+      const k = inner.operatorToken.kind;
+      // `expr | 0` always produces i32 cleanly when its operand does.
+      if (k === ts.SyntaxKind.BarToken && ts.isNumericLiteral(inner.right) && inner.right.text === "0") {
+        return isI32PureExpr(inner.left);
+      }
+      // Bitwise ops always produce i32 (their own ToInt32 covers operands).
+      if (isBitwiseOpKind(k)) {
+        return isI32PureExpr(inner.left) && isI32PureExpr(inner.right);
+      }
+      // Arith ops: i32 wrap is correct only because the parent context
+      // ToInt32-wraps the chain. Recurse — internal arith stays i32-safe
+      // under the same parent-wrap guarantee.
+      if (k === ts.SyntaxKind.PlusToken || k === ts.SyntaxKind.MinusToken || k === ts.SyntaxKind.AsteriskToken) {
+        return isI32PureExpr(inner.left) && isI32PureExpr(inner.right);
+      }
+    }
+    return false;
+  };
+  // Arith op with ToInt32-wrapping parent: fire if both operands are i32-pure.
+  // Subsumes the original i32-locals-only check; literals and nested chains now apply too.
+  const arithI32WithToInt32Wrap = wrappedInToInt32 && isI32PureExpr(expr.left) && isI32PureExpr(expr.right);
+  // Bitwise op with i32-pure operands: emit native i32 op directly,
+  // skipping the f64-ToInt32 round-trip in compileBitwiseBinaryOp.
+  const bitwiseI32 = isBitwiseOpKind(op) && isI32PureExpr(expr.left) && isI32PureExpr(expr.right);
   const numericHint: ValType | undefined = isNumericOp
     ? {
         kind:
-          (ctx.fast || bothNativeI32 || hasI32LocalOperand || arithI32WithToInt32Wrap) && !isDivOrPow ? "i32" : "f64",
+          (ctx.fast || bothNativeI32 || hasI32LocalOperand || arithI32WithToInt32Wrap || bitwiseI32) && !isDivOrPow
+            ? "i32"
+            : "f64",
       }
     : undefined;
 
@@ -1083,12 +1149,17 @@ export function compileBinaryExpression(
   }
 
   // i32 numeric operations: fast mode, native type annotations, known i32 local
-  // comparison, or — #1120 — arithmetic of two i32 locals whose result is
-  // ToInt32-coerced by an enclosing `| 0`.
+  // comparison, — #1120 — arithmetic of two i32 locals whose result is
+  // ToInt32-coerced by an enclosing `| 0`, or — #1179 — a bitwise op with
+  // i32-pure operands (skip the f64 round-trip entirely).
   if (
     leftType.kind === "i32" &&
     rightType.kind === "i32" &&
-    ((ctx.fast && isNumberType(leftTsType)) || bothNativeI32 || hasI32LocalOperand || arithI32WithToInt32Wrap)
+    ((ctx.fast && isNumberType(leftTsType)) ||
+      bothNativeI32 ||
+      hasI32LocalOperand ||
+      arithI32WithToInt32Wrap ||
+      bitwiseI32)
   ) {
     return compileI32BinaryOp(ctx, fctx, op, expr);
   }

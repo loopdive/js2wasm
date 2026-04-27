@@ -2093,14 +2093,16 @@ function compileElementAssignment(
         else: [],
       });
     }
+    // #1179: hint i32 directly so an i32 loop index doesn't take an f64 round-trip.
+    // compileExpression with i32 hint emits i32.trunc_sat_f64_s for non-i32 results
+    // via coerceType, matching the previous behavior for f64 indices.
     const idxResult = compileExpression(ctx, fctx, target.argumentExpression, {
-      kind: "f64",
+      kind: "i32",
     });
     if (!idxResult) {
       reportError(ctx, target, "Failed to compile element index");
       return null;
     }
-    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     const idxLocal = allocLocal(fctx, `__idx_${fctx.locals.length}`, {
       kind: "i32",
     });
