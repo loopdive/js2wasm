@@ -901,19 +901,7 @@
             document.getElementById("m-passrate").textContent = ((latest.pass / latest.total) * 100).toFixed(1) + "%";
           }
           // ── Build meta (top-right commit hash + date) ──
-          if (reportData?.baseline_sha) {
-            const hashEl = document.getElementById("build-hash");
-            if (hashEl) hashEl.textContent = reportData.baseline_sha.slice(0, 8);
-          }
-          if (reportData?.timestamp) {
-            const dateEl = document.getElementById("build-date");
-            if (dateEl) {
-              const d = new Date(reportData.timestamp);
-              dateEl.textContent = isNaN(d)
-                ? reportData.timestamp
-                : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-            }
-          }
+          updateBuildMeta(reportData);
         } catch {
           if (runs.length > 0) {
             const latest = runs[runs.length - 1];
@@ -1135,6 +1123,30 @@
         }
       }
 
+      // ── Local vs baseline detection ──
+      // Set to true when the Vite dev-server WebSocket connects, meaning
+      // we're viewing locally-generated data rather than a committed baseline.
+      let isLocal = false;
+
+      function fmtDate(d) {
+        return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      }
+
+      function updateBuildMeta(reportData) {
+        const hashEl = document.getElementById("build-hash");
+        const dateEl = document.getElementById("build-date");
+        if (isLocal) {
+          if (hashEl) hashEl.textContent = "";
+          if (dateEl) dateEl.textContent = "local · " + fmtDate(new Date());
+        } else {
+          if (hashEl && reportData?.baseline_sha) hashEl.textContent = reportData.baseline_sha.slice(0, 8);
+          if (dateEl && reportData?.timestamp) {
+            const d = new Date(reportData.timestamp);
+            if (dateEl) dateEl.textContent = isNaN(d) ? reportData.timestamp : fmtDate(d);
+          }
+        }
+      }
+
       // ── Refresh ──
       function refreshData() {
         main().catch((err) => console.error("Dashboard error:", err));
@@ -1152,10 +1164,19 @@
         (function connectWS() {
           const proto = location.protocol === "https:" ? "wss:" : "ws:";
           const ws = new WebSocket(`${proto}//${location.host}/dashboard-ws`);
+          ws.onopen = () => {
+            isLocal = true;
+            updateBuildMeta(null);
+          };
           ws.onmessage = (e) => {
             try {
               const { type } = JSON.parse(e.data);
-              if (type === "refresh") main().then(resizeKanban).catch(console.error);
+              if (type === "refresh") {
+                main().then(resizeKanban).catch(console.error);
+                // Update the local timestamp on each push
+                const dateEl = document.getElementById("build-date");
+                if (dateEl) dateEl.textContent = "local · " + fmtDate(new Date());
+              }
             } catch {}
           };
           ws.onclose = () => setTimeout(connectWS, 3_000);
