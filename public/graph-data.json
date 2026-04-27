@@ -15208,7 +15208,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "45",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15840,7 +15840,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "45",
+      "sprint": "46",
       "depends_on": [
         "1124"
       ],
@@ -16507,7 +16507,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "45",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -16594,7 +16594,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "45",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -16606,7 +16606,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "45",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -16618,7 +16618,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "45",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -16766,7 +16766,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "45",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "compilable",
@@ -16899,6 +16899,54 @@
       "files": [],
       "goal": "developer-experience",
       "cluster": "developer-experience"
+    },
+    {
+      "id": "1189",
+      "title": "ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
+      "id": "1190",
+      "title": "research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
+      "id": "1191",
+      "title": "ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
+    },
+    {
+      "id": "1192",
+      "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-hardening",
+      "cluster": "ci-hardening"
     },
     {
       "id": "backlog",
@@ -17639,10 +17687,6 @@
       "target": "1121"
     },
     {
-      "source": "1124",
-      "target": "1126"
-    },
-    {
       "source": "1163",
       "target": "1164"
     },
@@ -17689,6 +17733,10 @@
     {
       "source": "900",
       "target": "907"
+    },
+    {
+      "source": "1124",
+      "target": "1126"
     },
     {
       "source": "321",
@@ -17903,7 +17951,11 @@
         "1106",
         "1117",
         "1170",
-        "1171"
+        "1171",
+        "1189",
+        "1190",
+        "1191",
+        "1192"
       ],
       "track": "supporting track"
     },
@@ -19813,6 +19865,22 @@
     {
       "goal": "ci-hardening",
       "issue": "1171"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1189"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1190"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1191"
+    },
+    {
+      "goal": "ci-hardening",
+      "issue": "1192"
     },
     {
       "goal": "class-system",

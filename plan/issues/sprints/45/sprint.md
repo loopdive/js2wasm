@@ -112,15 +112,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
-| #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
 | #1169f | IR Phase 4 Slice 7 — generators and async/await through the IR path | high | ready |
-| #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | ready |
-| #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
-| #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | ready |
 | #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | ready |
-| #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
 
 ### Done
 
