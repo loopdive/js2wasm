@@ -35,7 +35,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Test262 runner (preferred): `pnpm run test:262` — vitest-based, auto-worktree, disk cache, default 3 forks. Use `TEST262_WORKERS=5` for solo runs (no dev agents).
 - Test262 runner history: `runs/index.json` is appended by the vitest runner after each run. `benchmarks/results/report.html` reads this for the trend graph.
 - Backlog: `plan/issues/backlog/backlog.md`
-- Sprints: `plan/sprints/sprint-{N}.md` — planning, task queue, results, retrospective (living doc updated during sprint)
+- Sprints: `plan/issues/sprints/{N}/sprint.md` — planning, task queue, results, retrospective (living doc updated during sprint)
 - Issues: `plan/issues/` — organized by state:
   - `ready/` — no blockers, pick any to start (priority in `dependency-graph.md`)
   - `blocked/` — waiting on a dependency
@@ -91,7 +91,7 @@ See [plan/method/team-setup.md](plan/method/team-setup.md) for full team config,
 - `plan/method/session-start-checklist.md` — tech lead reads at session start
 - `plan/method/pre-commit-checklist.md` — devs read before every git add/commit
 - `plan/method/pre-completion-checklist.md` — devs read before signaling task completion
-- `plan/method/pre-merge-checklist.md` — tester reads before every merge to main
+- `plan/method/pre-merge-checklist.md` — dev reads before merging to main
 
 **Skills** (on-demand role protocols — any agent can invoke these):
 - `/test-and-merge` — full tester pipeline: merge main into branch, equiv tests, ff-only merge
@@ -232,7 +232,7 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 9. **Never use `git merge` on main directly.** All merges go through PRs + CI.
 10. **Never rebase.** Merge preserves history and is safely reversible.
 
-### Issue completion (tester post-merge)
+### Issue completion (post-merge)
 1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
 2. Update `plan/log/dependency-graph.md` — remove/strikethrough completed issue
 3. Update `plan/issues/backlog/backlog.md` — sprint priority

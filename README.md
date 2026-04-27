@@ -46,7 +46,7 @@ Projects in this category usually take years to reach meaningful semantic covera
 
 Current public milestone:
 
-- **52% Test262 compliance**
+- **~60% Test262 compliance**
 
 See the [Playground](https://loopdive.github.io/js2wasm/playground/) and [Roadmap](./ROADMAP.md) for the current public surface.
 
@@ -54,7 +54,7 @@ See the [Playground](https://loopdive.github.io/js2wasm/playground/) and [Roadma
 
 `js2wasm` is still an active compiler effort, but it is no longer just a research prototype. The project now has:
 
-- **52% Test262 compliance**
+- **~60% Test262 compliance**
 - a public browser playground
 - ongoing benchmark and compatibility reporting
 - both JS-hosted and standalone-oriented compiler work, with standalone support still in progress and not yet the primary conformance path
