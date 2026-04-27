@@ -220,7 +220,7 @@ function isIrClaimable(
 
   const body = fn.body;
   if (!body) return false;
-  return isPhase1StatementList(body.statements, scope, localClasses, isGenerator);
+  return isPhase1StatementList(body.statements, scope, localClasses);
 }
 
 /**
@@ -284,13 +284,6 @@ function isPhase1StatementList(
   stmts: ReadonlyArray<ts.Statement>,
   scope: Set<string>,
   localClasses: ReadonlySet<string>,
-  // Slice 7b (#1169f): when true, the enclosing function is a
-  // `function*` and bare `return;` (no expression) is allowed in tail
-  // position. Threaded down to `isPhase1Tail` to relax the "tail must
-  // have expression" rule for generators only — non-generators with
-  // bare returns continue to be rejected (their return type wouldn't
-  // resolve to a primitive anyway).
-  isGenerator: boolean = false,
 ): boolean {
   if (stmts.length < 1) return false;
   for (let i = 0; i < stmts.length - 1; i++) {
@@ -321,33 +314,23 @@ function isPhase1StatementList(
         if (!isPhase1Expr(s.expression, scope, localClasses)) return false;
         continue;
       }
-      // Slice 7a/7b (#1169f): `yield`/`yield <expr>`/`yield* <expr>` as a
-      // statement. Only valid when the enclosing function is a generator
-      // — that check is enforced by the lowerer (`lowerYield` throws when
+      // Slice 7a (#1169f): `yield <expr>;` as a statement. Only valid
+      // when the enclosing function is a generator — that check is
+      // enforced by the lowerer (`lowerYield` throws when
       // `cx.funcKind !== "generator"`). The selector accepts the shape
       // unconditionally because functions that nest a yield in a
       // non-generator are ill-typed and would have failed TS source
       // checking before reaching us.
-      //
-      // Slice 7b accepts:
-      //   - `yield;`              — bare yield, lowered as gen.push of a
-      //                             null externref (matches legacy
-      //                             "yield with no value" semantics).
-      //   - `yield <phase1-expr>` — any Phase-1 expression body. The
-      //                             from-ast lowerer dispatches by IrType:
-      //                             f64/i32 use the typed __gen_push_*
-      //                             import; everything else coerces to
-      //                             externref and uses __gen_push_ref.
-      //   - `yield* <iterable>`   — delegation; lowered as
-      //                             gen.yieldStar(coerced_iterable).
       if (ts.isYieldExpression(s.expression)) {
-        if (s.expression.expression) {
-          if (!isPhase1Expr(s.expression.expression, scope, localClasses)) return false;
-        } else if (s.expression.asteriskToken) {
-          // `yield*` MUST have an expression — TS parser enforces this,
-          // but be defensive.
-          return false;
-        }
+        // `yield;` (no expression) and `yield* <expr>` are deferred to
+        // 7b; slice 7a only accepts `yield <numeric expr>`.
+        // (Slice 7b kept this strictness — see PR #73 retrospective:
+        // the IR widening for non-numeric/star/bare yields caused
+        // ~240 test262 regressions in CI; the IR scaffolding remains
+        // for a future slice.)
+        if (s.expression.asteriskToken) return false;
+        if (!s.expression.expression) return false;
+        if (!isPhase1Expr(s.expression.expression, scope, localClasses)) return false;
         continue;
       }
       if (
@@ -370,9 +353,9 @@ function isPhase1StatementList(
     // reinterpret as `if (cond) <tail> else { <rest> }`.
     if (ts.isIfStatement(s) && !s.elseStatement) {
       if (!isPhase1Expr(s.expression, scope, localClasses)) return false;
-      if (!isPhase1Tail(s.thenStatement, new Set(scope), localClasses, isGenerator)) return false;
+      if (!isPhase1Tail(s.thenStatement, new Set(scope), localClasses)) return false;
       const rest = stmts.slice(i + 1);
-      return isPhase1StatementList(rest, new Set(scope), localClasses, isGenerator);
+      return isPhase1StatementList(rest, new Set(scope), localClasses);
     }
     // Slice 6 part 2 (#1181) — for-of statement (always non-tail). The
     // body is itself shape-checked. The bridge in `from-ast.ts` lowers
@@ -385,7 +368,7 @@ function isPhase1StatementList(
     }
     return false;
   }
-  return isPhase1Tail(stmts[stmts.length - 1]!, scope, localClasses, isGenerator);
+  return isPhase1Tail(stmts[stmts.length - 1]!, scope, localClasses);
 }
 
 /**
@@ -443,15 +426,13 @@ function isPhase1BodyStatement(stmt: ts.Statement, scope: Set<string>, localClas
     if (ts.isCallExpression(stmt.expression)) {
       return isPhase1Expr(stmt.expression, scope, localClasses);
     }
-    // Slice 7a/7b (#1169f): `yield`/`yield <expr>`/`yield* <expr>` inside
-    // a for-of body. Same semantics as the top-level form — only valid
-    // when the enclosing function is a generator (lowerer-enforced).
+    // Slice 7a (#1169f): `yield <expr>` inside a for-of body. Same
+    // semantics as the top-level form — only valid when the enclosing
+    // function is a generator (lowerer-enforced).
     if (ts.isYieldExpression(stmt.expression)) {
-      if (stmt.expression.expression) {
-        return isPhase1Expr(stmt.expression.expression, scope, localClasses);
-      }
       if (stmt.expression.asteriskToken) return false;
-      return true; // bare `yield;`
+      if (!stmt.expression.expression) return false;
+      return isPhase1Expr(stmt.expression.expression, scope, localClasses);
     }
     if (ts.isBinaryExpression(stmt.expression)) {
       const op = stmt.expression.operatorToken.kind;
@@ -489,30 +470,19 @@ function isPhase1BodyStatement(stmt: ts.Statement, scope: Set<string>, localClas
   return false;
 }
 
-function isPhase1Tail(
-  stmt: ts.Statement,
-  scope: Set<string>,
-  localClasses: ReadonlySet<string>,
-  isGenerator: boolean = false,
-): boolean {
+function isPhase1Tail(stmt: ts.Statement, scope: Set<string>, localClasses: ReadonlySet<string>): boolean {
   if (ts.isReturnStatement(stmt)) {
-    // Slice 7b (#1169f): bare `return;` (no expression) is allowed in
-    // generator tails — the lowerer's `lowerTail` generator branch
-    // handles the no-expression case by emitting the epilogue without
-    // a final push. Non-generator bare returns continue to be rejected
-    // (they'd type as void, which the selector's return-type gate
-    // already rules out anyway).
-    if (!stmt.expression) return isGenerator;
+    if (!stmt.expression) return false;
     return isPhase1Expr(stmt.expression, scope, localClasses);
   }
   if (ts.isBlock(stmt)) {
-    return isPhase1StatementList(stmt.statements, new Set(scope), localClasses, isGenerator);
+    return isPhase1StatementList(stmt.statements, new Set(scope), localClasses);
   }
   if (ts.isIfStatement(stmt)) {
     if (!stmt.elseStatement) return false;
     if (!isPhase1Expr(stmt.expression, scope, localClasses)) return false;
-    if (!isPhase1Tail(stmt.thenStatement, new Set(scope), localClasses, isGenerator)) return false;
-    if (!isPhase1Tail(stmt.elseStatement, new Set(scope), localClasses, isGenerator)) return false;
+    if (!isPhase1Tail(stmt.thenStatement, new Set(scope), localClasses)) return false;
+    if (!isPhase1Tail(stmt.elseStatement, new Set(scope), localClasses)) return false;
     return true;
   }
   return false;

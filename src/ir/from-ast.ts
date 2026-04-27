@@ -1352,132 +1352,48 @@ function lowerPropertyAssignment(expr: ts.BinaryExpression, cx: LowerCtx): void 
 // ---------------------------------------------------------------------------
 
 /**
- * Slice 7a/7b (#1169f): lower a yield expression-statement. The yielded
+ * Slice 7a (#1169f): lower a `yield <expr>;` statement. The yielded
  * value is pushed onto the generator's `__gen_buffer` Wasm-local slot
- * via `gen.push`, which the lowerer expands to a typed `__gen_push_*`
- * host call dispatched on the value's IrType (f64 → push_f64,
- * i32 → push_i32, otherwise externref → push_ref).
- *
- * Slice 7b adds three extensions:
- *   - **Bare `yield;`** — emits a null-externref const + `gen.push`,
- *     matching legacy's "yield with no value" semantics (every
- *     consumer sees `IteratorResult { value: undefined, done: false }`
- *     for that step).
- *   - **`yield <non-numeric>`** — strings, booleans-as-i32 stay native;
- *     ref/object/class/closure values coerce to externref via
- *     `coerce.to_externref` (the `extern.convert_any` Wasm op), then
- *     flow through `__gen_push_ref(buf, externref)`.
- *   - **`yield* <iterable>`** — coerces the iterable to externref and
- *     emits `gen.yieldStar`, which lowers to
- *     `__gen_yield_star(buf, iterable)`. The host iterator-protocol
- *     drains every value from the inner iterable into the outer
- *     buffer (see `runtime.ts:2999`).
+ * via `gen.push`, which the lowerer expands to a typed
+ * `__gen_push_*` host call (slice 7a only emits `__gen_push_f64`,
+ * since the selector restricts yield operands to Phase-1 numeric
+ * expressions).
  *
  * Defensive: throws if the enclosing function isn't a generator. The
  * selector should have rejected the function in that case, but a
  * defensive check here surfaces selector regressions as a clean
  * fall-back to legacy rather than malformed Wasm.
+ *
+ * (Slice 7b retrospective: an attempted widening to bare `yield;`,
+ * `yield* <iterable>`, and non-numeric yields was reverted in
+ * commit `<this commit>` after PR #73 CI showed ~240 test262
+ * regressions clustered in `eval-code` / TypedArray / WeakMap test
+ * directories. The IR scaffolding for `gen.yieldStar` is preserved
+ * in `nodes.ts` / `builder.ts` / the lower+pass dispatch arms, so a
+ * future slice can re-attempt the widening with a localized fix.)
  */
 function lowerYield(expr: ts.YieldExpression, cx: LowerCtx): void {
   if (cx.funcKind !== "generator") {
     throw new Error(`ir/from-ast: yield outside generator function in ${cx.funcName}`);
   }
-
-  // ---------------------------------------------------------------
-  // `yield* <iterable>` — slice 7b.
-  // ---------------------------------------------------------------
   if (expr.asteriskToken) {
-    if (!expr.expression) {
-      // TS parser enforces this; keep as defense-in-depth.
-      throw new Error(`ir/from-ast: yield* requires an iterable in ${cx.funcName}`);
-    }
-    // Lower the iterable with an externref hint; the iterable's
-    // actual IrType might be vec/string/object/externref. Coerce to
-    // externref via the slice-6-part-3 helper so the host
-    // `__gen_yield_star(externref, externref)` import sees the
-    // right Wasm value type.
-    const inner = lowerExpr(expr.expression, cx, irVal({ kind: "externref" }));
-    const innerExt = coerceYieldValueToExternref(inner, cx);
-    cx.builder.emitGenYieldStar(innerExt);
-    return;
+    // `yield* <iterable>` — slice 7b (deferred — IR scaffolding present
+    // via `gen.yieldStar` but not wired here; throw triggers fallback
+    // to legacy).
+    throw new Error(`ir/from-ast: yield* delegation not in slice 7a (${cx.funcName})`);
   }
-
-  // ---------------------------------------------------------------
-  // Bare `yield;` (no value) — slice 7b.
-  // ---------------------------------------------------------------
   if (!expr.expression) {
-    // Materialize a null externref and push as ref. Legacy emits
-    // the same shape (`__gen_push_ref(buf, ref.null.extern)`) when
-    // a `yield;` statement appears in a generator body.
-    const nullExt = cx.builder.emitConst(
-      { kind: "null", ty: irVal({ kind: "externref" }) },
-      irVal({ kind: "externref" }),
-    );
-    cx.builder.emitGenPush(nullExt);
-    return;
+    // `yield;` (no value) — slice 7b (deferred for the same reason).
+    throw new Error(`ir/from-ast: bare yield (no value) not in slice 7a (${cx.funcName})`);
   }
-
-  // ---------------------------------------------------------------
-  // `yield <expr>` — slice 7a (numeric) and 7b (any Phase-1 type).
-  // ---------------------------------------------------------------
-  // Lower with an externref hint as a fallback shape; the IR type
-  // recovered via `typeOf` drives the dispatch below. For numeric
-  // and bool yields the lowerer's downstream typing keeps them as
-  // f64/i32 — `lowerExpr`'s `hint` is advisory, not authoritative.
-  const value = lowerExpr(expr.expression, cx, irVal({ kind: "externref" }));
+  const value = lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
   const valueType = cx.builder.typeOf(value);
-  const valTy = asVal(valueType);
-  if (valTy?.kind === "f64" || valTy?.kind === "i32") {
-    // Native primitive yield — `gen.push` lowerer dispatches to
-    // `__gen_push_f64` / `__gen_push_i32` directly.
-    cx.builder.emitGenPush(value);
-    return;
+  if (asVal(valueType)?.kind !== "f64") {
+    throw new Error(
+      `ir/from-ast: yield expression must lower to f64 (got ${describeIrType(valueType)}) in slice 7a (${cx.funcName})`,
+    );
   }
-  // Reference-shaped yield — coerce to externref so the lowerer's
-  // `__gen_push_ref(buf, externref)` arm sees the right Wasm type.
-  const valueExt = coerceYieldValueToExternref(value, cx);
-  cx.builder.emitGenPush(valueExt);
-}
-
-/**
- * Slice 7b helper: coerce a yielded SSA value to externref for the
- * `__gen_push_ref` / `__gen_yield_star` arms. Skips the coerce when
- * the value's underlying Wasm valtype is ALREADY externref —
- * emitting `extern.convert_any` on an already-externref operand is
- * actually a Wasm validation error (the op expects an `anyref`
- * subtype, and `externref` is NOT a subtype of `anyref`).
- *
- * Cases that skip the coerce:
- *   - `IrType.val` with `val.kind === "externref"` — directly externref.
- *   - `IrType.string` in HOST-strings mode — `resolveString()` returns
- *     externref for the host backend (the wasm:js-string imports take
- *     externref), so the value flowing through is already externref.
- *
- * Cases that DO coerce:
- *   - `IrType.string` in NATIVE-strings mode — value is `(ref $AnyString)`,
- *     a struct ref subtype of anyref, so `extern.convert_any` re-tags it.
- *   - `IrType.val` with `val.kind === "ref"` / `"ref_null"` —
- *     struct/array refs are anyref subtypes; coerce is valid.
- *   - `IrType.object` / `class` / `closure` — all backed by struct refs,
- *     anyref subtypes; coerce is valid.
- *
- * Reuses `coerce.to_externref` (#1182) so the generator path and the
- * iter-host for-of path share one IR primitive — the lowerer emits
- * `extern.convert_any` for both.
- */
-function coerceYieldValueToExternref(value: IrValueId, cx: LowerCtx): IrValueId {
-  const t = cx.builder.typeOf(value);
-  if (t.kind === "val" && t.val.kind === "externref") {
-    return value;
-  }
-  // Host-strings mode: `IrType.string` flows as externref through Wasm.
-  // Skip the coerce so we don't emit a validation-rejected
-  // `extern.convert_any` over a global.get of externref-typed string
-  // global.
-  if (t.kind === "string" && !cx.nativeStrings) {
-    return value;
-  }
-  return cx.builder.emitCoerceToExternref(value);
+  cx.builder.emitGenPush(value);
 }
 
 /**
