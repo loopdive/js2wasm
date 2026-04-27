@@ -113,16 +113,15 @@ Spawn dedicated agents when:
 
 **IMPORTANT: Always use teammates, not subagents.** Spawn agents via `TeamCreate` + `Agent` with `team_name` parameter. Never use bare `Agent` spawns — subagents can't coordinate, causing OOM from concurrent test runs and duplicate work. Teammates communicate via `SendMessage` to serialize test runs and coordinate on file conflicts.
 
-**Key numbers**: 16GB RAM + 16GB swap (container, set in `.devcontainer/devcontainer.json`). `free -m` may report ~20GB but Docker enforces 16GB hard limit. Max 4 dev teammates at a time. Default 1 test262 fork. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/log/dependency-graph.md`.
+**Key numbers**: 16GB RAM + 16GB swap (container, set in `.devcontainer/devcontainer.json`). `free -m` may report ~20GB but Docker enforces 16GB hard limit. **Up to 8 dev teammates** (no local test262 — CI handles it). All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/log/dependency-graph.md`.
 
-**RAM monitoring**: Use `free -m` "available" column (not "free"). "free" excludes reclaimable disk cache. Example: "free" shows 1.5GB but "available" shows 7GB = the actual headroom. Hooks check "available" before allowing tests or agent spawns.
+**RAM monitoring**: Use `free -m` "available" column (not "free"). "free" excludes reclaimable disk cache. Hooks check "available" before allowing agent spawns.
 
 **Memory budget** (measured peaks via `/proc/[pid]/status` VmHWM):
 - Fixed: Cursor ~1,400MB + system ~1,200MB + tech lead ~1,400MB = **~4,000MB**
-- Dev agent: ~350MB idle, ~500MB active, ~700MB peak
-- Equiv test: ~800MB (parent ~400MB + 1 fork ~400MB)
-- Test262 (1 fork): ~4,300MB peak (fork grows to ~4GB over 48K tests)
-- **Max 4 devs** with parallel equiv tests (~9GB). Max 2 devs during test262 (~9GB). Shut down devs for solo test262 runs.
+- Dev agent: ~700MB peak (no local test262)
+- Test262 (CI only): ~4,300MB peak per shard — runs in GitHub Actions, not locally
+- **Max 8 devs** (~9.6GB headroom). Check `free -m` available before spawning.
 
 ### Agent lifecycle — when to spawn, skill, or terminate
 
@@ -184,9 +183,9 @@ End of sprint:
 10. **PO** grooms backlog for next sprint
 
 **Tech lead discipline:**
+- **Populate TaskList** at sprint start from `plan/issues/ready/` and immediately whenever new issues are added mid-sprint. Empty queue = agents spin idle.
 - Batch doc/plan commits on main AFTER all pending agent merges, not between them (doc commits force agents to re-merge main)
-- Verify equivalence tests passed (dev runs them via `/test-and-merge` skill)
-- Complete post-merge issue cleanup (move to done/, update dep graph) before dispatching next task
+- Complete post-merge issue cleanup (move to done/, update dep graph) after each merge
 - **Tag sprints**: `git tag sprint-N/begin` when starting a sprint, `git tag sprint/N` when it finishes. Sprint stats (duration, commits, issues) are auto-generated from tags during `build:pages`.
 
 ### Sprint planning (PO + Architect + Tech Lead)
@@ -201,11 +200,11 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 6. **Tech lead dispatches** — assigns tasks to devs, manages the merge queue
 
 ### Agent work dispatch
-- PO creates the task queue at sprint start (tech lead dispatches to devs)
-- **Dev protocol: push PR → wait for CI → self-merge → claim next task.** Devs do NOT move on to the next task while waiting for CI. They monitor `.claude/ci-status/pr-<N>.json` (idle, no token burn) until it appears with a SHA matching their branch HEAD. Then they self-merge or fix regressions. Only after the PR is merged do they claim the next task.
-- **Dev self-merge: devs merge their OWN clean PRs without waiting for tech lead.** When `.claude/ci-status/pr-<N>.json` reports `net_per_test > 0` on a matching SHA, `regressions/improvements < 10%`, no single error-bucket >50 regressions — the dev runs `gh pr merge <N> --admin --merge` directly. Escalate to tech lead only when criteria fail. See `.claude/skills/dev-self-merge.md` for the full checklist.
-- Dev agents do NOT exit after completing a task — after merge, they check `TaskList` and claim the next unowned task
-- Dev agents do NOT run full test262 locally; they run scoped local checks, push their branch, and open a PR to trigger GitHub Actions
+- **Tech lead populates TaskList** — devs self-serve from it. No per-task dispatch messages needed.
+- **Dev loop**: claim task from TaskList → implement → push PR → wait for CI → self-merge if green → mark completed → claim next task.
+- **Dev self-merge**: when `.claude/ci-status/pr-<N>.json` has matching SHA, `net_per_test > 0`, ratio <10%, no bucket >50 — run `gh pr merge <N> --admin --merge`. Escalate to tech lead only when criteria fail. See `.claude/skills/dev-self-merge.md`.
+- **Devs contact tech lead only for**: TaskList empty, blocked >30 min, escalated merge criteria.
+- Dev agents do NOT run full test262 locally — scoped checks only, CI validates conformance.
 
 ### Controlling agents
 - **Pause (between tasks)**: create a task with `[PAUSE]` in the subject. Agents stop when they reach it and wait idle.
