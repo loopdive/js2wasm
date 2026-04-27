@@ -27,6 +27,7 @@ import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 import {
   addArrayIteratorImports,
   addForInImports,
+  addGeneratorImports,
   addIteratorImports,
   addStringImports,
   addUnionImports,
@@ -1011,53 +1012,12 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   }
 
   // ── collectGeneratorImports finalize ──
-  if (state.generatorFound && !ctx.funcMap.has("__gen_create_buffer")) {
-    const bufType = addFuncType(ctx, [], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__gen_create_buffer", { kind: "func", typeIdx: bufType });
-
-    const pushF64Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], []);
-    addImport(ctx, "env", "__gen_push_f64", { kind: "func", typeIdx: pushF64Type });
-
-    const pushI32Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], []);
-    addImport(ctx, "env", "__gen_push_i32", { kind: "func", typeIdx: pushI32Type });
-
-    const pushRefType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
-    addImport(ctx, "env", "__gen_push_ref", { kind: "func", typeIdx: pushRefType });
-
-    // __gen_yield_star: (externref, externref) → void  (iterates inner iterable, pushes all values into outer buffer)
-    addImport(ctx, "env", "__gen_yield_star", {
-      kind: "func",
-      typeIdx: pushRefType, // same signature as push_ref: (buf, iterable) → void
-    });
-
-    // __create_generator: (buf: externref, pendingThrow: externref) -> externref
-    // Takes a buffer of yielded values and an optional pending exception,
-    // returns a Generator-like object that defers the throw to the first next() call.
-    const createGenType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__create_generator", { kind: "func", typeIdx: createGenType });
-    // __create_async_generator: same Wasm signature as __create_generator, but .next()/.return()/.throw()
-    // return Promise-wrapped results as required by the ES spec for async generators.
-    addImport(ctx, "env", "__create_async_generator", { kind: "func", typeIdx: createGenType });
-    const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__gen_next", { kind: "func", typeIdx: genType });
-
-    const genReturnType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__gen_return", { kind: "func", typeIdx: genReturnType });
-    addImport(ctx, "env", "__gen_throw", { kind: "func", typeIdx: genReturnType });
-
-    addImport(ctx, "env", "__gen_result_value", { kind: "func", typeIdx: genType });
-
-    const resultValF64Type = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
-    addImport(ctx, "env", "__gen_result_value_f64", { kind: "func", typeIdx: resultValF64Type });
-
-    const resultDoneType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__gen_result_done", { kind: "func", typeIdx: resultDoneType });
-
-    // Ensure __get_caught_exception is available for generator body try/catch wrappers
-    if (!ctx.funcMap.has("__get_caught_exception")) {
-      const getCaughtType = addFuncType(ctx, [], [{ kind: "externref" }]);
-      addImport(ctx, "env", "__get_caught_exception", { kind: "func", typeIdx: getCaughtType });
-    }
+  // The full set of generator host imports lives in `addGeneratorImports`
+  // (in `./index.ts`) so the IR path can call the same helper when it
+  // claims a generator function (#1169f). The helper is idempotent —
+  // guards on `ctx.funcMap.has("__gen_create_buffer")` internally.
+  if (state.generatorFound) {
+    addGeneratorImports(ctx);
   }
 
   // ── collectIteratorImports finalize ──

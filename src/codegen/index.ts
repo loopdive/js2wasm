@@ -4290,6 +4290,17 @@ export function addUnionImports(ctx: CodegenContext): void {
   if (ctx.hasUnionImports) return;
   ctx.hasUnionImports = true;
 
+  // Under `--target wasi` (#1180): emit Wasm-native implementations of the
+  // box / unbox / typeof / is_truthy helpers instead of `env::*` host
+  // imports, since wasmtime cannot satisfy the env::* imports without a JS
+  // host. The native impls preserve the same name + signature so existing
+  // call sites (`ctx.funcMap.get("__unbox_number")` etc.) work unchanged.
+  // Same dual-mode pattern as #679 (strings) and #682 (RegExp).
+  if (ctx.wasi) {
+    addUnionImportsAsNativeFuncs(ctx);
+    return;
+  }
+
   // Record the import count before adding, so we can adjust defined-function
   // indices if imports are added after collectDeclarations has run.
   const importsBefore = ctx.numImportFuncs;
@@ -4458,6 +4469,345 @@ export function addUnionImports(ctx: CodegenContext): void {
 }
 
 /**
+ * Wasm-native implementation of the union helper functions (#1180).
+ *
+ * Used under `--target wasi`, where the standard `env::*` host imports
+ * cannot be satisfied by wasmtime. Instead of importing the helpers, we
+ * register a small set of WasmGC struct types (`__box_number_struct`,
+ * `__box_boolean_struct`) plus a synthesized function for each helper
+ * with the SAME name and signature as the host-mode import. Existing
+ * call sites that look helpers up via `ctx.funcMap.get("__unbox_number")`
+ * etc. transparently call the native version.
+ *
+ * Semantics mirror the JS host runtime where possible:
+ *   - `__box_number(f64)` wraps the value in a `__box_number_struct` and
+ *     converts to externref via `extern.convert_any`.
+ *   - `__unbox_number(externref)` returns 0 for null (matches `Number(null)`),
+ *     extracts the value if the externref is a `__box_number_struct`,
+ *     otherwise returns `NaN` (matches `Number(opaque host value)`).
+ *   - `__box_boolean(i32)` / `__unbox_boolean(externref)` mirror the
+ *     number variants with an `i32` payload.
+ *   - `__is_truthy(externref)` returns 0 for null and for boxed-zero /
+ *     boxed-NaN / boxed-false; returns 1 for any other ref (any non-null
+ *     reference is truthy in JS).
+ *   - `__typeof_number/string/boolean(externref)` use `ref.test` against
+ *     the appropriate boxed struct (string under wasi/nativeStrings is
+ *     the NativeString struct at `ctx.anyStrTypeIdx`).
+ *   - `__typeof_undefined(externref)` is `ref.is_null`.
+ *   - `__typeof_object/function(externref)` are conservatively 0 — wasi
+ *     binaries don't have a JS-side function or generic object value to
+ *     surface here.
+ *   - `__typeof(externref)` returns null externref. Producing a real
+ *     type-tag string under nativeStrings would require constructing a
+ *     NativeString per tag, which is deferred until a wasi caller
+ *     actually needs the result of `typeof v` as a string. Today's
+ *     callers either pre-fold the typeof at the AST level or compare
+ *     against a string literal (which uses `__typeof_*` instead).
+ *
+ * Why a struct-based box rather than letting the externref carry a raw
+ * f64: externref is opaque at the Wasm level — there's no way to read a
+ * payload back out without going through the WasmGC any.* / ref.cast
+ * machinery against a registered struct type. The struct gives us a
+ * stable shape the unbox helper can pattern-match against, and the
+ * `extern.convert_any` / `any.convert_extern` round-trip is a no-op at
+ * the Wasm engine level.
+ */
+function addUnionImportsAsNativeFuncs(ctx: CodegenContext): void {
+  // 1. Register the boxed-value struct types. Both are immutable singletons.
+  const boxNumStructIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "__box_number_struct",
+    fields: [{ name: "value", type: { kind: "f64" }, mutable: false }],
+  });
+
+  const boxBoolStructIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "__box_boolean_struct",
+    fields: [{ name: "value", type: { kind: "i32" }, mutable: false }],
+  });
+
+  // 2. Pre-compute func types — addFuncType de-dupes by signature so
+  //    repeated calls return the same typeIdx.
+  const externrefToI32 = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
+  const externrefToF64 = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+  const f64ToExternref = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+  const i32ToExternref = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "externref" }]);
+  const externrefToExternref = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+
+  /**
+   * Synthesize a native helper function. The funcIdx is allocated as
+   * `numImportFuncs + mod.functions.length` to match how every other
+   * synthesized function (e.g. `__toUint32` from #1094) gets its slot.
+   */
+  const registerNative = (
+    name: string,
+    typeIdx: number,
+    body: Instr[],
+    locals: { name: string; type: ValType }[] = [],
+  ): void => {
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.funcMap.set(name, funcIdx);
+    ctx.mod.functions.push({ name, typeIdx, locals, body, exported: false });
+  };
+
+  // 3. __box_number(f64) -> externref
+  registerNative("__box_number", f64ToExternref, [
+    { op: "local.get", index: 0 },
+    { op: "struct.new", typeIdx: boxNumStructIdx },
+    { op: "extern.convert_any" } as unknown as Instr,
+  ]);
+
+  // 4. __unbox_number(externref) -> f64
+  //    Local 1 is an anyref temp used to ref.test then ref.cast without
+  //    re-evaluating the parameter (which is fine — it's a local.get —
+  //    but the temp shape mirrors the spec'd structure for symmetry).
+  registerNative(
+    "__unbox_number",
+    externrefToF64,
+    [
+      // if (ref.is_null param) return 0   // Number(null) === 0
+      { op: "local.get", index: 0 },
+      { op: "ref.is_null" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "f64.const", value: 0 }, { op: "return" }],
+      },
+      // any = any.convert_extern(param)
+      { op: "local.get", index: 0 },
+      { op: "any.convert_extern" } as unknown as Instr,
+      { op: "local.tee", index: 1 },
+      // if (ref.test $box_number_struct any) return any.value
+      { op: "ref.test", typeIdx: boxNumStructIdx },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 1 },
+          { op: "ref.cast", typeIdx: boxNumStructIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: boxNumStructIdx, fieldIdx: 0 },
+          { op: "return" },
+        ],
+      },
+      // not a recognized boxed number → NaN (matches Number(opaque))
+      { op: "f64.const", value: NaN },
+    ],
+    [{ name: "$any_temp", type: { kind: "anyref" } as ValType }],
+  );
+
+  // 5. __box_boolean(i32) -> externref
+  registerNative("__box_boolean", i32ToExternref, [
+    { op: "local.get", index: 0 },
+    { op: "struct.new", typeIdx: boxBoolStructIdx },
+    { op: "extern.convert_any" } as unknown as Instr,
+  ]);
+
+  // 6. __unbox_boolean(externref) -> i32
+  //    Returns the boxed value if it's a __box_boolean_struct, otherwise
+  //    falls back to Boolean-coercion: null → false, any non-null ref
+  //    that isn't a boxed bool → ALSO false (under wasi we don't
+  //    distinguish other truthy refs at the unbox level; the runtime
+  //    fallback in `helpers.ts` does `v ? 1 : 0` which would say true,
+  //    but for unbox-as-typed-call-arg the safe default is false).
+  //    Boxed numbers go through __unbox_number first, then truthy-check.
+  registerNative(
+    "__unbox_boolean",
+    externrefToI32,
+    [
+      { op: "local.get", index: 0 },
+      { op: "ref.is_null" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+      },
+      { op: "local.get", index: 0 },
+      { op: "any.convert_extern" } as unknown as Instr,
+      { op: "local.tee", index: 1 },
+      { op: "ref.test", typeIdx: boxBoolStructIdx },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 1 },
+          { op: "ref.cast", typeIdx: boxBoolStructIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: boxBoolStructIdx, fieldIdx: 0 },
+          { op: "return" },
+        ],
+      },
+      // not a boxed bool → false (conservative under wasi)
+      { op: "i32.const", value: 0 },
+    ],
+    [{ name: "$any_temp", type: { kind: "anyref" } as ValType }],
+  );
+
+  // 7. __is_truthy(externref) -> i32
+  //    null → 0; boxed number → value !== 0 && !NaN; boxed bool → value;
+  //    anything else (other refs) → 1 (any non-null ref is truthy in JS).
+  registerNative(
+    "__is_truthy",
+    externrefToI32,
+    [
+      // if (ref.is_null param) return 0
+      { op: "local.get", index: 0 },
+      { op: "ref.is_null" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+      },
+      // any = any.convert_extern(param)
+      { op: "local.get", index: 0 },
+      { op: "any.convert_extern" } as unknown as Instr,
+      { op: "local.tee", index: 1 },
+      // boxed number? → value !== 0 && value === value
+      { op: "ref.test", typeIdx: boxNumStructIdx },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 1 },
+          { op: "ref.cast", typeIdx: boxNumStructIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: boxNumStructIdx, fieldIdx: 0 },
+          { op: "local.tee", index: 2 },
+          // value !== 0
+          { op: "f64.const", value: 0 },
+          { op: "f64.ne" },
+          { op: "local.get", index: 2 },
+          // value === value (NaN check — NaN !== NaN)
+          { op: "local.get", index: 2 },
+          { op: "f64.eq" },
+          { op: "i32.and" },
+          { op: "return" },
+        ],
+      },
+      // boxed bool? → value
+      { op: "local.get", index: 1 },
+      { op: "ref.test", typeIdx: boxBoolStructIdx },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 1 },
+          { op: "ref.cast", typeIdx: boxBoolStructIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: boxBoolStructIdx, fieldIdx: 0 },
+          { op: "return" },
+        ],
+      },
+      // any other non-null ref → truthy
+      { op: "i32.const", value: 1 },
+    ],
+    [
+      { name: "$any_temp", type: { kind: "anyref" } as ValType },
+      { name: "$f64_temp", type: { kind: "f64" } },
+    ],
+  );
+
+  // 8. __typeof_number(externref) -> i32 — `ref.test $box_number_struct`.
+  registerNative("__typeof_number", externrefToI32, [
+    { op: "local.get", index: 0 },
+    { op: "ref.is_null" },
+    {
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+    },
+    { op: "local.get", index: 0 },
+    { op: "any.convert_extern" } as unknown as Instr,
+    { op: "ref.test", typeIdx: boxNumStructIdx },
+  ]);
+
+  // 9. __typeof_boolean(externref) -> i32 — `ref.test $box_boolean_struct`.
+  registerNative("__typeof_boolean", externrefToI32, [
+    { op: "local.get", index: 0 },
+    { op: "ref.is_null" },
+    {
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+    },
+    { op: "local.get", index: 0 },
+    { op: "any.convert_extern" } as unknown as Instr,
+    { op: "ref.test", typeIdx: boxBoolStructIdx },
+  ]);
+
+  // 10. __typeof_string(externref) -> i32. Under nativeStrings (auto-on
+  //     for wasi) strings are NativeString structs at `ctx.anyStrTypeIdx`.
+  //     If that type isn't registered, return 0 (no string in scope).
+  if (ctx.anyStrTypeIdx >= 0) {
+    const strTypeIdx = ctx.anyStrTypeIdx;
+    registerNative("__typeof_string", externrefToI32, [
+      { op: "local.get", index: 0 },
+      { op: "ref.is_null" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+      },
+      { op: "local.get", index: 0 },
+      { op: "any.convert_extern" } as unknown as Instr,
+      { op: "ref.test", typeIdx: strTypeIdx },
+    ]);
+  } else {
+    registerNative("__typeof_string", externrefToI32, [{ op: "i32.const", value: 0 }]);
+  }
+
+  // 11. __typeof_undefined(externref) -> i32 — `ref.is_null`.
+  registerNative("__typeof_undefined", externrefToI32, [{ op: "local.get", index: 0 }, { op: "ref.is_null" }]);
+
+  // 12. __typeof_object(externref) -> i32 — non-null AND not number AND
+  //     not boolean AND not function. We approximate as "non-null and
+  //     not a boxed primitive" — sufficient for the common typeof
+  //     dispatch use cases. Returns 0 conservatively for boxed numbers
+  //     and boxed booleans.
+  registerNative(
+    "__typeof_object",
+    externrefToI32,
+    [
+      { op: "local.get", index: 0 },
+      { op: "ref.is_null" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+      },
+      { op: "local.get", index: 0 },
+      { op: "any.convert_extern" } as unknown as Instr,
+      { op: "local.tee", index: 1 },
+      { op: "ref.test", typeIdx: boxNumStructIdx },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+      },
+      { op: "local.get", index: 1 },
+      { op: "ref.test", typeIdx: boxBoolStructIdx },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+      },
+      // non-null, not a boxed primitive → object
+      { op: "i32.const", value: 1 },
+    ],
+    [{ name: "$any_temp", type: { kind: "anyref" } as ValType }],
+  );
+
+  // 13. __typeof_function(externref) -> i32 — wasi binaries don't expose
+  //     callable JS functions to the outside, so this is conservatively 0.
+  registerNative("__typeof_function", externrefToI32, [{ op: "i32.const", value: 0 }]);
+
+  // 14. __typeof(externref) -> externref — returns null externref under
+  //     wasi. Producing real type-tag strings would require a NativeString
+  //     per tag; defer until a wasi caller needs the typeof RESULT as a
+  //     string (today's callers compare against literal tags via the
+  //     __typeof_* helpers above).
+  registerNative("__typeof", externrefToExternref, [{ op: "ref.null.extern" } as unknown as Instr]);
+}
+
+/**
  * Scan source for for...of on non-array types (strings, externref iterables)
  * and register the host-delegated iterator protocol imports.
  */
@@ -4554,6 +4904,86 @@ export function addArrayIteratorImports(ctx: CodegenContext): void {
   addImport(ctx, "env", "__array_entries", { kind: "func", typeIdx: extToExt });
   addImport(ctx, "env", "__array_keys", { kind: "func", typeIdx: extToExt });
   addImport(ctx, "env", "__array_values", { kind: "func", typeIdx: extToExt });
+}
+
+/**
+ * Register the generator host imports if not already registered.
+ *
+ * The legacy generator codegen (eager-buffer model) uses these imports to
+ * push yielded values into a JS array on the host side, then wrap that
+ * buffer with `__create_generator` (or `__create_async_generator`) to
+ * produce a Generator-like / AsyncGenerator-like object. The IR path
+ * (slice 7 — #1169f) reuses the same set of imports — extracting this
+ * registration out of `declarations.ts:1014-1062` into a standalone
+ * exported helper so both legacy and IR can call it without duplicating
+ * the import-shape declarations.
+ *
+ * Imports registered (all under `env`):
+ *   - `__gen_create_buffer`   () → externref
+ *   - `__gen_push_f64`        (externref, f64) → ()
+ *   - `__gen_push_i32`        (externref, i32) → ()
+ *   - `__gen_push_ref`        (externref, externref) → ()
+ *   - `__gen_yield_star`      (externref, externref) → ()  (same shape as push_ref)
+ *   - `__create_generator`    (externref, externref) → externref  (buf, pendingThrow)
+ *   - `__create_async_generator` (externref, externref) → externref  (same shape)
+ *   - `__gen_next`            (externref) → externref
+ *   - `__gen_return`          (externref, externref) → externref
+ *   - `__gen_throw`           (externref, externref) → externref
+ *   - `__gen_result_value`    (externref) → externref
+ *   - `__gen_result_value_f64` (externref) → f64
+ *   - `__gen_result_done`     (externref) → i32
+ *   - `__get_caught_exception` () → externref  (for the body's try/catch wrapper)
+ */
+export function addGeneratorImports(ctx: CodegenContext): void {
+  // Guard: only register once
+  if (ctx.funcMap.has("__gen_create_buffer")) return;
+
+  const bufType = addFuncType(ctx, [], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__gen_create_buffer", { kind: "func", typeIdx: bufType });
+
+  const pushF64Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], []);
+  addImport(ctx, "env", "__gen_push_f64", { kind: "func", typeIdx: pushF64Type });
+
+  const pushI32Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], []);
+  addImport(ctx, "env", "__gen_push_i32", { kind: "func", typeIdx: pushI32Type });
+
+  const pushRefType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
+  addImport(ctx, "env", "__gen_push_ref", { kind: "func", typeIdx: pushRefType });
+
+  // __gen_yield_star: (externref, externref) → void  (iterates inner iterable, pushes all values into outer buffer)
+  addImport(ctx, "env", "__gen_yield_star", {
+    kind: "func",
+    typeIdx: pushRefType, // same signature as push_ref: (buf, iterable) → void
+  });
+
+  // __create_generator: (buf: externref, pendingThrow: externref) -> externref
+  // Takes a buffer of yielded values and an optional pending exception,
+  // returns a Generator-like object that defers the throw to the first next() call.
+  const createGenType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__create_generator", { kind: "func", typeIdx: createGenType });
+  // __create_async_generator: same Wasm signature as __create_generator, but .next()/.return()/.throw()
+  // return Promise-wrapped results as required by the ES spec for async generators.
+  addImport(ctx, "env", "__create_async_generator", { kind: "func", typeIdx: createGenType });
+  const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__gen_next", { kind: "func", typeIdx: genType });
+
+  const genReturnType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__gen_return", { kind: "func", typeIdx: genReturnType });
+  addImport(ctx, "env", "__gen_throw", { kind: "func", typeIdx: genReturnType });
+
+  addImport(ctx, "env", "__gen_result_value", { kind: "func", typeIdx: genType });
+
+  const resultValF64Type = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+  addImport(ctx, "env", "__gen_result_value_f64", { kind: "func", typeIdx: resultValF64Type });
+
+  const resultDoneType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
+  addImport(ctx, "env", "__gen_result_done", { kind: "func", typeIdx: resultDoneType });
+
+  // Ensure __get_caught_exception is available for generator body try/catch wrappers
+  if (!ctx.funcMap.has("__get_caught_exception")) {
+    const getCaughtType = addFuncType(ctx, [], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__get_caught_exception", { kind: "func", typeIdx: getCaughtType });
+  }
 }
 
 /** Register for-in key enumeration host imports if not already registered */
