@@ -32,6 +32,7 @@ import { lowerFunctionAstToIr } from "./from-ast.js";
 import {
   lowerIrFunctionToWasm,
   lowerIrTypeToValType,
+  type IrClassLowering,
   type IrClosureLowering,
   type IrLowerResolver,
   type IrObjectStructLowering,
@@ -39,6 +40,7 @@ import {
   type IrUnionLowering,
 } from "./lower.js";
 import type {
+  IrClassShape,
   IrClosureSignature,
   IrFuncRef,
   IrFunction,
@@ -81,6 +83,7 @@ export function compileIrPathFunctions(
   sourceFile: ts.SourceFile,
   selection?: IrSelection,
   overrides?: IrTypeOverrideMap,
+  classShapes?: ReadonlyMap<string, IrClassShape>,
 ): IrIntegrationReport {
   const selected = selection ?? planIrCompilation(sourceFile, { experimentalIR: true });
   if (selected.funcs.size === 0) {
@@ -144,6 +147,7 @@ export function compileIrPathFunctions(
         paramTypeOverrides: o?.params,
         returnTypeOverride: o?.returnType,
         calleeTypes,
+        classShapes,
       });
       const mainErrors = verifyIrFunction(result.main);
       if (mainErrors.length > 0) {
@@ -347,7 +351,18 @@ export function compileIrPathFunctions(
   const deferredCell: DeferredRefCellResolver = {
     resolve: () => null,
   };
-  const resolver = makeResolver(ctx, unionRegistry, stringBackend, deferredObj, deferredCl, deferredCell);
+  const deferredClass: DeferredClassResolver = {
+    resolve: () => null,
+  };
+  const resolver = makeResolver(
+    ctx,
+    unionRegistry,
+    stringBackend,
+    deferredObj,
+    deferredCl,
+    deferredCell,
+    deferredClass,
+  );
   const objectRegistry = new ObjectStructRegistry(ctx, (t) => lowerIrTypeToValType(t, resolver, "<obj-registry>"));
   deferredObj.resolve = (shape) => objectRegistry.resolve(shape);
   const closureRegistry = new ClosureStructRegistry(ctx, (t) =>
@@ -357,6 +372,11 @@ export function compileIrPathFunctions(
   deferredCl.resolveSubtype = (sig, fields) => closureRegistry.resolveSubtype(sig, fields);
   const refCellRegistry = new RefCellRegistry(ctx);
   deferredCell.resolve = (inner) => refCellRegistry.resolve(inner);
+  // Slice 4 (#1169d): the class registry is a thin lookup over the
+  // legacy class-collection state — `ctx.structMap`, `ctx.structFields`,
+  // and `ctx.funcMap` carry everything we need.
+  const classRegistry = new ClassRegistry(ctx);
+  deferredClass.resolve = (shape) => classRegistry.resolve(shape);
   for (const entry of readyForLower) {
     const name = entry.name;
     try {
@@ -479,6 +499,10 @@ interface DeferredRefCellResolver {
   resolve: (inner: ValType) => IrRefCellLowering | null;
 }
 
+interface DeferredClassResolver {
+  resolve: (shape: IrClassShape) => IrClassLowering | null;
+}
+
 function makeResolver(
   ctx: CodegenContext,
   unionRegistry: UnionStructRegistry,
@@ -486,6 +510,7 @@ function makeResolver(
   objResolver: DeferredObjectResolver,
   closureResolver: DeferredClosureResolver,
   refCellResolver: DeferredRefCellResolver,
+  classResolver: DeferredClassResolver,
 ): IrLowerResolver {
   return {
     resolveFunc(ref: IrFuncRef): number {
@@ -523,6 +548,12 @@ function makeResolver(
     },
     resolveRefCell(inner: ValType): IrRefCellLowering | null {
       return refCellResolver.resolve(inner);
+    },
+    // -------------------------------------------------------------------
+    // Class dispatch (#1169d).
+    // -------------------------------------------------------------------
+    resolveClass(shape: IrClassShape): IrClassLowering | null {
+      return classResolver.resolve(shape);
     },
     // -------------------------------------------------------------------
     // String backend dispatch (#1169a).
@@ -779,6 +810,9 @@ function irTypeKey(t: IrType): string {
     const ps = t.signature.params.map(irTypeKey).join(",");
     return `closure(${ps})->${irTypeKey(t.signature.returnType)}`;
   }
+  // Slice 4 (#1169d): class is keyed by name — uniqueness across the
+  // compilation unit makes this safe.
+  if (t.kind === "class") return `class:${t.shape.className}`;
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }
@@ -943,5 +977,75 @@ class RefCellRegistry {
   resolve(inner: ValType): IrRefCellLowering | null {
     const typeIdx = getOrRegisterRefCellType(this.ctx, inner);
     return { typeIdx, fieldIdx: 0 };
+  }
+}
+
+/**
+ * Slice 4 (#1169d): per-class lookup over the legacy class registry.
+ *
+ * The legacy `collectClassDeclaration` pass (in `class-bodies.ts`)
+ * registers, for each class declared in source:
+ *   - a struct type in `ctx.structMap` (key = className)
+ *   - the canonical fields list in `ctx.structFields` (with `__tag` at
+ *     field 0 for root classes)
+ *   - a constructor function `<className>_new` in `ctx.funcMap`
+ *   - one method function `<className>_<methodName>` per instance
+ *     method in `ctx.funcMap`
+ *
+ * `ClassRegistry.resolve` maps an `IrClassShape` to that legacy state
+ * via the `className`, with one defensive lookup per resolution call so
+ * a class that wasn't registered (e.g. shape was synthesized incorrectly)
+ * surfaces as `null` and the caller falls back to legacy.
+ *
+ * Cached per className for cheap re-resolution.
+ */
+class ClassRegistry {
+  private readonly cache = new Map<string, IrClassLowering>();
+
+  constructor(private readonly ctx: CodegenContext) {}
+
+  resolve(shape: IrClassShape): IrClassLowering | null {
+    const cached = this.cache.get(shape.className);
+    if (cached) return cached;
+
+    const structTypeIdx = this.ctx.structMap.get(shape.className);
+    if (structTypeIdx === undefined) return null;
+    const legacyFields = this.ctx.structFields.get(shape.className);
+    if (!legacyFields) return null;
+
+    // Build a name → wasm-field-index map directly from the legacy
+    // struct field list so the IR sees the same indices the legacy
+    // path uses for `struct.get` / `struct.set`. The `__tag` prefix
+    // (at index 0 for root classes) is included in legacyFields, so a
+    // user field "x" at IR position 0 corresponds to legacy field
+    // index 1 (or higher, depending on the parent chain). Slice 4
+    // doesn't claim functions referencing inherited classes, so
+    // legacyFields[0] is always `__tag`; user fields start at index 1.
+    const fieldIdxByName = new Map<string, number>();
+    for (let i = 0; i < legacyFields.length; i++) {
+      fieldIdxByName.set(legacyFields[i]!.name, i);
+    }
+
+    const constructorFuncName = `${shape.className}_new`;
+
+    const lowering: IrClassLowering = {
+      structTypeIdx,
+      fieldIdx: (name: string): number => {
+        const idx = fieldIdxByName.get(name);
+        if (idx === undefined) {
+          throw new Error(`ir/integration: class ${shape.className} has no field "${name}"`);
+        }
+        return idx;
+      },
+      constructorFuncName,
+      methodFuncName: (name: string): string => {
+        // Returns a NAME — the resolver's `resolveFunc` maps it to the
+        // funcIdx via `ctx.funcMap`, which the legacy collection pass
+        // populated with stable indices.
+        return `${shape.className}_${name}`;
+      },
+    };
+    this.cache.set(shape.className, lowering);
+    return lowering;
   }
 }

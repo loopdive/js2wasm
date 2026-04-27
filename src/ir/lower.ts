@@ -43,6 +43,7 @@
 import {
   asVal,
   type IrBlock,
+  type IrClassShape,
   type IrClosureSignature,
   type IrFuncRef,
   type IrFunction,
@@ -129,6 +130,31 @@ export interface IrRefCellLowering {
   readonly fieldIdx: number;
 }
 
+/**
+ * Slice 4 (#1169d): WasmGC type info for a class declared in the
+ * compilation unit. The class's struct + constructor + method funcs
+ * are all registered by the legacy `collectClassDeclaration` pass before
+ * the IR runs; this interface just exposes them by name.
+ *
+ *   - `structTypeIdx`        Wasm struct type index for the class
+ *   - `fieldIdx(name)`       Wasm struct field index for a user field name
+ *                             (the legacy `__tag` prefix at field 0 is
+ *                             accounted for here so the IR doesn't need to
+ *                             reason about it).
+ *   - `constructorFuncName`  legacy-registered name of the constructor
+ *                             function (`<className>_new`); the resolver's
+ *                             `resolveFunc` maps it to the funcIdx.
+ *   - `methodFuncName(name)` legacy-registered name of an instance method
+ *                             (`<className>_<methodName>`); the resolver's
+ *                             `resolveFunc` maps it to the funcIdx.
+ */
+export interface IrClassLowering {
+  readonly structTypeIdx: number;
+  fieldIdx(name: string): number;
+  readonly constructorFuncName: string;
+  methodFuncName(name: string): string;
+}
+
 export interface IrLowerResolver {
   resolveFunc(ref: IrFuncRef): number;
   resolveGlobal(ref: IrGlobalRef): number;
@@ -186,6 +212,13 @@ export interface IrLowerResolver {
    * type per inner ValType.
    */
   resolveRefCell?(inner: ValType): IrRefCellLowering | null;
+  /**
+   * Slice 4 (#1169d): resolve the WasmGC struct + constructor + method
+   * funcs for a class declared in the compilation unit. Returns `null`
+   * if `shape.className` was not registered by the legacy class
+   * collection pass — that's a selector bug.
+   */
+  resolveClass?(shape: IrClassShape): IrClassLowering | null;
   /**
    * Resolve the Wasm value type used for `IrType.string` in the active
    * backend.
@@ -634,6 +667,64 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "struct.set", typeIdx: cell.typeIdx, fieldIdx: cell.fieldIdx });
         return;
       }
+      // Slice 4 (#1169d): class ops.
+      case "class.new": {
+        const cl = resolver.resolveClass?.(instr.shape);
+        if (!cl) {
+          throw new Error(`ir/lower: resolver cannot lower class ${instr.shape.className} (${func.name})`);
+        }
+        for (const a of instr.args) emitValue(a, out);
+        out.push({
+          op: "call",
+          funcIdx: resolver.resolveFunc({ kind: "func", name: cl.constructorFuncName }),
+        });
+        return;
+      }
+      case "class.get": {
+        const recvT = typeOf(instr.value);
+        if (recvT.kind !== "class") {
+          throw new Error(`ir/lower: class.get receiver must be class IrType, got ${recvT.kind} (${func.name})`);
+        }
+        const cl = resolver.resolveClass?.(recvT.shape);
+        if (!cl) {
+          throw new Error(`ir/lower: resolver cannot lower class ${recvT.shape.className} (${func.name})`);
+        }
+        emitValue(instr.value, out);
+        out.push({ op: "struct.get", typeIdx: cl.structTypeIdx, fieldIdx: cl.fieldIdx(instr.fieldName) });
+        return;
+      }
+      case "class.set": {
+        const recvT = typeOf(instr.value);
+        if (recvT.kind !== "class") {
+          throw new Error(`ir/lower: class.set receiver must be class IrType, got ${recvT.kind} (${func.name})`);
+        }
+        const cl = resolver.resolveClass?.(recvT.shape);
+        if (!cl) {
+          throw new Error(`ir/lower: resolver cannot lower class ${recvT.shape.className} (${func.name})`);
+        }
+        emitValue(instr.value, out);
+        emitValue(instr.newValue, out);
+        out.push({ op: "struct.set", typeIdx: cl.structTypeIdx, fieldIdx: cl.fieldIdx(instr.fieldName) });
+        return;
+      }
+      case "class.call": {
+        const recvT = typeOf(instr.receiver);
+        if (recvT.kind !== "class") {
+          throw new Error(`ir/lower: class.call receiver must be class IrType, got ${recvT.kind} (${func.name})`);
+        }
+        const cl = resolver.resolveClass?.(recvT.shape);
+        if (!cl) {
+          throw new Error(`ir/lower: resolver cannot lower class ${recvT.shape.className} (${func.name})`);
+        }
+        // `this` first, then user args, then call $<className>_<methodName>.
+        emitValue(instr.receiver, out);
+        for (const a of instr.args) emitValue(a, out);
+        out.push({
+          op: "call",
+          funcIdx: resolver.resolveFunc({ kind: "func", name: cl.methodFuncName(instr.methodName) }),
+        });
+        return;
+      }
     }
   };
 
@@ -782,6 +873,15 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.cell];
     case "refcell.set":
       return [instr.cell, instr.value];
+    // Slice 4 (#1169d): class ops.
+    case "class.new":
+      return instr.args;
+    case "class.get":
+      return [instr.value];
+    case "class.set":
+      return [instr.value, instr.newValue];
+    case "class.call":
+      return [instr.receiver, ...instr.args];
   }
 }
 
@@ -841,6 +941,17 @@ export function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcN
     }
     return { kind: "ref", typeIdx: cl.structTypeIdx };
   }
+  if (t.kind === "class") {
+    // Slice 4 (#1169d): class instances lower to a non-null `(ref
+    // $ClassStruct)`. The struct is registered by the legacy
+    // `collectClassDeclaration` pass — the resolver looks it up by
+    // `shape.className`.
+    const cl = resolver.resolveClass?.(t.shape);
+    if (!cl) {
+      throw new Error(`ir/lower: resolver cannot lower class ${t.shape.className} (${funcName})`);
+    }
+    return { kind: "ref", typeIdx: cl.structTypeIdx };
+  }
   if (t.kind === "union") {
     const union = resolver.resolveUnion?.(t.members);
     if (!union) {
@@ -882,6 +993,7 @@ function describeIrTypeShallow(t: IrType): string {
     const ps = t.signature.params.map(describeIrTypeShallow).join(",");
     return `closure(${ps})->${describeIrTypeShallow(t.signature.returnType)}`;
   }
+  if (t.kind === "class") return `class<${t.shape.className}>`;
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }
