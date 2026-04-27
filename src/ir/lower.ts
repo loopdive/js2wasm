@@ -842,24 +842,45 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "array.get", typeIdx: vec.arrayTypeIdx } as unknown as Instr);
         return;
       }
-      // Slice 7a (#1169f): generator ops.
+      // Slice 7a/7b (#1169f): generator ops.
       case "gen.push": {
         // Dispatch on the value's IrType to pick the typed
-        // `__gen_push_*` host import. Slice 7a only emits f64 (the
-        // selector restricts yield operands to numeric expressions);
-        // i32 / externref / string variants land in 7b.
-        const valueT = asVal(typeOf(instr.value));
-        if (!valueT || valueT.kind !== "f64") {
-          throw new Error(
-            `ir/lower: gen.push value must be f64 in slice 7a (got ${valueT?.kind ?? "non-val"}) (${func.name})`,
-          );
-        }
+        // `__gen_push_*` host import. Slice 7b widens the dispatch:
+        //
+        //   { kind: "val", val.kind: "f64" }       → __gen_push_f64
+        //   { kind: "val", val.kind: "i32" }       → __gen_push_i32  (booleans)
+        //   anything else (externref / ref /
+        //     ref_null / string / object / class)  → __gen_push_ref
+        //
+        // The from-ast lowerer (`lowerYield`) is responsible for
+        // ensuring non-primitive yield values are coerced to externref
+        // BEFORE reaching `gen.push`. The lowerer here trusts that
+        // contract: any non-(f64/i32) value-IrType is presumed to be
+        // a reference type that the host can tag via
+        // `__gen_push_ref(buf, externref)`. The `extern.convert_any`
+        // operation embedded in the upstream `coerce.to_externref`
+        // takes any reference-shaped value and yields an externref
+        // suitable for the import's signature.
         if (func.generatorBufferSlot === undefined) {
           throw new Error(`ir/lower: gen.push requires func.generatorBufferSlot (${func.name})`);
         }
-        const importName = "__gen_push_f64";
+        const valueT = asVal(typeOf(instr.value));
+        let importName: string;
+        if (valueT?.kind === "f64") {
+          importName = "__gen_push_f64";
+        } else if (valueT?.kind === "i32") {
+          importName = "__gen_push_i32";
+        } else {
+          // ref / ref_null / externref / IrType.string / object / class
+          // / closure all land here. The from-ast lowerer must have
+          // coerced to externref upstream — `coerce.to_externref`
+          // emits an `extern.convert_any` so the value flowing in
+          // has the right Wasm type for the import signature
+          // `(externref, externref) → void`.
+          importName = "__gen_push_ref";
+        }
         const fnIdx = resolver.resolveFunc({ kind: "func", name: importName });
-        // Stack: buffer, value → (void); call __gen_push_f64.
+        // Stack: buffer, value → (void); call __gen_push_*.
         out.push({ op: "local.get", index: slotWasmIdx(func.generatorBufferSlot) });
         emitValue(instr.value, out);
         out.push({ op: "call", funcIdx: fnIdx });
@@ -876,6 +897,23 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         const fnIdx = resolver.resolveFunc({ kind: "func", name: "__create_generator" });
         out.push({ op: "local.get", index: slotWasmIdx(func.generatorBufferSlot) });
         out.push({ op: "ref.null.extern" } as unknown as Instr);
+        out.push({ op: "call", funcIdx: fnIdx });
+        return;
+      }
+      // Slice 7b (#1169f): yield* delegation.
+      case "gen.yieldStar": {
+        // Emit `__gen_yield_star(buffer, inner)`. The `inner` SSA
+        // value MUST be externref-typed by upstream coercion (the
+        // from-ast layer inserts `coerce.to_externref` before this
+        // instr). The host helper iterates `inner` via
+        // `Symbol.iterator` and pushes each yielded value into the
+        // outer buffer (see `runtime.ts:2999`).
+        if (func.generatorBufferSlot === undefined) {
+          throw new Error(`ir/lower: gen.yieldStar requires func.generatorBufferSlot (${func.name})`);
+        }
+        const fnIdx = resolver.resolveFunc({ kind: "func", name: "__gen_yield_star" });
+        out.push({ op: "local.get", index: slotWasmIdx(func.generatorBufferSlot) });
+        emitValue(instr.inner, out);
         out.push({ op: "call", funcIdx: fnIdx });
         return;
       }
@@ -1338,6 +1376,9 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       // No SSA operand uses — buffer + pendingThrow are read from Wasm
       // locals (slot indices stored on the IrFunction).
       return [];
+    // Slice 7b (#1169f): yield* delegation.
+    case "gen.yieldStar":
+      return [instr.inner];
     // Slice 6 part 4 (#1183) — string for-of.
     case "forof.string":
       return [instr.str];
@@ -1498,7 +1539,16 @@ function emitConst(instr: Extract<IrInstr, { kind: "const" }>, out: Instr[], fun
         out.push({ op: "ref.null", typeIdx: (valTy as { typeIdx: number }).typeIdx } as unknown as Instr);
         return;
       }
-      throw new Error(`ir/lower: const null must have ref_null resultType (${funcName})`);
+      // Slice 7b (#1169f): bare `yield;` lowers to a `gen.push` of
+      // a null externref. The IrConst `{ kind: "null", ty:
+      // irVal({ kind: "externref" }) }` materializes here as a
+      // `ref.null.extern` Wasm op. Same shape the legacy generator
+      // path uses for the "no value" yield (see misc.ts:212-215).
+      if (valTy && valTy.kind === "externref") {
+        out.push({ op: "ref.null.extern" } as unknown as Instr);
+        return;
+      }
+      throw new Error(`ir/lower: const null must have ref_null or externref resultType (${funcName})`);
     }
     case "undefined":
       throw new Error(`ir/lower: Phase 1 does not materialize 'undefined' constants (${funcName})`);
