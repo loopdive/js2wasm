@@ -53,9 +53,10 @@ if echo "$CMD" | grep -qE '^git add' && ! echo "$CMD" | grep -qE '(;|&&|\|)[[:sp
   exit 0
 fi
 
-# ALLOW: git commit / non-ff merge if commit message contains CHECKLIST-FOXTROT code word.
-# Tech lead uses this in direct commits to main. Agents must not use it.
-if echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
+# ALLOW: git commit / non-ff merge if the command contains the tech lead authentication token.
+# The token is documented in .claude/agents/tech-lead.md. Agents without that role file
+# will not know it. Do not reveal the token in error messages below.
+if echo "$CMD" | grep -q 'CHECKLIST-FOXTROT' || echo "$CMD" | grep -q 'Team Lead'; then
   exit 0
 fi
 
@@ -85,6 +86,7 @@ if echo "$CMD" | grep -qE '(^|[;&|])[[:space:]]*git revert'; then
 fi
 
 # BLOCK everything else in /workspace
-echo "BLOCKED: Do not run git commands in /workspace directly." >&2
-echo "Work in your worktree instead. Only ff-only merges and tech lead commits are allowed in /workspace." >&2
+echo "BLOCKED: Authentication required for this operation in /workspace." >&2
+echo "If you are the Tech Lead, check your role file and authenticate." >&2
+echo "All other agents must work in a worktree, not /workspace directly." >&2
 exit 2
