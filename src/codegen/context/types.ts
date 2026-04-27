@@ -167,6 +167,21 @@ export interface FunctionContext {
   /** Map from let/const local variable name → local index of its i32 TDZ flag (0 = uninitialized) */
   tdzFlagLocals?: Map<string, number>;
   /**
+   * For TDZ flag locals that have been boxed in an i32 ref cell so that
+   * mutations propagate to closures that captured the flag (#1177).
+   *
+   * Each entry records the ref-cell struct type idx and the local index of
+   * the ref-cell ref. Once a name is in this map, ALL set/get of its TDZ
+   * flag must go through `struct.get` / `struct.set` on the ref cell —
+   * `emitLocalTdzCheck` and `emitLocalTdzInit` detect this map before
+   * falling back to raw i32 local access.
+   *
+   * Note: when an entry exists here, `tdzFlagLocals[name]` continues to
+   * point at the SAME local index (the boxed ref-cell ref local).  We
+   * preserve the old map so call-site checks (calls.ts) keep firing.
+   */
+  boxedTdzFlags?: Map<string, { refCellTypeIdx: number; localIdx: number }>;
+  /**
    * Stack of catch rethrow info. Each entry tracks a catch variable name and the
    * current depth (number of block-like structures) from the catch boundary.
    */

@@ -387,7 +387,7 @@ export function compileTaggedTemplateExpression(
     // Case 2: tag is a known function
     const funcIdx = ctx.funcMap.get(tagName);
     if (funcIdx !== undefined) {
-      // Prepend captured values for nested functions with captures
+      // Prepend captured values for nested functions with captures.
       const nestedCaptures = ctx.nestedFuncCaptures.get(tagName);
       if (nestedCaptures) {
         for (const cap of nestedCaptures) {

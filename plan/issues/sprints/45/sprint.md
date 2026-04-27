@@ -25,6 +25,20 @@ Absorb the overflow from sprint 44. Headline themes:
 1. **Drain the performance / numeric-inference queue** — #1120, #1121, #1122,
    #1126 form a coherent int32-fast-path block; pair them with benchmarking
    infrastructure (#1005, #1125) so improvements are measurable.
+   - **Crash bucket surfaced by #1125 verification (added 2026-04-27, high
+     priority):** #1173 (array-sum: 'exact' ref types reject by wasmtime 44),
+     #1174 (object-ops: `string_constants` host import leaks on `--target
+     wasi`), #1175 (string-hash: `__str_flatten` / `concat` type-mismatch in
+     wasm-validator). All three are basic JS patterns (array fill, object
+     literals, string concat) that crash js2wasm today and block the
+     competitive-benchmark `js2wasm → Wasmtime` lane on 3 of 5 programs.
+   - **Follow-ups from the post-fix benchmark refresh (added 2026-04-27,
+     high priority):** #1178 (string-hash hits `wasm trap: call stack
+     exhausted` at runtime after #1175 — fix is correct as compile-time
+     type fix but introduces deep recursion at runtime), #1179 (array-sum
+     hot runtime is ~9× slower than Node and ~14% slower than Javy —
+     need to investigate WasmGC array element-type / bounds-check / growth
+     overhead).
 2. **CI baseline-drift hardening** — the 5-issue set (#1076, #1077, #1078,
    #1079, #1080) that was held back from sprint 44 because the IR work could
    not tolerate CI turbulence.
@@ -108,6 +122,17 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | ready |
 | #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
 | #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | ready |
+| #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | ready |
+| #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | ready |
+| #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | in-progress |
+| #1174 | js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash) | high | in-progress |
+| #1175 | String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator | high | in-progress |
 
 ### Done
 
@@ -142,6 +167,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169a | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | high | done |
 | #1169b | IR Phase 4 Slice 2 — object literals and property access through IR path | high | done |
 | #1169c | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | high | done |
+| #1169d | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | high | done |
 | #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 | #1171 | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | high | done |
 

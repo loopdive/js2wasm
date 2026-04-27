@@ -16556,6 +16556,18 @@
       "id": "1169d",
       "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
       "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169d",
+      "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
+      "priority": "high",
       "status": "ready",
       "raw_status": "ready",
       "sprint": "45",
@@ -16659,6 +16671,78 @@
       "files": [],
       "goal": "maintainability",
       "cluster": "maintainability"
+    },
+    {
+      "id": "1173",
+      "title": "js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1174",
+      "title": "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1175",
+      "title": "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1178",
+      "title": "string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1179",
+      "title": "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1180",
+      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
     },
     {
       "id": "backlog",
@@ -17840,7 +17924,12 @@
         "994",
         "994",
         "1040",
-        "1109"
+        "1109",
+        "1173",
+        "1174",
+        "1175",
+        "1178",
+        "1180"
       ]
     },
     {
@@ -17869,6 +17958,7 @@
         "1169a",
         "1169b",
         "1169c",
+        "1169d",
         "1169d",
         "1169e",
         "1169f",
@@ -18483,7 +18573,8 @@
         "1120",
         "1121",
         "1122",
-        "1126"
+        "1126",
+        "1179"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -20256,6 +20347,26 @@
       "issue": "1109"
     },
     {
+      "goal": "compilable",
+      "issue": "1173"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1174"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1175"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1178"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1180"
+    },
+    {
       "goal": "compiler-architecture",
       "issue": "68"
     },
@@ -20330,6 +20441,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169c"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169d"
     },
     {
       "goal": "compiler-architecture",
@@ -22222,6 +22337,10 @@
     {
       "goal": "performance",
       "issue": "1126"
+    },
+    {
+      "goal": "performance",
+      "issue": "1179"
     },
     {
       "goal": "platform",
@@ -25884,6 +26003,10 @@
     {
       "goal": "core-semantics",
       "issue": "1126"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1179"
     },
     {
       "goal": "standalone-mode",

@@ -781,8 +781,11 @@ export function generateModule(
       });
     }
 
-    // Mark leaf struct types as final for V8 devirtualization
-    markLeafStructsFinal(mod);
+    // Mark leaf struct types as final for V8 devirtualization (#594).
+    // Skipped for `--target wasi` so that downstream `wasm-opt --all-features`
+    // does not convert refs to those types into `(ref exact $T)`, which
+    // wasmtime ≤ 44 rejects (#1173).
+    markLeafStructsFinal(mod, ctx.wasi);
 
     // Dead import and type elimination pass
     eliminateDeadImports(mod);
@@ -979,6 +982,15 @@ function emitStructFieldNamesExport(
   ctx: CodegenContext,
   fieldMap: Map<string, { typeIdx: number; fieldIdx: number; fieldType: ValType }[]>,
 ): void {
+  // The __struct_field_names export is only consumed by a JS host runtime
+  // (Object.keys / JSON.stringify / for-in introspection of opaque WasmGC
+  // structs). In nativeStrings mode (auto-on for `--target wasi`) there is no
+  // JS host, so the export is dead code AND its body uses `global.get` of a
+  // string_constants global to push the comma-separated field names — which
+  // forces a `string_constants::a,b,c` host import that fails to instantiate
+  // under wasmtime (#1174). Skip emission in nativeStrings mode.
+  if (ctx.nativeStrings) return;
+
   const mod = ctx.mod;
 
   // Build per-struct-type field name lists (excluding internal fields)
@@ -2375,8 +2387,11 @@ export function generateMultiModule(
       });
     }
 
-    // Mark leaf struct types as final for V8 devirtualization
-    markLeafStructsFinal(mod);
+    // Mark leaf struct types as final for V8 devirtualization (#594).
+    // Skipped for `--target wasi` so that downstream `wasm-opt --all-features`
+    // does not convert refs to those types into `(ref exact $T)`, which
+    // wasmtime ≤ 44 rejects (#1173).
+    markLeafStructsFinal(mod, ctx.wasi);
 
     // Dead import and type elimination pass
     eliminateDeadImports(mod);
@@ -6145,8 +6160,8 @@ function hoistVarDecl(ctx: CodegenContext, fctx: FunctionContext, decl: ts.Varia
 function walkStmtForVars(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
   if (ts.isVariableStatement(stmt)) {
     const list = stmt.declarationList;
-    // Only hoist `var` (not let/const)
-    if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) return;
+    // Only hoist `var` (not let/const/using/await-using). #1177
+    if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const | ts.NodeFlags.Using | ts.NodeFlags.AwaitUsing)) return;
     for (const decl of list.declarations) {
       hoistVarDecl(ctx, fctx, decl);
     }
@@ -6375,8 +6390,12 @@ function getLoopBodyNode(loop: ts.Node): ts.Node | undefined {
 function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.Statement): void {
   if (ts.isVariableStatement(stmt)) {
     const list = stmt.declarationList;
-    // Only hoist `let`/`const` (not var — var is already hoisted)
-    if (!(list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))) return;
+    // Hoist `let`/`const`/`using` (not var — var is already hoisted).
+    // `using`/`await using` declarations have the same TDZ semantics as
+    // let/const per the explicit-resource-management spec — pre-decl access
+    // must throw ReferenceError. (#1177)
+    const TDZ_FLAGS = ts.NodeFlags.Let | ts.NodeFlags.Const | ts.NodeFlags.Using | ts.NodeFlags.AwaitUsing;
+    if (!(list.flags & TDZ_FLAGS)) return;
     for (const decl of list.declarations) {
       if (ts.isIdentifier(decl.name)) {
         const name = decl.name.text;

@@ -356,8 +356,16 @@ export function promoteAccessorCapturesToGlobals(
         mutable: true,
         init: [{ op: "i32.const", value: 0 }],
       });
-      // Copy current TDZ flag value to the global
-      fctx.body.push({ op: "local.get", index: tdzFlagLocalIdx });
+      // Copy current TDZ flag value to the global. If the flag has been
+      // boxed in an i32 ref cell (because a closure captured it — #1177),
+      // read it through `struct.get` instead of as a raw i32 local.
+      const boxed = fctx.boxedTdzFlags?.get(name);
+      if (boxed) {
+        fctx.body.push({ op: "local.get", index: boxed.localIdx });
+        fctx.body.push({ op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 } as Instr);
+      } else {
+        fctx.body.push({ op: "local.get", index: tdzFlagLocalIdx });
+      }
       fctx.body.push({ op: "global.set", index: tdzGlobalIdx });
       ctx.tdzGlobals.set(name, tdzGlobalIdx);
     }
@@ -996,6 +1004,75 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
   return false;
 }
 
+/**
+ * #1177: Returns true if the closure (`arrow`) is provably constructed AFTER
+ * the let/const/using declaration of `name` AND the closure is NOT inside a
+ * loop that wraps the declaration. In that case, we don't need to force-box
+ * the value — the variable is already initialized when the closure is built,
+ * and no closure invocation can observe TDZ.
+ *
+ * Critical for for-let-iter: `for (let i = 0; ...) { closures.push(() => i); }`
+ * — each iteration's closure is built AFTER `i` is initialized in that
+ * iteration. Force-boxing here would break per-iteration semantics (all
+ * closures would share the same Wasm box slot, observing the final value).
+ */
+function closureProvablyAfterLetDecl(
+  ctx: CodegenContext,
+  arrow: ts.ArrowFunction | ts.FunctionExpression,
+  name: string,
+): boolean {
+  const sym = ctx.checker.getSymbolsInScope(arrow, ts.SymbolFlags.Variable).find((s) => s.name === name);
+  if (!sym) return false;
+  const decl = sym.valueDeclaration;
+  if (!decl) return false;
+
+  const closureStart = arrow.getStart();
+  const declEnd = decl.getEnd();
+
+  // closureStart < declEnd: closure is textually before the decl — TDZ risk.
+  if (closureStart < declEnd) return false;
+
+  // Walk up from the closure to find an enclosing loop. If a loop wraps the
+  // closure AND the decl is inside that loop's initializer (for-let case) or
+  // outside the body, force-boxing would break per-iteration semantics. Stop
+  // at function boundaries.
+  let cur: ts.Node | undefined = arrow.parent;
+  while (cur) {
+    if (
+      ts.isFunctionDeclaration(cur) ||
+      ts.isFunctionExpression(cur) ||
+      ts.isArrowFunction(cur) ||
+      ts.isMethodDeclaration(cur) ||
+      ts.isSourceFile(cur)
+    ) {
+      // Reached function boundary without finding a wrapping loop.
+      return true;
+    }
+    if (
+      ts.isForStatement(cur) ||
+      ts.isForInStatement(cur) ||
+      ts.isForOfStatement(cur) ||
+      ts.isWhileStatement(cur) ||
+      ts.isDoStatement(cur)
+    ) {
+      // Check if decl is descendant of this loop.
+      let d: ts.Node | undefined = decl;
+      while (d) {
+        if (d === cur) {
+          // Decl is inside (or part of) this loop. The loop wraps both
+          // the decl and the closure — per-iteration semantics apply,
+          // closure runs after decl in each iteration, no TDZ risk.
+          return true;
+        }
+        d = d.parent;
+      }
+      // Loop doesn't wrap decl — keep walking up.
+    }
+    cur = cur.parent;
+  }
+  return true;
+}
+
 export function compileArrowFunction(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1208,26 +1285,87 @@ export function compileArrowAsClosure(
     }
   }
 
-  const captures: { name: string; type: ValType; localIdx: number; mutable: boolean; alreadyBoxed: boolean }[] = [];
+  const captures: {
+    name: string;
+    type: ValType;
+    localIdx: number;
+    mutable: boolean;
+    alreadyBoxed: boolean;
+    /**
+     * #1177: Whether this capture's TDZ flag must be propagated through the
+     * closure. Set when `fctx.tdzFlagLocals?.has(name)` at capture-analysis time.
+     * Forces value-boxing too — the value at construction time may be the default
+     * (uninit), so the closure must see post-init mutations through the ref cell.
+     */
+    hasTdzFlag: boolean;
+  }[] = [];
   for (const name of referencedNames) {
-    const localIdx = fctx.localMap.get(name);
+    let localIdx = fctx.localMap.get(name);
+    let tdzFlagIdxFromScan: number | undefined;
+    if (localIdx === undefined) {
+      // #1177: The block-scope shadow manager (saveBlockScopedShadows) deletes
+      // localMap entries for block-scoped let/const names that were pre-hoisted
+      // by hoistLetConstWithTdz. Inside the block, before the let-decl runs,
+      // the slot still exists in fctx.locals — find it by name. This restores
+      // the ability of closures constructed inside the block to capture the
+      // hoisted slot, which is essential for TDZ-through-closure to fire.
+      for (let i = 0; i < fctx.locals.length; i++) {
+        const slot = fctx.locals[i]!;
+        if (slot.name === name) {
+          localIdx = fctx.params.length + i;
+          break;
+        }
+      }
+    }
     if (localIdx === undefined) continue;
     if (ctx.funcMap.has(name)) continue;
     // Skip if the name is the arrow's own parameter (including destructuring bindings)
     if (isOwnParamName(arrow, name)) continue;
     // Skip if the name is a named function expression's own name (self-reference)
     if (ts.isFunctionExpression(arrow) && arrow.name && arrow.name.text === name) continue;
+    // #1177: Also fall back to scanning for a `__tdz_<name>` slot when
+    // tdzFlagLocals was cleared by block-scope shadow management.
+    if (!fctx.tdzFlagLocals?.has(name)) {
+      const tdzSlotName = `__tdz_${name}`;
+      for (let i = 0; i < fctx.locals.length; i++) {
+        if (fctx.locals[i]!.name === tdzSlotName) {
+          tdzFlagIdxFromScan = fctx.params.length + i;
+          break;
+        }
+      }
+    }
     const type =
       localIdx < fctx.params.length
         ? fctx.params[localIdx]!.type
         : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
     // A capture is mutable if the closure writes to it OR the outer scope writes to it.
     // Both cases require a ref cell so mutations are visible across scope boundaries.
-    const isMutable = writtenInClosure.has(name) || writtenInOuter.has(name);
+    // #1177: Also force-box when the variable has a TDZ flag — the captured value
+    // at construction time may be the uninitialized default (e.g. `let x` declared
+    // after the closure is built), so post-init mutations must flow through the
+    // ref cell for the closure to observe them.
+    //
+    // BUT: only force-box if the closure is in a position where TDZ is actually
+    // possible. For for-let-iter where the closure is inside the loop body (and
+    // the let-decl is the for-init), the variable is initialized BEFORE every
+    // iteration's closure construction. Force-boxing breaks per-iteration
+    // semantics: each iteration would share the same box (single Wasm slot),
+    // so all closures see the final value of the loop variable.
+    const tdzFlagPresent = !!fctx.tdzFlagLocals?.has(name) || tdzFlagIdxFromScan !== undefined;
+    const hasTdzFlag = tdzFlagPresent && !closureProvablyAfterLetDecl(ctx, arrow, name);
+    const isMutable = writtenInClosure.has(name) || writtenInOuter.has(name) || hasTdzFlag;
     // Check if the variable is already boxed from a previous closure capture.
     // If so, the local already holds a ref cell — don't wrap it again.
     const alreadyBoxed = !!fctx.boxedCaptures?.has(name);
-    captures.push({ name, type, localIdx, mutable: isMutable, alreadyBoxed });
+    // #1177: If we found the TDZ flag via fctx.locals scan (block-scope shadow
+    // cleared tdzFlagLocals), seed fctx.tdzFlagLocals so downstream emit code
+    // (including the construction-time emit below and the call-site TDZ check)
+    // routes through the boxed flag mechanism.
+    if (tdzFlagIdxFromScan !== undefined) {
+      if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+      if (!fctx.tdzFlagLocals.has(name)) fctx.tdzFlagLocals.set(name, tdzFlagIdxFromScan);
+    }
+    captures.push({ name, type, localIdx, mutable: isMutable, alreadyBoxed, hasTdzFlag });
   }
 
   // 3. Create struct type: field 0 = funcref, fields 1..N = captured vars
@@ -1289,6 +1427,22 @@ export function compileArrowAsClosure(
         };
       }),
     ];
+
+    // #1177: Append a TDZ-flag ref-cell field for every capture that carries
+    // a TDZ flag in the outer fctx. The flag is shared by reference so the
+    // outer scope and the closure observe the same initialization status.
+    // Field layout: [funcref, ...value_fields, ...tdz_flag_fields].
+    const tdzFlaggedCaptures = captures.filter((c) => c.hasTdzFlag);
+    if (tdzFlaggedCaptures.length > 0) {
+      const i32RefCellTypeIdx = getOrRegisterRefCellType(ctx, { kind: "i32" });
+      for (const c of tdzFlaggedCaptures) {
+        structFields.push({
+          name: `__tdz_${c.name}`,
+          type: { kind: "ref_null" as const, typeIdx: i32RefCellTypeIdx },
+          mutable: false,
+        });
+      }
+    }
 
     // For closures with captures (but not named func exprs), make the struct
     // a subtype of the shared wrapper struct so ref.cast at call sites succeeds.
@@ -1417,6 +1571,34 @@ export function compileArrowAsClosure(
       liftedFctx.body.push({ op: "local.get", index: selfLocalForCaptures });
       liftedFctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i + 1 });
       liftedFctx.body.push({ op: "local.set", index: localIdx });
+    }
+  }
+
+  // #1177: For TDZ-flagged captures, also extract the boxed flag ref into a
+  // local in the lifted fctx and register it in `boxedTdzFlags` +
+  // `tdzFlagLocals`. This makes existing TDZ-check call sites (calls.ts,
+  // identifiers.ts) automatically route through `struct.get` on the ref cell.
+  // Field-layout invariant: TDZ flag fields come AFTER all value fields,
+  // i.e. fieldIdx = 1 + captures.length + tdzCaptureIndex.
+  {
+    const tdzFlaggedCapturesForPrologue = captures.filter((c) => c.hasTdzFlag);
+    if (tdzFlaggedCapturesForPrologue.length > 0) {
+      const i32RefCellTypeIdx = getOrRegisterRefCellType(ctx, { kind: "i32" });
+      const flagRefType: ValType = { kind: "ref_null", typeIdx: i32RefCellTypeIdx };
+      for (let ti = 0; ti < tdzFlaggedCapturesForPrologue.length; ti++) {
+        const cap = tdzFlaggedCapturesForPrologue[ti]!;
+        const tdzFieldIdx = 1 + captures.length + ti;
+        const flagBoxLocal = allocLocal(liftedFctx, `__tdz_box_${cap.name}`, flagRefType);
+        liftedFctx.body.push({ op: "local.get", index: selfLocalForCaptures });
+        liftedFctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: tdzFieldIdx });
+        liftedFctx.body.push({ op: "local.set", index: flagBoxLocal });
+        if (!liftedFctx.boxedTdzFlags) liftedFctx.boxedTdzFlags = new Map();
+        liftedFctx.boxedTdzFlags.set(cap.name, { refCellTypeIdx: i32RefCellTypeIdx, localIdx: flagBoxLocal });
+        // Re-aim tdzFlagLocals so existing TDZ-check helpers detect the flag.
+        // (boxedTdzFlags drives the actual struct.get/set routing.)
+        if (!liftedFctx.tdzFlagLocals) liftedFctx.tdzFlagLocals = new Map();
+        liftedFctx.tdzFlagLocals.set(cap.name, flagBoxLocal);
+      }
     }
   }
 
@@ -1899,6 +2081,42 @@ export function compileArrowAsClosure(
       fctx.body.push({ op: "local.get", index: cap.localIdx });
     }
   }
+
+  // #1177: After all value fields, push the boxed TDZ flag refs (one per
+  // TDZ-flagged capture). For freshly captured flags, allocate the box now
+  // and re-aim the outer fctx's `tdzFlagLocals` + `boxedTdzFlags` so
+  // subsequent set/get of the flag in the outer scope routes through the
+  // same ref cell that the closure holds.
+  {
+    const tdzFlaggedCapturesAtConstruct = captures.filter((c) => c.hasTdzFlag);
+    if (tdzFlaggedCapturesAtConstruct.length > 0) {
+      const i32RefCellTypeIdx = getOrRegisterRefCellType(ctx, { kind: "i32" });
+      for (const cap of tdzFlaggedCapturesAtConstruct) {
+        const existingBox = fctx.boxedTdzFlags?.get(cap.name);
+        if (existingBox) {
+          // Already boxed by an enclosing closure construction — reuse.
+          fctx.body.push({ op: "local.get", index: existingBox.localIdx });
+        } else {
+          // Fresh box: read current i32 flag, struct.new an i32 ref cell,
+          // tee into a new outer-fctx local, and re-aim the flag entry.
+          const oldFlagIdx = fctx.tdzFlagLocals!.get(cap.name)!;
+          fctx.body.push({ op: "local.get", index: oldFlagIdx });
+          fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdx });
+          const flagBoxLocal = allocLocal(fctx, `__tdz_box_${cap.name}`, {
+            kind: "ref_null",
+            typeIdx: i32RefCellTypeIdx,
+          });
+          fctx.body.push({ op: "local.tee", index: flagBoxLocal });
+          if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
+          fctx.boxedTdzFlags.set(cap.name, { refCellTypeIdx: i32RefCellTypeIdx, localIdx: flagBoxLocal });
+          // Re-aim tdzFlagLocals so subsequent emitLocalTdzInit/Check in
+          // fctx routes through the boxed path (set/get flag in ref cell).
+          fctx.tdzFlagLocals!.set(cap.name, flagBoxLocal);
+        }
+      }
+    }
+  }
+
   fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
 
   // 8. Register closure info so call sites can emit call_ref
@@ -2493,6 +2711,7 @@ export function emitFuncRefAsClosure(
           const currentLocalIdx = fctx.localMap.get(cap.name)!;
           fctx.body.push({ op: "local.get", index: currentLocalIdx });
         } else {
+          // Stage 1 localMap-first lookup reverted — see calls.ts comment.
           fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
           fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
           const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, {
