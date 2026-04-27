@@ -95,7 +95,20 @@ moved here. No issues were rescoped, rejected, or deleted — only relocated.
 
 ## Results
 
-TBD
+**Interim (2026-04-27)** — Baseline: 25802/43168 pass (59.8%)
+
+| Issue | Status | PR |
+|-------|--------|----|
+| #1169f (IR slice 7b — generators/async) | merged | #73 (+1202 net, admin-merged at 10.8%) |
+| #1169e (IR slice 6 — iterators/for-of) | done | earlier |
+| #1185 (IrLowerResolver refactor) | merged | #72 (+1398 net) |
+| #1186 (for-of string charAt fix) | merged | #75 (+1234 net) |
+| #1177 (TDZ closure captures) | open | #76 (14.7% regr, snapshot_delta=-31, held for S46 investigation) |
+| #1173, #1174, #1175, #1178, #1179 | done | earlier sprints |
+| #1120, #1121, #1125, #1128, #1164 | done | earlier |
+
+9 unstarted issues deferred to S46: #1080, #1126, #1169, #1169g/h/i, #1180, #1187, #1188.
+6 new perf issues (#1195–#1200) staged for S47 by dev-1125-bench.
 
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
