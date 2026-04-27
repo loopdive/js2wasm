@@ -115,9 +115,14 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | ready |
 | #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
 | #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | ready |
-| #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | ready |
-| #1174 | js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash) | high | ready |
-| #1175 | String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | in-progress |
+| #1174 | js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash) | high | in-progress |
+| #1175 | String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator | high | in-progress |
 
 ### Done
 
