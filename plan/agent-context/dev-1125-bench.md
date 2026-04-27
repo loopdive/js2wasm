@@ -179,3 +179,117 @@ Future labs-side work: verify PR existence via `gh pr list --repo loopdive/js2wa
 | #59 | loopdive/js2wasm | `bf1fbff85` | OPEN, mergeable | Public-side path deletions; CI running on new HEAD |
 
 Per team-lead message at end of session: PR #59 merged successfully with the TECH_LEAD hook version preserved, private content removed from the public repo, labs branch already on the labs remote. Shutting down.
+
+---
+
+# Sprint-46 dev session — 2026-04-27 ~13:00 → 16:00 UTC
+
+Pulled into a new round of work after the labs/public-cleanup thread closed. Three concurrent threads:
+
+## Thread 1 — labs PR merge
+
+User asked whether `loopdive/js2wasm-labs#1` (the labs side of the public/private split) was actually merged. I had earlier reported it as "ready, awaiting human merge call." User said "yes" → ran `gh pr merge 1 --repo loopdive/js2wasm-labs --admin --merge`. Merge commit `26b432adabbdb1d6f65831c51bd632e92b1ab5a3` at 10:59:30 UTC.
+
+**Result**: private/public split now complete on both sides:
+- `loopdive/js2wasm` (public): competitor benchmarks, blog/, docs/, vendor scripts gone
+- `loopdive/js2wasm-labs` (private): same paths under `labs/` + bench refresh + path-based pre-push hook
+
+Verified zero `labs/` paths on origin/main and zero competitor content on origin/main. Caveat: git history on origin/main retains the original commits (PR #59 changes live state, not history).
+
+## Thread 2 — competitive bench rerun (failed) → string-hash O(N²) finding
+
+User asked for a fresh competitive bench run on the latest origin/main after #1173/#1174/#1175/#1177/#1178 fixes landed. Setup:
+- New worktree `/workspace/.claude/worktrees/bench-rerun-2026-04-27b` from origin/main HEAD `9ccdda768`
+- `git read-tree --prefix=labs/ -u refs/remotes/labs/main:labs` to splice the labs harness in
+- Built `scripts/compiler-bundle.mjs` via esbuild
+- Ran `node --experimental-strip-types labs/benchmarks/compare-runtimes.ts`
+
+**Outcome — abandoned mid-run.** The js2wasm `string-hash.cwasm` lane with `runtimeArg=20000` ran for **10:52 of wasmtime CPU time** without finishing or crashing. Node does the same workload in ~162 ms. js2wasm is roughly **4,000× slower than Node** here.
+
+**Interpretation**: PR #64's iterative `__str_flatten` (the #1178 fix) corrected the *crash* but the runtime is now pathologically slow — almost certainly O(N²) in the number of `+=` operations because the iterative version flattens the rope on every concat instead of deferring to read time.
+
+**Action**: messaged team-lead asking for #1178 to be reopened (or filed as #1178-followup). Acceptance criterion proposed: `string-hash` `runtimeArg=20000` completes in ≤ 1.6 s. Likely fix direction: defer flatten until the rope is *read* (ConsString-tree style); accumulate `+=` operands as cons-tree nodes.
+
+User then asked to filter out `string-hash` and re-run. Filtered run completed in 14:16 wall time with clean numbers in `labs/benchmarks/results/runtime-compare-latest.json` (timestamp 2026-04-27T14:09:37.854Z):
+
+| Program | Node | js2wasm-wasmtime | Javy-wasmtime | StarlingMonkey-wasmtime |
+|---|---:|---:|---:|---:|
+| fib | 16.70 | **17.96** | 1349.58 | 1173.57 |
+| fib-recursive | 9.97 | **9.85** | 102.91 | 190.75 |
+| object-ops | 4.93 | **15.97** | 221.53 | 233.33 |
+| array-sum | 15.68 | **145.51** | 132.35 | 153.01 |
+
+**Headline**: js2wasm decisively wins numeric workloads vs Javy / StarlingMonkey (60–75× on fib, 10–19× on fib-recursive, 14–15× on object-ops). On `array-sum` we're tied with Javy and ~9× behind Node — file as #1179 follow-ups (which I did, see Thread 4).
+
+## Thread 3 — issue #1186 (legacy compileForOfString stale __str_charAt)
+
+Picked up #1186 from the TaskList. Worktree `/workspace/.claude/worktrees/issue-1186-forof-string-charat`, branch `issue-1186-forof-string-charat`. Issue file in `plan/issues/ready/1186.md` had a clear problem statement and recommended Option A fix.
+
+**Implementation**: replaced the early funcIdx capture in `compileForOfString` (`src/codegen/statements/loops.ts`) with two operations:
+1. Fail-fast validation at the top (`ctx.nativeStrHelpers.has("__str_charAt")`)
+2. Fresh name walk (`ctx.mod.functions[i].name === "__str_charAt"` → `ctx.numImportFuncs + i`) **just before emitting** the `call` instruction. Mirrors the IR resolver's #1183 pattern.
+
+**Tests**: `tests/issue-1186.test.ts` with 7 cases including a deliberate late-imports trigger (typeof on a non-trivial value before the for-of). All 7 pass; #1183 + 125 adjacent tests still pass.
+
+**Outcome**: PR #75 merged as commit `f3489e90e` at 15:38:46 UTC. **HOWEVER**: another agent on PR #74 had filed and merged the equivalent fix as commit `d21b81962` while my PR was resolving merge conflicts. The two fixes are functionally equivalent (their version captures once at top, mine re-resolves at emit). Took theirs via `git checkout --theirs` to avoid a duplicate-work merge fight; my PR's remaining contribution is the array-perf sprint follow-ups in Thread 4. Both PRs are reflected in main; commented on #74 to explain the cross-pollination.
+
+## Thread 4 — six sprint follow-ups for array-sum perf gap
+
+User triaged the four-loop array-sum analysis into Tier 1 + Tier 2. Filed all six issues. **Two rounds of ID collision** with parallel-agent activity required renumbering:
+
+| Topic | Tier | Initial ID | Final ID | Sprint |
+|---|---|---|---|---|
+| Escape-analysis scalarization (eliminate non-escaping arrays via loop fusion) | 1 | 1189 | **1195** | 47 |
+| Bounds-check elimination via SSA on monotonic-index loops | 1 | 1190 | **1196** | 47 |
+| i32 element specialization for `number[]` (`\| 0` / `& mask` / `>> n`) | 1 | 1191 | **1197** | 47 |
+| Pre-size dense arrays at allocation site | 1 | 1192 | **1198** | 47 |
+| Linear-memory backing for typed numeric arrays | 2 | 1193 | **1199** | 48 |
+| Loop-invariant code motion in optimizer pass | 2 | 1194 | **1200** | 48 |
+
+**Why two rounds**: between filing and merging:
+- Round 1: another agent's CI/test262 batch landed at #1189–#1192 (forced renumber to #1195–#1198)
+- Round 2: another agent filed a `ci-status-watcher` issue at #1193 (forced rename to #1199, took #1200 for #1194 to keep IDs clustered)
+
+**Tier 1 expected impact**: combined, bring `array-sum` hot runtime from ~145 ms → ~30 ms (within ~2× of Node, 5–6× ahead of Javy / StarlingMonkey).
+
+## Thread 5 — answered architectural question: linear memory vs WasmGC
+
+User asked whether linear-memory backing (#1199) is *strictly* better than WasmGC arrays. Answer: **no, it's a trade-off**:
+- Linear memory wins on per-element throughput (i32.load/i32.store ~2 cycles vs WasmGC array.get ~3-5 cycles), SIMD readiness, cache-layout control, no write barriers.
+- WasmGC wins on safety, GC interop, polymorphism (mixed-type arrays), JS↔Wasm boundary semantics, and free perf wins as engines improve.
+- For internal-only, non-escaping, i32-only arrays in hot loops: linear memory IS materially better today (2–5×).
+- For everything else: WasmGC is the right choice.
+
+#1199's spec is hybrid (Part 1 only — internal-only specialisation) for exactly this reason. Strategic angle: walking away from WasmGC for any non-trivial workload would weaken js2wasm's "compiled JS through WasmGC" story.
+
+## Thread 6 — handed statusline work to team-lead
+
+User asked for a Claude Code statusline sprint progress bar (e.g. " sprint 45 " colored by % done). I held off because it's outside #1186 scope and recommended team-lead spawn the `statusline-setup` agent. Statusline shipped on main during my session as commit `5d5d61f97` (`feat(statusline): sprint progress badge in Claude Code statusline`) — confirmed via merge log.
+
+## Operational notes for next session
+
+1. **Use `node scripts/next-issue-id.mjs` BEFORE creating any issue file**. The tool landed during this session as commit `e002a706f`. Even then, the ID can collide if main moves between check and merge — the safer pattern is to defer ID assignment to push time, but the tool reduces the collision rate dramatically.
+
+2. **Two agents working the same issue independently is a real failure mode.** PR #74 and PR #75 both fixed #1186 with functionally-equivalent patches. The `file-locks.md` mechanism gave both agents (me with `compileForOfString`, the other agent with whatever they claimed) false confidence. Consider:
+   - File-locks should claim by ISSUE number, not just by function-in-file.
+   - Or: TaskList claims should be enforced before starting work, with a single owner per issue.
+
+3. **CI re-trigger via `git merge origin/main`** worked smoothly when baseline drift was suspected. Cleaner than `--allow-empty` because it brings the fresh baseline directly onto the branch. Worth adding as the recommended action in `.claude/skills/dev-self-merge.md`.
+
+4. **The `bench-rerun-2026-04-27b` worktree** at `/workspace/.claude/worktrees/bench-rerun-2026-04-27b` is left in place per agent-don't-clean-own-worktrees rule. Tech-lead can `git worktree remove` when convenient. The labs splice in it (`git read-tree`) leaves no commits — the worktree is throwaway.
+
+## Final state at shutdown
+
+| Item | State |
+|---|---|
+| #1186 fix on main | shipped via PR #74 commit `d21b81962` |
+| PR #75 (mine) | merged at 15:38:46 UTC, commit `f3489e90e` — landed sprint-47/48 follow-up issues |
+| PR #74 (other agent) | merged at ~15:30 UTC, commit `d21b81962` — landed source fix + tests |
+| Sprint 47 issues | #1195, #1196, #1197, #1198 (Tier 1, ready/) |
+| Sprint 48 issues | #1199, #1200 (Tier 2, ready/) |
+| #1178 follow-up reopen | ASKED team-lead (string-hash O(N²) — message sent earlier, no confirmation as of shutdown) |
+| Statusline | Shipped by another agent (`5d5d61f97`) |
+
+**Note re: team-lead's mention of "PR #77"** — I have no PR #77 in flight. My only PR this thread was #75, which merged. PR #77 may belong to another agent's session or be confused state.
+
+Terminating per team-lead's shutdown signal at 75% token budget.

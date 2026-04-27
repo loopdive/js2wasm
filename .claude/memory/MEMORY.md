@@ -34,6 +34,7 @@
 - [feedback_ttl_runs_tests.md](feedback_ttl_runs_tests.md) — TTL runs tests serially in background, no tester teammate
 - [feedback_bypass_permissions.md](feedback_bypass_permissions.md) — Always use bypassPermissions mode when spawning agents
 - [feedback_dev_self_serve_tasklist.md](feedback_dev_self_serve_tasklist.md) — Devs claim next task from TaskList after merge; no re-dispatch
+- [feedback_tasklist_always_populated.md](feedback_tasklist_always_populated.md) — Populate TaskList at sprint start AND whenever a new issue is added mid-sprint; empty queue = agents spin idle
 - [feedback_compact_before_sprint.md](feedback_compact_before_sprint.md) — Run /compact at sprint boundaries to reset context and control token burn
 - [feedback_context_discipline.md](feedback_context_discipline.md) — Don't re-check state; split planning/execution sessions; write handoffs to plan/agent-context/tech-lead.md
 - [feedback_team_comm_channels.md](feedback_team_comm_channels.md) — Dev status via TaskUpdate not verbose SendMessage; shutdown handoffs via agent-context files
