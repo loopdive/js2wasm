@@ -193,7 +193,18 @@ function isSideEffecting(i: IrInstr): boolean {
     // slot.read is pure (load a Wasm local) but always-keep to avoid
     // breaking the for-of body's load/use pattern.
     i.kind === "slot.write" ||
-    i.kind === "forof.vec"
+    i.kind === "forof.vec" ||
+    // Slice 6 part 3 (#1182): host-iterator protocol ops mutate iterator
+    // state (advance pointer, dispose). DCE must not eliminate them
+    // even when their results are unused — a `iter.next` whose value is
+    // dropped still has the side effect of advancing the iterator.
+    // forof.iter is statement-level (result: null) and is kept by the
+    // generic null-result rule, but the explicit listing makes the
+    // intent obvious.
+    i.kind === "iter.new" ||
+    i.kind === "iter.next" ||
+    i.kind === "iter.return" ||
+    i.kind === "forof.iter"
   );
 }
 
@@ -280,7 +291,31 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       const walk = (instrs: readonly IrInstr[]): void => {
         for (const sub of instrs) {
           for (const u of collectInstrUses(sub)) result.push(u);
-          if (sub.kind === "forof.vec") walk(sub.body);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter") walk(sub.body);
+        }
+      };
+      walk(instr.body);
+      return result;
+    }
+    // Slice 6 part 3 (#1182) — coercion + iterator protocol ops.
+    case "coerce.to_externref":
+      return [instr.value];
+    case "iter.new":
+      return [instr.iterable];
+    case "iter.next":
+      return [instr.iter];
+    case "iter.done":
+      return [instr.resultObj];
+    case "iter.value":
+      return [instr.resultObj];
+    case "iter.return":
+      return [instr.iter];
+    case "forof.iter": {
+      const result: IrValueId[] = [instr.iterable];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectInstrUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter") walk(sub.body);
         }
       };
       walk(instr.body);
