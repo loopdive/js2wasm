@@ -16889,6 +16889,18 @@
       "cluster": "developer-experience"
     },
     {
+      "id": "1188",
+      "title": "Setup js2.loopdive.com custom domain for GitHub Pages",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -18450,7 +18462,8 @@
         "1008",
         "1039",
         "1147",
-        "1187"
+        "1187",
+        "1188"
       ],
       "track": "supporting track"
     },
@@ -21700,6 +21713,10 @@
     {
       "goal": "developer-experience",
       "issue": "1187"
+    },
+    {
+      "goal": "developer-experience",
+      "issue": "1188"
     },
     {
       "goal": "error-model",
