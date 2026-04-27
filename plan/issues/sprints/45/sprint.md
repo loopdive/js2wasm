@@ -32,6 +32,13 @@ Absorb the overflow from sprint 44. Headline themes:
      wasm-validator). All three are basic JS patterns (array fill, object
      literals, string concat) that crash js2wasm today and block the
      competitive-benchmark `js2wasm → Wasmtime` lane on 3 of 5 programs.
+   - **Follow-ups from the post-fix benchmark refresh (added 2026-04-27,
+     high priority):** #1178 (string-hash hits `wasm trap: call stack
+     exhausted` at runtime after #1175 — fix is correct as compile-time
+     type fix but introduces deep recursion at runtime), #1179 (array-sum
+     hot runtime is ~9× slower than Node and ~14% slower than Javy —
+     need to investigate WasmGC array element-type / bounds-check / growth
+     overhead).
 2. **CI baseline-drift hardening** — the 5-issue set (#1076, #1077, #1078,
    #1079, #1080) that was held back from sprint 44 because the IR work could
    not tolerate CI turbulence.
@@ -115,6 +122,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | ready |
 | #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
 | #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | ready |
+| #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | ready |
+| #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | ready |
 
 ### In Progress
 
