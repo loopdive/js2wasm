@@ -117,6 +117,36 @@
   ],
   "ready": [
     {
+      "id": "1175",
+      "title": "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1174",
+      "title": "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1173",
+      "title": "js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
       "id": "1172",
       "title": "Codebase modularity audit — reduce coupling, improve layering, harden interfaces",
       "priority": "high",
