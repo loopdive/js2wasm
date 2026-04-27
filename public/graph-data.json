@@ -16733,6 +16733,18 @@
       "cluster": "performance"
     },
     {
+      "id": "1179-followup",
+      "title": "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "review",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
+    },
+    {
       "id": "1180",
       "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
       "priority": "high",
