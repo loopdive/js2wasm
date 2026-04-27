@@ -4634,7 +4634,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       return compileClosureCall(ctx, fctx, expr, funcName, closureInfo);
     }
 
-    const funcIdx = ctx.funcMap.get(funcName);
+    // #1177: funcIdx must be re-fetched from funcMap whenever a late-import
+    // shift may have run. Late imports added during argument/cap compilation
+    // (e.g. emitLocalTdzCheck → ensureLateImport(__throw_reference_error))
+    // shift `ctx.numImportFuncs` and update `ctx.funcMap` entries, but a
+    // local `const funcIdx` would hold the pre-shift value.
+    let funcIdx = ctx.funcMap.get(funcName);
     if (funcIdx === undefined) {
       // Before giving up, check if this identifier is a local/param with callable TS type
       // (e.g. function parameter `fn: (x: number) => number` stored as externref).
@@ -4947,7 +4952,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     // Prepend captured values for nested functions with captures
     const nestedCaptures = ctx.nestedFuncCaptures.get(funcName);
     if (nestedCaptures) {
-      // Get param types early so we can coerce captures to expected types
+      // #1177: Get param types early so we can coerce captures to expected types.
+      // Re-fetch funcIdx in case a prior compileExpression triggered a late-import
+      // shift (which updated funcMap but not our local `funcIdx`).
+      funcIdx = ctx.funcMap.get(funcName) ?? funcIdx;
       const captureParamTypes = getFuncParamTypes(ctx, funcIdx);
       for (let capIdx = 0; capIdx < nestedCaptures.length; capIdx++) {
         const cap = nestedCaptures[capIdx]!;
@@ -5024,6 +5032,11 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
       }
     }
+
+    // #1177: Re-fetch funcIdx in case the cap-prepend loop above (or any
+    // earlier compileExpression in this function) triggered a late-import
+    // shift via emitLocalTdzCheck/emitStaticTdzThrow.
+    funcIdx = ctx.funcMap.get(funcName) ?? funcIdx;
 
     // Check for rest parameters on the callee
     const restInfo = ctx.funcRestParams.get(funcName);
