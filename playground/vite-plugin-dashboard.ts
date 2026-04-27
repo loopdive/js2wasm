@@ -357,11 +357,24 @@ export function dashboardPlugin(): Plugin {
     }
   }
 
+  // Regenerate sprint-stats.json from git tags (runs after plan/ changes)
+  function regenSprintStats() {
+    try {
+      execSync(`node --experimental-strip-types ${join(projectRoot, "scripts/sprint-stats.ts")}`, {
+        cwd: projectRoot,
+        stdio: "ignore",
+      });
+    } catch {
+      // non-fatal — stale data is better than a crash
+    }
+  }
+
   // Debounced file change handler
   let changeTimer: ReturnType<typeof setTimeout> | null = null;
   function onFileChange(path: string) {
     if (changeTimer) clearTimeout(changeTimer);
     changeTimer = setTimeout(() => {
+      regenSprintStats();
       broadcast({ type: "refresh", path, timestamp: Date.now() });
     }, 500);
   }
@@ -370,7 +383,11 @@ export function dashboardPlugin(): Plugin {
     name: "dashboard",
     configureServer(server: ViteDevServer) {
       // Watch project dirs for changes
-      const watchDirs = [join(projectRoot, "plan"), join(projectRoot, "benchmarks/results")];
+      const watchDirs = [
+        join(projectRoot, "plan"),
+        join(projectRoot, "benchmarks/results"),
+        join(projectRoot, "dashboard/data"),
+      ];
 
       for (const dir of watchDirs) {
         if (existsSync(dir)) {

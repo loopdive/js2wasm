@@ -508,8 +508,27 @@
   <body>
     <site-nav
       base="../"
-      links='[{"label":"Overview","href":"#overview"},{"label":"Kanban Board","href":"#kanban"},{"label":"Issue Dependencies","href":"#dependencies"}]'
+      links='[{"label":"Overview","href":"#overview"},{"label":"Sprint","href":"#kanban"},{"label":"Issues","href":"#dependencies"}]'
     ></site-nav>
+    <div
+      id="build-meta"
+      style="
+        position: fixed;
+        top: 68px;
+        right: 56px;
+        z-index: 99;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 11px;
+        font-family: var(--font-mono, &quot;JetBrains Mono&quot;, monospace);
+        color: rgba(255, 255, 255, 0.28);
+        pointer-events: none;
+      "
+    >
+      <span id="build-hash"></span>
+      <span id="build-date"></span>
+    </div>
     <header
       id="overview"
       style="display: flex; align-items: baseline; gap: 8px; border-bottom: none; padding-bottom: 0; flex-wrap: wrap"
@@ -561,7 +580,6 @@
             <button class="sprint-nav-btn" id="sprint-next" title="Next sprint">+</button>
           </div>
           <button id="refresh-btn" onclick="refreshData()" title="Refresh">↺</button>
-          <a href="../issues-graph.html">dependency graph</a>
         </div>
       </div>
       <div class="kanban-board" id="kanban-board">
@@ -871,11 +889,24 @@
         if (updEl) updEl.textContent = "Updated: " + new Date().toLocaleString();
 
         // ── Metrics ──
-        if (runs.length > 0) {
-          const latest = runs[runs.length - 1];
-          // Use the full pass rate to match the landing page donut chart.
-          const passRate = ((latest.pass / latest.total) * 100).toFixed(1);
-          document.getElementById("m-passrate").textContent = passRate + "%";
+        // Use test262-report.json as the authoritative pass rate (same source as landing page).
+        // runs/index.json may contain PR runs that differ from the merged baseline.
+        try {
+          const reportData = await loadJSON("../benchmarks/results/test262-report.json");
+          if (reportData?.summary?.pass && reportData?.summary?.total) {
+            const passRate = ((reportData.summary.pass / reportData.summary.total) * 100).toFixed(1);
+            document.getElementById("m-passrate").textContent = passRate + "%";
+          } else if (runs.length > 0) {
+            const latest = runs[runs.length - 1];
+            document.getElementById("m-passrate").textContent = ((latest.pass / latest.total) * 100).toFixed(1) + "%";
+          }
+          // ── Build meta (top-right commit hash + date) ──
+          updateBuildMeta(reportData);
+        } catch {
+          if (runs.length > 0) {
+            const latest = runs[runs.length - 1];
+            document.getElementById("m-passrate").textContent = ((latest.pass / latest.total) * 100).toFixed(1) + "%";
+          }
         }
 
         // ── Baseline age badge ──
@@ -892,7 +923,6 @@
               if (ageHours < 1) ageText = Math.round(ageHours * 60) + "m";
               else if (ageHours < 48) ageText = ageHours.toFixed(1) + "h";
               else ageText = (ageHours / 24).toFixed(1) + "d";
-              if (reportData.baseline_sha) ageText += " (" + reportData.baseline_sha.slice(0, 7) + ")";
               ageEl.textContent = ageText;
               if (ageHours > 24) ageEl.style.color = "var(--red)";
               else if (ageHours > 6) ageEl.style.color = "var(--orange)";
@@ -1093,9 +1123,31 @@
         }
       }
 
-      // ── Refresh (manual + auto) ──
-      let _refreshTimer = null;
+      // ── Local vs baseline detection ──
+      // Set to true when the Vite dev-server WebSocket connects, meaning
+      // we're viewing locally-generated data rather than a committed baseline.
+      let isLocal = false;
 
+      function fmtDate(d) {
+        return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      }
+
+      function updateBuildMeta(reportData) {
+        const hashEl = document.getElementById("build-hash");
+        const dateEl = document.getElementById("build-date");
+        if (isLocal) {
+          if (hashEl) hashEl.textContent = "";
+          if (dateEl) dateEl.textContent = "local · " + fmtDate(new Date());
+        } else {
+          if (hashEl && reportData?.baseline_sha) hashEl.textContent = reportData.baseline_sha.slice(0, 8);
+          if (dateEl && reportData?.timestamp) {
+            const d = new Date(reportData.timestamp);
+            if (dateEl) dateEl.textContent = isNaN(d) ? reportData.timestamp : fmtDate(d);
+          }
+        }
+      }
+
+      // ── Refresh ──
       function refreshData() {
         main().catch((err) => console.error("Dashboard error:", err));
       }
@@ -1107,9 +1159,29 @@
         board.style.height = Math.max(200, window.innerHeight - top - 12) + "px";
       }
 
-      // Auto-refresh every 30 s when served over HTTP (not file://)
+      // Push updates via Vite dev server WebSocket — no polling needed
       if (location.protocol !== "file:") {
-        _refreshTimer = setInterval(refreshData, 30_000);
+        (function connectWS() {
+          const proto = location.protocol === "https:" ? "wss:" : "ws:";
+          const ws = new WebSocket(`${proto}//${location.host}/dashboard-ws`);
+          ws.onopen = () => {
+            isLocal = true;
+            updateBuildMeta(null);
+          };
+          ws.onmessage = (e) => {
+            try {
+              const { type } = JSON.parse(e.data);
+              if (type === "refresh") {
+                main().then(resizeKanban).catch(console.error);
+                // Update the local timestamp on each push
+                const dateEl = document.getElementById("build-date");
+                if (dateEl) dateEl.textContent = "local · " + fmtDate(new Date());
+              }
+            } catch {}
+          };
+          ws.onclose = () => setTimeout(connectWS, 3_000);
+          ws.onerror = () => ws.close();
+        })();
       }
 
       // ── Run on load ──
