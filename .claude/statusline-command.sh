@@ -181,4 +181,9 @@ elif [ -f "$report" ]; then
     printf ' %s %s' "$p_bar" "$f_bar"
   fi
 fi
+# Sprint progress badge (only on main workspace, not in worktrees)
+if [ -z "$in_worktree" ]; then
+  sprint_badge=$(node /workspace/scripts/statusline-sprint.mjs 2>/dev/null)
+  [ -n "$sprint_badge" ] && printf ' %s' "$sprint_badge"
+fi
 printf '\n'
