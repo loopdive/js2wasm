@@ -288,9 +288,27 @@ for (const entry of sprintFiles) {
     explicitCarryOver,
   });
 }
-const maxSprintNumber = Math.max(...sprints.map((s) => s.sprintNumber || 0), 0);
+// Determine isClosed / isPlanning using explicit frontmatter status where available.
+// Legacy sprints (status === "") fall back to the maxSprintNumber heuristic, but
+// only compared against other legacy sprints so that new "planning" sprints don't
+// push the current active sprint into isClosed.
+const CLOSED_STATUSES = new Set(["closed", "done"]);
+const ACTIVE_STATUSES = new Set(["planned", "active"]);
+const PLANNING_STATUSES = new Set(["planning"]);
+const explicitlyClosedMax = Math.max(
+  ...sprints.filter((s) => CLOSED_STATUSES.has(s.status)).map((s) => s.sprintNumber || 0),
+  0,
+);
 for (const sprint of sprints) {
-  sprint.isClosed = Boolean(sprint.sprintNumber && sprint.sprintNumber < maxSprintNumber) || sprint.explicitCarryOver;
+  sprint.isPlanning = PLANNING_STATUSES.has(sprint.status);
+  if (CLOSED_STATUSES.has(sprint.status)) {
+    sprint.isClosed = true;
+  } else if (ACTIVE_STATUSES.has(sprint.status) || PLANNING_STATUSES.has(sprint.status)) {
+    sprint.isClosed = false;
+  } else {
+    // Legacy sprint with no status field: closed if at or below the explicit threshold.
+    sprint.isClosed = sprint.sprintNumber <= explicitlyClosedMax || sprint.explicitCarryOver;
+  }
 }
 writeFileSync(join(OUT, "sprints.json"), JSON.stringify(sprints, null, 2));
 console.log(`Sprints: ${sprints.length} entries`);

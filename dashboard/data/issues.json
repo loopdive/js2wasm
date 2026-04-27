@@ -117,6 +117,144 @@
   ],
   "ready": [
     {
+      "id": "1207",
+      "title": "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1206",
+      "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1205",
+      "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1177",
+        "1185"
+      ],
+      "goal": "test262-conformance",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1204",
+      "title": "credibility: methodology document — how js2wasm is built by an AI agent team",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1201",
+        "1202"
+      ],
+      "goal": "contributor-readiness",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1203",
+      "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1202",
+      "title": "credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1201",
+      "title": "credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1200",
+      "title": "perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "48"
+    },
+    {
+      "id": "1199",
+      "title": "perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1197"
+      ],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "48"
+    },
+    {
+      "id": "1198",
+      "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1197",
+      "title": "perf: i32 element specialization for `number[]` arrays under `| 0` / `& mask` / `>> n` patterns",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1196",
+      "title": "perf: bounds-check elimination via SSA on monotonic indexed array loops",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1195",
+      "title": "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
       "id": "1193",
       "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
       "priority": "medium",
@@ -187,24 +325,14 @@
       "sprint": "46"
     },
     {
-      "id": "1186",
-      "title": "fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx)",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "compiler-correctness",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1184",
       "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
-      "priority": "low",
+      "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": "47"
     },
     {
       "id": "1183",
@@ -298,18 +426,6 @@
       "goal": "compiler-architecture",
       "status": "ready",
       "sprint": "46"
-    },
-    {
-      "id": "1169f",
-      "title": "IR Phase 4 Slice 7 — generators and async/await through the IR path",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169e"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "45"
     },
     {
       "id": "1169",
@@ -1700,6 +1816,16 @@
   ],
   "inprogress": [
     {
+      "id": "1186",
+      "title": "fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "compiler-correctness",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -1983,6 +2109,18 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1169f",
+      "title": "IR Phase 4 Slice 7 — generators and async/await through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e"
+      ],
+      "goal": "compiler-architecture",
       "status": "done",
       "sprint": "45"
     },

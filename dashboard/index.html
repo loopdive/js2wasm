@@ -466,6 +466,21 @@
             <label for="sprint-select">Sprint</label>
             <select id="sprint-select"></select>
           </div>
+          <button
+            id="refresh-btn"
+            onclick="refreshData()"
+            style="
+              background: none;
+              border: 1px solid var(--border);
+              color: var(--text-muted);
+              padding: 4px 10px;
+              font-size: 11px;
+              cursor: pointer;
+              border-radius: 4px;
+            "
+          >
+            ↺ Refresh
+          </button>
           <a href="../issues-graph.html">dependency graph</a>
         </div>
       </div>
@@ -628,10 +643,17 @@
         return (
           [...sprints]
             .filter((s) => Number.isFinite(s.sprintNumber))
-            .filter((s) => !s.isClosed)
+            .filter((s) => !s.isClosed && !s.isPlanning)
             .sort((a, b) => a.sprintNumber - b.sprintNumber)
             .at(-1) || null
         );
+      }
+
+      const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+      function prioritySort(a, b) {
+        const pa = PRIORITY_ORDER[a.priority] ?? 99;
+        const pb = PRIORITY_ORDER[b.priority] ?? 99;
+        return pa !== pb ? pa - pb : String(b.id).localeCompare(String(a.id), undefined, { numeric: true });
       }
 
       function buildSprintOptions(sprints) {
@@ -721,7 +743,7 @@
         for (const [status, col] of Object.entries(cols)) {
           const list = issues[status] || [];
           col.count.textContent = list.length;
-          const display = status === "done" ? [...list].reverse() : list;
+          const display = status === "done" ? [...list].reverse() : [...list].sort(prioritySort);
           col.el.innerHTML = display.map((iss) => makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)).join("");
         }
       }
@@ -958,6 +980,24 @@
             }
           }
         }
+      }
+
+      // ── Refresh (manual + auto) ──
+      let _refreshTimer = null;
+
+      function refreshData() {
+        const btn = document.getElementById("refresh-btn");
+        if (btn) btn.textContent = "↺ …";
+        main()
+          .catch((err) => console.error("Dashboard error:", err))
+          .finally(() => {
+            if (btn) btn.textContent = "↺ Refresh";
+          });
+      }
+
+      // Auto-refresh every 30 s when served over HTTP (not file://)
+      if (location.protocol !== "file:") {
+        _refreshTimer = setInterval(refreshData, 30_000);
       }
 
       // ── Run on load ──

@@ -998,7 +998,8 @@
       "1114"
     ],
     "explicitCarryOver": false,
-    "isClosed": false
+    "isPlanning": false,
+    "isClosed": true
   },
   {
     "name": "sprint 1",
@@ -1089,6 +1090,7 @@
       "172"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1208,6 +1210,7 @@
       "224"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1253,6 +1256,7 @@
       "256"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1284,6 +1288,7 @@
       "286"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1305,6 +1310,7 @@
       "322"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1346,6 +1352,7 @@
       "320"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1419,6 +1426,7 @@
       "386"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1436,6 +1444,7 @@
       "407"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1481,6 +1490,7 @@
       "458"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1516,6 +1526,7 @@
       "488"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1533,6 +1544,7 @@
       "493"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1552,6 +1564,7 @@
       "1113"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1569,6 +1582,7 @@
       "651"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1604,6 +1618,7 @@
       "1110"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1631,6 +1646,7 @@
       "686"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1650,6 +1666,7 @@
       "725"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1667,6 +1684,7 @@
       "754"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1690,6 +1708,7 @@
       "777"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1709,6 +1728,7 @@
       "774"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1722,6 +1742,7 @@
     "issueIds": [],
     "completedIssueIds": [],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1791,6 +1812,7 @@
       "1115"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1818,6 +1840,7 @@
       "770"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1831,6 +1854,7 @@
     "issueIds": [],
     "completedIssueIds": [],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1860,6 +1884,7 @@
       "816"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1891,6 +1916,7 @@
       "823"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1928,6 +1954,7 @@
       "819"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1945,6 +1972,7 @@
       "835"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1958,6 +1986,7 @@
     "issueIds": [],
     "completedIssueIds": [],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1975,6 +2004,7 @@
       "841"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2004,6 +2034,7 @@
       "873"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2041,6 +2072,7 @@
       "909"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2070,6 +2102,7 @@
       "856"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2093,6 +2126,7 @@
       "887"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2122,6 +2156,7 @@
       "902"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2151,6 +2186,7 @@
       "925"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2186,6 +2222,7 @@
       "942"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2253,6 +2290,7 @@
       "953"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2310,6 +2348,7 @@
       "972"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2341,6 +2380,7 @@
       "989"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2422,6 +2462,7 @@
       "1084"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2480,6 +2521,7 @@
       "1092"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2576,6 +2618,7 @@
       "1146"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2596,6 +2639,7 @@
       "1127"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2646,6 +2690,7 @@
       "1168"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2735,6 +2780,7 @@
       "1169c",
       "1169d",
       "1169e",
+      "1169f",
       "1170",
       "1171",
       "1173",
@@ -2747,7 +2793,8 @@
       "1185"
     ],
     "explicitCarryOver": false,
-    "isClosed": true
+    "isPlanning": false,
+    "isClosed": false
   },
   {
     "name": "sprint 46",
@@ -2800,7 +2847,13 @@
       "1190",
       "1191",
       "1192",
-      "1193"
+      "1193",
+      "1201",
+      "1202",
+      "1203",
+      "1204",
+      "1205",
+      "1206"
     ],
     "completedIssueIds": [
       "1181",
@@ -2808,6 +2861,7 @@
       "1183"
     ],
     "explicitCarryOver": false,
+    "isPlanning": true,
     "isClosed": false
   }
 ]
