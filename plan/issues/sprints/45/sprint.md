@@ -142,6 +142,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169a | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | high | done |
 | #1169b | IR Phase 4 Slice 2 — object literals and property access through IR path | high | done |
 | #1169c | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | high | done |
+| #1169d | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | high | done |
 | #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 | #1171 | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | high | done |
 

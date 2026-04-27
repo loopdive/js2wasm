@@ -38,6 +38,7 @@ compilation boundaries, and simpler runtime/compiler interfaces.
 | **1169a** | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | 45 | done | high |
 | **1169b** | IR Phase 4 Slice 2 — object literals and property access through IR path | 45 | done | high |
 | **1169c** | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | 45 | done | high |
+| **1169d** | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | 45 | done | high |
 | **1169d** | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | 45 | ready | high |
 | **1169e** | IR Phase 4 Slice 6 — iterators and for-of through the IR path | 45 | ready | high |
 | **1169f** | IR Phase 4 Slice 7 — generators and async/await through the IR path | 45 | ready | high |

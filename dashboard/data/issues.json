@@ -1769,6 +1769,18 @@
       "sprint": "45"
     },
     {
+      "id": "1169d",
+      "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169c"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1169c",
       "title": "IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path",
       "priority": "high",
