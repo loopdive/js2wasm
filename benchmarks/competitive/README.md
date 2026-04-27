@@ -37,9 +37,16 @@ time of each run (most recently `wasmtime 44.0.0`). The floor is wasmtime
 wasmtimes (30, 31) reject `--invoke` against components.
 
 `-W exceptions=y` is required for the StarlingMonkey + ComponentizeJS lane
-because ComponentizeJS-emitted components use SpiderMonkey's Wasm
-exception-handling machinery. `gc-support=y` (a pre-v31 flag) was
-collapsed into `gc=y` upstream and is no longer set by the harness.
+because the embedded SpiderMonkey engine uses Wasm exception-handling
+bytecode for its exception machinery. (Throughout this README,
+"StarlingMonkey" refers to the Bytecode Alliance's SpiderMonkey embedding
+— the project that wraps Mozilla's SpiderMonkey JavaScript engine for
+WASI / Component Model targets. When we discuss the snapshotted runtime,
+the WIT bindings, or the deployed Wasm component, that is StarlingMonkey;
+when we discuss the interpreter loop, the parser, or the GC, those are
+SpiderMonkey internals that StarlingMonkey embeds.)
+`gc-support=y` (a pre-v31 flag) was collapsed into `gc=y` upstream and is
+no longer set by the harness.
 
 This is a best-effort approximation of a production precompiled deployment
 profile. It is not a claim that Fastly uses exactly these public CLI flags.
@@ -126,9 +133,18 @@ Point them at local checkouts or installed binaries before running the suite.
 ### Optional external toolchains
 
 ```bash
-# Javy
+# Javy (Shopify Functions production setup — dynamic mode by default)
+# Download the latest Javy CLI + plugin.wasm from
+#   https://github.com/bytecodealliance/javy/releases/latest
+# and set:
 export JAVY_BIN=/absolute/path/to/javy
 export JAVY_PLUGIN=/absolute/path/to/plugin.wasm
+# Set JAVY_DYNAMIC=0 to fall back to legacy static (self-contained) Javy
+# builds. Default is dynamic if a plugin is reachable — that matches
+# Shopify Functions, which ships per-function modules of ~1 kB plus a
+# shared 1.2 MB plugin.wasm at the host level. Static mode produces
+# ~1.2 MB self-contained Wasm per function.
+export JAVY_DYNAMIC=1
 
 # AssemblyScript
 export ASSEMBLYSCRIPT_ROOT=/absolute/path/to/AssemblyScript
@@ -334,67 +350,76 @@ wasmCloud, etc.) where:
   `.cwasm` for every Wasm lane to mirror this.
 - **The guest cannot JIT either.** The Wasm sandbox model (W xor X pages)
   prevents code inside a Wasm module from generating new machine code at
-  runtime, so SpiderMonkey running *inside* the StarlingMonkey embedding
-  runs **interpreter-only** — its Baseline and Ion JIT tiers are
-  unavailable in this deployment mode.
+  runtime, so the StarlingMonkey embedding (and the SpiderMonkey
+  interpreter inside it) runs **interpreter-only** in production — its
+  Baseline and Ion JIT tiers are unavailable. The same constraint applies
+  to Javy's embedded QuickJS runtime: it runs as a Wasm-resident
+  interpreter, no host JIT.
 
 This is exactly the gap Wizer and Weval are designed to close:
 
 | Optimization | What it does | When it runs |
 | --- | --- | --- |
 | Wizer pre-init | Snapshot the interpreter state with the user module already parsed and globals initialized | Deploy-time, pre-cold-start |
-| Weval AOT specialization | Partially evaluate the SpiderMonkey interpreter against the snapshotted module so hot dispatch paths bypass the generic opcode-interpreter loop | Deploy-time |
+| Weval AOT specialization | Partially evaluate the embedded interpreter (SpiderMonkey, inside StarlingMonkey) against the snapshotted module so hot dispatch paths bypass the generic opcode-interpreter loop | Deploy-time |
 | Wasmtime AOT (`wasmtime compile`) | Cranelift-compile the entire Wasm module to native machine code | Deploy-time |
+| Javy dynamic linking | Compile the user JS to a small Wasm that imports QuickJS from a shared `plugin.wasm` (Shopify Functions production setup) | Deploy-time |
 
 The hot-runtime numbers in this README therefore reflect a
-SpiderMonkey-in-Wasm-without-guest-JIT execution path, which is the same
-shape users see in Fastly Compute@Edge today. They should not be compared
-directly to running a benchmark in a JIT'd JS engine on a developer
-workstation.
+JS-interpreter-on-Wasm-without-guest-JIT execution path (whether the
+interpreter is StarlingMonkey's SpiderMonkey or Javy's QuickJS), which is
+the same shape users see in Fastly Compute@Edge or Shopify Functions
+today. They should not be compared directly to running a benchmark in a
+JIT'd JS engine on a developer workstation.
 
 ### Verified results — 2026-04-27 (wasmtime 44.0.0, aarch64-linux)
 
-Five benchmark programs, three lanes that run in this environment (Node.js,
-js2wasm, StarlingMonkey + ComponentizeJS). The runtime-eval lane is omitted
-because it requires a vendored StarlingMonkey checkout that is not present
-in this environment. AssemblyScript / Javy / Porffor are also omitted on
-the same grounds.
+Five benchmark programs, four lanes that run in this environment (Node.js,
+js2wasm, Javy in Shopify Functions production mode, and StarlingMonkey +
+ComponentizeJS with Wizer + Weval). The StarlingMonkey runtime-eval lane
+is omitted because it requires a vendored StarlingMonkey checkout that is
+not present in this environment. AssemblyScript / Porffor are also omitted
+on the same grounds.
 
 #### Runtime metrics (median of 5–7 runs)
 
 | Program | Lane | Cold ms | Hot ms | Compute-only ms |
 | --- | --- | ---: | ---: | ---: |
-| `array-sum` | Node.js | 22.4 | 15.3 | 12.9 |
+| `array-sum` | Node.js | 28.3 | 21.2 | 11.4 |
 | `array-sum` | js2wasm → Wasmtime | _runtime-error: WebAssembly translation error_ | | |
-| `array-sum` | SM + Componentize (Wizer + Weval) → Wasmtime | 29.4 | 159.2 | 125.9 |
-| `fib-recursive` | Node.js | 18.1 | 10.4 | 4.7 |
-| `fib-recursive` | js2wasm → Wasmtime | **28.2** | **10.1** | **2.9** |
-| `fib-recursive` | SM + Componentize (Wizer + Weval) → Wasmtime | 33.7 | 191.7 | 155.6 |
-| `fib` | Node.js | 27.1 | 16.6 | 10.7 |
-| `fib` | js2wasm → Wasmtime | **27.0** | **18.8** | **10.5** |
-| `fib` | SM + Componentize (Wizer + Weval) → Wasmtime | 30.0 | 1111.2 | 923.1 |
-| `object-ops` | Node.js | 29.5 | 5.2 | 1.1 |
+| `array-sum` | Javy (Shopify dynamic) → Wasmtime | 28.0 | 144.1 | 112.9 |
+| `array-sum` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 31.0 | 156.2 | 125.5 |
+| `fib-recursive` | Node.js | 19.2 | 10.2 | 4.9 |
+| `fib-recursive` | js2wasm → Wasmtime | **32.5** | **11.3** | **3.5** |
+| `fib-recursive` | Javy (Shopify dynamic) → Wasmtime | 31.2 | 114.0 | 87.9 |
+| `fib-recursive` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 26.4 | 195.3 | 156.7 |
+| `fib` | Node.js | 19.1 | 16.9 | 10.8 |
+| `fib` | js2wasm → Wasmtime | **26.2** | **18.3** | **11.9** |
+| `fib` | Javy (Shopify dynamic) → Wasmtime | 28.8 | 1453.2 | 1193.2 |
+| `fib` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 37.2 | 1241.8 | 1024.3 |
+| `object-ops` | Node.js | 24.0 | 6.5 | 0.7 |
 | `object-ops` | js2wasm → Wasmtime | _runtime-error: failed to parse WebAssembly module_ | | |
-| `object-ops` | SM + Componentize (Wizer + Weval) → Wasmtime | 34.3 | 226.7 | 182.4 |
-| `string-hash` | Node.js | 20.7 | 5.4 | 0.9 |
+| `object-ops` | Javy (Shopify dynamic) → Wasmtime | 24.6 | 246.8 | 207.7 |
+| `object-ops` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 37.5 | 243.3 | 199.0 |
+| `string-hash` | Node.js | 29.9 | 9.4 | 1.8 |
 | `string-hash` | js2wasm → Wasmtime | _compile-error: wasm-validator (pre-existing js2wasm bug)_ | | |
-| `string-hash` | SM + Componentize (Wizer + Weval) → Wasmtime | 28.2 | 20.5 | 11.9 |
+| `string-hash` | Javy (Shopify dynamic) → Wasmtime | 30.7 | 48.8 | 36.0 |
+| `string-hash` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 30.5 | 22.2 | 14.2 |
 
 For the two programs where js2wasm → Wasmtime succeeds end-to-end
-(`fib-recursive`, `fib`), js2wasm beats SpiderMonkey + ComponentizeJS on hot
-runtime by **~19× to ~60×**:
+(`fib-recursive`, `fib`), js2wasm beats both JS-host approaches on hot
+runtime by an order of magnitude or more:
 
-- `fib`: js2wasm 18.8 ms vs SM 1,111.2 ms → **59× faster**
-- `fib-recursive`: js2wasm 10.1 ms vs SM 191.7 ms → **19× faster**
+- `fib`: js2wasm 18.3 ms vs Javy 1,453.2 ms (**79× slower**) vs StarlingMonkey 1,241.8 ms (**68× slower**)
+- `fib-recursive`: js2wasm 11.3 ms vs Javy 114.0 ms (**10× slower**) vs StarlingMonkey 195.3 ms (**17× slower**)
 
-The size story is the second headline finding: SM + ComponentizeJS is
-**~50,000× larger** than the equivalent js2wasm precompiled artifact (52 MB
-vs 193 kB cwasm) because the component carries a snapshotted SpiderMonkey
-embedding plus the user module. js2wasm compiles the user module directly
-to Wasm without an embedded interpreter.
+For the workloads where Javy and StarlingMonkey are head-to-head:
+- Javy beats StarlingMonkey on `fib` (1,453 vs 1,242 ms — 17 % StarlingMonkey win) and `array-sum`/`fib-recursive`/`object-ops` come out roughly equal.
+- StarlingMonkey beats Javy on `string-hash` (22.2 ms vs 48.8 ms — **2.2× faster**), where Weval AOT specialization helps because the workload exercises more interpreter-dispatch overhead.
 
 The other three programs hit pre-existing js2wasm codegen bugs unrelated to
-`#1125`. The SM + ComponentizeJS lane successfully runs all five.
+`#1125`. Both the Javy and StarlingMonkey + ComponentizeJS lanes successfully
+run all five programs.
 
 #### A/B verification: Wizer-only vs Wizer + Weval AOT
 
@@ -424,13 +449,38 @@ is a deliberately degenerate case from that perspective.
 
 #### Size metrics (per benchmark program)
 
-| Program | js2wasm raw | js2wasm gz | js2wasm cwasm | SM + Comp raw | SM + Comp gz | SM + Comp cwasm |
+Per-function module sizes (the part that ships per JS function deployed):
+
+| Program | js2wasm raw | js2wasm cwasm | Javy raw | Javy cwasm | StarlingMonkey + Comp raw | StarlingMonkey + Comp cwasm |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `fib` | 0.1 kB | 0.1 kB | 193.5 kB | 14,467.8 kB | 4,316.5 kB | 53,437.3 kB |
-| `fib-recursive` | 0.2 kB | 0.1 kB | 193.6 kB | 14,470.0 kB | 4,317.0 kB | 53,437.4 kB |
-| `array-sum` | 0.5 kB | 0.3 kB | _n/a_ | 14,469.2 kB | 4,316.8 kB | 53,437.3 kB |
-| `object-ops` | 0.5 kB | 0.3 kB | 194.5 kB | 14,469.4 kB | 4,317.1 kB | 53,437.3 kB |
-| `string-hash` | 4.5 kB | 1.9 kB | _n/a_ | 14,473.3 kB | 4,318.3 kB | 53,501.3 kB |
+| `fib` | 0.1 kB | 193.5 kB | 2.8 kB | 195.6 kB | 14,467.8 kB | 53,437.3 kB |
+| `fib-recursive` | 0.2 kB | 193.6 kB | 2.7 kB | 195.6 kB | 14,470.0 kB | 53,437.4 kB |
+| `array-sum` | 0.5 kB | _n/a_ | 3.0 kB | 195.8 kB | 14,469.2 kB | 53,437.3 kB |
+| `object-ops` | 0.5 kB | 194.5 kB | 3.0 kB | 195.8 kB | 14,469.4 kB | 53,437.3 kB |
+| `string-hash` | 4.5 kB | _n/a_ | 3.4 kB | 196.1 kB | 14,473.3 kB | 53,501.3 kB |
+
+Shared / per-host runtime cost (deployed once across every function):
+
+| Lane | Shared runtime | Notes |
+| --- | ---: | --- |
+| js2wasm | _none_ | the user module is the entire artifact |
+| Javy (dynamic, Shopify-style) | 1,212.4 kB plugin.wasm | shared QuickJS runtime imported via `--preload javy-default-plugin-v3=plugin.wasm` |
+| StarlingMonkey + ComponentizeJS | _none — bundled per function_ | the SpiderMonkey embedding is rebuilt and snapshotted into every component |
+
+**Total deployment size for N functions:**
+
+| N | js2wasm | Javy (dynamic) | StarlingMonkey + ComponentizeJS |
+| ---: | ---: | ---: | ---: |
+| 1 | ~0.2 kB | ~1,215 kB | ~14,500 kB |
+| 100 | ~20 kB | ~1,500 kB | ~1,450,000 kB (1.45 GB) |
+| 10,000 | ~2 MB | ~30 MB | ~145 GB |
+
+js2wasm wins by a wide margin on per-function size because it compiles
+the user code directly to Wasm with no embedded interpreter. Javy's
+dynamic-link mode wins by roughly the same factor over StarlingMonkey +
+ComponentizeJS at scale, because Shopify's design shares the QuickJS
+runtime across all functions while ComponentizeJS bundles the
+SpiderMonkey embedding (~14 MB) into every component.
 
 ## Javy
 
@@ -441,8 +491,28 @@ For each benchmark program, the harness generates a wrapper script that:
 - executes `run(input)` once or in a hot loop
 - writes the numeric result to stdout
 
-The Javy lane currently uses the default static runtime build, so its module
-size includes the bundled QuickJS runtime.
+### Build mode: dynamic (Shopify Functions production setup, default)
+
+Javy's `--codegen dynamic=y --codegen plugin=…` mode produces a small Wasm
+that imports QuickJS from a shared `plugin.wasm`. This is the same setup
+Shopify Functions uses in production: every function deploys as ~1–3 kB
+of user-specific Wasm (just compiled QuickJS bytecode + JS source), and
+the QuickJS runtime is shipped once at the host level as a 1.2 MB plugin.
+
+The harness invokes wasmtime with
+`--preload javy-default-plugin-v3=<plugin.cwasm>` so the dynamic user
+module can resolve QuickJS imports. Both the user module and the plugin
+are precompiled with `wasmtime compile -O opt-level=2`; in production
+Shopify caches the plugin precompile across all function deploys.
+
+### Build mode: static (legacy fallback)
+
+Setting `JAVY_DYNAMIC=0`, or running without a plugin available, falls
+back to Javy's static build: `javy build -J javy-stream-io=y -J
+text-encoding=y …`. This bundles QuickJS into every per-function Wasm
+module (~1.2 MB each). It's simpler to deploy (single artifact per
+function) but loses the per-function size advantage that motivated the
+dynamic mode in the first place.
 
 ## AssemblyScript
 
