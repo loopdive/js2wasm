@@ -1484,8 +1484,16 @@ function compileForOfString(ctx: CodegenContext, fctx: FunctionContext, stmt: ts
   // Ensure native string helpers are available (provides __str_charAt)
   ensureNativeStringHelpers(ctx);
 
-  const charAtIdx = ctx.nativeStrHelpers.get("__str_charAt");
-  if (charAtIdx === undefined) {
+  // Validate that __str_charAt was registered (fail-fast). The funcIdx itself
+  // is re-resolved at the call-emit site below — capturing it here would go
+  // stale because addLateImport / addImport calls during compileExpression
+  // (string expression) and the user-loop-body compilation can shift the
+  // function index space, and shiftLateImportIndices does NOT walk
+  // ctx.nativeStrHelpers. The IR path sidesteps this same bug by
+  // re-resolving funcref names via ctx.mod.functions[i].name at lowering
+  // time (#1183, slice 6 part 4); this is the matching legacy-path fix
+  // (#1186).
+  if (!ctx.nativeStrHelpers.has("__str_charAt")) {
     reportError(ctx, stmt, "for-of on string: __str_charAt helper not available");
     return;
   }
@@ -1561,9 +1569,27 @@ function compileForOfString(ctx: CodegenContext, fctx: FunctionContext, stmt: ts
   fctx.body.push({ op: "br_if", depth: 1 }); // break
 
   // Get character: c = charAt(str, i)
+  // Re-resolve __str_charAt's funcIdx by name walk — the cached value in
+  // ctx.nativeStrHelpers may be stale due to late imports added during
+  // compileExpression(stmt.expression) above. shiftLateImportIndices
+  // catches body instructions but not stale captured ints. (#1186)
+  let charAtIdxFresh: number | undefined;
+  for (let i = 0; i < ctx.mod.functions.length; i++) {
+    if (ctx.mod.functions[i]!.name === "__str_charAt") {
+      charAtIdxFresh = ctx.numImportFuncs + i;
+      break;
+    }
+  }
+  if (charAtIdxFresh === undefined) {
+    // Should be unreachable — we validated earlier and ensureNativeStringHelpers
+    // ran. Defensive guard in case the helper was removed mid-compile.
+    fctx.body = savedBody;
+    reportError(ctx, stmt, "for-of on string: __str_charAt helper not available at emit time");
+    return;
+  }
   fctx.body.push({ op: "local.get", index: strLocal });
   fctx.body.push({ op: "local.get", index: iLocal });
-  fctx.body.push({ op: "call", funcIdx: charAtIdx });
+  fctx.body.push({ op: "call", funcIdx: charAtIdxFresh });
   fctx.body.push({ op: "local.set", index: elemLocal });
 
   // Compile body — save/restore block-scoped shadows for let/const (#817).
