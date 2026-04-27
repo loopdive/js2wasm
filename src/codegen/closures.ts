@@ -2745,8 +2745,13 @@ export function emitFuncRefAsClosure(
           const currentLocalIdx = fctx.localMap.get(cap.name)!;
           fctx.body.push({ op: "local.get", index: currentLocalIdx });
         } else {
-          // Stage 1 localMap-first lookup reverted — see calls.ts comment.
-          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+          // #1177 Stage 1: prefer fctx.localMap when set — same rationale as
+          // the calls.ts site. Transitively-capturing contexts have the
+          // correct local in localMap; cap.outerLocalIdx may point at a
+          // stale outer-fctx slot. Safe now that compileArrowAsClosure's
+          // TDZ-flag boxing (Stage 3) is in place.
+          const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+          fctx.body.push({ op: "local.get", index: sourceLocalIdx });
           fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
           const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, {
             kind: "ref",
@@ -2758,7 +2763,9 @@ export function emitFuncRefAsClosure(
           fctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.valType });
         }
       } else {
-        fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+        // #1177 Stage 1: same localMap-first lookup as the mutable branch.
+        const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+        fctx.body.push({ op: "local.get", index: sourceLocalIdx });
       }
     }
     // #1205 Stage 3: after all value captures, push the boxed TDZ flag refs
