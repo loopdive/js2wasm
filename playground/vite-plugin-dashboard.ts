@@ -357,6 +357,18 @@ export function dashboardPlugin(): Plugin {
     }
   }
 
+  // Regenerate dashboard/data/*.json from plan/ markdown files
+  function regenDashboardData() {
+    try {
+      execSync(`node ${join(projectRoot, "dashboard/build-data.js")}`, {
+        cwd: projectRoot,
+        stdio: "ignore",
+      });
+    } catch {
+      // non-fatal — stale data is better than a crash
+    }
+  }
+
   // Regenerate sprint-stats.json from git tags (runs after plan/ changes)
   function regenSprintStats() {
     try {
@@ -374,6 +386,7 @@ export function dashboardPlugin(): Plugin {
   function onFileChange(path: string) {
     if (changeTimer) clearTimeout(changeTimer);
     changeTimer = setTimeout(() => {
+      regenDashboardData();
       regenSprintStats();
       broadcast({ type: "refresh", path, timestamp: Date.now() });
     }, 500);

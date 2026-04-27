@@ -117,18 +117,6 @@
   ],
   "ready": [
     {
-      "id": "1208",
-      "title": "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1202"
-      ],
-      "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1207",
       "title": "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)",
       "priority": "high",
@@ -1625,6 +1613,18 @@
     }
   ],
   "inprogress": [
+    {
+      "id": "1208",
+      "title": "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1202"
+      ],
+      "goal": "contributor-readiness",
+      "status": "in-progress",
+      "sprint": "45"
+    },
     {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
