@@ -555,6 +555,148 @@ deliberate engineering choices:
   trade-off the Bytecode Alliance is actively addressing with shared-runtime
   work referenced earlier in this README.
 
+### Deployment savings analysis
+
+This section translates the size and runtime numbers above into operational
+savings on real serverless platforms. The arithmetic is parameterised on
+"$X per CPU-second" so the reader can plug in current rates from the
+provider's pricing page rather than relying on figures that may go stale.
+
+#### 1. Storage savings (derived from the size tables above)
+
+For 10,000 deployed functions, choosing js2wasm or Javy over StarlingMonkey
++ ComponentizeJS saves on the order of:
+
+| Switching from → to | Storage saved (cwasm view) | Storage saved (raw view) |
+| --- | ---: | ---: |
+| StarlingMonkey + ComponentizeJS → Javy (Shopify dynamic) | ~532 GB | ~145 GB |
+| StarlingMonkey + ComponentizeJS → js2wasm | ~532 GB | ~145 GB |
+| Javy (Shopify dynamic) → js2wasm | ~20 MB | ~26 MB |
+
+js2wasm and Javy are essentially tied on cwasm storage at scale — both
+benefit from a small per-function payload, and Javy's shared plugin
+amortizes its QuickJS runtime across all functions.
+
+#### 2. Cumulative execution-time savings (worked example)
+
+For a workload like `fib(20,000,000)` invoked 1,000,000 times per month
+(a realistic monthly invocation count for a popular serverless function):
+
+| Lane | Per-call hot | × 1M invocations | Wall-clock CPU |
+| --- | ---: | ---: | --- |
+| js2wasm → Wasmtime | 18.3 ms | 18,300 s | ~5.1 hours |
+| Javy (Shopify dynamic) → Wasmtime | 1,453.2 ms | 1,453,200 s | **~16.8 days** |
+| StarlingMonkey + ComponentizeJS → Wasmtime | 1,241.8 ms | 1,241,800 s | **~14.4 days** |
+
+| Switching from → to | CPU time saved per month | Saved per year |
+| --- | ---: | ---: |
+| Javy → js2wasm | ~16.6 days | ~199 days |
+| StarlingMonkey + ComponentizeJS → js2wasm | ~14.3 days | ~172 days |
+| StarlingMonkey + ComponentizeJS → Javy | ~2.4 days | ~29 days |
+
+These figures are linear in invocation count and proportional to the
+hot-runtime delta, so they scale predictably to other workloads — the
+table above can be re-derived for any (workload, monthly invocations)
+pair using the per-call hot numbers from the runtime table.
+
+#### 3. Cost translation — Fastly Compute@Edge
+
+Fastly Compute@Edge is billed on a per-request and compute-time basis;
+current pricing is published at
+[fastly.com/pricing](https://www.fastly.com/pricing) and varies by tier.
+The framework below is parameterised so the reader can plug in the
+current rate.
+
+**Formula:**
+
+```
+$ saved per function per month
+   = (other_lane_ms − js2wasm_ms) × monthly_invocations × ($/CPU-sec ÷ 1000)
+```
+
+**Worked example** (illustrative, *not* a quotation — verify the current
+rate at fastly.com/pricing): for a 1M monthly-invocation workload at an
+illustrative rate of `$0.00005 / CPU-second`:
+
+| Switching from → to | Saved per function / month | × 100 functions | × 10,000 functions |
+| --- | ---: | ---: | ---: |
+| Javy → js2wasm (`fib`, Δ = 1,434.9 ms/call) | ~$71.75 | ~$7,175 | ~$717,500 |
+| StarlingMonkey → js2wasm (`fib`, Δ = 1,223.5 ms/call) | ~$61.18 | ~$6,118 | ~$611,800 |
+| StarlingMonkey → Javy (`fib`, Δ = 211.4 ms/call) | ~$10.57 | ~$1,057 | ~$105,700 |
+
+For non-numeric workloads with smaller hot-runtime deltas (e.g.
+`string-hash` where StarlingMonkey already amortizes the interpreter
+through Weval AOT), the per-call savings shrink correspondingly.
+The delta-per-call is the operative quantity; the savings table above
+re-derives directly from the runtime metrics for any program.
+
+The illustrative rate (`$0.00005 / CPU-second`) is a placeholder in the
+ballpark of typical compute-tier pricing — actual savings should be
+calculated using each customer's contracted Fastly rate. Fastly bundles
+some compute-time allowance into the per-request price on certain plans,
+so the effective marginal $/CPU-sec varies with the customer's request
+volume and tier.
+
+#### 4. Cost translation — Shopify Functions
+
+Shopify Functions uses a different billing model. The platform absorbs
+the compute cost — there is no direct per-invocation $ charge to the app
+developer or merchant — but Shopify enforces hard limits that translate
+"savings" into something different from a dollar figure:
+
+| Limit | Current value | What it means in practice |
+| --- | --- | --- |
+| Execution time per call | 5 ms wall-clock | Functions that exceed are killed; merchant flow breaks |
+| Module size | 256 kB compressed | Larger Wasm cannot be uploaded at all |
+| Memory | 10 MB per instance | Hard cap on linear memory + JS heap |
+
+Refer to the official Shopify Functions documentation for current limit
+values, since they evolve over time.
+
+For our `fib(20,000,000)` workload, **all three lanes exceed 5 ms**
+substantially (js2wasm 18.3 ms, Javy 1,453 ms, StarlingMonkey 1,242 ms),
+which simply puts that workload outside Shopify Functions' design space.
+For lighter workloads more typical of Shopify Functions (cart validation,
+shipping rate computation, discount logic):
+
+- **js2wasm** has the most headroom under the 5 ms budget: more JS
+  complexity stays within the budget before timing out.
+- **Javy (dynamic)** fits Shopify's 256 kB module-size limit by design —
+  the user-specific Wasm is ~3 kB and the QuickJS runtime ships once at
+  the platform layer. Javy is the toolchain Shopify Functions actively
+  supports today.
+- **StarlingMonkey + ComponentizeJS** at `componentize-js` 0.20.0
+  produces ~14.5 MB components, which exceed Shopify Functions' 256 kB
+  module-size limit by ~57×. The Bytecode Alliance shared-runtime /
+  library-component direction (referenced earlier in this README) is
+  what would unlock fitting under such a limit.
+
+For Shopify Functions specifically, the relevant "savings" question is
+not "how many dollars" but "what additional logic can fit within the
+5 ms / 256 kB / 10 MB envelope" — and the answer there favors faster
+execution per call for any toolchain that targets the platform.
+
+#### Caveats for these projections
+
+- **Workload-specific extrapolation.** The savings tables use the `fib`
+  hot-runtime numbers as a worked example. Different workloads have
+  different per-call hot deltas; the formula remains correct but plug in
+  the relevant program's number from the runtime table.
+- **Single-call hot vs warmed-loop hot.** The hot-runtime metric is
+  measured by looping inside one fresh process after one warm-up call;
+  this is closest to "function is hot, requests stream in steadily".
+  Cold-start-dominated traffic patterns shift the savings story — check
+  the cold-start column too.
+- **CPU pricing is platform-specific.** The Fastly worked example uses
+  an illustrative rate. Customer contracts, tier bundling, and request-
+  volume discounts all change the marginal $/CPU-sec. The formula above
+  composes with whatever rate the customer actually pays.
+- **Memory translation is a separate axis.** This section discusses CPU
+  time and storage. Runtime memory (peak RSS while a function instance
+  is live) is not currently captured by the harness; cwasm size is a
+  *floor* but not the full picture. See "future work" notes for the
+  follow-up that would add real RSS instrumentation.
+
 ## Javy
 
 For each benchmark program, the harness generates a wrapper script that:
