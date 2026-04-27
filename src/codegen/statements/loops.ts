@@ -1484,7 +1484,28 @@ function compileForOfString(ctx: CodegenContext, fctx: FunctionContext, stmt: ts
   // Ensure native string helpers are available (provides __str_charAt)
   ensureNativeStringHelpers(ctx);
 
-  const charAtIdx = ctx.nativeStrHelpers.get("__str_charAt");
+  // #1186: re-resolve `__str_charAt` by name against `ctx.mod.functions`
+  // rather than reading the cached index from `ctx.nativeStrHelpers`. The
+  // helpers map captures funcIdx at registration time, but late-import
+  // additions later in the compilation pipeline can shift the index space
+  // (`shiftLateImportIndices` walks `ctx.mod.functions[].body` and
+  // `ctx.funcMap` but does NOT update `ctx.nativeStrHelpers`). The
+  // captured index becomes stale and at runtime resolves to whatever
+  // import landed at that position (typically `__is_truthy`), producing
+  // an invalid Wasm body that fails validation:
+  //
+  //   call[0] expected externref, found local.get of type i32
+  //
+  // The IR path (#1183) sidesteps this by walking
+  // `ctx.mod.functions[i].name` at lowering time. Mirroring that here
+  // for the legacy path:
+  let charAtIdx: number | undefined;
+  for (let i = 0; i < ctx.mod.functions.length; i++) {
+    if (ctx.mod.functions[i]!.name === "__str_charAt") {
+      charAtIdx = ctx.numImportFuncs + i;
+      break;
+    }
+  }
   if (charAtIdx === undefined) {
     reportError(ctx, stmt, "for-of on string: __str_charAt helper not available");
     return;
