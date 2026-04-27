@@ -117,6 +117,46 @@
   ],
   "ready": [
     {
+      "id": "1187",
+      "title": "test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1186",
+      "title": "fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "compiler-correctness",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1185",
+      "title": "IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1184",
+      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "Backlog"
+    },
+    {
       "id": "1183",
       "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
       "priority": "medium",
@@ -151,12 +191,14 @@
       "sprint": "45"
     },
     {
-      "id": "1178",
-      "title": "string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix",
+      "id": "1177",
+      "title": "TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
+      "depends_on": [
+        "1016"
+      ],
+      "goal": "test262-conformance",
       "status": "ready",
       "sprint": "45"
     },
@@ -214,30 +256,6 @@
       "feasibility": "hard",
       "depends_on": [
         "1169e"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "1169e",
-      "title": "IR Phase 4 Slice 6 — iterators and for-of through the IR path",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169d"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "1169d",
-      "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169c"
       ],
       "goal": "compiler-architecture",
       "status": "ready",
@@ -523,18 +541,6 @@
       "goal": "async-model",
       "status": "ready",
       "sprint": "Backlog"
-    },
-    {
-      "id": "1109",
-      "title": "lodash-es clamp: Wasm validation error in typeof/RegExp codegen path",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1107"
-      ],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "45"
     },
     {
       "id": "1105",
@@ -1644,36 +1650,6 @@
   ],
   "inprogress": [
     {
-      "id": "1175",
-      "title": "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
-      "id": "1174",
-      "title": "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
-      "id": "1173",
-      "title": "js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -1769,26 +1745,6 @@
   ],
   "review": [
     {
-      "id": "1179-followup",
-      "title": "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-conformance",
-      "status": "review",
-      "sprint": "45"
-    },
-    {
-      "id": "1179",
-      "title": "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "review",
-      "sprint": "45"
-    },
-    {
       "id": "1017",
       "title": "Null pointer dereferences and illegal casts in compiled code (504 FAIL)",
       "priority": "high",
@@ -1843,6 +1799,114 @@
   ],
   "done": [
     {
+      "id": "1183",
+      "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1181"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
+      "id": "1182",
+      "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1181"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
+      "id": "1181",
+      "title": "IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up)",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
+      "id": "1179-followup",
+      "title": "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1179",
+      "title": "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1178",
+      "title": "string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1177",
+      "title": "TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1016"
+      ],
+      "goal": "test262-conformance",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1175",
+      "title": "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1174",
+      "title": "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1173",
+      "title": "js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1171",
       "title": "Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change",
       "priority": "high",
@@ -1859,6 +1923,18 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1169e",
+      "title": "IR Phase 4 Slice 6 — iterators and for-of through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169d"
+      ],
+      "goal": "compiler-architecture",
       "status": "done",
       "sprint": "45"
     },
@@ -2353,6 +2429,18 @@
       "goal": "builtin-methods",
       "status": "done",
       "sprint": "14"
+    },
+    {
+      "id": "1109",
+      "title": "lodash-es clamp: Wasm validation error in typeof/RegExp codegen path",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1107"
+      ],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1108",

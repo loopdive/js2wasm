@@ -113,32 +113,14 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | ready |
-| #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | ready |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
-| #1169d | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | high | ready |
-| #1169e | IR Phase 4 Slice 6 — iterators and for-of through the IR path | high | ready |
 | #1169f | IR Phase 4 Slice 7 — generators and async/await through the IR path | high | ready |
 | #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | ready |
 | #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
 | #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | ready |
-| #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | ready |
+| #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | ready |
 | #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
-
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | in-progress |
-| #1174 | js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash) | high | in-progress |
-| #1175 | String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator | high | in-progress |
-
-### Review
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | review |
-| #1179-followup | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | medium | review |
 
 ### Done
 
@@ -163,6 +145,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | done |
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | done |
 | #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | done |
+| #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | done |
 | #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
 | #1120 | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | high | done |
 | #1121 | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | high | done |
@@ -174,7 +157,15 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169b | IR Phase 4 Slice 2 — object literals and property access through IR path | high | done |
 | #1169c | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | high | done |
 | #1169d | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | high | done |
+| #1169e | IR Phase 4 Slice 6 — iterators and for-of through the IR path | high | done |
 | #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 | #1171 | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | high | done |
+| #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | done |
+| #1174 | js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash) | high | done |
+| #1175 | String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator | high | done |
+| #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | done |
+| #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | done |
+| #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | done |
+| #1179-followup | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

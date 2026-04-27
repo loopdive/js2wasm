@@ -15578,8 +15578,8 @@
       "id": "1109",
       "title": "lodash-es clamp: Wasm validation error in typeof/RegExp codegen path",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [
         "1107"
@@ -16565,23 +16565,11 @@
       "cluster": "compiler-architecture"
     },
     {
-      "id": "1169d",
-      "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "45",
-      "depends_on": [],
-      "files": [],
-      "goal": "compiler-architecture",
-      "cluster": "compiler-architecture"
-    },
-    {
       "id": "1169e",
       "title": "IR Phase 4 Slice 6 — iterators and for-of through the IR path",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16676,8 +16664,8 @@
       "id": "1173",
       "title": "js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16688,8 +16676,8 @@
       "id": "1174",
       "title": "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16700,8 +16688,8 @@
       "id": "1175",
       "title": "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16709,11 +16697,39 @@
       "cluster": "compilable"
     },
     {
-      "id": "1178",
-      "title": "string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix",
+      "id": "1177",
+      "title": "TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
+      "depends_on": [
+        "1016"
+      ],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance"
+    },
+    {
+      "id": "1177",
+      "title": "TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture",
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [
+        "1016"
+      ],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance"
+    },
+    {
+      "id": "1178",
+      "title": "string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16724,8 +16740,8 @@
       "id": "1179",
       "title": "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16736,8 +16752,8 @@
       "id": "1179-followup",
       "title": "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16757,11 +16773,51 @@
       "cluster": "compilable"
     },
     {
+      "id": "1181",
+      "title": "IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1182",
+      "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "46",
+      "depends_on": [
+        "1181"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "1182",
       "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [
+        "1181"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1183",
+      "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "46",
       "depends_on": [
         "1181"
@@ -16783,6 +16839,54 @@
       "files": [],
       "goal": "compiler-architecture",
       "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1184",
+      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "Backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1185",
+      "title": "IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1186",
+      "title": "fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-correctness",
+      "cluster": "compiler-correctness"
+    },
+    {
+      "id": "1187",
+      "title": "test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
     },
     {
       "id": "backlog",
@@ -17013,6 +17117,30 @@
     {
       "source": "1131",
       "target": "1168"
+    },
+    {
+      "source": "1016",
+      "target": "1177"
+    },
+    {
+      "source": "1181",
+      "target": "1182"
+    },
+    {
+      "source": "1181",
+      "target": "1183"
+    },
+    {
+      "source": "1016",
+      "target": "1177"
+    },
+    {
+      "source": "1181",
+      "target": "1182"
+    },
+    {
+      "source": "1181",
+      "target": "1183"
     },
     {
       "source": "1113",
@@ -17999,14 +18127,17 @@
         "1169b",
         "1169c",
         "1169d",
-        "1169d",
         "1169e",
         "1169f",
         "1169g",
         "1169h",
         "1169i",
+        "1181",
         "1182",
-        "1183"
+        "1182",
+        "1183",
+        "1183",
+        "1185"
       ],
       "track": "supporting track"
     },
@@ -18318,7 +18449,8 @@
         "978",
         "1008",
         "1039",
-        "1147"
+        "1147",
+        "1187"
       ],
       "track": "supporting track"
     },
@@ -18616,7 +18748,8 @@
         "1121",
         "1122",
         "1126",
-        "1179"
+        "1179",
+        "1184"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -20490,10 +20623,6 @@
     },
     {
       "goal": "compiler-architecture",
-      "issue": "1169d"
-    },
-    {
-      "goal": "compiler-architecture",
       "issue": "1169e"
     },
     {
@@ -20514,11 +20643,27 @@
     },
     {
       "goal": "compiler-architecture",
+      "issue": "1181"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1182"
+    },
+    {
+      "goal": "compiler-architecture",
       "issue": "1182"
     },
     {
       "goal": "compiler-architecture",
       "issue": "1183"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1183"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1185"
     },
     {
       "goal": "contributor-readiness",
@@ -21553,6 +21698,10 @@
       "issue": "1147"
     },
     {
+      "goal": "developer-experience",
+      "issue": "1187"
+    },
+    {
       "goal": "error-model",
       "issue": "119"
     },
@@ -22391,6 +22540,10 @@
     {
       "goal": "performance",
       "issue": "1179"
+    },
+    {
+      "goal": "performance",
+      "issue": "1184"
     },
     {
       "goal": "platform",
@@ -26057,6 +26210,10 @@
     {
       "goal": "core-semantics",
       "issue": "1179"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1184"
     },
     {
       "goal": "standalone-mode",
