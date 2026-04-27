@@ -160,5 +160,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | done |
 | #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | done |
 | #1179-followup | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | medium | done |
+| #1185 | IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts) | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

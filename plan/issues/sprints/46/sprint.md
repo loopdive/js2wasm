@@ -192,7 +192,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
 | #1182 | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | medium | ready |
 | #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | ready |
-| #1185 | IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts) | medium | ready |
 | #1186 | fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx) | high | ready |
 | #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | ready |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | ready |
@@ -200,6 +199,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1190 | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | high | ready |
 | #1191 | ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate | medium | ready |
 | #1192 | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | medium | ready |
+| #1193 | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | medium | ready |
 
 ### Done
 

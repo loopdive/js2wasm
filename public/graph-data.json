@@ -16856,9 +16856,9 @@
       "id": "1185",
       "title": "IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -16947,6 +16947,18 @@
       "files": [],
       "goal": "ci-hardening",
       "cluster": "ci-hardening"
+    },
+    {
+      "id": "1193",
+      "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
     },
     {
       "id": "backlog",
@@ -18515,7 +18527,8 @@
         "1039",
         "1147",
         "1187",
-        "1188"
+        "1188",
+        "1193"
       ],
       "track": "supporting track"
     },
@@ -21785,6 +21798,10 @@
     {
       "goal": "developer-experience",
       "issue": "1188"
+    },
+    {
+      "goal": "developer-experience",
+      "issue": "1193"
     },
     {
       "goal": "error-model",
