@@ -79,12 +79,12 @@ bg_progress_bar() {
   }'
 }
 
-# Pass bar: green>=55%, yellow>=50%, red<50%
+# Pass bar: green>=2/3, yellow>=1/3, red<1/3
 pass_bar() {
   awk -v p="$1" -v label="$2" 'BEGIN {
-    if (p >= 55)      { fill=42; fg=30 }
-    else if (p >= 33) { fill=43; fg=30 }
-    else              { fill="48;5;196"; fg=37 }
+    if (p >= 66.7)     { fill=42; fg=30 }
+    else if (p >= 33.3){ fill=43; fg=30 }
+    else               { fill="48;5;196"; fg=37 }
   }
   END {
     width = 12
@@ -98,13 +98,13 @@ pass_bar() {
   }' /dev/null
 }
 
-# Free bar: green>=8G, yellow>=4G, red<4G (fills proportionally out of 16G)
+# Free bar: green>=2/3 free, yellow>=1/3 free, red<1/3 free (out of 16G)
 free_bar() {
   awk -v free_g="$1" 'BEGIN {
     total_g = 16
     pct = free_g * 100 / total_g
-    if (free_g >= 8)      { fill=42; fg=30 }
-    else if (free_g >= 4) { fill=43; fg=30 }
+    if (pct >= 66.7)      { fill=42; fg=30 }
+    else if (pct >= 33.3) { fill=43; fg=30 }
     else                  { fill="48;5;196"; fg=37 }
     width = 10
     filled = int(pct * width / 100)
