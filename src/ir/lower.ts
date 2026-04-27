@@ -318,7 +318,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       defBy.set(instr.result, instr);
       defBlockOf.set(instr.result, blockId);
     }
-    if (instr.kind === "forof.vec") {
+    if (instr.kind === "forof.vec" || instr.kind === "forof.iter") {
       for (const sub of instr.body) registerInstrDefs(sub, blockId);
     }
   };
@@ -375,7 +375,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       // execution makes ANY outer-defined value's use a candidate for
       // cross-block materialisation. Mark uses with a synthetic block
       // ID (-1 for "inside-body") so the cross-block test always fires.
-      if (instr.kind === "forof.vec") {
+      if (instr.kind === "forof.vec" || instr.kind === "forof.iter") {
         for (const u of collectForOfBodyUses(instr.body)) recordUse(u, -1);
       }
     }
@@ -419,7 +419,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       locals.push({ name: `$ir${instr.result}`, type: lowerIrTypeToValType(instr.resultType, resolver, func.name) });
       localIdx.set(instr.result, idx);
     }
-    if (instr.kind === "forof.vec") {
+    if (instr.kind === "forof.vec" || instr.kind === "forof.iter") {
       for (const sub of instr.body) allocLocalForInstr(sub);
     }
   };
@@ -912,6 +912,111 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         });
         return;
       }
+      // Slice 6 part 3 (#1182) — coercion + iterator protocol ops.
+      case "coerce.to_externref": {
+        // Push the value, then convert any (ref) → externref. If the
+        // input is already externref, the convert is a wasm validation
+        // no-op (it's permitted on already-externref values). For all
+        // ref-typed inputs the wasm engine simply re-tags the reference
+        // so it can flow into externref-typed positions.
+        emitValue(instr.value, out);
+        out.push({ op: "extern.convert_any" } as unknown as Instr);
+        return;
+      }
+      case "iter.new": {
+        const fnName = instr.async ? "__async_iterator" : "__iterator";
+        const funcIdx = resolver.resolveFunc({ kind: "func", name: fnName });
+        emitValue(instr.iterable, out);
+        out.push({ op: "call", funcIdx });
+        return;
+      }
+      case "iter.next": {
+        const funcIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_next" });
+        emitValue(instr.iter, out);
+        out.push({ op: "call", funcIdx });
+        return;
+      }
+      case "iter.done": {
+        const funcIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_done" });
+        emitValue(instr.resultObj, out);
+        out.push({ op: "call", funcIdx });
+        return;
+      }
+      case "iter.value": {
+        const funcIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_value" });
+        emitValue(instr.resultObj, out);
+        out.push({ op: "call", funcIdx });
+        return;
+      }
+      case "iter.return": {
+        const funcIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_return" });
+        emitValue(instr.iter, out);
+        out.push({ op: "call", funcIdx });
+        return;
+      }
+      case "forof.iter": {
+        // Mirror of forof.vec but using the iterator protocol. The lowerer
+        // emits the `block { loop { ... } }` Wasm pattern documented on
+        // `IrInstrForOfIter` in `nodes.ts`.
+        const iteratorIdx = resolver.resolveFunc({ kind: "func", name: "__iterator" });
+        const iteratorNextIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_next" });
+        const iteratorDoneIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_done" });
+        const iteratorValueIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_value" });
+        const iteratorReturnIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_return" });
+
+        // iter = __iterator(iterable)
+        emitValue(instr.iterable, out);
+        out.push({ op: "call", funcIdx: iteratorIdx });
+        out.push({ op: "local.set", index: slotWasmIdx(instr.iterSlot) });
+
+        // Build loop body Wasm ops.
+        const loopBody: Instr[] = [];
+        // result = iter.next(iter)
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.iterSlot) });
+        loopBody.push({ op: "call", funcIdx: iteratorNextIdx });
+        loopBody.push({ op: "local.tee", index: slotWasmIdx(instr.resultSlot) });
+        // if (iter.done(result)) br 1 (exit)
+        loopBody.push({ op: "call", funcIdx: iteratorDoneIdx });
+        loopBody.push({ op: "br_if", depth: 1 });
+        // element = iter.value(result)
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.resultSlot) });
+        loopBody.push({ op: "call", funcIdx: iteratorValueIdx });
+        loopBody.push({ op: "local.set", index: slotWasmIdx(instr.elementSlot) });
+
+        // Body instrs (same materialisation pattern as forof.vec).
+        for (const bodyInstr of instr.body) {
+          if (bodyInstr.result === null) {
+            emitInstrTree(bodyInstr, loopBody);
+          } else if (crossBlock.has(bodyInstr.result)) {
+            emitInstrTree(bodyInstr, loopBody);
+            loopBody.push({ op: "local.set", index: localIdx.get(bodyInstr.result)! });
+            materialized.add(bodyInstr.result);
+          }
+        }
+
+        // br 0 (continue)
+        loopBody.push({ op: "br", depth: 0 });
+
+        // block { loop { ... } }
+        out.push({
+          op: "block",
+          blockType: { kind: "empty" },
+          body: [
+            {
+              op: "loop",
+              blockType: { kind: "empty" },
+              body: loopBody,
+            },
+          ],
+        });
+
+        // Normal-exit close: iter.return(iter). Note this runs only on
+        // normal loop exit (done=true). Abrupt exits (break/return)
+        // would need a try/finally — slice 6 step E (#1169h dependency).
+        out.push({ op: "local.get", index: slotWasmIdx(instr.iterSlot) });
+        out.push({ op: "call", funcIdx: iteratorReturnIdx });
+        return;
+      }
     }
   };
 
@@ -1082,6 +1187,22 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       // Body uses are collected separately and merged in by
       // `lowerIrFunctionToWasm`.
       return [instr.vec];
+    // Slice 6 part 3 (#1182) — coercion + iterator protocol ops.
+    case "coerce.to_externref":
+      return [instr.value];
+    case "iter.new":
+      return [instr.iterable];
+    case "iter.next":
+      return [instr.iter];
+    case "iter.done":
+      return [instr.resultObj];
+    case "iter.value":
+      return [instr.resultObj];
+    case "iter.return":
+      return [instr.iter];
+    case "forof.iter":
+      // Same rationale as forof.vec — body uses surfaced separately.
+      return [instr.iterable];
   }
 }
 
@@ -1095,7 +1216,7 @@ export function collectForOfBodyUses(body: readonly IrInstr[]): IrValueId[] {
   const uses: IrValueId[] = [];
   for (const instr of body) {
     for (const u of collectIrUses(instr)) uses.push(u);
-    if (instr.kind === "forof.vec") {
+    if (instr.kind === "forof.vec" || instr.kind === "forof.iter") {
       for (const u of collectForOfBodyUses(instr.body)) uses.push(u);
     }
   }

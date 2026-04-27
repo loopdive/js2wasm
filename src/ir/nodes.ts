@@ -915,6 +915,166 @@ export interface IrInstrForOfVec extends IrInstrBase {
   readonly body: readonly IrInstr[];
 }
 
+// ---------------------------------------------------------------------------
+// Coercion + iterator protocol (#1182 — IR Phase 4 Slice 6 part 3)
+// ---------------------------------------------------------------------------
+//
+// Slice 6 part 3 widens the for-of bridge to the host iterator protocol
+// — `for (const x of <set>)`, `for (const x of <map>)`, generators, and
+// any other JS iterable that responds to `Symbol.iterator`. A new
+// declarative `forof.iter` instr (parallel to `forof.vec`) carries the
+// loop's state slots and body buffer; the lowerer emits the
+// `block { loop { ... } }` Wasm pattern with calls to the existing
+// `__iterator` / `__iterator_next` / `__iterator_done` /
+// `__iterator_value` / `__iterator_return` host imports (registered
+// lazily by `addIteratorImports`).
+//
+// The granular `iter.*` instrs (iter.new / iter.next / iter.done /
+// iter.value / iter.return) are part of the IR surface even though
+// `forof.iter` doesn't decompose into them at the body-buffer level.
+// Future passes that want to reason about iterator manipulation
+// outside a for-of loop (e.g., a generator's next() inlined into a
+// caller, or async-iter in slice 7) can produce these directly.
+
+/**
+ * Coerce a reference-typed IR value to externref. Used by the iterator-
+ * protocol arm of `lowerForOfStatement` to feed an arbitrary iterable
+ * into the externref-typed `__iterator` host import.
+ *
+ * The input value must have a reference IrType (val/ref, val/ref_null,
+ * val/externref, object, class, closure, or string). Numeric values
+ * (i32, f64, etc.) cannot be coerced — the from-ast layer rejects them
+ * upstream.
+ *
+ * Lowering:
+ *   - val/externref input → no-op (input already externref)
+ *   - any other ref input → `extern.convert_any` after pushing the value.
+ *
+ * Result type: `irVal({ kind: "externref" })`.
+ */
+export interface IrInstrCoerceToExternref extends IrInstrBase {
+  readonly kind: "coerce.to_externref";
+  readonly value: IrValueId;
+}
+
+/**
+ * Slice 6 part 3 (#1182) — opaque iterator handle for the host iterator
+ * protocol. Calls `__iterator(iterable)` to obtain the iterator object.
+ *
+ * Lowering:
+ *   <emit iterable>           ;; pushes externref
+ *   call $__iterator           ;; -> externref (the iterator)
+ *
+ * Result type: `irVal({ kind: "externref" })`.
+ */
+export interface IrInstrIterNew extends IrInstrBase {
+  readonly kind: "iter.new";
+  readonly iterable: IrValueId;
+  /** True if this is a `for await` loop — calls `__async_iterator` instead. False for slice 6. */
+  readonly async: boolean;
+}
+
+/**
+ * Call iter.next() and return the result object handle (externref).
+ * The result is later split into `done` / `value` via separate instrs
+ * so the optimizer can decide whether to evaluate `value` (skip if done).
+ *
+ * Lowering: <emit iter>; call $__iterator_next  -> externref
+ *
+ * Result type: `irVal({ kind: "externref" })`. Side-effecting (advances
+ * the iterator) — DCE must not eliminate it.
+ */
+export interface IrInstrIterNext extends IrInstrBase {
+  readonly kind: "iter.next";
+  readonly iter: IrValueId;
+}
+
+/**
+ * Test whether an iterator-result object's `.done` is true.
+ *
+ * Lowering: <emit resultObj>; call $__iterator_done -> i32
+ *
+ * Result type: `irVal({ kind: "i32" })`. The operand field is named
+ * `resultObj` (not `result`) to avoid colliding with the SSA-def
+ * `result` field inherited from `IrInstrBase`.
+ */
+export interface IrInstrIterDone extends IrInstrBase {
+  readonly kind: "iter.done";
+  readonly resultObj: IrValueId;
+}
+
+/**
+ * Read the `.value` slot of an iterator-result object.
+ *
+ * Lowering: <emit resultObj>; call $__iterator_value -> externref
+ *
+ * Result type: `irVal({ kind: "externref" })`. See `IrInstrIterDone`
+ * for the `resultObj` naming rationale.
+ */
+export interface IrInstrIterValue extends IrInstrBase {
+  readonly kind: "iter.value";
+  readonly resultObj: IrValueId;
+}
+
+/**
+ * Call `iter.return()` if defined. Used by the iterator-close try/finally
+ * so abrupt exits notify the iterator (slice 6 step E, deferred to a
+ * try/finally-aware follow-up).
+ *
+ * Lowering: <emit iter>; call $__iterator_return
+ *
+ * Result type: void (`result: null`). Side-effecting.
+ */
+export interface IrInstrIterReturn extends IrInstrBase {
+  readonly kind: "iter.return";
+  readonly iter: IrValueId;
+}
+
+/**
+ * Statement-level `for (const <bind> of <iterable>) <body>` loop using
+ * the host iterator protocol. The lowerer emits:
+ *
+ *   <emit iterable>
+ *   call $__iterator
+ *   local.set <iterSlot>
+ *   block
+ *     loop
+ *       local.get <iterSlot>
+ *       call $__iterator_next
+ *       local.tee <resultSlot>
+ *       call $__iterator_done
+ *       br_if 1                  ;; exit loop on done=true
+ *       local.get <resultSlot>
+ *       call $__iterator_value
+ *       local.set <elementSlot>
+ *       <body instrs>
+ *       br 0                     ;; continue
+ *     end
+ *   end
+ *   local.get <iterSlot>
+ *   call $__iterator_return       ;; normal-exit close
+ *
+ * The iterable must be an IR value of externref type (the from-ast
+ * layer inserts a `coerce.to_externref` if the source value isn't
+ * already externref). Slot indices are pre-allocated via
+ * `IrFunctionBuilder.declareSlot`.
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrForOfIter extends IrInstrBase {
+  readonly kind: "forof.iter";
+  /** SSA value of the iterable as externref (caller pre-coerces). */
+  readonly iterable: IrValueId;
+  /** Pre-allocated externref slot for the iterator handle. */
+  readonly iterSlot: number;
+  /** Pre-allocated externref slot for the iterator-result object. */
+  readonly resultSlot: number;
+  /** Pre-allocated externref slot for the current element value. */
+  readonly elementSlot: number;
+  /** Body instrs emitted inside the loop. */
+  readonly body: readonly IrInstr[];
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -948,7 +1108,14 @@ export type IrInstr =
   | IrInstrSlotWrite
   | IrInstrVecLen
   | IrInstrVecGet
-  | IrInstrForOfVec;
+  | IrInstrForOfVec
+  | IrInstrCoerceToExternref
+  | IrInstrIterNew
+  | IrInstrIterNext
+  | IrInstrIterDone
+  | IrInstrIterValue
+  | IrInstrIterReturn
+  | IrInstrForOfIter;
 
 // ---------------------------------------------------------------------------
 // Slot definitions (#1169e — IR Phase 4 Slice 6)
