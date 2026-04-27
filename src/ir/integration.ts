@@ -29,7 +29,7 @@ import { ensureNativeStringHelpers } from "../codegen/native-strings.js";
 import { addStringConstantGlobal } from "../codegen/registry/imports.js";
 import { addFuncType, getOrRegisterRefCellType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
-import { lowerFunctionAstToIr } from "./from-ast.js";
+import { lowerFunctionAstToIr, type IrFromAstResolver } from "./from-ast.js";
 import {
   lowerIrFunctionToWasm,
   lowerIrTypeToValType,
@@ -120,6 +120,22 @@ export function compileIrPathFunctions(
   });
 
   // -------------------------------------------------------------------------
+  // Phase 1 prep — From-ast resolver (#1185).
+  //
+  // The from-ast layer needs three resolver methods at build time:
+  //   - `nativeStrings()` — drives the for-of strategy switch
+  //   - `resolveString()` — slot ValType for string for-of
+  //   - `resolveVec(valTy)` — element + array typeIdx for vec for-of
+  //
+  // None of these depend on the lazy registries (object / closure /
+  // class) that get filled in during Phase 3, so we can build the
+  // subset eagerly here. The full `IrLowerResolver` is built later in
+  // Phase 3 once the registries exist; both share the same underlying
+  // logic for the methods both expose.
+  // -------------------------------------------------------------------------
+  const fromAstResolver = makeFromAstResolver(ctx);
+
+  // -------------------------------------------------------------------------
   // Phase 1 — Build: lower every selected AST function to an IrFunction.
   // -------------------------------------------------------------------------
   interface BuiltFn {
@@ -149,12 +165,10 @@ export function compileIrPathFunctions(
         returnTypeOverride: o?.returnType,
         calleeTypes,
         classShapes,
-        // Slice 6 part 4 (#1183): thread the nativeStrings flag and
-        // AnyString typeIdx so `lowerForOfStatement`'s string arm can
-        // pick the native counter loop and declare slot ValTypes
-        // without round-tripping through a full LowerResolver.
-        nativeStrings: ctx.nativeStrings,
-        anyStrTypeIdx: ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 ? ctx.anyStrTypeIdx : undefined,
+        // Slice 6 part 4 refactor (#1185): thread the from-ast subset
+        // of the IR resolver. Replaces the per-feature `nativeStrings:
+        // boolean` + `anyStrTypeIdx: number` shortcuts that #1183 added.
+        resolver: fromAstResolver,
       });
       const mainErrors = verifyIrFunction(result.main);
       if (mainErrors.length > 0) {
@@ -549,6 +563,57 @@ interface DeferredClassResolver {
   resolve: (shape: IrClassShape) => IrClassLowering | null;
 }
 
+/**
+ * Slice 6 part 4 refactor (#1185): build the from-ast subset of the
+ * IR resolver eagerly (before Phase 1 IR build). Only the methods
+ * from-ast actually consults — `nativeStrings()`, `resolveString()`,
+ * `resolveVec()` — are populated; everything else is absent.
+ *
+ * This is decoupled from `makeResolver` (the full Phase-3 resolver)
+ * because the from-ast layer needs resolver-time info during build,
+ * but the full resolver depends on lazy registries that don't exist
+ * yet at that point. The two share the same logic for the methods
+ * both expose — see `makeResolver` for the full body.
+ */
+function makeFromAstResolver(ctx: CodegenContext): IrFromAstResolver {
+  return {
+    nativeStrings(): boolean {
+      return ctx.nativeStrings;
+    },
+    resolveString(): ValType {
+      if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0) {
+        return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+      }
+      return { kind: "externref" };
+    },
+    // Same logic as `IrLowerResolver.resolveVec` in `makeResolver`.
+    // Walks `ctx.mod.types` to recover the vec layout from a `(ref|
+    // ref_null) $vec_*` ValType. See the corresponding doc on
+    // `IrLowerResolver.resolveVec` for the contract.
+    resolveVec(valType: ValType) {
+      if (valType.kind !== "ref" && valType.kind !== "ref_null") return null;
+      const typeIdx = (valType as { typeIdx: number }).typeIdx;
+      const vecDef = ctx.mod.types[typeIdx];
+      if (!vecDef || vecDef.kind !== "struct") return null;
+      if (vecDef.fields.length < 2) return null;
+      const lengthField = vecDef.fields[0]!;
+      const dataField = vecDef.fields[1]!;
+      if (lengthField.type.kind !== "i32") return null;
+      if (dataField.type.kind !== "ref" && dataField.type.kind !== "ref_null") return null;
+      const arrayTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
+      const arrayDef = ctx.mod.types[arrayTypeIdx];
+      if (!arrayDef || arrayDef.kind !== "array") return null;
+      return {
+        vecStructTypeIdx: typeIdx,
+        lengthFieldIdx: 0,
+        dataFieldIdx: 1,
+        arrayTypeIdx,
+        elementValType: arrayDef.element,
+      };
+    },
+  };
+}
+
 function makeResolver(
   ctx: CodegenContext,
   unionRegistry: UnionStructRegistry,
@@ -659,6 +724,12 @@ function makeResolver(
         return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
       }
       return { kind: "externref" };
+    },
+    // Slice 6 part 4 refactor (#1185): expose the nativeStrings mode
+    // discriminator so the from-ast for-of arms can dispatch without
+    // needing the per-feature shortcut threaded through LowerCtx.
+    nativeStrings(): boolean {
+      return ctx.nativeStrings;
     },
     emitStringConst(value: string): readonly Instr[] {
       if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {

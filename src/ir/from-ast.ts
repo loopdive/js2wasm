@@ -39,6 +39,7 @@ import ts from "typescript";
 
 import { evaluateConstantCondition } from "../codegen/statements/control-flow.js";
 import { IrFunctionBuilder } from "./builder.js";
+import type { IrLowerResolver, IrVecLowering } from "./lower.js";
 import {
   asVal,
   closureSignatureEquals,
@@ -54,6 +55,31 @@ import {
   type IrValueId,
 } from "./nodes.js";
 import type { ValType } from "./types.js";
+
+/**
+ * Slice 6 part 4 refactor (#1185): a narrowed view of `IrLowerResolver`
+ * restricted to the methods the AST→IR build phase actually consults.
+ * Threading this subset through `LowerCtx` retires per-feature shortcuts
+ * (`nativeStrings: boolean`, `anyStrTypeIdx: number`,
+ * `inferVecElementValTypeFromContext`, etc.) without forcing the full
+ * resolver — including its lazy struct registries that don't exist
+ * yet at Phase-1 build time — into the from-ast layer.
+ *
+ * Phase-1 callable methods only:
+ *   - `nativeStrings()` — backend mode discriminator
+ *   - `resolveString()` — `IrType.string` ValType (extern vs native struct ref)
+ *   - `resolveVec(valType)` — vec struct shape recovery
+ *
+ * The full `IrLowerResolver` (in `src/ir/lower.ts`) extends this and
+ * adds Phase-3 methods like `resolveObject`, `resolveClass`,
+ * `resolveClosure`. Those depend on registries that aren't populated
+ * until Phase 3, so from-ast doesn't see them.
+ */
+export interface IrFromAstResolver {
+  nativeStrings?(): boolean;
+  resolveString?(): ValType;
+  resolveVec?(valType: ValType): IrVecLowering | null;
+}
 
 export interface AstToIrOptions {
   readonly exported?: boolean;
@@ -85,23 +111,21 @@ export interface AstToIrOptions {
    */
   readonly classShapes?: ReadonlyMap<string, IrClassShape>;
   /**
-   * Slice 6 part 4 (#1183): true when the compiler is emitting native
-   * WasmGC strings (`(ref $AnyString)`) and the `__str_charAt` helper
-   * is available. Consulted by `lowerForOfStatement` to dispatch
-   * string iterables to the native counter loop (`forof.string`)
-   * versus falling through to the host iterator protocol
-   * (`forof.iter`). Defaults to `false` when omitted, matching the
-   * legacy host-strings behavior.
+   * Slice 6 part 4 refactor (#1185): the from-ast view of the IR
+   * lowerer's resolver. Replaces the per-feature shortcuts that
+   * #1181 / #1182 / #1183 each added (`nativeStrings`,
+   * `anyStrTypeIdx`, `inferVecElementValTypeFromContext`).
+   *
+   * Optional so existing tests / callers that don't need string or
+   * vec type resolution can keep working. The `lowerForOfStatement`
+   * arms that DO need it (string + vec) throw a clean fall-back-to-
+   * legacy error when the resolver is absent or returns `null`.
+   *
+   * The integration layer (`compileIrPathFunctions`) is the canonical
+   * supplier — it builds the resolver (or its subset) eagerly and
+   * passes it in.
    */
-  readonly nativeStrings?: boolean;
-  /**
-   * Slice 6 part 4 (#1183): the Wasm `typeIdx` of the `$AnyString`
-   * struct in native-strings mode. Required when `nativeStrings` is
-   * true so the from-ast layer can declare slot types as
-   * `(ref $AnyString)` for the string for-of loop without round-
-   * tripping through a `LowerResolver`. Ignored in host-strings mode.
-   */
-  readonly anyStrTypeIdx?: number;
+  readonly resolver?: IrFromAstResolver;
 }
 
 /**
@@ -190,8 +214,7 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     returnType,
     calleeTypes: options.calleeTypes,
     classShapes: options.classShapes,
-    nativeStrings: options.nativeStrings ?? false,
-    anyStrTypeIdx: options.anyStrTypeIdx,
+    resolver: options.resolver,
     lifted,
     liftedCounter,
     mutatedLets,
@@ -427,7 +450,32 @@ type ScopeBinding =
       signature: IrClosureSignature;
       captures: readonly NestedCapture[];
     }
-  | { kind: "slot"; slotIndex: number; type: IrType };
+  | {
+      kind: "slot";
+      slotIndex: number;
+      /**
+       * The slot's IR type as the binding sees it. For most slots this
+       * equals the underlying Wasm-local type (e.g. `irVal({ kind:
+       * "f64" })` for a numeric slot). For string-loop variables in
+       * native-strings mode, this is `IrType.string` while the
+       * underlying slot is `(ref $AnyString)` — see `asType` below.
+       */
+      type: IrType;
+      /**
+       * Slice 6 part 4 refactor (#1185): optional widening for
+       * identifier reads. When present, the SSA result of a `slot.read`
+       * against this binding is re-tagged to `asType` instead of
+       * `irVal(slot.type)`. Used for native-strings string for-of
+       * where the slot ValType is `(ref $AnyString)` but the loop
+       * variable should compose with slice-1 string ops as
+       * `IrType.string`.
+       *
+       * The Wasm-level value is identical between `slot.type` and
+       * `asType` — `IrType.string` lowers to `(ref $AnyString)` in
+       * native mode — so this is purely a type-system rewrite.
+       */
+      asType?: IrType;
+    };
 
 /**
  * Slice 3 (#1169c): one entry in a closure / nested-function's capture
@@ -452,19 +500,19 @@ interface LowerCtx {
   /** Slice 4 (#1169d) — class shape registry, keyed by className. */
   readonly classShapes?: ReadonlyMap<string, IrClassShape>;
   /**
-   * Slice 6 part 4 (#1183) — true when the compiler is in
-   * native-strings mode. Drives the for-of strategy switch for
-   * `string`-typed iterables: native → `forof.string` (counter loop
-   * with `__str_charAt`); host → fall through to `forof.iter`.
+   * Slice 6 part 4 refactor (#1185) — from-ast view of the IR
+   * resolver. Drives:
+   *   - the string for-of strategy switch (`nativeStrings()`)
+   *   - native-strings slot ValTypes (`resolveString()`)
+   *   - vec element / data-array ValType inference (`resolveVec()`)
+   *
+   * Replaces the per-feature `nativeStrings: boolean` and
+   * `anyStrTypeIdx: number` fields that #1183 added. Optional so
+   * legacy callers (and tests) without resolver support work; the
+   * for-of arms that need it throw a clean fall-back-to-legacy
+   * error when it's absent.
    */
-  readonly nativeStrings: boolean;
-  /**
-   * Slice 6 part 4 (#1183) — Wasm `typeIdx` of the `$AnyString` struct
-   * when `nativeStrings` is true. Used by `lowerForOfString` to set
-   * slot types (`(ref $AnyString)`) for the str / element slots
-   * without threading the full resolver into LowerCtx.
-   */
-  readonly anyStrTypeIdx?: number;
+  readonly resolver?: IrFromAstResolver;
   /** Slice 3 — output bin for lifted closures / nested funcs. */
   readonly lifted: IrFunction[];
   /** Slice 3 — mutable counter for synthesizing lifted-func names. */
@@ -595,9 +643,14 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
     // ScopeBinding instead of `local`. The slot is a Wasm-local that
     // survives across for-of iterations, and reads/writes go through
     // `slot.read` / `slot.write` instead of carrying the SSA value
-    // through the scope. Slot allocation requires a primitive ValType
-    // — non-primitive `let`s (string, object, etc.) fall back to the
-    // local binding (slice-6 follow-ups will widen).
+    // through the scope.
+    //
+    // Slice 6 part 4 refactor (#1185): extended to support
+    // `IrType.string` slot bindings via the resolver. In
+    // native-strings mode we use the resolver's `resolveString()` to
+    // get the underlying `(ref $AnyString)` ValType for the slot,
+    // and tag the binding with `asType: IrType.string` so identifier
+    // reads compose with slice-1 string ops.
     if (!isConst && cx.mutatedLets.has(name)) {
       const slotValType = asVal(inferred);
       if (slotValType !== null && slotValType.kind !== "ref" && slotValType.kind !== "ref_null") {
@@ -605,6 +658,23 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
         cx.builder.emitSlotWrite(slotIndex, value);
         cx.scope.set(name, { kind: "slot", slotIndex, type: inferred });
         continue;
+      }
+      // String let in native-strings mode: slot ValType is the
+      // resolver's string ref; binding type is IrType.string via
+      // asType widening so body code composes with string ops.
+      if (inferred.kind === "string") {
+        const stringValType = cx.resolver?.resolveString?.();
+        if (stringValType) {
+          const slotIndex = cx.builder.declareSlot(name, stringValType);
+          cx.builder.emitSlotWrite(slotIndex, value);
+          cx.scope.set(name, {
+            kind: "slot",
+            slotIndex,
+            type: irVal(stringValType),
+            asType: { kind: "string" },
+          });
+          continue;
+        }
       }
       // Fall through to local binding for non-slot-eligible types —
       // the lowerer will catch any subsequent assignment and throw,
@@ -731,7 +801,17 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
     // for-of iterations). Reads emit `slot.read`, which lowers to a
     // `local.get` on the Wasm-local slot. The slot's type is recorded
     // at declaration time so the IR result type matches.
+    //
+    // Slice 6 part 4 refactor (#1185): if the binding has an `asType`
+    // widening, the SSA result is tagged as `asType` instead of
+    // `irVal(slot.type)`. This lets native-strings string for-of
+    // loop variables compose with slice-1 string ops even though the
+    // underlying slot ValType is `(ref $AnyString)` rather than
+    // `IrType.string`.
     if (p.kind === "slot") {
+      if (p.asType) {
+        return cx.builder.emitSlotReadAs(p.slotIndex, p.asType);
+      }
       return cx.builder.emitSlotRead(p.slotIndex);
     }
     if (p.kind !== "local") {
@@ -1439,7 +1519,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, cx: LowerCtx): void {
     return;
   }
   if (iterableT.kind === "string") {
-    if (cx.nativeStrings) {
+    if (cx.resolver?.nativeStrings?.()) {
       lowerForOfString(stmt, cx, iterableV, loopVarName);
       return;
     }
@@ -1515,14 +1595,14 @@ function lowerForOfIterFromExternrefValue(
  * `resolver.resolveString()` at emit time.
  */
 function lowerForOfString(stmt: ts.ForOfStatement, cx: LowerCtx, strV: IrValueId, loopVarName: string): void {
-  // Native-strings mode requires the AnyString typeIdx threaded
-  // through `LowerCtx.anyStrTypeIdx`. Without it we can't declare
-  // the slot ValTypes for the str/element refs, so the function
-  // falls back to legacy via the generic throw.
-  if (cx.anyStrTypeIdx === undefined) {
-    throw new Error(`ir/from-ast: native-strings for-of needs anyStrTypeIdx in LowerCtx (${cx.funcName})`);
+  // Native-strings mode requires the resolver's `resolveString()` to
+  // produce a `(ref $AnyString)` ValType. If the resolver is absent,
+  // the function falls back to legacy via the throw — same outcome
+  // as before #1185, just wired through one indirection.
+  const strRef = cx.resolver?.resolveString?.();
+  if (!strRef || strRef.kind !== "ref") {
+    throw new Error(`ir/from-ast: native-strings for-of needs resolver.resolveString() (${cx.funcName})`);
   }
-  const strRef: ValType = { kind: "ref", typeIdx: cx.anyStrTypeIdx };
 
   const counterSlot = cx.builder.declareSlot("__forof_si", { kind: "i32" });
   const lengthSlot = cx.builder.declareSlot("__forof_slen", { kind: "i32" });
@@ -1532,18 +1612,23 @@ function lowerForOfString(stmt: ts.ForOfStatement, cx: LowerCtx, strV: IrValueId
   // The loop variable is bound as a slot of `(ref $AnyString)`. In
   // native-strings mode the `IrType.string` lowering also produces
   // `(ref $AnyString)`, so as a Wasm value the slot read result and a
-  // string-typed SSA value are interchangeable. We record the binding
-  // type as `irVal(strRef)` (matching what `emitSlotRead` returns) so
-  // identifier reads against the loop var lower to `slot.read` cleanly.
-  // For body code that wants string ops on the loop var (e.g.
-  // `c + "world"`), the IR's string-op surface dispatches on
-  // `IrType.string`. Slice 6 part 4 doesn't yet upcast the slot read
-  // result to `IrType.string`; that's a follow-up. Body code that
-  // doesn't compose with string ops (concatenation in a temp before
-  // using the loop var, etc.) works today.
+  // string-typed SSA value are interchangeable.
+  //
+  // Slice 6 part 4 refactor (#1185): we tag the binding with
+  // `asType: IrType.string` so identifier reads of the loop var
+  // produce SSA values typed `IrType.string` rather than
+  // `irVal((ref $AnyString))`. This lets body code compose with
+  // slice-1 string ops (`c + "world"`, `c.length`, etc.). The
+  // underlying Wasm op is unchanged — `slot.read` against the
+  // externref-or-ref slot — only the SSA type tag is rewritten.
   const elemIrT: IrType = irVal(strRef);
   const bodyScope = new Map(cx.scope);
-  bodyScope.set(loopVarName, { kind: "slot", slotIndex: elementSlot, type: elemIrT });
+  bodyScope.set(loopVarName, {
+    kind: "slot",
+    slotIndex: elementSlot,
+    type: elemIrT,
+    asType: { kind: "string" },
+  });
   const bodyCx: LowerCtx = { ...cx, scope: bodyScope };
 
   const body = cx.builder.collectBodyInstrs(() => {
@@ -1571,13 +1656,30 @@ function lowerForOfVec(
   valTy: ValType,
   loopVarName: string,
 ): void {
-  const elemValType = inferVecElementValTypeFromContext(valTy, cx);
+  // Slice 6 part 4 refactor (#1185): ask the resolver for the vec
+  // shape rather than hard-coding `f64` element / `vecTypeIdx - 1`
+  // data-array assumptions. The resolver inspects the actual
+  // registered struct fields and returns the correct element
+  // ValType + array typeIdx; we synthesize the data-field ValType
+  // (a non-null ref to the array type) from the latter.
+  //
+  // Fall back to the legacy heuristic only if the resolver is
+  // absent (older callers / tests) — same behavior as before #1185.
+  let elemValType: ValType | null = null;
+  let dataValType: ValType | null = null;
+  const vec = cx.resolver?.resolveVec?.(valTy);
+  if (vec) {
+    elemValType = vec.elementValType;
+    dataValType = { kind: "ref", typeIdx: vec.arrayTypeIdx };
+  } else {
+    elemValType = inferVecElementValTypeFromContext(valTy, cx);
+    dataValType = inferVecDataValTypeFromContext(valTy, cx);
+  }
   if (!elemValType) {
     throw new Error(`ir/from-ast: for-of iterable's IR type is not a recognisable vec in ${cx.funcName}`);
   }
   const elemIrT = irVal(elemValType);
 
-  const dataValType = inferVecDataValTypeFromContext(valTy, cx);
   if (!dataValType) {
     throw new Error(`ir/from-ast: for-of vec has unexpected data field shape (${cx.funcName})`);
   }
@@ -1752,11 +1854,18 @@ function lowerIdentifierAssignment(id: ts.Identifier, rhs: ts.Expression, cx: Lo
       `ir/from-ast: assignment to non-slot binding "${id.text}" — mutation pre-pass should have detected it (${cx.funcName})`,
     );
   }
-  const newValue = lowerExpr(rhs, cx, binding.type);
+  // Slice 6 part 4 refactor (#1185): when the binding has an asType
+  // widening, the IR type the body sees is `asType`, not the
+  // underlying slot ValType. Use `asType` for the lowering hint and
+  // type check; the slot.write itself accepts any value of the
+  // underlying ValType, which `asType` agrees with at the Wasm
+  // level (the asType invariant guarantees this).
+  const logicalType = binding.asType ?? binding.type;
+  const newValue = lowerExpr(rhs, cx, logicalType);
   const newType = cx.builder.typeOf(newValue);
-  if (!irTypeEquals(newType, binding.type)) {
+  if (!irTypeEquals(newType, logicalType)) {
     throw new Error(
-      `ir/from-ast: assignment to "${id.text}" (${describeIrType(binding.type)}) got ${describeIrType(newType)} in ${cx.funcName}`,
+      `ir/from-ast: assignment to "${id.text}" (${describeIrType(logicalType)}) got ${describeIrType(newType)} in ${cx.funcName}`,
     );
   }
   cx.builder.emitSlotWrite(binding.slotIndex, newValue);
@@ -2199,8 +2308,7 @@ function liftNestedFunction(
     returnType: signature.returnType,
     calleeTypes: cx.calleeTypes,
     classShapes: cx.classShapes,
-    nativeStrings: cx.nativeStrings,
-    anyStrTypeIdx: cx.anyStrTypeIdx,
+    resolver: cx.resolver,
     lifted: cx.lifted,
     liftedCounter: cx.liftedCounter,
     // Slice 6 part 2 (#1181) — nested-function bodies have their own
@@ -2274,8 +2382,7 @@ function liftClosureBody(
     returnType: signature.returnType,
     calleeTypes: cx.calleeTypes,
     classShapes: cx.classShapes,
-    nativeStrings: cx.nativeStrings,
-    anyStrTypeIdx: cx.anyStrTypeIdx,
+    resolver: cx.resolver,
     lifted: cx.lifted,
     liftedCounter: cx.liftedCounter,
     // Slice 6 part 2 (#1181) — closure-body mutated lets are scanned

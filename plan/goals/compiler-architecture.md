@@ -34,16 +34,16 @@ compilation boundaries, and simpler runtime/compiler interfaces.
 | **1167b** | IR Phase 3b — inline-small: inline direct IR calls before lowering | 44 | done | medium |
 | **1167c** | IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening) | 44 | done | high |
 | **1168** | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | 44 | done | high |
-| **1169** | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | 45 | ready | high |
+| **1169** | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | 46 | ready | high |
 | **1169a** | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | 45 | done | high |
 | **1169b** | IR Phase 4 Slice 2 — object literals and property access through IR path | 45 | done | high |
 | **1169c** | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | 45 | done | high |
 | **1169d** | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | 45 | done | high |
 | **1169e** | IR Phase 4 Slice 6 — iterators and for-of through the IR path | 45 | done | high |
 | **1169f** | IR Phase 4 Slice 7 — generators and async/await through the IR path | 45 | ready | high |
-| **1169g** | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | 45 | ready | high |
-| **1169h** | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | 45 | ready | high |
-| **1169i** | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | 45 | ready | high |
+| **1169g** | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | 46 | ready | high |
+| **1169h** | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | 46 | ready | high |
+| **1169i** | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | 46 | ready | high |
 | **1181** | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | 46 | done | high |
 | **1182** | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | 46 | done | medium |
 | **1182** | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | 46 | ready | medium |
