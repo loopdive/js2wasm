@@ -193,7 +193,18 @@ function isSideEffecting(i: IrInstr): boolean {
     // slot.read is pure (load a Wasm local) but always-keep to avoid
     // breaking the for-of body's load/use pattern.
     i.kind === "slot.write" ||
-    i.kind === "forof.vec"
+    i.kind === "forof.vec" ||
+    // Slice 7a (#1169f): gen.push pushes a value onto the eager
+    // generator buffer (observable through __gen_next). gen.epilogue
+    // calls __create_generator with the buffer and is materially
+    // referenced as the function's return value — but DCE's
+    // propagation only flows through `result`-bearing instrs, so
+    // explicitly pinning here is the simplest correctness rule.
+    // Without this, DCE would consider gen.push's `value` operand
+    // dead and strip the const that produces it, leaving a stale
+    // SSA reference that the verifier rejects.
+    i.kind === "gen.push" ||
+    i.kind === "gen.epilogue"
   );
 }
 

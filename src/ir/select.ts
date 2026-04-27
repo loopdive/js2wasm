@@ -174,11 +174,32 @@ function isIrClaimable(
   if (fn.typeParameters && fn.typeParameters.length > 0) return false;
   if (fn.modifiers && fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return false;
 
+  // Slice 7a (#1169f): accept `function*` (generator). The generator's
+  // source-level return type is `Generator<T>` / `IterableIterator<T>` —
+  // those resolve to ResolvedKind="object" in `resolveReturnType` and
+  // would normally pass the type gate but force the lowerer down the
+  // shape-resolution path. The lowerer overrides the IR-level result
+  // type to `externref` regardless of the source annotation, so the
+  // selector just needs to permit the function shape. Async generators
+  // (`async function*`) are NOT in 7a — defer to a follow-up slice.
+  const isGenerator = !!fn.asteriskToken;
+  if (isGenerator && fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+    return false;
+  }
+
   const entry = typeMap?.get(fn.name.text);
 
-  // Return type must resolve to a concrete primitive.
-  const returnResolved = resolveReturnType(fn, entry?.returnType);
-  if (returnResolved === null) return false;
+  // Return type must resolve to a concrete primitive (or, for
+  // generators, ANY annotation — the lowerer overrides to externref).
+  // For generators the source-level return type is typically
+  // `Generator<number>` (TypeReferenceNode → ResolvedKind="object"),
+  // but missing or unusual annotations also pass; the lowerer always
+  // emits externref for generator results regardless of what the
+  // selector saw.
+  if (!isGenerator) {
+    const returnResolved = resolveReturnType(fn, entry?.returnType);
+    if (returnResolved === null) return false;
+  }
 
   // All params must resolve to a concrete primitive.
   const scope = new Set<string>();
@@ -293,6 +314,21 @@ function isPhase1StatementList(
         if (!isPhase1Expr(s.expression, scope, localClasses)) return false;
         continue;
       }
+      // Slice 7a (#1169f): `yield <expr>;` as a statement. Only valid
+      // when the enclosing function is a generator — that check is
+      // enforced by the lowerer (`lowerYield` throws when
+      // `cx.funcKind !== "generator"`). The selector accepts the shape
+      // unconditionally because functions that nest a yield in a
+      // non-generator are ill-typed and would have failed TS source
+      // checking before reaching us.
+      if (ts.isYieldExpression(s.expression)) {
+        // `yield;` (no expression) and `yield* <expr>` are deferred to
+        // 7b; slice 7a only accepts `yield <numeric expr>`.
+        if (s.expression.asteriskToken) return false;
+        if (!s.expression.expression) return false;
+        if (!isPhase1Expr(s.expression.expression, scope, localClasses)) return false;
+        continue;
+      }
       if (
         ts.isBinaryExpression(s.expression) &&
         s.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
@@ -385,6 +421,14 @@ function isPhase1BodyStatement(stmt: ts.Statement, scope: Set<string>, localClas
   if (ts.isExpressionStatement(stmt)) {
     if (ts.isCallExpression(stmt.expression)) {
       return isPhase1Expr(stmt.expression, scope, localClasses);
+    }
+    // Slice 7a (#1169f): `yield <expr>` inside a for-of body. Same
+    // semantics as the top-level form — only valid when the enclosing
+    // function is a generator (lowerer-enforced).
+    if (ts.isYieldExpression(stmt.expression)) {
+      if (stmt.expression.asteriskToken) return false;
+      if (!stmt.expression.expression) return false;
+      return isPhase1Expr(stmt.expression.expression, scope, localClasses);
     }
     if (ts.isBinaryExpression(stmt.expression)) {
       const op = stmt.expression.operatorToken.kind;

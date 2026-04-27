@@ -704,7 +704,19 @@ export function generateModule(
         if (!fn) continue;
         const entry = typeMap.get(name);
         try {
-          const returnType = resolvePositionType(fn.type, entry?.returnType, ctx, classShapes);
+          // Slice 7a (#1169f) — generator functions return an externref
+          // (the JS Generator-like object built by `__create_generator`)
+          // regardless of the source-level annotation
+          // (`Generator<number>`, `IterableIterator<T>`, etc.). The IR
+          // lowerer enforces this; the override map needs to agree so
+          // the cross-function `calleeTypes` lookup sees the right
+          // signature. Bypass `resolvePositionType` for the return type
+          // — `Generator<T>` doesn't resolve as `IrType.object` and
+          // would otherwise drop the generator from `safeSelection`.
+          const isGenerator = !!fn.asteriskToken;
+          const returnType = isGenerator
+            ? ({ kind: "val", val: { kind: "externref" } } as IrType)
+            : resolvePositionType(fn.type, entry?.returnType, ctx, classShapes);
           const params: IrType[] = [];
           for (let i = 0; i < fn.parameters.length; i++) {
             const p = fn.parameters[i]!;
