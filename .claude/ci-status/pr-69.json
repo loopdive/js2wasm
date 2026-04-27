@@ -2,14 +2,14 @@
   "pr": 69,
   "conclusion": "failure",
   "head_branch": "issue-1179-followup-mul-overflow",
-  "head_sha": "d770dc12447caf2e3a61bc4382855236a5223058",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24991717968",
-  "timestamp": "2026-04-27T11:19:07Z",
-  "pass": 25819,
+  "head_sha": "ee21702dfdbfd3d7a4dc2d5772a34740da13535b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24992783967",
+  "timestamp": "2026-04-27T11:44:47Z",
+  "pass": 25826,
   "fail": 13922,
-  "compile_error": 1851,
-  "snapshot_delta": -170,
-  "net_per_test": -210,
-  "regressions": 345,
-  "improvements": 135
+  "compile_error": 1860,
+  "snapshot_delta": -8,
+  "net_per_test": -8,
+  "regressions": 137,
+  "improvements": 129
 }
