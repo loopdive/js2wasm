@@ -1,0 +1,15 @@
+{
+  "pr": 64,
+  "conclusion": "failure",
+  "head_branch": "issue-1178-fix-string-concat-stack-overflow",
+  "head_sha": "85acab42a2b423cddbd5ec69532aef7d5b7aa7f5",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24978771355",
+  "timestamp": "2026-04-27T05:56:35Z",
+  "pass": 25828,
+  "fail": 13928,
+  "compile_error": 1848,
+  "snapshot_delta": 6,
+  "net_per_test": 3,
+  "regressions": 146,
+  "improvements": 149
+}
