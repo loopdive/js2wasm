@@ -115,10 +115,28 @@ function normalizeIssueStatus(rawStatus) {
   return "ready";
 }
 
+// When the same issue ID appears in multiple sprint snapshot directories
+// (e.g. a done issue in sprints/42/ and a carry-forward in sprints/45/),
+// prefer the version with the highest-priority status so that done issues
+// don't show up as "ready" in a later sprint's board.
+const STATUS_PRIORITY = {
+  done: 0,
+  "wont-fix": 1,
+  blocked: 2,
+  review: 3,
+  "in-progress": 4,
+  ready: 5,
+  deferred: 6,
+  backlog: 7,
+};
+function issueStatusPriority(status) {
+  return STATUS_PRIORITY[status] ?? 8;
+}
+
 function loadIssues() {
   if (!existsSync(ISSUE_ROOT)) return [];
   const trackedFiles = getTrackedMarkdownFiles("plan/issues");
-  return walkFiles(ISSUE_ROOT)
+  const raw = walkFiles(ISSUE_ROOT)
     .filter((file) => isIssueFileName(file.split("/").pop()))
     .filter((file) => !trackedFiles || trackedFiles.has(file))
     .map((file) => {
@@ -137,8 +155,18 @@ function loadIssues() {
         status: normalizeIssueStatus(fm.status),
         sprint: fm.sprint || "",
       };
-    })
-    .sort((a, b) => String(b.id).localeCompare(String(a.id), undefined, { numeric: true })); // newest first
+    });
+
+  // Deduplicate by ID — same issue can appear in multiple sprint snapshot dirs.
+  // Keep the copy with the highest-priority status (done beats ready/deferred).
+  const byId = new Map();
+  for (const issue of raw) {
+    const existing = byId.get(issue.id);
+    if (!existing || issueStatusPriority(issue.status) < issueStatusPriority(existing.status)) {
+      byId.set(issue.id, issue);
+    }
+  }
+  return [...byId.values()].sort((a, b) => String(b.id).localeCompare(String(a.id), undefined, { numeric: true })); // newest first
 }
 
 const issues = {
