@@ -181,9 +181,39 @@ elif [ -f "$report" ]; then
     printf ' %s %s' "$p_bar" "$f_bar"
   fi
 fi
-# Sprint progress badge (only on main workspace, not in worktrees)
+# Sprint progress bar (only on main workspace, not in worktrees)
 if [ -z "$in_worktree" ]; then
-  sprint_badge=$(node /workspace/scripts/statusline-sprint.mjs 2>/dev/null)
-  [ -n "$sprint_badge" ] && printf ' %s' "$sprint_badge"
+  sprint_dir="/workspace/plan/issues/sprints"
+  sprint_n=""
+  sprint_done=0
+  sprint_total=0
+  if [ -d "$sprint_dir" ]; then
+    for n in $(ls "$sprint_dir" | grep -E '^[0-9]+$' | sort -rn); do
+      files=$(find "$sprint_dir/$n" -maxdepth 1 -name '*.md' ! -name 'sprint.md' 2>/dev/null)
+      if [ -n "$files" ]; then
+        sprint_n="$n"
+        sprint_total=$(echo "$files" | wc -l)
+        sprint_done=$(echo "$files" | xargs grep -l '^status: done' 2>/dev/null | wc -l)
+        break
+      fi
+    done
+  fi
+  if [ -n "$sprint_n" ] && [ "$sprint_total" -gt 0 ]; then
+    sprint_pct=$((sprint_done * 100 / sprint_total))
+    awk -v p="$sprint_pct" -v n="$sprint_n" 'BEGIN {
+      if (p >= 55)      { fill=42;         fg=30 }
+      else if (p >= 33) { fill=43;         fg=30 }
+      else              { fill="48;5;196"; fg=37 }
+      width = 9
+      filled = int(p * width / 100)
+      label = sprintf(" %d%% s%d ", p, n)
+      bar = ""
+      for (i = 0; i < width; i++) bar = bar " "
+      bar = label substr(bar, length(label) + 1)
+      filled_part = substr(bar, 1, filled)
+      empty_part  = substr(bar, filled + 1)
+      printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
+    }' /dev/null
+  fi
 fi
 printf '\n'
