@@ -183,25 +183,40 @@ elif [ -f "$report" ]; then
 fi
 # Sprint progress bar (only on main workspace, not in worktrees)
 if [ -z "$in_worktree" ]; then
-  sprint_dir="/workspace/plan/issues/sprints"
   sprint_n=""
   sprint_done=0
   sprint_total=0
-  if [ -d "$sprint_dir" ]; then
-    for n in $(ls "$sprint_dir" | grep -E '^[0-9]+$' | sort -rn); do
-      files=$(find "$sprint_dir/$n" -maxdepth 1 -name '*.md' ! -name 'sprint.md' 2>/dev/null)
-      if [ -n "$files" ]; then
-        done_n=$(echo "$files" | xargs grep -l '^status: done' 2>/dev/null | wc -l)
-        # Pick highest sprint that has at least one done issue (active sprint)
-        # Fall back to highest with any issues if none have done issues yet
-        if [ "$done_n" -gt 0 ] || [ -z "$sprint_n" ]; then
-          sprint_n="$n"
-          sprint_total=$(echo "$files" | wc -l)
-          sprint_done="$done_n"
-          [ "$done_n" -gt 0 ] && break
+  sprints_json="/workspace/dashboard/data/sprints.json"
+  if [ -f "$sprints_json" ]; then
+    # Read from pre-built sprints.json (deduplicated, wont-fix counted as done)
+    sprint_data=$(jq -r '
+      [ .[] | select(.sprintNumber != null and .isClosed == false and .isPlanning == false) ]
+      | sort_by(.sprintNumber) | last
+      | "\(.sprintNumber) \(.completedIssueIds | length) \(.issueIds | length)"
+    ' "$sprints_json" 2>/dev/null)
+    if [ -n "$sprint_data" ]; then
+      sprint_n=$(echo "$sprint_data" | awk '{print $1}')
+      sprint_done=$(echo "$sprint_data" | awk '{print $2}')
+      sprint_total=$(echo "$sprint_data" | awk '{print $3}')
+    fi
+  fi
+  if [ -z "$sprint_n" ]; then
+    # Fallback: raw scan when sprints.json not available
+    sprint_dir="/workspace/plan/issues/sprints"
+    if [ -d "$sprint_dir" ]; then
+      for n in $(ls "$sprint_dir" | grep -E '^[0-9]+$' | sort -rn); do
+        files=$(find "$sprint_dir/$n" -maxdepth 1 -name '*.md' ! -name 'sprint.md' 2>/dev/null)
+        if [ -n "$files" ]; then
+          done_n=$(echo "$files" | xargs grep -lE '^status: (done|wont-fix)' 2>/dev/null | wc -l)
+          if [ "$done_n" -gt 0 ] || [ -z "$sprint_n" ]; then
+            sprint_n="$n"
+            sprint_total=$(echo "$files" | wc -l)
+            sprint_done="$done_n"
+            [ "$done_n" -gt 0 ] && break
+          fi
         fi
-      fi
-    done
+      done
+    fi
   fi
   if [ -n "$sprint_n" ] && [ "$sprint_total" -gt 0 ]; then
     sprint_pct=$((sprint_done * 100 / sprint_total))
