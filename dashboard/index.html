@@ -221,6 +221,64 @@
         width: 84px;
       }
 
+      .sprint-nav-btn {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        cursor: pointer;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        font-size: 14px;
+        padding: 0;
+        line-height: 1;
+      }
+
+      .sprint-nav-btn:hover {
+        color: var(--text);
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      #issue-search {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 5px 10px;
+        font-family: var(--font);
+        font-size: 12px;
+        width: 160px;
+        outline: none;
+      }
+
+      #issue-search::placeholder {
+        color: var(--text-muted);
+      }
+
+      #issue-search:focus {
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      #refresh-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 0 2px;
+        font-size: 17px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        opacity: 0.55;
+      }
+
+      #refresh-btn:hover {
+        opacity: 1;
+      }
+
       /* Kanban board */
       .kanban {
         margin-bottom: 24px;
@@ -230,6 +288,7 @@
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 12px;
+        height: 90vh;
       }
 
       @media (max-width: 900px) {
@@ -247,7 +306,16 @@
         background: var(--bg);
         border-radius: var(--radius);
         padding: 10px;
-        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .kanban-col-body {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
       }
 
       .kanban-col-header {
@@ -388,9 +456,6 @@
         }
       }
 
-      .kanban-col-body {
-      }
-
       .kanban-col-body::-webkit-scrollbar {
         width: 4px;
       }
@@ -462,25 +527,14 @@
       <div class="panel-head">
         <h2>Issue Board</h2>
         <div class="panel-actions">
+          <input type="search" id="issue-search" placeholder="Filter issues…" autocomplete="off" />
           <div class="sprint-controls">
             <label for="sprint-select">Sprint</label>
+            <button class="sprint-nav-btn" id="sprint-prev" title="Previous sprint">−</button>
             <select id="sprint-select"></select>
+            <button class="sprint-nav-btn" id="sprint-next" title="Next sprint">+</button>
           </div>
-          <button
-            id="refresh-btn"
-            onclick="refreshData()"
-            style="
-              background: none;
-              border: 1px solid var(--border);
-              color: var(--text-muted);
-              padding: 4px 10px;
-              font-size: 11px;
-              cursor: pointer;
-              border-radius: 4px;
-            "
-          >
-            ↺ Refresh
-          </button>
+          <button id="refresh-btn" onclick="refreshData()" title="Refresh">↺</button>
           <a href="../issues-graph.html">dependency graph</a>
         </div>
       </div>
@@ -729,7 +783,10 @@
         return numeric[idx];
       }
 
+      let searchQuery = "";
+
       function renderIssueBoard(issues) {
+        const q = searchQuery.toLowerCase().trim();
         const cols = {
           ready: { el: document.getElementById("col-ready"), count: document.getElementById("col-ready-count") },
           inprogress: {
@@ -741,7 +798,10 @@
         };
 
         for (const [status, col] of Object.entries(cols)) {
-          const list = issues[status] || [];
+          let list = issues[status] || [];
+          if (q) {
+            list = list.filter((iss) => String(iss.id).includes(q) || (iss.title || "").toLowerCase().includes(q));
+          }
           col.count.textContent = list.length;
           const display = status === "done" ? [...list].reverse() : [...list].sort(prioritySort);
           col.el.innerHTML = display.map((iss) => makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)).join("");
@@ -885,6 +945,30 @@
         }
 
         sprintSelect.addEventListener("change", () => setSprintByNumber(sprintSelect.value));
+
+        // ── Sprint ±1 navigation ──
+        const sortedSprintNums = sprintOptions
+          .filter((s) => Number.isFinite(s.sprintNumber))
+          .map((s) => s.sprintNumber)
+          .sort((a, b) => a - b);
+
+        document.getElementById("sprint-prev")?.addEventListener("click", () => {
+          const cur = selectedSprint?.sprintNumber ?? NaN;
+          const idx = sortedSprintNums.indexOf(cur);
+          if (idx > 0) setSprintByNumber(sortedSprintNums[idx - 1]);
+        });
+
+        document.getElementById("sprint-next")?.addEventListener("click", () => {
+          const cur = selectedSprint?.sprintNumber ?? NaN;
+          const idx = sortedSprintNums.indexOf(cur);
+          if (idx >= 0 && idx < sortedSprintNums.length - 1) setSprintByNumber(sortedSprintNums[idx + 1]);
+        });
+
+        // ── Issue search ──
+        document.getElementById("issue-search")?.addEventListener("input", (e) => {
+          searchQuery = e.target.value;
+          renderSprintBoard();
+        });
 
         // ── Sprint timeline in header ──
         if (sprints.length > 0) {
