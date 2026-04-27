@@ -180,7 +180,14 @@ function isSideEffecting(i: IrInstr): boolean {
     // object.set mutates the struct (slice 2 didn't add this, but is
     // currently void-result so the existing `result === null → keep`
     // catches it; explicit listing is a no-op for now).
-    i.kind === "object.set"
+    i.kind === "object.set" ||
+    // Slice 4 (#1169d): class.call invokes a method body with potentially
+    // arbitrary effects. class.set mutates the instance. class.new calls
+    // a constructor (which may run side-effecting user code, e.g.
+    // `this.x = computeAndLogX()`). Conservatively keep all three live.
+    i.kind === "class.call" ||
+    i.kind === "class.set" ||
+    i.kind === "class.new"
   );
 }
 
@@ -242,6 +249,15 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.cell];
     case "refcell.set":
       return [instr.cell, instr.value];
+    // Slice 4 (#1169d): class ops.
+    case "class.new":
+      return instr.args;
+    case "class.get":
+      return [instr.value];
+    case "class.set":
+      return [instr.value, instr.newValue];
+    case "class.call":
+      return [instr.receiver, ...instr.args];
   }
 }
 

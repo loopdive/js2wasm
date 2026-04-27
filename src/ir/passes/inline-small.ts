@@ -430,6 +430,41 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (c === inst.cell && v === inst.value) return inst;
       return { ...inst, cell: c, value: v };
     }
+    // Slice 4 (#1169d): class ops.
+    case "class.new": {
+      let changed = false;
+      const newArgs: IrValueId[] = [];
+      for (const a of inst.args) {
+        const n = mapId(rename, a);
+        if (n !== a) changed = true;
+        newArgs.push(n);
+      }
+      if (!changed) return inst;
+      return { ...inst, args: newArgs };
+    }
+    case "class.get": {
+      const v = mapId(rename, inst.value);
+      if (v === inst.value) return inst;
+      return { ...inst, value: v };
+    }
+    case "class.set": {
+      const v = mapId(rename, inst.value);
+      const nv = mapId(rename, inst.newValue);
+      if (v === inst.value && nv === inst.newValue) return inst;
+      return { ...inst, value: v, newValue: nv };
+    }
+    case "class.call": {
+      const r = mapId(rename, inst.receiver);
+      let changed = r !== inst.receiver;
+      const newArgs: IrValueId[] = [];
+      for (const a of inst.args) {
+        const n = mapId(rename, a);
+        if (n !== a) changed = true;
+        newArgs.push(n);
+      }
+      if (!changed) return inst;
+      return { ...inst, receiver: r, args: newArgs };
+    }
   }
 }
 

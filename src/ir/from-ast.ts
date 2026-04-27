@@ -45,6 +45,7 @@ import {
   irTypeEquals,
   irVal,
   type IrBinop,
+  type IrClassShape,
   type IrClosureSignature,
   type IrFunction,
   type IrObjectShape,
@@ -75,6 +76,14 @@ export interface AstToIrOptions {
    * has an entry.
    */
   readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
+  /**
+   * Slice 4 (#1169d): map from class name to that class's IR shape
+   * (fields + methods + constructor signature). Consulted when lowering
+   * NewExpression / class-receiver PropertyAccess / class-receiver
+   * method calls. Missing entries cause the relevant lowering case to
+   * throw, falling back to legacy.
+   */
+  readonly classShapes?: ReadonlyMap<string, IrClassShape>;
 }
 
 /**
@@ -134,6 +143,7 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     funcName: name,
     returnType,
     calleeTypes: options.calleeTypes,
+    classShapes: options.classShapes,
     lifted,
     liftedCounter,
   };
@@ -161,15 +171,26 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
     }
     // Slice 3 (#1169c): bare call expression statement — lower the
     // call, drop the result. Lets `inc(); inc(); inc();` work.
+    //
+    // Slice 4 (#1169d): also accept `<obj>.<field> = <expr>;` — lowered
+    // as `class.set` or `object.set` based on the receiver's IrType.
     if (ts.isExpressionStatement(s)) {
-      if (!ts.isCallExpression(s.expression)) {
-        throw new Error(`ir/from-ast: only call ExpressionStatements supported in slice 3 (${cx.funcName})`);
+      if (ts.isCallExpression(s.expression)) {
+        // The result SSA value is unused; DCE strips it if pure.
+        // closure.call and call are flagged side-effecting in dead-code
+        // so they stay live.
+        void lowerExpr(s.expression, cx, irVal({ kind: "f64" }));
+        continue;
       }
-      // The result SSA value is unused; DCE strips it if pure.
-      // closure.call and call are flagged side-effecting in dead-code
-      // so they stay live.
-      void lowerExpr(s.expression, cx, irVal({ kind: "f64" }));
-      continue;
+      if (
+        ts.isBinaryExpression(s.expression) &&
+        s.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(s.expression.left)
+      ) {
+        lowerPropertyAssignment(s.expression, cx);
+        continue;
+      }
+      throw new Error(`ir/from-ast: unsupported ExpressionStatement shape in ${cx.funcName}`);
     }
     // Phase 2: early-return `if` with no else + subsequent statements.
     // Structurally: `if (cond) <tail>; <rest>` ≡ `if (cond) <tail> else { <rest> }`.
@@ -320,6 +341,8 @@ interface LowerCtx {
   readonly funcName: string;
   readonly returnType: IrType;
   readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
+  /** Slice 4 (#1169d) — class shape registry, keyed by className. */
+  readonly classShapes?: ReadonlyMap<string, IrClassShape>;
   /** Slice 3 — output bin for lifted closures / nested funcs. */
   readonly lifted: IrFunction[];
   /** Slice 3 — mutable counter for synthesizing lifted-func names. */
@@ -410,6 +433,7 @@ function describeIrType(t: IrType): string {
     const ps = t.signature.params.map(describeIrType).join(",");
     return `closure(${ps})->${describeIrType(t.signature.returnType)}`;
   }
+  if (t.kind === "class") return `class<${t.shape.className}>`;
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }
@@ -509,6 +533,12 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   }
   if (ts.isCallExpression(expr)) {
     return lowerCall(expr, cx);
+  }
+  // Slice 4 (#1169d): class instantiation. Lookup must succeed against
+  // the class registry seeded from `ctx.classShapes`; if not, the
+  // function falls back to legacy.
+  if (ts.isNewExpression(expr)) {
+    return lowerNewExpression(expr, cx);
   }
   throw new Error(`ir/from-ast: unsupported expression kind ${ts.SyntaxKind[expr.kind]} in ${cx.funcName}`);
 }
@@ -618,6 +648,18 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
     }
     const fieldType = recvType.shape.fields[fieldIdx]!.type;
     return cx.builder.emitObjectGet(recv, propName, fieldType);
+  }
+
+  if (recvType.kind === "class") {
+    // Slice 4 (#1169d) — named field read on a class instance. Static
+    // resolution: look up `propName` against the class shape's field
+    // list. Methods are not readable as bare property access in slice 4
+    // (no method-as-value); only call expressions resolve them.
+    const field = recvType.shape.fields.find((f) => f.name === propName);
+    if (!field) {
+      throw new Error(`ir/from-ast: class ${recvType.shape.className} has no field "${propName}" in ${cx.funcName}`);
+    }
+    return cx.builder.emitClassGet(recv, propName, field.type);
   }
 
   throw new Error(
@@ -749,6 +791,13 @@ function phase1PropertyName(name: ts.PropertyName): string | null {
  * ignored — both are bugs.
  */
 function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
+  // Slice 4 (#1169d): method call — `<recv>.<methodName>(args)`. The
+  // receiver must lower to an IrType.class; the method must exist on
+  // the class shape and be non-void (slice 4 only handles methods with
+  // a returning result in expression position).
+  if (ts.isPropertyAccessExpression(expr.expression)) {
+    return lowerMethodCall(expr, cx);
+  }
   if (!ts.isIdentifier(expr.expression)) {
     throw new Error(`ir/from-ast: only direct calls supported in Phase 2 (${cx.funcName})`);
   }
@@ -897,6 +946,166 @@ function lowerNestedFuncCall(
     throw new Error(`ir/from-ast: nested call returned void in ${cx.funcName}`);
   }
   return r;
+}
+
+// ---------------------------------------------------------------------------
+// Class lowering (#1169d — IR Phase 4 Slice 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 4 (#1169d): lower a `new ClassName(args)` expression.
+ *
+ * The class shape is looked up against `cx.classShapes`. Argument types
+ * must match the constructor's declared `constructorParams`. Generic
+ * type-arguments are not supported (the selector rejects them).
+ *
+ * Returns the SSA value of the constructed instance — its IrType is
+ * `{ kind: "class", shape }` so subsequent property accesses / method
+ * calls dispatch correctly.
+ */
+function lowerNewExpression(expr: ts.NewExpression, cx: LowerCtx): IrValueId {
+  if (!ts.isIdentifier(expr.expression)) {
+    throw new Error(`ir/from-ast: only direct constructor names supported in slice 4 (${cx.funcName})`);
+  }
+  const className = expr.expression.text;
+  const shape = cx.classShapes?.get(className);
+  if (!shape) {
+    throw new Error(`ir/from-ast: unknown class "${className}" in ${cx.funcName}`);
+  }
+  const argExprs = expr.arguments ?? [];
+  if (argExprs.length !== shape.constructorParams.length) {
+    throw new Error(
+      `ir/from-ast: new ${className}(...) has ${argExprs.length} args, expected ${shape.constructorParams.length} in ${cx.funcName}`,
+    );
+  }
+  const args: IrValueId[] = [];
+  for (let i = 0; i < argExprs.length; i++) {
+    const expected = shape.constructorParams[i]!;
+    const argVal = lowerExpr(argExprs[i]!, cx, expected);
+    const argType = cx.builder.typeOf(argVal);
+    if (!irTypeEquals(argType, expected)) {
+      throw new Error(
+        `ir/from-ast: arg ${i} of new ${className}(...) is ${describeIrType(argType)}, expected ${describeIrType(expected)} in ${cx.funcName}`,
+      );
+    }
+    args.push(argVal);
+  }
+  return cx.builder.emitClassNew(shape, args);
+}
+
+/**
+ * Slice 4 (#1169d): lower `<recv>.<methodName>(args)` on a class
+ * receiver. The receiver is lowered first (so we can inspect its
+ * IrType); the method's signature is looked up against the receiver's
+ * class shape; argument types must match. Returns the SSA value of the
+ * call result — throws if the method is void (slice 4 rejects void
+ * methods in expression position; statement-position void calls go
+ * through the bare ExpressionStatement path).
+ *
+ * Receivers of any IrType other than `class` fall through to a clean
+ * error, letting the function fall back to legacy.
+ */
+function lowerMethodCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
+  if (!ts.isPropertyAccessExpression(expr.expression) || !ts.isIdentifier(expr.expression.name)) {
+    throw new Error(`ir/from-ast: malformed method call in ${cx.funcName}`);
+  }
+  const methodName = expr.expression.name.text;
+  const recv = lowerExpr(expr.expression.expression, cx, irVal({ kind: "f64" }));
+  const recvType = cx.builder.typeOf(recv);
+  if (recvType.kind !== "class") {
+    throw new Error(
+      `ir/from-ast: method call .${methodName}(...) on ${describeIrType(recvType)} not in slice 4 (${cx.funcName})`,
+    );
+  }
+  const method = recvType.shape.methods.find((m) => m.name === methodName);
+  if (!method) {
+    throw new Error(`ir/from-ast: class ${recvType.shape.className} has no method "${methodName}" in ${cx.funcName}`);
+  }
+  if (expr.arguments.length !== method.params.length) {
+    throw new Error(
+      `ir/from-ast: method ${recvType.shape.className}.${methodName} has ${expr.arguments.length} args, expected ${method.params.length} in ${cx.funcName}`,
+    );
+  }
+  const args: IrValueId[] = [];
+  for (let i = 0; i < expr.arguments.length; i++) {
+    const expected = method.params[i]!;
+    const argVal = lowerExpr(expr.arguments[i]!, cx, expected);
+    const argType = cx.builder.typeOf(argVal);
+    if (!irTypeEquals(argType, expected)) {
+      throw new Error(
+        `ir/from-ast: arg ${i} of ${recvType.shape.className}.${methodName} is ${describeIrType(argType)}, expected ${describeIrType(expected)} in ${cx.funcName}`,
+      );
+    }
+    args.push(argVal);
+  }
+  if (method.returnType === null) {
+    throw new Error(
+      `ir/from-ast: void method ${recvType.shape.className}.${methodName} used in expression position (${cx.funcName})`,
+    );
+  }
+  const r = cx.builder.emitClassCall(recv, methodName, args, method.returnType);
+  if (r === null) {
+    // Defensive — emitClassCall returns null only when resultType is null.
+    throw new Error(`ir/from-ast: class.call produced no result in ${cx.funcName}`);
+  }
+  return r;
+}
+
+/**
+ * Slice 4 (#1169d): lower `<obj>.<field> = <expr>;` as `class.set` (or
+ * `object.set`, depending on the receiver's IrType). Statement-position
+ * only — caller (in `lowerStatementList`) has already verified shape.
+ *
+ * For class receivers: validate `fieldName` exists on the shape and
+ * the RHS type matches the field type. For object receivers: same idea
+ * via the slice-2 `object.set`. Anything else throws and the function
+ * falls back to legacy.
+ */
+function lowerPropertyAssignment(expr: ts.BinaryExpression, cx: LowerCtx): void {
+  const lhs = expr.left;
+  if (!ts.isPropertyAccessExpression(lhs) || !ts.isIdentifier(lhs.name)) {
+    throw new Error(`ir/from-ast: malformed property assignment LHS in ${cx.funcName}`);
+  }
+  const fieldName = lhs.name.text;
+  const recv = lowerExpr(lhs.expression, cx, irVal({ kind: "f64" }));
+  const recvType = cx.builder.typeOf(recv);
+
+  if (recvType.kind === "class") {
+    const field = recvType.shape.fields.find((f) => f.name === fieldName);
+    if (!field) {
+      throw new Error(`ir/from-ast: class ${recvType.shape.className} has no field "${fieldName}" in ${cx.funcName}`);
+    }
+    const newValue = lowerExpr(expr.right, cx, field.type);
+    const newValueType = cx.builder.typeOf(newValue);
+    if (!irTypeEquals(newValueType, field.type)) {
+      throw new Error(
+        `ir/from-ast: assignment to ${recvType.shape.className}.${fieldName} (${describeIrType(field.type)}) got ${describeIrType(newValueType)} (${cx.funcName})`,
+      );
+    }
+    cx.builder.emitClassSet(recv, fieldName, newValue);
+    return;
+  }
+
+  if (recvType.kind === "object") {
+    const fieldIdx = recvType.shape.fields.findIndex((f) => f.name === fieldName);
+    if (fieldIdx < 0) {
+      throw new Error(
+        `ir/from-ast: object has no field "${fieldName}" (shape: ${describeIrType(recvType)}) in ${cx.funcName}`,
+      );
+    }
+    const fieldType = recvType.shape.fields[fieldIdx]!.type;
+    const newValue = lowerExpr(expr.right, cx, fieldType);
+    const newValueType = cx.builder.typeOf(newValue);
+    if (!irTypeEquals(newValueType, fieldType)) {
+      throw new Error(
+        `ir/from-ast: assignment to .${fieldName} (${describeIrType(fieldType)}) got ${describeIrType(newValueType)} (${cx.funcName})`,
+      );
+    }
+    cx.builder.emitObjectSet(recv, fieldName, newValue);
+    return;
+  }
+
+  throw new Error(`ir/from-ast: property assignment on ${describeIrType(recvType)} is not in slice 4 (${cx.funcName})`);
 }
 
 function lowerConditional(expr: ts.ConditionalExpression, cx: LowerCtx): IrValueId {
@@ -1282,6 +1491,7 @@ function liftNestedFunction(
     funcName: liftedName,
     returnType: signature.returnType,
     calleeTypes: cx.calleeTypes,
+    classShapes: cx.classShapes,
     lifted: cx.lifted,
     liftedCounter: cx.liftedCounter,
   };
@@ -1346,6 +1556,7 @@ function liftClosureBody(
     funcName: liftedName,
     returnType: signature.returnType,
     calleeTypes: cx.calleeTypes,
+    classShapes: cx.classShapes,
     lifted: cx.lifted,
     liftedCounter: cx.liftedCounter,
   };

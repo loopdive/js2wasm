@@ -12,6 +12,7 @@ import {
   IrBinop,
   IrBlock,
   IrBlockId,
+  IrClassShape,
   IrClosureSignature,
   IrConst,
   IrFuncRef,
@@ -398,6 +399,95 @@ export class IrFunctionBuilder {
    */
   emitRawWasm(ops: readonly Instr[], stackDelta: number): void {
     this.requireBlock().instrs.push({ kind: "raw.wasm", ops: [...ops], stackDelta, result: null, resultType: null });
+  }
+
+  // --- class ops (#1169d) -------------------------------------------------
+
+  /**
+   * Emit `class.new` to construct a class instance via the legacy-registered
+   * `<className>_new` constructor. Caller is responsible for ensuring
+   * `args[i]` matches `shape.constructorParams[i]`. The arity check below
+   * catches mistakes early.
+   */
+  emitClassNew(shape: IrClassShape, args: readonly IrValueId[]): IrValueId {
+    if (args.length !== shape.constructorParams.length) {
+      throw new Error(
+        `IrFunctionBuilder: class.new arg count ${args.length} != constructor arity ${shape.constructorParams.length} (func ${this.name}, class ${shape.className})`,
+      );
+    }
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "class", shape };
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "class.new",
+      shape,
+      args: [...args],
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Emit `class.get` to read a named field on a class instance. Caller
+   * passes the field's IrType (looked up against the receiver's shape) so
+   * the SSA def's static type matches without a second resolver lookup.
+   */
+  emitClassGet(value: IrValueId, fieldName: string, resultType: IrType): IrValueId {
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, resultType);
+    this.requireBlock().instrs.push({
+      kind: "class.get",
+      value,
+      fieldName,
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Emit `class.set` to write a named field on a class instance. Void
+   * result. The receiver's shape must contain `fieldName`; arity / type
+   * checks happen at the AST→IR layer.
+   */
+  emitClassSet(value: IrValueId, fieldName: string, newValue: IrValueId): void {
+    this.requireBlock().instrs.push({
+      kind: "class.set",
+      value,
+      fieldName,
+      newValue,
+      result: null,
+      resultType: null,
+    });
+  }
+
+  /**
+   * Emit `class.call` to invoke an instance method. `resultType` is the
+   * method descriptor's `returnType` (or `null` for void). Returns `null`
+   * for void methods — callers using the result in expression position
+   * must reject `null` themselves.
+   */
+  emitClassCall(
+    receiver: IrValueId,
+    methodName: string,
+    args: readonly IrValueId[],
+    resultType: IrType | null,
+  ): IrValueId | null {
+    let result: IrValueId | null = null;
+    if (resultType !== null) {
+      result = this.allocator.fresh();
+      this.valueTypes.set(result, resultType);
+    }
+    this.requireBlock().instrs.push({
+      kind: "class.call",
+      receiver,
+      methodName,
+      args: [...args],
+      result,
+      resultType,
+    });
+    return result;
   }
 
   // --- finalize -----------------------------------------------------------

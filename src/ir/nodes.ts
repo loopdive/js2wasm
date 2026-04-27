@@ -113,6 +113,54 @@ export interface IrClosureSignature {
   readonly returnType: IrType;
 }
 
+/**
+ * Slice 4 (#1169d) — descriptor for one field on a class.
+ */
+export interface IrClassFieldDescriptor {
+  readonly name: string;
+  readonly type: IrType;
+}
+
+/**
+ * Slice 4 (#1169d) — descriptor for one instance method on a class. The
+ * implicit `this` receiver is NOT listed in `params` — the lowerer
+ * prepends it when emitting the call. A void method has
+ * `returnType: null`.
+ */
+export interface IrClassMethodDescriptor {
+  readonly name: string;
+  readonly params: readonly IrType[];
+  readonly returnType: IrType | null;
+}
+
+/**
+ * Slice 4 (#1169d) — symbolic descriptor for a class declared in the
+ * compilation unit. Carries the structural info the IR builder needs to
+ * type-check `new`/field-access/method-call expressions on instances of
+ * this class without consulting the lowering resolver.
+ *
+ *   - `className`        unique discriminator (one class per name per unit)
+ *   - `fields`           user fields in canonical order (alphabetical)
+ *                        — the lowerer maps each field `name` to a Wasm
+ *                        struct field index via `resolveClass`, which knows
+ *                        about the legacy `__tag` prefix at field 0.
+ *   - `methods`          instance methods with caller-visible signatures.
+ *                        Static methods are out of slice 4 scope and are
+ *                        not listed.
+ *   - `constructorParams` user-visible param list for `new C(...)`.
+ *
+ * Class methods themselves are NOT IR-claimable in slice 4 — they remain
+ * on the legacy class-bodies path. The IR only references them by name
+ * (`<className>_<methodName>`) at call-site lowering, where the resolver
+ * maps the name to the legacy-allocated funcIdx.
+ */
+export interface IrClassShape {
+  readonly className: string;
+  readonly fields: readonly IrClassFieldDescriptor[];
+  readonly methods: readonly IrClassMethodDescriptor[];
+  readonly constructorParams: readonly IrType[];
+}
+
 export type IrType =
   | { readonly kind: "val"; readonly val: ValType }
   // Backend-agnostic string marker (#1169a). The actual Wasm representation
@@ -136,6 +184,14 @@ export type IrType =
   // resolver registers a base WasmGC struct per signature plus a subtype
   // struct per (signature, captureFieldTypes) pair.
   | { readonly kind: "closure"; readonly signature: IrClosureSignature }
+  // Slice 4 (#1169d) — symbolic class instance reference. The Wasm-level
+  // value type is `(ref $ClassStruct)` where the struct is registered by
+  // the legacy `collectClassDeclaration` pass; the resolver maps
+  // `shape.className` to the concrete struct typeIdx + the fieldIdx /
+  // method funcIdx tables. The IR carries the full shape so the
+  // AST→IR lowerer can statically resolve field types and method
+  // signatures without resolver round-trips.
+  | { readonly kind: "class"; readonly shape: IrClassShape }
   | { readonly kind: "union"; readonly members: readonly ValType[] }
   // Slice 3 (#1169c) repurposes `boxed` as the ref-cell type for mutable
   // captures. The inner ValType is the cell's stored type; the resolver
@@ -182,7 +238,23 @@ export function irTypeEquals(a: IrType, b: IrType): boolean {
   if (a.kind === "closure" && b.kind === "closure") {
     return closureSignatureEquals(a.signature, b.signature);
   }
+  if (a.kind === "class" && b.kind === "class") {
+    return classShapeEquals(a.shape, b.shape);
+  }
   return false;
+}
+
+/**
+ * Slice 4 (#1169d): structural equality for class shapes. `className` is
+ * the discriminator — every class is unique within a compilation unit, so
+ * two `IrClassShape` values with the same `className` represent the same
+ * class. We don't recurse into `fields` / `methods` / `constructorParams`
+ * because they're a deterministic projection of `className` (one
+ * declaration per class per unit). Cross-unit class types are out of
+ * slice 4 scope.
+ */
+export function classShapeEquals(a: IrClassShape, b: IrClassShape): boolean {
+  return a.className === b.className;
 }
 
 /**
@@ -624,6 +696,93 @@ export interface IrInstrRefCellSet extends IrInstrBase {
   readonly value: IrValueId;
 }
 
+// ---------------------------------------------------------------------------
+// Class operations (#1169d — IR Phase 4 Slice 4)
+// ---------------------------------------------------------------------------
+//
+// Class instances live as `(ref $ClassStruct)` at the Wasm level. The IR
+// represents them via `IrType.class` carrying the full `IrClassShape`, and
+// `IrInstrClass*` ops symbolically reference the class through `shape`.
+// The lowerer's `resolveClass` maps `shape.className` → struct typeIdx +
+// constructor / method funcIdx + per-field index, all of which were
+// allocated by the legacy `collectClassDeclaration` pass before the IR
+// runs.
+//
+// Slice 4 keeps class methods themselves on the legacy path. The IR only
+// claims OUTER functions that USE class instances — `class.call` resolves
+// to a direct `call $<className>_<methodName>` against the legacy-compiled
+// method body, with `this` prepended as the first argument.
+
+/**
+ * Construct a class instance via the legacy-registered constructor.
+ *
+ * Lowering:
+ *   <emit each arg in order>
+ *   call $<className>_new
+ *
+ * Result type: `{ kind: "class"; shape }`. The Wasm-level value type is
+ * `(ref $ClassStruct)` (non-null) — `<className>_new` is registered with
+ * a non-null ref result by `collectClassDeclaration`.
+ */
+export interface IrInstrClassNew extends IrInstrBase {
+  readonly kind: "class.new";
+  readonly shape: IrClassShape;
+  readonly args: readonly IrValueId[];
+}
+
+/**
+ * Read a named field from a class instance. `value` must be `IrType.class`
+ * with a shape containing `fieldName`. Lowering emits:
+ *   <emit value>
+ *   struct.get $<className> <wasmFieldIdx>
+ *
+ * The wasm field index accounts for the legacy `__tag` prefix at field 0
+ * — see `IrLowerResolver.resolveClass`.
+ *
+ * Result type: the field's IrType (also placed in `resultType`).
+ */
+export interface IrInstrClassGet extends IrInstrBase {
+  readonly kind: "class.get";
+  readonly value: IrValueId;
+  readonly fieldName: string;
+}
+
+/**
+ * Write a named field on a class instance. Void result. Lowering emits:
+ *   <emit value>
+ *   <emit newValue>
+ *   struct.set $<className> <wasmFieldIdx>
+ *
+ * The legacy `collectClassDeclaration` pass widens all class fields to
+ * `mutable: true`, so `struct.set` is always valid.
+ */
+export interface IrInstrClassSet extends IrInstrBase {
+  readonly kind: "class.set";
+  readonly value: IrValueId;
+  readonly fieldName: string;
+  readonly newValue: IrValueId;
+}
+
+/**
+ * Invoke an instance method. `receiver` must be `IrType.class` whose
+ * shape contains `methodName`. The implicit `this` is prepended as the
+ * first call argument. Lowering emits:
+ *   <emit receiver>
+ *   <emit each arg in order>
+ *   call $<className>_<methodName>
+ *
+ * Result type: the method descriptor's `returnType`. A void method has
+ * `result: null` and `resultType: null`; the AST→IR lowerer rejects
+ * such calls in expression position so we never see a void method as
+ * `lowerExpr` output.
+ */
+export interface IrInstrClassCall extends IrInstrBase {
+  readonly kind: "class.call";
+  readonly receiver: IrValueId;
+  readonly methodName: string;
+  readonly args: readonly IrValueId[];
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -648,7 +807,11 @@ export type IrInstr =
   | IrInstrClosureCall
   | IrInstrRefCellNew
   | IrInstrRefCellGet
-  | IrInstrRefCellSet;
+  | IrInstrRefCellSet
+  | IrInstrClassNew
+  | IrInstrClassGet
+  | IrInstrClassSet
+  | IrInstrClassCall;
 
 // ---------------------------------------------------------------------------
 // Terminators
