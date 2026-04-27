@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { test262Plugin } from "./vite-plugin-test262.js";
 import { compilerBundlePlugin } from "./vite-plugin-compiler-bundle.js";
+import { adrPlugin } from "./vite-plugin-adr.js";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const dashboardPluginPath = resolve(import.meta.dirname, "vite-plugin-dashboard.ts");
@@ -11,7 +12,7 @@ const hasDashboardData =
   existsSync(resolve(projectRoot, "dashboard", "index.html")) && existsSync(resolve(projectRoot, "plan", "issues"));
 
 export default defineConfig(async () => {
-  const plugins = [compilerBundlePlugin(), test262Plugin()];
+  const plugins = [compilerBundlePlugin(), test262Plugin(), adrPlugin()];
   if (hasDashboardData && existsSync(dashboardPluginPath)) {
     const { dashboardPlugin } = await import(pathToFileURL(dashboardPluginPath).href);
     plugins.push(dashboardPlugin());

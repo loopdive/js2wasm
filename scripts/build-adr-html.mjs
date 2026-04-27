@@ -18,6 +18,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { marked } from "marked";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -184,23 +185,37 @@ function escapeHtml(value) {
 // instead of the source markdown.
 //   ./0007-closure-conversion.md     → ./0007-closure-conversion.html
 //   0007-closure-conversion.md       → 0007-closure-conversion.html
-function rewriteAdrLinks(htmlBody) {
+export function rewriteAdrLinks(htmlBody) {
   return htmlBody.replace(
     /(href="(?:\.\/)?)([0-9A-Za-z._-]+)\.md(#[^"]*)?"/g,
     (_match, prefix, name, hash) => `${prefix}${name}.html${hash ?? ""}"`,
   );
 }
 
-function renderMarkdownFile(filePath) {
-  const source = readFileSync(filePath, "utf-8");
-  const html = marked.parse(source);
-  return rewriteAdrLinks(html);
-}
-
-function titleFromMarkdown(source) {
+export function titleFromMarkdown(source) {
   const heading = source.match(/^#\s+(.+?)\s*$/m);
   return heading ? heading[1].trim() : "Architecture decision record";
 }
+
+// Render a single ADR markdown source to a complete HTML document.
+//
+// `filename` is the source filename (e.g. "0007-closure-conversion.md" or
+// "README.md") — used to decide whether the document is the ADR index (which
+// gets a different back-href) and to compute the default `<title>` when the
+// markdown lacks a top-level heading.
+//
+// Used by both the static build (build-pages → dist/pages/docs/adr/*.html)
+// and the Vite dev middleware (playground/vite-plugin-adr.ts) so that
+// localhost and the deployed site render the same way.
+export function renderAdrPage(filename, source) {
+  const title = titleFromMarkdown(source);
+  const body = rewriteAdrLinks(marked.parse(source));
+  const isIndex = filename === "README.md";
+  const backHref = isIndex ? "/js2wasm/#approach" : "./";
+  return htmlShell({ title, body, backHref });
+}
+
+export { htmlShell, escapeHtml };
 
 function buildAdrPages() {
   if (!existsSync(ADR_SOURCE_DIR)) {
@@ -223,14 +238,10 @@ function buildAdrPages() {
   for (const entry of entries) {
     const sourcePath = join(ADR_SOURCE_DIR, entry);
     const source = readFileSync(sourcePath, "utf-8");
-    const title = titleFromMarkdown(source);
-    const body = rewriteAdrLinks(marked.parse(source));
     const isIndex = entry === "README.md";
     const outputName = isIndex ? "index.html" : entry.replace(/\.md$/, ".html");
     const outputPath = join(ADR_OUTPUT_DIR, outputName);
-    const backHref = isIndex ? "/js2wasm/#approach" : "./";
-
-    const html = htmlShell({ title, body, backHref });
+    const html = renderAdrPage(entry, source);
     mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, html);
     writtenCount += 1;
@@ -239,4 +250,9 @@ function buildAdrPages() {
   console.log(`[build-adr-html] rendered ${writtenCount} ADR page(s) to ${ADR_OUTPUT_DIR}`);
 }
 
-buildAdrPages();
+// Only run the build when this file is the entry point. When the dev plugin
+// imports it (for the helpers above) we don't want a stray build-step run.
+const isMainModule = import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
+if (isMainModule) {
+  buildAdrPages();
+}
