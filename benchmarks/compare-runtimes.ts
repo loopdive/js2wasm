@@ -191,7 +191,17 @@ const WASMTIME_OPTIMIZE = process.env.WASMTIME_OPTIMIZE || "opt-level=2";
 // `component-model=y` is on by default but we set it explicitly so component
 // artifacts continue to load if a future wasmtime turns it off-by-default.
 const WASMTIME_WASM_FLAGS = ["-W", "gc=y,function-references=y,component-model=y,exceptions=y"];
-const WASM_OPT_FLAGS = (process.env.WASM_OPT_FLAGS || "--all-features -O4").trim().split(/\s+/).filter(Boolean);
+// `--all-features` enables Binaryen's custom-descriptors proposal, which makes
+// wasm-opt rewrite `(ref $T)` into `(ref exact $T)` for any leaf/single-instance
+// type. wasmtime ≤ 44 rejects exact-ref encodings with:
+//   "custom descriptors required for exact reference types"
+// We turn that one feature off so the optimized binary still loads on wasmtime
+// 44 (#1173). `--disable-custom-descriptors` is a no-op when the proposal isn't
+// enabled, so it is safe even on older Binaryen builds.
+const WASM_OPT_FLAGS = (process.env.WASM_OPT_FLAGS || "--all-features --disable-custom-descriptors -O4")
+  .trim()
+  .split(/\s+/)
+  .filter(Boolean);
 const BENCHMARK_FILTER = new Set(
   (process.env.BENCHMARK_FILTER || "")
     .split(",")
