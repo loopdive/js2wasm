@@ -1,4 +1,9 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "node /workspace/scripts/statusline-sprint.mjs",
+    "refreshInterval": 30
+  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
