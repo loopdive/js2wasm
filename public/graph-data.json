@@ -16771,6 +16771,20 @@
       "cluster": "compiler-architecture"
     },
     {
+      "id": "1183",
+      "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [
+        "1181"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -17991,7 +18005,8 @@
         "1169g",
         "1169h",
         "1169i",
-        "1182"
+        "1182",
+        "1183"
       ],
       "track": "supporting track"
     },
@@ -20500,6 +20515,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1182"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1183"
     },
     {
       "goal": "contributor-readiness",
