@@ -131,12 +131,12 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1208 | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | high | in-progress |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1208 | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | high | done (PR #79) |
 | #862 | Iterator protocol missing on function-declaration binding-pattern params | medium | done |
 | #906 | Compile away TDZ tracking for definite-assignment top-level numeric locals | high | done |
 | #907 | Replace __init_done runtime guards with start/init entry semantics | high | done |
