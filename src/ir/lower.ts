@@ -264,6 +264,14 @@ export interface IrLowerResolver {
    */
   resolveString?(): ValType;
   /**
+   * Slice 6 part 4 (#1183) refactored in #1185: returns whether the
+   * compiler is in native-strings mode. Drives the for-of strategy
+   * switch for `string`-typed iterables in `lowerForOfStatement`.
+   * Optional for the same reason as `resolveString` — Phase-1
+   * resolvers without string support can omit it.
+   */
+  nativeStrings?(): boolean;
+  /**
    * Emit the Wasm op sequence that materializes a string literal.
    *   - host strings → register a `string_constants.<value>` global import
    *                    and emit `[global.get]`.
