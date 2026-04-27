@@ -935,7 +935,6 @@
               if (ageHours < 1) ageText = Math.round(ageHours * 60) + "m";
               else if (ageHours < 48) ageText = ageHours.toFixed(1) + "h";
               else ageText = (ageHours / 24).toFixed(1) + "d";
-              if (reportData.baseline_sha) ageText += " (" + reportData.baseline_sha.slice(0, 7) + ")";
               ageEl.textContent = ageText;
               if (ageHours > 24) ageEl.style.color = "var(--red)";
               else if (ageHours > 6) ageEl.style.color = "var(--orange)";
