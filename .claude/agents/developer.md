@@ -164,5 +164,13 @@ console.log('Result:', ret === 1 ? 'PASS' : 'FAIL (returned ' + ret + ')');
 - i32 → externref: use `f64.convert_i32_s` + `__box_number`
 - null/undefined in f64 context: emit `f64.const 0` / `f64.const NaN`
 
-## Branch naming
-`issue-{number}-{short-description}` (e.g., `issue-138-fix-comparison-ops`)
+## Branch and worktree naming
+
+Branch: `issue-{number}-{short-description}` (e.g., `issue-138-fix-comparison-ops`)
+
+**Worktree path** — ALWAYS use `/workspace/.claude/worktrees/<branch-name>/`:
+```bash
+git worktree add /workspace/.claude/worktrees/issue-138-fix-comparison-ops -b issue-138-fix-comparison-ops origin/main
+cd /workspace/.claude/worktrees/issue-138-fix-comparison-ops
+```
+Never use `/tmp/worktrees/` or any other location. The `/workspace/.claude/worktrees/` prefix keeps worktrees visible in the tech-lead statusline and under version-controlled `.gitignore` coverage.

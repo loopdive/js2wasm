@@ -2,7 +2,9 @@
 id: 1179-followup
 title: "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53"
 sprint: 45
-status: review
+status: done
+pr: 69
+merged: 2026-04-27
 priority: medium
 feasibility: easy
 reasoning_effort: medium

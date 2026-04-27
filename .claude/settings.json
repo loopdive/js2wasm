@@ -77,6 +77,17 @@
         ]
       },
       {
+        "matcher": "Bash",
+        "if": "Bash(git worktree add*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-worktree-path.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "Agent",
         "hooks": [
           {

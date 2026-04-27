@@ -161,6 +161,7 @@ and [#998](../sprints/40/998.md); [#848](../sprints/30/848.md) is already comple
 | [994](../sprints/42/994.md) | Medium | Class static-private-getter test hits 30s compiler timeout | 30s worker time/run | Ready |
 | [995](../sprints/42/995.md) | Low | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | 30s worker time/run | Ready |
 | [996](../sprints/42/996.md) | Low | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 30s worker time/run | Ready |
+| [1184](1184.md) | Low | `__str_copy_tree` worklist allocates O(node.len) per flatten — bound by depth instead | nativeStrings/WASI rope perf (post-#1178) | Ready |
 
 ## 10b. Standalone Execution & Wasm-native APIs
 

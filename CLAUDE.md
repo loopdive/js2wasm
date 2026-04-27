@@ -13,6 +13,15 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - If you spin up a quick `check-foo.ts`, `debug-bar.mts`, or `probe-*.test.ts` to investigate a bug, write it inside `.tmp/`, not at repo root or under `tests/`.
 - Root-level patterns like `check-*.ts`, `debug-*.ts`, `run-*.ts`, `test-*-debug.ts`, `tests/probe-*.test.ts`, `tests/*-debug*.test.ts` are also gitignored as a safety net, but the convention is `.tmp/`.
 
+## Working in worktrees
+- **All agent work happens in worktrees**, not in `/workspace` directly. The `check-cwd.sh` hook blocks `git commit`/`merge`/`push` from `/workspace` for non-tech-lead users.
+- **Canonical worktree path**: `/workspace/.claude/worktrees/<branch-name>/` — this is enforced by the `check-worktree-path.sh` hook on `git worktree add`. Worktrees outside this root (e.g. `/tmp/worktrees/`) are rejected.
+- **Persistent shell cwd resets between Bash invocations**: every Bash tool call starts from `/workspace` regardless of where the previous one ended. Trailers like `Shell cwd was reset to /workspace` confirm this. The agent must prefix git commands with `cd /workspace/.claude/worktrees/<branch> &&` for them to land on the right branch.
+  - Read/Edit/Write tools use absolute paths and are unaffected.
+  - The `pre-git-commit.sh` hook injects a "VERIFY BEFORE COMMITTING: pwd=/workspace branch=main" reminder; that's the hook reading the (reset) shell cwd, NOT the actual command's working dir. The reminder is informational — verify by reading the commit's branch in git output (`[issue-1183-string-forof-ir 0527c7c5]`-style line shows the real branch).
+- **Worktree creation**: `git worktree add /workspace/.claude/worktrees/issue-NNN-slug -b issue-NNN-slug origin/main`. Always branch from `origin/main` (post-fetch), never from local `main`.
+- **Worktree cleanup after merge**: tech-lead runs `git worktree remove /workspace/.claude/worktrees/<branch>` after the PR merges. Agents should NOT remove their own worktrees — that's tech-lead's call.
+
 ## Architecture Principles
 - **Dual-mode: JS host optional** — the compiler supports two modes: JS host mode (uses host imports for performance/completeness) and standalone mode (pure Wasm, no JS runtime). New features should have Wasm-native implementations for standalone mode; JS host imports are acceptable as a fast path when a JS runtime is available. Don't add new host imports without a standalone fallback.
 - This follows the pattern of #679 (dual string backend) and #682 (dual RegExp backend).
