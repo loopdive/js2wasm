@@ -225,7 +225,11 @@ function resolveParamType(p: ts.ParameterDeclaration, mapped: LatticeType | unde
     // fails (e.g. callable type, methods, etc.), the override map is
     // populated with a placeholder and the function falls back to
     // legacy via the `safeSelection` filter.
-    if (ts.isTypeLiteralNode(p.type) || ts.isTypeReferenceNode(p.type)) return "object";
+    //
+    // Slice 6 part 2 (#1181) — accept ArrayTypeNode (`T[]`) too.
+    // `Array<T>` already resolves via TypeReferenceNode. Both shapes
+    // route to a vec ref in `resolvePositionType`.
+    if (ts.isTypeLiteralNode(p.type) || ts.isTypeReferenceNode(p.type) || ts.isArrayTypeNode(p.type)) return "object";
     return null;
   }
   if (mapped?.kind === "f64") return "f64";
@@ -240,7 +244,8 @@ function resolveReturnType(fn: ts.FunctionDeclaration, mapped: LatticeType | und
     if (fn.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
     if (fn.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
     if (fn.type.kind === ts.SyntaxKind.StringKeyword) return "string";
-    if (ts.isTypeLiteralNode(fn.type) || ts.isTypeReferenceNode(fn.type)) return "object";
+    if (ts.isTypeLiteralNode(fn.type) || ts.isTypeReferenceNode(fn.type) || ts.isArrayTypeNode(fn.type))
+      return "object";
     return null;
   }
   if (mapped?.kind === "f64") return "f64";
@@ -312,18 +317,109 @@ function isPhase1StatementList(
       const rest = stmts.slice(i + 1);
       return isPhase1StatementList(rest, new Set(scope), localClasses);
     }
-    // Slice 6 (#1169e) — for-of statement acceptance is gated OFF until
-    // the AST→IR bridge in `from-ast.ts` lands (`lowerForOfStatement` +
-    // slot-binding plumbing) and `integration.ts` exposes `resolveVec`.
-    // The IR nodes / builder / lowerer / passes ARE in place (see
-    // `nodes.ts`, `builder.ts`, `lower.ts`, `passes/*`) but no emitter
-    // produces `forof.vec` / `slot.*` / `vec.*` instrs yet, so claiming a
-    // for-of here would land in the lowerer's "unexpected statement"
-    // branch and leak a noisy IR-fallback error. Re-enable once the
-    // bridge work ships.
+    // Slice 6 part 2 (#1181) — for-of statement (always non-tail). The
+    // body is itself shape-checked. The bridge in `from-ast.ts` lowers
+    // the iterable expression and dispatches to the vec fast path when
+    // the iterable's IR type resolves to a vec ref; non-vec iterables
+    // throw and the function falls back to legacy.
+    if (ts.isForOfStatement(s)) {
+      if (!isPhase1ForOf(s, scope, localClasses)) return false;
+      continue;
+    }
     return false;
   }
   return isPhase1Tail(stmts[stmts.length - 1]!, scope, localClasses);
+}
+
+/**
+ * Slice 6 part 2 (#1181): shape-check a `for (... of ...)` statement.
+ *
+ * Accepted: `for ((const|let) <id> of <expr>) <body>` with an
+ * Identifier-named loop variable and a Phase-1-acceptable iterable.
+ * The body must itself be a Phase-1 body-statement.
+ *
+ * Rejected (defer to follow-up slices):
+ *   - `for await` (slice 7 — async iteration, #1169f).
+ *   - destructuring init (slice 8, #1169g).
+ *   - bare-identifier init (`for (x of arr)` without `let`/`const`).
+ *   - missing initializer.
+ */
+function isPhase1ForOf(stmt: ts.ForOfStatement, scope: Set<string>, localClasses: ReadonlySet<string>): boolean {
+  if (stmt.awaitModifier) return false;
+  if (!ts.isVariableDeclarationList(stmt.initializer)) return false;
+  const flags = stmt.initializer.flags;
+  if (!(flags & ts.NodeFlags.Let) && !(flags & ts.NodeFlags.Const)) return false;
+  if (stmt.initializer.declarations.length !== 1) return false;
+  const decl = stmt.initializer.declarations[0]!;
+  if (!ts.isIdentifier(decl.name)) return false;
+  if (decl.initializer) return false; // for-of decl shouldn't have an `=` initializer
+  if (!isPhase1Expr(stmt.expression, scope, localClasses)) return false;
+  const innerScope = new Set(scope);
+  innerScope.add(decl.name.text);
+  return isPhase1BodyStatement(stmt.statement, innerScope, localClasses);
+}
+
+/**
+ * Slice 6 part 2 (#1181): recogniser for body statements inside a for-of
+ * loop. Narrower than `isPhase1StatementList` — no nested closures, no
+ * nested function decls, no fall-through if/else patterns. Accepts:
+ *   - `Block { ... }` (recurses).
+ *   - `VariableStatement` (let/const decl with initializer).
+ *   - `ExpressionStatement` whose expression is a CallExpression OR an
+ *     identifier-LHS / property-LHS assignment OR a compound assignment
+ *     (`+=`, `-=`, etc.) on an identifier (lowered as desugared
+ *     `<id> = <id> <op> <expr>`).
+ *   - Nested `ForOfStatement`.
+ */
+function isPhase1BodyStatement(stmt: ts.Statement, scope: Set<string>, localClasses: ReadonlySet<string>): boolean {
+  if (ts.isBlock(stmt)) {
+    const inner = new Set(scope);
+    for (const s of stmt.statements) {
+      if (!isPhase1BodyStatement(s, inner, localClasses)) return false;
+    }
+    return true;
+  }
+  if (ts.isVariableStatement(stmt)) {
+    return isPhase1VarDecl(stmt, scope, localClasses);
+  }
+  if (ts.isExpressionStatement(stmt)) {
+    if (ts.isCallExpression(stmt.expression)) {
+      return isPhase1Expr(stmt.expression, scope, localClasses);
+    }
+    if (ts.isBinaryExpression(stmt.expression)) {
+      const op = stmt.expression.operatorToken.kind;
+      // Plain assignment `<id> = <expr>` — id must be in scope.
+      if (op === ts.SyntaxKind.EqualsToken) {
+        if (ts.isIdentifier(stmt.expression.left)) {
+          if (!scope.has(stmt.expression.left.text)) return false;
+          return isPhase1Expr(stmt.expression.right, scope, localClasses);
+        }
+        if (ts.isPropertyAccessExpression(stmt.expression.left)) {
+          if (!ts.isIdentifier(stmt.expression.left.name)) return false;
+          if (!isPhase1Expr(stmt.expression.left.expression, scope, localClasses)) return false;
+          return isPhase1Expr(stmt.expression.right, scope, localClasses);
+        }
+      }
+      // Compound assignment `<id> <op>= <expr>` — desugars to
+      // `<id> = <id> <op> <expr>`. Same scope check applies.
+      if (
+        op === ts.SyntaxKind.PlusEqualsToken ||
+        op === ts.SyntaxKind.MinusEqualsToken ||
+        op === ts.SyntaxKind.AsteriskEqualsToken ||
+        op === ts.SyntaxKind.SlashEqualsToken
+      ) {
+        if (ts.isIdentifier(stmt.expression.left)) {
+          if (!scope.has(stmt.expression.left.text)) return false;
+          return isPhase1Expr(stmt.expression.right, scope, localClasses);
+        }
+      }
+    }
+    return false;
+  }
+  if (ts.isForOfStatement(stmt)) {
+    return isPhase1ForOf(stmt, scope, localClasses);
+  }
+  return false;
 }
 
 function isPhase1Tail(stmt: ts.Statement, scope: Set<string>, localClasses: ReadonlySet<string>): boolean {
