@@ -536,6 +536,19 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (!bodyChanged) return inst;
       return { ...inst, iterable: v, body: newBody };
     }
+    // Slice 6 part 4 (#1183) — string for-of.
+    case "forof.string": {
+      const v = mapId(rename, inst.str);
+      let bodyChanged = v !== inst.str;
+      const newBody: IrInstr[] = [];
+      for (const sub of inst.body) {
+        const renamed = renameInstrOperands(sub, rename);
+        if (renamed !== sub) bodyChanged = true;
+        newBody.push(renamed);
+      }
+      if (!bodyChanged) return inst;
+      return { ...inst, str: v, body: newBody };
+    }
   }
 }
 

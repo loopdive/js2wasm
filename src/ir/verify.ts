@@ -253,6 +253,9 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       // Same rationale as forof.vec: body is loop-internal, only the
       // iterable surfaces in the straight-line walk.
       return [instr.iterable];
+    // Slice 6 part 4 (#1183) — string for-of.
+    case "forof.string":
+      return [instr.str];
   }
 }
 
