@@ -1107,9 +1107,9 @@
         board.style.height = Math.max(200, window.innerHeight - top - 12) + "px";
       }
 
-      // Auto-refresh every 30 s when served over HTTP (not file://)
+      // Auto-refresh every 5 s when served over HTTP (not file://)
       if (location.protocol !== "file:") {
-        _refreshTimer = setInterval(refreshData, 30_000);
+        _refreshTimer = setInterval(refreshData, 5_000);
       }
 
       // ── Run on load ──
