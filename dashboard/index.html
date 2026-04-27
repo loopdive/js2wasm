@@ -409,6 +409,10 @@
         background: rgba(107, 138, 255, 0.15);
         color: var(--accent);
       }
+      .tag.wont-fix {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-muted);
+      }
 
       /* Sprint table */
       .sprint-table {
@@ -682,6 +686,7 @@
           hard: "Requires deep analysis or architectural changes",
         };
         let meta = "";
+        if (fm.status === "wont-fix") meta += `<span class="tag wont-fix">wont-fix</span>`;
         if (priority !== "medium")
           meta += `<span class="tag ${priority}" title="${prioTips[priority] || ""}">${priority}</span>`;
         if (feasibility && feasibility !== "medium")

@@ -1,14 +1,34 @@
 #!/usr/bin/env node
 // Sprint progress statusline for Claude Code.
-// Reads plan/issues/sprints/{N}/*.md, counts status:done vs total,
-// emits a colored badge: "sprint N  NN%"
+// Prefers dashboard/data/sprints.json (accurate deduplicated view) when available.
+// Falls back to scanning plan/issues/sprints/{N}/*.md directly.
+// Emits a colored badge: "sprint N  NN%"
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SPRINTS_DIR = join(ROOT, "plan", "issues", "sprints");
+const SPRINTS_JSON = join(ROOT, "dashboard", "data", "sprints.json");
+
+function fromJson() {
+  if (!existsSync(SPRINTS_JSON)) return null;
+  try {
+    const sprints = JSON.parse(readFileSync(SPRINTS_JSON, "utf8"));
+    // Active sprint: not closed, not planning (same logic as dashboard)
+    const active = sprints
+      .filter((s) => Number.isFinite(s.sprintNumber) && !s.isClosed && !s.isPlanning)
+      .sort((a, b) => a.sprintNumber - b.sprintNumber)
+      .at(-1);
+    if (!active) return null;
+    const total = (active.issueIds || []).length;
+    const done = (active.completedIssueIds || []).length;
+    return { sprint: active.sprintNumber, done, total };
+  } catch {
+    return null;
+  }
+}
 
 function currentSprint() {
   const dirs = readdirSync(SPRINTS_DIR, { withFileTypes: true })
@@ -29,7 +49,7 @@ function sprintProgress(n) {
   let done = 0;
   for (const f of files) {
     const content = readFileSync(join(dir, f), "utf8");
-    if (/^status:\s*done\b/m.test(content)) done++;
+    if (/^status:\s*(done|wont-fix)\b/m.test(content)) done++;
   }
   return { done, total: files.length };
 }
@@ -56,8 +76,9 @@ function interpolateColor(pct) {
   return [Math.round(r * 220), Math.round(g * 200), Math.round(b * 20)];
 }
 
-const sprint = currentSprint();
-const { done, total } = sprintProgress(sprint);
+const jsonData = fromJson();
+const sprint = jsonData ? jsonData.sprint : currentSprint();
+const { done, total } = jsonData ?? sprintProgress(sprint);
 const pct = total === 0 ? 0 : done / total;
 const pctInt = Math.round(pct * 100);
 const [r, g, b] = interpolateColor(pct);

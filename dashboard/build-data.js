@@ -176,7 +176,6 @@ const issues = {
   inprogress: [],
   review: [],
   done: [],
-  wontfix: [],
 };
 
 for (const iss of loadIssues()) {
@@ -188,10 +187,9 @@ for (const iss of loadIssues()) {
     issues.inprogress.push(iss);
   } else if (iss.status === "review") {
     issues.review.push(iss);
-  } else if (iss.status === "done") {
+  } else if (iss.status === "done" || iss.status === "wont-fix") {
+    // wont-fix is a label, not a separate lane — shown in Done with a tag
     issues.done.push(iss);
-  } else if (iss.status === "wont-fix") {
-    issues.wontfix.push(iss);
   } else {
     issues.ready.push(iss);
   }
@@ -204,7 +202,6 @@ const allIssueEntries = [
   ...issues.review,
   ...issues.blocked,
   ...issues.done,
-  ...issues.wontfix,
 ];
 const issueIdsBySprint = new Map();
 const completedIssueIdsBySprint = new Map();
@@ -213,7 +210,7 @@ for (const issue of allIssueEntries) {
   if (!Number.isFinite(sprintNumber)) continue;
   if (!issueIdsBySprint.has(sprintNumber)) issueIdsBySprint.set(sprintNumber, new Set());
   issueIdsBySprint.get(sprintNumber).add(String(issue.id));
-  if (issue.status === "done") {
+  if (issue.status === "done" || issue.status === "wont-fix") {
     if (!completedIssueIdsBySprint.has(sprintNumber)) completedIssueIdsBySprint.set(sprintNumber, new Set());
     completedIssueIdsBySprint.get(sprintNumber).add(String(issue.id));
   }
@@ -221,7 +218,7 @@ for (const issue of allIssueEntries) {
 
 writeFileSync(join(OUT, "issues.json"), JSON.stringify(issues, null, 2));
 console.log(
-  `Issues: ${issues.backlog.length} backlog, ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.blocked.length} blocked, ${issues.done.length} done, ${issues.wontfix.length} wont-fix`,
+  `Issues: ${issues.backlog.length} backlog, ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.blocked.length} blocked, ${issues.done.length} done (incl. wont-fix)`,
 );
 
 // ── Load test262 runs ────────────────────────────────────────
