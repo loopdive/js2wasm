@@ -172,6 +172,31 @@ if [ -z "$in_worktree" ]; then
       printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
     }' /dev/null
   fi
+  # Days-left-in-week bar: derived from rate_limits.seven_day.resets_at (Unix ts)
+  resets_at=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
+  if [ -n "$resets_at" ]; then
+    now_sec=$(date +%s)
+    remaining_sec=$((${resets_at%.*} - now_sec))
+    if [ "$remaining_sec" -gt 0 ]; then
+      days_left=$(awk "BEGIN {printf \"%.1f\", $remaining_sec / 86400}")
+      days_int=$(awk "BEGIN {printf \"%d\", $remaining_sec / 86400}")
+      elapsed_pct=$(awk "BEGIN {printf \"%d\", (7 - $remaining_sec / 86400) * 100 / 7}")
+      awk -v left="$days_left" -v days_int="$days_int" -v elapsed_pct="$elapsed_pct" 'BEGIN {
+        if (days_int >= 4)     { fill=42;         fg=30 }
+        else if (days_int >= 2){ fill=43;         fg=30 }
+        else                   { fill="48;5;196"; fg=37 }
+        width = 8
+        filled = int(elapsed_pct * width / 100)
+        label = sprintf(" %sd left", left)
+        bar = ""
+        for (i = 0; i < width; i++) bar = bar " "
+        bar = label substr(bar, length(label) + 1)
+        filled_part = substr(bar, 1, filled)
+        empty_part  = substr(bar, filled + 1)
+        printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
+      }' /dev/null
+    fi
+  fi
 fi
 if [ -n "$precompiling" ]; then
   done_n=$(wc -l < "$compile_jsonl" 2>/dev/null || echo 0)
@@ -234,33 +259,6 @@ elif [ -f "$report" ]; then
     p_bar=$(pass_bar "$pass_pct" "${pass_pct}% t262")
     f_bar=$(free_bar "$free_g")
     printf ' %s %s' "$p_bar" "$f_bar"
-  fi
-fi
-if [ -z "$in_worktree" ]; then
-  # Days-left-in-week bar: derived from rate_limits.seven_day.resets_at (Unix ts)
-  resets_at=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
-  if [ -n "$resets_at" ]; then
-    now_sec=$(date +%s)
-    remaining_sec=$((${resets_at%.*} - now_sec))
-    if [ "$remaining_sec" -gt 0 ]; then
-      days_left=$(awk "BEGIN {printf \"%.1f\", $remaining_sec / 86400}")
-      days_int=$(awk "BEGIN {printf \"%d\", $remaining_sec / 86400}")
-      elapsed_pct=$(awk "BEGIN {printf \"%d\", (7 - $remaining_sec / 86400) * 100 / 7}")
-      awk -v left="$days_left" -v days_int="$days_int" -v elapsed_pct="$elapsed_pct" 'BEGIN {
-        if (days_int >= 4)     { fill=42;         fg=30 }
-        else if (days_int >= 2){ fill=43;         fg=30 }
-        else                   { fill="48;5;196"; fg=37 }
-        width = 8
-        filled = int(elapsed_pct * width / 100)
-        label = sprintf(" %sd left", left)
-        bar = ""
-        for (i = 0; i < width; i++) bar = bar " "
-        bar = label substr(bar, length(label) + 1)
-        filled_part = substr(bar, 1, filled)
-        empty_part  = substr(bar, filled + 1)
-        printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
-      }' /dev/null
-    fi
   fi
 fi
 printf '\n'
