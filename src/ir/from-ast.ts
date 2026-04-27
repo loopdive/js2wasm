@@ -84,6 +84,24 @@ export interface AstToIrOptions {
    * throw, falling back to legacy.
    */
   readonly classShapes?: ReadonlyMap<string, IrClassShape>;
+  /**
+   * Slice 6 part 4 (#1183): true when the compiler is emitting native
+   * WasmGC strings (`(ref $AnyString)`) and the `__str_charAt` helper
+   * is available. Consulted by `lowerForOfStatement` to dispatch
+   * string iterables to the native counter loop (`forof.string`)
+   * versus falling through to the host iterator protocol
+   * (`forof.iter`). Defaults to `false` when omitted, matching the
+   * legacy host-strings behavior.
+   */
+  readonly nativeStrings?: boolean;
+  /**
+   * Slice 6 part 4 (#1183): the Wasm `typeIdx` of the `$AnyString`
+   * struct in native-strings mode. Required when `nativeStrings` is
+   * true so the from-ast layer can declare slot types as
+   * `(ref $AnyString)` for the string for-of loop without round-
+   * tripping through a `LowerResolver`. Ignored in host-strings mode.
+   */
+  readonly anyStrTypeIdx?: number;
 }
 
 /**
@@ -172,6 +190,8 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     returnType,
     calleeTypes: options.calleeTypes,
     classShapes: options.classShapes,
+    nativeStrings: options.nativeStrings ?? false,
+    anyStrTypeIdx: options.anyStrTypeIdx,
     lifted,
     liftedCounter,
     mutatedLets,
@@ -431,6 +451,20 @@ interface LowerCtx {
   readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
   /** Slice 4 (#1169d) — class shape registry, keyed by className. */
   readonly classShapes?: ReadonlyMap<string, IrClassShape>;
+  /**
+   * Slice 6 part 4 (#1183) — true when the compiler is in
+   * native-strings mode. Drives the for-of strategy switch for
+   * `string`-typed iterables: native → `forof.string` (counter loop
+   * with `__str_charAt`); host → fall through to `forof.iter`.
+   */
+  readonly nativeStrings: boolean;
+  /**
+   * Slice 6 part 4 (#1183) — Wasm `typeIdx` of the `$AnyString` struct
+   * when `nativeStrings` is true. Used by `lowerForOfString` to set
+   * slot types (`(ref $AnyString)`) for the str / element slots
+   * without threading the full resolver into LowerCtx.
+   */
+  readonly anyStrTypeIdx?: number;
   /** Slice 3 — output bin for lifted closures / nested funcs. */
   readonly lifted: IrFunction[];
   /** Slice 3 — mutable counter for synthesizing lifted-func names. */
@@ -1389,13 +1423,33 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, cx: LowerCtx): void {
   //                                    shape; if it isn't a vec, lowering
   //                                    throws and the function falls back
   //                                    to legacy.
-  //   - `(val) externref`           → iter-host (this slice — #1182).
+  //   - `string` (native mode)      → string fast path (slice 6 part 4 — #1183).
+  //                                    Counter loop with `__str_charAt`.
+  //   - `string` (host mode)         → fall through to iter-host. The
+  //                                    string IR value is already
+  //                                    externref-backed in host mode, so
+  //                                    no coercion is needed.
+  //   - `(val) externref`           → iter-host (slice 6 part 3 — #1182).
   //   - `class` / `object`           → iter-host (with extern.convert_any
   //                                    coercion).
   //   - anything else                → throw, fall back to legacy.
   const valTy = asVal(iterableT);
   if (valTy && (valTy.kind === "ref" || valTy.kind === "ref_null")) {
     lowerForOfVec(stmt, cx, iterableV, valTy, loopVarName);
+    return;
+  }
+  if (iterableT.kind === "string") {
+    if (cx.nativeStrings) {
+      lowerForOfString(stmt, cx, iterableV, loopVarName);
+      return;
+    }
+    // Host-strings mode: fall through to iter-host. The string's
+    // underlying ValType is already externref, so no coercion is
+    // needed — the iter-host arm passes `iterableV` straight to
+    // `__iterator`. We bind the loop variable as externref (host
+    // strings only have host-side string semantics; the iter-host
+    // element is opaque externref by design).
+    lowerForOfIterFromExternrefValue(stmt, cx, iterableV, loopVarName, /* alreadyExternref */ true);
     return;
   }
 
@@ -1406,37 +1460,101 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, cx: LowerCtx): void {
       `ir/from-ast: for-of iterable type ${describeIrType(iterableT)} not supported in slice 6 (${cx.funcName})`,
     );
   }
+  lowerForOfIterFromExternrefValue(stmt, cx, iterableV, loopVarName, valTy?.kind === "externref");
+}
 
-  // Coerce to externref if not already. extern.convert_any is a Wasm
-  // 1-arg op that re-tags any reference as externref.
+/**
+ * Slice 6 part 3 (#1182) iter-host emit helper, factored out of
+ * `lowerForOfStatement` so the string-arm host-strings fall-through can
+ * reuse it. `alreadyExternref` skips the `extern.convert_any` coercion
+ * when the input value is already externref-typed at the Wasm level
+ * (true for `(val) externref` and for `IrType.string` in host mode).
+ */
+function lowerForOfIterFromExternrefValue(
+  stmt: ts.ForOfStatement,
+  cx: LowerCtx,
+  iterableV: IrValueId,
+  loopVarName: string,
+  alreadyExternref: boolean,
+): void {
   let iterableExt = iterableV;
-  if (valTy?.kind !== "externref") {
+  if (!alreadyExternref) {
     iterableExt = cx.builder.emitCoerceToExternref(iterableV);
   }
 
-  // Allocate the three iter-host slots — all externref. The element
-  // slot's IR type is `irVal({ kind: "externref" })`; the loop-var
-  // binding inherits this.
   const iterSlot = cx.builder.declareSlot("__forof_iter", { kind: "externref" });
   const resultSlot = cx.builder.declareSlot("__forof_result", { kind: "externref" });
   const elementSlot = cx.builder.declareSlot("__forof_elem", { kind: "externref" });
 
-  // Bind the loop variable as a `slot` ScopeBinding (externref-typed).
   const elemIrT: IrType = irVal({ kind: "externref" });
   const bodyScope = new Map(cx.scope);
   bodyScope.set(loopVarName, { kind: "slot", slotIndex: elementSlot, type: elemIrT });
   const bodyCx: LowerCtx = { ...cx, scope: bodyScope };
 
-  // Collect body instrs.
   const body = cx.builder.collectBodyInstrs(() => {
     lowerStmt(stmt.statement, bodyCx);
   });
 
-  // Emit the declarative iter-host for-of instr.
   cx.builder.emitForOfIter({
     iterable: iterableExt,
     iterSlot,
     resultSlot,
+    elementSlot,
+    body,
+  });
+}
+
+/**
+ * Slice 6 part 4 (#1183) — native-strings string for-of. Iterates code
+ * units via `__str_charAt(str, i)`. The element IR type is `string`
+ * (single-char string ref); body code can compose with slice-1 string
+ * ops. The slot ValType is `(ref $AnyString)`, supplied by
+ * `nativeStringRefValType` (the lowering-time resolver shape — we
+ * synthesize the same shape here so from-ast doesn't need a resolver
+ * thread-through). The lowerer cross-checks the slot type against
+ * `resolver.resolveString()` at emit time.
+ */
+function lowerForOfString(stmt: ts.ForOfStatement, cx: LowerCtx, strV: IrValueId, loopVarName: string): void {
+  // Native-strings mode requires the AnyString typeIdx threaded
+  // through `LowerCtx.anyStrTypeIdx`. Without it we can't declare
+  // the slot ValTypes for the str/element refs, so the function
+  // falls back to legacy via the generic throw.
+  if (cx.anyStrTypeIdx === undefined) {
+    throw new Error(`ir/from-ast: native-strings for-of needs anyStrTypeIdx in LowerCtx (${cx.funcName})`);
+  }
+  const strRef: ValType = { kind: "ref", typeIdx: cx.anyStrTypeIdx };
+
+  const counterSlot = cx.builder.declareSlot("__forof_si", { kind: "i32" });
+  const lengthSlot = cx.builder.declareSlot("__forof_slen", { kind: "i32" });
+  const strSlot = cx.builder.declareSlot("__forof_str", strRef);
+  const elementSlot = cx.builder.declareSlot("__forof_selem", strRef);
+
+  // The loop variable is bound as a slot of `(ref $AnyString)`. In
+  // native-strings mode the `IrType.string` lowering also produces
+  // `(ref $AnyString)`, so as a Wasm value the slot read result and a
+  // string-typed SSA value are interchangeable. We record the binding
+  // type as `irVal(strRef)` (matching what `emitSlotRead` returns) so
+  // identifier reads against the loop var lower to `slot.read` cleanly.
+  // For body code that wants string ops on the loop var (e.g.
+  // `c + "world"`), the IR's string-op surface dispatches on
+  // `IrType.string`. Slice 6 part 4 doesn't yet upcast the slot read
+  // result to `IrType.string`; that's a follow-up. Body code that
+  // doesn't compose with string ops (concatenation in a temp before
+  // using the loop var, etc.) works today.
+  const elemIrT: IrType = irVal(strRef);
+  const bodyScope = new Map(cx.scope);
+  bodyScope.set(loopVarName, { kind: "slot", slotIndex: elementSlot, type: elemIrT });
+  const bodyCx: LowerCtx = { ...cx, scope: bodyScope };
+
+  const body = cx.builder.collectBodyInstrs(() => {
+    lowerStmt(stmt.statement, bodyCx);
+  });
+
+  cx.builder.emitForOfString({
+    str: strV,
+    counterSlot,
+    lengthSlot,
+    strSlot,
     elementSlot,
     body,
   });
@@ -2081,6 +2199,8 @@ function liftNestedFunction(
     returnType: signature.returnType,
     calleeTypes: cx.calleeTypes,
     classShapes: cx.classShapes,
+    nativeStrings: cx.nativeStrings,
+    anyStrTypeIdx: cx.anyStrTypeIdx,
     lifted: cx.lifted,
     liftedCounter: cx.liftedCounter,
     // Slice 6 part 2 (#1181) — nested-function bodies have their own
@@ -2154,6 +2274,8 @@ function liftClosureBody(
     returnType: signature.returnType,
     calleeTypes: cx.calleeTypes,
     classShapes: cx.classShapes,
+    nativeStrings: cx.nativeStrings,
+    anyStrTypeIdx: cx.anyStrTypeIdx,
     lifted: cx.lifted,
     liftedCounter: cx.liftedCounter,
     // Slice 6 part 2 (#1181) — closure-body mutated lets are scanned

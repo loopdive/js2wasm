@@ -1126,6 +1126,74 @@ export interface IrInstrGenEpilogue extends IrInstrBase {
   readonly kind: "gen.epilogue";
 }
 
+// ---------------------------------------------------------------------------
+// String for-of (#1183 — IR Phase 4 Slice 6 part 4)
+// ---------------------------------------------------------------------------
+//
+// Slice 6 part 4 adds the string fast path. When `iterableType.kind ===
+// "string"` and the compiler is in native-strings mode, the for-of loop
+// iterates code units via `__str_charAt(str, i)` — a counter loop with
+// a `(ref $AnyString, i32) -> (ref $AnyString)` host helper. In host-
+// strings mode the dispatch falls through to `forof.iter` (#1182).
+//
+// `forof.string` is a STATEMENT-level declarative instr that mirrors
+// `forof.vec` and `forof.iter`. Carries the string SSA value, the four
+// slot indices (counter / length / str / element), and the body buffer.
+
+/**
+ * Statement-level `for (const c of <string>) <body>` loop using the
+ * native-strings counter pattern. Emitted only when the resolver
+ * reports `nativeStrings(): true` — host-strings mode falls through
+ * to `forof.iter` upstream in `lowerForOfStatement`.
+ *
+ * The lowerer emits:
+ *   <emit str>
+ *   local.set <strSlot>
+ *   local.get <strSlot>
+ *   struct.get $AnyString $len
+ *   local.set <lengthSlot>
+ *   i32.const 0
+ *   local.set <counterSlot>
+ *   block
+ *     loop
+ *       local.get <counterSlot>
+ *       local.get <lengthSlot>
+ *       i32.ge_s
+ *       br_if 1
+ *       local.get <strSlot>
+ *       local.get <counterSlot>
+ *       call $__str_charAt
+ *       local.set <elementSlot>
+ *       <body instrs>
+ *       local.get <counterSlot>
+ *       i32.const 1
+ *       i32.add
+ *       local.set <counterSlot>
+ *       br 0
+ *     end
+ *   end
+ *
+ * Slot types (set by from-ast):
+ *   counterSlot — i32
+ *   lengthSlot  — i32
+ *   strSlot     — `(ref $AnyString)` (resolver.resolveString())
+ *   elementSlot — `(ref $AnyString)` — each iteration produces a
+ *                 single-char string
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrForOfString extends IrInstrBase {
+  readonly kind: "forof.string";
+  /** SSA value of the string (IrType.string). */
+  readonly str: IrValueId;
+  readonly counterSlot: number;
+  readonly lengthSlot: number;
+  readonly strSlot: number;
+  readonly elementSlot: number;
+  /** Body instrs emitted inside the loop. */
+  readonly body: readonly IrInstr[];
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -1168,7 +1236,8 @@ export type IrInstr =
   | IrInstrIterReturn
   | IrInstrForOfIter
   | IrInstrGenPush
-  | IrInstrGenEpilogue;
+  | IrInstrGenEpilogue
+  | IrInstrForOfString;
 
 // ---------------------------------------------------------------------------
 // Slot definitions (#1169e — IR Phase 4 Slice 6)

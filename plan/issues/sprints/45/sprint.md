@@ -138,6 +138,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | review |
+| #1179-followup | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | medium | review |
 
 ### Done
 

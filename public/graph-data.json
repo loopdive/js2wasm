@@ -16733,6 +16733,18 @@
       "cluster": "performance"
     },
     {
+      "id": "1179-followup",
+      "title": "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "review",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
+    },
+    {
       "id": "1180",
       "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
       "priority": "high",
@@ -16747,6 +16759,20 @@
     {
       "id": "1182",
       "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [
+        "1181"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1183",
+      "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
@@ -17979,7 +18005,8 @@
         "1169g",
         "1169h",
         "1169i",
-        "1182"
+        "1182",
+        "1183"
       ],
       "track": "supporting track"
     },
@@ -20488,6 +20515,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1182"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1183"
     },
     {
       "goal": "contributor-readiness",

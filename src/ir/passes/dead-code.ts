@@ -215,7 +215,11 @@ function isSideEffecting(i: IrInstr): boolean {
     // dead and strip the const that produces it, leaving a stale
     // SSA reference that the verifier rejects.
     i.kind === "gen.push" ||
-    i.kind === "gen.epilogue"
+    i.kind === "gen.epilogue" ||
+    // Slice 6 part 4 (#1183): forof.string is statement-level (result:
+    // null) so the generic null-result rule already keeps it; explicit
+    // listing for clarity.
+    i.kind === "forof.string"
   );
 }
 
@@ -302,7 +306,7 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       const walk = (instrs: readonly IrInstr[]): void => {
         for (const sub of instrs) {
           for (const u of collectInstrUses(sub)) result.push(u);
-          if (sub.kind === "forof.vec" || sub.kind === "forof.iter") walk(sub.body);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
         }
       };
       walk(instr.body);
@@ -326,7 +330,19 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       const walk = (instrs: readonly IrInstr[]): void => {
         for (const sub of instrs) {
           for (const u of collectInstrUses(sub)) result.push(u);
-          if (sub.kind === "forof.vec" || sub.kind === "forof.iter") walk(sub.body);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
+        }
+      };
+      walk(instr.body);
+      return result;
+    }
+    // Slice 6 part 4 (#1183) — string for-of.
+    case "forof.string": {
+      const result: IrValueId[] = [instr.str];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectInstrUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
         }
       };
       walk(instr.body);

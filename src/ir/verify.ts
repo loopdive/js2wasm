@@ -260,6 +260,9 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       // No SSA operand uses — buffer + pendingThrow are read from Wasm
       // locals (slot indices stored on the IrFunction).
       return [];
+    // Slice 6 part 4 (#1183) — string for-of.
+    case "forof.string":
+      return [instr.str];
   }
 }
 

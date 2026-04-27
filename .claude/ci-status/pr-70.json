@@ -1,0 +1,15 @@
+{
+  "pr": 70,
+  "conclusion": "failure",
+  "head_branch": "issue-1169f-7a-ir-generators-f64-yield",
+  "head_sha": "be10d12ed26c7643bfc3c0a486ff2e66193b5933",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24993228907",
+  "timestamp": "2026-04-27T11:58:27Z",
+  "pass": 25841,
+  "fail": 13931,
+  "compile_error": 1847,
+  "snapshot_delta": -134,
+  "net_per_test": -129,
+  "regressions": 290,
+  "improvements": 161
+}

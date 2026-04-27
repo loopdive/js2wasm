@@ -318,7 +318,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       defBy.set(instr.result, instr);
       defBlockOf.set(instr.result, blockId);
     }
-    if (instr.kind === "forof.vec" || instr.kind === "forof.iter") {
+    if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
       for (const sub of instr.body) registerInstrDefs(sub, blockId);
     }
   };
@@ -375,7 +375,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       // execution makes ANY outer-defined value's use a candidate for
       // cross-block materialisation. Mark uses with a synthetic block
       // ID (-1 for "inside-body") so the cross-block test always fires.
-      if (instr.kind === "forof.vec" || instr.kind === "forof.iter") {
+      if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
         for (const u of collectForOfBodyUses(instr.body)) recordUse(u, -1);
       }
     }
@@ -419,7 +419,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       locals.push({ name: `$ir${instr.result}`, type: lowerIrTypeToValType(instr.resultType, resolver, func.name) });
       localIdx.set(instr.result, idx);
     }
-    if (instr.kind === "forof.vec" || instr.kind === "forof.iter") {
+    if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
       for (const sub of instr.body) allocLocalForInstr(sub);
     }
   };
@@ -1054,6 +1054,89 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "call", funcIdx: iteratorReturnIdx });
         return;
       }
+      // Slice 6 part 4 (#1183) — string for-of (native-strings mode).
+      // Counter loop with `__str_charAt(str, i)`. The from-ast layer
+      // ensures this case only runs in native-strings mode (host-strings
+      // mode falls through to forof.iter).
+      case "forof.string": {
+        const charAtIdx = resolver.resolveFunc({ kind: "func", name: "__str_charAt" });
+        // The AnyString struct's `len` field is at index 0 (matches
+        // `nativeStringType` in src/codegen/native-strings.ts).
+        // We recover the typeIdx from the SSA value's IrType — must be
+        // string-typed (resolveString() produces (ref $AnyString) in
+        // native mode). The lowerer reads the resultType off the
+        // defining instr or param.
+        const strIrT = typeOf(instr.str);
+        if (strIrT.kind !== "string") {
+          throw new Error(`ir/lower: forof.string str must be IrType.string, got ${strIrT.kind} (${func.name})`);
+        }
+        const strRef = resolver.resolveString?.();
+        if (!strRef || strRef.kind !== "ref") {
+          throw new Error(`ir/lower: forof.string requires native-strings (resolveString()=ref) (${func.name})`);
+        }
+        const anyStrTypeIdx = (strRef as { typeIdx: number }).typeIdx;
+
+        // <emit str>; local.set <strSlot>
+        emitValue(instr.str, out);
+        out.push({ op: "local.set", index: slotWasmIdx(instr.strSlot) });
+
+        // length = str.len  (struct field 0)
+        out.push({ op: "local.get", index: slotWasmIdx(instr.strSlot) });
+        out.push({ op: "struct.get", typeIdx: anyStrTypeIdx, fieldIdx: 0 });
+        out.push({ op: "local.set", index: slotWasmIdx(instr.lengthSlot) });
+
+        // counter = 0
+        out.push({ op: "i32.const", value: 0 });
+        out.push({ op: "local.set", index: slotWasmIdx(instr.counterSlot) });
+
+        // Build loop body Wasm ops.
+        const loopBody: Instr[] = [];
+        // if (counter >= length) br 1 (exit)
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.counterSlot) });
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.lengthSlot) });
+        loopBody.push({ op: "i32.ge_s" });
+        loopBody.push({ op: "br_if", depth: 1 });
+
+        // element = __str_charAt(str, counter)
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.strSlot) });
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.counterSlot) });
+        loopBody.push({ op: "call", funcIdx: charAtIdx });
+        loopBody.push({ op: "local.set", index: slotWasmIdx(instr.elementSlot) });
+
+        // Body instrs (same materialisation pattern as forof.vec/forof.iter).
+        for (const bodyInstr of instr.body) {
+          if (bodyInstr.result === null) {
+            emitInstrTree(bodyInstr, loopBody);
+          } else if (crossBlock.has(bodyInstr.result)) {
+            emitInstrTree(bodyInstr, loopBody);
+            loopBody.push({ op: "local.set", index: localIdx.get(bodyInstr.result)! });
+            materialized.add(bodyInstr.result);
+          }
+        }
+
+        // counter = counter + 1
+        loopBody.push({ op: "local.get", index: slotWasmIdx(instr.counterSlot) });
+        loopBody.push({ op: "i32.const", value: 1 });
+        loopBody.push({ op: "i32.add" });
+        loopBody.push({ op: "local.set", index: slotWasmIdx(instr.counterSlot) });
+
+        // br 0 (continue)
+        loopBody.push({ op: "br", depth: 0 });
+
+        // block { loop { ... } }
+        out.push({
+          op: "block",
+          blockType: { kind: "empty" },
+          body: [
+            {
+              op: "loop",
+              blockType: { kind: "empty" },
+              body: loopBody,
+            },
+          ],
+        });
+        return;
+      }
     }
   };
 
@@ -1247,6 +1330,9 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       // No SSA operand uses — buffer + pendingThrow are read from Wasm
       // locals (slot indices stored on the IrFunction).
       return [];
+    // Slice 6 part 4 (#1183) — string for-of.
+    case "forof.string":
+      return [instr.str];
   }
 }
 
@@ -1260,7 +1346,7 @@ export function collectForOfBodyUses(body: readonly IrInstr[]): IrValueId[] {
   const uses: IrValueId[] = [];
   for (const instr of body) {
     for (const u of collectIrUses(instr)) uses.push(u);
-    if (instr.kind === "forof.vec" || instr.kind === "forof.iter") {
+    if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
       for (const u of collectForOfBodyUses(instr.body)) uses.push(u);
     }
   }

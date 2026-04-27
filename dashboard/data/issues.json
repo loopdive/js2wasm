@@ -117,6 +117,18 @@
   ],
   "ready": [
     {
+      "id": "1183",
+      "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1181"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
       "id": "1182",
       "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
       "priority": "medium",
@@ -1756,6 +1768,16 @@
     }
   ],
   "review": [
+    {
+      "id": "1179-followup",
+      "title": "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "review",
+      "sprint": "45"
+    },
     {
       "id": "1179",
       "title": "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy",

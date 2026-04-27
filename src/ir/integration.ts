@@ -25,6 +25,7 @@
 import ts from "typescript";
 
 import { addGeneratorImports, addIteratorImports, addStringImports } from "../codegen/index.js";
+import { ensureNativeStringHelpers } from "../codegen/native-strings.js";
 import { addStringConstantGlobal } from "../codegen/registry/imports.js";
 import { addFuncType, getOrRegisterRefCellType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
@@ -148,6 +149,12 @@ export function compileIrPathFunctions(
         returnTypeOverride: o?.returnType,
         calleeTypes,
         classShapes,
+        // Slice 6 part 4 (#1183): thread the nativeStrings flag and
+        // AnyString typeIdx so `lowerForOfStatement`'s string arm can
+        // pick the native counter loop and declare slot ValTypes
+        // without round-tripping through a full LowerResolver.
+        nativeStrings: ctx.nativeStrings,
+        anyStrTypeIdx: ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 ? ctx.anyStrTypeIdx : undefined,
       });
       const mainErrors = verifyIrFunction(result.main);
       if (mainErrors.length > 0) {
@@ -348,6 +355,16 @@ export function compileIrPathFunctions(
   if (readyForLower.some((e) => e.fn.funcKind === "generator")) {
     addGeneratorImports(ctx);
   }
+  // -------------------------------------------------------------------------
+  // Slice 6 part 4 (#1183) — native-string helpers (notably __str_charAt).
+  //
+  // Walk every IR function for any `forof.string` instr; if found, call
+  // `ensureNativeStringHelpers(ctx)` so `__str_charAt` (and the rest of
+  // the native-string helper family) is registered before the lowerer
+  // resolves the funcref. The helper itself is idempotent, but calling
+  // it eagerly avoids late-import shifts during Phase 3 emission.
+  // -------------------------------------------------------------------------
+  preregisterNativeStringHelpers(ctx, readyForLower);
 
   // -------------------------------------------------------------------------
   // Phase 3 — Lower: translate each IrFunction to Wasm and install in ctx.
@@ -544,8 +561,25 @@ function makeResolver(
   return {
     resolveFunc(ref: IrFuncRef): number {
       const idx = ctx.funcMap.get(ref.name);
-      if (idx === undefined) throw new Error(`ir/integration: unknown function ref "${ref.name}"`);
-      return idx;
+      if (idx !== undefined) return idx;
+      // Slice 6 part 4 (#1183): native-string helpers (`__str_charAt`,
+      // `__str_concat`, `__str_equals`, `__str_flatten`, etc.) are
+      // registered in `ctx.nativeStrHelpers`, not `ctx.funcMap`. The
+      // helper map captures funcIdx at registration time and does NOT
+      // get re-shifted by late-import passes, so we re-resolve by name
+      // against the post-shift `ctx.mod.functions` (parallel to
+      // `computeStringBackend`'s rationale for the host string ops).
+      for (let i = 0; i < ctx.mod.functions.length; i++) {
+        if (ctx.mod.functions[i]!.name === ref.name) {
+          return ctx.numImportFuncs + i;
+        }
+      }
+      // Last fallback: the (potentially stale) helpers map. Used when
+      // a name doesn't appear in `ctx.mod.functions` because it's a
+      // host import rather than a defined helper.
+      const helperIdx = ctx.nativeStrHelpers.get(ref.name);
+      if (helperIdx !== undefined) return helperIdx;
+      throw new Error(`ir/integration: unknown function ref "${ref.name}"`);
     },
     resolveGlobal(ref: IrGlobalRef): number {
       const localIdx = ctx.mod.globals.findIndex((g) => g.name === ref.name);
@@ -794,6 +828,49 @@ function preregisterIteratorSupport(ctx: CodegenContext, fns: readonly BuiltFnRe
       for (const instr of block.instrs) {
         if (usesIter(instr)) {
           addIteratorImports(ctx);
+          return;
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Native-string helper pre-registration (#1183)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 6 part 4 (#1183): pre-register native-string helpers
+ * (`__str_charAt`, `__str_concat`, `__str_equals`, `__str_flatten`, …)
+ * if any IR function emits a `forof.string` instr. Same rationale as
+ * `preregisterStringSupport` and `preregisterIteratorSupport` —
+ * idempotent helper, called eagerly so Phase 3's funcref resolution
+ * sees stable indices.
+ *
+ * `forof.string` is only produced by from-ast in native-strings mode,
+ * so the helper call here is a no-op in host-strings mode.
+ */
+function preregisterNativeStringHelpers(ctx: CodegenContext, fns: readonly BuiltFnRef[]): void {
+  if (!ctx.nativeStrings) return;
+  const usesForOfString = (instr: IrInstr): boolean => {
+    switch (instr.kind) {
+      case "forof.string":
+        return true;
+      case "forof.vec":
+      case "forof.iter":
+        for (const sub of instr.body) {
+          if (usesForOfString(sub)) return true;
+        }
+        return false;
+      default:
+        return false;
+    }
+  };
+  for (const entry of fns) {
+    for (const block of entry.fn.blocks) {
+      for (const instr of block.instrs) {
+        if (usesForOfString(instr)) {
+          ensureNativeStringHelpers(ctx);
           return;
         }
       }
