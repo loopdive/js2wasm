@@ -82,30 +82,54 @@ export STARLINGMONKEY_RUNTIME=/path/to/StarlingMonkey/cmake-build-release/starli
 export STARLINGMONKEY_WASMTIME_BIN=/path/to/wasmtime
 \`\`\`
 
-For the benchmark-specific ComponentizeJS lane, the repo ships:
+For the benchmark-specific ComponentizeJS lane (Wizer pre-init + Weval AOT,
+see #1125), the repo ships:
 
 \`\`\`text
-scripts/starlingmonkey-componentize-adapter.mjs
+benchmarks/competitive/sm-componentize-adapter.mjs
 \`\`\`
 
-That adapter expects ComponentizeJS to be installed separately, either as a
-local package import or as a \`componentize-js\` CLI on \`PATH\`. Simplest setup:
+The legacy path \`scripts/starlingmonkey-componentize-adapter.mjs\` is kept as a
+thin shim that forwards to the canonical adapter, so any older docs or env
+configs keep working.
+
+The adapter requires ComponentizeJS, which is in this repo's
+\`devDependencies\`. Bundled \`@bytecodealliance/wizer\` and
+\`@bytecodealliance/weval\` are pulled in automatically — no system install
+needed. Weval downloads its native binary on first AOT use; subsequent runs
+are cached.
+
+Simplest setup: just install dependencies. The harness auto-detects the
+bundled adapter when ComponentizeJS is resolvable.
 
 \`\`\`bash
-pnpm add -D @bytecodealliance/componentize-js
-export STARLINGMONKEY_ADAPTER=$PWD/scripts/starlingmonkey-componentize-adapter.mjs
+pnpm install
+pnpm run benchmark:competitive
 \`\`\`
 
-Optional CLI fallback instead of a local package install:
+You only need to set \`STARLINGMONKEY_ADAPTER\` if you want to point the harness
+at a different adapter implementation:
+
+\`\`\`bash
+export STARLINGMONKEY_ADAPTER=$PWD/benchmarks/competitive/sm-componentize-adapter.mjs
+\`\`\`
+
+Opt out of Weval AOT (Wizer pre-init still runs):
+
+\`\`\`bash
+export STARLINGMONKEY_COMPONENTIZE_AOT=0
+\`\`\`
+
+Optional CLI fallback instead of the local package import:
 
 \`\`\`bash
 export COMPONENTIZE_JS_BIN=/path/to/componentize-js
 \`\`\`
 
-Optional AOT attempt with Wizer/Weval:
+Optional explicit Wizer / Weval binaries (otherwise the bundled ones are
+used):
 
 \`\`\`bash
-export STARLINGMONKEY_COMPONENTIZE_AOT=1
 export STARLINGMONKEY_WIZER_BIN=/path/to/wizer
 export STARLINGMONKEY_WEVAL_BIN=/path/to/weval
 \`\`\`

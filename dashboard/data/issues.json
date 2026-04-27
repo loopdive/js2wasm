@@ -127,6 +127,67 @@
       "sprint": "46"
     },
     {
+      "id": "1169i",
+      "title": "IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169d"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169h",
+      "title": "IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169g",
+      "title": "IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e",
+        "1169f"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169f",
+      "title": "IR Phase 4 Slice 7 — generators and async/await through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
+      "id": "1169e",
+      "title": "IR Phase 4 Slice 6 — iterators and for-of through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169d"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "45"
+    },
+    {
       "id": "1169d",
       "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
       "priority": "high",
@@ -364,16 +425,6 @@
         "1124"
       ],
       "goal": "performance",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
-      "id": "1125",
-      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "benchmarking",
       "status": "ready",
       "sprint": "45"
     },
@@ -2062,6 +2113,16 @@
       "goal": "correctness",
       "status": "done",
       "sprint": "43"
+    },
+    {
+      "id": "1125",
+      "title": "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "benchmarking",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1124",

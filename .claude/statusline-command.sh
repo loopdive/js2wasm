@@ -6,7 +6,7 @@ model_id=$(echo "$input" | jq -r '.model.id // empty')
 ctx_size=$(echo "$input" | jq -r 'if .context_window.context_window_size then (.context_window.context_window_size / 1000 | floor | tostring) + "K" else empty end')
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 weekly=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
-effort=$(echo "$input" | jq -r '.thinking.type // .effort // empty')
+effort=$(echo "$input" | jq -r '.thinking.type // .effort.level // .effort // empty')
 in_worktree=$(echo "$input" | jq -r '.worktree.path // empty')
 case "$model_id" in
   claude-opus-4-7*)   pricing='$15/$75'; price_in=15 ;;
@@ -20,6 +20,9 @@ if [ -n "$pricing" ]; then
   else                                           price_color='00;32'
   fi
 fi
+branch=$(git -C "${cwd:-$(pwd)}" rev-parse --abbrev-ref HEAD 2>/dev/null)
+issue=$(echo "$branch" | sed -n 's/^issue-\([a-zA-Z0-9]*\).*/\1/p')
+[ -n "$issue" ] && printf '\033[01;33m#%s\033[00m ' "$issue"
 printf '\033[01;34m%s\033[00m' "${cwd:-$(pwd)}"
 [ -n "$model" ] && printf ' \033[%sm%s\033[00m' "${price_color:-00;37}" "$model"
 if [ -n "$ctx_size" ]; then

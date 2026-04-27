@@ -121,8 +121,40 @@ const STARLINGMONKEY_RUNTIME =
 const STARLINGMONKEY_WASMTIME_BIN =
   process.env.STARLINGMONKEY_WASMTIME_BIN ||
   (STARLINGMONKEY_ROOT ? path.join(STARLINGMONKEY_ROOT, "deps", "cpm_cache", "wasmtime", "487d", "wasmtime") : "");
-const STARLINGMONKEY_ADAPTER = process.env.STARLINGMONKEY_ADAPTER || "";
+// Default to the bundled ComponentizeJS adapter when @bytecodealliance/componentize-js
+// is installed and the adapter file ships in this repo (see #1125). Setting
+// STARLINGMONKEY_ADAPTER explicitly overrides this. To opt out of the bundled
+// adapter without removing the file, set STARLINGMONKEY_ADAPTER= (empty).
+const BUNDLED_STARLINGMONKEY_ADAPTER = path.resolve(import.meta.dirname, "competitive", "sm-componentize-adapter.mjs");
+function defaultStarlingMonkeyAdapter(): string {
+  if (!existsSync(BUNDLED_STARLINGMONKEY_ADAPTER)) return "";
+  // Probe whether ComponentizeJS is resolvable from this repo's node_modules.
+  // We don't actually import it here — that would download the Weval binary
+  // even if the lane is never invoked. We just check the package's main entry
+  // point resolves through Node's resolver, respecting its `exports` field.
+  // Note: `require.resolve("...")` is unreliable here because the package
+  // restricts subpath exports; `import.meta.resolve` honours conditions.
+  try {
+    // import.meta.resolve is sync since Node 20.6; it returns a file:// URL
+    // and throws if the package isn't reachable.
+    const url = (import.meta as unknown as { resolve(spec: string): string }).resolve(
+      "@bytecodealliance/componentize-js",
+    );
+    if (typeof url === "string" && url.length > 0) {
+      return BUNDLED_STARLINGMONKEY_ADAPTER;
+    }
+  } catch {
+    // fall through
+  }
+  return "";
+}
+const STARLINGMONKEY_ADAPTER =
+  process.env.STARLINGMONKEY_ADAPTER !== undefined
+    ? process.env.STARLINGMONKEY_ADAPTER
+    : defaultStarlingMonkeyAdapter();
 const STARLINGMONKEY_ADAPTER_KIND = process.env.STARLINGMONKEY_ADAPTER_KIND || "module";
+const STARLINGMONKEY_ADAPTER_IS_BUNDLED =
+  STARLINGMONKEY_ADAPTER !== "" && path.resolve(STARLINGMONKEY_ADAPTER) === BUNDLED_STARLINGMONKEY_ADAPTER;
 const WASMTIME_OPTIMIZE = process.env.WASMTIME_OPTIMIZE || "opt-level=2";
 const WASMTIME_WASM_FLAGS = ["-W", "gc=y,gc-support=y,function-references=y,exceptions=y"];
 const WASM_OPT_FLAGS = (process.env.WASM_OPT_FLAGS || "--all-features -O4").trim().split(/\s+/).filter(Boolean);
@@ -1756,15 +1788,18 @@ function evaluateStarlingMonkeyComponentize(
   baselineRuntime: number,
 ): ToolchainResult {
   if (!STARLINGMONKEY_ADAPTER) {
+    const adapterMissingNotes = existsSync(BUNDLED_STARLINGMONKEY_ADAPTER)
+      ? [
+          `bundled adapter at ${path.relative(ROOT, BUNDLED_STARLINGMONKEY_ADAPTER)} is present but @bytecodealliance/componentize-js is not installed (run \`pnpm install\`)`,
+        ]
+      : ["STARLINGMONKEY_ADAPTER is not configured and the bundled adapter is missing"];
     return {
       id: "starlingmonkey-componentize-wasmtime",
-      label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+      label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
       status: "unavailable",
       notes: STARLINGMONKEY_ROOT
-        ? [
-            `vendored checkout found at ${path.relative(ROOT, STARLINGMONKEY_ROOT)}, but STARLINGMONKEY_ADAPTER is not configured`,
-          ]
-        : ["STARLINGMONKEY_ADAPTER is not configured"],
+        ? [`vendored checkout found at ${path.relative(ROOT, STARLINGMONKEY_ROOT)}`, ...adapterMissingNotes]
+        : adapterMissingNotes,
       rawBytes: null,
       runtimeBytes: null,
       gzipBytes: null,
@@ -1796,7 +1831,7 @@ function evaluateStarlingMonkeyComponentize(
     if (!compileStep.ok) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "compile-error",
         notes: [compileStep.stderr || "adapter failed to compile program"],
         compilerBytes: null,
@@ -1820,7 +1855,7 @@ function evaluateStarlingMonkeyComponentize(
     if (!precompile.ok) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "runtime-error",
         notes: [precompile.stderr || "wasmtime compile failed"],
         compilerBytes: null,
@@ -1843,7 +1878,7 @@ function evaluateStarlingMonkeyComponentize(
     if (coldStart.result !== baselineCold) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "runtime-error",
         notes: [`checksum mismatch for cold run: expected ${baselineCold}, got ${coldStart.result}`],
         compilerBytes: null,
@@ -1866,7 +1901,7 @@ function evaluateStarlingMonkeyComponentize(
     if (runtimeSingleCall.result !== baselineRuntime) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "runtime-error",
         notes: [
           `checksum mismatch for runtime single call: expected ${baselineRuntime}, got ${runtimeSingleCall.result}`,
@@ -1892,7 +1927,7 @@ function evaluateStarlingMonkeyComponentize(
     if (runtime.result !== baselineRuntime) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "runtime-error",
         notes: [`checksum mismatch for runtime run: expected ${baselineRuntime}, got ${runtime.result}`],
         compilerBytes: null,
@@ -1908,11 +1943,22 @@ function evaluateStarlingMonkeyComponentize(
 
     return {
       id: "starlingmonkey-componentize-wasmtime",
-      label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+      label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
       status: "ok",
       notes:
         metadata.kind === "component"
-          ? ["benchmark-specific component artifact generated through ComponentizeJS"]
+          ? [
+              "benchmark-specific component artifact generated through ComponentizeJS",
+              `Wizer pre-init: on; Weval AOT: ${
+                ((metadata.componentize as Record<string, unknown> | undefined)?.wevalAotEnabled ??
+                (metadata.componentize as Record<string, unknown> | undefined)?.enableAot)
+                  ? "on"
+                  : "off"
+              }`,
+              STARLINGMONKEY_ADAPTER_IS_BUNDLED
+                ? `using bundled adapter ${path.relative(ROOT, BUNDLED_STARLINGMONKEY_ADAPTER)}`
+                : `using adapter ${STARLINGMONKEY_ADAPTER}`,
+            ]
           : ["benchmark-specific Wasm artifact generated through adapter"],
       compilerBytes: null,
       runtimeBytes: null,
