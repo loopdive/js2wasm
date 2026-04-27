@@ -118,6 +118,61 @@ free_bar() {
   }'
 }
 
+# Sprint progress bar (only on main workspace, not in worktrees)
+if [ -z "$in_worktree" ]; then
+  sprint_n=""
+  sprint_done=0
+  sprint_total=0
+  sprints_json="/workspace/dashboard/data/sprints.json"
+  if [ -f "$sprints_json" ]; then
+    # Read from pre-built sprints.json (deduplicated, wont-fix counted as done)
+    sprint_data=$(jq -r '
+      [ .[] | select(.sprintNumber != null and .isClosed == false and .isPlanning == false) ]
+      | sort_by(.sprintNumber) | last
+      | "\(.sprintNumber) \(.completedIssueIds | length) \(.issueIds | length)"
+    ' "$sprints_json" 2>/dev/null)
+    if [ -n "$sprint_data" ]; then
+      sprint_n=$(echo "$sprint_data" | awk '{print $1}')
+      sprint_done=$(echo "$sprint_data" | awk '{print $2}')
+      sprint_total=$(echo "$sprint_data" | awk '{print $3}')
+    fi
+  fi
+  if [ -z "$sprint_n" ]; then
+    # Fallback: raw scan when sprints.json not available
+    sprint_dir="/workspace/plan/issues/sprints"
+    if [ -d "$sprint_dir" ]; then
+      for n in $(ls "$sprint_dir" | grep -E '^[0-9]+$' | sort -rn); do
+        files=$(find "$sprint_dir/$n" -maxdepth 1 -name '*.md' ! -name 'sprint.md' 2>/dev/null)
+        if [ -n "$files" ]; then
+          done_n=$(echo "$files" | xargs grep -lE '^status: (done|wont-fix)' 2>/dev/null | wc -l)
+          if [ "$done_n" -gt 0 ] || [ -z "$sprint_n" ]; then
+            sprint_n="$n"
+            sprint_total=$(echo "$files" | wc -l)
+            sprint_done="$done_n"
+            [ "$done_n" -gt 0 ] && break
+          fi
+        fi
+      done
+    fi
+  fi
+  if [ -n "$sprint_n" ] && [ "$sprint_total" -gt 0 ]; then
+    sprint_pct=$((sprint_done * 100 / sprint_total))
+    awk -v p="$sprint_pct" -v n="$sprint_n" 'BEGIN {
+      if (p >= 55)      { fill=42;         fg=30 }
+      else if (p >= 33) { fill=43;         fg=30 }
+      else              { fill="48;5;196"; fg=37 }
+      width = 9
+      filled = int(p * width / 100)
+      label = sprintf(" %d%% s%d ", p, n)
+      bar = ""
+      for (i = 0; i < width; i++) bar = bar " "
+      bar = label substr(bar, length(label) + 1)
+      filled_part = substr(bar, 1, filled)
+      empty_part  = substr(bar, filled + 1)
+      printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
+    }' /dev/null
+  fi
+fi
 if [ -n "$precompiling" ]; then
   done_n=$(wc -l < "$compile_jsonl" 2>/dev/null || echo 0)
   printf ' \033[00;33m⟳compile:%s/48K\033[00m' "$done_n"
@@ -181,60 +236,7 @@ elif [ -f "$report" ]; then
     printf ' %s %s' "$p_bar" "$f_bar"
   fi
 fi
-# Sprint progress bar (only on main workspace, not in worktrees)
 if [ -z "$in_worktree" ]; then
-  sprint_n=""
-  sprint_done=0
-  sprint_total=0
-  sprints_json="/workspace/dashboard/data/sprints.json"
-  if [ -f "$sprints_json" ]; then
-    # Read from pre-built sprints.json (deduplicated, wont-fix counted as done)
-    sprint_data=$(jq -r '
-      [ .[] | select(.sprintNumber != null and .isClosed == false and .isPlanning == false) ]
-      | sort_by(.sprintNumber) | last
-      | "\(.sprintNumber) \(.completedIssueIds | length) \(.issueIds | length)"
-    ' "$sprints_json" 2>/dev/null)
-    if [ -n "$sprint_data" ]; then
-      sprint_n=$(echo "$sprint_data" | awk '{print $1}')
-      sprint_done=$(echo "$sprint_data" | awk '{print $2}')
-      sprint_total=$(echo "$sprint_data" | awk '{print $3}')
-    fi
-  fi
-  if [ -z "$sprint_n" ]; then
-    # Fallback: raw scan when sprints.json not available
-    sprint_dir="/workspace/plan/issues/sprints"
-    if [ -d "$sprint_dir" ]; then
-      for n in $(ls "$sprint_dir" | grep -E '^[0-9]+$' | sort -rn); do
-        files=$(find "$sprint_dir/$n" -maxdepth 1 -name '*.md' ! -name 'sprint.md' 2>/dev/null)
-        if [ -n "$files" ]; then
-          done_n=$(echo "$files" | xargs grep -lE '^status: (done|wont-fix)' 2>/dev/null | wc -l)
-          if [ "$done_n" -gt 0 ] || [ -z "$sprint_n" ]; then
-            sprint_n="$n"
-            sprint_total=$(echo "$files" | wc -l)
-            sprint_done="$done_n"
-            [ "$done_n" -gt 0 ] && break
-          fi
-        fi
-      done
-    fi
-  fi
-  if [ -n "$sprint_n" ] && [ "$sprint_total" -gt 0 ]; then
-    sprint_pct=$((sprint_done * 100 / sprint_total))
-    awk -v p="$sprint_pct" -v n="$sprint_n" 'BEGIN {
-      if (p >= 55)      { fill=42;         fg=30 }
-      else if (p >= 33) { fill=43;         fg=30 }
-      else              { fill="48;5;196"; fg=37 }
-      width = 9
-      filled = int(p * width / 100)
-      label = sprintf(" %d%% s%d ", p, n)
-      bar = ""
-      for (i = 0; i < width; i++) bar = bar " "
-      bar = label substr(bar, length(label) + 1)
-      filled_part = substr(bar, 1, filled)
-      empty_part  = substr(bar, filled + 1)
-      printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
-    }' /dev/null
-  fi
   # Days-left-in-week bar: derived from rate_limits.seven_day.resets_at (Unix ts)
   resets_at=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
   if [ -n "$resets_at" ]; then
