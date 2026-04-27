@@ -191,10 +191,15 @@ if [ -z "$in_worktree" ]; then
     for n in $(ls "$sprint_dir" | grep -E '^[0-9]+$' | sort -rn); do
       files=$(find "$sprint_dir/$n" -maxdepth 1 -name '*.md' ! -name 'sprint.md' 2>/dev/null)
       if [ -n "$files" ]; then
-        sprint_n="$n"
-        sprint_total=$(echo "$files" | wc -l)
-        sprint_done=$(echo "$files" | xargs grep -l '^status: done' 2>/dev/null | wc -l)
-        break
+        done_n=$(echo "$files" | xargs grep -l '^status: done' 2>/dev/null | wc -l)
+        # Pick highest sprint that has at least one done issue (active sprint)
+        # Fall back to highest with any issues if none have done issues yet
+        if [ "$done_n" -gt 0 ] || [ -z "$sprint_n" ]; then
+          sprint_n="$n"
+          sprint_total=$(echo "$files" | wc -l)
+          sprint_done="$done_n"
+          [ "$done_n" -gt 0 ] && break
+        fi
       fi
     done
   fi
@@ -215,23 +220,30 @@ if [ -z "$in_worktree" ]; then
       printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
     }' /dev/null
   fi
-  # Days-left-in-week bar: Mon=1 ... Sun=7, resets Monday
-  dow=$(date +%u)  # 1=Mon, 7=Sun
-  days_left=$((7 - dow))
-  elapsed_pct=$((dow * 100 / 7))
-  awk -v left="$days_left" -v elapsed_pct="$elapsed_pct" 'BEGIN {
-    if (left >= 4)     { fill=42;         fg=30 }
-    else if (left >= 2){ fill=43;         fg=30 }
-    else               { fill="48;5;196"; fg=37 }
-    width = 8
-    filled = int(elapsed_pct * width / 100)
-    label = sprintf(" %dd left", left)
-    bar = ""
-    for (i = 0; i < width; i++) bar = bar " "
-    bar = label substr(bar, length(label) + 1)
-    filled_part = substr(bar, 1, filled)
-    empty_part  = substr(bar, filled + 1)
-    printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
-  }' /dev/null
+  # Days-left-in-week bar: derived from rate_limits.seven_day.resets_at (Unix ts)
+  resets_at=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
+  if [ -n "$resets_at" ]; then
+    now_sec=$(date +%s)
+    remaining_sec=$((${resets_at%.*} - now_sec))
+    if [ "$remaining_sec" -gt 0 ]; then
+      days_left=$(awk "BEGIN {printf \"%.1f\", $remaining_sec / 86400}")
+      days_int=$(awk "BEGIN {printf \"%d\", $remaining_sec / 86400}")
+      elapsed_pct=$(awk "BEGIN {printf \"%d\", (7 - $remaining_sec / 86400) * 100 / 7}")
+      awk -v left="$days_left" -v days_int="$days_int" -v elapsed_pct="$elapsed_pct" 'BEGIN {
+        if (days_int >= 4)     { fill=42;         fg=30 }
+        else if (days_int >= 2){ fill=43;         fg=30 }
+        else                   { fill="48;5;196"; fg=37 }
+        width = 8
+        filled = int(elapsed_pct * width / 100)
+        label = sprintf(" %sd left", left)
+        bar = ""
+        for (i = 0; i < width; i++) bar = bar " "
+        bar = label substr(bar, length(label) + 1)
+        filled_part = substr(bar, 1, filled)
+        empty_part  = substr(bar, filled + 1)
+        printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
+      }' /dev/null
+    fi
+  fi
 fi
 printf '\n'
