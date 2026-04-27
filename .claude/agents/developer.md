@@ -44,7 +44,13 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
 2. Run scoped local checks again after the merge
 3. `git push origin <branch>`
 4. `gh pr create --base main --title "fix(#N): <description>" --body "..."`
-5. **Wait for CI**: poll `.claude/ci-status/pr-<N>.json` until `head_sha` matches `git rev-parse HEAD`
+5. **Wait for CI**: use a **foreground blocking loop** — do NOT use background tasks or `run_in_background`. Run:
+   ```bash
+   until [ -f .claude/ci-status/pr-<N>.json ] && \
+     [ "$(jq -r '.head_sha' .claude/ci-status/pr-<N>.json)" = "$(git rev-parse HEAD)" ]; \
+     do sleep 60; done
+   ```
+   This keeps the agent occupied (no idle_notification spam) until CI result lands.
 6. Run `/dev-self-merge <N>` — outputs MERGE or ESCALATE
 7. On MERGE: `gh pr merge <N> --merge --admin`
 8. On ESCALATE: message tech lead with which criterion failed + values
