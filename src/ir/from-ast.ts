@@ -319,29 +319,25 @@ function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
     // line 89-123): a `return <value>` inside a `function*` pushes
     // `<value>` onto the eager buffer as a final yielded value, then
     // wraps the buffer with `__create_generator` to produce the
-    // externref Generator object. This is non-spec — JS spec says the
-    // return value lands in `IteratorResult.value` with `done:true` —
-    // but matching legacy is the correctness target so existing
-    // test262 coverage doesn't drift.
+    // externref Generator object.
     //
-    // Slice 7b widens the return type: we accept any Phase-1 expression
-    // and route it through the same `lowerYield`-style dispatch
-    // (f64/i32 stay native; ref/string/object/class coerce to
-    // externref → __gen_push_ref). Same dispatch logic as `lowerYield`
-    // except we get a `ts.Expression` already, not a YieldExpression.
+    // Slice 7b note: we conservatively keep slice 7a's strict f64-only
+    // return-value rule here even though `lowerYield` widens to
+    // i32/ref. Generators with non-f64 returns are RARE in practice,
+    // and the strict rule lets such generators fall back to legacy
+    // (the throw is caught by the integration phase's per-function
+    // try/catch). Bare `return;` is allowed by the selector (slice
+    // 7b widening) and emits the epilogue without a final push.
     if (cx.funcKind === "generator") {
       if (stmt.expression) {
-        const v = lowerExpr(stmt.expression, cx, irVal({ kind: "externref" }));
+        const v = lowerExpr(stmt.expression, cx, irVal({ kind: "f64" }));
         const vt = cx.builder.typeOf(v);
-        const valTy = asVal(vt);
-        if (valTy?.kind === "f64" || valTy?.kind === "i32") {
-          cx.builder.emitGenPush(v);
-        } else {
-          // Reference-shaped — coerce to externref upstream so the
-          // lowerer's `__gen_push_ref` arm sees the right Wasm type.
-          const vExt = coerceYieldValueToExternref(v, cx);
-          cx.builder.emitGenPush(vExt);
+        if (asVal(vt)?.kind !== "f64") {
+          throw new Error(
+            `ir/from-ast: generator return must be f64 in slice 7b (got ${describeIrType(vt)}) (${cx.funcName})`,
+          );
         }
+        cx.builder.emitGenPush(v);
       }
       const generatorObj = cx.builder.emitGenEpilogue();
       cx.builder.terminate({ kind: "return", values: [generatorObj] });
