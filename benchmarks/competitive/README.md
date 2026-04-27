@@ -348,13 +348,16 @@ wasmCloud, etc.) where:
 - **All Wasm code is precompiled at deploy time** via `wasmtime compile -O
   opt-level=2`, not JIT'd at request time. The harness uses the precompiled
   `.cwasm` for every Wasm lane to mirror this.
-- **The guest cannot JIT either.** The Wasm sandbox model (W xor X pages)
-  prevents code inside a Wasm module from generating new machine code at
-  runtime, so the StarlingMonkey embedding (and the SpiderMonkey
-  interpreter inside it) runs **interpreter-only** in production — its
-  Baseline and Ion JIT tiers are unavailable. The same constraint applies
-  to Javy's embedded QuickJS runtime: it runs as a Wasm-resident
-  interpreter, no host JIT.
+- **The guest does not JIT either.** The Wasm sandbox model (W xor X
+  pages) means code inside a Wasm module does not generate new machine
+  code at runtime, so JS engines running inside Wasm operate as
+  interpreter-only in this deployment shape. For StarlingMonkey, that
+  means SpiderMonkey's Baseline and Ion JIT tiers are not active; for
+  Javy, the same applies to QuickJS. Both projects address this through
+  deliberate design choices that are explicitly oriented around an
+  interpreter-only execution model — Wizer + Weval AOT specialization
+  in StarlingMonkey's case, dynamic-link Wasm bytecode-emission in
+  Javy's case.
 
 This is exactly the gap Wizer and Weval are designed to close:
 
@@ -407,19 +410,35 @@ on the same grounds.
 | `string-hash` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 30.5 | 22.2 | 14.2 |
 
 For the two programs where js2wasm → Wasmtime succeeds end-to-end
-(`fib-recursive`, `fib`), js2wasm beats both JS-host approaches on hot
-runtime by an order of magnitude or more:
+(`fib-recursive`, `fib`), js2wasm has a hot-runtime advantage over both
+JS-host approaches of an order of magnitude or more on these workloads:
 
-- `fib`: js2wasm 18.3 ms vs Javy 1,453.2 ms (**79× slower**) vs StarlingMonkey 1,241.8 ms (**68× slower**)
-- `fib-recursive`: js2wasm 11.3 ms vs Javy 114.0 ms (**10× slower**) vs StarlingMonkey 195.3 ms (**17× slower**)
+- `fib`: js2wasm 18.3 ms; Javy 1,453.2 ms (~79× slower for this workload); StarlingMonkey 1,241.8 ms (~68× slower for this workload).
+- `fib-recursive`: js2wasm 11.3 ms; Javy 114.0 ms (~10× slower for this workload); StarlingMonkey 195.3 ms (~17× slower for this workload).
 
-For the workloads where Javy and StarlingMonkey are head-to-head:
-- Javy beats StarlingMonkey on `fib` (1,453 vs 1,242 ms — 17 % StarlingMonkey win) and `array-sum`/`fib-recursive`/`object-ops` come out roughly equal.
-- StarlingMonkey beats Javy on `string-hash` (22.2 ms vs 48.8 ms — **2.2× faster**), where Weval AOT specialization helps because the workload exercises more interpreter-dispatch overhead.
+This is the expected shape: js2wasm executes as compiled Wasm directly,
+while Javy and StarlingMonkey both run a JS interpreter inside Wasm
+(see "A note on JIT and serverless Wasm" above for why the guest
+interpreter is the relevant comparison point in this deployment model).
+The gap is workload-dependent — for very tight numeric loops the
+interpreter's per-opcode dispatch cost compounds, while for workloads
+with more diverse opcode mixes (such as `string-hash` below) the gap
+narrows considerably.
 
-The other three programs hit pre-existing js2wasm codegen bugs unrelated to
-`#1125`. Both the Javy and StarlingMonkey + ComponentizeJS lanes successfully
-run all five programs.
+Where Javy and StarlingMonkey overlap (all five programs):
+
+- For `array-sum`, `fib-recursive`, and `object-ops`, the two come out
+  roughly equivalent on hot runtime.
+- For `fib` (tight numeric loop), StarlingMonkey is ~17 % faster than
+  Javy (1,242 ms vs 1,453 ms).
+- For `string-hash`, StarlingMonkey is ~2.2× faster than Javy (22.2 ms
+  vs 48.8 ms), where Weval AOT specialization meaningfully amortizes
+  interpreter-dispatch overhead on a workload with more dispatch variety.
+
+The other three programs hit pre-existing js2wasm codegen bugs unrelated
+to `#1125` (filed as #1173, #1174, #1175). Both the Javy and
+StarlingMonkey + ComponentizeJS lanes successfully run all five programs
+end-to-end on the test set.
 
 #### A/B verification: Wizer-only vs Wizer + Weval AOT
 
@@ -465,22 +484,218 @@ Shared / per-host runtime cost (deployed once across every function):
 | --- | ---: | --- |
 | js2wasm | _none_ | the user module is the entire artifact |
 | Javy (dynamic, Shopify-style) | 1,212.4 kB plugin.wasm | shared QuickJS runtime imported via `--preload javy-default-plugin-v3=plugin.wasm` |
-| StarlingMonkey + ComponentizeJS | _none — bundled per function_ | the SpiderMonkey embedding is rebuilt and snapshotted into every component |
+| StarlingMonkey + ComponentizeJS | _bundled per function in `componentize-js` 0.20.0_ | the SpiderMonkey embedding is included in each component today; a shared-runtime / library-component direction is on the Bytecode Alliance roadmap |
 
-**Total deployment size for N functions:**
+**Total deployment size for N functions** depends on which bytes you account
+for. Both views below are valid; each models a different stage of the
+deployment pipeline:
+
+**View A — raw `.wasm` bytes** (the artifact you upload, version-control, or
+push to a registry):
 
 | N | js2wasm | Javy (dynamic) | StarlingMonkey + ComponentizeJS |
 | ---: | ---: | ---: | ---: |
-| 1 | ~0.2 kB | ~1,215 kB | ~14,500 kB |
-| 100 | ~20 kB | ~1,500 kB | ~1,450,000 kB (1.45 GB) |
-| 10,000 | ~2 MB | ~30 MB | ~145 GB |
+| 1 | ~0.5 kB | ~1,215 kB (1,212 kB plugin + 3 kB user) | ~14,500 kB |
+| 100 | ~50 kB | ~1.5 MB (1,212 kB plugin + 300 kB users) | ~1.45 GB |
+| 10,000 | ~5 MB | ~31 MB (1,212 kB plugin + 30 MB users) | ~145 GB |
 
-js2wasm wins by a wide margin on per-function size because it compiles
-the user code directly to Wasm with no embedded interpreter. Javy's
-dynamic-link mode wins by roughly the same factor over StarlingMonkey +
-ComponentizeJS at scale, because Shopify's design shares the QuickJS
-runtime across all functions while ComponentizeJS bundles the
-SpiderMonkey embedding (~14 MB) into every component.
+**View B — precompiled `.cwasm` bytes** (what wasmtime actually loads when you
+deploy with `wasmtime compile -O opt-level=2` first, as Fastly Compute@Edge
+does in production):
+
+| N | js2wasm | Javy (dynamic) | StarlingMonkey + ComponentizeJS |
+| ---: | ---: | ---: | ---: |
+| 1 | ~194 kB | ~5.07 MB (4,870 kB plugin + 196 kB user) | ~53.4 MB |
+| 100 | ~19.4 MB | ~24.5 MB (4.87 MB plugin + 19.6 MB users) | ~5.34 GB |
+| 10,000 | ~1.94 GB | ~1.96 GB (4.87 MB plugin + 1.96 GB users) | ~534 GB |
+
+The two views diverge because Cranelift's AOT output carries a roughly fixed
+~190 kB of per-module wasmtime-runtime metadata (type tables, instantiation
+data, native code prelude) regardless of how small the input `.wasm` is. So a
+~0.1 kB js2wasm user module and a ~3 kB Javy user module both land at
+~196 kB once Cranelift is done with them. At the cwasm level, that fixed
+overhead dominates and the per-function `.cwasm` sizes for js2wasm and Javy
+become essentially equivalent.
+
+### What this means for each toolchain's design
+
+Each project optimizes for a different shape, and the numbers reflect those
+deliberate engineering choices:
+
+- **js2wasm** compiles the user's TypeScript directly to Wasm at build time.
+  The user-facing `.wasm` is small because nothing else ships alongside it,
+  and the `.cwasm` is dominated by Cranelift's per-module metadata —
+  the same fixed overhead any small Wasm module pays.
+- **Javy** in Shopify Functions production setup ships QuickJS as a shared
+  `plugin.wasm` deployed once per host, with each function carrying just its
+  own ~1–3 kB compiled bytecode. This is a deliberate amortization design:
+  the more functions a host runs, the lower the marginal cost per function.
+  At 10,000 functions, Javy's total cwasm footprint converges with js2wasm
+  (~1.96 GB vs ~1.94 GB) because the Cranelift per-module overhead equalizes
+  the two once both are precompiled.
+- **StarlingMonkey + ComponentizeJS** at `componentize-js` 0.20.0 includes
+  the SpiderMonkey embedding in every component. This is a self-contained
+  deployable-unit design — each artifact is independently runnable without
+  needing a sibling runtime, which simplifies some deployment models.
+  Bytecode Alliance roadmap work on shared-runtime / library-component
+  composition is what would amortize the embedding across functions in
+  the same way Javy does today.
+
+### Where each design has the deployment-size advantage
+
+- For **uploaded source artifacts (View A)**, js2wasm produces the smallest
+  per-function module, and Javy's dynamic-link design produces the
+  smallest *marginal* per-function module once the shared plugin is in place.
+  Both architectures avoid bundling a JS engine per function.
+- For **loaded cwasm at request time (View B)**, js2wasm and Javy are nearly
+  equivalent at scale; the Cranelift per-module overhead dominates once the
+  user module is precompiled.
+- For **all views today**, StarlingMonkey + ComponentizeJS has a per-function
+  size gap that reflects its current self-contained-component design — a
+  trade-off the Bytecode Alliance is actively addressing with shared-runtime
+  work referenced earlier in this README.
+
+### Deployment savings analysis
+
+This section translates the size and runtime numbers above into operational
+savings on real serverless platforms. The arithmetic is parameterised on
+"$X per CPU-second" so the reader can plug in current rates from the
+provider's pricing page rather than relying on figures that may go stale.
+
+#### 1. Storage savings (derived from the size tables above)
+
+For 10,000 deployed functions, choosing js2wasm or Javy over StarlingMonkey
++ ComponentizeJS saves on the order of:
+
+| Switching from → to | Storage saved (cwasm view) | Storage saved (raw view) |
+| --- | ---: | ---: |
+| StarlingMonkey + ComponentizeJS → Javy (Shopify dynamic) | ~532 GB | ~145 GB |
+| StarlingMonkey + ComponentizeJS → js2wasm | ~532 GB | ~145 GB |
+| Javy (Shopify dynamic) → js2wasm | ~20 MB | ~26 MB |
+
+js2wasm and Javy are essentially tied on cwasm storage at scale — both
+benefit from a small per-function payload, and Javy's shared plugin
+amortizes its QuickJS runtime across all functions.
+
+#### 2. Cumulative execution-time savings (worked example)
+
+For a workload like `fib(20,000,000)` invoked 1,000,000 times per month
+(a realistic monthly invocation count for a popular serverless function):
+
+| Lane | Per-call hot | × 1M invocations | Wall-clock CPU |
+| --- | ---: | ---: | --- |
+| js2wasm → Wasmtime | 18.3 ms | 18,300 s | ~5.1 hours |
+| Javy (Shopify dynamic) → Wasmtime | 1,453.2 ms | 1,453,200 s | **~16.8 days** |
+| StarlingMonkey + ComponentizeJS → Wasmtime | 1,241.8 ms | 1,241,800 s | **~14.4 days** |
+
+| Switching from → to | CPU time saved per month | Saved per year |
+| --- | ---: | ---: |
+| Javy → js2wasm | ~16.6 days | ~199 days |
+| StarlingMonkey + ComponentizeJS → js2wasm | ~14.3 days | ~172 days |
+| StarlingMonkey + ComponentizeJS → Javy | ~2.4 days | ~29 days |
+
+These figures are linear in invocation count and proportional to the
+hot-runtime delta, so they scale predictably to other workloads — the
+table above can be re-derived for any (workload, monthly invocations)
+pair using the per-call hot numbers from the runtime table.
+
+#### 3. Cost translation — Fastly Compute@Edge
+
+Fastly Compute@Edge is billed on a per-request and compute-time basis;
+current pricing is published at
+[fastly.com/pricing](https://www.fastly.com/pricing) and varies by tier.
+The framework below is parameterised so the reader can plug in the
+current rate.
+
+**Formula:**
+
+```
+$ saved per function per month
+   = (other_lane_ms − js2wasm_ms) × monthly_invocations × ($/CPU-sec ÷ 1000)
+```
+
+**Worked example** (illustrative, *not* a quotation — verify the current
+rate at fastly.com/pricing): for a 1M monthly-invocation workload at an
+illustrative rate of `$0.00005 / CPU-second`:
+
+| Switching from → to | Saved per function / month | × 100 functions | × 10,000 functions |
+| --- | ---: | ---: | ---: |
+| Javy → js2wasm (`fib`, Δ = 1,434.9 ms/call) | ~$71.75 | ~$7,175 | ~$717,500 |
+| StarlingMonkey → js2wasm (`fib`, Δ = 1,223.5 ms/call) | ~$61.18 | ~$6,118 | ~$611,800 |
+| StarlingMonkey → Javy (`fib`, Δ = 211.4 ms/call) | ~$10.57 | ~$1,057 | ~$105,700 |
+
+For non-numeric workloads with smaller hot-runtime deltas (e.g.
+`string-hash` where StarlingMonkey already amortizes the interpreter
+through Weval AOT), the per-call savings shrink correspondingly.
+The delta-per-call is the operative quantity; the savings table above
+re-derives directly from the runtime metrics for any program.
+
+The illustrative rate (`$0.00005 / CPU-second`) is a placeholder in the
+ballpark of typical compute-tier pricing — actual savings should be
+calculated using each customer's contracted Fastly rate. Fastly bundles
+some compute-time allowance into the per-request price on certain plans,
+so the effective marginal $/CPU-sec varies with the customer's request
+volume and tier.
+
+#### 4. Cost translation — Shopify Functions
+
+Shopify Functions uses a different billing model. The platform absorbs
+the compute cost — there is no direct per-invocation $ charge to the app
+developer or merchant — but Shopify enforces hard limits that translate
+"savings" into something different from a dollar figure:
+
+| Limit | Current value | What it means in practice |
+| --- | --- | --- |
+| Execution time per call | 5 ms wall-clock | Functions that exceed are killed; merchant flow breaks |
+| Module size | 256 kB compressed | Larger Wasm cannot be uploaded at all |
+| Memory | 10 MB per instance | Hard cap on linear memory + JS heap |
+
+Refer to the official Shopify Functions documentation for current limit
+values, since they evolve over time.
+
+For our `fib(20,000,000)` workload, **all three lanes exceed 5 ms**
+substantially (js2wasm 18.3 ms, Javy 1,453 ms, StarlingMonkey 1,242 ms),
+which simply puts that workload outside Shopify Functions' design space.
+For lighter workloads more typical of Shopify Functions (cart validation,
+shipping rate computation, discount logic):
+
+- **js2wasm** has the most headroom under the 5 ms budget: more JS
+  complexity stays within the budget before timing out.
+- **Javy (dynamic)** fits Shopify's 256 kB module-size limit by design —
+  the user-specific Wasm is ~3 kB and the QuickJS runtime ships once at
+  the platform layer. Javy is the toolchain Shopify Functions actively
+  supports today.
+- **StarlingMonkey + ComponentizeJS** at `componentize-js` 0.20.0
+  produces ~14.5 MB components, which exceed Shopify Functions' 256 kB
+  module-size limit by ~57×. The Bytecode Alliance shared-runtime /
+  library-component direction (referenced earlier in this README) is
+  what would unlock fitting under such a limit.
+
+For Shopify Functions specifically, the relevant "savings" question is
+not "how many dollars" but "what additional logic can fit within the
+5 ms / 256 kB / 10 MB envelope" — and the answer there favors faster
+execution per call for any toolchain that targets the platform.
+
+#### Caveats for these projections
+
+- **Workload-specific extrapolation.** The savings tables use the `fib`
+  hot-runtime numbers as a worked example. Different workloads have
+  different per-call hot deltas; the formula remains correct but plug in
+  the relevant program's number from the runtime table.
+- **Single-call hot vs warmed-loop hot.** The hot-runtime metric is
+  measured by looping inside one fresh process after one warm-up call;
+  this is closest to "function is hot, requests stream in steadily".
+  Cold-start-dominated traffic patterns shift the savings story — check
+  the cold-start column too.
+- **CPU pricing is platform-specific.** The Fastly worked example uses
+  an illustrative rate. Customer contracts, tier bundling, and request-
+  volume discounts all change the marginal $/CPU-sec. The formula above
+  composes with whatever rate the customer actually pays.
+- **Memory translation is a separate axis.** This section discusses CPU
+  time and storage. Runtime memory (peak RSS while a function instance
+  is live) is not currently captured by the harness; cwasm size is a
+  *floor* but not the full picture. See "future work" notes for the
+  follow-up that would add real RSS instrumentation.
 
 ## Javy
 
