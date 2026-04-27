@@ -16565,6 +16565,66 @@
       "cluster": "compiler-architecture"
     },
     {
+      "id": "1169e",
+      "title": "IR Phase 4 Slice 6 — iterators and for-of through the IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169f",
+      "title": "IR Phase 4 Slice 7 — generators and async/await through the IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169g",
+      "title": "IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169h",
+      "title": "IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169i",
+      "title": "IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "1170",
       "title": "Move test262 baselines out of Git LFS — eliminate LFS dependency from CI",
       "priority": "high",
@@ -17809,7 +17869,12 @@
         "1169a",
         "1169b",
         "1169c",
-        "1169d"
+        "1169d",
+        "1169e",
+        "1169f",
+        "1169g",
+        "1169h",
+        "1169i"
       ],
       "track": "supporting track"
     },
@@ -20269,6 +20334,26 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169d"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169e"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169f"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169g"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169h"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169i"
     },
     {
       "goal": "contributor-readiness",
