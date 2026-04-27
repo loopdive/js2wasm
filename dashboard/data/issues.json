@@ -1775,6 +1775,16 @@
   ],
   "done": [
     {
+      "id": "1202",
+      "title": "credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "contributor-readiness",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
       "id": "1186",
       "title": "fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx)",
       "priority": "high",
