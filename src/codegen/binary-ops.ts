@@ -1008,12 +1008,8 @@ export function compileBinaryExpression(
   const parentIsToInt32Bitwise =
     !!parent && ts.isBinaryExpression(parent) && isBitwiseOpKind(parent.operatorToken.kind);
   const wrappedInToInt32 = isArithOp && parentIsToInt32Bitwise;
-  // #1179: predicate for "this expression compiles to i32 cheaply with
-  // an i32 hint" — leaves are i32 locals or i32-range integer literals,
-  // and internal nodes are bitwise / `| 0` (always i32) or arithmetic
-  // (i32 IF the result is ToInt32-wrapped, which our caller guarantees
-  // by only invoking this from a bitwise / `| 0` context).
-  const isI32PureExpr = (e: ts.Expression): boolean => {
+  // Helper: peel parens/as/non-null wrappers off `e`.
+  const peel = (e: ts.Expression): ts.Expression => {
     let inner: ts.Expression = e;
     while (
       ts.isParenthesizedExpression(inner) ||
@@ -1029,6 +1025,44 @@ export function compileBinaryExpression(
             ? inner.expression
             : (inner as ts.TypeAssertion).expression;
     }
+    return inner;
+  };
+  // #1179-followup: a "small" integer literal — magnitude strictly below 2^21.
+  // Used to guard the i32 multiplication fast path (see `isI32MulSafe`).
+  // The exact bound is `1 << 21` = 2097152; we accept |n| ≤ 2097151. Two
+  // i32 values where one's magnitude is ≤ 2^21 produce a true product
+  // bounded by 2^21 × 2^31 = 2^52 < 2^53, which is exactly representable
+  // in f64. f64.mul of these inputs equals the true integer product, and
+  // ToInt32 of the f64 result equals i32.mul of the inputs — so the i32
+  // fast path matches the JS spec value bit-for-bit.
+  const isSmallIntLit = (e: ts.Expression): boolean => {
+    const inner = peel(e);
+    if (!ts.isNumericLiteral(inner)) return false;
+    const n = Number(inner.text.replace(/_/g, ""));
+    return Number.isInteger(n) && Math.abs(n) < 1 << 21;
+  };
+  // #1179-followup: spec-faithful i32 multiplication is safe iff at least
+  // one operand is provably small (|n| < 2^21). Without this guard the
+  // i32.mul fast path can deviate from JS spec when the true integer
+  // product exceeds 2^53 — f64 (53-bit mantissa) loses precision, so
+  // f64.mul + ToInt32 disagrees with i32.mul on the low bits.
+  // Example divergence: `(0x7FFFFFFF * 0x7FFFFFFF) | 0` is `0` per spec,
+  // `1` via i32.mul. Guarding `*` with this check preserves the array-sum
+  // win (`i * 17` etc. — the small-literal multiplier is the common case)
+  // while restoring spec conformance for unbounded inputs.
+  const isI32MulSafe = (l: ts.Expression, r: ts.Expression): boolean => {
+    return isSmallIntLit(l) || isSmallIntLit(r);
+  };
+  // #1179: predicate for "this expression compiles to i32 cheaply with
+  // an i32 hint" — leaves are i32 locals or i32-range integer literals,
+  // and internal nodes are bitwise / `| 0` (always i32) or arithmetic
+  // (i32 IF the result is ToInt32-wrapped, which our caller guarantees
+  // by only invoking this from a bitwise / `| 0` context).
+  //
+  // #1179-followup: the multiplication arm is guarded by `isI32MulSafe`
+  // — see comment on that helper for the rationale.
+  const isI32PureExpr = (e: ts.Expression): boolean => {
+    const inner = peel(e);
     if (ts.isIdentifier(inner)) return isI32LocalRef(inner);
     if (ts.isNumericLiteral(inner)) {
       const n = Number(inner.text.replace(/_/g, ""));
@@ -1044,18 +1078,30 @@ export function compileBinaryExpression(
       if (isBitwiseOpKind(k)) {
         return isI32PureExpr(inner.left) && isI32PureExpr(inner.right);
       }
-      // Arith ops: i32 wrap is correct only because the parent context
-      // ToInt32-wraps the chain. Recurse — internal arith stays i32-safe
-      // under the same parent-wrap guarantee.
-      if (k === ts.SyntaxKind.PlusToken || k === ts.SyntaxKind.MinusToken || k === ts.SyntaxKind.AsteriskToken) {
+      // Arith add/sub: i32 wrap is correct under the parent's ToInt32
+      // guarantee — f64 add/sub of two i32 values is exact (|a±b| ≤ 2^32
+      // < 2^53), so ToInt32 of the f64 result equals i32.add/sub mod 2^32.
+      if (k === ts.SyntaxKind.PlusToken || k === ts.SyntaxKind.MinusToken) {
         return isI32PureExpr(inner.left) && isI32PureExpr(inner.right);
+      }
+      // Arith mul: i32 wrap is only spec-faithful when the true product
+      // stays within 2^53. Without range tracking, the cheap proof is
+      // "at least one operand is a small integer literal" — see
+      // `isI32MulSafe`. Without this guard, large-input multiplications
+      // would observably deviate from JS spec.
+      if (k === ts.SyntaxKind.AsteriskToken) {
+        return isI32PureExpr(inner.left) && isI32PureExpr(inner.right) && isI32MulSafe(inner.left, inner.right);
       }
     }
     return false;
   };
   // Arith op with ToInt32-wrapping parent: fire if both operands are i32-pure.
   // Subsumes the original i32-locals-only check; literals and nested chains now apply too.
-  const arithI32WithToInt32Wrap = wrappedInToInt32 && isI32PureExpr(expr.left) && isI32PureExpr(expr.right);
+  // #1179-followup: when the OUTER op is `*`, additionally require the
+  // small-literal guard — same rationale as the recursive case above.
+  const outerMulI32Safe = op !== ts.SyntaxKind.AsteriskToken || isI32MulSafe(expr.left, expr.right);
+  const arithI32WithToInt32Wrap =
+    wrappedInToInt32 && isI32PureExpr(expr.left) && isI32PureExpr(expr.right) && outerMulI32Safe;
   // Bitwise op with i32-pure operands: emit native i32 op directly,
   // skipping the f64-ToInt32 round-trip in compileBitwiseBinaryOp.
   const bitwiseI32 = isBitwiseOpKind(op) && isI32PureExpr(expr.left) && isI32PureExpr(expr.right);
