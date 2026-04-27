@@ -216,6 +216,12 @@ function isSideEffecting(i: IrInstr): boolean {
     // SSA reference that the verifier rejects.
     i.kind === "gen.push" ||
     i.kind === "gen.epilogue" ||
+    // Slice 7b (#1169f): gen.yieldStar drains every value from the
+    // inner iterable onto the buffer — observable through __gen_next
+    // downstream. Pin for the same reason as gen.push: the operand
+    // (`inner`) must stay live, but DCE's propagation only flows
+    // through `result`-bearing instrs.
+    i.kind === "gen.yieldStar" ||
     // Slice 6 part 4 (#1183): forof.string is statement-level (result:
     // null) so the generic null-result rule already keeps it; explicit
     // listing for clarity.
@@ -353,6 +359,9 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.value];
     case "gen.epilogue":
       return [];
+    // Slice 7b (#1169f): yield* delegation.
+    case "gen.yieldStar":
+      return [instr.inner];
   }
 }
 

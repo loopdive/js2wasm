@@ -605,6 +605,20 @@ export class IrFunctionBuilder {
     return result;
   }
 
+  /**
+   * Slice 7b (#1169f): emit a `gen.yieldStar` instr — drain the inner
+   * iterable into the outer generator's buffer via
+   * `__gen_yield_star(buf, inner)`. The caller MUST coerce `inner` to
+   * externref upstream (e.g. via `emitCoerceToExternref`) — the host
+   * import expects an externref in arg position 1.
+   */
+  emitGenYieldStar(inner: IrValueId): void {
+    if (this.funcKind !== "generator") {
+      throw new Error(`IrFunctionBuilder: emitGenYieldStar requires funcKind=generator (${this.name})`);
+    }
+    this.pushInstr({ kind: "gen.yieldStar", inner, result: null, resultType: null });
+  }
+
   private requireBlock(): OpenBlock {
     if (this.current === null) {
       throw new Error(`IrFunctionBuilder: no open block (func ${this.name})`);

@@ -1126,6 +1126,37 @@ export interface IrInstrGenEpilogue extends IrInstrBase {
   readonly kind: "gen.epilogue";
 }
 
+/**
+ * Slice 7b (#1169f) — `yield* <iterable>` delegation. Drains the inner
+ * iterable into the outer generator's `__gen_buffer` by calling the
+ * `__gen_yield_star(buf, iterable)` host import (signature
+ * `(externref, externref) → void`; the host iterates the inner via
+ * `Symbol.iterator` and pushes each value).
+ *
+ * The `inner` operand MUST already be coerced to externref by the
+ * caller (`lowerYield` in `from-ast.ts` inserts a `coerce.to_externref`
+ * upstream). The lowerer just emits the buffer-load, value, and call.
+ *
+ * Result is void. Only valid inside `funcKind === "generator"`. The
+ * lowerer reads `IrFunction.generatorBufferSlot` for the buffer
+ * `local.get`.
+ *
+ * Lowering pattern:
+ *   local.get $__gen_buffer
+ *   <emit inner>          ;; already externref
+ *   call $__gen_yield_star
+ *
+ * Spec divergence note: ECMA-262 §27.5.3.7 says `yield*` evaluates to
+ * the inner iterator's `return` value (the `IteratorResult.value` when
+ * `done` becomes true). Under the eager-buffer model this is discarded;
+ * `yield*` evaluates to `undefined`. Matches the legacy compiler's
+ * behaviour (`misc.ts:177-202`).
+ */
+export interface IrInstrGenYieldStar extends IrInstrBase {
+  readonly kind: "gen.yieldStar";
+  readonly inner: IrValueId;
+}
+
 // ---------------------------------------------------------------------------
 // String for-of (#1183 — IR Phase 4 Slice 6 part 4)
 // ---------------------------------------------------------------------------
@@ -1237,6 +1268,7 @@ export type IrInstr =
   | IrInstrForOfIter
   | IrInstrGenPush
   | IrInstrGenEpilogue
+  | IrInstrGenYieldStar
   | IrInstrForOfString;
 
 // ---------------------------------------------------------------------------
