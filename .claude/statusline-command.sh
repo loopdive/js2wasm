@@ -179,7 +179,7 @@ if [ -z "$in_worktree" ]; then
           bar = label substr(bar, length(label) + 1)
           filled_part = substr(bar, 1, filled)
           empty_part  = substr(bar, filled + 1)
-          printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[%s;%sm \033[00m", fill, fg, filled_part, empty_part, fill, fg
+          printf " \033[%s;%sm%s\033[48;5;237;37m%s \033[00m", fill, fg, filled_part, empty_part
         }
       }' /dev/null
     fi
