@@ -24,7 +24,7 @@
 
 import ts from "typescript";
 
-import { addGeneratorImports, addStringImports } from "../codegen/index.js";
+import { addGeneratorImports, addIteratorImports, addStringImports } from "../codegen/index.js";
 import { addStringConstantGlobal } from "../codegen/registry/imports.js";
 import { addFuncType, getOrRegisterRefCellType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
@@ -321,11 +321,23 @@ export function compileIrPathFunctions(
   preregisterStringSupport(ctx, readyForLower);
 
   // -------------------------------------------------------------------------
+  // Slice 6 part 3 (#1182) — iterator host imports.
+  //
+  // Walk every IR function for any `iter.*` / `forof.iter` / coercion-to-
+  // externref instruction; if found, call `addIteratorImports(ctx)` so the
+  // resolver can map `__iterator` / `__iterator_next` / `__iterator_done` /
+  // `__iterator_value` / `__iterator_return` to concrete funcIdx values
+  // BEFORE Phase 3 resolves IrFuncRef symbols. This pre-registration
+  // matches `preregisterStringSupport`'s rationale.
+  // -------------------------------------------------------------------------
+  preregisterIteratorSupport(ctx, readyForLower);
+
+  // -------------------------------------------------------------------------
   // Slice 7a (#1169f) — pre-register generator host imports if any IR
   // function will emit `gen.push` / `gen.epilogue`. Same rationale as
-  // the string pre-registration above: late-import shifting is
-  // expensive and can invalidate the lowerer's local op buffer if it
-  // fires mid-emission. `addGeneratorImports` is idempotent on
+  // the string + iterator pre-registration above: late-import shifting
+  // is expensive and can invalidate the lowerer's local op buffer if
+  // it fires mid-emission. `addGeneratorImports` is idempotent on
   // `ctx.funcMap` membership, so the legacy-source detection at
   // `codegen/index.ts:4031` (which fires whenever the source contains
   // any `function*`) makes this call a no-op in practice — but the
@@ -733,6 +745,60 @@ function instrUsesStrings(instr: IrInstr): boolean {
     instr.kind === "string.eq" ||
     instr.kind === "string.len"
   );
+}
+
+// ---------------------------------------------------------------------------
+// Iterator pre-registration (#1182)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 6 part 3 (#1182): pre-register the iterator host imports if any
+ * IR function emits an `iter.*` or `forof.iter` instr. Same pattern and
+ * rationale as `preregisterStringSupport`: late import registration
+ * shifts function indices, and we want the shift to be a no-op on the
+ * IR path's `IrFuncRef` resolution.
+ *
+ * `addIteratorImports` is idempotent on `ctx.funcMap.has("__iterator")`,
+ * so it's safe to call repeatedly.
+ */
+function preregisterIteratorSupport(ctx: CodegenContext, fns: readonly BuiltFnRef[]): void {
+  const usesIter = (instr: IrInstr): boolean => {
+    switch (instr.kind) {
+      case "iter.new":
+      case "iter.next":
+      case "iter.done":
+      case "iter.value":
+      case "iter.return":
+        return true;
+      case "forof.iter": {
+        // forof.iter is itself an iter user, but ALSO walk the body in
+        // case the IR ever materialises iter.* directly inside.
+        for (const sub of instr.body) {
+          if (usesIter(sub)) return true;
+        }
+        return true;
+      }
+      case "forof.vec": {
+        // A vec for-of body can syntactically contain nested iter ops.
+        for (const sub of instr.body) {
+          if (usesIter(sub)) return true;
+        }
+        return false;
+      }
+      default:
+        return false;
+    }
+  };
+  for (const entry of fns) {
+    for (const block of entry.fn.blocks) {
+      for (const instr of block.instrs) {
+        if (usesIter(instr)) {
+          addIteratorImports(ctx);
+          return;
+        }
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -16745,6 +16745,20 @@
       "cluster": "compilable"
     },
     {
+      "id": "1182",
+      "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [
+        "1181"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -17964,7 +17978,8 @@
         "1169f",
         "1169g",
         "1169h",
-        "1169i"
+        "1169i",
+        "1182"
       ],
       "track": "supporting track"
     },
@@ -20469,6 +20484,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169i"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1182"
     },
     {
       "goal": "contributor-readiness",

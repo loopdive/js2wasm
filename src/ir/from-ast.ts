@@ -1367,26 +1367,10 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, cx: LowerCtx): void {
   //    is inferred from the lowered value.
   const iterableV = lowerExpr(stmt.expression, cx, irVal({ kind: "externref" }));
   const iterableT = cx.builder.typeOf(iterableV);
-  const valTy = asVal(iterableT);
-  if (!valTy || (valTy.kind !== "ref" && valTy.kind !== "ref_null")) {
-    throw new Error(
-      `ir/from-ast: for-of iterable must lower to a vec ref (got ${describeIrType(iterableT)}) in ${cx.funcName}`,
-    );
-  }
 
-  // 2. Recover the element ValType from the vec struct definition. The
-  //    legacy `getOrRegisterVecType` always shapes a vec as
-  //      { length: i32, data: (ref $arr_<elem>) }
-  //    so we walk into the struct here. If the shape doesn't match,
-  //    throw and fall back to legacy.
-  const elemValType = inferVecElementValTypeFromContext(valTy, cx);
-  if (!elemValType) {
-    throw new Error(`ir/from-ast: for-of iterable's IR type is not a recognisable vec in ${cx.funcName}`);
-  }
-  const elemIrT = irVal(elemValType);
-
-  // 3. Resolve the loop-variable name. The selector enforces a single
-  //    Identifier-named decl in `(const|let)` form.
+  // 2. Resolve the loop-variable name. The selector enforces a single
+  //    Identifier-named decl in `(const|let)` form. Shared between vec
+  //    and iter-host arms.
   const init = stmt.initializer;
   if (!ts.isVariableDeclarationList(init) || init.declarations.length !== 1) {
     throw new Error(`ir/from-ast: for-of init shape unexpected (${cx.funcName})`);
@@ -1397,10 +1381,84 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, cx: LowerCtx): void {
   }
   const loopVarName = decl.name.text;
 
-  // 4. Allocate the five slots the forof.vec lowerer expects. Slot
-  //    types match the lowerer's emit pattern in `src/ir/lower.ts`:
-  //      counter: i32, length: i32, vec: <vec ref>, data: <arr ref>,
-  //      element: <elem ValType>.
+  // 3. Strategy dispatch.
+  //
+  //   - `(val) ref|ref_null`        → vec path (slice 6 part 2 — #1181).
+  //                                    The lowerer's resolveVec validates
+  //                                    the struct's `{ length, data }`
+  //                                    shape; if it isn't a vec, lowering
+  //                                    throws and the function falls back
+  //                                    to legacy.
+  //   - `(val) externref`           → iter-host (this slice — #1182).
+  //   - `class` / `object`           → iter-host (with extern.convert_any
+  //                                    coercion).
+  //   - anything else                → throw, fall back to legacy.
+  const valTy = asVal(iterableT);
+  if (valTy && (valTy.kind === "ref" || valTy.kind === "ref_null")) {
+    lowerForOfVec(stmt, cx, iterableV, valTy, loopVarName);
+    return;
+  }
+
+  // Iter-host arm: externref / class / object iterables.
+  const isIterHostEligible = valTy?.kind === "externref" || iterableT.kind === "class" || iterableT.kind === "object";
+  if (!isIterHostEligible) {
+    throw new Error(
+      `ir/from-ast: for-of iterable type ${describeIrType(iterableT)} not supported in slice 6 (${cx.funcName})`,
+    );
+  }
+
+  // Coerce to externref if not already. extern.convert_any is a Wasm
+  // 1-arg op that re-tags any reference as externref.
+  let iterableExt = iterableV;
+  if (valTy?.kind !== "externref") {
+    iterableExt = cx.builder.emitCoerceToExternref(iterableV);
+  }
+
+  // Allocate the three iter-host slots — all externref. The element
+  // slot's IR type is `irVal({ kind: "externref" })`; the loop-var
+  // binding inherits this.
+  const iterSlot = cx.builder.declareSlot("__forof_iter", { kind: "externref" });
+  const resultSlot = cx.builder.declareSlot("__forof_result", { kind: "externref" });
+  const elementSlot = cx.builder.declareSlot("__forof_elem", { kind: "externref" });
+
+  // Bind the loop variable as a `slot` ScopeBinding (externref-typed).
+  const elemIrT: IrType = irVal({ kind: "externref" });
+  const bodyScope = new Map(cx.scope);
+  bodyScope.set(loopVarName, { kind: "slot", slotIndex: elementSlot, type: elemIrT });
+  const bodyCx: LowerCtx = { ...cx, scope: bodyScope };
+
+  // Collect body instrs.
+  const body = cx.builder.collectBodyInstrs(() => {
+    lowerStmt(stmt.statement, bodyCx);
+  });
+
+  // Emit the declarative iter-host for-of instr.
+  cx.builder.emitForOfIter({
+    iterable: iterableExt,
+    iterSlot,
+    resultSlot,
+    elementSlot,
+    body,
+  });
+}
+
+/**
+ * Slice 6 part 2 (#1181) vec fast-path — extracted into a helper so
+ * `lowerForOfStatement` can dispatch between vec and iter-host arms.
+ */
+function lowerForOfVec(
+  stmt: ts.ForOfStatement,
+  cx: LowerCtx,
+  iterableV: IrValueId,
+  valTy: ValType,
+  loopVarName: string,
+): void {
+  const elemValType = inferVecElementValTypeFromContext(valTy, cx);
+  if (!elemValType) {
+    throw new Error(`ir/from-ast: for-of iterable's IR type is not a recognisable vec in ${cx.funcName}`);
+  }
+  const elemIrT = irVal(elemValType);
+
   const dataValType = inferVecDataValTypeFromContext(valTy, cx);
   if (!dataValType) {
     throw new Error(`ir/from-ast: for-of vec has unexpected data field shape (${cx.funcName})`);
@@ -1411,21 +1469,14 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, cx: LowerCtx): void {
   const dataSlot = cx.builder.declareSlot("__forof_data", dataValType);
   const elementSlot = cx.builder.declareSlot("__forof_elem", elemValType);
 
-  // 5. Bind the loop variable as a `slot` ScopeBinding inside the body
-  //    scope. The body's reads of `<id>` go through `slot.read`.
   const bodyScope = new Map(cx.scope);
   bodyScope.set(loopVarName, { kind: "slot", slotIndex: elementSlot, type: elemIrT });
   const bodyCx: LowerCtx = { ...cx, scope: bodyScope };
 
-  // 6. Collect body instrs into the forof.vec body buffer. The builder
-  //    routes all subsequent `pushInstr` calls into the buffer until
-  //    the callback returns.
   const body = cx.builder.collectBodyInstrs(() => {
     lowerStmt(stmt.statement, bodyCx);
   });
 
-  // 7. Emit the declarative for-of instr. The lowerer in `src/ir/lower.ts`
-  //    emits the `block { loop { ... } }` Wasm pattern.
   cx.builder.emitForOfVec({
     vec: iterableV,
     elementType: elemIrT,

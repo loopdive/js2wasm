@@ -733,6 +733,88 @@ export class IrFunctionBuilder {
       resultType: null,
     });
   }
+
+  // --- coercion + iterator protocol (slice 6 part 3 — #1182) -----------
+
+  /**
+   * Coerce a reference-typed IR value to externref. Caller is responsible
+   * for ensuring `value` has a reference IrType — numeric ValTypes
+   * (i32/f64) cannot be coerced and produce an invalid Wasm body.
+   */
+  emitCoerceToExternref(value: IrValueId): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = irVal({ kind: "externref" });
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({ kind: "coerce.to_externref", value, result, resultType });
+    return result;
+  }
+
+  /**
+   * Construct a host iterator handle from an externref iterable.
+   * `async: false` calls `__iterator`; `async: true` calls
+   * `__async_iterator` (reserved for #1169f, slice 7).
+   */
+  emitIterNew(iterable: IrValueId, async: boolean): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = irVal({ kind: "externref" });
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({ kind: "iter.new", iterable, async, result, resultType });
+    return result;
+  }
+
+  /**
+   * Advance the iterator (`iter.next()`). Result is the iterator-result
+   * object as externref. Side-effecting — DCE must not eliminate.
+   */
+  emitIterNext(iter: IrValueId): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = irVal({ kind: "externref" });
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({ kind: "iter.next", iter, result, resultType });
+    return result;
+  }
+
+  /** Read `.done` off an iterator-result object. Returns i32 (bool). */
+  emitIterDone(resultObj: IrValueId): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = irVal({ kind: "i32" });
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({ kind: "iter.done", resultObj, result, resultType });
+    return result;
+  }
+
+  /** Read `.value` off an iterator-result object. Returns externref. */
+  emitIterValue(resultObj: IrValueId): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = irVal({ kind: "externref" });
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({ kind: "iter.value", resultObj, result, resultType });
+    return result;
+  }
+
+  /** Call `iter.return()`. Void result. */
+  emitIterReturn(iter: IrValueId): void {
+    this.pushInstr({ kind: "iter.return", iter, result: null, resultType: null });
+  }
+
+  emitForOfIter(args: {
+    iterable: IrValueId;
+    iterSlot: number;
+    resultSlot: number;
+    elementSlot: number;
+    body: readonly IrInstr[];
+  }): void {
+    this.pushInstr({
+      kind: "forof.iter",
+      iterable: args.iterable,
+      iterSlot: args.iterSlot,
+      resultSlot: args.resultSlot,
+      elementSlot: args.elementSlot,
+      body: args.body,
+      result: null,
+      resultType: null,
+    });
+  }
 }
 
 // Convenience: value-id brand with no underlying type map — useful for tests

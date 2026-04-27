@@ -300,6 +300,31 @@ function resolvePositionType(
           return irVal({ kind: "ref_null", typeIdx: vecIdx });
         }
       }
+      // Slice 6 part 3 (#1182) — built-in generic iterables (Map / Set /
+      // WeakMap / WeakSet / Iterable / Iterator / Generator / Async*).
+      // These all have host-managed runtime representations and the IR
+      // doesn't model their internal structure; treat them as opaque
+      // externref values. The IR's iter-host arm of `lowerForOfStatement`
+      // accepts externref iterables and routes them through the
+      // `__iterator` host import.
+      if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+        const name = node.typeName.text;
+        if (
+          name === "Map" ||
+          name === "Set" ||
+          name === "WeakMap" ||
+          name === "WeakSet" ||
+          name === "Iterable" ||
+          name === "Iterator" ||
+          name === "IterableIterator" ||
+          name === "Generator" ||
+          name === "AsyncIterable" ||
+          name === "AsyncIterator" ||
+          name === "AsyncGenerator"
+        ) {
+          return irVal({ kind: "externref" });
+        }
+      }
       const tsType = ctx.checker.getTypeFromTypeNode(node);
       const ir = objectIrTypeFromTsType(ctx, tsType);
       if (ir) return ir;

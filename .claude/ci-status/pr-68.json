@@ -1,0 +1,15 @@
+{
+  "pr": 68,
+  "conclusion": "failure",
+  "head_branch": "issue-1182-iter-ir",
+  "head_sha": "0527c7c5334547bde34f4d428d860b5c7d2c2250",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24991511734",
+  "timestamp": "2026-04-27T11:13:55Z",
+  "pass": 26026,
+  "fail": 13987,
+  "compile_error": 1590,
+  "snapshot_delta": 37,
+  "net_per_test": 67,
+  "regressions": 119,
+  "improvements": 186
+}

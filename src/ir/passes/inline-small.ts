@@ -497,6 +497,45 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (!bodyChanged) return inst;
       return { ...inst, vec: v, body: newBody };
     }
+    // Slice 6 part 3 (#1182) — coercion + iterator protocol ops.
+    case "coerce.to_externref": {
+      const v = mapId(rename, inst.value);
+      if (v === inst.value) return inst;
+      return { ...inst, value: v };
+    }
+    case "iter.new": {
+      const v = mapId(rename, inst.iterable);
+      if (v === inst.iterable) return inst;
+      return { ...inst, iterable: v };
+    }
+    case "iter.next": {
+      const v = mapId(rename, inst.iter);
+      if (v === inst.iter) return inst;
+      return { ...inst, iter: v };
+    }
+    case "iter.done":
+    case "iter.value": {
+      const v = mapId(rename, inst.resultObj);
+      if (v === inst.resultObj) return inst;
+      return { ...inst, resultObj: v };
+    }
+    case "iter.return": {
+      const v = mapId(rename, inst.iter);
+      if (v === inst.iter) return inst;
+      return { ...inst, iter: v };
+    }
+    case "forof.iter": {
+      const v = mapId(rename, inst.iterable);
+      let bodyChanged = v !== inst.iterable;
+      const newBody: IrInstr[] = [];
+      for (const sub of inst.body) {
+        const renamed = renameInstrOperands(sub, rename);
+        if (renamed !== sub) bodyChanged = true;
+        newBody.push(renamed);
+      }
+      if (!bodyChanged) return inst;
+      return { ...inst, iterable: v, body: newBody };
+    }
     // Slice 7a (#1169f): generator ops.
     case "gen.push": {
       const v = mapId(rename, inst.value);

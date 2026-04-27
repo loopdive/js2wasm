@@ -674,7 +674,31 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       const walk = (instrs: readonly IrInstr[]): void => {
         for (const sub of instrs) {
           for (const u of collectUses(sub)) result.push(u);
-          if (sub.kind === "forof.vec") walk(sub.body);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter") walk(sub.body);
+        }
+      };
+      walk(instr.body);
+      return result;
+    }
+    // Slice 6 part 3 (#1182) — coercion + iterator protocol ops.
+    case "coerce.to_externref":
+      return [instr.value];
+    case "iter.new":
+      return [instr.iterable];
+    case "iter.next":
+      return [instr.iter];
+    case "iter.done":
+      return [instr.resultObj];
+    case "iter.value":
+      return [instr.resultObj];
+    case "iter.return":
+      return [instr.iter];
+    case "forof.iter": {
+      const result: IrValueId[] = [instr.iterable];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter") walk(sub.body);
         }
       };
       walk(instr.body);
