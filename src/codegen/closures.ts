@@ -2634,12 +2634,8 @@ export function emitFuncRefAsClosure(
           const currentLocalIdx = fctx.localMap.get(cap.name)!;
           fctx.body.push({ op: "local.get", index: currentLocalIdx });
         } else {
-          // Prefer localMap over the recorded outer index — the outer index
-          // is only valid in the function where the callee was declared.
-          // When wrapping the fn-decl as a closure inside a transitively-
-          // capturing scope, localMap holds the right slot. (#1016/#1177)
-          const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
-          fctx.body.push({ op: "local.get", index: sourceLocalIdx });
+          // Stage 1 localMap-first lookup reverted — see calls.ts comment.
+          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
           fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
           const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, {
             kind: "ref",
@@ -2651,10 +2647,7 @@ export function emitFuncRefAsClosure(
           fctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.valType });
         }
       } else {
-        // Same rationale as above — prefer localMap over the recorded outer
-        // index for the non-mutable branch. (#1016/#1177)
-        const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
-        fctx.body.push({ op: "local.get", index: sourceLocalIdx });
+        fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
       }
     }
     fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });

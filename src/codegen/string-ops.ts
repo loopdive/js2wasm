@@ -388,15 +388,10 @@ export function compileTaggedTemplateExpression(
     const funcIdx = ctx.funcMap.get(tagName);
     if (funcIdx !== undefined) {
       // Prepend captured values for nested functions with captures.
-      // Prefer localMap over the recorded outer index — the outer index is
-      // only valid in the function where the callee was declared. When the
-      // tagged template appears inside a transitively-capturing closure,
-      // localMap holds the right slot. (#1016/#1177)
       const nestedCaptures = ctx.nestedFuncCaptures.get(tagName);
       if (nestedCaptures) {
         for (const cap of nestedCaptures) {
-          const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
-          fctx.body.push({ op: "local.get", index: sourceLocalIdx });
+          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
         }
       }
 

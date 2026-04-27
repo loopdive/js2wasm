@@ -4977,14 +4977,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             fctx.body.push({ op: "local.get", index: currentLocalIdx });
           } else {
             // Create a ref cell, store the current value, keep ref on stack.
-            // Prefer a localMap lookup over `cap.outerLocalIdx` because the
-            // outer index is only meaningful in the function context where the
-            // callee was declared. When the call is emitted from a different
-            // context (e.g. an arrow/function-expression closure that
-            // transitively captured the same name), the closure prologue
-            // re-binds the name to a closure-local slot at a different index.
-            const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
-            fctx.body.push({ op: "local.get", index: sourceLocalIdx });
+            // (Note: #1177 originally proposed `localMap.get(cap.name) ?? cap.outerLocalIdx`
+            // but that caused 100+ test262 regressions where main's "wrong-slot"
+            // behavior was load-bearing for tests that relied on a null deref
+            // throwing inside an async fn body. Reverted; the canonical TDZ-
+            // through-closure case is fixed via the call-site TDZ check below
+            // and Stage 3 C.1 in compileArrowAsClosure.)
+            fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
             fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
             // Also box the outer local so subsequent reads/writes go through the ref cell
             const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, {
@@ -5010,24 +5009,14 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
         } else {
-          // (#1177: TDZ check moved above the mutable/non-mutable branch.)
-          // Prefer a localMap lookup over `cap.outerLocalIdx`. The outer
-          // index was captured at the time the callee was declared and is
-          // only valid in that exact function context. When the call is
-          // emitted from a different context (e.g. an arrow / function
-          // expression closure that transitively captured the same name),
-          // the closure prologue re-binds the name to a closure-local slot
-          // at a different index. Without this lookup, the call would push
-          // whatever happens to live at the outer index in the current
-          // frame — typically the closure's `__self_cast` local — yielding
-          // garbage destructure sources and silently broken semantics.
-          // (See #1016/#1177: TDZ propagation through closure captures.)
-          const sourceCapLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
-          fctx.body.push({ op: "local.get", index: sourceCapLocalIdx });
+          // (#1177: TDZ check moved above the mutable/non-mutable branch.
+          // Stage 1 localMap-first lookup reverted — see comment in mutable
+          // branch above.)
+          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
           // Coerce capture value to expected param type if they differ
           const expectedCapType = captureParamTypes?.[capIdx];
           if (expectedCapType) {
-            const actualType = getLocalType(fctx, sourceCapLocalIdx);
+            const actualType = getLocalType(fctx, cap.outerLocalIdx);
             if (actualType && !valTypesMatch(actualType, expectedCapType)) {
               coerceType(ctx, fctx, actualType, expectedCapType);
             }
