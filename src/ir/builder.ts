@@ -56,6 +56,14 @@ export class IrFunctionBuilder {
   // captures them as a self-contained sequence rather than appending to the
   // current block.
   private bodyBuffer: IrInstr[] | null = null;
+  // Slice 7a (#1169f): generator / async metadata. Set via `setFuncKind`
+  // before the first block is opened. Default is `"regular"` (no special
+  // treatment in lowering).
+  private funcKind: "regular" | "generator" | "async" = "regular";
+  // Slice 7a (#1169f): for `funcKind === "generator"` only — the slot
+  // index of the `__gen_buffer` Wasm-local. Set when the generator
+  // prologue is emitted in from-ast.
+  private generatorBufferSlot: number | undefined = undefined;
 
   constructor(
     private readonly name: string,
@@ -536,7 +544,65 @@ export class IrFunctionBuilder {
       valueCount: this.allocator.count,
       ...(closureSubtype ? { closureSubtype } : {}),
       ...(this.slotDefs.length > 0 ? { slots: [...this.slotDefs] } : {}),
+      ...(this.funcKind !== "regular" ? { funcKind: this.funcKind } : {}),
+      ...(this.generatorBufferSlot !== undefined ? { generatorBufferSlot: this.generatorBufferSlot } : {}),
     };
+  }
+
+  // --- generator / async (slice 7a — #1169f) ------------------------------
+
+  /**
+   * Slice 7a (#1169f): set the function kind. Must be called before any
+   * `gen.push` / `gen.epilogue` is emitted. Idempotent — subsequent calls
+   * with the same value are no-ops; calls with a different value throw.
+   */
+  setFuncKind(kind: "regular" | "generator" | "async"): void {
+    if (kind !== "regular" && this.funcKind !== "regular" && this.funcKind !== kind) {
+      throw new Error(`IrFunctionBuilder: setFuncKind conflict in ${this.name} (was ${this.funcKind}, now ${kind})`);
+    }
+    this.funcKind = kind;
+  }
+
+  /**
+   * Slice 7a (#1169f): record the slot index of the `__gen_buffer`
+   * Wasm-local. Called from the generator-prologue emitter in from-ast
+   * after `declareSlot("__gen_buffer", { kind: "externref" })` allocates
+   * the slot. The lowerer reads this when expanding `gen.push` /
+   * `gen.epilogue`.
+   */
+  setGeneratorBufferSlot(slotIndex: number): void {
+    if (this.funcKind !== "generator") {
+      throw new Error(`IrFunctionBuilder: setGeneratorBufferSlot requires funcKind=generator (${this.name})`);
+    }
+    this.generatorBufferSlot = slotIndex;
+  }
+
+  /** Emit a `gen.push` instr — push a yielded value onto the buffer. */
+  emitGenPush(value: IrValueId): void {
+    if (this.funcKind !== "generator") {
+      throw new Error(`IrFunctionBuilder: emitGenPush requires funcKind=generator (${this.name})`);
+    }
+    this.pushInstr({ kind: "gen.push", value, result: null, resultType: null });
+  }
+
+  /**
+   * Emit a `gen.epilogue` instr — produce the Generator-like object via
+   * `__create_generator(buffer, pendingThrow)`. Returns the SSA value of
+   * the resulting externref (the Generator object), suitable for use in a
+   * `return [result]` terminator.
+   */
+  emitGenEpilogue(): IrValueId {
+    if (this.funcKind !== "generator") {
+      throw new Error(`IrFunctionBuilder: emitGenEpilogue requires funcKind=generator (${this.name})`);
+    }
+    if (this.generatorBufferSlot === undefined) {
+      throw new Error(`IrFunctionBuilder: emitGenEpilogue requires setGeneratorBufferSlot first (${this.name})`);
+    }
+    const result = this.allocator.fresh();
+    const resultType: IrType = irVal({ kind: "externref" });
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({ kind: "gen.epilogue", result, resultType });
+    return result;
   }
 
   private requireBlock(): OpenBlock {

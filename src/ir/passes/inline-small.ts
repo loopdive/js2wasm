@@ -497,6 +497,15 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (!bodyChanged) return inst;
       return { ...inst, vec: v, body: newBody };
     }
+    // Slice 7a (#1169f): generator ops.
+    case "gen.push": {
+      const v = mapId(rename, inst.value);
+      if (v === inst.value) return inst;
+      return { ...inst, value: v };
+    }
+    case "gen.epilogue":
+      // No operands to rewrite.
+      return inst;
   }
 }
 

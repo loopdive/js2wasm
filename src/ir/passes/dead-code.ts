@@ -286,6 +286,11 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       walk(instr.body);
       return result;
     }
+    // Slice 7a (#1169f): generator ops.
+    case "gen.push":
+      return [instr.value];
+    case "gen.epilogue":
+      return [];
   }
 }
 
