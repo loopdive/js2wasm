@@ -54,14 +54,14 @@ export default defineConfig(async () => {
           "**/test262/**",
           "**/node_modules/**",
           "**/.test262-cache/**",
-          "**/pages-dist/**",
-          "**/playground-dist/**",
+          "**/dist/pages/**",
+          "**/dist/playground/**",
           "**/benchmarks/results/test262-results-*.jsonl",
         ],
       },
     },
     build: {
-      outDir: "playground-dist",
+      outDir: "dist/playground",
       emptyOutDir: true,
       target: "esnext",
       rollupOptions: {

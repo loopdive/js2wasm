@@ -15,8 +15,8 @@ import {
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const PLAYGROUND_DIST = join(ROOT, "playground-dist");
-const PAGES_DIST = join(ROOT, "pages-dist");
+const PLAYGROUND_DIST = join(ROOT, "dist", "playground");
+const PAGES_DIST = join(ROOT, "dist", "pages");
 const DASHBOARD_DIR = join(ROOT, "dashboard");
 const PLAN_DIR = join(ROOT, "plan");
 const BENCHMARKS_RESULTS_DIR = join(ROOT, "benchmarks", "results");

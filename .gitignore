@@ -1,7 +1,7 @@
 node_modules/
 dist/
-playground-dist/
-pages-dist/
+dist/playground/
+dist/pages/
 output/
 *.tsbuildinfo
 .vite/

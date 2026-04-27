@@ -71,7 +71,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: pages-dist
+          path: dist/pages
 
   deploy:
     if: github.repository == 'loopdive/js2wasm'
