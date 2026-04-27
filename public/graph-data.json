@@ -17128,8 +17128,8 @@
       "id": "1208",
       "title": "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [
         "1202"
@@ -17381,6 +17381,10 @@
       "target": "1183"
     },
     {
+      "source": "1202",
+      "target": "1208"
+    },
+    {
       "source": "1016",
       "target": "1177"
     },
@@ -17411,10 +17415,6 @@
     {
       "source": "1185",
       "target": "1205"
-    },
-    {
-      "source": "1202",
-      "target": "1208"
     },
     {
       "source": "1113",

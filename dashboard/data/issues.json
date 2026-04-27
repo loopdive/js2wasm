@@ -1614,18 +1614,6 @@
   ],
   "inprogress": [
     {
-      "id": "1208",
-      "title": "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1202"
-      ],
-      "goal": "contributor-readiness",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -1774,6 +1762,18 @@
     }
   ],
   "done": [
+    {
+      "id": "1208",
+      "title": "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1202"
+      ],
+      "goal": "contributor-readiness",
+      "status": "done",
+      "sprint": "45"
+    },
     {
       "id": "1202",
       "title": "credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm",

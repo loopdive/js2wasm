@@ -127,12 +127,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | ready |
 
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1208 | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | high | in-progress |
-
 ### Done
 
 | Issue | Title | Priority | Status |
@@ -185,5 +179,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1185 | IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts) | medium | done |
 | #1186 | fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx) | high | done |
 | #1202 | credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm | high | done |
+| #1208 | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
