@@ -76,6 +76,8 @@
     "generate:size-benchmarks": "npx tsx scripts/generate-size-benchmarks.ts",
     "generate:browser-runtime-benchmarks": "node scripts/generate-browser-runtime-benchmarks.mjs",
     "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
+    "dashboard": "node dashboard/build-data.js",
+    "dashboard:watch": "node --watch --watch-path plan/issues --watch-path plan/issues/sprints --watch-path plan/issues/done --watch-path plan/issues/ready --watch-path plan/issues/blocked dashboard/build-data.js",
     "report": "npx tsx scripts/serve-report.ts",
     "build:pages": "node scripts/run-pages-build.mjs",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
