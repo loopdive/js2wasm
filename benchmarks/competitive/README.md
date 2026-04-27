@@ -27,8 +27,14 @@ This benchmark harness compares the same JavaScript benchmark programs across:
 The Wasmtime side uses:
 
 - `wasm-opt --all-features -O4`
-- `wasmtime compile -W gc=y,gc-support=y,function-references=y,exceptions=y -O opt-level=2`
-- `wasmtime run -W gc=y,gc-support=y,function-references=y,exceptions=y --allow-precompiled`
+- `wasmtime compile -W gc=y,function-references=y,component-model=y -O opt-level=2`
+- `wasmtime run -W gc=y,function-references=y,component-model=y --allow-precompiled`
+
+Older wasmtime versions exposed `gc-support=y` and `exceptions=y` as separate
+`-W` flags. As of wasmtime 31 those flags were collapsed into the master
+proposal flags (`gc=y` covers GC type system + runtime; the
+exception-handling proposal is unconditionally on). The harness was updated
+in `#1125` to use the v31 flag set.
 
 This is a best-effort approximation of a production precompiled deployment
 profile. It is not a claim that Fastly uses exactly these public CLI flags.
@@ -308,6 +314,90 @@ component for this specific JS file".
   `Precompiled bytes`.
 - The lane requires `wasmtime` on `PATH` (or `STARLINGMONKEY_WASMTIME_BIN`).
   Without it the lane reports `runtime-error`, not `unavailable`.
+- **Component invocation is currently a TODO.** wasmtime 30 and 31 do not
+  support `--invoke` against components (verified). The bundled adapter
+  produces a Wasm component (`kind: "component"` in the sidecar metadata),
+  and the harness can compile it via `wasmtime compile`, measure adapter
+  compile time, raw size, gzip size and precompiled size — but cannot
+  currently call `run()` / `run-hot()` to capture cold-start or hot-runtime
+  numbers. The lane therefore reports `runtime-error` with a TODO note for
+  the runtime metrics. Two follow-up paths are tracked under #1125:
+  retarget the adapter at a `wasi:cli/run` world (so `wasmtime run` invokes
+  the entrypoint with stdout-printed results), or write a Node-side
+  invocation helper that uses `jco transpile` / `@bytecodealliance/jco` to
+  call component exports.
+
+### Verified results — 2026-04-27 (wasmtime 31.0.0, aarch64-linux)
+
+Five benchmark programs, three lanes that run in this environment (Node.js,
+js2wasm, StarlingMonkey + ComponentizeJS). The runtime-eval lane is omitted
+because it requires a vendored StarlingMonkey checkout that is not present
+in CI. AssemblyScript / Javy / Porffor are also omitted on the same grounds.
+
+#### Runtime metrics (median of 5–7 runs)
+
+| Program | Lane | Cold ms | Hot ms | Compute-only ms |
+| --- | --- | ---: | ---: | ---: |
+| `array-sum` | Node.js | 48.2 | 43.1 | 37.3 |
+| `array-sum` | js2wasm → Wasmtime | _runtime-error: WebAssembly translation error_ | | |
+| `array-sum` | SM + ComponentizeJS → Wasmtime | _invocation TODO (component)_ | | |
+| `fib-recursive` | Node.js | 34.2 | 21.1 | 8.6 |
+| `fib-recursive` | js2wasm → Wasmtime | **33.7** | **10.7** | **5.0** |
+| `fib-recursive` | SM + ComponentizeJS → Wasmtime | _invocation TODO (component)_ | | |
+| `fib` | Node.js | 43.4 | 28.1 | 20.8 |
+| `fib` | js2wasm → Wasmtime | **33.1** | **21.0** | **11.4** |
+| `fib` | SM + ComponentizeJS → Wasmtime | _invocation TODO (component)_ | | |
+| `object-ops` | Node.js | 54.4 | 11.8 | 1.2 |
+| `object-ops` | js2wasm → Wasmtime | _runtime-error: failed to parse WebAssembly module_ | | |
+| `object-ops` | SM + ComponentizeJS → Wasmtime | _invocation TODO (component)_ | | |
+| `string-hash` | Node.js | 45.8 | 12.0 | 1.7 |
+| `string-hash` | js2wasm → Wasmtime | _compile-error: wasm-validator (existing js2wasm bug)_ | | |
+| `string-hash` | SM + ComponentizeJS → Wasmtime | _invocation TODO (component)_ | | |
+
+For the two programs where js2wasm → Wasmtime succeeds end-to-end
+(`fib-recursive`, `fib`), js2wasm beats Node.js on both hot runtime and
+compute-only:
+
+- `fib-recursive`: **2.0×** faster hot (10.7 ms vs 21.1 ms), **1.7×** faster
+  compute (5.0 ms vs 8.6 ms)
+- `fib`: **1.3×** faster hot (21.0 ms vs 28.1 ms), **1.8×** faster compute
+  (11.4 ms vs 20.8 ms)
+
+The other three programs hit pre-existing js2wasm codegen bugs (validator
+errors, translation errors) — those are tracked separately and not part of
+the `#1125` ComponentizeJS work.
+
+#### Size metrics (per benchmark program)
+
+| Program | js2wasm raw | js2wasm gz | js2wasm precompiled | SM + ComponentizeJS raw | SM + ComponentizeJS gz | SM + ComponentizeJS precompiled |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fib` | 0.1 kB | 0.1 kB | 193.4 kB | 14,467.8 kB | 4,316.5 kB | 52,426.1 kB |
+| `fib-recursive` | 0.2 kB | 0.1 kB | 193.4 kB | 14,470.0 kB | 4,317.3 kB | 52,426.3 kB |
+| `array-sum` | 0.5 kB | 0.3 kB | _n/a (translate err)_ | 14,469.3 kB | 4,316.9 kB | 52,426.1 kB |
+| `object-ops` | 0.5 kB | 0.3 kB | _n/a (parse err)_ | 14,469.3 kB | 4,317.3 kB | 52,426.1 kB |
+| `string-hash` | 4.5 kB | 1.9 kB | _n/a (compile err)_ | 14,473.3 kB | 4,318.3 kB | 52,426.1 kB |
+
+The size story is the meaningful headline finding: the
+StarlingMonkey + ComponentizeJS lane carries a snapshotted SpiderMonkey
+embedding plus the user module, so the artifact is **~70,000–145,000× larger**
+than the equivalent js2wasm output for these workloads. Gzip narrows the gap
+somewhat but it stays in the same order of magnitude. This is the price of
+running a JS-language host inside Wasm: most of the bytes are the engine,
+not the program.
+
+#### Compile-time (median of 1 run)
+
+| Program | js2wasm → Wasmtime | SM + ComponentizeJS → Wasmtime |
+| --- | ---: | ---: |
+| `fib` | 1,466.8 ms | **9,557.1 ms** |
+| `fib-recursive` | 1,273.1 ms | **8,202.5 ms** |
+| `array-sum` | 1,382.5 ms | **10,484.0 ms** |
+| `object-ops` | 2,300.1 ms | **7,035.3 ms** |
+| `string-hash` | 647.5 ms | **7,884.1 ms** |
+
+ComponentizeJS compile time is dominated by Wizer pre-init + Weval AOT
+specialization of the SpiderMonkey embedding. js2wasm compile time is
+dominated by `wasm-opt -O4` plus `wasmtime compile`.
 
 ## Javy
 

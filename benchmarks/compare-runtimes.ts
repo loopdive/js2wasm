@@ -156,7 +156,17 @@ const STARLINGMONKEY_ADAPTER_KIND = process.env.STARLINGMONKEY_ADAPTER_KIND || "
 const STARLINGMONKEY_ADAPTER_IS_BUNDLED =
   STARLINGMONKEY_ADAPTER !== "" && path.resolve(STARLINGMONKEY_ADAPTER) === BUNDLED_STARLINGMONKEY_ADAPTER;
 const WASMTIME_OPTIMIZE = process.env.WASMTIME_OPTIMIZE || "opt-level=2";
-const WASMTIME_WASM_FLAGS = ["-W", "gc=y,gc-support=y,function-references=y,exceptions=y"];
+// Wasmtime flag set tracked against wasmtime >= 31 (current pinned host runtime).
+// Older wasmtime versions exposed `gc-support=y` and `exceptions=y` as separate
+// `-W` flags, but both were collapsed into the master proposal flags by v31:
+//   - GC proposal type system + runtime support is now `gc=y` (alone).
+//   - The exception-handling proposal is unconditionally on for the proposals
+//     wasmtime currently understands; there is no `-W exceptions=y` toggle in
+//     wasmtime 31. See `wasmtime run -W help` for the authoritative list.
+// `component-model=y` is on by default but we set it explicitly so component
+// artifacts (e.g. ComponentizeJS output) still run if a future wasmtime turns
+// it off-by-default.
+const WASMTIME_WASM_FLAGS = ["-W", "gc=y,function-references=y,component-model=y"];
 const WASM_OPT_FLAGS = (process.env.WASM_OPT_FLAGS || "--all-features -O4").trim().split(/\s+/).filter(Boolean);
 const BENCHMARK_FILTER = new Set(
   (process.env.BENCHMARK_FILTER || "")
@@ -1866,6 +1876,53 @@ function evaluateStarlingMonkeyComponentize(
         coldStart: null,
         runtime: null,
         computeOnly: null,
+      };
+    }
+
+    // Component invocation via `wasmtime run --invoke` is not supported by
+    // wasmtime (verified against 30.0.2 and 31.0.0). The ComponentizeJS adapter
+    // produces a Wasm component (kind=component in the sidecar metadata) whose
+    // exports cannot be reached through `--invoke <fn>`. Until the harness gets
+    // a component-aware invocation path (see #1125 follow-up), we still report
+    // compile time / module size / precompiled size — those are the parts that
+    // do not require running the artifact end-to-end.
+    if (metadata.kind === "component") {
+      const cwasmStat = statSync(cwasmPath);
+      return {
+        id: "starlingmonkey-componentize-wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
+        status: "runtime-error",
+        notes: [
+          "wasmtime CLI cannot invoke component exports via --invoke (verified against wasmtime 30 and 31)",
+          "compile/size/precompile metrics are valid; component invocation path still TODO (#1125 follow-up)",
+          `Wizer pre-init: on; Weval AOT: ${
+            ((metadata.componentize as Record<string, unknown> | undefined)?.wevalAotEnabled ??
+            (metadata.componentize as Record<string, unknown> | undefined)?.enableAot)
+              ? "on"
+              : "off"
+          }`,
+          STARLINGMONKEY_ADAPTER_IS_BUNDLED
+            ? `using bundled adapter ${path.relative(ROOT, BUNDLED_STARLINGMONKEY_ADAPTER)}`
+            : `using adapter ${STARLINGMONKEY_ADAPTER}`,
+        ],
+        compilerBytes: null,
+        runtimeBytes: null,
+        rawBytes,
+        gzipBytes: compressedBytes,
+        precompiledBytes: cwasmStat.size,
+        compileMs: compileStep.durationMs,
+        coldStart: null,
+        runtime: null,
+        computeOnly: null,
+        metadata: {
+          adapter: STARLINGMONKEY_ADAPTER,
+          adapterKind: metadata.kind ?? "component",
+          invokeExport,
+          hotInvokeExport,
+          componentize: metadata.componentize ?? null,
+          wasmtimeOptimize: WASMTIME_OPTIMIZE,
+          hotIterations,
+        },
       };
     }
 
