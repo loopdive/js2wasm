@@ -187,7 +187,13 @@ function isSideEffecting(i: IrInstr): boolean {
     // `this.x = computeAndLogX()`). Conservatively keep all three live.
     i.kind === "class.call" ||
     i.kind === "class.set" ||
-    i.kind === "class.new"
+    i.kind === "class.new" ||
+    // Slice 6 (#1169e): slot.write and forof.vec are statement-level
+    // side effects — the loop's body executes for every element.
+    // slot.read is pure (load a Wasm local) but always-keep to avoid
+    // breaking the for-of body's load/use pattern.
+    i.kind === "slot.write" ||
+    i.kind === "forof.vec"
   );
 }
 
@@ -258,6 +264,28 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.value, instr.newValue];
     case "class.call":
       return [instr.receiver, ...instr.args];
+    // Slice 6 (#1169e): slot / vec / for-of ops.
+    case "slot.read":
+      return [];
+    case "slot.write":
+      return [instr.value];
+    case "vec.len":
+      return [instr.vec];
+    case "vec.get":
+      return [instr.vec, instr.index];
+    case "forof.vec": {
+      // Body uses count too — DCE must keep outer values referenced
+      // inside a for-of body. Walk recursively.
+      const result: IrValueId[] = [instr.vec];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectInstrUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec") walk(sub.body);
+        }
+      };
+      walk(instr.body);
+      return result;
+    }
   }
 }
 

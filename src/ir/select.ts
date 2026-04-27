@@ -312,6 +312,15 @@ function isPhase1StatementList(
       const rest = stmts.slice(i + 1);
       return isPhase1StatementList(rest, new Set(scope), localClasses);
     }
+    // Slice 6 (#1169e) — for-of statement acceptance is gated OFF until
+    // the AST→IR bridge in `from-ast.ts` lands (`lowerForOfStatement` +
+    // slot-binding plumbing) and `integration.ts` exposes `resolveVec`.
+    // The IR nodes / builder / lowerer / passes ARE in place (see
+    // `nodes.ts`, `builder.ts`, `lower.ts`, `passes/*`) but no emitter
+    // produces `forof.vec` / `slot.*` / `vec.*` instrs yet, so claiming a
+    // for-of here would land in the lowerer's "unexpected statement"
+    // branch and leak a noisy IR-fallback error. Re-enable once the
+    // bridge work ships.
     return false;
   }
   return isPhase1Tail(stmts[stmts.length - 1]!, scope, localClasses);

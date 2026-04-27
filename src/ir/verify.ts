@@ -221,6 +221,21 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       return [instr.value, instr.newValue];
     case "class.call":
       return [instr.receiver, ...instr.args];
+    // Slice 6 (#1169e): slot / vec / for-of ops.
+    case "slot.read":
+      return [];
+    case "slot.write":
+      return [instr.value];
+    case "vec.len":
+      return [instr.vec];
+    case "vec.get":
+      return [instr.vec, instr.index];
+    case "forof.vec":
+      // The body executes inside a Wasm loop and is not part of the
+      // straight-line use-before-def walk. We only surface `vec` here so
+      // its def→use relation is tracked by the verifier and by the
+      // cross-block use counter in the lowerer.
+      return [instr.vec];
   }
 }
 
