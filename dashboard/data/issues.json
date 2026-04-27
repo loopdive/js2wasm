@@ -117,6 +117,16 @@
   ],
   "ready": [
     {
+      "id": "1193",
+      "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
       "id": "1192",
       "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
       "priority": "medium",
@@ -183,16 +193,6 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "compiler-correctness",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
-      "id": "1185",
-      "title": "IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compiler-architecture",
       "status": "ready",
       "sprint": "46"
     },
@@ -1848,6 +1848,16 @@
     }
   ],
   "done": [
+    {
+      "id": "1185",
+      "title": "IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "45"
+    },
     {
       "id": "1183",
       "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
