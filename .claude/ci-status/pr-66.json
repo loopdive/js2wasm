@@ -1,0 +1,15 @@
+{
+  "pr": 66,
+  "conclusion": "failure",
+  "head_branch": "issue-1180-unbox-wasi-gate",
+  "head_sha": "1e744307e56064765ab7a8b9798edae163764cab",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24979486847",
+  "timestamp": "2026-04-27T06:24:26Z",
+  "pass": 25841,
+  "fail": 13915,
+  "compile_error": 1851,
+  "snapshot_delta": -8,
+  "net_per_test": -11,
+  "regressions": 136,
+  "improvements": 125
+}
