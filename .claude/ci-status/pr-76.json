@@ -1,0 +1,15 @@
+{
+  "pr": 76,
+  "conclusion": "failure",
+  "head_branch": "issue-1177-tdz-closure",
+  "head_sha": "fe1225f522ea7da270674221fe22bf12bfbcdcef",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25003494260",
+  "timestamp": "2026-04-27T15:31:26Z",
+  "pass": 25771,
+  "fail": 13972,
+  "compile_error": 1846,
+  "snapshot_delta": -31,
+  "net_per_test": 1159,
+  "regressions": 199,
+  "improvements": 1358
+}

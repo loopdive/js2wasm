@@ -653,6 +653,30 @@ export class IrFunctionBuilder {
     return result;
   }
 
+  /**
+   * Slice 6 part 4 refactor (#1185): read a slot but tag the SSA def
+   * with a caller-supplied IrType instead of `irVal(slot.type)`.
+   * The Wasm-level value produced is identical — `slot.read` lowers
+   * to a single `local.get` either way — so this is purely a
+   * type-system rewrite. The caller is responsible for ensuring
+   * `asType` is interconvertible with `irVal(slot.type)` at the
+   * Wasm level (e.g. `IrType.string` and `(ref $AnyString)` are
+   * interconvertible in native-strings mode).
+   *
+   * Used by the slot-binding `asType` widening in `lowerExpr`'s
+   * identifier handler — see the `slot` arm of `ScopeBinding`.
+   */
+  emitSlotReadAs(slotIndex: number, asType: IrType): IrValueId {
+    const slot = this.slotDefs[slotIndex];
+    if (!slot) {
+      throw new Error(`IrFunctionBuilder: slot.read with unknown index ${slotIndex} (func ${this.name})`);
+    }
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, asType);
+    this.pushInstr({ kind: "slot.read", slotIndex, result, resultType: asType });
+    return result;
+  }
+
   /** Write a value to a slot by its index. */
   emitSlotWrite(slotIndex: number, value: IrValueId): void {
     const slot = this.slotDefs[slotIndex];

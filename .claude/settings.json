@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "node /workspace/scripts/statusline-sprint.mjs",
+    "command": ".claude/statusline-command.sh",
     "refreshInterval": 30
   },
   "env": {
