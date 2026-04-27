@@ -781,8 +781,11 @@ export function generateModule(
       });
     }
 
-    // Mark leaf struct types as final for V8 devirtualization
-    markLeafStructsFinal(mod);
+    // Mark leaf struct types as final for V8 devirtualization (#594).
+    // Skipped for `--target wasi` so that downstream `wasm-opt --all-features`
+    // does not convert refs to those types into `(ref exact $T)`, which
+    // wasmtime ≤ 44 rejects (#1173).
+    markLeafStructsFinal(mod, ctx.wasi);
 
     // Dead import and type elimination pass
     eliminateDeadImports(mod);
@@ -2375,8 +2378,11 @@ export function generateMultiModule(
       });
     }
 
-    // Mark leaf struct types as final for V8 devirtualization
-    markLeafStructsFinal(mod);
+    // Mark leaf struct types as final for V8 devirtualization (#594).
+    // Skipped for `--target wasi` so that downstream `wasm-opt --all-features`
+    // does not convert refs to those types into `(ref exact $T)`, which
+    // wasmtime ≤ 44 rejects (#1173).
+    markLeafStructsFinal(mod, ctx.wasi);
 
     // Dead import and type elimination pass
     eliminateDeadImports(mod);
