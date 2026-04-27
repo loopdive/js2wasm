@@ -267,8 +267,8 @@
         border: none;
         color: var(--text-muted);
         cursor: pointer;
-        padding: 0 2px;
-        font-size: 17px;
+        padding: 0 4px;
+        font-size: 22px;
         line-height: 1;
         display: flex;
         align-items: center;
@@ -536,9 +536,11 @@
     <!-- Kanban -->
     <div class="panel kanban" style="border-top: none">
       <div class="panel-head">
-        <h2>Issue Board</h2>
-        <div class="panel-actions">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <h2>Issue Board</h2>
           <input type="search" id="issue-search" placeholder="Filter issues…" autocomplete="off" />
+        </div>
+        <div class="panel-actions">
           <div class="sprint-controls">
             <label for="sprint-select">Sprint</label>
             <button class="sprint-nav-btn" id="sprint-prev" title="Previous sprint">−</button>
@@ -749,7 +751,7 @@
 
       function filterIssuesForSprint(issues, sprint) {
         if (!sprint) return issues;
-        if (sprint.isClosed && !sprintHasUnfinishedIssueIds(sprint)) {
+        if (sprint.isClosed) {
           const completed = new Set((sprint.completedIssueIds || []).map(String));
           return {
             blocked: [],
