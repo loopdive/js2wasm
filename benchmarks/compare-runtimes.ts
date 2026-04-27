@@ -104,6 +104,20 @@ const WASM_OPT_BIN = process.env.WASM_OPT_BIN || "wasm-opt";
 const JAVY_ROOT = process.env.JAVY_ROOT || path.resolve(ROOT, "vendor", "Javy");
 const JAVY_BIN = process.env.JAVY_BIN || path.join(JAVY_ROOT, "javy");
 const JAVY_PLUGIN = process.env.JAVY_PLUGIN || path.join(JAVY_ROOT, "plugin.wasm");
+// Shopify Functions ships Javy in *dynamic* mode by default — the QuickJS
+// runtime is shared across all functions through `plugin.wasm`, and each
+// user function is a small (~1 kB) Wasm that imports from the plugin. The
+// harness uses dynamic mode whenever a plugin is available; set
+// JAVY_DYNAMIC=0 to fall back to the legacy static (self-contained) build.
+const JAVY_DYNAMIC = (() => {
+  const raw = process.env.JAVY_DYNAMIC;
+  if (raw == null || raw === "") return existsSync(JAVY_PLUGIN);
+  return /^(1|true|yes|on)$/i.test(raw);
+})();
+// Wasmtime --preload alias name for the bundled Javy plugin. The dynamic
+// user module imports from this exact module name; the alias is fixed by
+// Javy's plugin emitter.
+const JAVY_PLUGIN_PRELOAD_NAME = "javy-default-plugin-v3";
 const ASSEMBLYSCRIPT_ROOT = process.env.ASSEMBLYSCRIPT_ROOT || path.resolve(ROOT, "vendor", "AssemblyScript");
 const ASSEMBLYSCRIPT_ASC =
   process.env.ASSEMBLYSCRIPT_ASC || path.join(ASSEMBLYSCRIPT_ROOT, "node_modules", ".bin", "asc");
@@ -583,11 +597,28 @@ function measureNodeWasmComputeOnlyProcess(
   };
 }
 
-function measureJavyInvocation(wasmPath: string, arg: number, runs: number): InvocationMetric {
+function buildJavyRunArgs(wasmPath: string, pluginCwasmPath: string | null): string[] {
+  const args = ["run", ...WASMTIME_WASM_FLAGS, "--allow-precompiled"];
+  if (pluginCwasmPath) {
+    // Shopify-style dynamic-link path: the user module imports QuickJS
+    // builtins from `javy-default-plugin-v3`; preload the precompiled
+    // plugin under that exact name so wasmtime can satisfy the imports.
+    args.push("--preload", `${JAVY_PLUGIN_PRELOAD_NAME}=${pluginCwasmPath}`);
+  }
+  args.push(wasmPath);
+  return args;
+}
+
+function measureJavyInvocation(
+  wasmPath: string,
+  arg: number,
+  runs: number,
+  pluginCwasmPath: string | null = null,
+): InvocationMetric {
   const timings: number[] = [];
   let resultValue: number | null = null;
   for (let i = 0; i < runs; i++) {
-    const res = runCommand(WASMTIME_BIN, ["run", ...WASMTIME_WASM_FLAGS, "--allow-precompiled", wasmPath], {
+    const res = runCommand(WASMTIME_BIN, buildJavyRunArgs(wasmPath, pluginCwasmPath), {
       input: JSON.stringify({ input: arg, iterations: 0 }),
     });
     if (!res.ok) {
@@ -614,11 +645,12 @@ function measureJavyHotInvocation(
   arg: number,
   runs: number,
   iterationsPerRun: number,
+  pluginCwasmPath: string | null = null,
 ): InvocationMetric {
   const timings: number[] = [];
   let resultValue: number | null = null;
   for (let i = 0; i < runs; i++) {
-    const res = runCommand(WASMTIME_BIN, ["run", ...WASMTIME_WASM_FLAGS, "--allow-precompiled", wasmPath], {
+    const res = runCommand(WASMTIME_BIN, buildJavyRunArgs(wasmPath, pluginCwasmPath), {
       input: JSON.stringify({ input: arg, iterations: iterationsPerRun }),
     });
     if (!res.ok) {
@@ -2114,13 +2146,26 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
   try {
     const hotIterations = program.benchmark.hotIterations;
     const compilerBytes = sumExistingPathFootprints(JAVY_BIN);
-    const runtimeBytes = sumExistingPathFootprints(JAVY_PLUGIN);
+    const pluginRawBytes = existsSync(JAVY_PLUGIN) ? sumExistingPathFootprints(JAVY_PLUGIN) : null;
     const wrapperPath = path.join(tmpDir, `${program.benchmark.id}.javy.js`);
     const wasmPath = path.join(tmpDir, `${program.benchmark.id}.javy.wasm`);
     writeFileSync(wrapperPath, createJavyWrapperSource(program));
 
-    const buildArgs = ["build", "-J", "javy-stream-io=y", "-J", "text-encoding=y", wrapperPath, "-o", wasmPath];
+    const useDynamic = JAVY_DYNAMIC && existsSync(JAVY_PLUGIN);
+    const buildArgs = useDynamic
+      ? // Shopify Functions production setup: dynamic linking against the
+        // shared QuickJS plugin. Per-function module shrinks from ~1.2 MB
+        // to ~1 kB; the QuickJS runtime ships once via the plugin. Note
+        // that JS runtime options (-J ...) are not allowed alongside
+        // -C plugin per Javy's CLI — those settings come from the plugin.
+        ["build", "-C", "dynamic=y", "-C", `plugin=${JAVY_PLUGIN}`, wrapperPath, "-o", wasmPath]
+      : ["build", "-J", "javy-stream-io=y", "-J", "text-encoding=y", wrapperPath, "-o", wasmPath];
     const buildStep = runCommand(JAVY_BIN, buildArgs);
+    // The plugin is the shared QuickJS runtime in dynamic mode; in static
+    // mode it ships bundled, but we still report its raw size in
+    // `runtimeBytes` for consistency across both modes (the static build
+    // effectively includes a copy of plugin-equivalent bytes).
+    const runtimeBytes = pluginRawBytes;
     if (!buildStep.ok) {
       return {
         id: "javy-wasmtime",
@@ -2161,7 +2206,40 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       };
     }
 
-    const coldStart = measureJavyInvocation(cwasmPath, program.benchmark.coldArg, program.benchmark.coldRuns);
+    // Dynamic mode: precompile the shared plugin once per program (the
+    // result is cacheable across all functions in a real deployment, so
+    // the cost is amortized in production but reported here for clarity).
+    let pluginCwasmPath: string | null = null;
+    let pluginPrecompileMs = 0;
+    if (useDynamic) {
+      pluginCwasmPath = path.join(tmpDir, "plugin.cwasm");
+      const pluginPrecompile = compileWithWasmtimeProfile(JAVY_PLUGIN, pluginCwasmPath);
+      pluginPrecompileMs = pluginPrecompile.durationMs;
+      if (!pluginPrecompile.ok) {
+        return {
+          id: "javy-wasmtime",
+          label: "Javy -> Wasmtime",
+          status: "runtime-error",
+          notes: [pluginPrecompile.stderr || "wasmtime compile of Javy plugin failed"],
+          compilerBytes,
+          runtimeBytes,
+          compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
+          rawBytes,
+          gzipBytes: compressedBytes,
+          precompiledBytes: null,
+          coldStart: null,
+          runtime: null,
+          computeOnly: null,
+        };
+      }
+    }
+
+    const coldStart = measureJavyInvocation(
+      cwasmPath,
+      program.benchmark.coldArg,
+      program.benchmark.coldRuns,
+      pluginCwasmPath,
+    );
     if (coldStart.result !== baselineCold) {
       return {
         id: "javy-wasmtime",
@@ -2170,7 +2248,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
         notes: [`checksum mismatch for cold run: expected ${baselineCold}, got ${coldStart.result}`],
         compilerBytes,
         runtimeBytes,
-        compileMs: buildStep.durationMs + precompile.durationMs,
+        compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
         rawBytes,
         gzipBytes: compressedBytes,
         precompiledBytes: statSync(cwasmPath).size,
@@ -2184,6 +2262,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       cwasmPath,
       program.benchmark.runtimeArg,
       program.benchmark.runtimeRuns,
+      pluginCwasmPath,
     );
     if (runtimeSingleCall.result !== baselineRuntime) {
       return {
@@ -2195,7 +2274,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
         ],
         compilerBytes,
         runtimeBytes,
-        compileMs: buildStep.durationMs + precompile.durationMs,
+        compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
         rawBytes,
         gzipBytes: compressedBytes,
         precompiledBytes: statSync(cwasmPath).size,
@@ -2210,6 +2289,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       program.benchmark.runtimeArg,
       program.benchmark.runtimeRuns,
       hotIterations,
+      pluginCwasmPath,
     );
     if (runtime.result !== baselineRuntime) {
       return {
@@ -2219,7 +2299,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
         notes: [`checksum mismatch for runtime run: expected ${baselineRuntime}, got ${runtime.result}`],
         compilerBytes,
         runtimeBytes,
-        compileMs: buildStep.durationMs + precompile.durationMs,
+        compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
         rawBytes,
         gzipBytes: compressedBytes,
         precompiledBytes: statSync(cwasmPath).size,
@@ -2233,10 +2313,15 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       id: "javy-wasmtime",
       label: "Javy -> Wasmtime",
       status: "ok",
-      notes: ["static Javy runtime with stream I/O wrapper"],
+      notes: useDynamic
+        ? [
+            "Javy dynamic-link mode (Shopify Functions production setup)",
+            `per-function module + shared QuickJS plugin (${JAVY_PLUGIN_PRELOAD_NAME})`,
+          ]
+        : ["static Javy runtime with stream I/O wrapper (dynamic mode disabled or plugin missing)"],
       compilerBytes,
       runtimeBytes,
-      compileMs: buildStep.durationMs + precompile.durationMs,
+      compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
       rawBytes,
       gzipBytes: compressedBytes,
       precompiledBytes: statSync(cwasmPath).size,
@@ -2246,6 +2331,10 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       metadata: {
         javy: path.relative(ROOT, JAVY_BIN),
         plugin: existsSync(JAVY_PLUGIN) ? path.relative(ROOT, JAVY_PLUGIN) : null,
+        mode: useDynamic ? "dynamic" : "static",
+        pluginPreloadName: useDynamic ? JAVY_PLUGIN_PRELOAD_NAME : null,
+        pluginRawBytes,
+        pluginPrecompiledBytes: pluginCwasmPath && existsSync(pluginCwasmPath) ? statSync(pluginCwasmPath).size : null,
         hotIterations,
         computeMethod: "estimated = hot_runtime - single_call/iterations",
       },
