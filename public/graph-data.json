@@ -16709,6 +16709,30 @@
       "cluster": "compilable"
     },
     {
+      "id": "1178",
+      "title": "string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1179",
+      "title": "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -17891,7 +17915,8 @@
         "1109",
         "1173",
         "1174",
-        "1175"
+        "1175",
+        "1178"
       ]
     },
     {
@@ -18535,7 +18560,8 @@
         "1120",
         "1121",
         "1122",
-        "1126"
+        "1126",
+        "1179"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -20318,6 +20344,10 @@
     {
       "goal": "compilable",
       "issue": "1175"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1178"
     },
     {
       "goal": "compiler-architecture",
@@ -22290,6 +22320,10 @@
     {
       "goal": "performance",
       "issue": "1126"
+    },
+    {
+      "goal": "performance",
+      "issue": "1179"
     },
     {
       "goal": "platform",
@@ -25952,6 +25986,10 @@
     {
       "goal": "core-semantics",
       "issue": "1126"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1179"
     },
     {
       "goal": "standalone-mode",
