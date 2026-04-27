@@ -16580,8 +16580,8 @@
       "id": "1169f",
       "title": "IR Phase 4 Slice 7 — generators and async/await through the IR path",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16778,7 +16778,7 @@
       "priority": "high",
       "status": "done",
       "raw_status": "done",
-      "sprint": "46",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -16790,7 +16790,7 @@
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
-      "sprint": "46",
+      "sprint": "45",
       "depends_on": [
         "1181"
       ],
@@ -16818,7 +16818,7 @@
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
-      "sprint": "46",
+      "sprint": "45",
       "depends_on": [
         "1181"
       ],
@@ -16843,10 +16843,10 @@
     {
       "id": "1184",
       "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
-      "priority": "low",
+      "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "47",
       "depends_on": [],
       "files": [],
       "goal": "performance",
@@ -16868,9 +16868,9 @@
       "id": "1186",
       "title": "fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "compiler-correctness",
@@ -16959,6 +16959,184 @@
       "files": [],
       "goal": "developer-experience",
       "cluster": "developer-experience"
+    },
+    {
+      "id": "1195",
+      "title": "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1196",
+      "title": "perf: bounds-check elimination via SSA on monotonic indexed array loops",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1197",
+      "title": "perf: i32 element specialization for `number[]` arrays under `| 0` / `& mask` / `>> n` patterns",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1198",
+      "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1199",
+      "title": "perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "48",
+      "depends_on": [
+        "1197"
+      ],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1200",
+      "title": "perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "48",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1201",
+      "title": "credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "test-infrastructure",
+      "cluster": "test-infrastructure"
+    },
+    {
+      "id": "1202",
+      "title": "credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "contributor-readiness",
+      "cluster": "contributor-readiness"
+    },
+    {
+      "id": "1203",
+      "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
+      "id": "1204",
+      "title": "credibility: methodology document — how js2wasm is built by an AI agent team",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [
+        "1201",
+        "1202"
+      ],
+      "files": [],
+      "goal": "contributor-readiness",
+      "cluster": "contributor-readiness"
+    },
+    {
+      "id": "1205",
+      "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [
+        "1177",
+        "1185"
+      ],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance"
+    },
+    {
+      "id": "1206",
+      "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
+    },
+    {
+      "id": "1207",
+      "title": "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
+    },
+    {
+      "id": "1208",
+      "title": "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [
+        "1202"
+      ],
+      "files": [],
+      "goal": "contributor-readiness",
+      "cluster": "contributor-readiness"
     },
     {
       "id": "backlog",
@@ -17213,6 +17391,30 @@
     {
       "source": "1181",
       "target": "1183"
+    },
+    {
+      "source": "1197",
+      "target": "1199"
+    },
+    {
+      "source": "1201",
+      "target": "1204"
+    },
+    {
+      "source": "1202",
+      "target": "1204"
+    },
+    {
+      "source": "1177",
+      "target": "1205"
+    },
+    {
+      "source": "1185",
+      "target": "1205"
+    },
+    {
+      "source": "1202",
+      "target": "1208"
     },
     {
       "source": "1113",
@@ -18261,7 +18463,10 @@
         "944",
         "1000",
         "1003",
-        "1009"
+        "1009",
+        "1202",
+        "1204",
+        "1208"
       ],
       "track": "supporting track"
     },
@@ -18443,7 +18648,8 @@
         "1123",
         "1127",
         "1143",
-        "1145"
+        "1145",
+        "1203"
       ],
       "track": "supporting track"
     },
@@ -18528,7 +18734,9 @@
         "1147",
         "1187",
         "1188",
-        "1193"
+        "1193",
+        "1206",
+        "1207"
       ],
       "track": "supporting track"
     },
@@ -18827,7 +19035,13 @@
         "1122",
         "1126",
         "1179",
-        "1184"
+        "1184",
+        "1195",
+        "1196",
+        "1197",
+        "1198",
+        "1199",
+        "1200"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -19241,7 +19455,8 @@
         "1057",
         "1085",
         "1091",
-        "1155"
+        "1155",
+        "1201"
       ],
       "track": "supporting track"
     }
@@ -20912,6 +21127,18 @@
       "issue": "1009"
     },
     {
+      "goal": "contributor-readiness",
+      "issue": "1202"
+    },
+    {
+      "goal": "contributor-readiness",
+      "issue": "1204"
+    },
+    {
+      "goal": "contributor-readiness",
+      "issue": "1208"
+    },
+    {
       "goal": "core-semantics",
       "issue": "1"
     },
@@ -21548,6 +21775,10 @@
       "issue": "1145"
     },
     {
+      "goal": "correctness",
+      "issue": "1203"
+    },
+    {
       "goal": "crash-free",
       "issue": "107"
     },
@@ -21802,6 +22033,14 @@
     {
       "goal": "developer-experience",
       "issue": "1193"
+    },
+    {
+      "goal": "developer-experience",
+      "issue": "1206"
+    },
+    {
+      "goal": "developer-experience",
+      "issue": "1207"
     },
     {
       "goal": "error-model",
@@ -22646,6 +22885,30 @@
     {
       "goal": "performance",
       "issue": "1184"
+    },
+    {
+      "goal": "performance",
+      "issue": "1195"
+    },
+    {
+      "goal": "performance",
+      "issue": "1196"
+    },
+    {
+      "goal": "performance",
+      "issue": "1197"
+    },
+    {
+      "goal": "performance",
+      "issue": "1198"
+    },
+    {
+      "goal": "performance",
+      "issue": "1199"
+    },
+    {
+      "goal": "performance",
+      "issue": "1200"
     },
     {
       "goal": "platform",
@@ -24018,6 +24281,10 @@
     {
       "goal": "test-infrastructure",
       "issue": "1155"
+    },
+    {
+      "goal": "test-infrastructure",
+      "issue": "1201"
     }
   ],
   "goalDepLinks": [
@@ -25335,6 +25602,10 @@
     },
     {
       "goal": "compilable",
+      "issue": "1203"
+    },
+    {
+      "goal": "compilable",
       "issue": "107"
     },
     {
@@ -26316,6 +26587,30 @@
     {
       "goal": "core-semantics",
       "issue": "1184"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1195"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1196"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1197"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1198"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1199"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1200"
     },
     {
       "goal": "standalone-mode",

@@ -192,7 +192,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
 | #1182 | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | medium | ready |
 | #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | ready |
-| #1186 | fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx) | high | ready |
 | #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | ready |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | ready |
 | #1189 | ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness | medium | ready |
@@ -200,13 +199,10 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1191 | ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate | medium | ready |
 | #1192 | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | medium | ready |
 | #1193 | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | medium | ready |
-
-### Done
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1181 | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | high | done |
-| #1182 | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | medium | done |
-| #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | done |
+| #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | ready |
+| #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | ready |
+| #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | ready |
+| #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
+| #1206 | fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page) | medium | ready |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

@@ -125,8 +125,14 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1169f | IR Phase 4 Slice 7 — generators and async/await through the IR path | high | ready |
 | #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | ready |
+| #1208 | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1202 | credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm | high | in-progress |
 
 ### Done
 
@@ -164,6 +170,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169c | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | high | done |
 | #1169d | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | high | done |
 | #1169e | IR Phase 4 Slice 6 — iterators and for-of through the IR path | high | done |
+| #1169f | IR Phase 4 Slice 7 — generators and async/await through the IR path | high | done |
 | #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 | #1171 | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | high | done |
 | #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | done |
@@ -173,6 +180,10 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | done |
 | #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | done |
 | #1179-followup | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | medium | done |
+| #1181 | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | high | done |
+| #1182 | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | medium | done |
+| #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | done |
 | #1185 | IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts) | medium | done |
+| #1186 | fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx) | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
