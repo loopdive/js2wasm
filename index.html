@@ -594,6 +594,33 @@
         opacity: 0.5;
       }
 
+      .adr-list {
+        list-style: none;
+        margin: 16px 0 0 0;
+        padding: 0;
+        max-width: 720px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .adr-list li {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .adr-list a {
+        color: var(--fg-soft);
+        text-decoration: none;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 1px;
+        transition:
+          color 0.15s ease,
+          border-color 0.15s ease;
+      }
+      .adr-list a:hover {
+        color: var(--fg);
+        border-color: var(--fg-soft);
+      }
+
       .code-section {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -2919,7 +2946,7 @@ match (value) {
 
       <hr class="divider" />
 
-      <section class="section-pad" id="how-it-works">
+      <section class="section-pad" id="approach">
         <div class="intro">
           <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
@@ -3079,6 +3106,31 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             <code>buildImports()</code>
             to create the host import object, then instantiate with the standard WebAssembly API.
           </p>
+        </div>
+
+        <div class="how-step" style="margin-top: 56px">
+          <h3 class="how-step-title">Architecture</h3>
+          <p class="how-sub">
+            Architecture Decision Records (ADRs) document the non-obvious choices behind js2wasm &mdash; why WasmGC over
+            linear memory, why ahead-of-time compilation over a JIT, how closures and objects are laid out. Each record
+            captures the context, the decision, and its consequences in a few hundred words. Together they make the
+            design auditable for external contributors and reviewers.
+            <a href="./docs/adr/README.md">Read the index &rarr;</a>
+          </p>
+          <ul class="adr-list">
+            <li><a href="./docs/adr/0001-hybrid-compilation-strategy.md">ADR-001 &mdash; Hybrid static&ndash;dynamic compilation strategy</a></li>
+            <li><a href="./docs/adr/0002-architectural-approach.md">ADR-002 &mdash; Architectural approach: AOT + WasmGC</a></li>
+            <li><a href="./docs/adr/0003-wasmgc.md">ADR-003 &mdash; WasmGC over linear memory</a></li>
+            <li><a href="./docs/adr/0004-aot.md">ADR-004 &mdash; AOT compilation over JIT/interpreter</a></li>
+            <li><a href="./docs/adr/0005-object-layout.md">ADR-005 &mdash; Object layout via WasmGC struct types (closed-world)</a></li>
+            <li><a href="./docs/adr/0006-boundary-guards.md">ADR-006 &mdash; Boundary guards at host-import surfaces</a></li>
+            <li><a href="./docs/adr/0007-closure-conversion.md">ADR-007 &mdash; Closure conversion via WasmGC ref-cell structs</a></li>
+            <li><a href="./docs/adr/0008-dual-string-backend.md">ADR-008 &mdash; Dual string backend: wasm:js-string vs WasmGC i16 arrays</a></li>
+            <li><a href="./docs/adr/0009-typescript-annotations.md">ADR-009 &mdash; TypeScript annotations as inference seeds, not ground truth</a></li>
+            <li><a href="./docs/adr/0010-eval-host-import.md">ADR-010 &mdash; Dynamic eval() via host import</a></li>
+            <li><a href="./docs/adr/0011-implementation-language.md">ADR-011 &mdash; Implementation language: TypeScript with the typescript package</a></li>
+            <li><a href="./docs/adr/0012-intermediate-representation.md">ADR-012 &mdash; Intermediate representation: multi-stage typed IR</a></li>
+          </ul>
         </div>
       </section>
 
@@ -3581,7 +3633,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
       // Hero wave is WebGL-rendered and only animates while visible.
 
       // Minimal syntax highlighter for feature code examples
-      // Syntax highlight feature examples and how-it-works code blocks with shiki
+      // Syntax highlight feature examples and approach code blocks with shiki
       (async function highlightWithShiki() {
         try {
           const { codeToHtml } = await import("https://esm.sh/shiki@4.0.2/bundle/web");
