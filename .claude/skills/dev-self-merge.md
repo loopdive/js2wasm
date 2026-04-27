@@ -44,8 +44,8 @@ Download the merged report artifact:
 
 ```bash
 run_id=$(jq -r '.run_url' .claude/ci-status/pr-<N>.json | grep -oE 'runs/[0-9]+' | cut -d/ -f2)
-mkdir -p /tmp/sm-<N>
-gh run download "$run_id" -n test262-merged-report -D /tmp/sm-<N>
+mkdir -p output/sm-<N>
+gh run download "$run_id" -n test262-merged-report -D output/sm-<N>
 ```
 
 Bucket by path prefix:
