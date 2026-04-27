@@ -6,7 +6,7 @@ model_id=$(echo "$input" | jq -r '.model.id // empty')
 ctx_size=$(echo "$input" | jq -r 'if .context_window.context_window_size then (.context_window.context_window_size / 1000 | floor | tostring) + "K" else empty end')
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 weekly=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
-effort=$(echo "$input" | jq -r '.thinking.type // .effort // empty')
+effort=$(echo "$input" | jq -r '.thinking.type // .effort.level // .effort // empty')
 in_worktree=$(echo "$input" | jq -r '.worktree.path // empty')
 case "$model_id" in
   claude-opus-4-7*)   pricing='$15/$75'; price_in=15 ;;
