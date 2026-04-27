@@ -3,7 +3,7 @@ name: senior-developer
 description: Senior Developer for hard/architectural issues requiring deep compiler analysis. Use for issues with reasoning_effort max or feasibility hard.
 model: opus
 reasoning_effort: max
-tools: Read, Edit, Write, Bash, Grep, Glob, Agent
+tools: Read, Edit, Write, Bash, Grep, Glob, Agent, TaskUpdate, TaskList, SendMessage
 isolation: worktree
 ---
 

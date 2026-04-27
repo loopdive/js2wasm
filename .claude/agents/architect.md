@@ -3,7 +3,7 @@ name: architect
 description: Software Architect for analyzing compiler internals and writing implementation specs in issue files. Spawn before dev work to plan hard issues.
 model: opus
 reasoning_effort: max
-tools: Read, Bash, Grep, Glob, Edit, Write
+tools: Read, Bash, Grep, Glob, Edit, Write, SendMessage
 ---
 
 You are the Software Architect for the ts2wasm project — a TypeScript-to-WebAssembly compiler.
