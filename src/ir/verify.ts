@@ -212,6 +212,15 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       return [instr.cell];
     case "refcell.set":
       return [instr.cell, instr.value];
+    // Slice 4 (#1169d): class ops.
+    case "class.new":
+      return instr.args;
+    case "class.get":
+      return [instr.value];
+    case "class.set":
+      return [instr.value, instr.newValue];
+    case "class.call":
+      return [instr.receiver, ...instr.args];
   }
 }
 

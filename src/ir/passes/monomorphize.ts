@@ -427,6 +427,9 @@ function irTypeKey(t: IrType): string {
     const ps = t.signature.params.map(irTypeKey).join(",");
     return `c:(${ps})->${irTypeKey(t.signature.returnType)}`;
   }
+  // Slice 4 (#1169d): class is keyed by name — one declaration per
+  // unit, so the name uniquely identifies the shape.
+  if (t.kind === "class") return `cls:${t.shape.className}`;
   if (t.kind === "union") {
     const parts = [...t.members].map(valTypeKey).sort();
     return `u:${parts.join("|")}`;
@@ -648,5 +651,14 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.cell];
     case "refcell.set":
       return [instr.cell, instr.value];
+    // Slice 4 (#1169d): class ops.
+    case "class.new":
+      return instr.args;
+    case "class.get":
+      return [instr.value];
+    case "class.set":
+      return [instr.value, instr.newValue];
+    case "class.call":
+      return [instr.receiver, ...instr.args];
   }
 }

@@ -104,6 +104,20 @@ const WASM_OPT_BIN = process.env.WASM_OPT_BIN || "wasm-opt";
 const JAVY_ROOT = process.env.JAVY_ROOT || path.resolve(ROOT, "vendor", "Javy");
 const JAVY_BIN = process.env.JAVY_BIN || path.join(JAVY_ROOT, "javy");
 const JAVY_PLUGIN = process.env.JAVY_PLUGIN || path.join(JAVY_ROOT, "plugin.wasm");
+// Shopify Functions ships Javy in *dynamic* mode by default — the QuickJS
+// runtime is shared across all functions through `plugin.wasm`, and each
+// user function is a small (~1 kB) Wasm that imports from the plugin. The
+// harness uses dynamic mode whenever a plugin is available; set
+// JAVY_DYNAMIC=0 to fall back to the legacy static (self-contained) build.
+const JAVY_DYNAMIC = (() => {
+  const raw = process.env.JAVY_DYNAMIC;
+  if (raw == null || raw === "") return existsSync(JAVY_PLUGIN);
+  return /^(1|true|yes|on)$/i.test(raw);
+})();
+// Wasmtime --preload alias name for the bundled Javy plugin. The dynamic
+// user module imports from this exact module name; the alias is fixed by
+// Javy's plugin emitter.
+const JAVY_PLUGIN_PRELOAD_NAME = "javy-default-plugin-v3";
 const ASSEMBLYSCRIPT_ROOT = process.env.ASSEMBLYSCRIPT_ROOT || path.resolve(ROOT, "vendor", "AssemblyScript");
 const ASSEMBLYSCRIPT_ASC =
   process.env.ASSEMBLYSCRIPT_ASC || path.join(ASSEMBLYSCRIPT_ROOT, "node_modules", ".bin", "asc");
@@ -121,10 +135,62 @@ const STARLINGMONKEY_RUNTIME =
 const STARLINGMONKEY_WASMTIME_BIN =
   process.env.STARLINGMONKEY_WASMTIME_BIN ||
   (STARLINGMONKEY_ROOT ? path.join(STARLINGMONKEY_ROOT, "deps", "cpm_cache", "wasmtime", "487d", "wasmtime") : "");
-const STARLINGMONKEY_ADAPTER = process.env.STARLINGMONKEY_ADAPTER || "";
+// Default to the bundled ComponentizeJS adapter when @bytecodealliance/componentize-js
+// is installed and the adapter file ships in this repo (see #1125). Setting
+// STARLINGMONKEY_ADAPTER explicitly overrides this. To opt out of the bundled
+// adapter without removing the file, set STARLINGMONKEY_ADAPTER= (empty).
+const BUNDLED_STARLINGMONKEY_ADAPTER = path.resolve(import.meta.dirname, "competitive", "sm-componentize-adapter.mjs");
+function defaultStarlingMonkeyAdapter(): string {
+  if (!existsSync(BUNDLED_STARLINGMONKEY_ADAPTER)) return "";
+  // Probe whether ComponentizeJS is resolvable from this repo's node_modules.
+  // We don't actually import it here — that would download the Weval binary
+  // even if the lane is never invoked. We just check the package's main entry
+  // point resolves through Node's resolver, respecting its `exports` field.
+  // Note: `require.resolve("...")` is unreliable here because the package
+  // restricts subpath exports; `import.meta.resolve` honours conditions.
+  try {
+    // import.meta.resolve is sync since Node 20.6; it returns a file:// URL
+    // and throws if the package isn't reachable.
+    const url = (import.meta as unknown as { resolve(spec: string): string }).resolve(
+      "@bytecodealliance/componentize-js",
+    );
+    if (typeof url === "string" && url.length > 0) {
+      return BUNDLED_STARLINGMONKEY_ADAPTER;
+    }
+  } catch {
+    // fall through
+  }
+  return "";
+}
+const STARLINGMONKEY_ADAPTER =
+  process.env.STARLINGMONKEY_ADAPTER !== undefined
+    ? process.env.STARLINGMONKEY_ADAPTER
+    : defaultStarlingMonkeyAdapter();
 const STARLINGMONKEY_ADAPTER_KIND = process.env.STARLINGMONKEY_ADAPTER_KIND || "module";
+const STARLINGMONKEY_ADAPTER_IS_BUNDLED =
+  STARLINGMONKEY_ADAPTER !== "" && path.resolve(STARLINGMONKEY_ADAPTER) === BUNDLED_STARLINGMONKEY_ADAPTER;
 const WASMTIME_OPTIMIZE = process.env.WASMTIME_OPTIMIZE || "opt-level=2";
-const WASMTIME_WASM_FLAGS = ["-W", "gc=y,gc-support=y,function-references=y,exceptions=y"];
+// Wasmtime flag set tracked against wasmtime >= 40 (no upper pin — the
+// harness is verified against the latest stable release at the time of
+// each run; v40 is the floor because that is when the component-model
+// `--invoke "fn(args)"` syntax shipped, which the StarlingMonkey +
+// ComponentizeJS lane depends on).
+//
+// History:
+//   - Pre-31: `-W gc=y,gc-support=y,function-references=y,exceptions=y`
+//   - v31:    `gc-support` was collapsed into `gc=y`; `exceptions=y`
+//             temporarily disappeared and exception-handling was implicit.
+//   - v40+:   `-W exceptions=y` is back as an explicit flag. It is required
+//             as soon as the component model emits exception bytecode
+//             (which ComponentizeJS output does for SpiderMonkey's
+//             exception machinery). v40 also added the `--invoke "fn(args)"`
+//             parenthesized syntax that finally lets the CLI invoke
+//             component exports directly — the harness uses that for the
+//             StarlingMonkey + ComponentizeJS lane below.
+//
+// `component-model=y` is on by default but we set it explicitly so component
+// artifacts continue to load if a future wasmtime turns it off-by-default.
+const WASMTIME_WASM_FLAGS = ["-W", "gc=y,function-references=y,component-model=y,exceptions=y"];
 const WASM_OPT_FLAGS = (process.env.WASM_OPT_FLAGS || "--all-features -O4").trim().split(/\s+/).filter(Boolean);
 const BENCHMARK_FILTER = new Set(
   (process.env.BENCHMARK_FILTER || "")
@@ -531,11 +597,28 @@ function measureNodeWasmComputeOnlyProcess(
   };
 }
 
-function measureJavyInvocation(wasmPath: string, arg: number, runs: number): InvocationMetric {
+function buildJavyRunArgs(wasmPath: string, pluginCwasmPath: string | null): string[] {
+  const args = ["run", ...WASMTIME_WASM_FLAGS, "--allow-precompiled"];
+  if (pluginCwasmPath) {
+    // Shopify-style dynamic-link path: the user module imports QuickJS
+    // builtins from `javy-default-plugin-v3`; preload the precompiled
+    // plugin under that exact name so wasmtime can satisfy the imports.
+    args.push("--preload", `${JAVY_PLUGIN_PRELOAD_NAME}=${pluginCwasmPath}`);
+  }
+  args.push(wasmPath);
+  return args;
+}
+
+function measureJavyInvocation(
+  wasmPath: string,
+  arg: number,
+  runs: number,
+  pluginCwasmPath: string | null = null,
+): InvocationMetric {
   const timings: number[] = [];
   let resultValue: number | null = null;
   for (let i = 0; i < runs; i++) {
-    const res = runCommand(WASMTIME_BIN, ["run", ...WASMTIME_WASM_FLAGS, "--allow-precompiled", wasmPath], {
+    const res = runCommand(WASMTIME_BIN, buildJavyRunArgs(wasmPath, pluginCwasmPath), {
       input: JSON.stringify({ input: arg, iterations: 0 }),
     });
     if (!res.ok) {
@@ -562,11 +645,12 @@ function measureJavyHotInvocation(
   arg: number,
   runs: number,
   iterationsPerRun: number,
+  pluginCwasmPath: string | null = null,
 ): InvocationMetric {
   const timings: number[] = [];
   let resultValue: number | null = null;
   for (let i = 0; i < runs; i++) {
-    const res = runCommand(WASMTIME_BIN, ["run", ...WASMTIME_WASM_FLAGS, "--allow-precompiled", wasmPath], {
+    const res = runCommand(WASMTIME_BIN, buildJavyRunArgs(wasmPath, pluginCwasmPath), {
       input: JSON.stringify({ input: arg, iterations: iterationsPerRun }),
     });
     if (!res.ok) {
@@ -760,6 +844,86 @@ function measureWasmtimeHotInvocation(
     if (resultValue == null) resultValue = parsed;
     if (resultValue !== parsed) {
       throw new Error(`Non-deterministic Wasmtime hot result for ${artifactPath}: ${resultValue} vs ${parsed}`);
+    }
+    timings.push(res.durationMs / iterationsPerRun);
+  }
+  return {
+    arg,
+    runs,
+    iterationsPerRun,
+    medianMs: median(timings),
+    allMs: timings,
+    result: resultValue,
+  };
+}
+
+// Component-aware invocation. Wasmtime >= 40 supports `--invoke "fn(arg)"`
+// against components, with results printed to stdout the same way module
+// invocation does. The kebab-case name the WIT world exposes ("run-hot")
+// is the form that wasmtime expects in the `--invoke` expression.
+function measureWasmtimeComponentInvocation(
+  artifactPath: string,
+  exportName: string,
+  arg: number,
+  runs: number,
+): InvocationMetric {
+  const timings: number[] = [];
+  let resultValue: number | null = null;
+  for (let i = 0; i < runs; i++) {
+    const res = runCommand(WASMTIME_BIN, [
+      "run",
+      ...WASMTIME_WASM_FLAGS,
+      "--allow-precompiled",
+      "--invoke",
+      `${exportName}(${arg})`,
+      artifactPath,
+    ]);
+    if (!res.ok) {
+      throw new Error(res.stderr || `wasmtime component run failed for ${artifactPath}`);
+    }
+    const parsed = parseWasmtimeInvokeOutput(res.stdout);
+    if (resultValue == null) resultValue = parsed;
+    if (resultValue !== parsed) {
+      throw new Error(`Non-deterministic Wasmtime component result for ${artifactPath}: ${resultValue} vs ${parsed}`);
+    }
+    timings.push(res.durationMs);
+  }
+  return {
+    arg,
+    runs,
+    medianMs: median(timings),
+    allMs: timings,
+    result: resultValue,
+  };
+}
+
+function measureWasmtimeComponentHotInvocation(
+  artifactPath: string,
+  exportName: string,
+  arg: number,
+  runs: number,
+  iterationsPerRun: number,
+): InvocationMetric {
+  const timings: number[] = [];
+  let resultValue: number | null = null;
+  for (let i = 0; i < runs; i++) {
+    const res = runCommand(WASMTIME_BIN, [
+      "run",
+      ...WASMTIME_WASM_FLAGS,
+      "--allow-precompiled",
+      "--invoke",
+      `${exportName}(${iterationsPerRun},${arg})`,
+      artifactPath,
+    ]);
+    if (!res.ok) {
+      throw new Error(res.stderr || `wasmtime component hot run failed for ${artifactPath}`);
+    }
+    const parsed = parseWasmtimeInvokeOutput(res.stdout);
+    if (resultValue == null) resultValue = parsed;
+    if (resultValue !== parsed) {
+      throw new Error(
+        `Non-deterministic Wasmtime component hot result for ${artifactPath}: ${resultValue} vs ${parsed}`,
+      );
     }
     timings.push(res.durationMs / iterationsPerRun);
   }
@@ -1756,15 +1920,18 @@ function evaluateStarlingMonkeyComponentize(
   baselineRuntime: number,
 ): ToolchainResult {
   if (!STARLINGMONKEY_ADAPTER) {
+    const adapterMissingNotes = existsSync(BUNDLED_STARLINGMONKEY_ADAPTER)
+      ? [
+          `bundled adapter at ${path.relative(ROOT, BUNDLED_STARLINGMONKEY_ADAPTER)} is present but @bytecodealliance/componentize-js is not installed (run \`pnpm install\`)`,
+        ]
+      : ["STARLINGMONKEY_ADAPTER is not configured and the bundled adapter is missing"];
     return {
       id: "starlingmonkey-componentize-wasmtime",
-      label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+      label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
       status: "unavailable",
       notes: STARLINGMONKEY_ROOT
-        ? [
-            `vendored checkout found at ${path.relative(ROOT, STARLINGMONKEY_ROOT)}, but STARLINGMONKEY_ADAPTER is not configured`,
-          ]
-        : ["STARLINGMONKEY_ADAPTER is not configured"],
+        ? [`vendored checkout found at ${path.relative(ROOT, STARLINGMONKEY_ROOT)}`, ...adapterMissingNotes]
+        : adapterMissingNotes,
       rawBytes: null,
       runtimeBytes: null,
       gzipBytes: null,
@@ -1796,7 +1963,7 @@ function evaluateStarlingMonkeyComponentize(
     if (!compileStep.ok) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "compile-error",
         notes: [compileStep.stderr || "adapter failed to compile program"],
         compilerBytes: null,
@@ -1820,7 +1987,7 @@ function evaluateStarlingMonkeyComponentize(
     if (!precompile.ok) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "runtime-error",
         notes: [precompile.stderr || "wasmtime compile failed"],
         compilerBytes: null,
@@ -1834,16 +2001,24 @@ function evaluateStarlingMonkeyComponentize(
       };
     }
 
-    const coldStart = measureWasmtimeInvocation(
-      cwasmPath,
-      invokeExport,
-      program.benchmark.coldArg,
-      program.benchmark.coldRuns,
-    );
+    // Adapter output kind dictates which `wasmtime run --invoke` syntax to
+    // use. ComponentizeJS produces a component (kind: "component") for which
+    // wasmtime >= 40 supports `--invoke "fn(arg1, arg2, ...)"`. Older module
+    // adapters (kind: "module") use the legacy `--invoke <fn> <artifact> arg`
+    // form. Both paths share `parseWasmtimeInvokeOutput` for stdout parsing.
+    const isComponent = metadata.kind === "component";
+    const invokeCold = isComponent ? measureWasmtimeComponentInvocation : measureWasmtimeInvocation;
+    const invokeHot = isComponent ? measureWasmtimeComponentHotInvocation : measureWasmtimeHotInvocation;
+    // Module-style adapters historically synthesized `<entry>_hot`; the
+    // component adapter emits the WIT-style `<entry>-hot`. Use the metadata
+    // sidecar value when present so both paths agree.
+    const hotExportForInvoke = isComponent ? hotInvokeExport : invokeExport;
+
+    const coldStart = invokeCold(cwasmPath, invokeExport, program.benchmark.coldArg, program.benchmark.coldRuns);
     if (coldStart.result !== baselineCold) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "runtime-error",
         notes: [`checksum mismatch for cold run: expected ${baselineCold}, got ${coldStart.result}`],
         compilerBytes: null,
@@ -1857,7 +2032,7 @@ function evaluateStarlingMonkeyComponentize(
       };
     }
 
-    const runtimeSingleCall = measureWasmtimeInvocation(
+    const runtimeSingleCall = invokeCold(
       cwasmPath,
       invokeExport,
       program.benchmark.runtimeArg,
@@ -1866,7 +2041,7 @@ function evaluateStarlingMonkeyComponentize(
     if (runtimeSingleCall.result !== baselineRuntime) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "runtime-error",
         notes: [
           `checksum mismatch for runtime single call: expected ${baselineRuntime}, got ${runtimeSingleCall.result}`,
@@ -1882,9 +2057,9 @@ function evaluateStarlingMonkeyComponentize(
       };
     }
 
-    const runtime = measureWasmtimeHotInvocation(
+    const runtime = invokeHot(
       cwasmPath,
-      hotInvokeExport,
+      hotExportForInvoke,
       program.benchmark.runtimeArg,
       program.benchmark.runtimeRuns,
       hotIterations,
@@ -1892,7 +2067,7 @@ function evaluateStarlingMonkeyComponentize(
     if (runtime.result !== baselineRuntime) {
       return {
         id: "starlingmonkey-componentize-wasmtime",
-        label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+        label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
         status: "runtime-error",
         notes: [`checksum mismatch for runtime run: expected ${baselineRuntime}, got ${runtime.result}`],
         compilerBytes: null,
@@ -1908,11 +2083,22 @@ function evaluateStarlingMonkeyComponentize(
 
     return {
       id: "starlingmonkey-componentize-wasmtime",
-      label: "StarlingMonkey + ComponentizeJS -> Wasmtime",
+      label: "StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime",
       status: "ok",
       notes:
         metadata.kind === "component"
-          ? ["benchmark-specific component artifact generated through ComponentizeJS"]
+          ? [
+              "benchmark-specific component artifact generated through ComponentizeJS",
+              `Wizer pre-init: on; Weval AOT: ${
+                ((metadata.componentize as Record<string, unknown> | undefined)?.wevalAotEnabled ??
+                (metadata.componentize as Record<string, unknown> | undefined)?.enableAot)
+                  ? "on"
+                  : "off"
+              }`,
+              STARLINGMONKEY_ADAPTER_IS_BUNDLED
+                ? `using bundled adapter ${path.relative(ROOT, BUNDLED_STARLINGMONKEY_ADAPTER)}`
+                : `using adapter ${STARLINGMONKEY_ADAPTER}`,
+            ]
           : ["benchmark-specific Wasm artifact generated through adapter"],
       compilerBytes: null,
       runtimeBytes: null,
@@ -1960,13 +2146,26 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
   try {
     const hotIterations = program.benchmark.hotIterations;
     const compilerBytes = sumExistingPathFootprints(JAVY_BIN);
-    const runtimeBytes = sumExistingPathFootprints(JAVY_PLUGIN);
+    const pluginRawBytes = existsSync(JAVY_PLUGIN) ? sumExistingPathFootprints(JAVY_PLUGIN) : null;
     const wrapperPath = path.join(tmpDir, `${program.benchmark.id}.javy.js`);
     const wasmPath = path.join(tmpDir, `${program.benchmark.id}.javy.wasm`);
     writeFileSync(wrapperPath, createJavyWrapperSource(program));
 
-    const buildArgs = ["build", "-J", "javy-stream-io=y", "-J", "text-encoding=y", wrapperPath, "-o", wasmPath];
+    const useDynamic = JAVY_DYNAMIC && existsSync(JAVY_PLUGIN);
+    const buildArgs = useDynamic
+      ? // Shopify Functions production setup: dynamic linking against the
+        // shared QuickJS plugin. Per-function module shrinks from ~1.2 MB
+        // to ~1 kB; the QuickJS runtime ships once via the plugin. Note
+        // that JS runtime options (-J ...) are not allowed alongside
+        // -C plugin per Javy's CLI — those settings come from the plugin.
+        ["build", "-C", "dynamic=y", "-C", `plugin=${JAVY_PLUGIN}`, wrapperPath, "-o", wasmPath]
+      : ["build", "-J", "javy-stream-io=y", "-J", "text-encoding=y", wrapperPath, "-o", wasmPath];
     const buildStep = runCommand(JAVY_BIN, buildArgs);
+    // The plugin is the shared QuickJS runtime in dynamic mode; in static
+    // mode it ships bundled, but we still report its raw size in
+    // `runtimeBytes` for consistency across both modes (the static build
+    // effectively includes a copy of plugin-equivalent bytes).
+    const runtimeBytes = pluginRawBytes;
     if (!buildStep.ok) {
       return {
         id: "javy-wasmtime",
@@ -2007,7 +2206,40 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       };
     }
 
-    const coldStart = measureJavyInvocation(cwasmPath, program.benchmark.coldArg, program.benchmark.coldRuns);
+    // Dynamic mode: precompile the shared plugin once per program (the
+    // result is cacheable across all functions in a real deployment, so
+    // the cost is amortized in production but reported here for clarity).
+    let pluginCwasmPath: string | null = null;
+    let pluginPrecompileMs = 0;
+    if (useDynamic) {
+      pluginCwasmPath = path.join(tmpDir, "plugin.cwasm");
+      const pluginPrecompile = compileWithWasmtimeProfile(JAVY_PLUGIN, pluginCwasmPath);
+      pluginPrecompileMs = pluginPrecompile.durationMs;
+      if (!pluginPrecompile.ok) {
+        return {
+          id: "javy-wasmtime",
+          label: "Javy -> Wasmtime",
+          status: "runtime-error",
+          notes: [pluginPrecompile.stderr || "wasmtime compile of Javy plugin failed"],
+          compilerBytes,
+          runtimeBytes,
+          compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
+          rawBytes,
+          gzipBytes: compressedBytes,
+          precompiledBytes: null,
+          coldStart: null,
+          runtime: null,
+          computeOnly: null,
+        };
+      }
+    }
+
+    const coldStart = measureJavyInvocation(
+      cwasmPath,
+      program.benchmark.coldArg,
+      program.benchmark.coldRuns,
+      pluginCwasmPath,
+    );
     if (coldStart.result !== baselineCold) {
       return {
         id: "javy-wasmtime",
@@ -2016,7 +2248,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
         notes: [`checksum mismatch for cold run: expected ${baselineCold}, got ${coldStart.result}`],
         compilerBytes,
         runtimeBytes,
-        compileMs: buildStep.durationMs + precompile.durationMs,
+        compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
         rawBytes,
         gzipBytes: compressedBytes,
         precompiledBytes: statSync(cwasmPath).size,
@@ -2030,6 +2262,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       cwasmPath,
       program.benchmark.runtimeArg,
       program.benchmark.runtimeRuns,
+      pluginCwasmPath,
     );
     if (runtimeSingleCall.result !== baselineRuntime) {
       return {
@@ -2041,7 +2274,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
         ],
         compilerBytes,
         runtimeBytes,
-        compileMs: buildStep.durationMs + precompile.durationMs,
+        compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
         rawBytes,
         gzipBytes: compressedBytes,
         precompiledBytes: statSync(cwasmPath).size,
@@ -2056,6 +2289,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       program.benchmark.runtimeArg,
       program.benchmark.runtimeRuns,
       hotIterations,
+      pluginCwasmPath,
     );
     if (runtime.result !== baselineRuntime) {
       return {
@@ -2065,7 +2299,7 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
         notes: [`checksum mismatch for runtime run: expected ${baselineRuntime}, got ${runtime.result}`],
         compilerBytes,
         runtimeBytes,
-        compileMs: buildStep.durationMs + precompile.durationMs,
+        compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
         rawBytes,
         gzipBytes: compressedBytes,
         precompiledBytes: statSync(cwasmPath).size,
@@ -2079,10 +2313,15 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       id: "javy-wasmtime",
       label: "Javy -> Wasmtime",
       status: "ok",
-      notes: ["static Javy runtime with stream I/O wrapper"],
+      notes: useDynamic
+        ? [
+            "Javy dynamic-link mode (Shopify Functions production setup)",
+            `per-function module + shared QuickJS plugin (${JAVY_PLUGIN_PRELOAD_NAME})`,
+          ]
+        : ["static Javy runtime with stream I/O wrapper (dynamic mode disabled or plugin missing)"],
       compilerBytes,
       runtimeBytes,
-      compileMs: buildStep.durationMs + precompile.durationMs,
+      compileMs: buildStep.durationMs + precompile.durationMs + pluginPrecompileMs,
       rawBytes,
       gzipBytes: compressedBytes,
       precompiledBytes: statSync(cwasmPath).size,
@@ -2092,6 +2331,10 @@ function evaluateJavy(program: LoadedProgram, baselineCold: number, baselineRunt
       metadata: {
         javy: path.relative(ROOT, JAVY_BIN),
         plugin: existsSync(JAVY_PLUGIN) ? path.relative(ROOT, JAVY_PLUGIN) : null,
+        mode: useDynamic ? "dynamic" : "static",
+        pluginPreloadName: useDynamic ? JAVY_PLUGIN_PRELOAD_NAME : null,
+        pluginRawBytes,
+        pluginPrecompiledBytes: pluginCwasmPath && existsSync(pluginCwasmPath) ? statSync(pluginCwasmPath).size : null,
         hotIterations,
         computeMethod: "estimated = hot_runtime - single_call/iterations",
       },

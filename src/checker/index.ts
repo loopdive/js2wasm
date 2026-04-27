@@ -549,14 +549,51 @@ export function analyzeMultiSource(
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   const entrySourceFile = program.getSourceFile(normalizedEntry)!;
+
+  // Order source files topologically: dependencies before importers, entry last.
+  // ES module evaluation runs each module's body after its imports' bodies, and
+  // we concatenate top-level statements into a single `__module_init` — so
+  // dependency files must appear earlier in `sourceFiles` than their importers
+  // (#1109). Cycles are tolerated by dropping back-edges (first-seen wins).
   const userSourceFiles: ts.SourceFile[] = [];
-  for (const name of rootNames) {
-    if (name !== normalizedEntry) {
+  {
+    const visited = new Set<string>();
+    const onStack = new Set<string>();
+    const visit = (name: string): void => {
+      if (visited.has(name) || onStack.has(name)) return;
       const sf = program.getSourceFile(name);
-      if (sf) userSourceFiles.push(sf);
+      if (!sf) return;
+      onStack.add(name);
+      for (const stmt of sf.statements) {
+        const spec =
+          (ts.isImportDeclaration(stmt) || ts.isExportDeclaration(stmt)) &&
+          stmt.moduleSpecifier &&
+          ts.isStringLiteral(stmt.moduleSpecifier)
+            ? stmt.moduleSpecifier.text
+            : undefined;
+        if (!spec) continue;
+        // Re-use the same resolver the program used so cycles are treated identically.
+        const resolved = ts.resolveModuleName(spec, name, compilerOptions, compilerHost).resolvedModule
+          ?.resolvedFileName;
+        if (resolved && resolved !== name) visit(resolved);
+      }
+      visited.add(name);
+      onStack.delete(name);
+      if (sf !== entrySourceFile) userSourceFiles.push(sf);
+    };
+    // Entry-anchored DFS; only files reachable from entry are emitted.
+    visit(normalizedEntry);
+    userSourceFiles.push(entrySourceFile);
+    // Append any additional user files that weren't reached via the entry's import graph
+    // (the previous behaviour was to emit every rootName, so we keep that for safety).
+    for (const name of rootNames) {
+      if (visited.has(name) || name === normalizedEntry) continue;
+      const sf = program.getSourceFile(name);
+      if (sf && sf !== entrySourceFile && !userSourceFiles.includes(sf)) {
+        userSourceFiles.splice(userSourceFiles.length - 1, 0, sf);
+      }
     }
   }
-  userSourceFiles.push(entrySourceFile);
 
   return {
     sourceFiles: userSourceFiles,

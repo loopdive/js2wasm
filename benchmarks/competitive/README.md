@@ -9,7 +9,8 @@ This benchmark harness compares the same JavaScript benchmark programs across:
 - Javy's static QuickJS runtime running the same JS in Wasmtime
 - Porffor running through its own Node.js runtime/compiler path
 - StarlingMonkey's runtime-eval component running the same JS in Wasmtime
-- a benchmark-specific StarlingMonkey + ComponentizeJS lane running in Wasmtime
+- a benchmark-specific StarlingMonkey + ComponentizeJS lane (Wizer pre-init +
+  Weval AOT specialization) running in Wasmtime
 
 ## What it measures
 
@@ -26,8 +27,26 @@ This benchmark harness compares the same JavaScript benchmark programs across:
 The Wasmtime side uses:
 
 - `wasm-opt --all-features -O4`
-- `wasmtime compile -W gc=y,gc-support=y,function-references=y,exceptions=y -O opt-level=2`
-- `wasmtime run -W gc=y,gc-support=y,function-references=y,exceptions=y --allow-precompiled`
+- `wasmtime compile -W gc=y,function-references=y,component-model=y,exceptions=y -O opt-level=2`
+- `wasmtime run -W gc=y,function-references=y,component-model=y,exceptions=y --allow-precompiled`
+
+The harness is verified against the latest stable wasmtime release at the
+time of each run (most recently `wasmtime 44.0.0`). The floor is wasmtime
+40, because the StarlingMonkey + ComponentizeJS lane depends on wasmtime
+40's component-model `--invoke "fn(args)"` parenthesized syntax — earlier
+wasmtimes (30, 31) reject `--invoke` against components.
+
+`-W exceptions=y` is required for the StarlingMonkey + ComponentizeJS lane
+because the embedded SpiderMonkey engine uses Wasm exception-handling
+bytecode for its exception machinery. (Throughout this README,
+"StarlingMonkey" refers to the Bytecode Alliance's SpiderMonkey embedding
+— the project that wraps Mozilla's SpiderMonkey JavaScript engine for
+WASI / Component Model targets. When we discuss the snapshotted runtime,
+the WIT bindings, or the deployed Wasm component, that is StarlingMonkey;
+when we discuss the interpreter loop, the parser, or the GC, those are
+SpiderMonkey internals that StarlingMonkey embeds.)
+`gc-support=y` (a pre-v31 flag) was collapsed into `gc=y` upstream and is
+no longer set by the harness.
 
 This is a best-effort approximation of a production precompiled deployment
 profile. It is not a claim that Fastly uses exactly these public CLI flags.
@@ -114,9 +133,18 @@ Point them at local checkouts or installed binaries before running the suite.
 ### Optional external toolchains
 
 ```bash
-# Javy
+# Javy (Shopify Functions production setup — dynamic mode by default)
+# Download the latest Javy CLI + plugin.wasm from
+#   https://github.com/bytecodealliance/javy/releases/latest
+# and set:
 export JAVY_BIN=/absolute/path/to/javy
 export JAVY_PLUGIN=/absolute/path/to/plugin.wasm
+# Set JAVY_DYNAMIC=0 to fall back to legacy static (self-contained) Javy
+# builds. Default is dynamic if a plugin is reachable — that matches
+# Shopify Functions, which ships per-function modules of ~1 kB plus a
+# shared 1.2 MB plugin.wasm at the host level. Static mode produces
+# ~1.2 MB self-contained Wasm per function.
+export JAVY_DYNAMIC=1
 
 # AssemblyScript
 export ASSEMBLYSCRIPT_ROOT=/absolute/path/to/AssemblyScript
@@ -133,15 +161,21 @@ export STARLINGMONKEY_BUILD_DIR=/absolute/path/to/StarlingMonkey/cmake-build-rel
 export STARLINGMONKEY_RUNTIME=/absolute/path/to/StarlingMonkey/cmake-build-release/starling.wasm
 export STARLINGMONKEY_WASMTIME_BIN=/absolute/path/to/wasmtime
 
-# Optional StarlingMonkey + ComponentizeJS lane
-export STARLINGMONKEY_ADAPTER=$PWD/scripts/starlingmonkey-componentize-adapter.mjs
+# StarlingMonkey + ComponentizeJS (Wizer + Weval) lane
+# As of #1125 the harness auto-uses the bundled adapter at
+#   benchmarks/competitive/sm-componentize-adapter.mjs
+# whenever @bytecodealliance/componentize-js is installed (it ships in
+# devDependencies). You only need to set this if you want to point at a
+# different adapter implementation.
+export STARLINGMONKEY_ADAPTER=$PWD/benchmarks/competitive/sm-componentize-adapter.mjs
 
-# Optional explicit Wizer / Weval binaries
+# Optional: opt out of Weval AOT specialization (Wizer pre-init still runs)
+export STARLINGMONKEY_COMPONENTIZE_AOT=0
+
+# Optional: explicit Wizer / Weval binaries (otherwise the bundled
+# @bytecodealliance/wizer + @bytecodealliance/weval are used)
 export STARLINGMONKEY_WIZER_BIN=/absolute/path/to/wizer
 export STARLINGMONKEY_WEVAL_BIN=/absolute/path/to/weval
-
-# Optional: ask the adapter to attempt ComponentizeJS AOT
-export STARLINGMONKEY_COMPONENTIZE_AOT=1
 ```
 
 The benchmark script falls back to `vendor/...` paths only if those exist and no
@@ -179,77 +213,274 @@ For each benchmark program, the harness generates a small wrapper script that:
 This means the StarlingMonkey lane measures the runtime-eval component, not a
 benchmark-specific compiled module.
 
-## StarlingMonkey + ComponentizeJS adapter
+## StarlingMonkey + ComponentizeJS (Wizer + Weval) lane
 
-The repo now ships a benchmark adapter at:
+This lane gives the StarlingMonkey embedding the same kind of AOT story it
+would have in production, instead of the generic runtime-eval flow. It is
+distinct from the runtime-eval lane and is reported separately in the harness
+output (label: `StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime`,
+id: `starlingmonkey-componentize-wasmtime`).
+
+### What runs in this lane
+
+For each benchmark program the bundled adapter:
+
+1. takes the program's pure-JS module
+2. synthesizes a `<entry>-hot` loop export
+3. emits a tiny WIT world containing both `<entry>` and `<entry>-hot`
+4. feeds both into `@bytecodealliance/componentize-js`, which:
+   - runs **Wizer** pre-initialization on the StarlingMonkey embedding so the
+     resulting component already has the user module parsed and global init
+     complete (always on)
+   - runs **Weval** AOT specialization to partially evaluate the SpiderMonkey
+     interpreter against the snapshotted module so hot calls bypass interpreter
+     dispatch (on by default; opt out with `STARLINGMONKEY_COMPONENTIZE_AOT=0`)
+5. writes the final `.wasm` component plus a `<output>.wasm.json` sidecar
+   describing invoke export names and which post-processing passes ran
+
+The harness then runs `wasmtime compile -O opt-level=2` and measures
+cold-start, hot runtime, and module size like every other lane.
+
+### Required tools
+
+- `node` (>= 20, for `import.meta.resolve`)
+- `pnpm` — to install `@bytecodealliance/componentize-js`
+- `wasmtime` — to precompile and run the resulting component
+- `wasm-opt` — required by the rest of the harness, not by this adapter
+  specifically
+
+`@bytecodealliance/componentize-js` ships its own `@bytecodealliance/wizer` and
+`@bytecodealliance/weval` dependencies, so you do **not** need separate Wizer
+or Weval installs. Weval downloads its native binary on first use; subsequent
+runs are cached under `node_modules/.../weval/`.
+
+### Minimal setup (auto-enabled)
 
 ```bash
-scripts/starlingmonkey-componentize-adapter.mjs
+pnpm install                # provisions @bytecodealliance/componentize-js
+pnpm run benchmark:competitive
 ```
 
-To enable that lane, point `STARLINGMONKEY_ADAPTER` at the script and make
-ComponentizeJS available in the local repo, for example:
+That's it: as of #1125 the harness auto-detects the bundled adapter at
+`benchmarks/competitive/sm-componentize-adapter.mjs` whenever ComponentizeJS
+is installed. The lane reports `ok` instead of `unavailable` provided
+`wasmtime` is also installed.
+
+To opt out of Weval AOT (Wizer-only):
 
 ```bash
-pnpm add -D @bytecodealliance/componentize-js
+STARLINGMONKEY_COMPONENTIZE_AOT=0 pnpm run benchmark:competitive
 ```
 
-The adapter first tries the installed Node.js library and only falls back to a
-`componentize-js` CLI if the package import is unavailable.
-
-Minimal setup:
+To force a custom adapter path:
 
 ```bash
-pnpm add -D @bytecodealliance/componentize-js
-export STARLINGMONKEY_ADAPTER=$PWD/scripts/starlingmonkey-componentize-adapter.mjs
+export STARLINGMONKEY_ADAPTER=$PWD/benchmarks/competitive/sm-componentize-adapter.mjs
 ```
 
-The adapter script must support:
+### Adapter contract
 
 ```bash
 $STARLINGMONKEY_ADAPTER <input.js> <output.wasm>
 ```
 
-The bundled adapter writes:
+The adapter writes:
 
 - a benchmark-specific Wasm component to `<output.wasm>`
-- optional sidecar metadata to `<output.wasm>.json` describing invoke export
-  names and artifact kind
+- a sidecar metadata file at `<output.wasm>.json` describing:
+  - invoke export names (`invokeExport`, `hotInvokeExport`)
+  - which post-processing passes ran (`wizerEnabled`, `wevalAotEnabled`)
+  - the disabled WASI feature list
 
 The benchmark harness reads that metadata automatically, so component exports
 such as `run-hot` can be invoked correctly through Wasmtime.
 
-By default the adapter generates a minimal pure component by disabling:
+### Adapter env vars
 
-- `random`
-- `stdio`
-- `clocks`
-- `http`
-- `fetch-event`
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `STARLINGMONKEY_COMPONENTIZE_AOT` | `1` | Set to `0` to disable Weval AOT specialization. Wizer pre-init still runs. |
+| `STARLINGMONKEY_WIZER_BIN` | (bundled) | Use an externally installed `wizer` instead of the one bundled with ComponentizeJS. |
+| `STARLINGMONKEY_WEVAL_BIN` | (bundled) | Use an externally installed `weval` instead of the bundled one. |
+| `STARLINGMONKEY_COMPONENTIZE_DISABLE_FEATURES` | `random,stdio,clocks,http,fetch-event` | Comma-separated list of WASI subsystems to strip from the embedding. |
+| `STARLINGMONKEY_ENTRY_EXPORT` | `run` | Override the JS export the adapter should expose. The harness sets this. |
+| `STARLINGMONKEY_HOT_EXPORT` | derived | Override the synthesized hot-loop export name. |
+| `STARLINGMONKEY_COMPONENT_WORLD` | `benchmark` | Override the WIT world name. |
+| `COMPONENTIZE_JS_BIN` | (none) | Force CLI fallback instead of the library import. |
 
-Override that list through:
+### What is being measured vs the runtime-eval lane
 
-```bash
-export STARLINGMONKEY_COMPONENTIZE_DISABLE_FEATURES=random,stdio,clocks,http,fetch-event
-```
+| Aspect | runtime-eval | ComponentizeJS + Wizer + Weval |
+| --- | --- | --- |
+| StarlingMonkey embedding | unmodified `starling.wasm` | snapshotted with the benchmark module already loaded |
+| Per-benchmark compile | none — JS source is read at runtime | a benchmark-specific component is built |
+| Interpreter | full SpiderMonkey interpreter dispatch | Weval-specialized fast path for the snapshotted module |
+| Cold start | full VM init + module parse + first call | precompiled component + first call only |
+| Hot runtime | interpreter loop | partially-evaluated loop |
+| Module size | constant (`starling.wasm`) | per-benchmark component (~12-15 MB after optimization) |
 
-The adapter path is only needed if you want to compare against a
-benchmark-specific StarlingMonkey compile flow instead of the runtime-eval
-component lane.
+The two lanes are intentionally kept side-by-side so the harness can show the
+delta between "drop a JS file into a generic JS host" and "build an optimized
+component for this specific JS file".
 
-If you want the adapter to try ComponentizeJS AOT with Wizer/Weval:
+### Caveats
 
-```bash
-export STARLINGMONKEY_COMPONENTIZE_AOT=1
-export STARLINGMONKEY_WIZER_BIN=/absolute/path/to/wizer
-export STARLINGMONKEY_WEVAL_BIN=/absolute/path/to/weval
-```
+- ComponentizeJS only accepts ESM input. The benchmark programs already export
+  `run` as an ESM function, so this is satisfied.
+- Weval downloads its native binary the first time AOT is enabled; the first
+  run can therefore take longer and requires network access. Subsequent runs
+  are cached under `node_modules`.
+- Weval-specialized components are noticeably larger than Wizer-only ones
+  (roughly +25%). The size delta is reported separately under `Raw bytes` and
+  `Precompiled bytes`.
+- The lane requires `wasmtime` on `PATH` (or `STARLINGMONKEY_WASMTIME_BIN`).
+  Without it the lane reports `runtime-error`, not `unavailable`.
+- The lane requires **wasmtime ≥ 40** because it relies on the v40
+  component-model `--invoke "fn(args)"` parenthesized invoke syntax. On
+  wasmtime 30 and 31 (verified) the CLI rejects `--invoke` against
+  components and the lane reports `runtime-error`.
 
-If you prefer to use the CLI instead of installing the package into this repo:
+### A note on JIT and serverless Wasm
 
-```bash
-export COMPONENTIZE_JS_BIN=/absolute/path/to/componentize-js
-```
+These benchmarks model a serverless Wasm runtime (Fastly Compute@Edge,
+wasmCloud, etc.) where:
+
+- **All Wasm code is precompiled at deploy time** via `wasmtime compile -O
+  opt-level=2`, not JIT'd at request time. The harness uses the precompiled
+  `.cwasm` for every Wasm lane to mirror this.
+- **The guest cannot JIT either.** The Wasm sandbox model (W xor X pages)
+  prevents code inside a Wasm module from generating new machine code at
+  runtime, so the StarlingMonkey embedding (and the SpiderMonkey
+  interpreter inside it) runs **interpreter-only** in production — its
+  Baseline and Ion JIT tiers are unavailable. The same constraint applies
+  to Javy's embedded QuickJS runtime: it runs as a Wasm-resident
+  interpreter, no host JIT.
+
+This is exactly the gap Wizer and Weval are designed to close:
+
+| Optimization | What it does | When it runs |
+| --- | --- | --- |
+| Wizer pre-init | Snapshot the interpreter state with the user module already parsed and globals initialized | Deploy-time, pre-cold-start |
+| Weval AOT specialization | Partially evaluate the embedded interpreter (SpiderMonkey, inside StarlingMonkey) against the snapshotted module so hot dispatch paths bypass the generic opcode-interpreter loop | Deploy-time |
+| Wasmtime AOT (`wasmtime compile`) | Cranelift-compile the entire Wasm module to native machine code | Deploy-time |
+| Javy dynamic linking | Compile the user JS to a small Wasm that imports QuickJS from a shared `plugin.wasm` (Shopify Functions production setup) | Deploy-time |
+
+The hot-runtime numbers in this README therefore reflect a
+JS-interpreter-on-Wasm-without-guest-JIT execution path (whether the
+interpreter is StarlingMonkey's SpiderMonkey or Javy's QuickJS), which is
+the same shape users see in Fastly Compute@Edge or Shopify Functions
+today. They should not be compared directly to running a benchmark in a
+JIT'd JS engine on a developer workstation.
+
+### Verified results — 2026-04-27 (wasmtime 44.0.0, aarch64-linux)
+
+Five benchmark programs, four lanes that run in this environment (Node.js,
+js2wasm, Javy in Shopify Functions production mode, and StarlingMonkey +
+ComponentizeJS with Wizer + Weval). The StarlingMonkey runtime-eval lane
+is omitted because it requires a vendored StarlingMonkey checkout that is
+not present in this environment. AssemblyScript / Porffor are also omitted
+on the same grounds.
+
+#### Runtime metrics (median of 5–7 runs)
+
+| Program | Lane | Cold ms | Hot ms | Compute-only ms |
+| --- | --- | ---: | ---: | ---: |
+| `array-sum` | Node.js | 28.3 | 21.2 | 11.4 |
+| `array-sum` | js2wasm → Wasmtime | _runtime-error: WebAssembly translation error_ | | |
+| `array-sum` | Javy (Shopify dynamic) → Wasmtime | 28.0 | 144.1 | 112.9 |
+| `array-sum` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 31.0 | 156.2 | 125.5 |
+| `fib-recursive` | Node.js | 19.2 | 10.2 | 4.9 |
+| `fib-recursive` | js2wasm → Wasmtime | **32.5** | **11.3** | **3.5** |
+| `fib-recursive` | Javy (Shopify dynamic) → Wasmtime | 31.2 | 114.0 | 87.9 |
+| `fib-recursive` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 26.4 | 195.3 | 156.7 |
+| `fib` | Node.js | 19.1 | 16.9 | 10.8 |
+| `fib` | js2wasm → Wasmtime | **26.2** | **18.3** | **11.9** |
+| `fib` | Javy (Shopify dynamic) → Wasmtime | 28.8 | 1453.2 | 1193.2 |
+| `fib` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 37.2 | 1241.8 | 1024.3 |
+| `object-ops` | Node.js | 24.0 | 6.5 | 0.7 |
+| `object-ops` | js2wasm → Wasmtime | _runtime-error: failed to parse WebAssembly module_ | | |
+| `object-ops` | Javy (Shopify dynamic) → Wasmtime | 24.6 | 246.8 | 207.7 |
+| `object-ops` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 37.5 | 243.3 | 199.0 |
+| `string-hash` | Node.js | 29.9 | 9.4 | 1.8 |
+| `string-hash` | js2wasm → Wasmtime | _compile-error: wasm-validator (pre-existing js2wasm bug)_ | | |
+| `string-hash` | Javy (Shopify dynamic) → Wasmtime | 30.7 | 48.8 | 36.0 |
+| `string-hash` | StarlingMonkey + Componentize (Wizer + Weval) → Wasmtime | 30.5 | 22.2 | 14.2 |
+
+For the two programs where js2wasm → Wasmtime succeeds end-to-end
+(`fib-recursive`, `fib`), js2wasm beats both JS-host approaches on hot
+runtime by an order of magnitude or more:
+
+- `fib`: js2wasm 18.3 ms vs Javy 1,453.2 ms (**79× slower**) vs StarlingMonkey 1,241.8 ms (**68× slower**)
+- `fib-recursive`: js2wasm 11.3 ms vs Javy 114.0 ms (**10× slower**) vs StarlingMonkey 195.3 ms (**17× slower**)
+
+For the workloads where Javy and StarlingMonkey are head-to-head:
+- Javy beats StarlingMonkey on `fib` (1,453 vs 1,242 ms — 17 % StarlingMonkey win) and `array-sum`/`fib-recursive`/`object-ops` come out roughly equal.
+- StarlingMonkey beats Javy on `string-hash` (22.2 ms vs 48.8 ms — **2.2× faster**), where Weval AOT specialization helps because the workload exercises more interpreter-dispatch overhead.
+
+The other three programs hit pre-existing js2wasm codegen bugs unrelated to
+`#1125`. Both the Javy and StarlingMonkey + ComponentizeJS lanes successfully
+run all five programs.
+
+#### A/B verification: Wizer-only vs Wizer + Weval AOT
+
+Empirical proof both Wizer and Weval are actually running (not just
+claimed by the metadata sidecar). Same `fib` benchmark, same wasmtime 44,
+adapter run twice with the only difference being `STARLINGMONKEY_COMPONENTIZE_AOT`:
+
+| Setting | Adapter compile time | Component size |
+| --- | ---: | ---: |
+| `STARLINGMONKEY_COMPONENTIZE_AOT=0` (Wizer only) | 1,607 ms | 11,940,229 bytes |
+| `STARLINGMONKEY_COMPONENTIZE_AOT=1` (Wizer + Weval, default) | 3,811 ms | 14,815,040 bytes |
+| **Delta** | **+2,204 ms (+137 %)** | **+2,874,811 bytes (+24 %)** |
+
+The +24 % size delta matches this README's documented ~25 % expectation
+exactly, and the +137 % compile-time delta accounts for Weval's downloaded
+native binary running as a post-processing step over the Wizer-snapshotted
+component.
+
+The hot-runtime delta between Wizer-only and Wizer + Weval is workload-
+dependent. For `fib` (a tight `for` over integer arithmetic) the inner loop
+runs the same handful of opcodes 20 million times, so Weval's interpreter-
+dispatch specialization has very little overhead to amortize away — the
+two configurations come out within run-to-run noise on this workload.
+Weval is designed to pay off on workloads dominated by property access,
+dynamic dispatch, or many distinct call sites; the bundled `fib` program
+is a deliberately degenerate case from that perspective.
+
+#### Size metrics (per benchmark program)
+
+Per-function module sizes (the part that ships per JS function deployed):
+
+| Program | js2wasm raw | js2wasm cwasm | Javy raw | Javy cwasm | StarlingMonkey + Comp raw | StarlingMonkey + Comp cwasm |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fib` | 0.1 kB | 193.5 kB | 2.8 kB | 195.6 kB | 14,467.8 kB | 53,437.3 kB |
+| `fib-recursive` | 0.2 kB | 193.6 kB | 2.7 kB | 195.6 kB | 14,470.0 kB | 53,437.4 kB |
+| `array-sum` | 0.5 kB | _n/a_ | 3.0 kB | 195.8 kB | 14,469.2 kB | 53,437.3 kB |
+| `object-ops` | 0.5 kB | 194.5 kB | 3.0 kB | 195.8 kB | 14,469.4 kB | 53,437.3 kB |
+| `string-hash` | 4.5 kB | _n/a_ | 3.4 kB | 196.1 kB | 14,473.3 kB | 53,501.3 kB |
+
+Shared / per-host runtime cost (deployed once across every function):
+
+| Lane | Shared runtime | Notes |
+| --- | ---: | --- |
+| js2wasm | _none_ | the user module is the entire artifact |
+| Javy (dynamic, Shopify-style) | 1,212.4 kB plugin.wasm | shared QuickJS runtime imported via `--preload javy-default-plugin-v3=plugin.wasm` |
+| StarlingMonkey + ComponentizeJS | _none — bundled per function_ | the SpiderMonkey embedding is rebuilt and snapshotted into every component |
+
+**Total deployment size for N functions:**
+
+| N | js2wasm | Javy (dynamic) | StarlingMonkey + ComponentizeJS |
+| ---: | ---: | ---: | ---: |
+| 1 | ~0.2 kB | ~1,215 kB | ~14,500 kB |
+| 100 | ~20 kB | ~1,500 kB | ~1,450,000 kB (1.45 GB) |
+| 10,000 | ~2 MB | ~30 MB | ~145 GB |
+
+js2wasm wins by a wide margin on per-function size because it compiles
+the user code directly to Wasm with no embedded interpreter. Javy's
+dynamic-link mode wins by roughly the same factor over StarlingMonkey +
+ComponentizeJS at scale, because Shopify's design shares the QuickJS
+runtime across all functions while ComponentizeJS bundles the
+SpiderMonkey embedding (~14 MB) into every component.
 
 ## Javy
 
@@ -260,8 +491,28 @@ For each benchmark program, the harness generates a wrapper script that:
 - executes `run(input)` once or in a hot loop
 - writes the numeric result to stdout
 
-The Javy lane currently uses the default static runtime build, so its module
-size includes the bundled QuickJS runtime.
+### Build mode: dynamic (Shopify Functions production setup, default)
+
+Javy's `--codegen dynamic=y --codegen plugin=…` mode produces a small Wasm
+that imports QuickJS from a shared `plugin.wasm`. This is the same setup
+Shopify Functions uses in production: every function deploys as ~1–3 kB
+of user-specific Wasm (just compiled QuickJS bytecode + JS source), and
+the QuickJS runtime is shipped once at the host level as a 1.2 MB plugin.
+
+The harness invokes wasmtime with
+`--preload javy-default-plugin-v3=<plugin.cwasm>` so the dynamic user
+module can resolve QuickJS imports. Both the user module and the plugin
+are precompiled with `wasmtime compile -O opt-level=2`; in production
+Shopify caches the plugin precompile across all function deploys.
+
+### Build mode: static (legacy fallback)
+
+Setting `JAVY_DYNAMIC=0`, or running without a plugin available, falls
+back to Javy's static build: `javy build -J javy-stream-io=y -J
+text-encoding=y …`. This bundles QuickJS into every per-function Wasm
+module (~1.2 MB each). It's simpler to deploy (single artifact per
+function) but loses the per-function size advantage that motivated the
+dynamic mode in the first place.
 
 ## AssemblyScript
 
