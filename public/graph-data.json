@@ -16556,6 +16556,18 @@
       "id": "1169d",
       "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
       "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169d",
+      "title": "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path",
+      "priority": "high",
       "status": "ready",
       "raw_status": "ready",
       "sprint": "45",
@@ -16659,6 +16671,42 @@
       "files": [],
       "goal": "maintainability",
       "cluster": "maintainability"
+    },
+    {
+      "id": "1173",
+      "title": "js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1174",
+      "title": "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1175",
+      "title": "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
     },
     {
       "id": "backlog",
@@ -17840,7 +17888,10 @@
         "994",
         "994",
         "1040",
-        "1109"
+        "1109",
+        "1173",
+        "1174",
+        "1175"
       ]
     },
     {
@@ -17869,6 +17920,7 @@
         "1169a",
         "1169b",
         "1169c",
+        "1169d",
         "1169d",
         "1169e",
         "1169f",
@@ -20256,6 +20308,18 @@
       "issue": "1109"
     },
     {
+      "goal": "compilable",
+      "issue": "1173"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1174"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1175"
+    },
+    {
       "goal": "compiler-architecture",
       "issue": "68"
     },
@@ -20330,6 +20394,10 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169c"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169d"
     },
     {
       "goal": "compiler-architecture",
