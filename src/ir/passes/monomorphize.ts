@@ -721,5 +721,8 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.value];
     case "gen.epilogue":
       return [];
+    // Slice 7b (#1169f): yield* delegation.
+    case "gen.yieldStar":
+      return [instr.inner];
   }
 }

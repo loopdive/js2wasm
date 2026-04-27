@@ -545,6 +545,12 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
     case "gen.epilogue":
       // No operands to rewrite.
       return inst;
+    // Slice 7b (#1169f): yield* delegation.
+    case "gen.yieldStar": {
+      const v = mapId(rename, inst.inner);
+      if (v === inst.inner) return inst;
+      return { ...inst, inner: v };
+    }
     // Slice 6 part 4 (#1183) — string for-of.
     case "forof.string": {
       const v = mapId(rename, inst.str);
