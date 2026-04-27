@@ -2093,14 +2093,16 @@ function compileElementAssignment(
         else: [],
       });
     }
+    // #1179: hint i32 directly so an i32 loop index doesn't take an f64 round-trip.
+    // compileExpression with i32 hint emits i32.trunc_sat_f64_s for non-i32 results
+    // via coerceType, matching the previous behavior for f64 indices.
     const idxResult = compileExpression(ctx, fctx, target.argumentExpression, {
-      kind: "f64",
+      kind: "i32",
     });
     if (!idxResult) {
       reportError(ctx, target, "Failed to compile element index");
       return null;
     }
-    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     const idxLocal = allocLocal(fctx, `__idx_${fctx.locals.length}`, {
       kind: "i32",
     });
@@ -3175,6 +3177,15 @@ export function isCompoundAssignment(op: ts.SyntaxKind): boolean {
 /**
  * Handle string += : load current string value, compile RHS (coercing
  * numbers to string if needed), call concat, store back.
+ *
+ * In nativeStrings mode (auto-on for `--target wasi`), routes through the
+ * native `__str_concat` helper which expects `ref $AnyString` operands and
+ * returns `ref $AnyString`. The legacy host-import branch uses
+ * `wasm:js-string concat` with externref operands. The two branches must
+ * not be mixed: calling `addStringImports` late in nativeStrings mode adds
+ * 5 host imports without shifting already-emitted module function indices,
+ * which corrupts every `call funcIdx=N` instruction whose index now points
+ * at a host import instead of the intended native helper (#1175).
  */
 function compileStringCompoundAssignment(
   ctx: CodegenContext,
@@ -3182,6 +3193,10 @@ function compileStringCompoundAssignment(
   expr: ts.BinaryExpression,
   name: string,
 ): ValType | null {
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+    return compileNativeStringCompoundAssignment(ctx, fctx, expr, name);
+  }
+
   // Ensure string imports are registered
   addStringImports(ctx);
 
@@ -3247,6 +3262,104 @@ function compileStringCompoundAssignment(
   }
 
   return { kind: "externref" };
+}
+
+/**
+ * Native-strings variant of string `+=` (#1175). Uses `__str_concat` which
+ * accepts and returns `ref $AnyString`. RHS coercion: numbers are routed
+ * through `number_toString` (returns externref) then `any.convert_extern` +
+ * `ref.cast` to land back in the native string type.
+ */
+function compileNativeStringCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  name: string,
+): ValType | null {
+  const concatIdx = ctx.nativeStrHelpers.get("__str_concat");
+  if (concatIdx === undefined) {
+    reportError(ctx, expr, "Native __str_concat helper not available");
+    return null;
+  }
+  const anyStrType: ValType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+  const anyStrTypeNullable: ValType = { kind: "ref_null", typeIdx: ctx.anyStrTypeIdx };
+
+  const localIdx = fctx.localMap.get(name);
+  const capturedIdx = ctx.capturedGlobals.get(name);
+  const moduleIdx = ctx.moduleGlobals.get(name);
+
+  // Load current value as ref $AnyString
+  if (localIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: localIdx });
+  } else if (capturedIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: capturedIdx });
+  } else if (moduleIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: moduleIdx });
+  } else {
+    // Graceful fallback: compile RHS for side effects, return null AnyString.
+    const rhsFallback = compileExpression(ctx, fctx, expr.right);
+    if (rhsFallback) fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "ref.null", typeIdx: ctx.anyStrTypeIdx });
+    return anyStrTypeNullable;
+  }
+
+  // Compile RHS
+  const rhsType = compileExpression(ctx, fctx, expr.right);
+  if (!rhsType) {
+    reportError(ctx, expr, "Failed to compile string += RHS");
+    return null;
+  }
+  // Coerce RHS to ref $AnyString.
+  if (rhsType.kind === "ref" || rhsType.kind === "ref_null") {
+    // Already a ref. Assume it's an AnyString-compatible type; if not,
+    // ref.cast at __str_concat boundary will trap. Common case: native
+    // string method calls return ref $AnyString already.
+  } else if (rhsType.kind === "f64" || rhsType.kind === "i32") {
+    const rhsTsType = ctx.checker.getTypeAtLocation(expr.right);
+    if (isBooleanType(rhsTsType) && rhsType.kind === "i32") {
+      // bool → "true"/"false" string. emitBoolToString returns externref.
+      emitBoolToString(ctx, fctx);
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+    } else {
+      if (rhsType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+      const toStr = ctx.funcMap.get("number_toString");
+      if (toStr !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: toStr });
+        // number_toString returns externref → convert to ref $AnyString
+        fctx.body.push({ op: "any.convert_extern" } as Instr);
+        fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+      } else {
+        // No host number_toString: fall back to dropping and using empty string.
+        // (Standalone WASI mode currently lacks a wasm-native number-to-string;
+        //  this is an open gap. Drop the f64 to keep stack balanced.)
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null", typeIdx: ctx.anyStrTypeIdx });
+      }
+    }
+  } else if (rhsType.kind === "externref") {
+    // externref → ref $AnyString: convert + cast (e.g. host charAt result).
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+  }
+
+  // Call __str_concat — returns ref $AnyString
+  fctx.body.push({ op: "call", funcIdx: concatIdx });
+
+  // Store back. Re-read indices since RHS compilation may have shifted them.
+  if (localIdx !== undefined) {
+    fctx.body.push({ op: "local.tee", index: localIdx });
+  } else if (capturedIdx !== undefined) {
+    const capturedIdxPost = ctx.capturedGlobals.get(name)!;
+    fctx.body.push({ op: "global.set", index: capturedIdxPost });
+    fctx.body.push({ op: "global.get", index: capturedIdxPost });
+  } else if (moduleIdx !== undefined) {
+    const moduleIdxPost = ctx.moduleGlobals.get(name)!;
+    fctx.body.push({ op: "global.set", index: moduleIdxPost });
+    fctx.body.push({ op: "global.get", index: moduleIdxPost });
+  }
+
+  return anyStrType;
 }
 
 /**

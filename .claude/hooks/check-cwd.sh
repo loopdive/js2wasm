@@ -1,6 +1,6 @@
 #!/bin/bash
 # PreToolUse hook: agents MUST NOT work in /workspace directly
-# Only allowed in /workspace: git merge --ff-only, tech lead commits (CHECKLIST-FOXTROT)
+# Only allowed in /workspace: git merge --ff-only, tech lead commits (TECH_LEAD=1 env var)
 # Everything else must happen in worktrees
 
 INPUT=$(cat)
@@ -52,8 +52,10 @@ if echo "$CMD" | grep -qE '^git add'; then
   exit 0
 fi
 
-# ALLOW: git commit with CHECKLIST-FOXTROT (tech lead commits)
-if echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
+# ALLOW: git commit / merge (non-ff) if TECH_LEAD env var is set — tech lead only
+# Set `export TECH_LEAD=1` in your shell profile (~/.zshrc). Agents spawn without
+# sourcing the profile so they never inherit this, preventing CHECKLIST-FOXTROT spoofing.
+if [ -n "$TECH_LEAD" ]; then
   exit 0
 fi
 

@@ -16677,7 +16677,7 @@
       "title": "js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16689,7 +16689,7 @@
       "title": "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16699,6 +16699,42 @@
     {
       "id": "1175",
       "title": "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1178",
+      "title": "string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1179",
+      "title": "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "review",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1180",
+      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
@@ -17891,7 +17927,9 @@
         "1109",
         "1173",
         "1174",
-        "1175"
+        "1175",
+        "1178",
+        "1180"
       ]
     },
     {
@@ -18535,7 +18573,8 @@
         "1120",
         "1121",
         "1122",
-        "1126"
+        "1126",
+        "1179"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -20318,6 +20357,14 @@
     {
       "goal": "compilable",
       "issue": "1175"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1178"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1180"
     },
     {
       "goal": "compiler-architecture",
@@ -22290,6 +22337,10 @@
     {
       "goal": "performance",
       "issue": "1126"
+    },
+    {
+      "goal": "performance",
+      "issue": "1179"
     },
     {
       "goal": "platform",
@@ -25952,6 +26003,10 @@
     {
       "goal": "core-semantics",
       "issue": "1126"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1179"
     },
     {
       "goal": "standalone-mode",

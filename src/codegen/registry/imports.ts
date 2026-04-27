@@ -23,9 +23,27 @@ export function addImport(ctx: CodegenContext, module: string, name: string, des
 /**
  * Register a string literal as a global import from the "string_constants"
  * namespace and repair already-compiled module-global references if needed.
+ *
+ * In `nativeStrings` mode (auto-on for `--target wasi`), no JS host runtime
+ * exists to satisfy the import, so we skip the import and just record the
+ * string in `stringGlobalMap` with the sentinel `-1` (the same convention
+ * used by `collectStringLiterals` finalize). Call sites that materialize a
+ * string constant onto the stack must check the sentinel and use the native
+ * string path (`compileNativeStringLiteral` + `extern.convert_any` for the
+ * externref-typed throw payload) instead of `global.get`. (#1174)
  */
 export function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
   if (ctx.stringGlobalMap.has(value)) return;
+
+  if (ctx.nativeStrings) {
+    // Sentinel: no host import, materialize inline at use sites.
+    ctx.stringGlobalMap.set(value, -1);
+    ctx.stringLiteralMap.set(value, `__str_${ctx.stringLiteralCounter}`);
+    ctx.stringLiteralValues.set(`__str_${ctx.stringLiteralCounter}`, value);
+    ctx.stringLiteralCounter++;
+    ctx.mod.stringPool.push(value);
+    return;
+  }
 
   const hasModuleGlobals = ctx.mod.globals.length > 0 || ctx.mod.functions.length > 0;
   const oldNumImportGlobals = ctx.numImportGlobals;

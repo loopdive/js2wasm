@@ -9,6 +9,7 @@
 import {
   asBlockId,
   asValueId,
+  irVal,
   IrBinop,
   IrBlock,
   IrBlockId,
@@ -21,6 +22,7 @@ import {
   IrInstr,
   IrObjectShape,
   IrParam,
+  IrSlotDef,
   IrTerminator,
   IrType,
   IrUnop,
@@ -47,6 +49,13 @@ export class IrFunctionBuilder {
   // target) can reserve an ID before its defining block exists.
   private nextBlockId = 0;
   private readonly reserved = new Set<IrBlockId>();
+  // Slice 6 (#1169e): Wasm-local slots for cross-iteration mutable state.
+  private readonly slotDefs: IrSlotDef[] = [];
+  // Slice 6 (#1169e): instrs collected by the for-of body builder land in
+  // a side buffer when `bodyBuffer` is non-null; the for-of `body` field
+  // captures them as a self-contained sequence rather than appending to the
+  // current block.
+  private bodyBuffer: IrInstr[] | null = null;
 
   constructor(
     private readonly name: string,
@@ -137,7 +146,7 @@ export class IrFunctionBuilder {
   emitConst(value: IrConst, resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "const", value, result, resultType });
+    this.pushInstr({ kind: "const", value, result, resultType });
     return result;
   }
 
@@ -147,39 +156,39 @@ export class IrFunctionBuilder {
       result = this.allocator.fresh();
       this.valueTypes.set(result, resultType);
     }
-    this.requireBlock().instrs.push({ kind: "call", target, args: [...args], result, resultType });
+    this.pushInstr({ kind: "call", target, args: [...args], result, resultType });
     return result;
   }
 
   emitGlobalGet(target: IrGlobalRef, resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "global.get", target, result, resultType });
+    this.pushInstr({ kind: "global.get", target, result, resultType });
     return result;
   }
 
   emitGlobalSet(target: IrGlobalRef, value: IrValueId): void {
-    this.requireBlock().instrs.push({ kind: "global.set", target, value, result: null, resultType: null });
+    this.pushInstr({ kind: "global.set", target, value, result: null, resultType: null });
   }
 
   emitBinary(op: IrBinop, lhs: IrValueId, rhs: IrValueId, resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "binary", op, lhs, rhs, result, resultType });
+    this.pushInstr({ kind: "binary", op, lhs, rhs, result, resultType });
     return result;
   }
 
   emitUnary(op: IrUnop, rand: IrValueId, resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "unary", op, rand, result, resultType });
+    this.pushInstr({ kind: "unary", op, rand, result, resultType });
     return result;
   }
 
   emitSelect(condition: IrValueId, whenTrue: IrValueId, whenFalse: IrValueId, resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "select", condition, whenTrue, whenFalse, result, resultType });
+    this.pushInstr({ kind: "select", condition, whenTrue, whenFalse, result, resultType });
     return result;
   }
 
@@ -189,7 +198,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "string" };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "string.const", value, result, resultType });
+    this.pushInstr({ kind: "string.const", value, result, resultType });
     return result;
   }
 
@@ -197,7 +206,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "string" };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "string.concat", lhs, rhs, result, resultType });
+    this.pushInstr({ kind: "string.concat", lhs, rhs, result, resultType });
     return result;
   }
 
@@ -205,7 +214,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "val", val: { kind: "i32" } };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "string.eq", lhs, rhs, negate, result, resultType });
+    this.pushInstr({ kind: "string.eq", lhs, rhs, negate, result, resultType });
     return result;
   }
 
@@ -213,7 +222,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "val", val: { kind: "f64" } };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({ kind: "string.len", value, result, resultType });
+    this.pushInstr({ kind: "string.len", value, result, resultType });
     return result;
   }
 
@@ -235,7 +244,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "object", shape };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "object.new",
       shape,
       values: [...values],
@@ -253,7 +262,7 @@ export class IrFunctionBuilder {
   emitObjectGet(value: IrValueId, name: string, resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "object.get",
       value,
       name,
@@ -267,7 +276,7 @@ export class IrFunctionBuilder {
    * Emit `object.set` to write a named field. Void result.
    */
   emitObjectSet(value: IrValueId, name: string, newValue: IrValueId): void {
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "object.set",
       value,
       name,
@@ -298,7 +307,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "closure", signature };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "closure.new",
       liftedFunc,
       signature,
@@ -318,7 +327,7 @@ export class IrFunctionBuilder {
   emitClosureCap(self: IrValueId, index: number, resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "closure.cap",
       self,
       index,
@@ -335,7 +344,7 @@ export class IrFunctionBuilder {
   emitClosureCall(callee: IrValueId, args: readonly IrValueId[], resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "closure.call",
       callee,
       args: [...args],
@@ -353,7 +362,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "boxed", inner };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "refcell.new",
       value,
       result,
@@ -371,7 +380,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "val", val: inner };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "refcell.get",
       cell,
       result,
@@ -384,7 +393,7 @@ export class IrFunctionBuilder {
    * Write a new value through the ref cell. Void result.
    */
   emitRefCellSet(cell: IrValueId, value: IrValueId): void {
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "refcell.set",
       cell,
       value,
@@ -398,7 +407,7 @@ export class IrFunctionBuilder {
    * Verifier requires stackDelta to match the effective push count.
    */
   emitRawWasm(ops: readonly Instr[], stackDelta: number): void {
-    this.requireBlock().instrs.push({ kind: "raw.wasm", ops: [...ops], stackDelta, result: null, resultType: null });
+    this.pushInstr({ kind: "raw.wasm", ops: [...ops], stackDelta, result: null, resultType: null });
   }
 
   // --- class ops (#1169d) -------------------------------------------------
@@ -418,7 +427,7 @@ export class IrFunctionBuilder {
     const result = this.allocator.fresh();
     const resultType: IrType = { kind: "class", shape };
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "class.new",
       shape,
       args: [...args],
@@ -436,7 +445,7 @@ export class IrFunctionBuilder {
   emitClassGet(value: IrValueId, fieldName: string, resultType: IrType): IrValueId {
     const result = this.allocator.fresh();
     this.valueTypes.set(result, resultType);
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "class.get",
       value,
       fieldName,
@@ -452,7 +461,7 @@ export class IrFunctionBuilder {
    * checks happen at the AST→IR layer.
    */
   emitClassSet(value: IrValueId, fieldName: string, newValue: IrValueId): void {
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "class.set",
       value,
       fieldName,
@@ -479,7 +488,7 @@ export class IrFunctionBuilder {
       result = this.allocator.fresh();
       this.valueTypes.set(result, resultType);
     }
-    this.requireBlock().instrs.push({
+    this.pushInstr({
       kind: "class.call",
       receiver,
       methodName,
@@ -526,6 +535,7 @@ export class IrFunctionBuilder {
       exported: this.exported,
       valueCount: this.allocator.count,
       ...(closureSubtype ? { closureSubtype } : {}),
+      ...(this.slotDefs.length > 0 ? { slots: [...this.slotDefs] } : {}),
     };
   }
 
@@ -534,6 +544,128 @@ export class IrFunctionBuilder {
       throw new Error(`IrFunctionBuilder: no open block (func ${this.name})`);
     }
     return this.current;
+  }
+
+  /**
+   * Slice 6 (#1169e): single push site for IR instrs. Routes to either the
+   * current open block's instr list or — if a body buffer is active — into
+   * that buffer instead. The for-of-body builder uses this redirection so
+   * its lowered statements end up in `IrInstrForOfVec.body` rather than in
+   * the surrounding block's instr list.
+   */
+  private pushInstr(instr: IrInstr): void {
+    if (this.bodyBuffer !== null) {
+      this.bodyBuffer.push(instr);
+      return;
+    }
+    this.requireBlock().instrs.push(instr);
+  }
+
+  // --- slot allocation (slice 6 — #1169e) ---------------------------------
+
+  /**
+   * Allocate a Wasm-local slot for cross-iteration mutable state. Returns
+   * the slot's stable index, usable with `slot.read` / `slot.write`.
+   * `type` must be a primitive ValType (no struct refs in slice 6).
+   */
+  declareSlot(name: string, type: ValType): number {
+    const index = this.slotDefs.length;
+    this.slotDefs.push({ index, name, type });
+    return index;
+  }
+
+  /** Read a slot by its index. Returns the SSA value of the load. */
+  emitSlotRead(slotIndex: number): IrValueId {
+    const slot = this.slotDefs[slotIndex];
+    if (!slot) {
+      throw new Error(`IrFunctionBuilder: slot.read with unknown index ${slotIndex} (func ${this.name})`);
+    }
+    const result = this.allocator.fresh();
+    const resultType = irVal(slot.type);
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({ kind: "slot.read", slotIndex, result, resultType });
+    return result;
+  }
+
+  /** Write a value to a slot by its index. */
+  emitSlotWrite(slotIndex: number, value: IrValueId): void {
+    const slot = this.slotDefs[slotIndex];
+    if (!slot) {
+      throw new Error(`IrFunctionBuilder: slot.write with unknown index ${slotIndex} (func ${this.name})`);
+    }
+    this.pushInstr({ kind: "slot.write", slotIndex, value, result: null, resultType: null });
+  }
+
+  // --- vec ops (slice 6 — #1169e) -----------------------------------------
+
+  /** Read `vec.length` (returned as f64 to match JS Number semantics). */
+  emitVecLen(vec: IrValueId): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = irVal({ kind: "f64" });
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({ kind: "vec.len", vec, result, resultType });
+    return result;
+  }
+
+  /**
+   * Index into a vec's data array. `indexI32` MUST be an i32-typed SSA value
+   * (not f64). `elemType` is the element's IrType, and the result carries it.
+   */
+  emitVecGet(vec: IrValueId, indexI32: IrValueId, elemType: IrType): IrValueId {
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, elemType);
+    this.pushInstr({ kind: "vec.get", vec, index: indexI32, result, resultType: elemType });
+    return result;
+  }
+
+  // --- for-of-vec (slice 6 — #1169e) --------------------------------------
+
+  /**
+   * Run a callback that emits the loop body's IR instrs into a side buffer.
+   * The callback typically calls `lowerStmt` on each TS body statement;
+   * those calls go through `lowerExpr` etc. and produce IR via the normal
+   * builder methods, which route into the side buffer instead of the
+   * current block.
+   *
+   * Returns the captured body instrs.
+   */
+  collectBodyInstrs(emit: () => void): IrInstr[] {
+    if (this.bodyBuffer !== null) {
+      throw new Error(`IrFunctionBuilder: nested collectBodyInstrs not supported (func ${this.name})`);
+    }
+    const buffer: IrInstr[] = [];
+    this.bodyBuffer = buffer;
+    try {
+      emit();
+    } finally {
+      this.bodyBuffer = null;
+    }
+    return buffer;
+  }
+
+  emitForOfVec(args: {
+    vec: IrValueId;
+    elementType: IrType;
+    counterSlot: number;
+    lengthSlot: number;
+    vecSlot: number;
+    dataSlot: number;
+    elementSlot: number;
+    body: readonly IrInstr[];
+  }): void {
+    this.pushInstr({
+      kind: "forof.vec",
+      vec: args.vec,
+      elementType: args.elementType,
+      counterSlot: args.counterSlot,
+      lengthSlot: args.lengthSlot,
+      vecSlot: args.vecSlot,
+      dataSlot: args.dataSlot,
+      elementSlot: args.elementSlot,
+      body: args.body,
+      result: null,
+      resultType: null,
+    });
   }
 }
 

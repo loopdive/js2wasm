@@ -311,6 +311,15 @@ function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
  *   - `nestedFunc`: name-only binding for `function inner() {...}`.
  *     Calls expand into prepended-capture-args + direct call (matches
  *     the legacy `compileNestedFunctionDeclaration` pattern).
+ *
+ * Slice 6 (#1169e):
+ *   - `slot`: a Wasm-local slot that survives across iterations of a
+ *     for-of loop. Used for the loop variable AND for outer-scope `let`
+ *     bindings that are mutated inside the loop body. Reads emit
+ *     `slot.read`; writes emit `slot.write`. Once a name is bound as a
+ *     slot, all subsequent reads/writes (including AFTER the for-of)
+ *     route through the slot — this preserves the cross-iteration value
+ *     semantics without requiring SSA phi nodes.
  */
 type ScopeBinding =
   | { kind: "local"; value: IrValueId; type: IrType }
@@ -319,7 +328,8 @@ type ScopeBinding =
       liftedName: string;
       signature: IrClosureSignature;
       captures: readonly NestedCapture[];
-    };
+    }
+  | { kind: "slot"; slotIndex: number; type: IrType };
 
 /**
  * Slice 3 (#1169c): one entry in a closure / nested-function's capture

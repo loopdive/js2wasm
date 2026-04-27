@@ -18,6 +18,7 @@ import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { addUnionImports, resolveWasmType } from "./index.js";
+import { stringConstantExternrefInstrs } from "./native-strings.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
@@ -275,10 +276,12 @@ export function typeErrorThrowInstrs(ctx: CodegenContext, node?: ts.Node): Instr
     line > 0 && col > 0
       ? `TypeError: Cannot access property on null or undefined at ${line}:${col}`
       : "TypeError: Cannot access property on null or undefined";
+  // Register the literal: in legacy mode this adds a `string_constants` global
+  // import; in nativeStrings mode it just records the value with sentinel -1
+  // so call sites can materialize it inline (#1174).
   addStringConstantGlobal(ctx, message);
-  const strIdx = ctx.stringGlobalMap.get(message)!;
   const tagIdx = ensureExnTag(ctx);
-  return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+  return [...stringConstantExternrefInstrs(ctx, message), { op: "throw", tagIdx } as Instr];
 }
 
 /**
@@ -2603,12 +2606,11 @@ export function compileElementAccessBody(
     }
     // Unwrap: struct.get data field, then index into backing array
     fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
-    if (ctx.fast) {
-      compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
-    } else {
-      compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
-      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
-    }
+    // #1179: hint i32 directly for the index. compileExpression will produce
+    // i32 cleanly for i32 locals / integer literals (no f64 round-trip), and
+    // the existing coerceType(f64→i32) path handles non-i32 results via
+    // trunc_sat — same as the legacy explicit cast below.
+    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
     if (isSafeBoundsEliminated(fctx, expr)) {
       // Bounds check elided: loop guard guarantees index < array.length
       fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as Instr);
@@ -2623,13 +2625,10 @@ export function compileElementAccessBody(
     return null;
   }
 
-  // Compile index and convert to i32
-  if (ctx.fast) {
-    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
-  } else {
-    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
-    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
-  }
+  // Compile index and convert to i32 (#1179: hint i32 directly to skip the
+  // f64.convert_i32_s + i32.trunc_sat_f64_s round-trip when the index is
+  // already an i32 local or integer literal).
+  compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
 
   if (isSafeBoundsEliminated(fctx, expr)) {
     // Bounds check elided: loop guard guarantees index < array.length

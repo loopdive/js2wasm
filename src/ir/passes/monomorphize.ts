@@ -660,5 +660,25 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.value, instr.newValue];
     case "class.call":
       return [instr.receiver, ...instr.args];
+    // Slice 6 (#1169e): slot / vec / for-of ops.
+    case "slot.read":
+      return [];
+    case "slot.write":
+      return [instr.value];
+    case "vec.len":
+      return [instr.vec];
+    case "vec.get":
+      return [instr.vec, instr.index];
+    case "forof.vec": {
+      const result: IrValueId[] = [instr.vec];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec") walk(sub.body);
+        }
+      };
+      walk(instr.body);
+      return result;
+    }
   }
 }
