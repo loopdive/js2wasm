@@ -1004,6 +1004,75 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
   return false;
 }
 
+/**
+ * #1177: Returns true if the closure (`arrow`) is provably constructed AFTER
+ * the let/const/using declaration of `name` AND the closure is NOT inside a
+ * loop that wraps the declaration. In that case, we don't need to force-box
+ * the value — the variable is already initialized when the closure is built,
+ * and no closure invocation can observe TDZ.
+ *
+ * Critical for for-let-iter: `for (let i = 0; ...) { closures.push(() => i); }`
+ * — each iteration's closure is built AFTER `i` is initialized in that
+ * iteration. Force-boxing here would break per-iteration semantics (all
+ * closures would share the same Wasm box slot, observing the final value).
+ */
+function closureProvablyAfterLetDecl(
+  ctx: CodegenContext,
+  arrow: ts.ArrowFunction | ts.FunctionExpression,
+  name: string,
+): boolean {
+  const sym = ctx.checker.getSymbolsInScope(arrow, ts.SymbolFlags.Variable).find((s) => s.name === name);
+  if (!sym) return false;
+  const decl = sym.valueDeclaration;
+  if (!decl) return false;
+
+  const closureStart = arrow.getStart();
+  const declEnd = decl.getEnd();
+
+  // closureStart < declEnd: closure is textually before the decl — TDZ risk.
+  if (closureStart < declEnd) return false;
+
+  // Walk up from the closure to find an enclosing loop. If a loop wraps the
+  // closure AND the decl is inside that loop's initializer (for-let case) or
+  // outside the body, force-boxing would break per-iteration semantics. Stop
+  // at function boundaries.
+  let cur: ts.Node | undefined = arrow.parent;
+  while (cur) {
+    if (
+      ts.isFunctionDeclaration(cur) ||
+      ts.isFunctionExpression(cur) ||
+      ts.isArrowFunction(cur) ||
+      ts.isMethodDeclaration(cur) ||
+      ts.isSourceFile(cur)
+    ) {
+      // Reached function boundary without finding a wrapping loop.
+      return true;
+    }
+    if (
+      ts.isForStatement(cur) ||
+      ts.isForInStatement(cur) ||
+      ts.isForOfStatement(cur) ||
+      ts.isWhileStatement(cur) ||
+      ts.isDoStatement(cur)
+    ) {
+      // Check if decl is descendant of this loop.
+      let d: ts.Node | undefined = decl;
+      while (d) {
+        if (d === cur) {
+          // Decl is inside (or part of) this loop. The loop wraps both
+          // the decl and the closure — per-iteration semantics apply,
+          // closure runs after decl in each iteration, no TDZ risk.
+          return true;
+        }
+        d = d.parent;
+      }
+      // Loop doesn't wrap decl — keep walking up.
+    }
+    cur = cur.parent;
+  }
+  return true;
+}
+
 export function compileArrowFunction(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1275,7 +1344,15 @@ export function compileArrowAsClosure(
     // at construction time may be the uninitialized default (e.g. `let x` declared
     // after the closure is built), so post-init mutations must flow through the
     // ref cell for the closure to observe them.
-    const hasTdzFlag = !!fctx.tdzFlagLocals?.has(name) || tdzFlagIdxFromScan !== undefined;
+    //
+    // BUT: only force-box if the closure is in a position where TDZ is actually
+    // possible. For for-let-iter where the closure is inside the loop body (and
+    // the let-decl is the for-init), the variable is initialized BEFORE every
+    // iteration's closure construction. Force-boxing breaks per-iteration
+    // semantics: each iteration would share the same box (single Wasm slot),
+    // so all closures see the final value of the loop variable.
+    const tdzFlagPresent = !!fctx.tdzFlagLocals?.has(name) || tdzFlagIdxFromScan !== undefined;
+    const hasTdzFlag = tdzFlagPresent && !closureProvablyAfterLetDecl(ctx, arrow, name);
     const isMutable = writtenInClosure.has(name) || writtenInOuter.has(name) || hasTdzFlag;
     // Check if the variable is already boxed from a previous closure capture.
     // If so, the local already holds a ref cell — don't wrap it again.
