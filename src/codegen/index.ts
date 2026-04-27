@@ -234,12 +234,28 @@ function resolvePositionType(
   node: ts.TypeNode | undefined,
   mapped: LatticeType | undefined,
   ctx: CodegenContext,
+  classShapes?: ReadonlyMap<string, import("../ir/nodes.js").IrClassShape>,
 ): IrType {
   if (node) {
     if (node.kind === ts.SyntaxKind.NumberKeyword) return irVal({ kind: "f64" });
     if (node.kind === ts.SyntaxKind.BooleanKeyword) return irVal({ kind: "i32" });
     if (node.kind === ts.SyntaxKind.StringKeyword) return { kind: "string" };
     if (ts.isTypeLiteralNode(node) || ts.isTypeReferenceNode(node)) {
+      // Slice 4 (#1169d) — TypeReferenceNode that names a local class
+      // resolves to `IrType.class`. The classShapes registry is seeded
+      // by `buildIrClassShapes` from the legacy class registry before
+      // the IR runs. Take this path FIRST: classes also satisfy the
+      // generic `objectIrTypeFromTsType` heuristic (they're "Object"
+      // type-flag types), so without the explicit class detection we'd
+      // fall into the data-object path, which doesn't carry method or
+      // constructor info.
+      if (classShapes && ts.isTypeReferenceNode(node)) {
+        const ref = node.typeName;
+        if (ts.isIdentifier(ref)) {
+          const cs = classShapes.get(ref.text);
+          if (cs) return { kind: "class", shape: cs };
+        }
+      }
       const tsType = ctx.checker.getTypeFromTypeNode(node);
       const ir = objectIrTypeFromTsType(ctx, tsType);
       if (ir) return ir;
@@ -305,6 +321,200 @@ function tsTypeToFieldIr(ctx: CodegenContext, t: ts.Type): IrType | null {
   if (t.flags & ts.TypeFlags.BooleanLike) return irVal({ kind: "i32" });
   if (t.flags & ts.TypeFlags.StringLike) return { kind: "string" };
   if (t.flags & ts.TypeFlags.Object) return objectIrTypeFromTsType(ctx, t);
+  return null;
+}
+
+/**
+ * Slice 4 (#1169d): build the per-class IR shape registry from the
+ * legacy class collection state. Only top-level `ts.ClassDeclaration`
+ * nodes are included (no class expressions, no nested-in-function
+ * classes — same scope as the IR selector's `localClasses` set).
+ *
+ * The returned map carries:
+ *   - `fields`: user-visible struct fields in canonical (alphabetical)
+ *               order. The legacy `__tag` prefix is stripped here so
+ *               consumers see only TS-source-level fields. The IR's
+ *               `IrType.class` doesn't expose the tag; the resolver
+ *               accounts for it when computing Wasm field indices.
+ *   - `methods`: instance methods only (no static methods). Their
+ *                signatures come from the legacy method func's typeIdx
+ *                in the WasmGC type registry, but here we re-derive
+ *                from the AST so the IR types are symbolic / shape-
+ *                preserving (matching what `resolvePositionType` does
+ *                for top-level functions).
+ *   - `constructorParams`: the constructor's user-visible param list,
+ *                          re-derived from the AST.
+ *
+ * Classes whose constructor or any field/method type can't be lowered
+ * to a representable IrType are SKIPPED — the IR selector can still
+ * accept the class name as a TypeReference, but `resolvePositionType`
+ * will throw when the missing shape forces a fallback. That mirrors
+ * the slice 2 / slice 3 behavior: best-effort acceptance with a clean
+ * legacy fallback for unrepresentable shapes.
+ */
+function buildIrClassShapes(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): Map<string, import("../ir/nodes.js").IrClassShape> {
+  const out = new Map<string, import("../ir/nodes.js").IrClassShape>();
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isClassDeclaration(stmt) || !stmt.name) continue;
+    if (stmt.heritageClauses && stmt.heritageClauses.length > 0) continue; // slice 4 defers inheritance
+    const className = stmt.name.text;
+    if (!ctx.classSet.has(className)) continue;
+    if (!ctx.structFields.has(className)) continue;
+
+    // Constructor params — re-derived from AST so types come through
+    // the same `tsTypeToFieldIr`-style projection. Reject if any param
+    // has a non-representable type (e.g. union, function, generic).
+    const ctor = stmt.members.find(ts.isConstructorDeclaration) as ts.ConstructorDeclaration | undefined;
+    const constructorParams: IrType[] = [];
+    let ctorOk = true;
+    if (ctor) {
+      for (const p of ctor.parameters) {
+        if (!ts.isIdentifier(p.name) || p.dotDotDotToken || p.questionToken || p.initializer) {
+          ctorOk = false;
+          break;
+        }
+        const tsType = ctx.checker.getTypeAtLocation(p);
+        const ir = tsTypeToClassPositionIr(ctx, tsType, out);
+        if (!ir) {
+          ctorOk = false;
+          break;
+        }
+        constructorParams.push(ir);
+      }
+    }
+    if (!ctorOk) continue;
+
+    // Fields — read from the legacy `structFields` (already includes
+    // type info that the IR cares about). Strip the `__tag` prefix and
+    // map each remaining field's ValType back to an IrType. If any
+    // field type can't be projected (e.g. tagged-union ref), skip the
+    // whole class.
+    const legacyFields = ctx.structFields.get(className)!;
+    const fields: { name: string; type: IrType }[] = [];
+    let fieldsOk = true;
+    for (const f of legacyFields) {
+      if (f.name === "__tag") continue;
+      const ir = valTypeToIrField(ctx, f.type);
+      if (!ir) {
+        fieldsOk = false;
+        break;
+      }
+      fields.push({ name: f.name, type: ir });
+    }
+    if (!fieldsOk) continue;
+    fields.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+    // Methods — instance methods only, re-derived from the AST.
+    const methods: { name: string; params: IrType[]; returnType: IrType | null }[] = [];
+    let methodsOk = true;
+    for (const member of stmt.members) {
+      if (!ts.isMethodDeclaration(member) || !member.name) continue;
+      if (hasStaticModifier(member)) continue; // slice 4 defers static methods
+      if (hasAbstractModifier(member)) continue;
+      if (!ts.isIdentifier(member.name)) continue; // computed names → defer
+      if (member.asteriskToken) continue; // generators → defer
+      const methodName = member.name.text;
+      const params: IrType[] = [];
+      for (const p of member.parameters) {
+        if (!ts.isIdentifier(p.name) || p.dotDotDotToken || p.questionToken || p.initializer) {
+          methodsOk = false;
+          break;
+        }
+        const tsType = ctx.checker.getTypeAtLocation(p);
+        const ir = tsTypeToClassPositionIr(ctx, tsType, out);
+        if (!ir) {
+          methodsOk = false;
+          break;
+        }
+        params.push(ir);
+      }
+      if (!methodsOk) break;
+      // Return type — null for void (matches IrClassMethodDescriptor).
+      let returnType: IrType | null = null;
+      const sig = ctx.checker.getSignatureFromDeclaration(member);
+      if (sig) {
+        const retTs = ctx.checker.getReturnTypeOfSignature(sig);
+        if (!isVoidType(retTs)) {
+          const ir = tsTypeToClassPositionIr(ctx, retTs, out);
+          if (!ir) {
+            methodsOk = false;
+            break;
+          }
+          returnType = ir;
+        }
+      }
+      methods.push({ name: methodName, params, returnType });
+    }
+    if (!methodsOk) continue;
+
+    out.set(className, {
+      className,
+      fields,
+      methods,
+      constructorParams,
+    });
+  }
+  return out;
+}
+
+/**
+ * Slice 4 (#1169d): project a TypeScript type that appears in a class
+ * member position (constructor param, method param, method return,
+ * field) into an IrType. Returns `null` if the type isn't
+ * representable — the caller skips the whole class in that case.
+ *
+ * Recognises:
+ *   - primitives (number → f64, boolean → i32, string)
+ *   - object shapes via `objectIrTypeFromTsType`
+ *   - other locally-declared classes (forward references resolve
+ *     against the in-progress `out` map; cross-class self-references
+ *     come back as the class's own shape after a single pass)
+ */
+function tsTypeToClassPositionIr(
+  ctx: CodegenContext,
+  t: ts.Type,
+  classShapes: ReadonlyMap<string, import("../ir/nodes.js").IrClassShape>,
+): IrType | null {
+  if (t.flags & ts.TypeFlags.NumberLike) return irVal({ kind: "f64" });
+  if (t.flags & ts.TypeFlags.BooleanLike) return irVal({ kind: "i32" });
+  if (t.flags & ts.TypeFlags.StringLike) return { kind: "string" };
+  // Class type — resolved by symbol name.
+  const sym = t.getSymbol();
+  if (sym) {
+    const cs = classShapes.get(sym.name);
+    if (cs) return { kind: "class", shape: cs };
+  }
+  if (t.flags & ts.TypeFlags.Object) {
+    const ir = objectIrTypeFromTsType(ctx, t);
+    if (ir) return ir;
+  }
+  return null;
+}
+
+/**
+ * Slice 4 (#1169d): map a legacy `ValType` (already lowered to Wasm)
+ * back to an IrType for a class field descriptor. Used so the IR's
+ * field-type discriminator stays consistent with what the legacy
+ * struct emits.
+ *
+ * Conservative: only primitives + ref types pass. Ref types lower to
+ * `IrType.val` carrying the same Wasm typeIdx — works for both
+ * class-instance fields (typeIdx points at another class struct) and
+ * anonymous struct fields. Field reads against these types return
+ * `(ref $...)` values which the IR can compose with subsequent
+ * operations only via the surrounding class.get / class.set; that's
+ * fine for slice 4's surface.
+ */
+function valTypeToIrField(_ctx: CodegenContext, vt: import("../ir/types.js").ValType): IrType | null {
+  if (vt.kind === "f64" || vt.kind === "i32") return irVal(vt);
+  // Slice 4 defers `string`-typed class fields exposed as externref or
+  // (ref $AnyString) — the IR's `IrType.string` is backend-agnostic
+  // but the legacy `structFields` already commits to a backend ValType
+  // (externref/ref). Returning null here lets the class fall back to
+  // legacy if it has string fields.
   return null;
 }
 
@@ -421,6 +631,12 @@ export function generateModule(
     if (options?.experimentalIR) {
       const typeMap = buildTypeMap(ast.sourceFile, ast.checker);
       const selection = planIrCompilation(ast.sourceFile, { experimentalIR: true }, typeMap);
+      // Slice 4 (#1169d) — build the class-shape registry from the
+      // legacy class collection (`ctx.classSet`, `ctx.structFields`,
+      // `ctx.funcMap`). Done BEFORE override resolution so class-typed
+      // positions (`p: Point`) lower to `IrType.class` rather than
+      // throwing in `resolvePositionType`.
+      const classShapes = buildIrClassShapes(ctx, ast.sourceFile);
       // Build per-function IR type overrides from the propagated TypeMap.
       //
       // For a claimed function, the selector must have resolved each
@@ -444,11 +660,11 @@ export function generateModule(
         if (!fn) continue;
         const entry = typeMap.get(name);
         try {
-          const returnType = resolvePositionType(fn.type, entry?.returnType, ctx);
+          const returnType = resolvePositionType(fn.type, entry?.returnType, ctx, classShapes);
           const params: IrType[] = [];
           for (let i = 0; i < fn.parameters.length; i++) {
             const p = fn.parameters[i]!;
-            params.push(resolvePositionType(p.type, entry?.params[i], ctx));
+            params.push(resolvePositionType(p.type, entry?.params[i], ctx, classShapes));
           }
           overrideMap.set(name, { params, returnType });
         } catch (e) {
@@ -466,7 +682,7 @@ export function generateModule(
       const safeSelection = {
         funcs: new Set<string>([...selection.funcs].filter((n) => overrideMap.has(n))),
       };
-      const report = compileIrPathFunctions(ctx, ast.sourceFile, safeSelection, overrideMap);
+      const report = compileIrPathFunctions(ctx, ast.sourceFile, safeSelection, overrideMap, classShapes);
       for (const err of report.errors) {
         reportErrorNoNode(ctx, `IR path failed for ${err.func}: ${err.message}`);
       }
