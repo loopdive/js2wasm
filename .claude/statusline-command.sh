@@ -163,13 +163,13 @@ if [ -z "$in_worktree" ]; then
     if [ "$remaining_sec" -gt 0 ]; then
       days_left=$(awk "BEGIN {printf \"%.1f\", $remaining_sec / 86400}")
       days_int=$(awk "BEGIN {printf \"%d\", $remaining_sec / 86400}")
-      elapsed_pct=$(awk "BEGIN {printf \"%d\", (7 - $remaining_sec / 86400) * 100 / 7}")
+      elapsed_pct=$(awk "BEGIN {printf \"%.4f\", (7 - $remaining_sec / 86400) * 100 / 7}")
       awk -v left="$days_left" -v days_int="$days_int" -v elapsed_pct="$elapsed_pct" 'BEGIN {
         if (days_int >= 4)     { fill=42;         fg=30 }
         else if (days_int >= 2){ fill=43;         fg=30 }
         else                   { fill="48;5;196"; fg=37 }
-        width = 8
-        filled = int(elapsed_pct * width / 100)
+        width = 10
+        filled = int(elapsed_pct * width / 100 + 0.5)
         label = sprintf(" %sd left", left)
         bar = ""
         for (i = 0; i < width; i++) bar = bar " "
