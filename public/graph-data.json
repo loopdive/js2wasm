@@ -16786,21 +16786,9 @@
       "id": "1180",
       "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
-      "depends_on": [],
-      "files": [],
-      "goal": "compilable",
-      "cluster": "compilable"
-    },
-    {
-      "id": "1180",
-      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "compilable",
@@ -18417,7 +18405,6 @@
         "1174",
         "1175",
         "1178",
-        "1180",
         "1180"
       ]
     },
@@ -20893,10 +20880,6 @@
     {
       "goal": "compilable",
       "issue": "1178"
-    },
-    {
-      "goal": "compilable",
-      "issue": "1180"
     },
     {
       "goal": "compilable",
