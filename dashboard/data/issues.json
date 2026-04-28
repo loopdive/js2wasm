@@ -245,16 +245,6 @@
       "sprint": "47"
     },
     {
-      "id": "1191",
-      "title": "ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1190",
       "title": "research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192)",
       "priority": "high",
@@ -1606,26 +1596,6 @@
   ],
   "inprogress": [
     {
-      "id": "1193",
-      "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
-      "id": "1192",
-      "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -1793,6 +1763,36 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1193",
+      "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1192",
+      "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1191",
+      "title": "ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-hardening",
       "status": "done",
       "sprint": "45"
     },

@@ -198,9 +198,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | ready |
 | #1189 | ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness | medium | ready |
 | #1190 | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | high | ready |
-| #1191 | ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate | medium | ready |
-| #1192 | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | medium | ready |
-| #1193 | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | medium | ready |
 | #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | ready |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | ready |
 | #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | ready |

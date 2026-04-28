@@ -17382,20 +17382,8 @@
       "id": "1191",
       "title": "ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
-      "depends_on": [],
-      "files": [],
-      "goal": "ci-hardening",
-      "cluster": "ci-hardening"
-    },
-    {
-      "id": "1192",
-      "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -17406,9 +17394,9 @@
       "id": "1192",
       "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -17418,21 +17406,9 @@
       "id": "1193",
       "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
-      "depends_on": [],
-      "files": [],
-      "goal": "developer-experience",
-      "cluster": "developer-experience"
-    },
-    {
-      "id": "1193",
-      "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -18722,7 +18698,6 @@
         "1189",
         "1190",
         "1191",
-        "1192",
         "1192"
       ],
       "track": "supporting track"
@@ -19309,7 +19284,6 @@
         "1147",
         "1187",
         "1188",
-        "1193",
         "1193",
         "1206",
         "1207"
@@ -20712,10 +20686,6 @@
     {
       "goal": "ci-hardening",
       "issue": "1191"
-    },
-    {
-      "goal": "ci-hardening",
-      "issue": "1192"
     },
     {
       "goal": "ci-hardening",
@@ -22724,10 +22694,6 @@
     {
       "goal": "developer-experience",
       "issue": "1188"
-    },
-    {
-      "goal": "developer-experience",
-      "issue": "1193"
     },
     {
       "goal": "developer-experience",

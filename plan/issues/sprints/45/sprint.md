@@ -115,13 +115,6 @@ moved here. No issues were rescoped, rejected, or deleted — only relocated.
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1192 | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | medium | in-progress |
-| #1193 | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | medium | in-progress |
-
 ### Done
 
 | Issue | Title | Priority | Status |
@@ -191,6 +184,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1185 | IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts) | medium | done |
 | #1186 | fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx) | high | done |
 | #1186 | fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx) | high | done |
+| #1191 | ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate | medium | done |
+| #1192 | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | medium | done |
+| #1193 | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | medium | done |
 | #1202 | credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm | high | done |
 | #1202 | credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm | high | done |
 | #1208 | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | high | done |
