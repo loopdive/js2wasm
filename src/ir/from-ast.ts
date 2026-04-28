@@ -601,6 +601,22 @@ function collectMutatedLetNamesFromBlock(body: ts.Block): Set<string> {
 function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
   const isConst = !!(stmt.declarationList.flags & ts.NodeFlags.Const);
   for (const d of stmt.declarationList.declarations) {
+    // Slice 8a (#1169g): destructuring binding patterns (selector restricts
+    // to const, no rest, no defaults, no nesting). Lower the initializer
+    // ONCE into an SSA value, then walk the pattern emitting one
+    // `object.get` (object pattern) or `vec.get` (array pattern) per leaf
+    // and binding each leaf as a `local` ScopeBinding.
+    if (ts.isObjectBindingPattern(d.name) || ts.isArrayBindingPattern(d.name)) {
+      if (!d.initializer) {
+        throw new Error(`ir/from-ast: binding pattern requires an initializer (${cx.funcName})`);
+      }
+      // Hint: pass an externref so the initializer's actual IrType (object,
+      // class, vec ref, etc.) flows through unchanged. The pattern lowerer
+      // dispatches on the inferred IrType.
+      const initValue = lowerExpr(d.initializer, cx, irVal({ kind: "externref" }));
+      lowerBindingPattern(d.name, initValue, cx);
+      continue;
+    }
     if (!ts.isIdentifier(d.name)) {
       throw new Error(`ir/from-ast: destructuring declarations not supported in Phase 1 (${cx.funcName})`);
     }
@@ -683,6 +699,153 @@ function lowerVarDecl(stmt: ts.VariableStatement, cx: LowerCtx): void {
       // landing the function back on the legacy path.
     }
     cx.scope.set(name, { kind: "local", value, type: inferred });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Binding pattern lowering (slice 8a — #1169g)
+// ---------------------------------------------------------------------------
+//
+// Destructuring patterns decompose at compile time into a sequence of
+// single-name bindings. Object pattern leaves emit `object.get`; array
+// pattern leaves emit `vec.get` (when the source is a vec ref).
+//
+// Slice 8a scope: identifier-leaf, no-default, no-rest, no-nested patterns.
+// Anything wider is rejected by the selector and stays on the legacy
+// destructuring path. Mixed array/object patterns over generic iterables
+// (Map, Set) require iter.next protocol and are deferred to slice 8b.
+//
+// Why hint with externref for the initializer in `lowerVarDecl`? The
+// pattern's source type isn't known until lowering — it could be
+// IrType.object, IrType.class (for class instances treated like objects
+// — out of scope), or `(ref $vec_*)`. The externref hint is advisory;
+// `lowerExpr`'s producers inspect their own type rather than coercing
+// to the hint, so an object literal stays IrType.object and a vec ref
+// stays `(ref $vec_*)`.
+
+/**
+ * Slice 8a (#1169g): walk a destructuring binding pattern and emit one
+ * field/index read per leaf, binding each name as a `local` ScopeBinding.
+ *
+ * The source SSA value is read once per leaf. The IR's CSE / DCE passes
+ * coalesce repeated reads when safe; even without that, struct.get and
+ * array.get are pure ops cheap enough that a single-store tee isn't
+ * required for correctness.
+ */
+function lowerBindingPattern(pattern: ts.BindingPattern, source: IrValueId, cx: LowerCtx): void {
+  if (ts.isObjectBindingPattern(pattern)) {
+    lowerObjectPattern(pattern, source, cx);
+    return;
+  }
+  lowerArrayPattern(pattern, source, cx);
+}
+
+/**
+ * Slice 8a (#1169g): decompose `const { a, b: x } = obj` into per-leaf
+ * `object.get` reads. The source must lower to an IrType.object; class
+ * instances and externref-typed sources fall through to a clean throw,
+ * landing the function back on legacy.
+ */
+function lowerObjectPattern(pattern: ts.ObjectBindingPattern, source: IrValueId, cx: LowerCtx): void {
+  const sourceType = cx.builder.typeOf(source);
+  if (sourceType.kind !== "object") {
+    throw new Error(
+      `ir/from-ast: object destructuring source must be IrType.object (got ${describeIrType(sourceType)}) in ${cx.funcName}`,
+    );
+  }
+  for (const elem of pattern.elements) {
+    // Selector enforces no rest / no default / identifier-leaf only;
+    // defensive checks here surface selector regressions as clean throws
+    // rather than silent miscompiles.
+    if (elem.dotDotDotToken) {
+      throw new Error(`ir/from-ast: object rest pattern not in slice 8a (${cx.funcName})`);
+    }
+    if (elem.initializer) {
+      throw new Error(`ir/from-ast: pattern default values not in slice 8a (${cx.funcName})`);
+    }
+    if (!ts.isIdentifier(elem.name)) {
+      throw new Error(`ir/from-ast: nested binding patterns not in slice 8a (${cx.funcName})`);
+    }
+    // The property name being read out of the source. `propertyName`
+    // is set when the pattern uses renaming (`{ a: x }` — propName is
+    // "a", localName is "x"); shorthand patterns leave it null.
+    const propName = elem.propertyName
+      ? ts.isIdentifier(elem.propertyName)
+        ? elem.propertyName.text
+        : ts.isStringLiteral(elem.propertyName)
+          ? elem.propertyName.text
+          : null
+      : elem.name.text;
+    if (propName === null) {
+      throw new Error(`ir/from-ast: object pattern property name must be Identifier or StringLiteral (${cx.funcName})`);
+    }
+    const localName = elem.name.text;
+    if (cx.scope.has(localName)) {
+      throw new Error(`ir/from-ast: redeclaration of '${localName}' in pattern in ${cx.funcName}`);
+    }
+    const field = sourceType.shape.fields.find((f) => f.name === propName);
+    if (!field) {
+      throw new Error(
+        `ir/from-ast: object pattern reads unknown field "${propName}" (shape: ${describeIrType(sourceType)}) in ${cx.funcName}`,
+      );
+    }
+    const v = cx.builder.emitObjectGet(source, propName, field.type);
+    cx.scope.set(localName, { kind: "local", value: v, type: field.type });
+  }
+}
+
+/**
+ * Slice 8a (#1169g): decompose `const [x, y, z] = arr` into per-index
+ * `vec.get` reads on a vec source. `vec.get` traps on out-of-bounds at
+ * runtime — same semantics as legacy destructuring's array path
+ * (legacy uses array.get without a bounds check too).
+ *
+ * The source must lower to a `(ref|ref_null) $vec_*` IrType.val. Anything
+ * else (string, externref, class) routes to legacy via a clean throw.
+ */
+function lowerArrayPattern(pattern: ts.ArrayBindingPattern, source: IrValueId, cx: LowerCtx): void {
+  const sourceType = cx.builder.typeOf(source);
+  const valTy = asVal(sourceType);
+  if (!valTy || (valTy.kind !== "ref" && valTy.kind !== "ref_null")) {
+    throw new Error(
+      `ir/from-ast: array destructuring source must be vec ref (got ${describeIrType(sourceType)}) in ${cx.funcName}`,
+    );
+  }
+  // Recover the element ValType. We need a resolver thread-through —
+  // matches the slice-6 vec for-of pattern. If the resolver is absent
+  // or doesn't recognize the ref as a vec, fall back to legacy.
+  const vec = cx.resolver?.resolveVec?.(valTy);
+  if (!vec) {
+    throw new Error(
+      `ir/from-ast: array destructuring source is not a recognisable vec ref (${describeIrType(sourceType)}) in ${cx.funcName}`,
+    );
+  }
+  const elemValType = vec.elementValType;
+  const elemIrType: IrType = irVal(elemValType);
+
+  let i = 0;
+  for (const elem of pattern.elements) {
+    if (ts.isOmittedExpression(elem)) {
+      i++;
+      continue;
+    }
+    if (elem.dotDotDotToken) {
+      throw new Error(`ir/from-ast: array rest pattern not in slice 8a (${cx.funcName})`);
+    }
+    if (elem.initializer) {
+      throw new Error(`ir/from-ast: pattern default values not in slice 8a (${cx.funcName})`);
+    }
+    if (!ts.isIdentifier(elem.name)) {
+      throw new Error(`ir/from-ast: nested binding patterns not in slice 8a (${cx.funcName})`);
+    }
+    const localName = elem.name.text;
+    if (cx.scope.has(localName)) {
+      throw new Error(`ir/from-ast: redeclaration of '${localName}' in pattern in ${cx.funcName}`);
+    }
+    const idx = cx.builder.emitConst({ kind: "i32", value: i }, irVal({ kind: "i32" }));
+    const v = cx.builder.emitVecGet(source, idx, elemIrType);
+    cx.scope.set(localName, { kind: "local", value: v, type: elemIrType });
+    i++;
   }
 }
 
@@ -1129,14 +1292,19 @@ function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
   if (!calleeSig) {
     throw new Error(`ir/from-ast: call to unknown function "${calleeName}" in ${cx.funcName}`);
   }
-  if (expr.arguments.length !== calleeSig.params.length) {
+  // Slice 8a (#1169g): spread args with statically-known sources
+  // (ArrayLiteralExpression with no nested spread). Expand at compile
+  // time to one IR arg per literal element. The pre-expansion arity
+  // check below counts spread elements as their literal element count.
+  const expandedArgExprs = expandStaticSpreadArgs(expr.arguments, cx);
+  if (expandedArgExprs.length !== calleeSig.params.length) {
     throw new Error(
-      `ir/from-ast: call to ${calleeName} has ${expr.arguments.length} args, expected ${calleeSig.params.length} in ${cx.funcName}`,
+      `ir/from-ast: call to ${calleeName} has ${expandedArgExprs.length} args, expected ${calleeSig.params.length} in ${cx.funcName}`,
     );
   }
   const args: IrValueId[] = [];
-  for (let i = 0; i < expr.arguments.length; i++) {
-    const argExpr = expr.arguments[i]!;
+  for (let i = 0; i < expandedArgExprs.length; i++) {
+    const argExpr = expandedArgExprs[i]!;
     const expected = calleeSig.params[i]!;
     const argVal = lowerExpr(argExpr, cx, expected);
     const argType = cx.builder.typeOf(argVal);
@@ -1152,6 +1320,45 @@ function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
     throw new Error(`ir/from-ast: call to ${calleeName} returned void used as expression in ${cx.funcName}`);
   }
   return result;
+}
+
+/**
+ * Slice 8a (#1169g): expand spread args at compile time. The selector
+ * (`isStaticSpreadSource`) restricts spread sources to
+ * `ArrayLiteralExpression` with no nested SpreadElement, so each spread
+ * arg has a known element count and we can inline its elements as
+ * additional 1:1 args. Non-spread args pass through unchanged.
+ *
+ * The result is a parallel `Expression[]` whose length equals the
+ * post-expansion arity. The caller's existing 1:1 `lowerExpr`-per-arg
+ * loop runs against the returned array.
+ *
+ * Defensive: any spread whose source isn't an ArrayLiteral throws
+ * (selector should have rejected, but a clean throw routes to legacy
+ * if a regression slips in).
+ */
+function expandStaticSpreadArgs(args: readonly ts.Expression[], cx: LowerCtx): ts.Expression[] {
+  const out: ts.Expression[] = [];
+  for (const a of args) {
+    if (ts.isSpreadElement(a)) {
+      if (!ts.isArrayLiteralExpression(a.expression)) {
+        throw new Error(
+          `ir/from-ast: dynamic-length spread args not in slice 8a (${ts.SyntaxKind[a.expression.kind]} in ${cx.funcName})`,
+        );
+      }
+      for (const e of a.expression.elements) {
+        if (ts.isSpreadElement(e) || ts.isOmittedExpression(e)) {
+          throw new Error(
+            `ir/from-ast: nested spread / sparse element inside spread arg not in slice 8a (${cx.funcName})`,
+          );
+        }
+        out.push(e);
+      }
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
 }
 
 /**
