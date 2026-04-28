@@ -1,7 +1,6 @@
 ---
 title: "js2wasm Backlog"
 status: backlog
-sprint: Backlog
 ---
 # js2wasm Backlog
 
