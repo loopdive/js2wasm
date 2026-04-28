@@ -143,7 +143,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
 | #1147 | Add a public Docs page to the site | medium | ready |
 | #1172 | Codebase modularity audit — reduce coupling, improve layering, harden interfaces | high | ready |
-| #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
 
 ### In Progress
 
@@ -200,6 +199,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | done |
 | #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | done |
 | #1179-followup | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | medium | done |
+| #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | done |
 | #1181 | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | high | done |
 | #1182 | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | medium | done |
 | #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | done |
