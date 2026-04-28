@@ -119,7 +119,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
 | #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | ready |
 
 ### In Progress
@@ -127,6 +126,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | in-progress |
+| #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | in-progress |
 
 ### Done
 

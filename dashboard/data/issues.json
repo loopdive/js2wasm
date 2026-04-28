@@ -357,18 +357,6 @@
       "sprint": "46"
     },
     {
-      "id": "1169h",
-      "title": "IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169e"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1169",
       "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
       "priority": "high",
@@ -1600,6 +1588,18 @@
     }
   ],
   "inprogress": [
+    {
+      "id": "1169h",
+      "title": "IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169e"
+      ],
+      "goal": "compiler-architecture",
+      "status": "in-progress",
+      "sprint": "45"
+    },
     {
       "id": "1169g",
       "title": "IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path",
