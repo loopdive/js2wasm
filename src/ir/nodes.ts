@@ -1347,6 +1347,92 @@ export interface IrInstrForOfString extends IrInstrBase {
   readonly body: readonly IrInstr[];
 }
 
+// ---------------------------------------------------------------------------
+// Exception handling — throw / try / catch / finally (#1169h — IR Slice 9)
+// ---------------------------------------------------------------------------
+//
+// Slice 9 introduces the IR's first non-linear control flow: an exception
+// thrown inside a `try` body bypasses the static block graph and lands in
+// the matching catch clause (or unwinds out of the function). The
+// implementation uses two new declarative node kinds — `throw` and `try` —
+// that mirror the slice-6 forof.vec / forof.iter pattern: the body buffers
+// are self-contained Instr[] sequences that the lowerer expands to Wasm
+// `try`/`catch`/`catch_all` ops directly. This keeps the IR's block-graph
+// model simple (no exceptional-edge terminators) while still expressing
+// structured exception handling at the source level.
+//
+// Tag: slice 9 reuses the legacy `__exn` tag (signature `(externref)`) so
+// IR-compiled throws can be caught by legacy-compiled handlers and vice
+// versa. The lowerer's `IrLowerResolver.ensureExnTag()` resolves the tag
+// index at emit time.
+
+/**
+ * Slice 9 (#1169h) — throw an exception. The `value` is coerced to externref
+ * upstream (the `__exn` tag's signature is `(externref)`). After throw,
+ * control transfers to the nearest enclosing catch matching the tag, or
+ * unwinds out of the function.
+ *
+ * The instr produces NO SSA value (control doesn't fall through), so
+ * `result` and `resultType` are always null. The verifier treats it as a
+ * "stop" instr — instructions after it in the same block are unreachable
+ * in source but still validated structurally.
+ *
+ * Lowering:
+ *   <emit value>          ;; pushes externref
+ *   throw $__exn
+ */
+export interface IrInstrThrow extends IrInstrBase {
+  readonly kind: "throw";
+  readonly value: IrValueId;
+}
+
+/**
+ * Slice 9 (#1169h) — try / catch / finally as a declarative statement-level
+ * instr. Mirrors the slice-6 `forof.vec` shape: the body / catch handler /
+ * finally are self-contained Instr[] buffers, and the lowerer emits the
+ * structured Wasm `try`/`catch`/`catch_all` op directly without
+ * restructuring the IR's block graph.
+ *
+ * Encoding:
+ *   - `body`              the try block's instructions.
+ *   - `catchClause`       optional. When present, encodes a source-level
+ *                         `catch (e) { ... }` (or `catch { ... }`).
+ *                            * `payloadSlot` — slot of `(externref)` that
+ *                              receives the thrown value at handler entry
+ *                              (or -1 when there is no source binding).
+ *                            * `body`        — handler instructions.
+ *   - `finallyBody`       optional. When present, the lowerer inlines this
+ *                         buffer at every "abrupt completion" path:
+ *                            * normal exit of try body
+ *                            * normal exit of catch body
+ *                            * a synthesized catch_all that re-throws
+ *
+ * Acceptable shapes (selector-enforced):
+ *   try { ... } catch (e) { ... }              catchClause set
+ *   try { ... } catch { ... }                  catchClause set, payloadSlot=-1
+ *   try { ... } finally { ... }                finallyBody set
+ *   try { ... } catch (e) { ... } finally { ... }   both set
+ *
+ * Result is void (`result: null`).
+ */
+export interface IrInstrTry extends IrInstrBase {
+  readonly kind: "try";
+  /** Try block instructions. */
+  readonly body: readonly IrInstr[];
+  /** Optional source-level catch handler. */
+  readonly catchClause?: {
+    /**
+     * Externref-typed slot index that the lowerer writes the caught
+     * exception into at handler entry. `-1` when the source has no
+     * binding (`catch { ... }`).
+     */
+    readonly payloadSlot: number;
+    readonly body: readonly IrInstr[];
+  };
+  /** Optional finally body, inlined at every exit path. */
+  readonly finallyBody?: readonly IrInstr[];
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -1392,6 +1478,9 @@ export type IrInstr =
   | IrInstrGenEpilogue
   | IrInstrGenYieldStar
   | IrInstrForOfString
+  // Slice 9 (#1169h) — exception handling.
+  | IrInstrThrow
+  | IrInstrTry
   // Slice 10 (#1169i) — extern class ops.
   | IrInstrExternNew
   | IrInstrExternCall

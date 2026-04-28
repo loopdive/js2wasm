@@ -564,6 +564,56 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (!bodyChanged) return inst;
       return { ...inst, str: v, body: newBody };
     }
+    // Slice 9 (#1169h) — exception handling.
+    case "throw": {
+      const v = mapId(rename, inst.value);
+      if (v === inst.value) return inst;
+      return { ...inst, value: v };
+    }
+    case "try": {
+      let changed = false;
+      const newBody: IrInstr[] = [];
+      for (const sub of inst.body) {
+        const renamed = renameInstrOperands(sub, rename);
+        if (renamed !== sub) changed = true;
+        newBody.push(renamed);
+      }
+      let newCatch = inst.catchClause;
+      if (inst.catchClause) {
+        const newCatchBody: IrInstr[] = [];
+        let catchBodyChanged = false;
+        for (const sub of inst.catchClause.body) {
+          const renamed = renameInstrOperands(sub, rename);
+          if (renamed !== sub) catchBodyChanged = true;
+          newCatchBody.push(renamed);
+        }
+        if (catchBodyChanged) {
+          changed = true;
+          newCatch = { payloadSlot: inst.catchClause.payloadSlot, body: newCatchBody };
+        }
+      }
+      let newFinally = inst.finallyBody;
+      if (inst.finallyBody) {
+        const newFinBody: IrInstr[] = [];
+        let finBodyChanged = false;
+        for (const sub of inst.finallyBody) {
+          const renamed = renameInstrOperands(sub, rename);
+          if (renamed !== sub) finBodyChanged = true;
+          newFinBody.push(renamed);
+        }
+        if (finBodyChanged) {
+          changed = true;
+          newFinally = newFinBody;
+        }
+      }
+      if (!changed) return inst;
+      return {
+        ...inst,
+        body: newBody,
+        ...(newCatch ? { catchClause: newCatch } : {}),
+        ...(newFinally ? { finallyBody: newFinally } : {}),
+      };
+    }
     // Slice 10 (#1169i): extern class ops.
     case "extern.new": {
       let changed = false;

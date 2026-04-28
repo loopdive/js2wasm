@@ -226,6 +226,10 @@ function isSideEffecting(i: IrInstr): boolean {
     // null) so the generic null-result rule already keeps it; explicit
     // listing for clarity.
     i.kind === "forof.string" ||
+    // Slice 9 (#1169h): throw / try are statement-level side effects
+    // (control flow). DCE must always preserve them.
+    i.kind === "throw" ||
+    i.kind === "try" ||
     // Slice 10 (#1169i): extern class ops invoke host imports with
     // arbitrary side effects. Conservatively keep all five live so DCE
     // never strips a `RegExp_new` or `Uint8Array_set` whose result is
@@ -377,6 +381,29 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
     // Slice 7b (#1169f): yield* delegation.
     case "gen.yieldStar":
       return [instr.inner];
+    // Slice 9 (#1169h): exception handling.
+    case "throw":
+      return [instr.value];
+    case "try": {
+      // Recurse through body / catch / finally buffers so DCE pins any
+      // SSA value referenced inside.
+      const result: IrValueId[] = [];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectInstrUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
+          if (sub.kind === "try") {
+            walk(sub.body);
+            if (sub.catchClause) walk(sub.catchClause.body);
+            if (sub.finallyBody) walk(sub.finallyBody);
+          }
+        }
+      };
+      walk(instr.body);
+      if (instr.catchClause) walk(instr.catchClause.body);
+      if (instr.finallyBody) walk(instr.finallyBody);
+      return result;
+    }
     // Slice 10 (#1169i): extern class ops.
     case "extern.new":
       return instr.args;

@@ -726,6 +726,27 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
     // Slice 7b (#1169f): yield* delegation.
     case "gen.yieldStar":
       return [instr.inner];
+    // Slice 9 (#1169h) — exception handling.
+    case "throw":
+      return [instr.value];
+    case "try": {
+      const result: IrValueId[] = [];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
+          if (sub.kind === "try") {
+            walk(sub.body);
+            if (sub.catchClause) walk(sub.catchClause.body);
+            if (sub.finallyBody) walk(sub.finallyBody);
+          }
+        }
+      };
+      walk(instr.body);
+      if (instr.catchClause) walk(instr.catchClause.body);
+      if (instr.finallyBody) walk(instr.finallyBody);
+      return result;
+    }
     // Slice 10 (#1169i): extern class ops.
     case "extern.new":
       return instr.args;

@@ -986,6 +986,44 @@ export class IrFunctionBuilder {
       resultType: null,
     });
   }
+
+  // --- exception handling (slice 9 — #1169h) ------------------------------
+
+  /**
+   * Slice 9 (#1169h): emit a `throw` instruction. The `value` MUST be an
+   * SSA value of `(externref)` ValType — callers coerce upstream via
+   * `emitCoerceToExternref` for ref / object / class / closure values,
+   * and via the legacy box helper for f64 / i32 (boxed by the host).
+   *
+   * The instruction produces no SSA value; control doesn't fall through.
+   * The current block must still be terminated by the caller (typically
+   * with `unreachable` for top-level throws, or implicitly by the surrounding
+   * try-body buffer mechanism).
+   */
+  emitThrow(value: IrValueId): void {
+    this.pushInstr({ kind: "throw", value, result: null, resultType: null });
+  }
+
+  /**
+   * Slice 9 (#1169h): emit a `try` instruction with a body, optional catch
+   * handler, and optional finally body. Mirrors the for-of declarative
+   * shape — the caller pre-collects each buffer via `collectBodyInstrs`.
+   * Result is void.
+   */
+  emitTry(args: {
+    body: readonly IrInstr[];
+    catchClause?: { payloadSlot: number; body: readonly IrInstr[] };
+    finallyBody?: readonly IrInstr[];
+  }): void {
+    this.pushInstr({
+      kind: "try",
+      body: args.body,
+      ...(args.catchClause ? { catchClause: args.catchClause } : {}),
+      ...(args.finallyBody ? { finallyBody: args.finallyBody } : {}),
+      result: null,
+      resultType: null,
+    });
+  }
 }
 
 // Convenience: value-id brand with no underlying type map — useful for tests

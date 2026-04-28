@@ -383,9 +383,96 @@ function isPhase1StatementList(
       if (!isPhase1ForOf(s, scope, localClasses)) return false;
       continue;
     }
+    // Slice 9 (#1169h) — throw / try as a non-tail statement. A throw
+    // doesn't fall through, but the selector accepts it in non-tail
+    // position and the lowerer emits a `throw` instr followed by an
+    // implicit unreachable. (Code AFTER a throw in the same block is
+    // dead but structurally valid.)
+    if (ts.isThrowStatement(s)) {
+      if (!isPhase1ThrowStatement(s, scope, localClasses)) return false;
+      continue;
+    }
+    if (ts.isTryStatement(s)) {
+      if (!isPhase1TryStatement(s, scope, localClasses)) return false;
+      continue;
+    }
     return false;
   }
   return isPhase1Tail(stmts[stmts.length - 1]!, scope, localClasses, isGenerator);
+}
+
+/**
+ * Slice 9 (#1169h): shape-check a `throw <expr>;` statement. Bare
+ * `throw;` (no expression) is rejected — the legacy path handles that
+ * rare case. The expression must itself be a Phase-1 expression, so the
+ * lowerer can produce a value to coerce to externref before throwing.
+ */
+function isPhase1ThrowStatement(
+  stmt: ts.ThrowStatement,
+  scope: ReadonlySet<string>,
+  localClasses: ReadonlySet<string>,
+): boolean {
+  if (!stmt.expression) return false;
+  return isPhase1Expr(stmt.expression, scope, localClasses);
+}
+
+/**
+ * Slice 9 (#1169h): shape-check a `try { ... } [catch (e) { ... }]
+ * [finally { ... }]` statement.
+ *
+ * Accepted shapes (selector level):
+ *   try { <body> } catch (id) { <handler> }
+ *   try { <body> } catch { <handler> }                  (ES2019 optional catch)
+ *   try { <body> } finally { <cleanup> }
+ *   try { <body> } catch (id) { <handler> } finally { <cleanup> }
+ *
+ * Where `<body>`, `<handler>`, and `<cleanup>` are each Phase-1 body
+ * statement lists (no early return / break / continue out of the try
+ * region — slice 9 doesn't yet thread the finally-stack inlining for
+ * abrupt completions).
+ *
+ * Rejected (deferred to slice 9.5):
+ *   - destructuring catch param (`catch ({message})`).
+ *   - `throw` with no expression (handled in `isPhase1ThrowStatement`).
+ *   - `try` with neither catch nor finally (TS already rejects this).
+ *   - early-return / break / continue inside try / catch / finally bodies
+ *     (the body-statement recogniser doesn't allow them anyway).
+ */
+function isPhase1TryStatement(
+  stmt: ts.TryStatement,
+  scope: ReadonlySet<string>,
+  localClasses: ReadonlySet<string>,
+): boolean {
+  if (!stmt.catchClause && !stmt.finallyBlock) return false;
+
+  // Try body: must be a Phase-1 body statement list.
+  const tryScope = new Set(scope);
+  for (const s of stmt.tryBlock.statements) {
+    if (!isPhase1BodyStatement(s, tryScope, localClasses)) return false;
+  }
+
+  if (stmt.catchClause) {
+    const catchScope = new Set(scope);
+    if (stmt.catchClause.variableDeclaration) {
+      const v = stmt.catchClause.variableDeclaration;
+      // Slice 9 only accepts identifier bindings. Destructuring catch
+      // (`catch ({message})`) defers to slice 9.5.
+      if (!ts.isIdentifier(v.name)) return false;
+      catchScope.add(v.name.text);
+    }
+    for (const s of stmt.catchClause.block.statements) {
+      if (!isPhase1BodyStatement(s, catchScope, localClasses)) return false;
+    }
+  }
+
+  if (stmt.finallyBlock) {
+    const finallyScope = new Set(scope);
+    for (const s of stmt.finallyBlock.statements) {
+      if (!isPhase1BodyStatement(s, finallyScope, localClasses)) return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -486,6 +573,17 @@ function isPhase1BodyStatement(stmt: ts.Statement, scope: Set<string>, localClas
   if (ts.isForOfStatement(stmt)) {
     return isPhase1ForOf(stmt, scope, localClasses);
   }
+  // Slice 9 (#1169h) — throw / try inside a body statement list.
+  // Accepting these here lets a try body / catch body / finally body
+  // contain nested throws and nested try-statements (composes with the
+  // outer try's catch / finally inlining via the lowerer's structured
+  // emission).
+  if (ts.isThrowStatement(stmt)) {
+    return isPhase1ThrowStatement(stmt, scope, localClasses);
+  }
+  if (ts.isTryStatement(stmt)) {
+    return isPhase1TryStatement(stmt, scope, localClasses);
+  }
   return false;
 }
 
@@ -515,6 +613,12 @@ function isPhase1Tail(
     if (!isPhase1Tail(stmt.elseStatement, new Set(scope), localClasses, isGenerator)) return false;
     return true;
   }
+  // Slice 9 (#1169h) — throw at function tail. `function f() { throw new
+  // Error(); }` is a valid Phase-1 tail because the throw produces an
+  // abrupt completion that terminates the function (no return needed).
+  if (ts.isThrowStatement(stmt)) {
+    return isPhase1ThrowStatement(stmt, scope, localClasses);
+  }
   return false;
 }
 
@@ -524,6 +628,27 @@ function isPhase1VarDecl(stmt: ts.VariableStatement, scope: Set<string>, localCl
   if (stmt.modifiers && stmt.modifiers.length > 0) return false;
   const isConst = !!(flags & ts.NodeFlags.Const);
   for (const d of stmt.declarationList.declarations) {
+    // Slice 8a (#1169g): destructuring binding patterns for `const`-bound
+    // declarations only. Object pattern: identifier-only properties with
+    // optional renaming, no defaults, no nesting, no rest. Array pattern:
+    // identifier-only positional bindings, no defaults, no nesting, no
+    // rest. Anything wider (rest, defaults, nested patterns) defers to
+    // slice 8.5+ — the legacy `destructuring.ts` path remains for those.
+    if (ts.isObjectBindingPattern(d.name) || ts.isArrayBindingPattern(d.name)) {
+      if (!isConst) return false;
+      if (!d.initializer) return false;
+      if (!isPhase1BindingPattern(d.name, scope)) return false;
+      // Initializer must be Phase-1 expressible. The lowerer inspects
+      // its IrType to decide between object.get (object pattern) and
+      // vec.get (array pattern); if the resolved IrType isn't compatible
+      // with the pattern shape, lowering throws and the function falls
+      // back to legacy.
+      if (!isPhase1Expr(d.initializer, scope, localClasses)) return false;
+      // Pre-add every leaf identifier to scope so subsequent statements
+      // see the new names.
+      collectPatternNames(d.name, scope);
+      continue;
+    }
     if (!ts.isIdentifier(d.name)) return false;
     if (scope.has(d.name.text)) return false;
     if (!d.initializer) return false;
@@ -546,6 +671,75 @@ function isPhase1VarDecl(stmt: ts.VariableStatement, scope: Set<string>, localCl
     scope.add(d.name.text);
   }
   return true;
+}
+
+/**
+ * Slice 8a (#1169g): shape-check a destructuring binding pattern. Only
+ * identifier-leaf, no-default, no-rest, no-nested patterns are accepted
+ * — the lowerer expands these into a sequence of single-name `object.get`
+ * / `vec.get` reads at compile time. Wider shapes (rest, defaults,
+ * nested) defer to slice 8.5; the function falls back to legacy.
+ *
+ * Object patterns:
+ *   - { a, b }                   — shorthand
+ *   - { a: x, b: y }             — renaming (computed key rejected)
+ *
+ * Array patterns:
+ *   - [a, b, c]
+ *   - [, b, , d]                 — omitted slots (sparse) accepted
+ */
+function isPhase1BindingPattern(p: ts.BindingPattern, scope: ReadonlySet<string>): boolean {
+  if (ts.isObjectBindingPattern(p)) {
+    if (p.elements.length === 0) return false; // empty pattern — nothing to bind
+    const localNames = new Set<string>();
+    for (const elem of p.elements) {
+      // Rest deferred — slice 8b adds object spread/rest collection.
+      if (elem.dotDotDotToken) return false;
+      // Default value `{ a = 1 }` deferred — needs runtime undefined check.
+      if (elem.initializer) return false;
+      // Property name must be Identifier or StringLiteral (no computed).
+      if (elem.propertyName) {
+        if (!ts.isIdentifier(elem.propertyName) && !ts.isStringLiteral(elem.propertyName)) return false;
+      }
+      // Binding target must be a plain identifier (no nested patterns).
+      if (!ts.isIdentifier(elem.name)) return false;
+      const name = elem.name.text;
+      if (scope.has(name) || localNames.has(name)) return false;
+      localNames.add(name);
+    }
+    return true;
+  }
+  if (ts.isArrayBindingPattern(p)) {
+    if (p.elements.length === 0) return false; // empty `[] = expr` — defer
+    const localNames = new Set<string>();
+    for (const elem of p.elements) {
+      // Omitted (sparse) slots are allowed — `[a, , c]` skips index 1.
+      if (ts.isOmittedExpression(elem)) continue;
+      // Rest deferred — slice 8b adds vec slice / iter drain.
+      if (elem.dotDotDotToken) return false;
+      // Default value deferred.
+      if (elem.initializer) return false;
+      // Binding target must be a plain identifier (no nested patterns).
+      if (!ts.isIdentifier(elem.name)) return false;
+      const name = elem.name.text;
+      if (scope.has(name) || localNames.has(name)) return false;
+      localNames.add(name);
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Slice 8a (#1169g): collect every identifier name introduced by a binding
+ * pattern (the leaves) into the given scope. Mirrors the Phase-1 var-decl
+ * scope-tracking machinery.
+ */
+function collectPatternNames(p: ts.BindingPattern, scope: Set<string>): void {
+  for (const elem of p.elements) {
+    if (ts.isOmittedExpression(elem)) continue;
+    if (ts.isIdentifier(elem.name)) scope.add(elem.name.text);
+  }
 }
 
 /**
@@ -784,12 +978,27 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
       if (!ts.isIdentifier(expr.expression.name)) return false;
       if (!isPhase1Expr(expr.expression.expression, scope, localClasses)) return false;
       for (const arg of expr.arguments) {
+        // Slice 8a (#1169g): spread args restricted to method calls is
+        // out of scope — methods on classes have known signatures and
+        // expanding spread would blur them. Reject for now.
+        if (ts.isSpreadElement(arg)) return false;
         if (!isPhase1Expr(arg, scope, localClasses)) return false;
       }
       return true;
     }
     if (!ts.isIdentifier(expr.expression)) return false;
     for (const arg of expr.arguments) {
+      // Slice 8a (#1169g): accept `f(...source)` where the spread source
+      // is an ArrayLiteralExpression with no nested spread. The lowerer
+      // expands this at compile time into individual call arguments
+      // (matches the legacy `expandSpreadCallArgs` fast path). Spread
+      // sources of dynamic length (e.g. an arbitrary identifier of vec
+      // type) are deferred — they'd require runtime arity expansion
+      // which the IR doesn't model in slice 8a.
+      if (ts.isSpreadElement(arg)) {
+        if (!isStaticSpreadSource(arg.expression, scope, localClasses)) return false;
+        continue;
+      }
       if (!isPhase1Expr(arg, scope, localClasses)) return false;
     }
     return true;
@@ -866,6 +1075,31 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
     return isPhase1Expr(expr.expression, scope, localClasses);
   }
   return false;
+}
+
+/**
+ * Slice 8a (#1169g) — does this expression have a statically-known length
+ * suitable for compile-time spread expansion in a call? Restricted to
+ * `ArrayLiteralExpression` with no nested SpreadElement: the lowerer
+ * inlines each element verbatim, so the call's arity is the literal's
+ * `elements.length`. Other shapes (vec-typed identifiers, function
+ * results) need runtime length introspection and are deferred.
+ *
+ * Each element of the literal must itself be a Phase-1 expression so the
+ * lowerer can lower it in argument position.
+ */
+function isStaticSpreadSource(
+  expr: ts.Expression,
+  scope: ReadonlySet<string>,
+  localClasses: ReadonlySet<string>,
+): boolean {
+  if (!ts.isArrayLiteralExpression(expr)) return false;
+  for (const elem of expr.elements) {
+    if (ts.isSpreadElement(elem)) return false; // nested spread defer
+    if (ts.isOmittedExpression(elem)) return false; // sparse defer
+    if (!isPhase1Expr(elem, scope, localClasses)) return false;
+  }
+  return true;
 }
 
 /**

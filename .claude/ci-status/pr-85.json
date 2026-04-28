@@ -1,14 +1,15 @@
 {
   "pr": 85,
   "conclusion": "failure",
-  "head_branch": "issue-1028-typedarray-tolocalestring",
-  "head_sha": "1da3b96c3d7198805b3b335d99da44b84889dd1c",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24284910194",
-  "timestamp": "2026-04-11T14:54:48Z",
-  "pass": 21526,
-  "fail": 18829,
-  "compile_error": 1458,
-  "delta": 336,
-  "regressions": 32,
-  "improvements": 368
+  "head_branch": "issue-1169g-ir-slice8",
+  "head_sha": "c6869e1272a075f4dbe04783294e9bd8b019958e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25043782788",
+  "timestamp": "2026-04-28T09:10:13Z",
+  "pass": 25824,
+  "fail": 13922,
+  "compile_error": 1859,
+  "snapshot_delta": 214,
+  "net_per_test": -220,
+  "regressions": 343,
+  "improvements": 123
 }
