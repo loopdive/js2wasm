@@ -275,24 +275,14 @@
       "sprint": "47"
     },
     {
-      "id": "1180",
-      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1172",
       "title": "Codebase modularity audit — reduce coupling, improve layering, harden interfaces",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1169m",
@@ -451,8 +441,8 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "developer-experience",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1134",
@@ -515,8 +505,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1118",
@@ -609,8 +599,8 @@
         "1094"
       ],
       "goal": "platform",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1098",
@@ -619,8 +609,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1095",
@@ -629,8 +619,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1093",
@@ -639,8 +629,8 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "async-model",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1089",
@@ -650,7 +640,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "backlog"
+      "sprint": "Backlog"
     },
     {
       "id": "1081",
@@ -685,8 +675,8 @@
         "1074"
       ],
       "goal": "npm-library-support",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1066",
@@ -724,8 +714,8 @@
         "1046"
       ],
       "goal": "compiler-architecture",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1052",
@@ -756,8 +746,8 @@
         "1041"
       ],
       "goal": "platform",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1044",
@@ -768,8 +758,8 @@
         "1041"
       ],
       "goal": "async-model",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1042",
@@ -845,8 +835,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "developer-experience",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1004",
@@ -855,8 +845,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "generator-model",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1003",
@@ -867,8 +857,8 @@
         "1000"
       ],
       "goal": "contributor-readiness",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1002",
@@ -887,8 +877,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "983",
@@ -1332,8 +1322,8 @@
         "1124"
       ],
       "goal": "compilable",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "745",
@@ -1355,8 +1345,8 @@
         "1124"
       ],
       "goal": "performance",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "743",
@@ -1839,6 +1829,16 @@
         "1169e"
       ],
       "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1180",
+      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
       "status": "done",
       "sprint": "45"
     },

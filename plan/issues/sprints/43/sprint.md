@@ -44,7 +44,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1131 | Middle-end SSA IR: implementation plan | high | ready |
-| #1131 | Middle-end SSA IR: implementation plan | high | ready |
 
 ### Done
 

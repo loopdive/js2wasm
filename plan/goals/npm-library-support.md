@@ -44,7 +44,7 @@ not.
 | **1069** | codegen: object literal → struct inference fails on bundled JS config objects | 41 | done | high |
 | **1072** | runtime: f64 → externref coercion missing on function return in bundled prettier (trimNewlinesEnd validation fail) | 41 | done | high |
 | **1074** | Surface ESM default export as a named Wasm function export | 41 | done | high |
-| **1075** | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | 46 | deferred | high |
+| **1075** | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | 45 | ready | high |
 | **1107** | lodash-es Tier 1 E2E harness — identity, clamp, add compile and run | 42 | done | critical |
 | **1108** | lodash-es add: export default of HOF closure result not surfaced as Wasm export | 42 | done | high |
 
