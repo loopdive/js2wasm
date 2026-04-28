@@ -10634,9 +10634,9 @@
       "id": "744",
       "title": "Function monomorphization for polymorphic call sites",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "743",
         "1124"
@@ -10900,9 +10900,9 @@
       "id": "773",
       "title": "Monomorphize functions: compile with call-site types, not generic externref",
       "priority": "critical",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "1124"
       ],
@@ -14132,9 +14132,9 @@
       "id": "1000",
       "title": "Normalize issue frontmatter and repopulate historical sprint issue assignments",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "contributor-readiness",
@@ -14156,9 +14156,9 @@
       "id": "1001",
       "title": "Preallocate counted number[] push loops into dense WasmGC arrays",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -14180,9 +14180,9 @@
       "id": "1003",
       "title": "Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "1000"
       ],
@@ -14194,9 +14194,9 @@
       "id": "1004",
       "title": "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "generator-model",
@@ -14218,9 +14218,9 @@
       "id": "1005",
       "title": "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -14242,9 +14242,9 @@
       "id": "1006",
       "title": "Support eval via JS host import",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -14269,9 +14269,9 @@
       "id": "1008",
       "title": "Add mobile-first layout support to the playground",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -14705,9 +14705,9 @@
       "id": "1044",
       "title": "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "1041"
       ],
@@ -14719,9 +14719,9 @@
       "id": "1045",
       "title": "DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame)",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "1041"
       ],
@@ -14879,9 +14879,9 @@
       "id": "1058",
       "title": "Compile the TypeScript compiler itself to Wasm — self-hosting stress test",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "1042",
         "1044",
@@ -15008,9 +15008,9 @@
       "id": "1067",
       "title": "Dependency graph as a web component adopting the landing page color scheme",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15095,9 +15095,9 @@
       "id": "1073",
       "title": "Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "1006"
       ],
@@ -15124,9 +15124,9 @@
       "id": "1075",
       "title": "CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "1060",
         "1061",
@@ -15321,7 +15321,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "backlog",
+      "sprint": "Backlog",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -15367,9 +15367,9 @@
       "id": "1093",
       "title": "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -15391,9 +15391,9 @@
       "id": "1094",
       "title": "Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -15403,9 +15403,9 @@
       "id": "1095",
       "title": "Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "maintainability",
@@ -15439,9 +15439,9 @@
       "id": "1098",
       "title": "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -15451,9 +15451,9 @@
       "id": "1099",
       "title": "Standalone execution demo — compile and run a program on Wasmtime with zero JS host",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [
         "1094"
       ],
@@ -15778,9 +15778,9 @@
       "id": "1122",
       "title": "Keep standalone recursive numeric benchmark stable across non-run entry exports",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "performance",
@@ -15802,9 +15802,9 @@
       "id": "1123",
       "title": "Verify landing page claims and code examples against current compiler behavior",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "correctness",
@@ -15921,20 +15921,6 @@
       "files": [],
       "goal": "conformance",
       "cluster": "conformance"
-    },
-    {
-      "id": "1131",
-      "title": "Middle-end SSA IR: implementation plan",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "43",
-      "depends_on": [
-        "1124"
-      ],
-      "files": [],
-      "goal": "compiler-architecture",
-      "cluster": "compiler-architecture"
     },
     {
       "id": "1131",
@@ -16171,9 +16157,9 @@
       "id": "1147",
       "title": "Add a public Docs page to the site",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -16688,9 +16674,9 @@
       "id": "1172",
       "title": "Codebase modularity audit — reduce coupling, improve layering, harden interfaces",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "46",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "maintainability",
@@ -16795,18 +16781,6 @@
       "cluster": "compilable"
     },
     {
-      "id": "1180",
-      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
-      "depends_on": [],
-      "files": [],
-      "goal": "compilable",
-      "cluster": "compilable"
-    },
-    {
       "id": "1181",
       "title": "IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up)",
       "priority": "high",
@@ -16833,40 +16807,12 @@
       "cluster": "compiler-architecture"
     },
     {
-      "id": "1182",
-      "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
-      "depends_on": [
-        "1181"
-      ],
-      "files": [],
-      "goal": "compiler-architecture",
-      "cluster": "compiler-architecture"
-    },
-    {
       "id": "1183",
       "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
       "sprint": "45",
-      "depends_on": [
-        "1181"
-      ],
-      "files": [],
-      "goal": "compiler-architecture",
-      "cluster": "compiler-architecture"
-    },
-    {
-      "id": "1183",
-      "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
       "depends_on": [
         "1181"
       ],
@@ -17239,10 +17185,6 @@
       "target": "1128"
     },
     {
-      "source": "1124",
-      "target": "1131"
-    },
-    {
       "source": "1119",
       "target": "1154"
     },
@@ -17285,10 +17227,6 @@
     {
       "source": "694",
       "target": "699"
-    },
-    {
-      "source": "699",
-      "target": "700"
     },
     {
       "source": "680",
@@ -17951,14 +17889,6 @@
       "target": "1166"
     },
     {
-      "source": "1181",
-      "target": "1182"
-    },
-    {
-      "source": "1181",
-      "target": "1183"
-    },
-    {
       "source": "1201",
       "target": "1204"
     },
@@ -18005,6 +17935,10 @@
     {
       "source": "201",
       "target": "355"
+    },
+    {
+      "source": "699",
+      "target": "700"
     }
   ],
   "goals": [
@@ -18405,7 +18339,6 @@
         "1174",
         "1175",
         "1178",
-        "1180",
         "1180"
       ]
     },
@@ -18423,7 +18356,6 @@
         "1046",
         "1058",
         "1124",
-        "1131",
         "1131",
         "1166",
         "1167",
@@ -18447,8 +18379,6 @@
         "1169m",
         "1181",
         "1182",
-        "1182",
-        "1183",
         "1183",
         "1185"
       ],
@@ -20886,10 +20816,6 @@
       "issue": "1180"
     },
     {
-      "goal": "compilable",
-      "issue": "1180"
-    },
-    {
       "goal": "compiler-architecture",
       "issue": "68"
     },
@@ -20916,10 +20842,6 @@
     {
       "goal": "compiler-architecture",
       "issue": "1124"
-    },
-    {
-      "goal": "compiler-architecture",
-      "issue": "1131"
     },
     {
       "goal": "compiler-architecture",
@@ -21012,14 +20934,6 @@
     {
       "goal": "compiler-architecture",
       "issue": "1182"
-    },
-    {
-      "goal": "compiler-architecture",
-      "issue": "1182"
-    },
-    {
-      "goal": "compiler-architecture",
-      "issue": "1183"
     },
     {
       "goal": "compiler-architecture",

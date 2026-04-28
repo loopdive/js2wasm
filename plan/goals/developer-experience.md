@@ -33,9 +33,9 @@ and internal tooling should make compiler work easier, not harder.
 | **974** | Generate feature table JS/WAT examples from a TypeScript script | 0 | done | medium |
 | **977** | Edition coverage chart: rename 'Other' to 'ES3/Core' or 'Proposals' | 40 | done | low |
 | **978** | Add responsive burger menu to site-nav component | 40 | done | medium |
-| **1008** | Add mobile-first layout support to the playground | 46 | deferred | medium |
+| **1008** | Add mobile-first layout support to the playground | 45 | ready | medium |
 | **1039** | Landing page ES edition UI: circular progress prefix + per-feature error list | Backlog | ready | medium |
-| **1147** | Add a public Docs page to the site | 46 | deferred | medium |
+| **1147** | Add a public Docs page to the site | 45 | ready | medium |
 | **1187** | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | 46 | ready | medium |
 | **1188** | Setup js2.loopdive.com custom domain for GitHub Pages | 46 | ready | medium |
 | **1193** | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | 45 | done | medium |
