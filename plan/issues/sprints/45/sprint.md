@@ -115,16 +115,12 @@ moved here. No issues were rescoped, rejected, or deleted — only relocated.
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### Blocked
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #742 | Extract and refactor compileCallExpression (3,350 lines) | medium | blocked |
-
 ### Ready
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | ready |
+| #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | ready |
 | #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | ready |
 
 ### Done

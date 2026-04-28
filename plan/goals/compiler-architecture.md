@@ -41,8 +41,8 @@ compilation boundaries, and simpler runtime/compiler interfaces.
 | **1169d** | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | 45 | done | high |
 | **1169e** | IR Phase 4 Slice 6 — iterators and for-of through the IR path | 45 | done | high |
 | **1169f** | IR Phase 4 Slice 7 — generators and async/await through the IR path | 45 | done | high |
-| **1169g** | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | 46 | ready | high |
-| **1169h** | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | 46 | ready | high |
+| **1169g** | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | 45 | ready | high |
+| **1169h** | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | 45 | ready | high |
 | **1169i** | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | 46 | ready | high |
 | **1181** | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | 45 | done | high |
 | **1182** | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | 45 | done | medium |
