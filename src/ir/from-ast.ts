@@ -49,6 +49,7 @@ import {
   type IrClassShape,
   type IrClosureSignature,
   type IrFunction,
+  type IrInstr,
   type IrObjectShape,
   type IrType,
   type IrUnop,
@@ -282,6 +283,15 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
       lowerForOfStatement(s, cx);
       continue;
     }
+    // Slice 9 (#1169h): throw / try as a non-tail statement.
+    if (ts.isThrowStatement(s)) {
+      lowerThrowStatement(s, cx);
+      continue;
+    }
+    if (ts.isTryStatement(s)) {
+      lowerTryStatement(s, cx);
+      continue;
+    }
     // Phase 2: early-return `if` with no else + subsequent statements.
     // Structurally: `if (cond) <tail>; <rest>` ≡ `if (cond) <tail> else { <rest> }`.
     // The then-arm lowers to its own block that terminates in `return`
@@ -381,6 +391,15 @@ function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
     // Fork scope — declarations inside the block stay local to this arm.
     const childCx: LowerCtx = { ...cx, scope: new Map(cx.scope) };
     lowerStatementList(stmt.statements, childCx);
+    return;
+  }
+  // Slice 9 (#1169h): `throw <expr>;` at function tail. The throw
+  // terminates the function abruptly — no return is reached. We lower
+  // the throw and terminate the current block with `unreachable` so the
+  // verifier and lowerer treat it as a stop.
+  if (ts.isThrowStatement(stmt)) {
+    lowerThrowStatement(stmt, cx);
+    cx.builder.terminate({ kind: "unreachable" });
     return;
   }
   if (ts.isIfStatement(stmt)) {
@@ -2138,6 +2157,15 @@ function lowerStmt(stmt: ts.Statement, cx: LowerCtx): void {
     lowerForOfStatement(stmt, cx);
     return;
   }
+  // Slice 9 (#1169h) — throw / try inside a body-statement context.
+  if (ts.isThrowStatement(stmt)) {
+    lowerThrowStatement(stmt, cx);
+    return;
+  }
+  if (ts.isTryStatement(stmt)) {
+    lowerTryStatement(stmt, cx);
+    return;
+  }
   throw new Error(`ir/from-ast: unsupported body statement ${ts.SyntaxKind[stmt.kind]} in ${cx.funcName}`);
 }
 
@@ -2858,3 +2886,128 @@ export const _CLOSURE_SIG_EQ_REF = closureSignatureEquals;
 // Reference ValType so the import isn't unused (used transitively via
 // signature param types but TS may not see it).
 export type _UnusedVal = ValType;
+
+// ---------------------------------------------------------------------------
+// Throw / try / catch / finally lowering (#1169h — IR Phase 4 Slice 9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 9 (#1169h): lower a `throw <expr>;` statement. The thrown value
+ * is coerced to externref (the `__exn` tag's signature is
+ * `(externref)`) before the IR `throw` instr.
+ *
+ * Coercion strategy mirrors the legacy
+ * `compileThrowStatement` in `src/codegen/statements/exceptions.ts`:
+ *   - f64 / i32                → `__box_number(value)` host import.
+ *                                 Slice 9 defers numeric throws — they
+ *                                 require the box helper; numeric
+ *                                 throws are rare and the function falls
+ *                                 back to legacy via the unsupported-
+ *                                 expression error.
+ *   - externref                → no-op; passed through.
+ *   - object / class /
+ *     closure / string / ref / ref_null
+ *                              → `extern.convert_any` via
+ *                                 `coerce.to_externref`.
+ *
+ * Lowering produces a single `throw` instr with no fall-through; the
+ * caller's surrounding block is responsible for any subsequent
+ * unreachable terminator (top-level throws in tail position) or for
+ * embedding the throw within a try buffer (where the catch_all wrapping
+ * implicitly catches the unreachability).
+ */
+function lowerThrowStatement(stmt: ts.ThrowStatement, cx: LowerCtx): void {
+  if (!stmt.expression) {
+    throw new Error(`ir/from-ast: bare 'throw' (no expression) not in slice 9 (${cx.funcName})`);
+  }
+  const value = lowerExpr(stmt.expression, cx, irVal({ kind: "externref" }));
+  const valueType = cx.builder.typeOf(value);
+  const valTy = asVal(valueType);
+  if (valTy?.kind === "f64" || valTy?.kind === "i32") {
+    // Numeric throws would need a box helper. Slice 9 defers — fall back
+    // to legacy by throwing here so the function compilation aborts
+    // cleanly and the legacy path takes over.
+    throw new Error(`ir/from-ast: throw of numeric type (${valTy.kind}) not in slice 9 (${cx.funcName})`);
+  }
+  // Reference-shaped — coerce to externref. The helper is a no-op
+  // when the value is already externref or `IrType.string` in host
+  // mode (mirrors the slice-7b yield value coercion).
+  const valueExt = coerceYieldValueToExternref(value, cx);
+  cx.builder.emitThrow(valueExt);
+}
+
+/**
+ * Slice 9 (#1169h): lower a `try { ... } [catch (e) { ... }] [finally
+ * { ... }]` statement.
+ *
+ * Each sub-block (try body, catch body, finally body) is lowered into a
+ * self-contained `IrInstr[]` buffer via `collectBodyInstrs`. The catch
+ * variable, when present, is bound as a slot of `(externref)` — the
+ * lowerer's `try` op emit prepends a `local.set $payloadSlot` at handler
+ * entry to capture the externref payload off the Wasm stack.
+ *
+ * The finally body is lowered ONCE here; the lowerer is responsible for
+ * inlining it at every exit path (normal try-exit, normal catch-exit,
+ * synthesized catch_all that re-throws). This matches the legacy
+ * `cloneFinally` shape but the duplication happens entirely on the
+ * Wasm-emit side, not the IR layer.
+ */
+function lowerTryStatement(stmt: ts.TryStatement, cx: LowerCtx): void {
+  // ── Try body ────────────────────────────────────────────────────────
+  const tryScope = new Map(cx.scope);
+  const tryCx: LowerCtx = { ...cx, scope: tryScope };
+  const tryBody = cx.builder.collectBodyInstrs(() => {
+    for (const s of stmt.tryBlock.statements) {
+      lowerStmt(s, tryCx);
+    }
+  });
+
+  // ── Catch handler ───────────────────────────────────────────────────
+  let catchClause: { payloadSlot: number; body: readonly IrInstr[] } | undefined;
+  if (stmt.catchClause) {
+    let payloadSlot = -1;
+    const catchScope = new Map(cx.scope);
+    if (stmt.catchClause.variableDeclaration && ts.isIdentifier(stmt.catchClause.variableDeclaration.name)) {
+      // Allocate an externref slot to receive the caught exception. The
+      // lowerer prepends a `local.set` at handler entry to pop the
+      // payload off the Wasm stack into this slot.
+      const varName = stmt.catchClause.variableDeclaration.name.text;
+      payloadSlot = cx.builder.declareSlot(`__catch_${varName}`, { kind: "externref" });
+      // Bind the catch variable as a slot read so identifier reads
+      // inside the handler emit `local.get` against the slot.
+      catchScope.set(varName, {
+        kind: "slot",
+        slotIndex: payloadSlot,
+        type: irVal({ kind: "externref" }),
+      });
+    } else if (stmt.catchClause.variableDeclaration) {
+      // Destructuring catch — selector should have rejected this.
+      throw new Error(`ir/from-ast: destructuring catch param not in slice 9 (${cx.funcName})`);
+    }
+    const catchCx: LowerCtx = { ...cx, scope: catchScope };
+    const catchBody = cx.builder.collectBodyInstrs(() => {
+      for (const s of stmt.catchClause!.block.statements) {
+        lowerStmt(s, catchCx);
+      }
+    });
+    catchClause = { payloadSlot, body: catchBody };
+  }
+
+  // ── Finally body ────────────────────────────────────────────────────
+  let finallyBody: readonly IrInstr[] | undefined;
+  if (stmt.finallyBlock) {
+    const finallyScope = new Map(cx.scope);
+    const finallyCx: LowerCtx = { ...cx, scope: finallyScope };
+    finallyBody = cx.builder.collectBodyInstrs(() => {
+      for (const s of stmt.finallyBlock!.statements) {
+        lowerStmt(s, finallyCx);
+      }
+    });
+  }
+
+  cx.builder.emitTry({
+    body: tryBody,
+    catchClause,
+    finallyBody,
+  });
+}

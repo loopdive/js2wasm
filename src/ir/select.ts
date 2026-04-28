@@ -383,9 +383,96 @@ function isPhase1StatementList(
       if (!isPhase1ForOf(s, scope, localClasses)) return false;
       continue;
     }
+    // Slice 9 (#1169h) — throw / try as a non-tail statement. A throw
+    // doesn't fall through, but the selector accepts it in non-tail
+    // position and the lowerer emits a `throw` instr followed by an
+    // implicit unreachable. (Code AFTER a throw in the same block is
+    // dead but structurally valid.)
+    if (ts.isThrowStatement(s)) {
+      if (!isPhase1ThrowStatement(s, scope, localClasses)) return false;
+      continue;
+    }
+    if (ts.isTryStatement(s)) {
+      if (!isPhase1TryStatement(s, scope, localClasses)) return false;
+      continue;
+    }
     return false;
   }
   return isPhase1Tail(stmts[stmts.length - 1]!, scope, localClasses, isGenerator);
+}
+
+/**
+ * Slice 9 (#1169h): shape-check a `throw <expr>;` statement. Bare
+ * `throw;` (no expression) is rejected — the legacy path handles that
+ * rare case. The expression must itself be a Phase-1 expression, so the
+ * lowerer can produce a value to coerce to externref before throwing.
+ */
+function isPhase1ThrowStatement(
+  stmt: ts.ThrowStatement,
+  scope: ReadonlySet<string>,
+  localClasses: ReadonlySet<string>,
+): boolean {
+  if (!stmt.expression) return false;
+  return isPhase1Expr(stmt.expression, scope, localClasses);
+}
+
+/**
+ * Slice 9 (#1169h): shape-check a `try { ... } [catch (e) { ... }]
+ * [finally { ... }]` statement.
+ *
+ * Accepted shapes (selector level):
+ *   try { <body> } catch (id) { <handler> }
+ *   try { <body> } catch { <handler> }                  (ES2019 optional catch)
+ *   try { <body> } finally { <cleanup> }
+ *   try { <body> } catch (id) { <handler> } finally { <cleanup> }
+ *
+ * Where `<body>`, `<handler>`, and `<cleanup>` are each Phase-1 body
+ * statement lists (no early return / break / continue out of the try
+ * region — slice 9 doesn't yet thread the finally-stack inlining for
+ * abrupt completions).
+ *
+ * Rejected (deferred to slice 9.5):
+ *   - destructuring catch param (`catch ({message})`).
+ *   - `throw` with no expression (handled in `isPhase1ThrowStatement`).
+ *   - `try` with neither catch nor finally (TS already rejects this).
+ *   - early-return / break / continue inside try / catch / finally bodies
+ *     (the body-statement recogniser doesn't allow them anyway).
+ */
+function isPhase1TryStatement(
+  stmt: ts.TryStatement,
+  scope: ReadonlySet<string>,
+  localClasses: ReadonlySet<string>,
+): boolean {
+  if (!stmt.catchClause && !stmt.finallyBlock) return false;
+
+  // Try body: must be a Phase-1 body statement list.
+  const tryScope = new Set(scope);
+  for (const s of stmt.tryBlock.statements) {
+    if (!isPhase1BodyStatement(s, tryScope, localClasses)) return false;
+  }
+
+  if (stmt.catchClause) {
+    const catchScope = new Set(scope);
+    if (stmt.catchClause.variableDeclaration) {
+      const v = stmt.catchClause.variableDeclaration;
+      // Slice 9 only accepts identifier bindings. Destructuring catch
+      // (`catch ({message})`) defers to slice 9.5.
+      if (!ts.isIdentifier(v.name)) return false;
+      catchScope.add(v.name.text);
+    }
+    for (const s of stmt.catchClause.block.statements) {
+      if (!isPhase1BodyStatement(s, catchScope, localClasses)) return false;
+    }
+  }
+
+  if (stmt.finallyBlock) {
+    const finallyScope = new Set(scope);
+    for (const s of stmt.finallyBlock.statements) {
+      if (!isPhase1BodyStatement(s, finallyScope, localClasses)) return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -486,6 +573,17 @@ function isPhase1BodyStatement(stmt: ts.Statement, scope: Set<string>, localClas
   if (ts.isForOfStatement(stmt)) {
     return isPhase1ForOf(stmt, scope, localClasses);
   }
+  // Slice 9 (#1169h) — throw / try inside a body statement list.
+  // Accepting these here lets a try body / catch body / finally body
+  // contain nested throws and nested try-statements (composes with the
+  // outer try's catch / finally inlining via the lowerer's structured
+  // emission).
+  if (ts.isThrowStatement(stmt)) {
+    return isPhase1ThrowStatement(stmt, scope, localClasses);
+  }
+  if (ts.isTryStatement(stmt)) {
+    return isPhase1TryStatement(stmt, scope, localClasses);
+  }
   return false;
 }
 
@@ -514,6 +612,12 @@ function isPhase1Tail(
     if (!isPhase1Tail(stmt.thenStatement, new Set(scope), localClasses, isGenerator)) return false;
     if (!isPhase1Tail(stmt.elseStatement, new Set(scope), localClasses, isGenerator)) return false;
     return true;
+  }
+  // Slice 9 (#1169h) — throw at function tail. `function f() { throw new
+  // Error(); }` is a valid Phase-1 tail because the throw produces an
+  // abrupt completion that terminates the function (no return needed).
+  if (ts.isThrowStatement(stmt)) {
+    return isPhase1ThrowStatement(stmt, scope, localClasses);
   }
   return false;
 }
