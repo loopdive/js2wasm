@@ -57,7 +57,8 @@ function urlToAdrSourceName(url: string, adrDir: string): string | null {
 export function adrPlugin(): Plugin {
   // Lazily import the build helpers — they live in scripts/ which uses ESM,
   // and we don't want their side effects (the build IIFE) to run on import.
-  let renderAdrPage: (filename: string, source: string) => string;
+  let renderAdrPage: ((filename: string, source: string) => string) | null = null;
+  let renderUnavailableReason: string | null = null;
   const projectRoot = resolve(import.meta.dirname, "..");
   const adrDir = join(projectRoot, "docs", "adr");
 
@@ -66,13 +67,29 @@ export function adrPlugin(): Plugin {
     apply: "serve", // dev only — production uses scripts/build-adr-html.mjs
 
     async configureServer(server) {
-      // Import once when the dev server starts.
-      ({ renderAdrPage } = await import(
-        // Relative path from playground/ → scripts/.
-        new URL("../scripts/build-adr-html.mjs", import.meta.url).href
-      ));
+      // Import once when the dev server starts. Wrap in try/catch so a
+      // missing transitive dep (e.g. `marked` not yet installed after a
+      // pull that added it) degrades to a useful 503 instead of crashing
+      // the whole dev server. The dev server hosts the playground +
+      // dashboard too — losing those over a docs feature would be a bad
+      // trade.
+      try {
+        ({ renderAdrPage } = await import(
+          // Relative path from playground/ → scripts/.
+          new URL("../scripts/build-adr-html.mjs", import.meta.url).href
+        ));
+      } catch (err) {
+        renderUnavailableReason = (err as Error).message ?? String(err);
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[adr-dev-server] disabled — failed to load renderer (${renderUnavailableReason}). ` +
+            `Run \`pnpm install\` to refresh deps; ADR routes will return 503 until then.`,
+        );
+      }
 
-      // Reload any open tab when an ADR markdown source changes.
+      // Reload any open tab when an ADR markdown source changes. Safe to
+      // wire up even when rendering is unavailable — the watcher just
+      // becomes a no-op for ADR edits.
       server.watcher.add(adrDir);
       server.watcher.on("change", (changedPath) => {
         if (!changedPath.startsWith(adrDir)) return;
@@ -84,6 +101,16 @@ export function adrPlugin(): Plugin {
         if (!req.url || (req.method !== "GET" && req.method !== "HEAD")) return next();
         const sourceName = urlToAdrSourceName(req.url, adrDir);
         if (!sourceName) return next();
+
+        if (!renderAdrPage) {
+          res.statusCode = 503;
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.end(
+            `[adr-dev-server] ADR renderer is unavailable: ${renderUnavailableReason ?? "unknown reason"}.\n` +
+              "Run `pnpm install` and restart the dev server.\n",
+          );
+          return;
+        }
 
         try {
           const source = readFileSync(join(adrDir, sourceName), "utf-8");
