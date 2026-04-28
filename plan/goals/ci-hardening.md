@@ -54,8 +54,11 @@ and hide real ones.
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 46 | deferred | medium |
 | **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 45 | done | critical |
+| **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 45 | done | critical |
 | **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 45 | done | high |
 | **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 42 | done | high |
+| **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 45 | done | high |
+| **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 45 | done | medium |
 | **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 45 | done | medium |
 | **1079** | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | 45 | done | medium |
 | **1080** | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | 46 | ready | critical |
