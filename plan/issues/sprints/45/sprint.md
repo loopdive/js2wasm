@@ -119,6 +119,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1192 | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | medium | in-progress |
 | #1193 | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | medium | in-progress |
 
 ### Done

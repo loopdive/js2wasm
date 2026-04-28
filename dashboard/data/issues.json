@@ -245,16 +245,6 @@
       "sprint": "47"
     },
     {
-      "id": "1192",
-      "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1191",
       "title": "ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate",
       "priority": "medium",
@@ -1622,6 +1612,16 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "45"
+    },
+    {
+      "id": "1192",
+      "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-hardening",
       "status": "in-progress",
       "sprint": "45"
     },
