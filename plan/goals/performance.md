@@ -32,7 +32,7 @@ eliminating the externref roundtrip.
 | **686** | Closure capture type preservation | 15 | done | medium |
 | **693** | Safe compilation speed optimizations | 22 | done | medium |
 | **743** | Whole-program type flow analysis | Backlog | ready | critical |
-| **744** | Function monomorphization for polymorphic call sites | 46 | deferred | high |
+| **744** | Function monomorphization for polymorphic call sites | 45 | ready | high |
 | **745** | Tagged union representation to replace externref boxing | Backlog | ready | high |
 | **747** | Escape analysis for stack allocation | Backlog | blocked | medium |
 | **861** | Playground: fs module externalized error in browser | Backlog | ready | high |
@@ -50,7 +50,7 @@ eliminating the externref roundtrip.
 | **1059** | Parallel tsc — stress test the inter-module coordination primitive | Backlog | ready | low |
 | **1120** | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | 45 | done | high |
 | **1121** | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | 45 | done | high |
-| **1122** | Keep standalone recursive numeric benchmark stable across non-run entry exports | 46 | deferred | high |
+| **1122** | Keep standalone recursive numeric benchmark stable across non-run entry exports | 45 | ready | high |
 | **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | 46 | ready | high |
 | **1179** | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | 45 | done | high |
 | **1184** | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | 47 | ready | high |

@@ -107,8 +107,7 @@ moved here. No issues were rescoped, rejected, or deleted — only relocated.
 | #1173, #1174, #1175, #1178, #1179 | done | earlier sprints |
 | #1120, #1121, #1125, #1128, #1164 | done | earlier |
 
-8 unstarted issues deferred to S46: #1080, #1126, #1169, #1169g/h/i, #1187, #1188.
-(#1180 was completed in-sprint via PR #66 — was incorrectly listed as deferred.)
+9 unstarted issues deferred to S46: #1080, #1126, #1169, #1169g/h/i, #1180, #1187, #1188.
 6 new perf issues (#1195–#1200) staged for S47 by dev-1125-bench.
 
 <!-- GENERATED_ISSUE_TABLES_START -->
@@ -120,7 +119,37 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1206 | fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page) | medium | ready |
+| #744 | Function monomorphization for polymorphic call sites | high | ready |
+| #773 | Monomorphize functions: compile with call-site types, not generic externref | critical | ready |
+| #1000 | Normalize issue frontmatter and repopulate historical sprint issue assignments | high | ready |
+| #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | ready |
+| #1003 | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | high | ready |
+| #1004 | Optimize repeated string concatenation via compile-time folding and counted-loop aggregation | medium | ready |
+| #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | ready |
+| #1006 | Support eval via JS host import | medium | ready |
+| #1008 | Add mobile-first layout support to the playground | medium | ready |
+| #1044 | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | high | ready |
+| #1045 | DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame) | high | ready |
+| #1058 | Compile the TypeScript compiler itself to Wasm — self-hosting stress test | high | ready |
+| #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | ready |
+| #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | ready |
+| #1075 | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | high | ready |
+| #1093 | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | high | ready |
+| #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | ready |
+| #1095 | Eliminate `as unknown as Instr` casts — extend Instr union to cover all emitted opcodes | medium | ready |
+| #1098 | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | medium | ready |
+| #1099 | Standalone execution demo — compile and run a program on Wasmtime with zero JS host | high | ready |
+| #1122 | Keep standalone recursive numeric benchmark stable across non-run entry exports | high | ready |
+| #1123 | Verify landing page claims and code examples against current compiler behavior | high | ready |
+| #1147 | Add a public Docs page to the site | medium | ready |
+| #1172 | Codebase modularity audit — reduce coupling, improve layering, harden interfaces | high | ready |
+| #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1206 | fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page) | medium | in-progress |
 
 ### Done
 
@@ -171,7 +200,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | done |
 | #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | done |
 | #1179-followup | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | medium | done |
-| #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | done |
 | #1181 | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | high | done |
 | #1182 | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | medium | done |
 | #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | done |

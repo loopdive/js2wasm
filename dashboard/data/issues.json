@@ -127,16 +127,6 @@
       "sprint": "47"
     },
     {
-      "id": "1206",
-      "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1205",
       "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
       "priority": "high",
@@ -291,8 +281,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1169m",
@@ -451,8 +441,8 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "developer-experience",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1134",
@@ -515,8 +505,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1118",
@@ -609,8 +599,8 @@
         "1094"
       ],
       "goal": "platform",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1098",
@@ -619,8 +609,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "core-semantics",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1095",
@@ -629,8 +619,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "maintainability",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1093",
@@ -639,8 +629,8 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "async-model",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1089",
@@ -650,7 +640,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "backlog"
+      "sprint": "Backlog"
     },
     {
       "id": "1081",
@@ -685,8 +675,8 @@
         "1074"
       ],
       "goal": "npm-library-support",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1066",
@@ -724,8 +714,8 @@
         "1046"
       ],
       "goal": "compiler-architecture",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1052",
@@ -756,8 +746,8 @@
         "1041"
       ],
       "goal": "platform",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1044",
@@ -768,8 +758,8 @@
         "1041"
       ],
       "goal": "async-model",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1042",
@@ -845,8 +835,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "developer-experience",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1004",
@@ -855,8 +845,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "generator-model",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1003",
@@ -867,8 +857,8 @@
         "1000"
       ],
       "goal": "contributor-readiness",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "1002",
@@ -887,8 +877,8 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "983",
@@ -1332,8 +1322,8 @@
         "1124"
       ],
       "goal": "compilable",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "745",
@@ -1355,8 +1345,8 @@
         "1124"
       ],
       "goal": "performance",
-      "status": "deferred",
-      "sprint": "46"
+      "status": "ready",
+      "sprint": "45"
     },
     {
       "id": "743",
@@ -1397,16 +1387,6 @@
         "694"
       ],
       "goal": "test-infrastructure",
-      "status": "ready",
-      "sprint": "Backlog"
-    },
-    {
-      "id": "688",
-      "title": "Refactor codebase into smaller modules per language feature",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "maintainability",
       "status": "ready",
       "sprint": "Backlog"
     },
@@ -1575,6 +1555,16 @@
     }
   ],
   "inprogress": [
+    {
+      "id": "1206",
+      "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "45"
+    },
     {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
@@ -5743,6 +5733,16 @@
       "goal": "test-infrastructure",
       "status": "done",
       "sprint": "0"
+    },
+    {
+      "id": "688",
+      "title": "Refactor codebase into smaller modules per language feature",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": "done",
+      "sprint": "18"
     },
     {
       "id": "686",
