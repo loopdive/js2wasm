@@ -64,7 +64,7 @@ promise infrastructure.
 | **854** | Iterator protocol: null next/return/throw methods (126 tests) | 44 | done | high |
 | **855** | Promise resolution and async error handling (210 tests) | 35 | done | high |
 | **859** | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration |  | ready | high |
-| **860** | Promise executor and property-assigned functions not compiled as host callbacks |  | review | medium |
+| **860** | Promise executor and property-assigned functions not compiled as host callbacks |  | ready | medium |
 | **875** | Research: ES standard support matrix for all JS-to-Wasm engines | 0 | done | medium |
 | **919** | Fix direct-eval arguments regressions introduced since the April 1 test262 baseline | 37 | done | high |
 | **930** | Not-a-constructor detection: built-in methods callable with new (68 FAIL) | 37 | done | medium |
@@ -85,7 +85,7 @@ promise infrastructure.
 | **986** | Internal compiler crash: BigInt serialization in statement/object emit paths (37 CE) | 40 | done | medium |
 | **1012** | Add source-anchored line numbers to all runtime error patterns | 40 | done | high |
 | **1014** | Promise .then() called on non-Promise values (1,969 FAIL) | 40 | done | critical |
-| **1017** | Null pointer dereferences and illegal casts in compiled code (504 FAIL) |  | review | high |
+| **1017** | Null pointer dereferences and illegal casts in compiled code (504 FAIL) | 42 | done | high |
 | **1018** | Object.getOwnPropertyDescriptor returns null for missing/accessor properties (160 FAIL) | 41 | done | high |
 | **1027** | Missing __make_getter_callback late-import in PR #43 accessor paths | 40 | done | high |
 | **1034** | Compile prettier to Wasm — parser + AST + printer stress test; self-format smoke test | 41 | done | high |

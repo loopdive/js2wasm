@@ -839,6 +839,19 @@
       "sprint": "45"
     },
     {
+      "id": "1007",
+      "title": "Re-run historical test262 checkpoints with the current harness for comparable conformance history",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "882",
+        "884"
+      ],
+      "goal": "test-infrastructure",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
       "id": "1004",
       "title": "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation",
       "priority": "medium",
@@ -1078,6 +1091,18 @@
       "sprint": ""
     },
     {
+      "id": "871",
+      "title": "Playground: default example throws WebAssembly.Exception at runtime",
+      "priority": "critical",
+      "feasibility": "medium",
+      "depends_on": [
+        "861"
+      ],
+      "goal": "error-model",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
       "id": "870",
       "title": "Playground: Monaco web workers fail to load, UI freezes",
       "priority": "high",
@@ -1086,6 +1111,16 @@
         "861"
       ],
       "goal": "developer-experience",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "869",
+      "title": "Refactor default params: caller-side insertion instead of sNaN sentinel",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "maintainability",
       "status": "ready",
       "sprint": ""
     },
@@ -1134,12 +1169,32 @@
       "sprint": ""
     },
     {
+      "id": "860",
+      "title": "Promise executor and property-assigned functions not compiled as host callbacks",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
       "id": "859",
       "title": "Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "async-model",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "846",
+      "title": "assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests)",
+      "priority": "critical",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "core-semantics",
       "status": "ready",
       "sprint": ""
     },
@@ -1300,6 +1355,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "property-model",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "786",
+      "title": "- Multi-assertion failures: returned N > 2 (~1,183 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
       "status": "ready",
       "sprint": ""
     },
@@ -1574,145 +1639,9 @@
       "goal": "distribution",
       "status": "in-progress",
       "sprint": "42"
-    },
-    {
-      "id": "1064",
-      "title": "DataView bridge: subview metadata so bounds errors propagate",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "in-progress",
-      "sprint": ""
-    },
-    {
-      "id": "1051",
-      "title": "Private static class methods: wrong return value via private-name dispatch",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test-infrastructure",
-      "status": "in-progress",
-      "sprint": ""
-    },
-    {
-      "id": "1050",
-      "title": "annexB: Extension not observed when variable binding would produce early error",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": ""
-    },
-    {
-      "id": "1049",
-      "title": "Destructuring default init fn-name-cover: wrong .name on covered function",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test-infrastructure",
-      "status": "in-progress",
-      "sprint": ""
-    },
-    {
-      "id": "1022",
-      "title": "Array built-in method 'object is not a function' (640 FAIL)",
-      "priority": "critical",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "error-model",
-      "status": "in-progress",
-      "sprint": ""
-    },
-    {
-      "id": "1007",
-      "title": "Re-run historical test262 checkpoints with the current harness for comparable conformance history",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "882",
-        "884"
-      ],
-      "goal": "test-infrastructure",
-      "status": "in-progress",
-      "sprint": ""
-    },
-    {
-      "id": "869",
-      "title": "Refactor default params: caller-side insertion instead of sNaN sentinel",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "maintainability",
-      "status": "in-progress",
-      "sprint": ""
-    },
-    {
-      "id": "786",
-      "title": "- Multi-assertion failures: returned N > 2 (~1,183 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "in-progress",
-      "sprint": ""
     }
   ],
-  "review": [
-    {
-      "id": "1017",
-      "title": "Null pointer dereferences and illegal casts in compiled code (504 FAIL)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "review",
-      "sprint": ""
-    },
-    {
-      "id": "929",
-      "title": "Object.defineProperty called on non-object (88 FAIL)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test-infrastructure",
-      "status": "review",
-      "sprint": ""
-    },
-    {
-      "id": "871",
-      "title": "Playground: default example throws WebAssembly.Exception at runtime",
-      "priority": "critical",
-      "feasibility": "medium",
-      "depends_on": [
-        "861"
-      ],
-      "goal": "error-model",
-      "status": "review",
-      "sprint": ""
-    },
-    {
-      "id": "860",
-      "title": "Promise executor and property-assigned functions not compiled as host callbacks",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "review",
-      "sprint": ""
-    },
-    {
-      "id": "846",
-      "title": "assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests)",
-      "priority": "critical",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "review",
-      "sprint": ""
-    }
-  ],
+  "review": [],
   "done": [
     {
       "id": "1208",
@@ -2793,7 +2722,17 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "done",
-      "sprint": "Backlog"
+      "sprint": "40"
+    },
+    {
+      "id": "1064",
+      "title": "DataView bridge: subview metadata so bounds errors propagate",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "40"
     },
     {
       "id": "1063",
@@ -2863,7 +2802,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "done",
-      "sprint": "Backlog"
+      "sprint": "40"
     },
     {
       "id": "1054",
@@ -2886,6 +2825,36 @@
       "sprint": "41"
     },
     {
+      "id": "1051",
+      "title": "Private static class methods: wrong return value via private-name dispatch",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "done",
+      "sprint": "40"
+    },
+    {
+      "id": "1050",
+      "title": "annexB: Extension not observed when variable binding would produce early error",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "40"
+    },
+    {
+      "id": "1049",
+      "title": "Destructuring default init fn-name-cover: wrong .name on covered function",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "done",
+      "sprint": "40"
+    },
+    {
       "id": "1048",
       "title": "async-generator destructuring: illegal cast inside __closure_N",
       "priority": "low",
@@ -2893,7 +2862,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "done",
-      "sprint": "Backlog"
+      "sprint": "40"
     },
     {
       "id": "1047",
@@ -3066,6 +3035,16 @@
       "sprint": "41"
     },
     {
+      "id": "1022",
+      "title": "Array built-in method 'object is not a function' (640 FAIL)",
+      "priority": "critical",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "error-model",
+      "status": "done",
+      "sprint": "40"
+    },
+    {
       "id": "1021",
       "title": "Destructuring: use __extern_is_undefined instead of ref.is_null for defaults (~2,000+ FAIL)",
       "priority": "critical",
@@ -3084,6 +3063,16 @@
       "goal": "async-model",
       "status": "done",
       "sprint": "41"
+    },
+    {
+      "id": "1017",
+      "title": "Null pointer dereferences and illegal casts in compiled code (504 FAIL)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "done",
+      "sprint": "42"
     },
     {
       "id": "1016",
@@ -3874,6 +3863,16 @@
       "goal": "async-model",
       "status": "done",
       "sprint": "37"
+    },
+    {
+      "id": "929",
+      "title": "Object.defineProperty called on non-object (88 FAIL)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "done",
+      "sprint": "40"
     },
     {
       "id": "928",

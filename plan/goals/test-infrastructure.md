@@ -112,19 +112,19 @@ shipping trustworthy compiler work.
 | **922** | Add a reproducible test262 baseline-diff workflow so regressions are compared against current clean HEAD | 36 | done | medium |
 | **923** | Compiler leaks state between compile() calls in the same process | 37 | done | critical |
 | **926** | Fixture tests not supported in unified mode (172 CE) |  | ready | low |
-| **929** | Object.defineProperty called on non-object (88 FAIL) |  | review | medium |
+| **929** | Object.defineProperty called on non-object (88 FAIL) | 40 | done | medium |
 | **943** | Test262 runner instability — 1,400+ pass variance between identical runs | 37 | done | critical |
 | **946** | Show JS strict mode compatibility by default on landing, report, and dashboard pages | 37 | done | medium |
 | **970** | Include sloppy (noStrict) tests in test262 runner for report filtering | 38 | done | medium |
 | **981** | Reuse t262-donut chart on report page, refactor as standalone component | 40 | done | medium |
-| **1007** | Re-run historical test262 checkpoints with the current harness for comparable conformance history |  | in-progress | medium |
+| **1007** | Re-run historical test262 checkpoints with the current harness for comparable conformance history |  | ready | medium |
 | **1015** | Support fixture/includes tests in unified compilation mode (172 CE) | 40 | done | medium |
-| **1048** | async-generator destructuring: illegal cast inside __closure_N | Backlog | done | low |
-| **1049** | Destructuring default init fn-name-cover: wrong .name on covered function |  | in-progress | medium |
-| **1051** | Private static class methods: wrong return value via private-name dispatch |  | in-progress | low |
+| **1048** | async-generator destructuring: illegal cast inside __closure_N | 40 | done | low |
+| **1049** | Destructuring default init fn-name-cover: wrong .name on covered function | 40 | done | medium |
+| **1051** | Private static class methods: wrong return value via private-name dispatch | 40 | done | low |
 | **1052** | Array destructuring ignores user-overridden Array.prototype[Symbol.iterator] |  | ready | low |
 | **1053** | arguments.length wrong in class methods with trailing-comma call sites | 41 | done | medium |
-| **1055** | RegExp pattern modifiers: SyntaxError not thrown for invalid modifier syntax | Backlog | done | low |
+| **1055** | RegExp pattern modifiers: SyntaxError not thrown for invalid modifier syntax | 40 | done | low |
 | **1056** | DataView setUintN / setIntN / setFloatN instance methods missing | 41 | done | low |
 | **1057** | String.prototype.split result constructor !== Array | 42 | done | low |
 | **1085** | codegen: bodyUsesArguments recursive walker blows stack under tight CI stack budget when called from recursive nested-declarations compile path | 41 | done | critical |

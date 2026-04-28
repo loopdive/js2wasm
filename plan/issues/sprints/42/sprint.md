@@ -325,6 +325,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | done |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | done |
 | #1006 | Support eval via JS host import | medium | done |
+| #1017 | Null pointer dereferences and illegal casts in compiled code (504 FAIL) | high | done |
 | #1036 | DisposableStack/AsyncDisposableStack property-chain access produces Wasm null trap (94 FAIL) | medium | done |
 | #1037 | Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL) | medium | done |
 | #1038 | Function.prototype.bind not implemented (70 FAIL) | high | done |

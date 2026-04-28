@@ -40,7 +40,7 @@ fragile. Maintainability improvements directly reduce coordination cost.
 | **810** | Extract class compilation from index.ts → class-codegen.ts |  | ready | medium |
 | **811** | Extract fixup passes from index.ts → fixups.ts | 39 | done | medium |
 | **828** | Unexpected undefined AST node in compileExpression (154 CE) | 31 | done | medium |
-| **869** | Refactor default params: caller-side insertion instead of sNaN sentinel |  | in-progress | medium |
+| **869** | Refactor default params: caller-side insertion instead of sNaN sentinel |  | ready | medium |
 | **909** | Split codegen/index.ts into context, registry, collect, and api modules | 31 | done | high |
 | **918** | Create a curated batch of contributor-friendly starter issues with exact file ownership and acceptance criteria | 36 | done | medium |
 | **968** | Block scope variable shadows broken by #954 dedup locals (25 tests) | 38 | done | high |

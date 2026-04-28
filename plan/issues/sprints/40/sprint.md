@@ -337,6 +337,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #864 | WeakMap/WeakSet invalid key errors (45 FAIL) | low | done |
 | #882 | Test262 runner: sharded parallel execution with merged reports | high | done |
 | #884 | CI: GitHub Actions test262 on every PR | high | done |
+| #929 | Object.defineProperty called on non-object (88 FAIL) | medium | done |
 | #971 | Mixed assertion failures after sprint 38 merges (~180 tests) | medium | done |
 | #975 | Sprint file cleanup — remove orphan issue refs from closed sprints | low | done |
 | #977 | Edition coverage chart: rename 'Other' to 'ES3/Core' or 'Proposals' | low | done |
@@ -355,6 +356,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1014 | Promise .then() called on non-Promise values (1,969 FAIL) | critical | done |
 | #1015 | Support fixture/includes tests in unified compilation mode (172 CE) | medium | done |
 | #1021 | Destructuring: use __extern_is_undefined instead of ref.is_null for defaults (~2,000+ FAIL) | critical | done |
+| #1022 | Array built-in method 'object is not a function' (640 FAIL) | critical | done |
 | #1025 | BindingElement array-pattern default guards still use ref.is_null | high | done |
 | #1026 | String.prototype / Number.prototype / Boolean.prototype globals access | medium | done |
 | #1027 | Missing __make_getter_callback late-import in PR #43 accessor paths | high | done |
@@ -362,7 +364,14 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1030 | Array.prototype method dispatch long tail — 372 'object is not a function' | critical | done |
 | #1031 | Compile lodash to Wasm as a real-world stress test; harvest error patterns | high | done |
 | #1040 | Array.prototype reduce/map — invalid Wasm binary regression from #1030 extended dispatch | high | done |
+| #1048 | async-generator destructuring: illegal cast inside __closure_N | low | done |
+| #1049 | Destructuring default init fn-name-cover: wrong .name on covered function | medium | done |
+| #1050 | annexB: Extension not observed when variable binding would produce early error | medium | done |
+| #1051 | Private static class methods: wrong return value via private-name dispatch | low | done |
 | #1054 | Derived class indirect-eval supercall does not throw SyntaxError | medium | done |
+| #1055 | RegExp pattern modifiers: SyntaxError not thrown for invalid modifier syntax | low | done |
+| #1064 | DataView bridge: subview metadata so bounds errors propagate | medium | done |
+| #1065 | Register `Array` as declared global so `x.constructor === Array` compares real refs | medium | done |
 | #1082 | ci-status-feed delta is absolute snapshot not per-test regression — lies to dev-self-merge gate | critical | done |
 | #1084 | compileCount bypass in compiler-fork-worker.mjs — RECREATE never fires when errors dominate a chunk | critical | done |
 

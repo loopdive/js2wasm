@@ -49,8 +49,8 @@ and hide real ones.
 | **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 45 | ready | medium |
 | **1026** | String.prototype / Number.prototype / Boolean.prototype globals access | 40 | done | medium |
 | **1063** | createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee) | 41 | done | high |
-| **1064** | DataView bridge: subview metadata so bounds errors propagate |  | in-progress | medium |
-| **1065** | Register `Array` as declared global so `x.constructor === Array` compares real refs | Backlog | done | medium |
+| **1064** | DataView bridge: subview metadata so bounds errors propagate | 40 | done | medium |
+| **1065** | Register `Array` as declared global so `x.constructor === Array` compares real refs | 40 | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 45 | ready | medium |
 | **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 45 | done | critical |

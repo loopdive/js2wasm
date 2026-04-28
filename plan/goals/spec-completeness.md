@@ -90,7 +90,7 @@ pass rate goes from "good" to "excellent."
 | **1028** | TypedArray.prototype.toLocaleString null/undefined in element toLocaleString path | 40 | done | medium |
 | **1037** | Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL) | 42 | done | medium |
 | **1047** | Instance fields leak onto prototype via _wrapForHost struct-field enumeration | 42 | done | high |
-| **1050** | annexB: Extension not observed when variable binding would produce early error |  | in-progress | medium |
+| **1050** | annexB: Extension not observed when variable binding would produce early error | 40 | done | medium |
 | **1054** | Derived class indirect-eval supercall does not throw SyntaxError | 40 | done | medium |
 | **1073** | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | 42 | done | high |
 | **1073** | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | 45 | ready | high |
