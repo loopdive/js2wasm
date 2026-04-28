@@ -31,16 +31,16 @@ fragile. Maintainability improvements directly reduce coordination cost.
 | **586** | Deduplicate array method callbacks (~1,500 lines) | 0 | done | medium |
 | **637** | Create walkInstructions utility (eliminates 5 duplicate walkers) | 0 | done | medium |
 | **688** | Refactor codebase into smaller modules per language feature | 18 | done | medium |
-| **741** | Split index.ts (13,282 lines) into smaller modules | Backlog | ready | medium |
+| **741** | Split index.ts (13,282 lines) into smaller modules |  | ready | medium |
 | **742** | Extract and refactor compileCallExpression (3,350 lines) | 46 | blocked | medium |
 | **795** | - f64.add on externref — missing unbox coercion (57 CE) | 0 | done | medium |
-| **803** | Extract call dispatch from expressions.ts → calls.ts | Backlog | ready | medium |
-| **804** | Extract new expressions from expressions.ts → new-expression.ts | Backlog | ready | medium |
-| **806** | Extract increment/decrement from expressions.ts → unary-update.ts | Backlog | ready | medium |
-| **810** | Extract class compilation from index.ts → class-codegen.ts | Backlog | ready | medium |
+| **803** | Extract call dispatch from expressions.ts → calls.ts |  | ready | medium |
+| **804** | Extract new expressions from expressions.ts → new-expression.ts |  | ready | medium |
+| **806** | Extract increment/decrement from expressions.ts → unary-update.ts |  | ready | medium |
+| **810** | Extract class compilation from index.ts → class-codegen.ts |  | ready | medium |
 | **811** | Extract fixup passes from index.ts → fixups.ts | 39 | done | medium |
 | **828** | Unexpected undefined AST node in compileExpression (154 CE) | 31 | done | medium |
-| **869** | Refactor default params: caller-side insertion instead of sNaN sentinel | Backlog | in-progress | medium |
+| **869** | Refactor default params: caller-side insertion instead of sNaN sentinel |  | in-progress | medium |
 | **909** | Split codegen/index.ts into context, registry, collect, and api modules | 31 | done | high |
 | **918** | Create a curated batch of contributor-friendly starter issues with exact file ownership and acceptance criteria | 36 | done | medium |
 | **968** | Block scope variable shadows broken by #954 dedup locals (25 tests) | 38 | done | high |

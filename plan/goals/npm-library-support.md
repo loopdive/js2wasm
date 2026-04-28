@@ -35,8 +35,8 @@ not.
 | **938** | Add equivalence tests for Number static methods and constants | 37 | done | low |
 | **939** | Add Math.LOG2E and Math.LOG10E constant tests to equivalence suite | 37 | done | low |
 | **941** | Add equivalence tests for global isNaN() and isFinite() functions | 37 | done | low |
-| **1032** | Compile axios to Wasm — Node builtins routed as host imports; harvest error patterns | Backlog | ready | high |
-| **1033** | Compile React to Wasm — UI library stress test; DOM as host imports; harvest closure/hook/Symbol patterns | Backlog | ready | high |
+| **1032** | Compile axios to Wasm — Node builtins routed as host imports; harvest error patterns |  | ready | high |
+| **1033** | Compile React to Wasm — UI library stress test; DOM as host imports; harvest closure/hook/Symbol patterns |  | ready | high |
 | **1043** | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | 45 | done | high |
 | **1060** | ModuleResolver prefers @types/*/.d.ts over real .js body, dropping npm implementations | 41 | done | high |
 | **1061** | analyzeMultiSource / compileMultiSource drops allowJs and forces .js → .ts | 41 | done | high |

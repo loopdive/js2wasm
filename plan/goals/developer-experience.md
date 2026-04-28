@@ -23,10 +23,10 @@ and internal tooling should make compiler work easier, not harder.
 | **506** | Remove redundant conformance-report.html | 0 | done | low |
 | **547** | Restore search/filter UI in report.html | 0 | done | low |
 | **549** | Security: playground path traversal via symlinks | 0 | done | high |
-| **867** | Playground: interactive test262 conformance explorer with inline errors | Backlog | ready | high |
-| **868** | Playground: lazy-load test262 tree and file contents on demand | Backlog | ready | medium |
-| **870** | Playground: Monaco web workers fail to load, UI freezes | Backlog | ready | high |
-| **878** | Dashboard: active agent status panel with current task and uptime | Backlog | ready | medium |
+| **867** | Playground: interactive test262 conformance explorer with inline errors |  | ready | high |
+| **868** | Playground: lazy-load test262 tree and file contents on demand |  | ready | medium |
+| **870** | Playground: Monaco web workers fail to load, UI freezes |  | ready | high |
+| **878** | Dashboard: active agent status panel with current task and uptime |  | ready | medium |
 | **907** | Replace __init_done runtime guards with start/init entry semantics | 42 | done | high |
 | **907** | Replace __init_done runtime guards with start/init entry semantics | 45 | done | high |
 | **924** | Vite dev server OOMs or consumes 9GB+ loading the playground | 35 | done | high |
@@ -34,7 +34,7 @@ and internal tooling should make compiler work easier, not harder.
 | **977** | Edition coverage chart: rename 'Other' to 'ES3/Core' or 'Proposals' | 40 | done | low |
 | **978** | Add responsive burger menu to site-nav component | 40 | done | medium |
 | **1008** | Add mobile-first layout support to the playground | 45 | ready | medium |
-| **1039** | Landing page ES edition UI: circular progress prefix + per-feature error list | Backlog | ready | medium |
+| **1039** | Landing page ES edition UI: circular progress prefix + per-feature error list |  | ready | medium |
 | **1147** | Add a public Docs page to the site | 45 | ready | medium |
 | **1187** | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | 46 | ready | medium |
 | **1188** | Setup js2.loopdive.com custom domain for GitHub Pages | 46 | ready | medium |

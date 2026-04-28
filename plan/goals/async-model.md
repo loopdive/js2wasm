@@ -52,19 +52,19 @@ promise infrastructure.
 | **701** | resolveWasmType infinite recursion with skipSemanticDiagnostics | 24 | done | high |
 | **705** | Wasm validation: not enough arguments on the stack (361 CE) | 26 | done | medium |
 | **711** | Unsupported new expression: new Function() (106 CE) | 0 | done | medium |
-| **735** | - Async iteration correctness (329 tests) | Backlog | blocked | medium |
-| **762** | - Generator .next(value) arguments are silently ignored | Backlog | blocked | medium |
+| **735** | - Async iteration correctness (329 tests) |  | blocked | medium |
+| **762** | - Generator .next(value) arguments are silently ignored |  | blocked | medium |
 | **767** | - Equivalence test coverage gaps: RegExp, Promise, async iterators | 19 | done | medium |
 | **780** | - TypeError (null/undefined access) in built-in method dispatch (~9,128 tests) | 0 | done | critical |
 | **789** | - TypeError null/undefined guard over-triggering (15,630 tests) | 25 | done | critical |
 | **793** | - Infinite compilation loop on private-methods class expressions (5 tests) | 25 | done | medium |
-| **808** | Extract string/import infrastructure from index.ts → imports.ts | Backlog | ready | medium |
-| **820** | Nullish TypeError / null-pointer / illegal-cast umbrella (6,993 FAIL) | Backlog | ready | critical |
+| **808** | Extract string/import infrastructure from index.ts → imports.ts |  | ready | medium |
+| **820** | Nullish TypeError / null-pointer / illegal-cast umbrella (6,993 FAIL) |  | ready | critical |
 | **851** | Iterator close protocol not implemented (147 tests) | 31 | done | high |
 | **854** | Iterator protocol: null next/return/throw methods (126 tests) | 44 | done | high |
 | **855** | Promise resolution and async error handling (210 tests) | 35 | done | high |
-| **859** | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | Backlog | ready | high |
-| **860** | Promise executor and property-assigned functions not compiled as host callbacks | Backlog | review | medium |
+| **859** | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration |  | ready | high |
+| **860** | Promise executor and property-assigned functions not compiled as host callbacks |  | review | medium |
 | **875** | Research: ES standard support matrix for all JS-to-Wasm engines | 0 | done | medium |
 | **919** | Fix direct-eval arguments regressions introduced since the April 1 test262 baseline | 37 | done | high |
 | **930** | Not-a-constructor detection: built-in methods callable with new (68 FAIL) | 37 | done | medium |
@@ -80,21 +80,21 @@ promise infrastructure.
 | **966** | 79 genuine invalid Wasm binaries from static private fields + Promise arity | 38 | done | high |
 | **972** | Landing page: JavaScript feature support tables (implemented + not yet implemented) | 38 | done | medium |
 | **973** | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | 0 | done | high |
-| **983** | WasmGC objects leak to JS host as opaque values (1,087 FAIL) | Backlog | ready | high |
+| **983** | WasmGC objects leak to JS host as opaque values (1,087 FAIL) |  | ready | high |
 | **984** | Regression: compileExpression receives undefined AST nodes in class/private generator paths (154 CE) | 40 | done | medium |
 | **986** | Internal compiler crash: BigInt serialization in statement/object emit paths (37 CE) | 40 | done | medium |
 | **1012** | Add source-anchored line numbers to all runtime error patterns | 40 | done | high |
 | **1014** | Promise .then() called on non-Promise values (1,969 FAIL) | 40 | done | critical |
-| **1017** | Null pointer dereferences and illegal casts in compiled code (504 FAIL) | Backlog | review | high |
+| **1017** | Null pointer dereferences and illegal casts in compiled code (504 FAIL) |  | review | high |
 | **1018** | Object.getOwnPropertyDescriptor returns null for missing/accessor properties (160 FAIL) | 41 | done | high |
 | **1027** | Missing __make_getter_callback late-import in PR #43 accessor paths | 40 | done | high |
 | **1034** | Compile prettier to Wasm — parser + AST + printer stress test; self-format smoke test | 41 | done | high |
 | **1035** | WASI hello-world: compile console.log + node:fs write to a standalone native executable | 45 | done | high |
-| **1042** | async/await state-machine lowering (AwaitExpression is currently a no-op) | Backlog | ready | high |
+| **1042** | async/await state-machine lowering (AwaitExpression is currently a no-op) |  | ready | high |
 | **1044** | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | 45 | ready | high |
-| **1089** | codegen: support dynamic import() expressions — 429 test262 tests skipped | Backlog | ready | medium |
+| **1089** | codegen: support dynamic import() expressions — 429 test262 tests skipped |  | ready | medium |
 | **1093** | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | 45 | ready | high |
-| **1116** | Promise resolution and async error handling (210 tests) | Backlog | ready | critical |
+| **1116** | Promise resolution and async error handling (210 tests) |  | ready | critical |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->
 

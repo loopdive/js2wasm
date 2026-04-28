@@ -70,7 +70,7 @@ makes the error paths spec-compliant.
 | **835** | Unknown extern class: Error types (32 CE) | 27 | done | low |
 | **845** | Miscellaneous compile errors: object literals, RegExp-on-X, for-in/of edge cases (340 CE) | 38 | done | medium |
 | **857** | wasm_compile: 'fn is not a function' in Array callback methods (247 tests) | 30 | done | high |
-| **871** | Playground: default example throws WebAssembly.Exception at runtime | Backlog | review | critical |
+| **871** | Playground: default example throws WebAssembly.Exception at runtime |  | review | critical |
 | **896** | Restore direct numeric GC-array codegen in hot loops | 34 | done | high |
 | **898** | Extend compile-time TDZ elimination to loop-local accesses | 34 | done | medium |
 | **899** | Extend compile-time TDZ elimination to provably safe closure captures | 34 | done | medium |
@@ -82,7 +82,7 @@ makes the error paths spec-compliant.
 | **996** | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 42 | done | low |
 | **996** | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | 45 | done | low |
 | **1021** | Destructuring: use __extern_is_undefined instead of ref.is_null for defaults (~2,000+ FAIL) | 40 | done | critical |
-| **1022** | Array built-in method 'object is not a function' (640 FAIL) | Backlog | in-progress | critical |
+| **1022** | Array built-in method 'object is not a function' (640 FAIL) |  | in-progress | critical |
 | **1023** | __unbox_number(null) crashes — should apply ToNumber(null) = +0 | 41 | done | high |
 | **1090** | ToPrimitive 'Cannot convert object to primitive value' — 161 FAIL | 41 | done | high |
 | **1092** | Wrong error type — 69 tests throw Test262Error instead of expected TypeError | 41 | done | medium |
