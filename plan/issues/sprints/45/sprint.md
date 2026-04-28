@@ -115,6 +115,13 @@ moved here. No issues were rescoped, rejected, or deleted — only relocated.
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
+### Ready
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1180 | js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds | high | ready |
+| #1206 | fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page) | medium | ready |
+
 ### Done
 
 | Issue | Title | Priority | Status |
@@ -131,18 +138,12 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1016 | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | high | done |
 | #1025 | BindingElement array-pattern default guards still use ref.is_null | high | done |
 | #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | done |
-| #1035 | WASI hello-world: compile console.log + node:fs write to a standalone native executable | high | done |
-| #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | done |
 | #1043 | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | high | done |
 | #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | done |
-| #1076 | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | critical | done |
 | #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
-| #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
-| #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | done |
 | #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | done |
 | #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | done |
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | done |
-| #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | done |
 | #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | done |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | done |
 | #1111 | Wrapper object constructors: new Number/String/Boolean (648 tests) | medium | done |
@@ -155,11 +156,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169a | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | high | done |
 | #1169b | IR Phase 4 Slice 2 — object literals and property access through IR path | high | done |
 | #1169c | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | high | done |
-| #1169c | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | high | done |
-| #1169d | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | high | done |
 | #1169d | IR Phase 4 Slice 4 — class instantiation and method calls through the IR path | high | done |
 | #1169e | IR Phase 4 Slice 6 — iterators and for-of through the IR path | high | done |
-| #1169f | IR Phase 4 Slice 7 — generators and async/await through the IR path | high | done |
 | #1169f | IR Phase 4 Slice 7 — generators and async/await through the IR path | high | done |
 | #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | done |
 | #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | done |
@@ -170,26 +168,18 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1174 | js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash) | high | done |
 | #1175 | String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator | high | done |
 | #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | done |
-| #1177 | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | high | done |
 | #1178 | string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix | high | done |
 | #1179 | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | high | done |
 | #1179-followup | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | medium | done |
 | #1181 | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | high | done |
-| #1181 | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | high | done |
-| #1182 | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | medium | done |
 | #1182 | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | medium | done |
 | #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | done |
-| #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | done |
 | #1185 | IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts) | medium | done |
-| #1185 | IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts) | medium | done |
-| #1186 | fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx) | high | done |
 | #1186 | fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx) | high | done |
 | #1191 | ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate | medium | done |
 | #1192 | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | medium | done |
 | #1193 | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | medium | done |
 | #1202 | credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm | high | done |
-| #1202 | credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm | high | done |
-| #1208 | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | high | done |
 | #1208 | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

@@ -52,6 +52,5 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #826 | Illegal cast failures (1,276 runtime failures) | high | done |
 | #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | done |
-| #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

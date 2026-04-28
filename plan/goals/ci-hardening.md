@@ -54,11 +54,8 @@ and hide real ones.
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 46 | deferred | medium |
 | **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 45 | done | critical |
-| **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 45 | done | critical |
-| **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 45 | done | high |
 | **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 42 | done | high |
 | **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 45 | done | high |
-| **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 45 | done | medium |
 | **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 45 | done | medium |
 | **1079** | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | 45 | done | medium |
 | **1080** | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | 46 | ready | critical |
@@ -71,7 +68,7 @@ and hide real ones.
 | **1117** | Expected TypeError but got wrong error type (136 tests) | 42 | done | medium |
 | **1170** | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | 45 | done | high |
 | **1171** | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | 45 | done | high |
-| **1189** | ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness | 46 | ready | medium |
+| **1189** | ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness | 46 | wont-fix | medium |
 | **1190** | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | 46 | ready | high |
 | **1191** | ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate | 45 | done | medium |
 | **1192** | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | 45 | done | medium |
