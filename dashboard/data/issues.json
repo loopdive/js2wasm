@@ -275,16 +275,6 @@
       "sprint": "47"
     },
     {
-      "id": "1180",
-      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1172",
       "title": "Codebase modularity audit — reduce coupling, improve layering, harden interfaces",
       "priority": "high",
@@ -1839,6 +1829,16 @@
         "1169e"
       ],
       "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1180",
+      "title": "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
       "status": "done",
       "sprint": "45"
     },
