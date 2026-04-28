@@ -19,7 +19,6 @@ else                                           model_color='00;32'
 fi
 branch=$(git -C "${cwd:-$(pwd)}" rev-parse --abbrev-ref HEAD 2>/dev/null)
 issue=$(echo "$branch" | sed -n 's/^issue-\([a-zA-Z0-9]*\).*/\1/p')
-[ -n "$issue" ] && printf '\033[01;33m#%s\033[00m ' "$issue"
 display_cwd=$(basename "${cwd:-$(pwd)}")
 printf '\033[01;34m%s\033[00m' "$display_cwd"
 [ -n "$model" ] && printf ' \033[%sm%s\033[00m' "$model_color" "$model"
@@ -190,12 +189,12 @@ if [ -z "$in_worktree" ]; then
       if (p >= 55)      { fill=42;         fg=30 }
       else if (p >= 33) { fill=43;         fg=30 }
       else              { fill="48;5;196"; fg=37 }
-      width = 9
+      width = 10
       filled = int(p * width / 100)
       label = sprintf(" %d%% s%d ", p, n)
       bar = ""
       for (i = 0; i < width; i++) bar = bar " "
-      bar = label substr(bar, length(label) + 1)
+      bar = substr(label substr(bar, length(label) + 1), 1, width)
       filled_part = substr(bar, 1, filled)
       empty_part  = substr(bar, filled + 1)
       printf " \033[%s;%sm%s\033[48;5;237;37m%s\033[00m", fill, fg, filled_part, empty_part
@@ -265,4 +264,5 @@ elif [ -f "$report" ]; then
     printf ' %s %s' "$p_bar" "$f_bar"
   fi
 fi
+[ -z "$in_worktree" ] && [ -n "$branch" ] && [ "$branch" != "main" ] && printf ' \033[00;37m%s\033[00m' "$branch"
 printf '\n'
