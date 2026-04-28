@@ -1,0 +1,172 @@
+name: Refresh Committed Baseline
+
+# Keeps `benchmarks/results/test262-current.jsonl` in sync with reality (#1191).
+#
+# Why this exists:
+#   The committed JSONL baseline is the second source of truth for the
+#   dev-self-merge gate (Step 4 buckets regressions by reading this file).
+#   The `Test262 Sharded` workflow only commits the small JSON summary back
+#   to main; the large JSONL was deliberately moved to the
+#   `js2wasm-baselines` repo to avoid bandwidth bloat. As a result the
+#   committed JSONL drifts from reality and the bucket-by-path regression
+#   analysis becomes unreliable.
+#
+# What this does:
+#   1. Triggers after `Test262 Sharded` completes on push to main (the
+#      sharded workflow is itself path-filtered to src/**, scripts/**, etc.,
+#      so this transitively only fires on compiler-source changes).
+#   2. Downloads the merged JSONL artifact from the upstream run (cheap —
+#      no test262 re-run required).
+#   3. Commits the refreshed JSONL back to main with [skip ci] so it does
+#      not retrigger CI. Because this is purely a snapshot state update
+#      (no source change), it self-merges via direct push, mirroring the
+#      sharded workflow's existing JSON-commit pattern.
+#
+# Manual override: `workflow_dispatch` finds the most recent main sharded
+# run that uploaded an unexpired `test262-merged-report` artifact (overall
+# run may show failure if regression-gate flagged regressions — the
+# artifact is still valid because `merge-report` uses `if: always()`).
+
+on:
+  workflow_run:
+    workflows: ["Test262 Sharded"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: refresh-committed-baseline
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    # Only fire for pushes to main from a real actor (not the bot itself,
+    # which would loop). workflow_dispatch always passes.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.actor.login != 'github-actions[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Resolve source CI run
+        id: resolve_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            RUN_ID="${{ github.event.workflow_run.id }}"
+            echo "Source: triggering workflow_run id=$RUN_ID"
+          else
+            # Manual dispatch — pick the most recent main sharded run that
+            # uploaded an unexpired `test262-merged-report` artifact. The
+            # overall run may show "failure" because regression-gate flagged
+            # regressions; the merged JSONL artifact is still produced and
+            # uploaded by `merge-report` (which uses `if: always()`).
+            RUN_ID=""
+            while IFS= read -r candidate; do
+              [ -z "$candidate" ] && continue
+              has_artifact=$(gh api \
+                "repos/${{ github.repository }}/actions/runs/$candidate/artifacts" \
+                --jq '[.artifacts[] | select(.name == "test262-merged-report" and .expired == false)] | length')
+              if [ "$has_artifact" = "1" ]; then
+                RUN_ID="$candidate"
+                break
+              fi
+            done < <(gh run list \
+              --branch main \
+              --workflow "Test262 Sharded" \
+              --limit 20 \
+              --json databaseId \
+              -q '.[].databaseId')
+            if [ -z "$RUN_ID" ]; then
+              echo "No recent main sharded run has an unexpired test262-merged-report artifact — abort."
+              exit 1
+            fi
+            echo "Source: most-recent run with merged-report artifact id=$RUN_ID"
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download merged report artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p merged-reports
+          gh run download "${{ steps.resolve_run.outputs.run_id }}" \
+            -n test262-merged-report \
+            -D merged-reports
+          ls -la merged-reports/
+
+      - name: Verify report sanity
+        id: sanity
+        run: |
+          set -euo pipefail
+          test -f merged-reports/test262-results-merged.jsonl
+          test -f merged-reports/test262-report-merged.json
+          PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('merged-reports/test262-report-merged.json','utf8')).summary.pass)")
+          TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('merged-reports/test262-report-merged.json','utf8')).summary.total)")
+          echo "PASS=$PASS TOTAL=$TOTAL"
+          if [ "$PASS" -lt 1000 ] || [ "$TOTAL" -lt 40000 ]; then
+            echo "ABORT: report looks corrupt (pass=$PASS total=$TOTAL). Not promoting."
+            exit 1
+          fi
+          echo "pass=$PASS" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+
+      - name: Replace committed JSONL baseline
+        run: |
+          set -euo pipefail
+          mkdir -p benchmarks/results
+          cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+
+      - name: Commit and push refreshed JSONL
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f benchmarks/results/test262-current.jsonl
+          if git diff --cached --quiet; then
+            echo "JSONL unchanged — nothing to commit."
+            exit 0
+          fi
+          PASS=${{ steps.sanity.outputs.pass }}
+          TOTAL=${{ steps.sanity.outputs.total }}
+          # [skip ci] prevents this commit from retriggering CI workflows
+          # (including this one). This is a pure snapshot state update —
+          # no source change, so no regression check is needed.
+          git commit -m "chore(test262): refresh committed JSONL baseline — ${PASS}/${TOTAL} pass [skip ci]"
+          # Handle race conditions: another [skip ci] commit may have landed
+          # while we were running. Try fast-forward, then fallback to
+          # reset+reapply.
+          if ! git pull --rebase --autostash origin main; then
+            git rebase --abort 2>/dev/null || true
+            git fetch origin main
+            git reset --hard origin/main
+            cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+            git add -f benchmarks/results/test262-current.jsonl
+            git diff --cached --quiet && exit 0
+            git commit -m "chore(test262): refresh committed JSONL baseline — ${PASS}/${TOTAL} pass [skip ci]"
+          fi
+          git push

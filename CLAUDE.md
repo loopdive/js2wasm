@@ -75,6 +75,16 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Issues #618-#634 cover current failure patterns (from 2026-03-19 error analysis)
 - parseInt import: `(externref, f64) -> f64` with NaN sentinel for missing radix
 
+### Baseline files (which is authoritative?)
+
+| File | Lives in | Authoritative for | Refreshed by |
+|------|----------|-------------------|--------------|
+| `benchmarks/results/test262-current.jsonl` | main repo (committed, ~15MB) | `dev-self-merge` Step 4 bucket-by-path regression analysis | `refresh-committed-baseline.yml` (after every `Test262 Sharded` push to main) |
+| `benchmarks/results/test262-current.json` | main repo (committed, ~kB) | landing-page summary, pass/total badges | `test262-sharded.yml` `promote-baseline` job (every push to main) |
+| `test262-current.jsonl` (in `loopdive/js2wasm-baselines`) | separate repo | PR regression-gate baseline (fetched fresh per CI run) | `test262-sharded.yml` `promote-baseline` job (every push to main) |
+
+The committed JSONL must be kept in sync with the JSON; otherwise the dev-self-merge bucket analysis reads stale "pass" entries and silently miscounts regressions. `refresh-committed-baseline.yml` is the dedicated workflow for that sync — it downloads the merged JSONL artifact from the most-recent successful `Test262 Sharded` run on main and commits it back with `[skip ci]`.
+
 ## CLI Flags
 - `--target wasi` — emit WASI imports (fd_write, proc_exit) instead of JS host
 - `--optimize` / `-O` — run Binaryen wasm-opt on compiled binary
