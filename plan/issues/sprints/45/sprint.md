@@ -115,6 +115,12 @@ moved here. No issues were rescoped, rejected, or deleted — only relocated.
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1193 | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | medium | in-progress |
+
 ### Done
 
 | Issue | Title | Priority | Status |

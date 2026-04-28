@@ -245,16 +245,6 @@
       "sprint": "47"
     },
     {
-      "id": "1193",
-      "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1192",
       "title": "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)",
       "priority": "medium",
@@ -1625,6 +1615,16 @@
     }
   ],
   "inprogress": [
+    {
+      "id": "1193",
+      "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "45"
+    },
     {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",

@@ -17407,6 +17407,18 @@
       "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
       "priority": "medium",
       "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "developer-experience",
+      "cluster": "developer-experience"
+    },
+    {
+      "id": "1193",
+      "title": "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)",
+      "priority": "medium",
+      "status": "ready",
       "raw_status": "ready",
       "sprint": "46",
       "depends_on": [],
@@ -19284,6 +19296,7 @@
         "1147",
         "1187",
         "1188",
+        "1193",
         "1193",
         "1206",
         "1207"
@@ -22694,6 +22707,10 @@
     {
       "goal": "developer-experience",
       "issue": "1188"
+    },
+    {
+      "goal": "developer-experience",
+      "issue": "1193"
     },
     {
       "goal": "developer-experience",
