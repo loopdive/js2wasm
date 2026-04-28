@@ -30,7 +30,7 @@ fragile. Maintainability improvements directly reduce coordination cost.
 | **538** | PrivateIdentifier + new.target unsupported (19 CE) | 0 | done | medium |
 | **586** | Deduplicate array method callbacks (~1,500 lines) | 0 | done | medium |
 | **637** | Create walkInstructions utility (eliminates 5 duplicate walkers) | 0 | done | medium |
-| **688** | Refactor codebase into smaller modules per language feature | Backlog | ready | medium |
+| **688** | Refactor codebase into smaller modules per language feature | 18 | done | medium |
 | **741** | Split index.ts (13,282 lines) into smaller modules | Backlog | ready | medium |
 | **742** | Extract and refactor compileCallExpression (3,350 lines) | 46 | blocked | medium |
 | **795** | - f64.add on externref — missing unbox coercion (57 CE) | 0 | done | medium |

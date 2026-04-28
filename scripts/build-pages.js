@@ -308,14 +308,17 @@ writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-index-summary.json"), test262Da
 writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-files.json"), test262Data.filesJson);
 writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-file-results.json"), test262Data.resultsJson);
 
-copyFileIfExists(
-  join(PUBLIC_BENCH, "playground-benchmark-sidebar.json"),
-  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
-);
-copyFileIfExists(
-  join(PUBLIC_BENCH, "loadtime-benchmarks.json"),
-  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"),
-);
+// Landing page (top-level) and playground both reference these JSONs.
+// The canonical source lives in benchmarks/results/ (committed); fall back to
+// public/benchmarks/results/ for any files curated there.
+const TOP_BENCH_RESULTS = join(PAGES_DIST, "benchmarks", "results");
+for (const fileName of ["playground-benchmark-sidebar.json", "loadtime-benchmarks.json", "size-benchmarks.json"]) {
+  const source = resolvePreferredFileOrNull(join(BENCHMARKS_RESULTS_DIR, fileName), join(PUBLIC_BENCH, fileName));
+  if (source) {
+    copyFile(source, join(TOP_BENCH_RESULTS, fileName));
+    copyFile(source, join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, fileName));
+  }
+}
 if (existsSync(join(PUBLIC_BENCH, "loadtime"))) {
   copyDirectory(join(PUBLIC_BENCH, "loadtime"), join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime"));
 }
@@ -326,10 +329,9 @@ copyFileIfExists(
   join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "test262-report.json"),
 );
-copyFileIfExists(
-  join(PUBLIC_BENCH, "size-benchmarks.json"),
-  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"),
-);
+
+// Iframe nav-sync glue (referenced from the landing page header at /).
+copyFileIfExists(join(ROOT, "frame-nav-sync.js"), join(PAGES_DIST, "frame-nav-sync.js"));
 
 // Disable Jekyll processing so all generated assets are published as-is.
 writeFileSync(join(PAGES_DIST, ".nojekyll"), "");

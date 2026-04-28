@@ -9755,9 +9755,9 @@
       "id": "688",
       "title": "Refactor codebase into smaller modules per language feature",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "Backlog",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "18",
       "depends_on": [],
       "files": [
         "split 27K line file into modules per language feature"
@@ -17139,20 +17139,8 @@
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "45",
-      "depends_on": [],
-      "files": [],
-      "goal": "developer-experience",
-      "cluster": "developer-experience"
-    },
-    {
-      "id": "1206",
-      "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -18782,7 +18770,6 @@
         "1187",
         "1188",
         "1193",
-        "1206",
         "1206",
         "1207"
       ],
@@ -22101,10 +22088,6 @@
     {
       "goal": "developer-experience",
       "issue": "1193"
-    },
-    {
-      "goal": "developer-experience",
-      "issue": "1206"
     },
     {
       "goal": "developer-experience",

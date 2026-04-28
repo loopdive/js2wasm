@@ -201,7 +201,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | ready |
 | #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | ready |
 | #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
-| #1206 | fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page) | medium | ready |
 
 ### Won't Fix
 

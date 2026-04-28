@@ -127,16 +127,6 @@
       "sprint": "47"
     },
     {
-      "id": "1206",
-      "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "45"
-    },
-    {
       "id": "1205",
       "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
       "priority": "high",
@@ -1411,16 +1401,6 @@
       "sprint": "Backlog"
     },
     {
-      "id": "688",
-      "title": "Refactor codebase into smaller modules per language feature",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "maintainability",
-      "status": "ready",
-      "sprint": "Backlog"
-    },
-    {
       "id": "687",
       "title": "Live-streaming report with run selector and progress indicator",
       "priority": "high",
@@ -1585,6 +1565,16 @@
     }
   ],
   "inprogress": [
+    {
+      "id": "1206",
+      "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "45"
+    },
     {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
@@ -5743,6 +5733,16 @@
       "goal": "test-infrastructure",
       "status": "done",
       "sprint": "0"
+    },
+    {
+      "id": "688",
+      "title": "Refactor codebase into smaller modules per language feature",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "maintainability",
+      "status": "done",
+      "sprint": "18"
     },
     {
       "id": "686",
