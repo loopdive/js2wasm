@@ -196,12 +196,17 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1183 | IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \"hello\")`) | medium | ready |
 | #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | ready |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | ready |
-| #1189 | ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness | medium | ready |
 | #1190 | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | high | ready |
 | #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | ready |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | ready |
 | #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | ready |
 | #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
 | #1206 | fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page) | medium | ready |
+
+### Won't Fix
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1189 | ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness | medium | wont-fix |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

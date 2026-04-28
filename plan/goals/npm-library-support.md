@@ -38,7 +38,6 @@ not.
 | **1032** | Compile axios to Wasm — Node builtins routed as host imports; harvest error patterns | Backlog | ready | high |
 | **1033** | Compile React to Wasm — UI library stress test; DOM as host imports; harvest closure/hook/Symbol patterns | Backlog | ready | high |
 | **1043** | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | 45 | done | high |
-| **1043** | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | 45 | done | high |
 | **1060** | ModuleResolver prefers @types/*/.d.ts over real .js body, dropping npm implementations | 41 | done | high |
 | **1061** | analyzeMultiSource / compileMultiSource drops allowJs and forces .js → .ts | 41 | done | high |
 | **1068** | parser: 'await' not allowed as label identifier — blocks prettier/index.mjs | 41 | done | medium |

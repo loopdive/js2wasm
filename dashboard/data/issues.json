@@ -134,7 +134,7 @@
       "depends_on": [],
       "goal": "developer-experience",
       "status": "ready",
-      "sprint": "46"
+      "sprint": "45"
     },
     {
       "id": "1205",
@@ -255,16 +255,6 @@
       "sprint": "46"
     },
     {
-      "id": "1189",
-      "title": "ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1188",
       "title": "Setup js2.loopdive.com custom domain for GitHub Pages",
       "priority": "medium",
@@ -302,7 +292,7 @@
       "depends_on": [],
       "goal": "compilable",
       "status": "ready",
-      "sprint": "46"
+      "sprint": "45"
     },
     {
       "id": "1172",
@@ -1797,6 +1787,16 @@
       "sprint": "45"
     },
     {
+      "id": "1189",
+      "title": "ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "wont-fix",
+      "sprint": "46"
+    },
+    {
       "id": "1186",
       "title": "fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx)",
       "priority": "high",
@@ -2698,7 +2698,7 @@
       ],
       "goal": "ci-hardening",
       "status": "done",
-      "sprint": "45"
+      "sprint": "42"
     },
     {
       "id": "1076",
