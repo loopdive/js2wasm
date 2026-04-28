@@ -13,7 +13,18 @@ Run this after `.claude/ci-status/pr-<N>.json` exists with a SHA matching your b
 cat .claude/ci-status/pr-<N>.json
 ```
 
-Extract: `head_sha`, `net_per_test`, `regressions`, `improvements`, `run_url`.
+Extract: `head_sha`, `net_per_test`, `regressions`, `regressions_real`,
+`compile_timeouts`, `improvements`, `run_url`.
+
+`regressions_real` (added by #1192) = `compile_error + fail` regressions
+only — excludes `compile_timeout` transitions which are runner-load
+timing noise (tests right at the 30s compile-timeout boundary flap
+based on CI system load). Use this for the ratio check in criterion 2.
+
+**`compile_timeout` transitions are NOT counted — runner timing noise.**
+
+If the feed predates #1192 (no `regressions_real` field), fall back to
+the headline `regressions` count.
 
 ## Step 2 — SHA check
 
@@ -32,9 +43,18 @@ Stop.
 | # | Criterion | Failure output |
 |---|-----------|----------------|
 | 1 | `net_per_test > 0` | **ESCALATE — net_per_test is not positive (value: N). PR caused more regressions than improvements.** |
-| 2 | `regressions == 0 OR regressions / improvements < 0.10` | **ESCALATE — regression ratio is N% (regressions/improvements), exceeds 10% threshold.** |
+| 2 | `R == 0 OR R / improvements < 0.10`, where `R = regressions_real ?? regressions` | **ESCALATE — regression ratio is N% (R/improvements), exceeds 10% threshold.** |
 | 3 | No bucket > 50 regressions (see Step 4) | **ESCALATE — bucket "\<path\>" has N regressions, exceeds 50-test limit.** |
 | 4 | All above pass | **MERGE** |
+
+`R` (criterion 2) is `regressions_real` if the feed has it (post-#1192
+CI), else falls back to `regressions`. Excluding `compile_timeout`
+prevents runner-load timing noise from tipping otherwise-clean PRs
+above the 10% threshold. Compute it in shell with:
+
+```bash
+R=$(jq -r '.regressions_real // .regressions' .claude/ci-status/pr-<N>.json)
+```
 
 If `regressions` is `null` in the feed (older CI format without per-test tracking): treat criterion 2 as **pass** and skip criterion 3 (no data to bucket). Proceed to MERGE if criterion 1 holds.
 

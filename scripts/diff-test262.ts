@@ -193,6 +193,18 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
   }
   console.log();
 
+  // #1192: split regressions by destination status. compile_timeout
+  // transitions are runner-load timing noise (tests near the 30s
+  // compile-timeout boundary flap based on CI system load), not real
+  // compiler regressions. Emit separate counts so the merge gate can
+  // exclude CT noise from the ratio. The "Regressions (pass → other)"
+  // line above stays unchanged for backwards compat with the dashboard.
+  const regressionsCT = regressions.filter((r) => r.to === "compile_timeout").length;
+  const regressionsReal = regressions.length - regressionsCT;
+  console.log(`=== Compile timeouts (pass → compile_timeout): ${regressionsCT} ===`);
+  console.log(`=== Regressions excluding compile_timeout: ${regressionsReal} ===`);
+  console.log();
+
   // Improvements
   console.log(`=== Improvements (other → pass): ${improvements.length} ===`);
   if (!quiet && improvements.length > 0) {
