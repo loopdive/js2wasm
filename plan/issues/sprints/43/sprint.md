@@ -43,7 +43,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1127 | Nested rest patterns fail to decode even with explicit args — [...[x,y,z]], [...{length}], [...[,]] | medium | ready |
 | #1131 | Middle-end SSA IR: implementation plan | high | ready |
 | #1131 | Middle-end SSA IR: implementation plan | high | ready |
 
@@ -52,6 +51,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #826 | Illegal cast failures (1,276 runtime failures) | high | done |
+| #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | done |
 | #1127 | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

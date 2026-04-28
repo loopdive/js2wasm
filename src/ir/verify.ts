@@ -266,6 +266,13 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
     // Slice 6 part 4 (#1183) — string for-of.
     case "forof.string":
       return [instr.str];
+    // Slice 9 (#1169h) — exception handling. Body / catch / finally uses
+    // are loop-internal (analogous to forof.vec) and are not surfaced
+    // in the straight-line use-before-def walk.
+    case "throw":
+      return [instr.value];
+    case "try":
+      return [];
   }
 }
 

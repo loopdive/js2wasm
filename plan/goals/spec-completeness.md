@@ -71,6 +71,7 @@ pass rate goes from "good" to "excellent."
 | **785** | - Null pointer traps in compiled Wasm code (~1,604 tests) | 0 | done | high |
 | **791** | - SyntaxError detection gaps: code compiles when it should not | 0 | done | high |
 | **825** | Null dereference failures (2,295 runtime failures) | 44 | done | high |
+| **825** | Null dereference failures (2,295 runtime failures) | 44 | done | high |
 | **826** | Illegal cast failures (1,276 runtime failures) | 43 | done | high |
 | **832** | Upgrade to TypeScript 6.x to support Unicode 16.0.0 identifiers | Backlog | ready | medium |
 | **838** | BigInt64Array / BigUint64Array typed arrays | Backlog | ready | low |
@@ -110,15 +111,23 @@ pass rate goes from "good" to "excellent."
 | **1144** | Static class elements: this.#priv access inside static methods uses wrong receiver | 42 | done | medium |
 | **1146** | for-of: nested rest binding patterns not decoded (825 ary-rest-rest cluster) | 42 | done | medium |
 | **1148** | Investigate skip:103 regression — Annex B eval-code skip filter | 44 | done | high |
+| **1148** | Investigate skip:103 regression — Annex B eval-code skip filter | 44 | done | high |
 | **1149** | Fix null_deref:32 — eval-code direct methods with arguments declare | 44 | done | high |
+| **1149** | Fix null_deref:32 — eval-code direct methods with arguments declare | 44 | done | high |
+| **1150** | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | 44 | done | high |
 | **1150** | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | 44 | done | high |
 | **1151** | Async function synchronous throws bypass Promise.reject wrapping | Backlog | ready | high |
 | **1154** | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) | Backlog | open | high |
 | **1156** | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | 44 | done | medium |
+| **1156** | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | 44 | done | medium |
 | **1157** | RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions) | Backlog | open | high |
 | **1160** | Array.from codegen error — test262-worker prototype poisoning leak (730 tests) | 44 | done | high |
+| **1160** | Array.from codegen error — test262-worker prototype poisoning leak (730 tests) | 44 | done | high |
+| **1161** | Cannot destructure null/undefined in private class method params (~429 dstr tests) | 44 | done | high |
 | **1161** | Cannot destructure null/undefined in private class method params (~429 dstr tests) | 44 | done | high |
 | **1162** | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | 44 | done | high |
+| **1162** | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | 44 | done | high |
+| **1163** | Static eval inlining — compile eval(\"fixed string\") at compile time (~208 tests) | 44 | done | high |
 | **1163** | Static eval inlining — compile eval(\"fixed string\") at compile time (~208 tests) | 44 | done | high |
 | **1164** | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | 45 | done | medium |
 
