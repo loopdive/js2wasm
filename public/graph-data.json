@@ -16934,8 +16934,8 @@
       "id": "1169g",
       "title": "IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16946,8 +16946,8 @@
       "id": "1169h",
       "title": "IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
       "depends_on": [],
       "files": [],
@@ -16959,8 +16959,8 @@
       "title": "IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
+      "raw_status": "in-progress",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -17044,20 +17044,6 @@
       "priority": "high",
       "status": "done",
       "raw_status": "done",
-      "sprint": "45",
-      "depends_on": [
-        "1016"
-      ],
-      "files": [],
-      "goal": "test262-conformance",
-      "cluster": "test262-conformance"
-    },
-    {
-      "id": "1177",
-      "title": "TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
       "sprint": "45",
       "depends_on": [
         "1016"
@@ -17170,9 +17156,9 @@
       "id": "1182",
       "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
       "depends_on": [
         "1181"
       ],
@@ -17184,6 +17170,20 @@
       "id": "1182",
       "title": "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)",
       "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [
+        "1181"
+      ],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1183",
+      "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
+      "priority": "medium",
       "status": "done",
       "raw_status": "done",
       "sprint": "45",
@@ -17215,20 +17215,6 @@
       "status": "ready",
       "raw_status": "ready",
       "sprint": "46",
-      "depends_on": [
-        "1181"
-      ],
-      "files": [],
-      "goal": "compiler-architecture",
-      "cluster": "compiler-architecture"
-    },
-    {
-      "id": "1183",
-      "title": "IR Phase 4 Slice 6 part 4 — string fast path through the IR (`for (c of \\\"hello\\\")`)",
-      "priority": "medium",
-      "status": "done",
-      "raw_status": "done",
-      "sprint": "45",
       "depends_on": [
         "1181"
       ],
@@ -17831,38 +17817,6 @@
       "target": "1208"
     },
     {
-      "source": "1016",
-      "target": "1177"
-    },
-    {
-      "source": "1181",
-      "target": "1182"
-    },
-    {
-      "source": "1181",
-      "target": "1183"
-    },
-    {
-      "source": "1197",
-      "target": "1199"
-    },
-    {
-      "source": "1201",
-      "target": "1204"
-    },
-    {
-      "source": "1202",
-      "target": "1204"
-    },
-    {
-      "source": "1177",
-      "target": "1205"
-    },
-    {
-      "source": "1185",
-      "target": "1205"
-    },
-    {
       "source": "1113",
       "target": "1114"
     },
@@ -18443,8 +18397,36 @@
       "target": "1166"
     },
     {
+      "source": "1181",
+      "target": "1182"
+    },
+    {
+      "source": "1181",
+      "target": "1183"
+    },
+    {
+      "source": "1201",
+      "target": "1204"
+    },
+    {
+      "source": "1202",
+      "target": "1204"
+    },
+    {
+      "source": "1177",
+      "target": "1205"
+    },
+    {
+      "source": "1185",
+      "target": "1205"
+    },
+    {
       "source": "688",
       "target": "742"
+    },
+    {
+      "source": "1197",
+      "target": "1199"
     },
     {
       "source": "321",
