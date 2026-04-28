@@ -586,6 +586,24 @@ function makeFromAstResolver(ctx: CodegenContext): IrFromAstResolver {
       }
       return { kind: "externref" };
     },
+    // Slice 10 (#1169i): expose the legacy-collected extern-class
+    // metadata to the from-ast layer. The legacy `collectExternFromDeclareVar`
+    // and `collectInterfaceMembers` passes have already populated
+    // `ctx.externClasses` by the time the IR runs, so this is a thin
+    // pass-through. The from-ast layer slices `params[0]` off the
+    // method signature (the legacy stores the receiver `externref` as
+    // the first param so the host import takes a flat
+    // `(receiver, args...)` shape).
+    getExternClassInfo(className: string) {
+      const info = ctx.externClasses.get(className);
+      if (!info) return undefined;
+      return {
+        className: info.className,
+        constructorParams: info.constructorParams,
+        methods: info.methods,
+        properties: info.properties,
+      };
+    },
     // Same logic as `IrLowerResolver.resolveVec` in `makeResolver`.
     // Walks `ctx.mod.types` to recover the vec layout from a `(ref|
     // ref_null) $vec_*` ValType. See the corresponding doc on
@@ -812,14 +830,29 @@ interface BuiltFnRef {
  */
 function preregisterStringSupport(ctx: CodegenContext, fns: readonly BuiltFnRef[]): void {
   // Find all distinct string literals + whether any string op is used at all.
+  // Slice 10 (#1169i): the `extern.regex` instr lowers to two `string.const`
+  // ops (pattern + flags). We collect them here too so the host-strings
+  // backend pre-registers their `string_constants.<value>` globals before
+  // Phase 3 emission. `forof.*` body instrs also need walking — slice 6
+  // body buffers may contain string ops nested inside the for-of.
   const literals = new Set<string>();
   let usesStringOp = false;
+  const walk = (instr: IrInstr): void => {
+    if (instrUsesStrings(instr)) usesStringOp = true;
+    if (instr.kind === "string.const") literals.add(instr.value);
+    if (instr.kind === "extern.regex") {
+      // RegExp literal lowers via emitStringConst(pattern) + emitStringConst(flags).
+      usesStringOp = true;
+      literals.add(instr.pattern);
+      literals.add(instr.flags);
+    }
+    if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
+      for (const sub of instr.body) walk(sub);
+    }
+  };
   for (const entry of fns) {
     for (const block of entry.fn.blocks) {
-      for (const instr of block.instrs) {
-        if (instrUsesStrings(instr)) usesStringOp = true;
-        if (instr.kind === "string.const") literals.add(instr.value);
-      }
+      for (const instr of block.instrs) walk(instr);
     }
   }
   if (!usesStringOp) return;
@@ -1077,6 +1110,8 @@ function irTypeKey(t: IrType): string {
   // Slice 4 (#1169d): class is keyed by name — uniqueness across the
   // compilation unit makes this safe.
   if (t.kind === "class") return `class:${t.shape.className}`;
+  // Slice 10 (#1169i): extern is keyed solely on className.
+  if (t.kind === "extern") return `extern:${t.className}`;
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }

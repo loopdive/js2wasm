@@ -685,10 +685,66 @@ function isPhase1TypeNode(node: ts.TypeNode): boolean {
   );
 }
 
+/**
+ * Slice 10 (#1169i) — host-class names known to the IR. Mirrors the legacy
+ * `ctx.externClasses` registration set (see `registerBuiltinExternClasses`
+ * in `src/codegen/index.ts:5527-5715`). Functions that USE values of
+ * these classes (construction, method calls, property access, RegExp
+ * literals) become IR-claimable; the actual lowering throws cleanly if
+ * the resolver doesn't carry metadata for the class, falling the
+ * function back to legacy via `safeSelection`.
+ *
+ * Kept in sync with the legacy registration list — drift produces
+ * over-claims that fall back at lowering, which is acceptable but
+ * suboptimal.
+ */
+const KNOWN_EXTERN_CLASSES = new Set<string>([
+  "RegExp",
+  "Date",
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "URIError",
+  "EvalError",
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+  "ArrayBuffer",
+  "SharedArrayBuffer",
+  "DataView",
+  "Uint8Array",
+  "Int8Array",
+  "Uint8ClampedArray",
+  "Uint16Array",
+  "Int16Array",
+  "Uint32Array",
+  "Int32Array",
+  "Float32Array",
+  "Float64Array",
+  "BigInt64Array",
+  "BigUint64Array",
+  "Promise",
+]);
+
+function isKnownExternClass(name: string): boolean {
+  return KNOWN_EXTERN_CLASSES.has(name);
+}
+
 function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClasses: ReadonlySet<string>): boolean {
   if (ts.isParenthesizedExpression(expr)) return isPhase1Expr(expr.expression, scope, localClasses);
   if (ts.isNumericLiteral(expr)) return true;
   if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return true;
+  // Slice 10 (#1169i): RegExp literals lower to `extern.regex` (a
+  // `RegExp_new(pattern, flags)` host call). Pattern + flags are
+  // string-literal globals, already pre-registered by the legacy
+  // `collectStringLiterals` pass (see
+  // `src/codegen/index.ts:3274-3278`). Selector accepts the shape
+  // unconditionally; the lowerer enforces the resolver carries
+  // metadata for the "RegExp" extern class.
+  if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) return true;
   // Slice 1 (issue #1168): claim string literals and `null` so that
   // `typeof x === "string"` / `x === null` / `x == null` patterns can
   // compose out of Phase-1 primitives. Actual lowering for non-f64/bool
@@ -738,14 +794,19 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
     }
     return true;
   }
-  // Slice 4 (#1169d): NewExpression. Callee must be an Identifier
-  // naming a class declared in the same compilation unit; args are
-  // Phase-1 expressions. The lowerer validates the constructor's
-  // signature against the args. ParenthesizedExpression callees and
-  // generic type-args are rejected at the lowering layer.
+  // Slice 4 (#1169d) + Slice 10 (#1169i): NewExpression. Callee must be
+  // an Identifier naming either:
+  //   - a class declared in the same compilation unit (slice 4), or
+  //   - a host extern class known to the IR (slice 10 — RegExp,
+  //     Uint8Array, DataView, Map, …).
+  // Args are Phase-1 expressions. The lowerer validates the
+  // constructor's signature against the args (slice 4 against the
+  // class shape; slice 10 against `getExternClassInfo`'s
+  // constructorParams).
   if (ts.isNewExpression(expr)) {
     if (!ts.isIdentifier(expr.expression)) return false;
-    if (!localClasses.has(expr.expression.text)) return false;
+    const ctorName = expr.expression.text;
+    if (!localClasses.has(ctorName) && !isKnownExternClass(ctorName)) return false;
     if (expr.typeArguments && expr.typeArguments.length > 0) return false; // defer generics
     if (!expr.arguments) return true;
     for (const arg of expr.arguments) {
@@ -924,7 +985,15 @@ function buildLocalCallGraph(
       // stable signature. Walk into the args (which may contain real
       // calls), but don't mark the outer as having an external call.
       if (ts.isNewExpression(node)) {
-        if (ts.isIdentifier(node.expression) && localClasses.has(node.expression.text)) {
+        if (
+          ts.isIdentifier(node.expression) &&
+          (localClasses.has(node.expression.text) || isKnownExternClass(node.expression.text))
+        ) {
+          // Slice 4: local class — `<Class>_new` has a stable signature.
+          // Slice 10 (#1169i): known extern class — `<Class>_new` is
+          // registered as a host import by the legacy
+          // `collectUsedExternImports` pass with a stable signature too.
+          // Either case → not external; walk into args for nested calls.
           if (node.arguments) {
             for (const a of node.arguments) visit(a);
           }

@@ -225,7 +225,22 @@ function isSideEffecting(i: IrInstr): boolean {
     // Slice 6 part 4 (#1183): forof.string is statement-level (result:
     // null) so the generic null-result rule already keeps it; explicit
     // listing for clarity.
-    i.kind === "forof.string"
+    i.kind === "forof.string" ||
+    // Slice 10 (#1169i): extern class ops invoke host imports with
+    // arbitrary side effects. Conservatively keep all five live so DCE
+    // never strips a `RegExp_new` or `Uint8Array_set` whose result is
+    // unused but whose execution is observable.
+    i.kind === "extern.new" ||
+    i.kind === "extern.call" ||
+    i.kind === "extern.propSet" ||
+    // extern.prop is a getter call — most are pure but some (Date.now,
+    // Map.size after concurrent mutation) reflect external state. Keep
+    // conservatively until a purity analysis distinguishes them.
+    i.kind === "extern.prop" ||
+    // extern.regex calls RegExp_new which is morally pure (allocates
+    // a fresh value), but it may throw on bad pattern syntax — keep
+    // the side-effect of the throw observable to user code.
+    i.kind === "extern.regex"
   );
 }
 
@@ -362,6 +377,17 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
     // Slice 7b (#1169f): yield* delegation.
     case "gen.yieldStar":
       return [instr.inner];
+    // Slice 10 (#1169i): extern class ops.
+    case "extern.new":
+      return instr.args;
+    case "extern.call":
+      return [instr.receiver, ...instr.args];
+    case "extern.prop":
+      return [instr.receiver];
+    case "extern.propSet":
+      return [instr.receiver, instr.value];
+    case "extern.regex":
+      return [];
   }
 }
 

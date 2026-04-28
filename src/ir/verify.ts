@@ -266,6 +266,17 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
     // Slice 6 part 4 (#1183) — string for-of.
     case "forof.string":
       return [instr.str];
+    // Slice 10 (#1169i) — extern class ops.
+    case "extern.new":
+      return instr.args;
+    case "extern.call":
+      return [instr.receiver, ...instr.args];
+    case "extern.prop":
+      return [instr.receiver];
+    case "extern.propSet":
+      return [instr.receiver, instr.value];
+    case "extern.regex":
+      return [];
   }
 }
 
