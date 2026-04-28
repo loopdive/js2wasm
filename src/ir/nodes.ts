@@ -192,6 +192,15 @@ export type IrType =
   // AST→IR lowerer can statically resolve field types and method
   // signatures without resolver round-trips.
   | { readonly kind: "class"; readonly shape: IrClassShape }
+  // Slice 10 (#1169i) — opaque externref reference to a host-class value
+  // (RegExp, Uint8Array, DataView, Map, Date, …). The Wasm-level type is
+  // always `externref` — the IR carries the className for static method
+  // / property dispatch at lowering time. The AST→IR layer tags
+  // `extern.new`, `extern.regex`, and method-call results with this
+  // type so subsequent receiver lookups can dispatch by className
+  // without a TS-checker round trip. See `src/ir/from-ast.ts`'s
+  // `lowerExternMethodCall` and the `extern.*` IR instr kinds.
+  | { readonly kind: "extern"; readonly className: string }
   | { readonly kind: "union"; readonly members: readonly ValType[] }
   // Slice 3 (#1169c) repurposes `boxed` as the ref-cell type for mutable
   // captures. The inner ValType is the cell's stored type; the resolver
@@ -240,6 +249,12 @@ export function irTypeEquals(a: IrType, b: IrType): boolean {
   }
   if (a.kind === "class" && b.kind === "class") {
     return classShapeEquals(a.shape, b.shape);
+  }
+  // Slice 10 (#1169i) — extern is keyed solely on className. Two
+  // `IrType.extern` values represent the same class iff their names
+  // match.
+  if (a.kind === "extern" && b.kind === "extern") {
+    return a.className === b.className;
   }
   return false;
 }
@@ -1158,6 +1173,113 @@ export interface IrInstrGenYieldStar extends IrInstrBase {
 }
 
 // ---------------------------------------------------------------------------
+// Extern class ops (#1169i — IR Phase 4 Slice 10)
+// ---------------------------------------------------------------------------
+//
+// The legacy compiler registers a fixed set of "extern classes" in
+// `src/codegen/index.ts` (`ctx.externClasses`) that map host JS classes
+// like RegExp, Uint8Array, DataView, Map, etc. to a per-class import
+// surface — `<className>_new` for construction, `<className>_<method>`
+// for methods, `<className>_get_<prop>` / `<className>_set_<prop>` for
+// properties. The IR doesn't try to model the structure of these values:
+// at the Wasm level they're all opaque externref handles.
+//
+// Slice 10 surfaces five thin IR instrs that delegate to the legacy
+// import registration. Each carries a `className` string that the
+// resolver maps to the legacy-registered import names; the result of
+// `extern.new` / `extern.regex` / method calls is tagged as
+// `IrType.extern { className }` so subsequent receiver lookups can
+// dispatch the same way without a TS-checker round trip.
+
+/**
+ * Slice 10 (#1169i) — `new ExternClass(arg1, arg2, ...)` where
+ * `ExternClass` is a host-provided builtin (RegExp, Uint8Array, …). The
+ * Wasm-level result is opaque externref; downstream code accesses it
+ * via `extern.call` / `extern.prop`.
+ *
+ * Lowering:
+ *   <emit each arg>
+ *   call $<className>_new
+ *
+ * Result type: `{ kind: "extern", className }`.
+ */
+export interface IrInstrExternNew extends IrInstrBase {
+  readonly kind: "extern.new";
+  readonly className: string;
+  readonly args: readonly IrValueId[];
+}
+
+/**
+ * Slice 10 (#1169i) — method call on an extern-class value. `receiver`
+ * is the externref handle; `method` names a method registered on the
+ * class via `ctx.externClasses`.
+ *
+ * Lowering:
+ *   <emit receiver>
+ *   <emit each arg>
+ *   call $<className>_<method>
+ *
+ * Result type: matches the registered method's first result. Void
+ * methods carry `result: null` and `resultType: null`.
+ */
+export interface IrInstrExternCall extends IrInstrBase {
+  readonly kind: "extern.call";
+  readonly className: string;
+  readonly method: string;
+  readonly receiver: IrValueId;
+  readonly args: readonly IrValueId[];
+}
+
+/**
+ * Slice 10 (#1169i) — property read on an extern-class value.
+ *
+ * Lowering:
+ *   <emit receiver>
+ *   call $<className>_get_<property>
+ *
+ * Result type: the property's registered ValType, wrapped as `IrType.val`.
+ */
+export interface IrInstrExternProp extends IrInstrBase {
+  readonly kind: "extern.prop";
+  readonly className: string;
+  readonly property: string;
+  readonly receiver: IrValueId;
+}
+
+/**
+ * Slice 10 (#1169i) — property write on an extern-class value (for
+ * non-readonly props).
+ *
+ * Lowering:
+ *   <emit receiver>
+ *   <emit value>
+ *   call $<className>_set_<property>
+ */
+export interface IrInstrExternPropSet extends IrInstrBase {
+  readonly kind: "extern.propSet";
+  readonly className: string;
+  readonly property: string;
+  readonly receiver: IrValueId;
+  readonly value: IrValueId;
+}
+
+/**
+ * Slice 10 (#1169i) — RegExp literal `/pattern/flags`. Lowers to
+ * `RegExp_new(pattern, flags)`. The pattern + flags are registered as
+ * string-literal globals (the legacy `collectStringLiterals` pass
+ * already collects RegExp pattern/flags as string literals — see
+ * `src/codegen/index.ts:3274-3278` — so by the time the IR emits this
+ * instr the corresponding string globals exist).
+ *
+ * Result type: `{ kind: "extern", className: "RegExp" }`.
+ */
+export interface IrInstrRegExpLiteral extends IrInstrBase {
+  readonly kind: "extern.regex";
+  readonly pattern: string;
+  readonly flags: string;
+}
+
+// ---------------------------------------------------------------------------
 // String for-of (#1183 — IR Phase 4 Slice 6 part 4)
 // ---------------------------------------------------------------------------
 //
@@ -1356,8 +1478,15 @@ export type IrInstr =
   | IrInstrGenEpilogue
   | IrInstrGenYieldStar
   | IrInstrForOfString
+  // Slice 9 (#1169h) — exception handling.
   | IrInstrThrow
-  | IrInstrTry;
+  | IrInstrTry
+  // Slice 10 (#1169i) — extern class ops.
+  | IrInstrExternNew
+  | IrInstrExternCall
+  | IrInstrExternProp
+  | IrInstrExternPropSet
+  | IrInstrRegExpLiteral;
 
 // ---------------------------------------------------------------------------
 // Slot definitions (#1169e — IR Phase 4 Slice 6)

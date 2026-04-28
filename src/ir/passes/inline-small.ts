@@ -614,6 +614,43 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
         ...(newFinally ? { finallyBody: newFinally } : {}),
       };
     }
+    // Slice 10 (#1169i): extern class ops.
+    case "extern.new": {
+      let changed = false;
+      const newArgs: IrValueId[] = [];
+      for (const a of inst.args) {
+        const n = mapId(rename, a);
+        if (n !== a) changed = true;
+        newArgs.push(n);
+      }
+      if (!changed) return inst;
+      return { ...inst, args: newArgs };
+    }
+    case "extern.call": {
+      const recv = mapId(rename, inst.receiver);
+      let changed = recv !== inst.receiver;
+      const newArgs: IrValueId[] = [];
+      for (const a of inst.args) {
+        const n = mapId(rename, a);
+        if (n !== a) changed = true;
+        newArgs.push(n);
+      }
+      if (!changed) return inst;
+      return { ...inst, receiver: recv, args: newArgs };
+    }
+    case "extern.prop": {
+      const recv = mapId(rename, inst.receiver);
+      if (recv === inst.receiver) return inst;
+      return { ...inst, receiver: recv };
+    }
+    case "extern.propSet": {
+      const recv = mapId(rename, inst.receiver);
+      const v = mapId(rename, inst.value);
+      if (recv === inst.receiver && v === inst.value) return inst;
+      return { ...inst, receiver: recv, value: v };
+    }
+    case "extern.regex":
+      return inst;
   }
 }
 

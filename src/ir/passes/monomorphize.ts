@@ -430,6 +430,8 @@ function irTypeKey(t: IrType): string {
   // Slice 4 (#1169d): class is keyed by name — one declaration per
   // unit, so the name uniquely identifies the shape.
   if (t.kind === "class") return `cls:${t.shape.className}`;
+  // Slice 10 (#1169i): extern is keyed solely on className.
+  if (t.kind === "extern") return `ext:${t.className}`;
   if (t.kind === "union") {
     const parts = [...t.members].map(valTypeKey).sort();
     return `u:${parts.join("|")}`;
@@ -745,5 +747,16 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       if (instr.finallyBody) walk(instr.finallyBody);
       return result;
     }
+    // Slice 10 (#1169i): extern class ops.
+    case "extern.new":
+      return instr.args;
+    case "extern.call":
+      return [instr.receiver, ...instr.args];
+    case "extern.prop":
+      return [instr.receiver];
+    case "extern.propSet":
+      return [instr.receiver, instr.value];
+    case "extern.regex":
+      return [];
   }
 }

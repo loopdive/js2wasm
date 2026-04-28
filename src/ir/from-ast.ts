@@ -58,6 +58,24 @@ import {
 import type { ValType } from "./types.js";
 
 /**
+ * Slice 10 (#1169i) — the from-ast view of one extern-class entry. Mirrors
+ * `ExternClassInfo` from `src/codegen/context/types.ts` but limits the
+ * surface to what the from-ast layer needs to validate `new ExternClass(...)`,
+ * `recv.method(...)`, and property access on extern-class receivers.
+ *
+ * Methods carry the LEGACY-registered signature shape: `params[0]` is the
+ * receiver `externref` and `params[1..]` are the user args. The from-ast
+ * lowerer slices off the receiver when matching call args against
+ * `params.slice(1)`. Slicing here keeps the from-ast logic dispatch-free.
+ */
+export interface IrExternClassMeta {
+  readonly className: string;
+  readonly constructorParams: readonly ValType[];
+  readonly methods: ReadonlyMap<string, { readonly params: readonly ValType[]; readonly results: readonly ValType[] }>;
+  readonly properties: ReadonlyMap<string, { readonly type: ValType; readonly readonly: boolean }>;
+}
+
+/**
  * Slice 6 part 4 refactor (#1185): a narrowed view of `IrLowerResolver`
  * restricted to the methods the AST→IR build phase actually consults.
  * Threading this subset through `LowerCtx` retires per-feature shortcuts
@@ -71,6 +89,12 @@ import type { ValType } from "./types.js";
  *   - `resolveString()` — `IrType.string` ValType (extern vs native struct ref)
  *   - `resolveVec(valType)` — vec struct shape recovery
  *
+ * Slice 10 (#1169i) adds:
+ *   - `getExternClassInfo(name)` — extern-class metadata for slice-10
+ *     lowering of `new ExternClass(...)`, `recv.method(...)`, and
+ *     property access on extern-class receivers. Returns undefined if
+ *     `name` isn't a registered extern class.
+ *
  * The full `IrLowerResolver` (in `src/ir/lower.ts`) extends this and
  * adds Phase-3 methods like `resolveObject`, `resolveClass`,
  * `resolveClosure`. Those depend on registries that aren't populated
@@ -80,6 +104,11 @@ export interface IrFromAstResolver {
   nativeStrings?(): boolean;
   resolveString?(): ValType;
   resolveVec?(valType: ValType): IrVecLowering | null;
+  /**
+   * Slice 10 (#1169i) — return metadata for the named extern class, or
+   * `undefined` if no such class is registered.
+   */
+  getExternClassInfo?(className: string): IrExternClassMeta | undefined;
 }
 
 export interface AstToIrOptions {
@@ -907,6 +936,7 @@ function describeIrType(t: IrType): string {
     return `closure(${ps})->${describeIrType(t.signature.returnType)}`;
   }
   if (t.kind === "class") return `class<${t.shape.className}>`;
+  if (t.kind === "extern") return `extern<${t.className}>`;
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }
@@ -1027,10 +1057,48 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   // Slice 4 (#1169d): class instantiation. Lookup must succeed against
   // the class registry seeded from `ctx.classShapes`; if not, the
   // function falls back to legacy.
+  // Slice 10 (#1169i): extends to host extern classes — `new RegExp(...)`,
+  // `new Uint8Array(N)`, etc. Dispatch happens inside `lowerNewExpression`
+  // by checking the resolver's `getExternClassInfo` before the slice-4
+  // class-shape lookup.
   if (ts.isNewExpression(expr)) {
     return lowerNewExpression(expr, cx);
   }
+  // Slice 10 (#1169i): RegExp literal `/pattern/flags`. Lowers to
+  // `extern.regex` which materializes the pattern + flags strings and
+  // calls the `RegExp_new` host import.
+  if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+    return lowerRegExpLiteral(expr, cx);
+  }
   throw new Error(`ir/from-ast: unsupported expression kind ${ts.SyntaxKind[expr.kind]} in ${cx.funcName}`);
+}
+
+/**
+ * Slice 10 (#1169i) — lower a `/pattern/flags` RegExp literal. Reuses the
+ * legacy `parseRegExpLiteral` to extract pattern + flags from the literal
+ * text. The flags string is normalized to `""` when no flags are present
+ * (matches the legacy `compileRegExpLiteral` convention — see
+ * `src/codegen/typeof-delete.ts:166-168`); a `null` flags arg would
+ * otherwise produce `RegExp("...", null)` at runtime, which JS rejects
+ * as `TypeError: Invalid flags 'null'`.
+ */
+function lowerRegExpLiteral(expr: ts.Expression, cx: LowerCtx): IrValueId {
+  const { pattern, flags } = parseRegExpLiteralText(expr.getText());
+  return cx.builder.emitRegExpLiteral(pattern, flags);
+}
+
+/**
+ * Slice 10 (#1169i) — local copy of the legacy `parseRegExpLiteral` (in
+ * `src/codegen/index.ts:3218`). Duplicated here to avoid importing from
+ * `codegen/index.ts` from `ir/from-ast.ts`, which would add a second
+ * pass-through over the existing `codegen/index.ts ↔ ir/integration.ts`
+ * circular dependency. The two implementations are trivially identical;
+ * any drift would surface as a behavioural mismatch in the slice-10
+ * equivalence tests.
+ */
+function parseRegExpLiteralText(text: string): { pattern: string; flags: string } {
+  const lastSlash = text.lastIndexOf("/");
+  return { pattern: text.slice(1, lastSlash), flags: text.slice(lastSlash + 1) };
 }
 
 /**
@@ -1150,6 +1218,23 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
       throw new Error(`ir/from-ast: class ${recvType.shape.className} has no field "${propName}" in ${cx.funcName}`);
     }
     return cx.builder.emitClassGet(recv, propName, field.type);
+  }
+
+  if (recvType.kind === "extern") {
+    // Slice 10 (#1169i) — extern-class property read. Look up the
+    // property on the resolver's metadata for `recvType.className`.
+    // Result type is `irVal(prop.type)`; the lowerer emits a call to
+    // `<className>_get_<propName>`.
+    const className = recvType.className;
+    const info = cx.resolver?.getExternClassInfo?.(className);
+    if (!info) {
+      throw new Error(`ir/from-ast: extern class ${className} not registered in ${cx.funcName}`);
+    }
+    const prop = info.properties.get(propName);
+    if (!prop) {
+      throw new Error(`ir/from-ast: extern class ${className} has no property "${propName}" in ${cx.funcName}`);
+    }
+    return cx.builder.emitExternProp(className, propName, recv, irVal(prop.type));
   }
 
   throw new Error(
@@ -1502,6 +1587,55 @@ function lowerNewExpression(expr: ts.NewExpression, cx: LowerCtx): IrValueId {
     throw new Error(`ir/from-ast: only direct constructor names supported in slice 4 (${cx.funcName})`);
   }
   const className = expr.expression.text;
+
+  // Slice 10 (#1169i): host extern class (RegExp, Uint8Array, …) takes
+  // priority over the slice-4 class registry — the legacy externClasses
+  // map is the source of truth for built-in constructors. The result is
+  // tagged as `IrType.extern { className }` so subsequent
+  // `recv.method(...)` and `recv.prop` access can dispatch through the
+  // extern path.
+  const externInfo = cx.resolver?.getExternClassInfo?.(className);
+  if (externInfo) {
+    const argExprs = expr.arguments ?? [];
+    // Constructor arity is permissive: the legacy host imports often
+    // accept fewer args than `constructorParams` reports (the optional
+    // / overload arms collapse). We don't enforce a strict equality
+    // here — extra args are an error, but missing args silently pad
+    // with sentinel values matching the legacy convention. For step A
+    // (RegExp), `new RegExp(pattern)` and `new RegExp(pattern, flags)`
+    // are both valid; for slice-10 step C (TypedArrays), `new
+    // Uint8Array(N)` matches a single-param overload.
+    if (argExprs.length > externInfo.constructorParams.length) {
+      throw new Error(
+        `ir/from-ast: new ${className}(...) has ${argExprs.length} args, max ${externInfo.constructorParams.length} in ${cx.funcName}`,
+      );
+    }
+    const args: IrValueId[] = [];
+    for (let i = 0; i < argExprs.length; i++) {
+      const expectedTy = externInfo.constructorParams[i]!;
+      const hint = irVal(expectedTy);
+      const argVal = lowerExpr(argExprs[i]!, cx, hint);
+      args.push(coerceToExpectedExtern(argVal, expectedTy, cx, `arg ${i} of new ${className}`));
+    }
+    // Pad missing optional args with default sentinels so the host
+    // `<className>_new` import receives the right Wasm arity. Mirrors
+    // the legacy `compileNewExpression` extern path (see
+    // `src/codegen/expressions/new-super.ts:2200-2203`'s
+    // `pushDefaultValue` loop). For step A (RegExp): missing flags arg
+    // pads as `ref.null.extern`, which the host's `RegExp_new` stub
+    // converts to `undefined` flags via the JS host import shim — JS
+    // accepts `new RegExp(p, undefined)` as "no flags" while rejecting
+    // `new RegExp(p, null)` as TypeError "Invalid flags 'null'". The
+    // legacy uses `emitUndefinedValue` for the same reason; the IR
+    // path leans on the host import shim's null-vs-undefined treatment
+    // (the shim treats `ref.null.extern` as undefined).
+    for (let i = argExprs.length; i < externInfo.constructorParams.length; i++) {
+      const expectedTy = externInfo.constructorParams[i]!;
+      args.push(emitDefaultExternArg(cx, expectedTy));
+    }
+    return cx.builder.emitExternNew(className, args);
+  }
+
   const shape = cx.classShapes?.get(className);
   if (!shape) {
     throw new Error(`ir/from-ast: unknown class "${className}" in ${cx.funcName}`);
@@ -1528,6 +1662,72 @@ function lowerNewExpression(expr: ts.NewExpression, cx: LowerCtx): IrValueId {
 }
 
 /**
+ * Slice 10 (#1169i) — coerce an SSA value to the ValType expected by an
+ * extern-class import param. The legacy host imports take ValType-typed
+ * params (most often `externref` for ref-shaped args, `f64` for numeric
+ * args). The IR's static types may not match exactly:
+ *   - `IrType.string` in host-strings mode is already externref → no-op.
+ *   - `IrType.string` in native-strings mode is `(ref $AnyString)` → the
+ *     verifier would reject the type mismatch, so for slice-10 we reject
+ *     this case and fall back to legacy. (TODO follow-up: thread native-
+ *     strings string args through `extern.convert_any` before the call.)
+ *   - `IrType.extern { ... }` is externref → no-op when expected is
+ *     externref.
+ *   - `IrType.val { f64 }` matches `f64`.
+ *   - Mismatches throw and the function falls back to legacy.
+ *
+ * Returns the (possibly identical) SSA value to push.
+ */
+/**
+ * Slice 10 (#1169i) — emit a default sentinel SSA value for a missing
+ * optional arg in an extern-class constructor or method call. Mirrors
+ * `pushDefaultValue` in `src/codegen/type-coercion.ts:2093` for the
+ * subset of ValTypes the IR's extern path encounters:
+ *   - externref → `ref.null.extern` (host shim treats as `undefined`)
+ *   - f64 → `0`
+ *   - i32 → `0`
+ *   - i64 → `0n`
+ * Other ValTypes throw — slice 10 doesn't see them in the legacy
+ * extern-class signatures we deal with.
+ */
+function emitDefaultExternArg(cx: LowerCtx, expected: ValType): IrValueId {
+  switch (expected.kind) {
+    case "externref":
+      return cx.builder.emitConst({ kind: "null", ty: irVal(expected) }, irVal(expected));
+    case "f64":
+      return cx.builder.emitConst({ kind: "f64", value: 0 }, irVal(expected));
+    case "i32":
+      return cx.builder.emitConst({ kind: "i32", value: 0 }, irVal(expected));
+    case "i64":
+      return cx.builder.emitConst({ kind: "i64", value: 0n }, irVal(expected));
+    default:
+      throw new Error(`ir/from-ast: cannot pad default arg of type ${expected.kind} (${cx.funcName})`);
+  }
+}
+
+function coerceToExpectedExtern(value: IrValueId, expected: ValType, cx: LowerCtx, where: string): IrValueId {
+  const t = cx.builder.typeOf(value);
+  // Same-kind val match (e.g. f64 → f64).
+  const got = asVal(t);
+  if (got && got.kind === expected.kind) {
+    return value;
+  }
+  // String → externref: in host-strings mode, IrType.string is already
+  // externref; the verifier sees the SSA type as `string` but the Wasm
+  // valtype is externref so the host call accepts it transparently.
+  // We keep the SSA type as-is and rely on the lowerer's ValType
+  // resolution.
+  if (expected.kind === "externref" && t.kind === "string" && !cx.resolver?.nativeStrings?.()) {
+    return value;
+  }
+  // extern → externref: extern values are externref-shaped.
+  if (expected.kind === "externref" && t.kind === "extern") {
+    return value;
+  }
+  throw new Error(`ir/from-ast: ${where} expects ${expected.kind} but got ${describeIrType(t)} (${cx.funcName})`);
+}
+
+/**
  * Slice 4 (#1169d): lower `<recv>.<methodName>(args)` on a class
  * receiver. The receiver is lowered first (so we can inspect its
  * IrType); the method's signature is looked up against the receiver's
@@ -1546,6 +1746,47 @@ function lowerMethodCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
   const methodName = expr.expression.name.text;
   const recv = lowerExpr(expr.expression.expression, cx, irVal({ kind: "f64" }));
   const recvType = cx.builder.typeOf(recv);
+
+  // Slice 10 (#1169i) — extern-class method call. The legacy host imports
+  // store the signature as `[receiver_externref, ...userParams] ->
+  // results`, so we slice off `params[0]` when matching call args.
+  if (recvType.kind === "extern") {
+    const className = recvType.className;
+    const info = cx.resolver?.getExternClassInfo?.(className);
+    if (!info) {
+      throw new Error(`ir/from-ast: extern class ${className} not registered in ${cx.funcName}`);
+    }
+    const method = info.methods.get(methodName);
+    if (!method) {
+      throw new Error(`ir/from-ast: extern class ${className} has no method "${methodName}" in ${cx.funcName}`);
+    }
+    // params[0] is the receiver — userParams = params.slice(1).
+    const userParams = method.params.slice(1);
+    if (expr.arguments.length > userParams.length) {
+      throw new Error(
+        `ir/from-ast: method ${className}.${methodName} has ${expr.arguments.length} args, max ${userParams.length} in ${cx.funcName}`,
+      );
+    }
+    const args: IrValueId[] = [];
+    for (let i = 0; i < expr.arguments.length; i++) {
+      const expected = userParams[i]!;
+      const argVal = lowerExpr(expr.arguments[i]!, cx, irVal(expected));
+      args.push(coerceToExpectedExtern(argVal, expected, cx, `arg ${i} of ${className}.${methodName}`));
+    }
+    // Result type: first registered result, or null if void.
+    const resultType: IrType | null = method.results.length > 0 ? irVal(method.results[0]!) : null;
+    if (resultType === null) {
+      throw new Error(
+        `ir/from-ast: void method ${className}.${methodName} used in expression position (${cx.funcName})`,
+      );
+    }
+    const r = cx.builder.emitExternCall(className, methodName, recv, args, resultType);
+    if (r === null) {
+      throw new Error(`ir/from-ast: extern.call produced no result in ${cx.funcName}`);
+    }
+    return r;
+  }
+
   if (recvType.kind !== "class") {
     throw new Error(
       `ir/from-ast: method call .${methodName}(...) on ${describeIrType(recvType)} not in slice 4 (${cx.funcName})`,
@@ -2477,6 +2718,21 @@ function tryFoldNullCompare(expr: ts.BinaryExpression, op: ts.SyntaxKind, cx: Lo
   // unions whose members are non-null (V1 unions only carry f64/i32).
   // `boxed` is deferred; bail so the caller errors cleanly.
   if (otherType.kind === "boxed") return null;
+  // Slice 10 (#1169i): extern-class values are externref-shaped at
+  // the Wasm level and CAN be null at runtime — `RegExp.exec()` and
+  // similar host imports are documented to return `externref|null`.
+  // Bail so the caller falls back to legacy, which has a runtime
+  // `ref.is_null` check on the receiver. (TODO follow-up: emit
+  // `ref.is_null` directly from the IR.)
+  if (otherType.kind === "extern") return null;
+  // Slice 10 (#1169i): a `val { externref }` operand is similarly
+  // nullable. Functions that compare externref-typed values against
+  // null (e.g. through extern.call results assigned to a local) need
+  // a runtime null check, not a static fold.
+  const otherVal = asVal(otherType);
+  if (otherVal && (otherVal.kind === "externref" || otherVal.kind === "ref_null")) {
+    return null;
+  }
 
   return cx.builder.emitConst({ kind: "bool", value: isNeq }, irVal({ kind: "i32" }));
 }
