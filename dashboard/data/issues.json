@@ -18,7 +18,7 @@
       "depends_on": [],
       "goal": "platform",
       "status": "backlog",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1020",
@@ -30,7 +30,7 @@
       ],
       "goal": "spec-completeness",
       "status": "backlog",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "671",
@@ -40,7 +40,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "backlog",
-      "sprint": "Backlog"
+      "sprint": ""
     }
   ],
   "blocked": [
@@ -67,7 +67,7 @@
       ],
       "goal": "async-model",
       "status": "blocked",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "747",
@@ -77,7 +77,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "blocked",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "746",
@@ -87,7 +87,7 @@
       "depends_on": [],
       "goal": "compiler-architecture",
       "status": "blocked",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "742",
@@ -112,7 +112,7 @@
       ],
       "goal": "async-model",
       "status": "blocked",
-      "sprint": "Backlog"
+      "sprint": ""
     }
   ],
   "ready": [
@@ -370,7 +370,7 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1159",
@@ -400,7 +400,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "open",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1155",
@@ -410,7 +410,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "open",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1154",
@@ -422,7 +422,7 @@
       ],
       "goal": "spec-completeness",
       "status": "open",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1151",
@@ -432,7 +432,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1147",
@@ -474,7 +474,7 @@
       "depends_on": [],
       "goal": "conformance",
       "status": "open",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1129",
@@ -516,7 +516,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1116",
@@ -528,7 +528,7 @@
       ],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1105",
@@ -538,7 +538,7 @@
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1104",
@@ -548,7 +548,7 @@
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1103",
@@ -558,7 +558,7 @@
       "depends_on": [],
       "goal": "iterator-protocol",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1102",
@@ -568,7 +568,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1101",
@@ -578,7 +578,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1100",
@@ -588,7 +588,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1099",
@@ -640,7 +640,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1081",
@@ -652,7 +652,7 @@
       ],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1080",
@@ -689,7 +689,7 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1059",
@@ -701,7 +701,7 @@
       ],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1058",
@@ -725,7 +725,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1046",
@@ -735,7 +735,7 @@
       "depends_on": [],
       "goal": "compiler-architecture",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1045",
@@ -771,7 +771,7 @@
       ],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1039",
@@ -781,7 +781,7 @@
       "depends_on": [],
       "goal": "developer-experience",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1033",
@@ -794,7 +794,7 @@
       ],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1032",
@@ -806,7 +806,7 @@
       ],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1011",
@@ -816,7 +816,7 @@
       "depends_on": [],
       "goal": "observability",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1009",
@@ -826,7 +826,7 @@
       "depends_on": [],
       "goal": "contributor-readiness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1008",
@@ -868,7 +868,7 @@
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1000",
@@ -888,7 +888,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "926",
@@ -898,7 +898,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "908",
@@ -911,7 +911,7 @@
       ],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "905",
@@ -924,7 +924,7 @@
       ],
       "goal": "compiler-architecture",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "904",
@@ -937,7 +937,7 @@
       ],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "903",
@@ -947,7 +947,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "893",
@@ -957,7 +957,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "892",
@@ -967,7 +967,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "891",
@@ -977,7 +977,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "890",
@@ -987,7 +987,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "889",
@@ -997,7 +997,7 @@
       "depends_on": [],
       "goal": "contributor-readiness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "888",
@@ -1007,7 +1007,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "881",
@@ -1019,7 +1019,7 @@
       ],
       "goal": "observability",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "880",
@@ -1031,7 +1031,7 @@
       ],
       "goal": "observability",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "879",
@@ -1043,7 +1043,7 @@
       ],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "878",
@@ -1055,7 +1055,7 @@
       ],
       "goal": "developer-experience",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "874",
@@ -1065,7 +1065,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "872",
@@ -1075,7 +1075,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "870",
@@ -1087,7 +1087,7 @@
       ],
       "goal": "developer-experience",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "868",
@@ -1099,7 +1099,7 @@
       ],
       "goal": "developer-experience",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "867",
@@ -1111,7 +1111,7 @@
       ],
       "goal": "developer-experience",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "865",
@@ -1121,7 +1121,7 @@
       "depends_on": [],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "861",
@@ -1131,7 +1131,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "859",
@@ -1141,7 +1141,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "838",
@@ -1151,7 +1151,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "837",
@@ -1161,7 +1161,7 @@
       "depends_on": [],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "833",
@@ -1171,7 +1171,7 @@
       "depends_on": [],
       "goal": "contributor-readiness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "832",
@@ -1181,7 +1181,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "824",
@@ -1191,7 +1191,7 @@
       "depends_on": [],
       "goal": "iterator-protocol",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "821",
@@ -1201,7 +1201,7 @@
       "depends_on": [],
       "goal": "core-semantics",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "820",
@@ -1211,7 +1211,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "810",
@@ -1221,7 +1221,7 @@
       "depends_on": [],
       "goal": "maintainability",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "809",
@@ -1231,7 +1231,7 @@
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "808",
@@ -1241,7 +1241,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "807",
@@ -1251,7 +1251,7 @@
       "depends_on": [],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "806",
@@ -1261,7 +1261,7 @@
       "depends_on": [],
       "goal": "maintainability",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "805",
@@ -1271,7 +1271,7 @@
       "depends_on": [],
       "goal": "core-semantics",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "804",
@@ -1281,7 +1281,7 @@
       "depends_on": [],
       "goal": "maintainability",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "803",
@@ -1291,7 +1291,7 @@
       "depends_on": [],
       "goal": "maintainability",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "802",
@@ -1301,7 +1301,7 @@
       "depends_on": [],
       "goal": "property-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "779",
@@ -1311,7 +1311,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "773",
@@ -1333,7 +1333,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "744",
@@ -1356,7 +1356,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "741",
@@ -1366,7 +1366,7 @@
       "depends_on": [],
       "goal": "maintainability",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "739",
@@ -1376,7 +1376,7 @@
       "depends_on": [],
       "goal": "property-model",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "699",
@@ -1388,7 +1388,7 @@
       ],
       "goal": "test-infrastructure",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "687",
@@ -1398,7 +1398,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "685",
@@ -1408,7 +1408,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "684",
@@ -1418,7 +1418,7 @@
       "depends_on": [],
       "goal": "builtin-methods",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "682",
@@ -1428,7 +1428,7 @@
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "681",
@@ -1440,7 +1440,7 @@
       ],
       "goal": "iterator-protocol",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "680",
@@ -1450,7 +1450,7 @@
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "674",
@@ -1460,7 +1460,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "661",
@@ -1470,7 +1470,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "652",
@@ -1480,7 +1480,7 @@
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "644",
@@ -1490,7 +1490,7 @@
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "642",
@@ -1502,7 +1502,7 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "641",
@@ -1515,7 +1515,7 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "640",
@@ -1527,7 +1527,7 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "639",
@@ -1539,7 +1539,7 @@
       ],
       "goal": "platform",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "485",
@@ -1551,7 +1551,7 @@
       ],
       "goal": "symbol-protocol",
       "status": "ready",
-      "sprint": "Backlog"
+      "sprint": ""
     }
   ],
   "inprogress": [
@@ -1583,7 +1583,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1051",
@@ -1593,7 +1593,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1050",
@@ -1603,7 +1603,7 @@
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1049",
@@ -1613,7 +1613,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1022",
@@ -1623,7 +1623,7 @@
       "depends_on": [],
       "goal": "error-model",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1007",
@@ -1636,7 +1636,7 @@
       ],
       "goal": "test-infrastructure",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "869",
@@ -1646,7 +1646,7 @@
       "depends_on": [],
       "goal": "maintainability",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "786",
@@ -1656,7 +1656,7 @@
       "depends_on": [],
       "goal": "core-semantics",
       "status": "in-progress",
-      "sprint": "Backlog"
+      "sprint": ""
     }
   ],
   "review": [
@@ -1668,7 +1668,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "review",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "929",
@@ -1678,7 +1678,7 @@
       "depends_on": [],
       "goal": "test-infrastructure",
       "status": "review",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "871",
@@ -1690,7 +1690,7 @@
       ],
       "goal": "error-model",
       "status": "review",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "860",
@@ -1700,7 +1700,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "review",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "846",
@@ -1710,7 +1710,7 @@
       "depends_on": [],
       "goal": "core-semantics",
       "status": "review",
-      "sprint": "Backlog"
+      "sprint": ""
     }
   ],
   "done": [
@@ -2644,7 +2644,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "wont-fix",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "1082",
@@ -3729,7 +3729,7 @@
       "depends_on": [],
       "goal": "contributor-readiness",
       "status": "wont-fix",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "943",
@@ -5619,7 +5619,7 @@
       ],
       "goal": "test-infrastructure",
       "status": "wont-fix",
-      "sprint": "Backlog"
+      "sprint": ""
     },
     {
       "id": "698",

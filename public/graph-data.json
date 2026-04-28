@@ -6847,7 +6847,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "481"
       ],
@@ -8991,7 +8991,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "600"
       ],
@@ -9007,7 +9007,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "578"
       ],
@@ -9023,7 +9023,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "578",
         "599"
@@ -9040,7 +9040,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "599"
       ],
@@ -9070,7 +9070,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "conformance panel integrated into playground IDE",
@@ -9197,7 +9197,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "static lifetime analysis pass",
@@ -9347,7 +9347,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "Temporal namespace with PlainDate/PlainTime/Duration classes"
@@ -9499,7 +9499,7 @@
       "priority": "low",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "compile with() via dynamic scope chain lookup"
@@ -9541,7 +9541,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "shared memory declaration, atomic instructions"
@@ -9640,7 +9640,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "compile generators as Wasm state machines instead of host-backed buffers",
@@ -9655,7 +9655,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "680"
       ],
@@ -9672,7 +9672,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "standalone-mode RegExp lowering to a native engine or embedded regexp backend"
@@ -9700,7 +9700,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "infer concrete types for any-typed variables from usage patterns"
@@ -9714,7 +9714,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "interprocedural return type analysis",
@@ -9743,7 +9743,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "add run selector dropdown, live streaming, progress indicator"
@@ -9931,7 +9931,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "694"
       ],
@@ -9948,7 +9948,7 @@
       "priority": "high",
       "status": "done",
       "raw_status": "wont-fix",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "699"
       ],
@@ -10482,7 +10482,7 @@
       "priority": "medium",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "680",
         "681"
@@ -10551,7 +10551,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "Object.defineProperty implementation with full descriptor support"
@@ -10584,7 +10584,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "extract ensureNativeStringHelpers (2,559 lines) into string-helpers.ts",
@@ -10618,7 +10618,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "extend mapTsTypeToWasm with whole-program type context",
@@ -10656,7 +10656,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "defineTaggedUnionType(): create WasmGC struct for tagged unions",
@@ -10673,7 +10673,7 @@
       "priority": "medium",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "743"
       ],
@@ -10693,7 +10693,7 @@
       "priority": "medium",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "743",
         "746"
@@ -10741,7 +10741,7 @@
       "priority": "medium",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "680"
       ],
@@ -10989,7 +10989,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -11080,7 +11080,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -11380,7 +11380,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "property-model",
@@ -11392,7 +11392,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "maintainability",
@@ -11404,7 +11404,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "maintainability",
@@ -11416,7 +11416,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -11428,7 +11428,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "maintainability",
@@ -11440,7 +11440,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -11452,7 +11452,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -11464,7 +11464,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "standalone-mode",
@@ -11476,7 +11476,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "maintainability",
@@ -11600,7 +11600,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -11613,7 +11613,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -11653,7 +11653,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "iterator-protocol",
@@ -11758,7 +11758,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -11771,7 +11771,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "contributor-readiness",
@@ -11825,7 +11825,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -11837,7 +11837,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -11949,7 +11949,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "review",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -12121,7 +12121,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -12134,7 +12134,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "review",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -12147,7 +12147,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "performance",
@@ -12198,7 +12198,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -12223,7 +12223,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "861"
       ],
@@ -12238,7 +12238,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "867"
       ],
@@ -12252,7 +12252,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "maintainability",
@@ -12264,7 +12264,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "861"
       ],
@@ -12278,7 +12278,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "review",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "861"
       ],
@@ -12292,7 +12292,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "performance",
@@ -12316,7 +12316,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -12364,7 +12364,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "876"
       ],
@@ -12378,7 +12378,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "876"
       ],
@@ -12392,7 +12392,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "876"
       ],
@@ -12406,7 +12406,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "876"
       ],
@@ -12496,7 +12496,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "performance",
@@ -12508,7 +12508,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "contributor-readiness",
@@ -12520,7 +12520,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "Update JSONL path detection for worktree-based test runs",
@@ -12536,7 +12536,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "Refactor to use CompilerPool fork workers instead of in-process compilation",
@@ -12552,7 +12552,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "Lazy-load binaryen like fs/path/module/url for browser/Vite compatibility",
@@ -12567,7 +12567,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "Add ES version filtering based on test262 metadata (es5id, es6id, esid, features)",
@@ -12722,7 +12722,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [
         "Extend compile/import metadata with host contract annotations",
@@ -12739,7 +12739,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "33",
         "743"
@@ -12758,7 +12758,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "743",
         "746"
@@ -12831,7 +12831,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "906",
         "907"
@@ -13114,7 +13114,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "test-infrastructure",
@@ -13154,7 +13154,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "review",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "test-infrastructure",
@@ -13358,7 +13358,7 @@
       "priority": "low",
       "status": "done",
       "raw_status": "wont-fix",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "contributor-readiness",
@@ -13840,7 +13840,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -14170,7 +14170,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "standalone-mode",
@@ -14256,7 +14256,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "882",
         "884"
@@ -14283,7 +14283,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "contributor-readiness",
@@ -14295,7 +14295,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "observability",
@@ -14372,7 +14372,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "review",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -14396,7 +14396,7 @@
       "priority": "medium",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "990"
       ],
@@ -14422,7 +14422,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "error-model",
@@ -14517,7 +14517,7 @@
       "priority": "low",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -14553,7 +14553,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "1044"
       ],
@@ -14567,7 +14567,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "1043",
         "1045"
@@ -14645,7 +14645,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "developer-experience",
@@ -14681,7 +14681,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "680"
       ],
@@ -14735,7 +14735,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -14771,7 +14771,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "test-infrastructure",
@@ -14784,7 +14784,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -14797,7 +14797,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "test-infrastructure",
@@ -14809,7 +14809,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "test-infrastructure",
@@ -14897,7 +14897,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "1058"
       ],
@@ -14959,7 +14959,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -14983,7 +14983,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "1164",
         "1058"
@@ -15220,7 +15220,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "1076"
       ],
@@ -15246,7 +15246,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15258,7 +15258,7 @@
       "priority": "low",
       "status": "done",
       "raw_status": "wont-fix",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15321,7 +15321,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -15467,7 +15467,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -15479,7 +15479,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -15491,7 +15491,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -15503,7 +15503,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "iterator-protocol",
@@ -15515,7 +15515,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "standalone-mode",
@@ -15527,7 +15527,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "standalone-mode",
@@ -15688,7 +15688,7 @@
       "priority": "critical",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "944"
       ],
@@ -15717,7 +15717,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -15730,7 +15730,7 @@
       "priority": "medium",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "conformance",
@@ -15916,7 +15916,7 @@
       "priority": "medium",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "conformance",
@@ -16001,7 +16001,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -16025,7 +16025,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -16207,7 +16207,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16245,7 +16245,7 @@
       "priority": "high",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "1119"
       ],
@@ -16259,7 +16259,7 @@
       "priority": "medium",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "test-infrastructure",
@@ -16285,7 +16285,7 @@
       "priority": "high",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -16383,7 +16383,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [
         "1058",
         "1164"
@@ -17124,10 +17124,10 @@
       "priority": "medium",
       "status": "backlog",
       "raw_status": "backlog",
-      "sprint": "Backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
-      "cluster": "sprint-Backlog",
+      "cluster": "Unclustered",
       "compiler_errors": 2803
     }
   ],

@@ -49,7 +49,7 @@ and hide real ones.
 | **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 45 | ready | medium |
 | **1026** | String.prototype / Number.prototype / Boolean.prototype globals access | 40 | done | medium |
 | **1063** | createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee) | 41 | done | high |
-| **1064** | DataView bridge: subview metadata so bounds errors propagate | Backlog | in-progress | medium |
+| **1064** | DataView bridge: subview metadata so bounds errors propagate |  | in-progress | medium |
 | **1065** | Register `Array` as declared global so `x.constructor === Array` compares real refs | Backlog | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 45 | ready | medium |
@@ -59,10 +59,10 @@ and hide real ones.
 | **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 45 | done | medium |
 | **1079** | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | 45 | done | medium |
 | **1080** | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | 46 | ready | critical |
-| **1081** | Index test262 runs by commit hash — enable merge-base comparisons without re-running | Backlog | ready | critical |
+| **1081** | Index test262 runs by commit hash — enable merge-base comparisons without re-running |  | ready | critical |
 | **1082** | ci-status-feed delta is absolute snapshot not per-test regression — lies to dev-self-merge gate | 40 | done | critical |
-| **1083** | codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations | Backlog | ready | low |
-| **1083** | codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations | Backlog | wont-fix | low |
+| **1083** | codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations |  | ready | low |
+| **1083** | codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations |  | wont-fix | low |
 | **1084** | compileCount bypass in compiler-fork-worker.mjs — RECREATE never fires when errors dominate a chunk | 40 | done | critical |
 | **1106** | CI baseline-refresh bot wipes plan/ and .claude/memory/ on every run | 42 | done | high |
 | **1117** | Expected TypeError but got wrong error type (136 tests) | 42 | done | medium |

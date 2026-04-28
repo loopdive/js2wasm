@@ -94,42 +94,42 @@ shipping trustworthy compiler work.
 | **643** | Test262 runner should not overwrite report until run completes | 0 | done | medium |
 | **645** | Add testTypedArray.js to allowed includes (1,731 skip) | 0 | done | high |
 | **660** | Capture first failing assert in test output for returned-0 tests | 0 | done | high |
-| **687** | Live-streaming report with run selector and progress indicator | Backlog | ready | high |
+| **687** | Live-streaming report with run selector and progress indicator |  | ready | high |
 | **689** | Dynamic worker pool: memory-aware scaling with dead worker recovery | 0 | done | high |
 | **694** | Migrate test262 runner to vitest with per-test disk cache | 0 | done | low |
-| **699** | Shared compiler pool for vitest test262 runner | Backlog | ready | high |
-| **700** | Superseded: reuse TypeScript host state across test262 compilations | Backlog | wont-fix | high |
+| **699** | Shared compiler pool for vitest test262 runner |  | ready | high |
+| **700** | Superseded: reuse TypeScript host state across test262 compilations |  | wont-fix | high |
 | **715** | - Fix 3,622 test262 crashes: emitNullGuardedStructGet missing ctx parameter | 0 | done | critical |
 | **717** | Regression: import.source/defer stub breaks 117 negative parse tests | 0 | done | high |
 | **725** | Local HTTP server for wasm source map stack traces | 16 | done | medium |
 | **816** | - Remove overly broad String/prototype skip filter (1,073 tests re-enabled) | 24 | done | high |
 | **882** | Test262 runner: sharded parallel execution with merged reports | 40 | done | high |
-| **890** | Update statusline for unified fork test262 runner | Backlog | ready | low |
-| **891** | Apply test262 infrastructure learnings to equivalence tests | Backlog | ready | high |
-| **893** | ES version filtering and Baseline compatibility mode for test262 | Backlog | ready | medium |
+| **890** | Update statusline for unified fork test262 runner |  | ready | low |
+| **891** | Apply test262 infrastructure learnings to equivalence tests |  | ready | high |
+| **893** | ES version filtering and Baseline compatibility mode for test262 |  | ready | medium |
 | **894** | test262 runner fails on macOS due to Linux assumptions and missing direct esbuild dependency | 31 | done | high |
 | **895** | CompilerPool fails to dispatch queued jobs when first worker becomes ready | 31 | done | critical |
 | **922** | Add a reproducible test262 baseline-diff workflow so regressions are compared against current clean HEAD | 36 | done | medium |
 | **923** | Compiler leaks state between compile() calls in the same process | 37 | done | critical |
-| **926** | Fixture tests not supported in unified mode (172 CE) | Backlog | ready | low |
-| **929** | Object.defineProperty called on non-object (88 FAIL) | Backlog | review | medium |
+| **926** | Fixture tests not supported in unified mode (172 CE) |  | ready | low |
+| **929** | Object.defineProperty called on non-object (88 FAIL) |  | review | medium |
 | **943** | Test262 runner instability — 1,400+ pass variance between identical runs | 37 | done | critical |
 | **946** | Show JS strict mode compatibility by default on landing, report, and dashboard pages | 37 | done | medium |
 | **970** | Include sloppy (noStrict) tests in test262 runner for report filtering | 38 | done | medium |
 | **981** | Reuse t262-donut chart on report page, refactor as standalone component | 40 | done | medium |
-| **1007** | Re-run historical test262 checkpoints with the current harness for comparable conformance history | Backlog | in-progress | medium |
+| **1007** | Re-run historical test262 checkpoints with the current harness for comparable conformance history |  | in-progress | medium |
 | **1015** | Support fixture/includes tests in unified compilation mode (172 CE) | 40 | done | medium |
 | **1048** | async-generator destructuring: illegal cast inside __closure_N | Backlog | done | low |
-| **1049** | Destructuring default init fn-name-cover: wrong .name on covered function | Backlog | in-progress | medium |
-| **1051** | Private static class methods: wrong return value via private-name dispatch | Backlog | in-progress | low |
-| **1052** | Array destructuring ignores user-overridden Array.prototype[Symbol.iterator] | Backlog | ready | low |
+| **1049** | Destructuring default init fn-name-cover: wrong .name on covered function |  | in-progress | medium |
+| **1051** | Private static class methods: wrong return value via private-name dispatch |  | in-progress | low |
+| **1052** | Array destructuring ignores user-overridden Array.prototype[Symbol.iterator] |  | ready | low |
 | **1053** | arguments.length wrong in class methods with trailing-comma call sites | 41 | done | medium |
 | **1055** | RegExp pattern modifiers: SyntaxError not thrown for invalid modifier syntax | Backlog | done | low |
 | **1056** | DataView setUintN / setIntN / setFloatN instance methods missing | 41 | done | low |
 | **1057** | String.prototype.split result constructor !== Array | 42 | done | low |
 | **1085** | codegen: bodyUsesArguments recursive walker blows stack under tight CI stack budget when called from recursive nested-declarations compile path | 41 | done | critical |
 | **1091** | Early error detection gap — 94 tests compile when they should throw SyntaxError | 41 | done | high |
-| **1155** | test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported) | Backlog | open | medium |
+| **1155** | test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported) |  | open | medium |
 | **1201** | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | 46 | ready | high |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->

@@ -45,12 +45,12 @@ builtin-methods and iterator-protocol.
 | **678** | Dynamic prototype chain traversal | 15 | done | high |
 | **722** | Class private methods: hasOwnProperty check fails (484 FAIL) | 26 | done | high |
 | **732** | - hasOwnProperty correctness (520 tests) | 0 | done | medium |
-| **739** | - Object.defineProperty correctness (262 tests) | Backlog | ready | medium |
+| **739** | - Object.defineProperty correctness (262 tests) |  | ready | medium |
 | **770** | - propertyHelper.js verifyProperty not implemented (~1,219 tests) | 22 | done | critical |
 | **797a** | #797a -- Per-shape property flags table (compile-time) | 0 | done | critical |
 | **799a** | #799a -- __proto__ field on structs | 0 | done | high |
 | **799b** | #799b -- Prototype chain walk for property access | 0 | done | critical |
-| **802** | - Dynamic prototype support (Object.setPrototypeOf, Object.create with dynamic proto) | Backlog | ready | low |
+| **802** | - Dynamic prototype support (Object.setPrototypeOf, Object.create with dynamic proto) |  | ready | low |
 | **840** | Array.prototype.concat/push/splice require 0-arg support (31 CE) | 32 | done | medium |
 | **853** | WebAssembly objects are opaque: for-in/Object.create property enumeration (58 tests) | 35 | done | medium |
 | **969** | Static method null access (bind/call) + DataView/TypedArray methods + String.split (22 tests) | 38 | done | medium |
