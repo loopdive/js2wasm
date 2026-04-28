@@ -107,7 +107,8 @@ moved here. No issues were rescoped, rejected, or deleted — only relocated.
 | #1173, #1174, #1175, #1178, #1179 | done | earlier sprints |
 | #1120, #1121, #1125, #1128, #1164 | done | earlier |
 
-9 unstarted issues deferred to S46: #1080, #1126, #1169, #1169g/h/i, #1180, #1187, #1188.
+8 unstarted issues deferred to S46: #1080, #1126, #1169, #1169g/h/i, #1187, #1188.
+(#1180 was completed in-sprint via PR #66 — was incorrectly listed as deferred.)
 6 new perf issues (#1195–#1200) staged for S47 by dev-1125-bench.
 
 <!-- GENERATED_ISSUE_TABLES_START -->
