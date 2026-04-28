@@ -30,7 +30,7 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
 3. If no tasks: message tech lead `"TaskList is empty, need next task."`
 
 ### Implement
-1. Read `plan/issues/ready/{N}.md` + smoke-test 1-2 failing cases to confirm the bug reproduces
+1. Read `plan/issues/sprints/{sprint}/{N}.md` + smoke-test 1-2 failing cases to confirm the bug reproduces
 2. Update issue frontmatter: `status: in-progress`
 3. Check `plan/method/file-locks.md` — if another dev owns your target file/function, message them directly
 4. Create worktree: `git worktree add /workspace/.claude/worktrees/issue-{N}-{slug} -b issue-{N}-{slug} origin/main`

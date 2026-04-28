@@ -45,7 +45,7 @@ read the results and decide.
 5. `ls .claude/worktrees/` — inherited worktrees (may contain WIP)
 6. Read `plan/method/file-locks.md` if it exists — active dev claims
 7. Read `.claude/memory/MEMORY.md` top section — critical rules + feedback index
-8. **`TaskList` — if empty, create tasks from `plan/issues/ready/` for the current sprint before touching any dev.**
+8. **`TaskList` — if empty, create tasks from `plan/issues/sprints/{N}/` (current sprint dir, filter by `status: ready`) before touching any dev.**
 
 **Output**: before touching any dev, write a 3–5 sentence situation summary to
 yourself (not to the user) covering baseline, open PRs, active dev claims,
@@ -64,7 +64,7 @@ Start doing Phase 1 work.
 
 **Checklist**:
 
-1. **Populate TaskList first.** For each issue in `plan/issues/ready/` assigned to the current sprint that doesn't have a task yet: `TaskCreate`. If feasibility is `hard` and no impl spec exists, run `/architect-spec` first.
+1. **Populate TaskList first.** For each issue in `plan/issues/sprints/{N}/` with `status: ready` that doesn't have a task yet: `TaskCreate`. If feasibility is `hard` and no impl spec exists, run `/architect-spec` first.
 2. Count active devs vs unclaimed tasks. Target: up to 8 devs, each on a distinct issue, no two devs in the same function.
 3. Idle notifications are normal — devs are between tasks and will self-claim. Do not ping unless they've been silent for >20 min with no commits (see Phase 3).
 4. **Conflict resolution** — if two devs claim the same file/function: first specific-scope claim wins; message the later dev directly with a different task.

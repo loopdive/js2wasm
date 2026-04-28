@@ -36,11 +36,9 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Test262 runner history: `runs/index.json` is appended by the vitest runner after each run. `benchmarks/results/report.html` reads this for the trend graph.
 - Backlog: `plan/issues/backlog/backlog.md`
 - Sprints: `plan/issues/sprints/{N}/sprint.md` — planning, task queue, results, retrospective (living doc updated during sprint)
-- Issues: `plan/issues/` — organized by state:
-  - `ready/` — no blockers, pick any to start (priority in `dependency-graph.md`)
-  - `blocked/` — waiting on a dependency
-  - `done/` — completed (with frontmatter + implementation summary)
-  - `backlog/` — large scope / future
+- Issues: `plan/issues/` — organized by sprint:
+  - `sprints/{N}/` — all issues for sprint N (status tracked via `status:` frontmatter field)
+  - `backlog/` — unscheduled issues (no sprint assigned yet)
   - `wont-fix/` — decided against implementing
 - Dependency graph: `plan/log/dependency-graph.md`
 - Goals (DAG): `plan/goals/goal-graph.md` — high-level goals with dependencies; issues belong to goals
@@ -183,9 +181,9 @@ End of sprint:
 10. **PO** grooms backlog for next sprint
 
 **Tech lead discipline:**
-- **Populate TaskList** at sprint start from `plan/issues/ready/` and immediately whenever new issues are added mid-sprint. Empty queue = agents spin idle.
+- **Populate TaskList** at sprint start from `plan/issues/sprints/{N}/` (current sprint dir) and immediately whenever new issues are added mid-sprint. Empty queue = agents spin idle.
 - Batch doc/plan commits on main AFTER all pending agent merges, not between them (doc commits force agents to re-merge main)
-- Complete post-merge issue cleanup (move to done/, update dep graph) after each merge
+- Complete post-merge issue cleanup (set `status: done` in sprint dir issue file, update dep graph) after each merge
 - **Tag sprints**: `git tag sprint-N/begin` when starting a sprint, `git tag sprint/N` when it finishes. Sprint stats (duration, commits, issues) are auto-generated from tags during `build:pages`.
 
 ### Sprint planning (PO + Architect + Tech Lead)
@@ -233,10 +231,9 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 10. **Never rebase.** Merge preserves history and is safely reversible.
 
 ### Issue completion (post-merge)
-1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
+1. Set `status: done` in the issue file at `plan/issues/sprints/{N}/{ID}.md`
 2. Update `plan/log/dependency-graph.md` — remove/strikethrough completed issue
-3. Update `plan/issues/backlog/backlog.md` — sprint priority
-4. Check for unblocked issues in `plan/issues/blocked/`
+3. Update `plan/issues/backlog/backlog.md` if the issue was listed there
 
 ### Sprint History
 - **Sprint 1**: 550 → 1,509 pass (+174%), 167 fail, 5,700 CE. Issues #138-#173.

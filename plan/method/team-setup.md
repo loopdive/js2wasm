@@ -91,7 +91,7 @@ Only to claim a shared file/function that would conflict:
 
 ## TaskList Protocol
 
-- **Tech lead populates TaskList** at sprint start from `plan/issues/ready/` and whenever new issues are created mid-sprint
+- **Tech lead populates TaskList** at sprint start from `plan/issues/sprints/{N}/` (filter `status: ready`) and whenever new issues are created mid-sprint
 - **Devs claim tasks** via `TaskUpdate(owner: "name")` — lowest ID first
 - **Devs mark completed** via `TaskUpdate(status: completed)` immediately after merge
 - **If TaskList is empty**: dev messages tech lead — this is the one case where contacting tech lead for "no work" is appropriate

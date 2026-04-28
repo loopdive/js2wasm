@@ -100,7 +100,7 @@ end
 - Array methods: `src/codegen/array-methods.ts`
 - Object ops: `src/codegen/object-ops.ts`
 - Runtime: `src/runtime.ts`
-- Issues: `plan/issues/ready/`, `plan/issues/blocked/`
+- Issues: `plan/issues/sprints/{N}/` (current sprint), `plan/issues/backlog/` (unscheduled)
 
 ## Key patterns to know
 
