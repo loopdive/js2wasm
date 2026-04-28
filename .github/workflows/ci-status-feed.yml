@@ -98,6 +98,8 @@ jobs:
           snapshot_delta=null
           net_per_test=null
           regressions=null
+          regressions_real=null
+          compile_timeouts=null
           improvements=null
           if [ -f /tmp/merged-report/test262-report-merged.json ]; then
             pass=$(jq '.summary.pass' /tmp/merged-report/test262-report-merged.json)
@@ -118,6 +120,15 @@ jobs:
           if [ -f /tmp/merged-report/test262-regressions.txt ]; then
             regressions=$(grep -oE 'Regressions \(pass → other\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
             improvements=$(grep -oE 'Improvements \(other → pass\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            # #1192: split regressions by destination — compile_timeout
+            # transitions are runner-load timing noise (tests right at the
+            # 30s compile-timeout boundary flap based on system load); the
+            # merge gate should exclude them. `regressions_real` =
+            # CE + fail; `compile_timeouts` is tracked separately for
+            # diagnostics. `regressions` (the headline figure) stays
+            # unchanged for backwards-compat with the dashboard.
+            compile_timeouts=$(grep -oE 'Compile timeouts \(pass → compile_timeout\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            regressions_real=$(grep -oE 'Regressions excluding compile_timeout: [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
           fi
 
           # net_per_test: improvements − regressions (per-test, from diff-test262.ts).
@@ -142,6 +153,8 @@ jobs:
             --argjson snapshot_delta "${snapshot_delta:-null}" \
             --argjson net_per_test "${net_per_test:-null}" \
             --argjson regressions "${regressions:-null}" \
+            --argjson regressions_real "${regressions_real:-null}" \
+            --argjson compile_timeouts "${compile_timeouts:-null}" \
             --argjson improvements "${improvements:-null}" \
             '{
               pr: ($pr|tonumber),
@@ -156,6 +169,8 @@ jobs:
               snapshot_delta: $snapshot_delta,
               net_per_test: $net_per_test,
               regressions: $regressions,
+              regressions_real: $regressions_real,
+              compile_timeouts: $compile_timeouts,
               improvements: $improvements
             }' > "$out"
           cat "$out"
