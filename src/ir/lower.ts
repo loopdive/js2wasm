@@ -289,6 +289,16 @@ export interface IrLowerResolver {
    * `f64.convert_i32_s` after this.
    */
   emitStringLen?(): readonly Instr[];
+  /**
+   * Slice 9 (#1169h): resolve (and lazily register) the shared `__exn`
+   * exception tag. The tag carries an `externref` payload — every
+   * thrown value is coerced to externref upstream. Returning the
+   * `tagIdx` lets the lowerer emit `throw $exnTagIdx` and `try ...
+   * catch $exnTagIdx`. IR-compiled throws are catchable by
+   * legacy-compiled handlers (and vice versa) because both paths go
+   * through the same single tag.
+   */
+  ensureExnTag?(): number;
 }
 
 export interface IrLowerResult {
@@ -328,6 +338,17 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
     }
     if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
       for (const sub of instr.body) registerInstrDefs(sub, blockId);
+    }
+    // Slice 9 (#1169h): walk into try / catch / finally buffers so SSA
+    // defs inside any of them register in the def maps.
+    if (instr.kind === "try") {
+      for (const sub of instr.body) registerInstrDefs(sub, blockId);
+      if (instr.catchClause) {
+        for (const sub of instr.catchClause.body) registerInstrDefs(sub, blockId);
+      }
+      if (instr.finallyBody) {
+        for (const sub of instr.finallyBody) registerInstrDefs(sub, blockId);
+      }
     }
   };
   for (const block of func.blocks) {
@@ -386,6 +407,21 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
         for (const u of collectForOfBodyUses(instr.body)) recordUse(u, -1);
       }
+      // Slice 9 (#1169h): try / catch / finally bodies. Uses inside
+      // these buffers are recorded against the surrounding block, but
+      // we mark them with the synthetic -1 block id (same convention
+      // forof bodies use) so cross-boundary outer-defined values get
+      // their cross-block flag and are pre-materialised in Wasm
+      // locals before the try op runs.
+      if (instr.kind === "try") {
+        for (const u of collectForOfBodyUses(instr.body)) recordUse(u, -1);
+        if (instr.catchClause) {
+          for (const u of collectForOfBodyUses(instr.catchClause.body)) recordUse(u, -1);
+        }
+        if (instr.finallyBody) {
+          for (const u of collectForOfBodyUses(instr.finallyBody)) recordUse(u, -1);
+        }
+      }
     }
     for (const u of collectTerminatorUses(block)) recordUse(u, blockId);
   }
@@ -429,6 +465,16 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
     }
     if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
       for (const sub of instr.body) allocLocalForInstr(sub);
+    }
+    // Slice 9 (#1169h): walk into try / catch / finally buffers.
+    if (instr.kind === "try") {
+      for (const sub of instr.body) allocLocalForInstr(sub);
+      if (instr.catchClause) {
+        for (const sub of instr.catchClause.body) allocLocalForInstr(sub);
+      }
+      if (instr.finallyBody) {
+        for (const sub of instr.finallyBody) allocLocalForInstr(sub);
+      }
     }
   };
   for (const block of func.blocks) {
@@ -1100,6 +1146,119 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "call", funcIdx: iteratorReturnIdx });
         return;
       }
+      // Slice 9 (#1169h) — exception handling.
+      case "throw": {
+        // Push the (already-coerced-to-externref) value, then `throw $exn`.
+        // The from-ast layer guarantees `instr.value` has externref ValType.
+        const tagIdx = resolver.ensureExnTag?.();
+        if (tagIdx === undefined) {
+          throw new Error(`ir/lower: resolver cannot resolve __exn tag for throw (${func.name})`);
+        }
+        emitValue(instr.value, out);
+        out.push({ op: "throw", tagIdx });
+        return;
+      }
+      case "try": {
+        // Build:
+        //   try
+        //     <body instrs>
+        //     [<inline finally on normal exit>]
+        //   catch $__exn          (when there's a source catch)
+        //     local.set $payloadSlot   (or drop, when no binding)
+        //     [<wrap catch body in inner try if finally exists>]
+        //     <catch body>
+        //     [<inline finally on normal exit>]
+        //   catch_all              (when there's a finally)
+        //     <inline finally>
+        //     rethrow 0
+        //   end
+        const tagIdx = resolver.ensureExnTag?.();
+        if (tagIdx === undefined) {
+          throw new Error(`ir/lower: resolver cannot resolve __exn tag for try (${func.name})`);
+        }
+
+        // Helper: emit a body buffer (Instr[]) into a target out array,
+        // honoring the SSA materialisation rules used by forof.vec.
+        const emitBodyBuffer = (bodyInstrs: readonly IrInstr[], target: Instr[]): void => {
+          for (const bodyInstr of bodyInstrs) {
+            if (bodyInstr.result === null) {
+              emitInstrTree(bodyInstr, target);
+            } else if (crossBlock.has(bodyInstr.result)) {
+              emitInstrTree(bodyInstr, target);
+              target.push({ op: "local.set", index: localIdx.get(bodyInstr.result)! });
+              materialized.add(bodyInstr.result);
+            }
+            // Intra-block multi-use: handled via tee at use site.
+          }
+        };
+
+        // Try body — emits user instrs + inlined finally on normal exit.
+        const tryBody: Instr[] = [];
+        emitBodyBuffer(instr.body, tryBody);
+        if (instr.finallyBody) {
+          emitBodyBuffer(instr.finallyBody, tryBody);
+        }
+
+        // Catch handlers.
+        const catches: { tagIdx: number; body: Instr[] }[] = [];
+        let catchAll: Instr[] | undefined;
+
+        if (instr.catchClause) {
+          const catchBody: Instr[] = [];
+          // Bind payload (or drop). Slot index === -1 means no binding.
+          if (instr.catchClause.payloadSlot >= 0) {
+            catchBody.push({ op: "local.set", index: slotWasmIdx(instr.catchClause.payloadSlot) });
+          } else {
+            catchBody.push({ op: "drop" });
+          }
+          if (instr.finallyBody) {
+            // Wrap user catch body in an inner try/catch_all so a throw
+            // inside the catch body still runs finally before propagating.
+            const innerBody: Instr[] = [];
+            emitBodyBuffer(instr.catchClause.body, innerBody);
+            const innerCatchAll: Instr[] = [];
+            emitBodyBuffer(instr.finallyBody, innerCatchAll);
+            innerCatchAll.push({ op: "rethrow", depth: 0 });
+            catchBody.push({
+              op: "try",
+              blockType: { kind: "empty" },
+              body: innerBody,
+              catches: [],
+              catchAll: innerCatchAll,
+            });
+            // Normal-exit from catch: inline finally.
+            emitBodyBuffer(instr.finallyBody, catchBody);
+          } else {
+            emitBodyBuffer(instr.catchClause.body, catchBody);
+          }
+          catches.push({ tagIdx, body: catchBody });
+        }
+
+        if (instr.finallyBody) {
+          // catch_all that runs finally and rethrows. Used both when
+          // there's no source catch (try/finally only) AND when there
+          // IS a source catch (the catch handles `__exn`; an unmatched
+          // exception falls through to catch_all). Wasm's structured
+          // try op evaluates catches in order — `catch __exn` matches
+          // any of our throws (we only have one tag), so catch_all is
+          // strictly the "leak" path for non-`__exn` exceptions
+          // (out-of-memory, host runtime aborts, etc.). Slice 9 still
+          // emits it because finally MUST run on EVERY exit path.
+          const ca: Instr[] = [];
+          emitBodyBuffer(instr.finallyBody, ca);
+          ca.push({ op: "rethrow", depth: 0 });
+          catchAll = ca;
+        }
+
+        out.push({
+          op: "try",
+          blockType: { kind: "empty" },
+          body: tryBody,
+          catches,
+          ...(catchAll ? { catchAll } : {}),
+        });
+        return;
+      }
       // Slice 6 part 4 (#1183) — string for-of (native-strings mode).
       // Counter loop with `__str_charAt(str, i)`. The from-ast layer
       // ensures this case only runs in native-strings mode (host-strings
@@ -1382,6 +1541,13 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
     // Slice 6 part 4 (#1183) — string for-of.
     case "forof.string":
       return [instr.str];
+    // Slice 9 (#1169h) — exception handling.
+    case "throw":
+      return [instr.value];
+    case "try":
+      // Body / catch / finally buffer uses are surfaced separately via
+      // `collectForOfBodyUses` (recurses into try buffers).
+      return [];
   }
 }
 
@@ -1397,6 +1563,16 @@ export function collectForOfBodyUses(body: readonly IrInstr[]): IrValueId[] {
     for (const u of collectIrUses(instr)) uses.push(u);
     if (instr.kind === "forof.vec" || instr.kind === "forof.iter" || instr.kind === "forof.string") {
       for (const u of collectForOfBodyUses(instr.body)) uses.push(u);
+    }
+    // Slice 9 (#1169h) — recurse into try / catch / finally buffers.
+    if (instr.kind === "try") {
+      for (const u of collectForOfBodyUses(instr.body)) uses.push(u);
+      if (instr.catchClause) {
+        for (const u of collectForOfBodyUses(instr.catchClause.body)) uses.push(u);
+      }
+      if (instr.finallyBody) {
+        for (const u of collectForOfBodyUses(instr.finallyBody)) uses.push(u);
+      }
     }
   }
   return uses;

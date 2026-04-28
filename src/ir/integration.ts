@@ -26,7 +26,7 @@ import ts from "typescript";
 
 import { addGeneratorImports, addIteratorImports, addStringImports } from "../codegen/index.js";
 import { ensureNativeStringHelpers } from "../codegen/native-strings.js";
-import { addStringConstantGlobal } from "../codegen/registry/imports.js";
+import { addStringConstantGlobal, ensureExnTag } from "../codegen/registry/imports.js";
 import { addFuncType, getOrRegisterRefCellType } from "../codegen/registry/types.js";
 import type { CodegenContext } from "../codegen/context/types.js";
 import { lowerFunctionAstToIr, type IrFromAstResolver } from "./from-ast.js";
@@ -379,6 +379,15 @@ export function compileIrPathFunctions(
   // it eagerly avoids late-import shifts during Phase 3 emission.
   // -------------------------------------------------------------------------
   preregisterNativeStringHelpers(ctx, readyForLower);
+
+  // -------------------------------------------------------------------------
+  // Slice 9 (#1169h) — pre-register the shared `__exn` exception tag if
+  // any IR function emits `throw` or `try`. The tag itself doesn't
+  // shift function indices (it lives in `ctx.mod.tags`), but
+  // pre-registering here keeps the resolver path uniform and matches
+  // the pattern used for other lazy registrations.
+  // -------------------------------------------------------------------------
+  preregisterExceptionSupport(ctx, readyForLower);
 
   // -------------------------------------------------------------------------
   // Phase 3 — Lower: translate each IrFunction to Wasm and install in ctx.
@@ -789,6 +798,21 @@ function makeResolver(
       if (idx === undefined) throw new Error("ir/integration: wasm:js-string length not registered");
       return [{ op: "call", funcIdx: idx }];
     },
+    // -------------------------------------------------------------------
+    // Exception handling dispatch (slice 9 — #1169h).
+    //
+    // Lazily registers the shared `__exn` tag via the legacy registry's
+    // `ensureExnTag`. The tag has signature `(externref)` and is shared
+    // between IR-compiled and legacy-compiled functions so cross-path
+    // throws / catches interoperate. The integration loop pre-registers
+    // the tag (see `preregisterExceptionSupport`) for any IR function
+    // that emits `throw` / `try`, but this method is the formal
+    // resolver entry point and remains correct even if pre-registration
+    // is skipped.
+    // -------------------------------------------------------------------
+    ensureExnTag(): number {
+      return ensureExnTag(ctx);
+    },
   };
 }
 
@@ -942,6 +966,43 @@ function preregisterNativeStringHelpers(ctx: CodegenContext, fns: readonly Built
       for (const instr of block.instrs) {
         if (usesForOfString(instr)) {
           ensureNativeStringHelpers(ctx);
+          return;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Slice 9 (#1169h): pre-register the shared `__exn` exception tag if any
+ * IR function emits `throw` or `try`. The tag itself doesn't shift
+ * function indices (it lives in `ctx.mod.tags`), but pre-registering
+ * keeps the resolver path uniform with other lazy registrations and
+ * avoids a late `ensureExnTag` call mid-emission.
+ */
+function preregisterExceptionSupport(ctx: CodegenContext, fns: readonly BuiltFnRef[]): void {
+  const usesExceptions = (instr: IrInstr): boolean => {
+    switch (instr.kind) {
+      case "throw":
+        return true;
+      case "try":
+        return true;
+      case "forof.vec":
+      case "forof.iter":
+      case "forof.string":
+        for (const sub of instr.body) {
+          if (usesExceptions(sub)) return true;
+        }
+        return false;
+      default:
+        return false;
+    }
+  };
+  for (const entry of fns) {
+    for (const block of entry.fn.blocks) {
+      for (const instr of block.instrs) {
+        if (usesExceptions(instr)) {
+          ensureExnTag(ctx);
           return;
         }
       }
