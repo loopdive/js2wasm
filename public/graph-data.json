@@ -16935,7 +16935,7 @@
       "title": "IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "45",
       "depends_on": [],
       "files": [],
