@@ -9755,9 +9755,9 @@
       "id": "688",
       "title": "Refactor codebase into smaller modules per language feature",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "Backlog",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "18",
       "depends_on": [],
       "files": [
         "split 27K line file into modules per language feature"
