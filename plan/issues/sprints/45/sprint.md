@@ -115,12 +115,6 @@ moved here. No issues were rescoped, rejected, or deleted — only relocated.
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | in-progress |
-
 ### Done
 
 | Issue | Title | Priority | Status |
@@ -169,6 +163,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169f | IR Phase 4 Slice 7 — generators and async/await through the IR path | high | done |
 | #1169g | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | high | done |
 | #1169h | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | high | done |
+| #1169i | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | high | done |
 | #1170 | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | high | done |
 | #1171 | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | high | done |
 | #1173 | js2wasm output uses 'exact' reference types that wasmtime 44 rejects (array-sum benchmark crash) | high | done |

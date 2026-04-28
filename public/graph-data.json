@@ -16958,9 +16958,57 @@
       "id": "1169i",
       "title": "IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "45",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169j",
+      "title": "IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169k",
+      "title": "IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169l",
+      "title": "IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "compiler-architecture",
+      "cluster": "compiler-architecture"
+    },
+    {
+      "id": "1169m",
+      "title": "IR Phase 4 Slice 10 step E — Promise through IR (best-effort)",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "compiler-architecture",
@@ -18899,6 +18947,10 @@
         "1169g",
         "1169h",
         "1169i",
+        "1169j",
+        "1169k",
+        "1169l",
+        "1169m",
         "1181",
         "1181",
         "1182",
@@ -21510,6 +21562,22 @@
     {
       "goal": "compiler-architecture",
       "issue": "1169i"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169j"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169k"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169l"
+    },
+    {
+      "goal": "compiler-architecture",
+      "issue": "1169m"
     },
     {
       "goal": "compiler-architecture",

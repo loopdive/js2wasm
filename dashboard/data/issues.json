@@ -345,6 +345,55 @@
       "sprint": "46"
     },
     {
+      "id": "1169m",
+      "title": "IR Phase 4 Slice 10 step E — Promise through IR (best-effort)",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169i",
+        "1169c"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1169l",
+      "title": "IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1169i"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1169k",
+      "title": "IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1169i"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1169j",
+      "title": "IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1169i"
+      ],
+      "goal": "compiler-architecture",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
       "id": "1169",
       "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
       "priority": "high",
@@ -1577,18 +1626,6 @@
   ],
   "inprogress": [
     {
-      "id": "1169i",
-      "title": "IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169d"
-      ],
-      "goal": "compiler-architecture",
-      "status": "in-progress",
-      "sprint": "45"
-    },
-    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -1904,6 +1941,18 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
+    },
+    {
+      "id": "1169i",
+      "title": "IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169d"
+      ],
+      "goal": "compiler-architecture",
       "status": "done",
       "sprint": "45"
     },
