@@ -1342,6 +1342,69 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         });
         return;
       }
+      // Slice 10 (#1169i) — extern class ops. All five forms delegate to
+      // host imports registered by the legacy `collectUsedExternImports`
+      // pass (see `src/codegen/index.ts:6114`), which scans the AST
+      // before the IR runs. By the time we reach this case, the funcMap
+      // contains stable indices for `<className>_new`,
+      // `<className>_<method>`, and `<className>_get_<prop>` /
+      // `<className>_set_<prop>`. The resolver's `resolveFunc` looks
+      // them up by name.
+      case "extern.new": {
+        const importName = `${instr.className}_new`;
+        const fn = resolver.resolveFunc({ kind: "func", name: importName });
+        for (const a of instr.args) emitValue(a, out);
+        out.push({ op: "call", funcIdx: fn });
+        return;
+      }
+      case "extern.call": {
+        const importName = `${instr.className}_${instr.method}`;
+        const fn = resolver.resolveFunc({ kind: "func", name: importName });
+        emitValue(instr.receiver, out);
+        for (const a of instr.args) emitValue(a, out);
+        out.push({ op: "call", funcIdx: fn });
+        return;
+      }
+      case "extern.prop": {
+        const importName = `${instr.className}_get_${instr.property}`;
+        const fn = resolver.resolveFunc({ kind: "func", name: importName });
+        emitValue(instr.receiver, out);
+        out.push({ op: "call", funcIdx: fn });
+        return;
+      }
+      case "extern.propSet": {
+        const importName = `${instr.className}_set_${instr.property}`;
+        const fn = resolver.resolveFunc({ kind: "func", name: importName });
+        emitValue(instr.receiver, out);
+        emitValue(instr.value, out);
+        out.push({ op: "call", funcIdx: fn });
+        return;
+      }
+      case "extern.regex": {
+        // Mirror the legacy `compileRegExpLiteral` pattern (see
+        // `src/codegen/typeof-delete.ts:158`):
+        //   <emit pattern as string literal>
+        //   <emit flags as string literal>
+        //   call $RegExp_new
+        // The resolver's `emitStringConst` takes care of host-strings vs
+        // native-strings — the host-strings backend uses `global.get` of
+        // a pre-registered string global; native-strings inlines the
+        // `array.new_fixed` + `struct.new`. Both produce a Wasm value
+        // compatible with the `RegExp_new` import's externref params.
+        const patternOps = resolver.emitStringConst?.(instr.pattern);
+        if (!patternOps) {
+          throw new Error(`ir/lower: resolver cannot emit string.const for regex pattern (${func.name})`);
+        }
+        for (const o of patternOps) out.push(o);
+        const flagsOps = resolver.emitStringConst?.(instr.flags);
+        if (!flagsOps) {
+          throw new Error(`ir/lower: resolver cannot emit string.const for regex flags (${func.name})`);
+        }
+        for (const o of flagsOps) out.push(o);
+        const fn = resolver.resolveFunc({ kind: "func", name: "RegExp_new" });
+        out.push({ op: "call", funcIdx: fn });
+        return;
+      }
     }
   };
 
@@ -1548,6 +1611,17 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       // Body / catch / finally buffer uses are surfaced separately via
       // `collectForOfBodyUses` (recurses into try buffers).
       return [];
+    // Slice 10 (#1169i) — extern class ops.
+    case "extern.new":
+      return instr.args;
+    case "extern.call":
+      return [instr.receiver, ...instr.args];
+    case "extern.prop":
+      return [instr.receiver];
+    case "extern.propSet":
+      return [instr.receiver, instr.value];
+    case "extern.regex":
+      return [];
   }
 }
 
@@ -1645,6 +1719,12 @@ export function lowerIrTypeToValType(t: IrType, resolver: IrLowerResolver, funcN
     }
     return { kind: "ref", typeIdx: cl.structTypeIdx };
   }
+  if (t.kind === "extern") {
+    // Slice 10 (#1169i): extern-class values are opaque host references
+    // — always externref at the Wasm level. The IR carries the
+    // className for static dispatch, but it has no Wasm-level analogue.
+    return { kind: "externref" };
+  }
   if (t.kind === "union") {
     const union = resolver.resolveUnion?.(t.members);
     if (!union) {
@@ -1687,6 +1767,7 @@ function describeIrTypeShallow(t: IrType): string {
     return `closure(${ps})->${describeIrTypeShallow(t.signature.returnType)}`;
   }
   if (t.kind === "class") return `class<${t.shape.className}>`;
+  if (t.kind === "extern") return `extern<${t.className}>`;
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
 }

@@ -507,6 +507,109 @@ export class IrFunctionBuilder {
     return result;
   }
 
+  // --- extern class ops (#1169i — slice 10) -------------------------------
+
+  /**
+   * Slice 10 (#1169i) — emit `extern.new` for `new ExternClass(args)`.
+   * Result type is `{ kind: "extern", className }` — opaque externref
+   * carrying the class identity statically.
+   */
+  emitExternNew(className: string, args: readonly IrValueId[]): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "extern", className };
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({
+      kind: "extern.new",
+      className,
+      args: [...args],
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Slice 10 (#1169i) — emit `extern.call` for `<recv>.<method>(args)` on
+   * an extern-class receiver. `resultType` is the method's registered
+   * result IrType (or `null` for void). Returns `null` for void methods.
+   */
+  emitExternCall(
+    className: string,
+    method: string,
+    receiver: IrValueId,
+    args: readonly IrValueId[],
+    resultType: IrType | null,
+  ): IrValueId | null {
+    let result: IrValueId | null = null;
+    if (resultType !== null) {
+      result = this.allocator.fresh();
+      this.valueTypes.set(result, resultType);
+    }
+    this.pushInstr({
+      kind: "extern.call",
+      className,
+      method,
+      receiver,
+      args: [...args],
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Slice 10 (#1169i) — emit `extern.prop` for a property read on an
+   * extern-class receiver.
+   */
+  emitExternProp(className: string, property: string, receiver: IrValueId, resultType: IrType): IrValueId {
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({
+      kind: "extern.prop",
+      className,
+      property,
+      receiver,
+      result,
+      resultType,
+    });
+    return result;
+  }
+
+  /**
+   * Slice 10 (#1169i) — emit `extern.propSet` for a property write on an
+   * extern-class receiver. Void result.
+   */
+  emitExternPropSet(className: string, property: string, receiver: IrValueId, value: IrValueId): void {
+    this.pushInstr({
+      kind: "extern.propSet",
+      className,
+      property,
+      receiver,
+      value,
+      result: null,
+      resultType: null,
+    });
+  }
+
+  /**
+   * Slice 10 (#1169i) — emit `extern.regex` for a `/pattern/flags`
+   * RegExp literal. Result is `{ kind: "extern", className: "RegExp" }`
+   * (opaque externref handle to the RegExp instance).
+   */
+  emitRegExpLiteral(pattern: string, flags: string): IrValueId {
+    const result = this.allocator.fresh();
+    const resultType: IrType = { kind: "extern", className: "RegExp" };
+    this.valueTypes.set(result, resultType);
+    this.pushInstr({
+      kind: "extern.regex",
+      pattern,
+      flags,
+      result,
+      resultType,
+    });
+    return result;
+  }
+
   // --- finalize -----------------------------------------------------------
 
   typeOf(value: IrValueId): IrType {
