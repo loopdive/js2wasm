@@ -17119,6 +17119,44 @@
       "cluster": "contributor-readiness"
     },
     {
+      "id": "1209",
+      "title": "labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1210",
+      "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [
+        "1178"
+      ],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1211",
+      "title": "js2wasm hosted fib-recursive: Wasm validator — call param types must match",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -17905,6 +17943,10 @@
       "target": "1205"
     },
     {
+      "source": "1178",
+      "target": "1210"
+    },
+    {
       "source": "688",
       "target": "742"
     },
@@ -18339,7 +18381,8 @@
         "1174",
         "1175",
         "1178",
-        "1180"
+        "1180",
+        "1211"
       ]
     },
     {
@@ -19006,7 +19049,9 @@
         "1197",
         "1198",
         "1199",
-        "1200"
+        "1200",
+        "1209",
+        "1210"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -20814,6 +20859,10 @@
     {
       "goal": "compilable",
       "issue": "1180"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1211"
     },
     {
       "goal": "compiler-architecture",
@@ -22878,6 +22927,14 @@
     {
       "goal": "performance",
       "issue": "1200"
+    },
+    {
+      "goal": "performance",
+      "issue": "1209"
+    },
+    {
+      "goal": "performance",
+      "issue": "1210"
     },
     {
       "goal": "platform",
@@ -26580,6 +26637,14 @@
     {
       "goal": "core-semantics",
       "issue": "1200"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1209"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1210"
     },
     {
       "goal": "standalone-mode",

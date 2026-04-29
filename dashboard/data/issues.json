@@ -117,6 +117,38 @@
   ],
   "ready": [
     {
+      "id": "1211",
+      "title": "js2wasm hosted fib-recursive: Wasm validator — call param types must match",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1210",
+      "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1178"
+      ],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1209",
+      "title": "labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
       "id": "1207",
       "title": "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)",
       "priority": "high",
