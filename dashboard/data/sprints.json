@@ -2879,7 +2879,8 @@
       "1211",
       "1212",
       "1213",
-      "1214"
+      "1214",
+      "1215"
     ],
     "completedIssueIds": [
       "1169k",
@@ -2896,7 +2897,7 @@
       "1214"
     ],
     "explicitCarryOver": false,
-    "isPlanning": false,
+    "isPlanning": true,
     "isClosed": false
   }
 ]
