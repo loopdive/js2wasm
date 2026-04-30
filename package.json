@@ -65,6 +65,7 @@
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
+    "test:262:validate-baseline": "npx tsx scripts/validate-test262-baseline.ts",
     "test:diff": "node --experimental-strip-types scripts/diff-test.ts",
     "test:diff:triage": "node --experimental-strip-types scripts/diff-triage.ts",
     "test:diff:gate": "node --experimental-strip-types scripts/diff-test-gate.ts",

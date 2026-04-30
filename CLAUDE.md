@@ -77,13 +77,15 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 
 ### Baseline files (which is authoritative?)
 
-| File | Lives in | Authoritative for | Refreshed by |
-|------|----------|-------------------|--------------|
-| `benchmarks/results/test262-current.jsonl` | main repo (committed, ~15MB) | `dev-self-merge` Step 4 bucket-by-path regression analysis | `refresh-committed-baseline.yml` (after every `Test262 Sharded` push to main) |
-| `benchmarks/results/test262-current.json` | main repo (committed, ~kB) | landing-page summary, pass/total badges | `test262-sharded.yml` `promote-baseline` job (every push to main) |
-| `test262-current.jsonl` (in `loopdive/js2wasm-baselines`) | separate repo | PR regression-gate baseline (fetched fresh per CI run) | `test262-sharded.yml` `promote-baseline` job (every push to main) |
+| File | Lives in | Authoritative for | Refreshed by | Validated by |
+|------|----------|-------------------|--------------|--------------|
+| `benchmarks/results/test262-current.jsonl` | main repo (committed, ~15MB) | `dev-self-merge` Step 4 bucket-by-path regression analysis | `refresh-committed-baseline.yml` (after every `Test262 Sharded` push to main) | `test262-baseline-validate.yml` spot-checks 50 random `pass` entries on every PR (#1218); fails the PR if any sampled entry no longer passes on main HEAD |
+| `benchmarks/results/test262-current.json` | main repo (committed, ~kB) | landing-page summary, pass/total badges | `test262-sharded.yml` `promote-baseline` job (every push to main) | (none) |
+| `test262-current.jsonl` (in `loopdive/js2wasm-baselines`) | separate repo | PR regression-gate baseline (fetched fresh per CI run) | `test262-sharded.yml` `promote-baseline` job (every push to main) | (none) |
 
 The committed JSONL must be kept in sync with the JSON; otherwise the dev-self-merge bucket analysis reads stale "pass" entries and silently miscounts regressions. `refresh-committed-baseline.yml` is the dedicated workflow for that sync — it downloads the merged JSONL artifact from the most-recent successful `Test262 Sharded` run on main and commits it back with `[skip ci]`.
+
+To validate the committed JSONL on demand, run `pnpm run test:262:validate-baseline` (uses a deterministic seed; pass `PR_NUMBER=N` to reproduce a specific CI run, or `SAMPLE_SIZE=10 SEED=12345` for a quicker check). Set `SAMPLE_SIZE=50` to match CI exactly. The validator fails fast on the first 5 most-affected entries with a pointer to `refresh-committed-baseline.yml`.
 
 ## CLI Flags
 - `--target wasi` — emit WASI imports (fd_write, proc_exit) instead of JS host
