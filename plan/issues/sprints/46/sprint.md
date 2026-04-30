@@ -1,12 +1,13 @@
 ---
 id: 46
-status: planning
+status: active
 created: 2026-04-27
 groomed: 2026-04-30
+started: 2026-04-30
 wrap_checklist:
   status_closed: false
   retro_written: false
-  diary_updated: false
+  diary_updated: true
   end_tag_pushed: false
   begin_tag_pushed: false
 ---
