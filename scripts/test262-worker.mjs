@@ -106,11 +106,20 @@ const _origArrayProtoSymbols = new Set(Object.getOwnPropertySymbols(Array.protot
 //
 // When `delete` succeeds (descriptor was configurable) the slate is clean
 // for the next test. When `delete` fails because the descriptor is
-// non-configurable, the property is permanent for the lifetime of the
-// process — the only recovery is a fork respawn. We mirror the existing
-// Array.prototype non-configurable FATAL-exit precedent and `process.exit(1)`,
-// which the parent pool catches via the `proc.on("exit", ...)` handler in
-// scripts/compiler-pool.ts to spawn a fresh fork.
+// non-configurable, we deliberately do NOT exit-for-respawn here even
+// though that's what the Array.prototype FATAL precedent does. Reason:
+// ~51 TypedArray.prototype + ~30 Number.prototype tests in test262 install
+// non-configurable accessors. Forcing fork respawn on each one cost +71
+// compile_timeouts in CI (in-flight tests in the same fork lost their
+// IPC response when the worker called process.exit(1) before libuv flushed
+// the previous test's result message). Net effect was -7 pass.
+//
+// Trade-off accepted: the 3 tests we'd "fix" with the FATAL approach
+// (Iterator/map/this-non-object.js, TypedArray/.../get-length-ignores-length-prop.js,
+// + 1 sibling) stay broken on second-run-in-same-fork. Bug A's Promise
+// snapshot still gives +26 cleanly. Recover the 3 tests later with a
+// safer mechanism (e.g. process.disconnect() before exit, or per-test
+// fork recycle for known-polluter test paths).
 const _typedArrayProto = Object.getPrototypeOf(Int8Array.prototype); // %TypedArray%.prototype
 const _iteratorProto = Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]()));
 const _PROTO_EXTRA_CLEANUP = [
@@ -537,37 +546,20 @@ function restoreBuiltins() {
   // #1220 — Delete extra own keys/symbols added to additional prototypes
   // (Number, %TypedArray%, %Iterator%, etc). See comment on _PROTO_EXTRA_CLEANUP.
   //
-  // Tests routinely call Object.defineProperty(SomeProto, k, { get(){...} })
-  // WITHOUT configurable:true (the default is false). The property then
-  // becomes permanent for the lifetime of the worker process: every later
-  // test that tries to defineProperty(SomeProto, k, ...) throws
-  // "Cannot redefine property: <k>". Common cases:
-  //   - Iterator/prototype/{map,find,...}/this-non-object.js → Number.prototype.next
-  //   - TypedArray/prototype/{findLastIndex,...} → TypedArray.prototype.length
-  //
-  // Strategy: try `delete`. If the descriptor is configurable, that succeeds
-  // and we're done. If non-configurable, mirror the existing Array.prototype
-  // FATAL-exit precedent (line 508+) and `process.exit(1)` so the parent
-  // pool spawns a fresh fork — the only way to recover a non-configurable
-  // poisoned host prototype.
-  let _protoPoisonName = null;
-  for (const { name, proto, names, symbols } of _protoExtraOrig) {
+  // Tests routinely call Object.defineProperty(SomeProto, k, { get(){...} }).
+  // When `configurable: true` is set the next test starts clean. When the
+  // descriptor defaults to non-configurable, `delete` silently no-ops and
+  // the next test's defineProperty throws "Cannot redefine property: <k>".
+  // We accept that outcome (see the _PROTO_EXTRA_CLEANUP block comment for
+  // the rationale against process.exit(1) recovery here).
+  for (const { proto, names, symbols } of _protoExtraOrig) {
     for (const k of Object.getOwnPropertyNames(proto)) {
       if (!names.has(k)) {
         try {
           delete proto[k];
         } catch {}
-        if (Object.prototype.hasOwnProperty.call(proto, k)) {
-          // delete failed — descriptor is non-configurable. Cannot recover.
-          const desc = Object.getOwnPropertyDescriptor(proto, k);
-          if (desc && !desc.configurable) {
-            _protoPoisonName = `${name}[${k}]`;
-            break;
-          }
-        }
       }
     }
-    if (_protoPoisonName) break;
     for (const s of Object.getOwnPropertySymbols(proto)) {
       if (!symbols.has(s)) {
         try {
@@ -575,12 +567,6 @@ function restoreBuiltins() {
         } catch {}
       }
     }
-  }
-  if (_protoPoisonName) {
-    console.error(
-      `[unified-worker pid=${process.pid}] FATAL: non-configurable extra property ${_protoPoisonName} — exiting for restart (#1220)`,
-    );
-    process.exit(1);
   }
 
   // Restore specific methods on prototypes (value-assignment, defineProperty fallback).
