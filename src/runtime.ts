@@ -2129,8 +2129,20 @@ assert._isSameValue = isSameValue;
                     const out: any[] = [];
                     // Cap iterations defensively — non-spec-compliant
                     // iterators that never set .done would otherwise hang.
-                    const MAX_ITER = 1 << 20;
+                    // 64K is well above any reasonable destructuring source;
+                    // higher caps cost ~20µs per closure roundtrip and
+                    // produced 22-28 s test262 hangs at the prior 1M ceiling
+                    // (#1219). Real generators rarely yield more than a few
+                    // thousand values.
+                    const MAX_ITER = 1 << 16;
                     let iterCount = 0;
+                    // Track whether the iterator naturally completed (done:true).
+                    // If we exit the loop for any other reason (defensive cap,
+                    // null result, missing .next), spec §7.4.6 requires us to
+                    // call iterator.return() to signal early termination —
+                    // otherwise observable side effects (`return`-method call
+                    // counters in test262 ary-init-iter-close tests) are missed.
+                    let sawDone = false;
                     // Resolve a property from the iterator/result object using
                     // the same lookup order as _safeGet so JS-defined accessors
                     // (set via Object.defineProperty) fire on read.
@@ -2171,11 +2183,32 @@ assert._isSameValue = isSameValue;
                       if (result == null) break;
                       // Spec §7.4.4 IteratorComplete coerces .done to boolean.
                       const done = resolveProp(result, "done");
-                      if (done) break;
+                      if (done) {
+                        sawDone = true;
+                        break;
+                      }
                       // Spec §7.4.5 IteratorValue reads .value (may throw via
                       // a getter — propagated by resolveProp/_safeGet).
                       const value = resolveProp(result, "value");
                       out.push(value);
+                    }
+                    // Spec §7.4.6 IteratorClose: when the iterator did not
+                    // naturally terminate (loop exited via the defensive cap
+                    // or destructuring needs only a prefix of values), invoke
+                    // iterator.return() if present. Throws from return()
+                    // propagate per spec — must not be swallowed since a
+                    // test-262 dstr/*-iter-close-err.js test depends on it.
+                    // (#1219 — fixes 26 ary-init-iter-close hangs caused by
+                    // iterators that never set done:true)
+                    if (!sawDone) {
+                      const returnFn = resolveProp(iteratorObj, "return");
+                      if (typeof returnFn === "function") {
+                        returnFn.call(iteratorObj);
+                      } else if (returnFn != null && typeof returnFn === "object" && _isWasmStruct(returnFn)) {
+                        callFn0(returnFn);
+                      }
+                      // Else: no return method — spec says "return normal
+                      // completion" (no-op).
                     }
                     return out;
                   }
