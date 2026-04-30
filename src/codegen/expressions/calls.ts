@@ -5031,11 +5031,52 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
         }
       }
+
+      // #1205 Stage 3: After all value captures, push boxed TDZ flag refs.
+      // Mirrors compileArrowAsClosure's construct-time logic at
+      // closures.ts:2085-2118. Layout invariant: lifted-fn signature is
+      // [valueCap_0, ..., valueCap_N-1, tdzFlagBox_0, ..., tdzFlagBox_K-1, ...userParams].
+      const tdzFlaggedNested = nestedCaptures.filter((c) => c.hasTdzFlag);
+      if (tdzFlaggedNested.length > 0) {
+        const i32RefCellTypeIdx = getOrRegisterRefCellType(ctx, { kind: "i32" });
+        for (const cap of tdzFlaggedNested) {
+          const existing = fctx.boxedTdzFlags?.get(cap.name);
+          if (existing) {
+            // Already boxed by an enclosing closure construction or a prior
+            // call-site cap-prepend — share the box reference.
+            fctx.body.push({ op: "local.get", index: existing.localIdx });
+          } else {
+            // Fresh box: read the current i32 flag, struct.new an i32 ref cell,
+            // tee into a new outer-fctx local, and re-aim
+            // `fctx.tdzFlagLocals` + `fctx.boxedTdzFlags` so subsequent
+            // emitLocalTdzInit / emitLocalTdzCheck in the outer scope route
+            // through the same box. This is the construct-time piece that
+            // makes a *subsequent* arrow-closure capture in the same outer
+            // scope share the same box (matches closures.ts:2110-2114).
+            const oldFlagIdx = fctx.tdzFlagLocals!.get(cap.name)!;
+            fctx.body.push({ op: "local.get", index: oldFlagIdx });
+            fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdx });
+            const flagBoxLocal = allocLocal(fctx, `__tdz_box_${cap.name}`, {
+              kind: "ref",
+              typeIdx: i32RefCellTypeIdx,
+            });
+            fctx.body.push({ op: "local.tee", index: flagBoxLocal });
+            if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
+            fctx.boxedTdzFlags.set(cap.name, {
+              refCellTypeIdx: i32RefCellTypeIdx,
+              localIdx: flagBoxLocal,
+            });
+            fctx.tdzFlagLocals!.set(cap.name, flagBoxLocal);
+          }
+        }
+      }
     }
 
     // #1177: Re-fetch funcIdx in case the cap-prepend loop above (or any
     // earlier compileExpression in this function) triggered a late-import
-    // shift via emitLocalTdzCheck/emitStaticTdzThrow.
+    // shift via emitLocalTdzCheck/emitStaticTdzThrow. #1205: also covers
+    // late-import shifts triggered by the TDZ-flag prepend block (which
+    // calls getOrRegisterRefCellType — typically pre-registered, but still).
     funcIdx = ctx.funcMap.get(funcName) ?? funcIdx;
 
     // Check for rest parameters on the callee
@@ -5076,7 +5117,15 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     } else {
       // Normal call — compile provided arguments with type hints from function signature
       const paramTypes = getFuncParamTypes(ctx, funcIdx);
-      const captureCount = nestedCaptures ? nestedCaptures.length : 0;
+      // #1205: Each TDZ-flagged value capture also has a flag-box param
+      // prepended to the lifted fn signature (see FNDECL-A2 in
+      // statements/nested-declarations.ts). Account for those flag params
+      // when computing user-visible arity — otherwise the padding loop
+      // below pushes a phantom default value for each flag, producing an
+      // arity-mismatch trap at the call site.
+      const captureCount = nestedCaptures
+        ? nestedCaptures.length + nestedCaptures.filter((c) => c.hasTdzFlag).length
+        : 0;
       // User-visible param count excludes capture params (which are prepended internally)
       const paramCount = paramTypes ? paramTypes.length - captureCount : expr.arguments.length;
       const calleeReadsArgsDirect = ctx.funcUsesArguments.has(funcName);

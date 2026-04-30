@@ -2633,17 +2633,36 @@ export function emitFuncRefAsClosure(
     // Functions with captures: create a closure struct that stores the capture values.
     // The trampoline extracts captures from the struct and passes them to the original function. (#857)
     const numCaptures = nestedCaptures.length;
-    const userParams = sig.params.slice(numCaptures);
+    // #1205 Stage 3: TDZ-flag captures get extra ref-cell fields after the
+    // value captures, mirroring the leading-param layout of the lifted fn.
+    const tdzFlaggedNested = nestedCaptures.filter((c) => c.hasTdzFlag);
+    const numTdzFlags = tdzFlaggedNested.length;
+    // The lifted fn's signature is [valueCaps..., tdzFlagBoxes..., userParams...].
+    const userParams = sig.params.slice(numCaptures + numTdzFlags);
     const results = sig.results;
 
     const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, userParams, results);
     if (!wrapperTypes) return null;
 
-    // Create a custom struct with func + capture fields (subtype of the base wrapper)
+    // Create a custom struct with func + capture fields + TDZ-flag fields
+    // (subtype of the base wrapper).
     const captureFields: FieldDef[] = nestedCaptures.map((_cap, i) => {
       const capParamType = sig.params[i]!;
       return { name: `cap${i}`, type: capParamType, mutable: false };
     });
+    // #1205 Stage 3: append TDZ-flag ref-cell fields after the value captures
+    // so the trampoline's struct.get of the flag uses the correct field index.
+    let i32RefCellTypeIdxForFlags = -1;
+    if (numTdzFlags > 0) {
+      i32RefCellTypeIdxForFlags = getOrRegisterRefCellType(ctx, { kind: "i32" });
+      for (const cap of tdzFlaggedNested) {
+        captureFields.push({
+          name: `__tdz_${cap.name}`,
+          type: { kind: "ref" as const, typeIdx: i32RefCellTypeIdxForFlags },
+          mutable: false,
+        });
+      }
+    }
     const closureName = `__fn_cap_${funcName}_${ctx.closureCounter++}`;
     const structTypeIdx = ctx.mod.types.length;
     ctx.mod.types.push({
@@ -2660,7 +2679,10 @@ export function emitFuncRefAsClosure(
     const trampolineBody: Instr[] = [];
     const trampolineLocals: { name: string; type: ValType }[] = [];
 
-    if (numCaptures > 1) {
+    // We always need the casted-self local when we have either >1 value captures
+    // OR any TDZ-flag fields, because each requires a separate `struct.get`.
+    const totalCapFields = numCaptures + numTdzFlags;
+    if (totalCapFields > 1) {
       trampolineLocals.push({ name: "__casted_self", type: { kind: "ref", typeIdx: structTypeIdx } });
     }
     const castedSelfLocal = 1 + userParams.length;
@@ -2669,11 +2691,15 @@ export function emitFuncRefAsClosure(
     trampolineBody.push({ op: "local.get", index: 0 } as Instr);
     trampolineBody.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
 
-    if (numCaptures === 1) {
+    if (totalCapFields === 1) {
+      // Exactly one capture field (a value capture; TDZ-flag-only with zero
+      // value captures is impossible because each flag is paired with a value).
       trampolineBody.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 1 } as Instr);
     } else {
       trampolineBody.push({ op: "local.set", index: castedSelfLocal } as Instr);
-      for (let i = 0; i < numCaptures; i++) {
+      // Push value captures first, then TDZ-flag captures, mirroring the
+      // lifted fn's leading-param order.
+      for (let i = 0; i < totalCapFields; i++) {
         trampolineBody.push({ op: "local.get", index: castedSelfLocal } as Instr);
         trampolineBody.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i + 1 } as Instr);
       }
@@ -2702,7 +2728,7 @@ export function emitFuncRefAsClosure(
     };
     ctx.closureInfoByTypeIdx.set(structTypeIdx, closureInfo);
 
-    // Emit: struct.new with fields: func, cap0, cap1, ...
+    // Emit: struct.new with fields: func, cap0, cap1, ..., __tdz_*..., ...
     fctx.body.push({ op: "ref.func", funcIdx: trampolineFuncIdx });
     for (const cap of nestedCaptures) {
       if (cap.mutable && cap.valType) {
@@ -2725,6 +2751,34 @@ export function emitFuncRefAsClosure(
         }
       } else {
         fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+      }
+    }
+    // #1205 Stage 3: after all value captures, push the boxed TDZ flag refs
+    // (one per TDZ-flagged capture). For freshly captured flags, allocate the
+    // box now and re-aim the outer fctx's `tdzFlagLocals` + `boxedTdzFlags`
+    // so subsequent set/get of the flag in the outer scope routes through
+    // the same ref cell that the trampoline closure holds.
+    if (numTdzFlags > 0) {
+      for (const cap of tdzFlaggedNested) {
+        const existingBox = fctx.boxedTdzFlags?.get(cap.name);
+        if (existingBox) {
+          fctx.body.push({ op: "local.get", index: existingBox.localIdx });
+        } else {
+          const oldFlagIdx = fctx.tdzFlagLocals!.get(cap.name)!;
+          fctx.body.push({ op: "local.get", index: oldFlagIdx });
+          fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdxForFlags });
+          const flagBoxLocal = allocLocal(fctx, `__tdz_box_${cap.name}`, {
+            kind: "ref",
+            typeIdx: i32RefCellTypeIdxForFlags,
+          });
+          fctx.body.push({ op: "local.tee", index: flagBoxLocal });
+          if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
+          fctx.boxedTdzFlags.set(cap.name, {
+            refCellTypeIdx: i32RefCellTypeIdxForFlags,
+            localIdx: flagBoxLocal,
+          });
+          fctx.tdzFlagLocals!.set(cap.name, flagBoxLocal);
+        }
       }
     }
     fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
