@@ -124,7 +124,7 @@
       "depends_on": [],
       "goal": "ci-stability",
       "status": "ready",
-      "sprint": "47"
+      "sprint": "46"
     },
     {
       "id": "1217",
@@ -134,7 +134,7 @@
       "depends_on": [],
       "goal": "ci-stability",
       "status": "ready",
-      "sprint": "47"
+      "sprint": "46"
     },
     {
       "id": "1216",
@@ -211,7 +211,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "47"
+      "sprint": "46"
     },
     {
       "id": "1197",
@@ -251,7 +251,7 @@
       "depends_on": [],
       "goal": "performance",
       "status": "ready",
-      "sprint": "47"
+      "sprint": "46"
     },
     {
       "id": "1172",
