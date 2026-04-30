@@ -16833,18 +16833,6 @@
       "cluster": "performance"
     },
     {
-      "id": "1184",
-      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "47",
-      "depends_on": [],
-      "files": [],
-      "goal": "performance",
-      "cluster": "performance"
-    },
-    {
       "id": "1185",
       "title": "IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts)",
       "priority": "medium",
@@ -16955,30 +16943,6 @@
     {
       "id": "1195",
       "title": "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "47",
-      "depends_on": [],
-      "files": [],
-      "goal": "performance",
-      "cluster": "performance"
-    },
-    {
-      "id": "1196",
-      "title": "perf: bounds-check elimination via SSA on monotonic indexed array loops",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "47",
-      "depends_on": [],
-      "files": [],
-      "goal": "performance",
-      "cluster": "performance"
-    },
-    {
-      "id": "1197",
-      "title": "perf: i32 element specialization for `number[]` arrays under `| 0` / `& mask` / `>> n` patterns",
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
@@ -17229,46 +17193,8 @@
       "cluster": "correctness"
     },
     {
-      "id": "1216",
-      "title": "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "47",
-      "depends_on": [
-        "1214"
-      ],
-      "files": [],
-      "goal": "ci-stability",
-      "cluster": "ci-stability"
-    },
-    {
       "id": "1217",
       "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
-      "depends_on": [],
-      "files": [],
-      "goal": "ci-stability",
-      "cluster": "ci-stability"
-    },
-    {
-      "id": "1217",
-      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "47",
-      "depends_on": [],
-      "files": [],
-      "goal": "ci-stability",
-      "cluster": "ci-stability"
-    },
-    {
-      "id": "1218",
-      "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
@@ -17284,7 +17210,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "47",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "ci-stability",
@@ -17318,8 +17244,8 @@
       "id": "1221",
       "title": "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "46",
       "depends_on": [],
       "files": [],
@@ -18119,14 +18045,6 @@
     {
       "source": "688",
       "target": "742"
-    },
-    {
-      "source": "1214",
-      "target": "1216"
-    },
-    {
-      "source": "1197",
-      "target": "1199"
     },
     {
       "source": "321",
@@ -19220,10 +19138,7 @@
         "1126",
         "1179",
         "1184",
-        "1184",
         "1195",
-        "1196",
-        "1197",
         "1198",
         "1198",
         "1199",
@@ -23092,19 +23007,7 @@
     },
     {
       "goal": "performance",
-      "issue": "1184"
-    },
-    {
-      "goal": "performance",
       "issue": "1195"
-    },
-    {
-      "goal": "performance",
-      "issue": "1196"
-    },
-    {
-      "goal": "performance",
-      "issue": "1197"
     },
     {
       "goal": "performance",
@@ -26814,19 +26717,7 @@
     },
     {
       "goal": "core-semantics",
-      "issue": "1184"
-    },
-    {
-      "goal": "core-semantics",
       "issue": "1195"
-    },
-    {
-      "goal": "core-semantics",
-      "issue": "1196"
-    },
-    {
-      "goal": "core-semantics",
-      "issue": "1197"
     },
     {
       "goal": "core-semantics",
