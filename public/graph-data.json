@@ -17181,6 +17181,18 @@
       "cluster": "ci-stability"
     },
     {
+      "id": "1214",
+      "title": "ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",

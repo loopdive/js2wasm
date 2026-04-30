@@ -1519,6 +1519,16 @@
   ],
   "inprogress": [
     {
+      "id": "1214",
+      "title": "ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-stability",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
       "id": "1213",
       "title": "ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path",
       "priority": "medium",
