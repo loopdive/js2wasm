@@ -183,14 +183,14 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
     //   cur(6): ref_null $AnyString — current node in the descent
     //   worklist(7): ref_null $AnyString_arr — pending right-children
     //   wlTop(8): i32 — number of items currently on the worklist
-    //   nodeLen(9): i32 — node.len (used to size the worklist)
+    //   newWl(9): ref_null $AnyString_arr — scratch slot for grow-on-push reallocation (#1184)
     const FLAT = 3;
     const FLAT_OFF = 4;
     const FLAT_LEN = 5;
     const CUR = 6;
     const WL = 7;
     const WL_TOP = 8;
-    const NODE_LEN = 9;
+    const NEW_WL = 9;
 
     const body: Instr[] = [
       // Fast path: if node is already a FlatString, copy directly and return.
@@ -233,14 +233,29 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       },
 
       // Slow path: rope traversal with an explicit worklist of right-children.
-      // nodeLen = node.len
-      { op: "local.get", index: 0 },
-      { op: "struct.get", typeIdx: anyStrTypeIdx, fieldIdx: 0 },
-      { op: "local.set", index: NODE_LEN },
-
-      // worklist = array.new_default<ref_null $AnyString>(nodeLen)
-      // nodeLen is a safe upper bound on rope depth (≥ 1 char per leaf).
-      { op: "local.get", index: NODE_LEN },
+      //
+      // #1184: pre-#1184, this allocated a worklist sized at `node.len` (a generous
+      // upper bound on rope depth — depth ≤ leaves ≤ chars). For balanced ropes
+      // (depth ~log N) on a long string, that's a huge over-allocation: a 1MB
+      // ConsString with a balanced rope has depth ~20 but allocates 1M ref slots
+      // (≈8MB on 64-bit WasmGC). Each `String.prototype.charAt` / `charCodeAt` /
+      // `substring` etc. on a ConsString triggers a fresh flatten → copy_tree →
+      // huge allocation, producing severe GC pressure on string-heavy workloads.
+      //
+      // Strategy: dynamic growth. Start with a small fixed initial capacity (16
+      // slots — enough for any rope of depth ≤ 16, which covers virtually all
+      // balanced ropes up to ~1MB). When the worklist would overflow on push,
+      // double its capacity via array.copy. Final capacity is at most the rope
+      // depth; geometric reallocation gives O(depth) total allocation.
+      //
+      // Worst-case (left-leaning rope of depth N): log2(N/16) reallocations,
+      // total slots allocated = 2N (geometric series). Same order as the
+      // pre-#1184 N-slot single-allocation, but spread across log N small
+      // allocations. The common case (depth ≤ 16) does ONE 16-slot allocation
+      // — orders of magnitude smaller than `node.len`.
+      //
+      // worklist = array.new_default<ref_null $AnyString>(16)
+      { op: "i32.const", value: 16 },
       { op: "array.new_default", typeIdx: wlArrTypeIdx },
       { op: "local.set", index: WL },
 
@@ -276,6 +291,42 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
                       { op: "ref.as_non_null" },
                       { op: "ref.test", typeIdx: strTypeIdx },
                       { op: "br_if", depth: 1 },
+
+                      // #1184: grow worklist if full (wlTop >= worklist.len).
+                      // Doubling-grow: array.new_default(len * 2), array.copy old → new.
+                      { op: "local.get", index: WL_TOP },
+                      { op: "local.get", index: WL },
+                      { op: "ref.as_non_null" },
+                      { op: "array.len" },
+                      { op: "i32.ge_s" },
+                      {
+                        op: "if",
+                        blockType: { kind: "empty" },
+                        then: [
+                          // newWl = array.new_default(worklist.len << 1)
+                          { op: "local.get", index: WL } as Instr,
+                          { op: "ref.as_non_null" } as Instr,
+                          { op: "array.len" } as Instr,
+                          { op: "i32.const", value: 1 } as Instr,
+                          { op: "i32.shl" } as Instr,
+                          { op: "array.new_default", typeIdx: wlArrTypeIdx } as Instr,
+                          { op: "local.set", index: NEW_WL } as Instr,
+
+                          // array.copy(newWl, 0, worklist, 0, wlTop)
+                          { op: "local.get", index: NEW_WL } as Instr,
+                          { op: "ref.as_non_null" } as Instr,
+                          { op: "i32.const", value: 0 } as Instr,
+                          { op: "local.get", index: WL } as Instr,
+                          { op: "ref.as_non_null" } as Instr,
+                          { op: "i32.const", value: 0 } as Instr,
+                          { op: "local.get", index: WL_TOP } as Instr,
+                          { op: "array.copy", dstTypeIdx: wlArrTypeIdx, srcTypeIdx: wlArrTypeIdx } as Instr,
+
+                          // worklist = newWl
+                          { op: "local.get", index: NEW_WL } as Instr,
+                          { op: "local.set", index: WL } as Instr,
+                        ],
+                      },
 
                       // worklist[wlTop] = (cur as ConsString).right
                       { op: "local.get", index: WL },
@@ -378,7 +429,7 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
         { name: "cur", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
         { name: "worklist", type: wlArrRefNull },
         { name: "wlTop", type: { kind: "i32" } },
-        { name: "nodeLen", type: { kind: "i32" } },
+        { name: "newWl", type: wlArrRefNull },
       ],
       body,
       exported: false,
