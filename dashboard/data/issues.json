@@ -295,19 +295,6 @@
       "sprint": "45"
     },
     {
-      "id": "1169m",
-      "title": "IR Phase 4 Slice 10 step E — Promise through IR (best-effort)",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [
-        "1169i",
-        "1169c"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1169",
       "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
       "priority": "high",
@@ -1611,6 +1598,19 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1169m",
+      "title": "IR Phase 4 Slice 10 step E — Promise through IR (best-effort)",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169i",
+        "1169c"
+      ],
+      "goal": "compiler-architecture",
       "status": "in-progress",
       "sprint": "46"
     },
