@@ -211,6 +211,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | in-progress |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | in-progress |
+| #1215 | fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error | high | in-progress |
 
 ### Done
 

@@ -17193,6 +17193,18 @@
       "cluster": "ci-stability"
     },
     {
+      "id": "1215",
+      "title": "fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
       "id": "1216",
       "title": "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)",
       "priority": "medium",
@@ -18736,7 +18748,8 @@
         "1127",
         "1143",
         "1145",
-        "1203"
+        "1203",
+        "1215"
       ],
       "track": "supporting track"
     },
@@ -21878,6 +21891,10 @@
     {
       "goal": "correctness",
       "issue": "1203"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1215"
     },
     {
       "goal": "crash-free",
@@ -25712,6 +25729,10 @@
     {
       "goal": "compilable",
       "issue": "1203"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1215"
     },
     {
       "goal": "compilable",
