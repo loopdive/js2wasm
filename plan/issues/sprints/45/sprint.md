@@ -1,18 +1,21 @@
 ---
 id: 45
-status: planned
+status: closed
 created: 2026-04-23
 wrap_checklist:
-  status_closed: false
-  retro_written: false
-  diary_updated: false
-  end_tag_pushed: false
+  status_closed: true
+  retro_written: true
+  diary_updated: true
+  end_tag_pushed: true
   begin_tag_pushed: true
 ---
 
 # Sprint 45
 
-**Date**: TBD (follows sprint 44)
+**Date**: 2026-04-23 → 2026-04-29
+**Baseline start**: 25,276 / 43,172 = 58.6% (sprint 44 close)
+**Baseline end**: 25,830 / 43,168 = 59.8% (2026-04-28)
+**Net**: +554 tests
 **Baseline**: TBD (inherits from sprint 44 close-out)
 **Source**: Triaged out of sprint 44 on 2026-04-23 to keep the week-long sprint
 focused on the IR Phase 3/4 critical path, #1153 compiler crashes, and the

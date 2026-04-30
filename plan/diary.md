@@ -1,5 +1,22 @@
 # Project Diary
 
+## 2026-04-29 — Sprint 45 close
+
+**Sprint 45 closed.** 6-day sprint (2026-04-23 → 2026-04-29).
+
+**Key results:**
+- +554 net test262 tests (baseline 25,276 → 25,830 = 59.8%)
+- IR Phase 4 slices 6–10 all landed: generators (#1169f), destructuring (#1169g), try/catch (#1169h), RegExp/extern-class scaffolding (#1169i step A)
+- IrLowerResolver refactor (#1185) cleared the per-feature shortcut debt across the IR system
+- Competitive benchmark harness built in labs/ — 5 programs × 9 toolchain lanes; Javy static+dynamic split; Porffor and AssemblyScript lanes wired up
+- Architecture Decision Records (#1202) and landing page architecture section (#1208) shipped
+- CI baseline-drift hardening complete (#1076–#1080, #1192, #1191, #1193)
+- #1177 (TDZ closure captures) reverted after 14.7% regressions — deferred to S46
+- 3 new benchmark issues filed: #1209 (hosted ESM error), #1210 (string-hash GC timeout), #1211 (fib-recursive type mismatch)
+
+**Baseline**: 25,830 / 43,168 = 59.8%
+**Sprint 46 begins.** IR Slice 10 steps B–E, #1177 investigation, credibility track, and benchmark bug fixes are the headline priorities.
+
 ## 2026-04-23 — Sprint 43 close / Sprint 44 setup
 
 **Sprint 43 closed.** Short 3-day sprint (2026-04-20 → 2026-04-23). 3 PRs merged:
