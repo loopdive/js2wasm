@@ -84,6 +84,7 @@ export function createCodegenContext(
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
     nativeStrings: options?.nativeStrings ?? options?.fast ?? options?.wasi ?? false,
+    testRuntime: options?.testRuntime ?? false,
     nativeStrDataTypeIdx: -1,
     anyStrTypeIdx: -1,
     nativeStrTypeIdx: -1,

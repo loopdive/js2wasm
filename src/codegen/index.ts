@@ -648,6 +648,28 @@ export function generateModule(
     // wrapper constructors, unknown constructor imports.
     collectAllSourceImports(ctx, ast.sourceFile);
 
+    // #1187 — when the testRuntime flag is set together with nativeStrings,
+    // pre-register the bridge's host imports as REGULAR (not late) imports
+    // BEFORE force-emitting the bridge functions. Without this prep step
+    // `ensureNativeStringExternBridge` would call `ensureLateImport` for
+    // these names, which queues a deferred function-index shift that
+    // requires a `FunctionContext` to flush — and we are at module top
+    // level here, so no shift would ever fire.  Pre-registering as regular
+    // imports puts them into `funcMap` so the late-import path becomes a
+    // no-op and the helper bodies (`__str_flatten`, `__str_copy_tree`, …)
+    // capture correct funcIdx values that don't move afterwards. The
+    // bridge's `__str_to_extern` / `__str_from_extern` exports are added
+    // at the end of codegen.
+    if (ctx.testRuntime && ctx.nativeStrings) {
+      const fromMemTypeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__str_from_mem", { kind: "func", typeIdx: fromMemTypeIdx });
+      const toMemTypeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], []);
+      addImport(ctx, "env", "__str_to_mem", { kind: "func", typeIdx: toMemTypeIdx });
+      const externLenTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
+      addImport(ctx, "env", "__str_extern_len", { kind: "func", typeIdx: externLenTypeIdx });
+      ensureNativeStringExternBridge(ctx);
+    }
+
     // #1047 — register __register_prototype host import before any local function
     // is created so `emitLazyProtoGet` can look it up from funcMap without
     // triggering late-import index shifts mid-expression compilation.
@@ -860,6 +882,29 @@ export function generateModule(
         name: "__exn_tag",
         desc: { kind: "tag", index: numImportTags + ctx.exnTagIdx },
       });
+    }
+
+    // Test-runtime exports (#1187): when `testRuntime && nativeStrings`, force
+    // emission of the native-string ↔ externref bridge helpers and expose
+    // them under stable names so JS callers can pass and receive native
+    // strings during equivalence testing. Production builds (default) do
+    // not opt in and these exports remain absent.
+    if (ctx.testRuntime && ctx.nativeStrings) {
+      ensureNativeStringExternBridge(ctx);
+      const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
+      const toExternIdx = ctx.nativeStrHelpers.get("__str_to_extern");
+      if (fromExternIdx !== undefined) {
+        mod.exports.push({
+          name: "__test_str_from_externref",
+          desc: { kind: "func", index: fromExternIdx },
+        });
+      }
+      if (toExternIdx !== undefined) {
+        mod.exports.push({
+          name: "__test_str_to_externref",
+          desc: { kind: "func", index: toExternIdx },
+        });
+      }
     }
 
     // Mark leaf struct types as final for V8 devirtualization (#594).
@@ -2466,6 +2511,29 @@ export function generateMultiModule(
         name: "__exn_tag",
         desc: { kind: "tag", index: numImportTags + ctx.exnTagIdx },
       });
+    }
+
+    // Test-runtime exports (#1187): when `testRuntime && nativeStrings`, force
+    // emission of the native-string ↔ externref bridge helpers and expose
+    // them under stable names so JS callers can pass and receive native
+    // strings during equivalence testing. Production builds (default) do
+    // not opt in and these exports remain absent.
+    if (ctx.testRuntime && ctx.nativeStrings) {
+      ensureNativeStringExternBridge(ctx);
+      const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
+      const toExternIdx = ctx.nativeStrHelpers.get("__str_to_extern");
+      if (fromExternIdx !== undefined) {
+        mod.exports.push({
+          name: "__test_str_from_externref",
+          desc: { kind: "func", index: fromExternIdx },
+        });
+      }
+      if (toExternIdx !== undefined) {
+        mod.exports.push({
+          name: "__test_str_to_externref",
+          desc: { kind: "func", index: toExternIdx },
+        });
+      }
     }
 
     // Mark leaf struct types as final for V8 devirtualization (#594).

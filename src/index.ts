@@ -101,6 +101,12 @@ export interface CompileOptions {
    *  Enabled automatically when fast: true or target: "wasi".
    *  Required for non-browser runtimes (wasmtime, wasmer, etc.) */
   nativeStrings?: boolean;
+  /** Test-only runtime: when set together with nativeStrings, the module
+   *  also exports `__test_str_from_externref` and `__test_str_to_externref`
+   *  so JS callers can pass / receive native-string-typed parameters in
+   *  equivalence tests. Production builds (default) emit no such exports.
+   *  See plan/issues/sprints/46/1187.md. */
+  testRuntime?: boolean;
   /** Enable SIMD-accelerated string/array helpers (requires engine SIMD support) */
   simd?: boolean;
   /** Enable safe mode — reject unsafe TypeScript patterns at compile time */

@@ -30,6 +30,10 @@ export interface CodegenOptions {
   fast?: boolean;
   /** Use WasmGC-native strings instead of wasm:js-string imports */
   nativeStrings?: boolean;
+  /** Test-only runtime: export native-string ↔ externref bridge helpers
+   *  so JS callers can pass / receive native-string-typed parameters
+   *  during equivalence testing. See plan/issues/sprints/46/1187.md. */
+  testRuntime?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
   /**
@@ -381,6 +385,11 @@ export interface CodegenContext {
   fast: boolean;
   /** Use WasmGC-native strings instead of wasm:js-string imports */
   nativeStrings: boolean;
+  /** Test-only runtime: emit `__test_str_from_externref` /
+   *  `__test_str_to_externref` helpers as module exports so JS callers
+   *  can pass / receive native-string-typed parameters. Off by default.
+   *  See plan/issues/sprints/46/1187.md. */
+  testRuntime: boolean;
   /** Native string support type indices */
   nativeStrDataTypeIdx: number;
   anyStrTypeIdx: number;
