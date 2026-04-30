@@ -174,6 +174,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
 | #1078 | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | medium | done |
 | #1079 | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | medium | done |
+| #1080 | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | critical | done |
 | #1086 | codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk | medium | done |
 | #1096 | Isolate environment adapters — remove top-level await and browser/Node probing from core modules | medium | done |
 | #1109 | lodash-es clamp: Wasm validation error in typeof/RegExp codegen path | medium | done |

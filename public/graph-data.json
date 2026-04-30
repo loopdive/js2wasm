@@ -15206,9 +15206,9 @@
       "id": "1080",
       "title": "[umbrella] Fix CI baseline-drift regression gate — main is not self-healing",
       "priority": "critical",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "46",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "45",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -15840,7 +15840,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "46",
+      "sprint": "47",
       "depends_on": [
         "1124"
       ],
@@ -17219,6 +17219,10 @@
       "target": "1116"
     },
     {
+      "source": "1124",
+      "target": "1126"
+    },
+    {
       "source": "1090",
       "target": "1128"
     },
@@ -17913,10 +17917,6 @@
     {
       "source": "900",
       "target": "907"
-    },
-    {
-      "source": "1124",
-      "target": "1126"
     },
     {
       "source": "1131",
