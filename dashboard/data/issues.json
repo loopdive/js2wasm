@@ -320,18 +320,6 @@
       "sprint": "46"
     },
     {
-      "id": "1169j",
-      "title": "IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [
-        "1169i"
-      ],
-      "goal": "compiler-architecture",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1169",
       "title": "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen",
       "priority": "high",
@@ -1641,6 +1629,18 @@
     {
       "id": "1169k",
       "title": "IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1169i"
+      ],
+      "goal": "compiler-architecture",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1169j",
+      "title": "IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [
