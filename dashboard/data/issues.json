@@ -150,16 +150,6 @@
       "sprint": "46"
     },
     {
-      "id": "1203",
-      "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "correctness",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1200",
       "title": "perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions)",
       "priority": "medium",
@@ -1558,6 +1548,16 @@
         "1202"
       ],
       "goal": "contributor-readiness",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1203",
+      "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
       "status": "in-progress",
       "sprint": "46"
     },

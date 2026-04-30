@@ -17043,7 +17043,7 @@
       "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "46",
       "depends_on": [],
       "files": [],
